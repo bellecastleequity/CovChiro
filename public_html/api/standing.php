@@ -42,6 +42,7 @@ function handle_request(PDO $pdo) {
     $notes = trim($body['notes'] ?? '');
     $paymentPlan = in_array($body['paymentPlan'] ?? 'standard', ['standard', 'prepay', 'installment'], true) ? $body['paymentPlan'] : 'standard';
     $patterns = $body['patterns'] ?? [];
+    $signature = $body['signature'] ?? null;
 
     if (!preg_match('/^\d{5}$/', $zip)) json_response(['error' => 'Enter a valid 5-digit ZIP code.'], 400);
     $err = validate_patterns($patterns);
@@ -49,6 +50,9 @@ function handle_request(PDO $pdo) {
     if (!$name) json_response(['error' => 'Enter your practice or clinic name.'], 400);
     if (!filter_var($contactEmail, FILTER_VALIDATE_EMAIL)) json_response(['error' => 'Enter a valid contact email.'], 400);
     if (!isset(RATES[$region])) json_response(['error' => 'Invalid region.'], 400);
+    if (!$signature || empty($signature['name']) || empty($signature['agreementType'])) {
+        json_response(['error' => 'Please review and sign the standing day agreement first.'], 400);
+    }
 
     // Recompute each pattern's actualStart server-side (rolled forward to the
     // requested weekday) rather than trusting the client's date math.
@@ -64,11 +68,11 @@ function handle_request(PDO $pdo) {
 
     $id = generate_id('SD');
     $stmt = $pdo->prepare('INSERT INTO standing_requests
-        (id, user_id, clinic_name, contact_email, region, zip_code, patterns, notes, payment_plan, combined_count, tier_rate)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        (id, user_id, clinic_name, contact_email, region, zip_code, patterns, notes, payment_plan, combined_count, tier_rate, signature)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     $stmt->execute([
         $id, $user['id'] ?? null, sanitize($name), sanitize($contactEmail), $region, sanitize($zip),
-        json_encode($patterns), sanitize($notes), $paymentPlan, $combinedCount, $tier ? $tier['rate'] : null,
+        json_encode($patterns), sanitize($notes), $paymentPlan, $combinedCount, $tier ? $tier['rate'] : null, json_encode($signature),
     ]);
 
     send_email(ADMIN_EMAIL, "Standing day request — {$name}",
@@ -140,11 +144,11 @@ function handle_approve(PDO $pdo) {
 
     $agreementId = generate_id('SA');
     $stmt = $pdo->prepare('INSERT INTO standing_agreements
-        (id, user_id, request_id, clinic_name, contact_email, region, zip_code, patterns, tier_rate, custom_rate, effective_rate, payment_plan, scheduled_dates, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")');
+        (id, user_id, request_id, clinic_name, contact_email, region, zip_code, patterns, tier_rate, custom_rate, effective_rate, payment_plan, scheduled_dates, signature, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")');
     $stmt->execute([
         $agreementId, $req['user_id'], $req['id'], $req['clinic_name'], $req['contact_email'], $req['region'], $req['zip_code'],
-        json_encode($patterns), $req['tier_rate'], $req['custom_rate'], $effectiveRate, $req['payment_plan'], json_encode($dates),
+        json_encode($patterns), $req['tier_rate'], $req['custom_rate'], $effectiveRate, $req['payment_plan'], json_encode($dates), $req['signature'],
     ]);
     $pdo->prepare("UPDATE standing_requests SET status = 'approved' WHERE id = ?")->execute([$id]);
 
@@ -246,6 +250,7 @@ function standing_request_to_json(array $r) {
         'combinedCount' => (float)$r['combined_count'],
         'tier' => $r['tier_rate'] !== null ? ['rate' => (float)$r['tier_rate']] : null,
         'customRate' => $r['custom_rate'] !== null ? (float)$r['custom_rate'] : null,
+        'signature' => json_decode($r['signature'] ?? 'null', true),
     ];
 }
 
@@ -264,5 +269,7 @@ function standing_agreement_to_json(array $r) {
         'customRate' => $r['custom_rate'] !== null ? (float)$r['custom_rate'] : null,
         'effectiveRate' => (float)$r['effective_rate'],
         'dates' => json_decode($r['scheduled_dates'], true) ?: [],
+        'signature' => json_decode($r['signature'] ?? 'null', true),
+        'providerSignedAt' => to_iso($r['created_at']),
     ];
 }

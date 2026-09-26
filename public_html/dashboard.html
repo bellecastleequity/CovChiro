@@ -3,8 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Your Bookings | Dr. Michael McPherson, D.C.</title>
+<title>CoverageChiropractor.com - My Bookings</title>
 <meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="apple-touch-icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css">
@@ -109,41 +111,13 @@
       </div>
       <div class="doc-row">
         <div class="doc-main">
-          <h4>Signed coverage agreement</h4>
-          <p>A signed copy is emailed for every office coverage and event booking. If you need it resent, use the contact form or chat.</p>
-        </div>
-        <a class="btn ghost sm" href="index.html#contact">Request copy</a>
-      </div>
-      <div class="doc-row">
-        <div class="doc-main">
-          <h4>W-9 tax form</h4>
-          <p>A completed W-9 for Key Global LLC is available on request for your accounting or 1099 records.</p>
-        </div>
-        <a class="btn ghost sm" href="index.html#contact">Request copy</a>
-      </div>
-      <div class="doc-row">
-        <div class="doc-main">
-          <h4>Malpractice insurance declaration page</h4>
-          <p>The declarations page from Dr. McPherson's current malpractice policy, showing coverage limits and policy details.</p>
-        </div>
-        <a class="btn ghost sm" href="documents/malpractice-declaration-page.pdf" target="_blank" rel="noopener">Download</a>
-      </div>
-      <div class="doc-row">
-        <div class="doc-main">
-          <h4>Certificate of insurance</h4>
-          <p>Proof of current malpractice liability coverage, provided on request.</p>
-        </div>
-        <a class="btn ghost sm" href="index.html#contact">Request copy</a>
-      </div>
-      <div class="doc-row">
-        <div class="doc-main">
           <h4>Coverage guidelines &amp; resources</h4>
           <p>A one-page reference covering what to expect on the day of coverage, plus common tax and liability questions.</p>
         </div>
-        <a class="btn ghost sm" href="documents/coverage-guidelines.docx">Download</a>
+        <a class="btn ghost sm" href="documents/coverage-guidelines.html" target="_blank" rel="noopener">Download</a>
       </div>
-      <p class="doc-note">Documents and forms available to every account holder.</p>
-      <p class="doc-note" id="malpractice-pending-note">The malpractice declaration page will be available for download once uploaded — if the link above doesn't open a file yet, use the contact form and a copy will be sent directly.</p>
+      <div id="dash-doc-dynamic"></div>
+      <p class="doc-note">Documents and forms available to every account holder. Your signed coverage agreement is attached to each booking — find it under "Signed agreement" on that booking in your Upcoming/Past lists.</p>
     </div>
   </div>
 </section>
@@ -317,8 +291,38 @@ document.querySelectorAll('.dash-tab').forEach(t => t.addEventListener('click', 
   $('dash-profile').classList.toggle('hidden', dashView !== 'profile');
   if (dashView === 'video') await renderVideoTab();
   if (dashView === 'profile') renderProfileTab();
+  if (dashView === 'documents') await renderDocumentsTab();
   if (!isCustom) renderDash();
 }));
+const DOC_LABELS = { license: 'Chiropractic license', malpractice: 'Malpractice insurance & certificate of insurance', w9: 'W-9 tax form' };
+async function renderDocumentsTab(){
+  let status = {};
+  try { status = await apiFetch('/api/documents.php?action=status'); } catch (e) { status = {}; }
+  const el = $('dash-doc-dynamic');
+  el.innerHTML = Object.keys(DOC_LABELS).map(key => {
+    const s = status[key] || { available: false };
+    return `
+      <div class="doc-row">
+        <div class="doc-main">
+          <h4>${DOC_LABELS[key]}</h4>
+          <p>${s.available ? 'Available for instant download.' : 'Not uploaded yet — request a copy and it will be emailed to you directly.'}</p>
+        </div>
+        ${s.available
+          ? `<a class="btn ghost sm" href="${s.url}" target="_blank" rel="noopener">Download</a>`
+          : `<button class="btn ghost sm" data-request-doc="${key}">Request copy</button>`}
+      </div>`;
+  }).join('');
+  el.querySelectorAll('[data-request-doc]').forEach(btn => btn.addEventListener('click', async () => {
+    const label = DOC_LABELS[btn.dataset.requestDoc];
+    btn.disabled = true;
+    try {
+      await apiFetch('/api/chat.php?action=send', { method: 'POST', body: JSON.stringify({
+        message: `Requesting a copy of: ${label}`
+      })});
+      btn.textContent = 'Request sent!';
+    } catch (e) { alert(e.message); btn.disabled = false; }
+  }));
+}
 async function renderVideoTab(){
   let mine = [];
   try { mine = (await apiFetch('/api/video.php?action=mine')).requests || []; } catch (e) { mine = []; }
@@ -461,7 +465,8 @@ function renderDashStanding(){
         <h3>Standing day — ${patternSummary}</h3>
         <p style="font-size:0.85rem;color:#6b7280;margin-bottom:14px;">${Math.round((a.effectiveRate != null ? a.effectiveRate : a.tier.rate)*100)}% standing-day rate</p>
         ${rows || `<p style="font-size:0.85rem;color:#6b7280;">No upcoming dates remaining.</p>`}
-        <button class="btn ghost sm" data-cancel-standing-agreement="${a.id}" style="margin-top:14px;color:var(--red);border-color:var(--red);">Cancel entire agreement (30-day notice)</button>
+        <a class="btn ghost sm" href="api/agreement.php?type=standing&id=${a.id}" target="_blank" rel="noopener" style="margin-top:14px;">Signed agreement</a>
+        <button class="btn ghost sm" data-cancel-standing-agreement="${a.id}" style="margin-top:14px;margin-left:8px;color:var(--red);border-color:var(--red);">Cancel entire agreement (30-day notice)</button>
       </div>`;
   }).join('');
 
@@ -543,6 +548,7 @@ function renderDash(){
           ? `<div class="review-tag">Feedback submitted — thank you</div>`
           : `<button class="btn ghost sm" data-feedback="${b.id}" style="margin-top:10px;margin-left:8px;">Share coverage feedback</button>`) : ''}
         <button class="btn ghost sm" data-receipt="${b.id}" style="margin-top:10px;margin-left:8px;">View receipt</button>
+        <a class="btn ghost sm" href="api/agreement.php?type=booking&id=${b.id}" target="_blank" rel="noopener" style="margin-top:10px;margin-left:8px;">Signed agreement</a>
       </div>
       <div class="bk-side">
         <div class="bk-amt">${money(b.total)}</div>

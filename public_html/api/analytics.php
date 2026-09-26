@@ -32,6 +32,13 @@ $clientCount = count($byClient);
 $retained = count(array_filter($byClient, fn($c) => $c > 1));
 $retentionRate = $clientCount ? $retained / $clientCount : 0;
 
+// Recurring Clinic loyalty program visibility — how many distinct clients
+// currently hold the active 5% recurring rate (see recurring_status()).
+$recurringActiveCount = 0;
+foreach (array_keys($byClient) as $uid) {
+    if (recurring_status($pdo, (int)$uid)['active']) $recurringActiveCount++;
+}
+
 $ratings = array_values(array_filter(array_column($active, 'review_rating'), fn($r) => $r !== null));
 $avgRating = count($ratings) ? array_sum($ratings) / count($ratings) : null;
 
@@ -109,7 +116,7 @@ unset($group, $v);
 json_response([
     'totalEver' => $totalEver, 'cancelledCount' => $cancelledCount, 'avgBookingValue' => round($avgBookingValue, 2), 'cancellationRate' => $cancellationRate,
     'geo' => $geo, 'avgLeadTime' => $avgLeadTime !== null ? round($avgLeadTime, 1) : null, 'leadTimeSampleSize' => count($leadTimes),
-    'retentionRate' => $retentionRate, 'clientCount' => $clientCount,
+    'retentionRate' => $retentionRate, 'clientCount' => $clientCount, 'recurringActiveCount' => $recurringActiveCount,
     'avgRating' => $avgRating !== null ? round($avgRating, 2) : null, 'ratingSampleSize' => count($ratings),
     'utilization' => $utilization, 'windowDays' => $windowDays,
     'seasonal' => $seasonal, 'flexPublished' => $flexPublished, 'flexBooked' => $flexBooked, 'flexConversionRate' => $flexConversionRate,

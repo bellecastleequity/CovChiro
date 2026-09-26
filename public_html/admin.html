@@ -3,8 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Provider Portal | Dr. Michael McPherson, D.C.</title>
+<title>CoverageChiropractor.com - Provider Portal</title>
 <meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="apple-touch-icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css">
@@ -60,6 +62,7 @@
           <button class="dash-tab" data-adm="standing">Standing days</button>
           <button class="dash-tab" data-adm="analytics">Analytics</button>
           <button class="dash-tab" data-adm="messages">Messages</button>
+          <button class="dash-tab" data-adm="documents">Documents</button>
         </div>
         <div id="admin-list"></div>
       </div>
@@ -73,6 +76,7 @@
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null;
 let chatThreads = [], activeChatThread = null, activeChatMessages = [];
+let docStatus = {};
 async function loadAdminBookings(){
   try { adminBookings = (await apiFetch('/api/booking.php?action=list_all')).bookings || []; }
   catch (e) { adminBookings = []; }
@@ -96,12 +100,22 @@ function suggestFlexDiscount(daysOut, openCount){
 }
 function pastClientList(){
   const seen = new Map();
+  const byEmail = new Map();
   adminBookings.forEach(b => {
     if (!b.email) return;
     if (!seen.has(b.email)) seen.set(b.email, { email: b.email, name: b.who || '', lastDate: b.start });
     else if (b.start > seen.get(b.email).lastDate) seen.get(b.email).lastDate = b.start;
+    if (!byEmail.has(b.email)) byEmail.set(b.email, []);
+    byEmail.get(b.email).push(b);
   });
-  return Array.from(seen.values()).sort((a,b) => b.lastDate.localeCompare(a.lastDate));
+  return Array.from(seen.values()).map(c => {
+    const rs = recurringStatus(byEmail.get(c.email) || []);
+    let loyaltyLabel, loyaltyActive = false;
+    if (rs.active){ loyaltyLabel = 'Recurring Clinic — 5% active'; loyaltyActive = true; }
+    else if (rs.qualified) loyaltyLabel = 'Recurring reward lapsed';
+    else loyaltyLabel = `${rs.cumDays}/${RECURRING_QUALIFY_DAYS} days toward recurring`;
+    return { ...c, loyaltyLabel, loyaltyActive };
+  }).sort((a,b) => b.lastDate.localeCompare(a.lastDate));
 }
 function standingDatesNeedingVolumeTomorrow(){
   const tomorrow = localDateStr(new Date(Date.now() + 864e5));
@@ -257,6 +271,7 @@ function renderAdmin(){
             </div>` : ''}
           ${canComplete ? `<div style="margin-top:10px;"><button class="btn sm" data-complete="${b.id}">Mark coverage complete</button></div>` : ''}
           ${b.completedAt ? `<div style="margin-top:10px;"><button class="btn ghost sm" data-draft-thanks="${b.id}">Draft thank-you letter</button></div>` : ''}
+          <div style="margin-top:10px;"><a class="btn ghost sm" href="api/agreement.php?type=booking&id=${b.id}" target="_blank" rel="noopener">Signed agreement</a></div>
         </div>
       </div>`;
     }).join('') + `
@@ -526,10 +541,12 @@ function renderAdmin(){
 
     const clientsHtml = `
       <div class="admin-card" style="margin-bottom:20px;">
-        <h3>Past clients (${clients.length})</h3>
+        <h3>Past clients &amp; loyalty status (${clients.length})</h3>
         ${clients.length ? clients.map(c => `
-          <div class="blk" style="margin-bottom:6px;">
-            <div><div class="bd">${c.name || c.email}</div><div class="bn">${c.email} · last booked ${c.lastDate}</div></div>
+          <div class="blk ${c.loyaltyActive ? 'booked' : ''}" style="margin-bottom:6px;">
+            <div><div class="bd">${c.name || c.email}</div><div class="bn">${c.email} · last booked ${c.lastDate}</div>
+              <div class="bn" style="${c.loyaltyActive ? 'color:var(--teal-dark);font-weight:600;' : ''}margin-top:2px;">${c.loyaltyLabel}</div>
+            </div>
           </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No past clients on record yet.</p>`}
       </div>`;
 
@@ -762,7 +779,8 @@ function renderAdmin(){
               <div class="bn">${patternSummary} · ${Math.round((a.effectiveRate != null ? a.effectiveRate : a.tier.rate)*100)}% off · ${upcoming.length} coverage days remaining</div>
               <div class="bn">Next: ${nextFew.map(d => `${d.date} (${TYPE_LABEL_SD[d.type]})`).join(', ') || 'none remaining'}</div>
             </div>
-            <button class="btn ghost sm" data-cancel-agreement="${a.id}" style="margin-top:8px;color:var(--red);border-color:var(--red);">Cancel agreement (30-day notice)</button>
+            <a class="btn ghost sm" href="api/agreement.php?type=standing&id=${a.id}" target="_blank" rel="noopener" style="margin-top:8px;">Signed agreement</a>
+            <button class="btn ghost sm" data-cancel-agreement="${a.id}" style="margin-top:8px;margin-left:8px;color:var(--red);border-color:var(--red);">Cancel agreement (30-day notice)</button>
           </div>`;
         }).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No active standing agreements yet.</p>`}
       </div>`;
@@ -838,6 +856,7 @@ function renderAdmin(){
         ${metricCard('Cancellation rate', `${Math.round(an.cancellationRate*100)}%`, `${an.cancelledCount} of ${an.totalEver} ever created`)}
         ${metricCard('Booking lead time', an.avgLeadTime != null ? `${Math.round(an.avgLeadTime)} days` : 'Not enough data', an.leadTimeSampleSize ? `avg over ${an.leadTimeSampleSize} bookings` : 'needs bookings made after this update')}
         ${metricCard('Clinic retention', `${Math.round(an.retentionRate*100)}%`, `${an.clientCount} distinct clients`)}
+        ${metricCard('Recurring Clinic loyalty', `${an.recurringActiveCount}`, `of ${an.clientCount} clients hold the active 5% rate`)}
         ${metricCard('Average rating', an.avgRating != null ? `${an.avgRating.toFixed(1)} / 5` : 'No reviews yet', an.ratingSampleSize ? `from ${an.ratingSampleSize} reviews` : '')}
         ${metricCard('Utilization', `${Math.round(an.utilization*100)}%`, `next ${an.windowDays} days booked or blocked`)}
         ${metricCard('Flex Date conversion', an.flexPublished ? `${Math.round(an.flexConversionRate*100)}%` : 'N/A', an.flexPublished ? `${an.flexBooked} of ${an.flexPublished} published dates booked` : 'No Flex Rate dates published yet')}
@@ -892,7 +911,50 @@ function renderAdmin(){
     el.innerHTML = cardsHtml + geoHtml + seasonalHtml + flexDiscountHtml + flexRegionHtml + flexLeadHtml;
   } else if (admView === 'messages'){
     renderMessagesTab(el);
+  } else if (admView === 'documents'){
+    renderDocumentsTab(el);
   }
+}
+const DOC_LABELS = { license: 'Chiropractic license', malpractice: 'Malpractice insurance & certificate of insurance', w9: 'W-9 tax form' };
+function renderDocumentsTab(el){
+  el.innerHTML = `
+    <div class="admin-card">
+      <h3>Instantly-downloadable documents</h3>
+      <p style="font-size:0.85rem;color:#6b7280;margin-bottom:14px;">Upload these once — they become instant downloads for every client in their Resources tab. Uploading a new file replaces the previous one.</p>
+      ${Object.keys(DOC_LABELS).map(key => {
+        const status = docStatus[key] || { available: false };
+        return `
+        <div class="blk ${status.available ? 'booked' : ''}" style="margin-bottom:10px;flex-direction:column;align-items:flex-start;">
+          <div style="width:100%;">
+            <div class="bd">${DOC_LABELS[key]}</div>
+            <div class="bn">${status.available ? `Uploaded ${new Date(status.uploadedAt).toLocaleString()} · <a href="${status.url}" target="_blank" rel="noopener">View current file</a>` : 'Not uploaded yet — clients see a "Request a copy" option instead.'}</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+            <input type="file" id="doc-file-${key}" accept=".pdf,.jpg,.jpeg,.png" style="font-size:0.8rem;">
+            <button class="btn ghost sm" data-doc-upload="${key}">Upload</button>
+          </div>
+        </div>`;
+      }).join('')}
+      <div class="err-msg" id="doc-upload-err"></div>
+    </div>`;
+  el.querySelectorAll('[data-doc-upload]').forEach(btn => btn.addEventListener('click', async () => {
+    const key = btn.dataset.docUpload;
+    const fileInput = $(`doc-file-${key}`);
+    const errEl = $('doc-upload-err');
+    errEl.textContent = '';
+    if (!fileInput.files.length){ errEl.textContent = 'Choose a file first.'; return; }
+    const fd = new FormData();
+    fd.append('key', key);
+    fd.append('file', fileInput.files[0]);
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/documents.php?action=upload', { method: 'POST', credentials: 'same-origin', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Upload failed.');
+      docStatus[key] = { available: true, url: data.url, uploadedAt: data.uploadedAt };
+      renderDocumentsTab($('admin-list'));
+    } catch (e) { errEl.textContent = e.message; btn.disabled = false; }
+  }));
 }
 function renderMessagesTab(el){
   if (!chatThreads.length){
@@ -974,6 +1036,9 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
   if (admView === 'messages'){
     activeChatThread = null; activeChatMessages = [];
     try { chatThreads = (await apiFetch('/api/chat.php?action=list_threads')).threads || []; } catch (e) { chatThreads = []; }
+  }
+  if (admView === 'documents'){
+    try { docStatus = await apiFetch('/api/documents.php?action=status'); } catch (e) { docStatus = {}; }
   }
   renderAdmin();
 }));

@@ -47,6 +47,7 @@ CREATE TABLE standing_requests (
   combined_count DECIMAL(5,1),
   tier_rate DECIMAL(5,4),
   custom_rate DECIMAL(5,4),
+  signature JSON NULL, -- {name, signedAt, agreementType} — captured at request time
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
   KEY (status), KEY (region), KEY (created_at), KEY (contact_email)
@@ -68,6 +69,7 @@ CREATE TABLE standing_agreements (
   payment_plan VARCHAR(50) NOT NULL DEFAULT 'standard',
   scheduled_dates JSON NOT NULL, -- [{date, type, status, patientVolume, paidAt}, ...]
   status VARCHAR(50) NOT NULL DEFAULT 'active', -- active | cancelling | cancelled
+  signature JSON NULL, -- copied from the request's signature at approval; created_at IS the provider's counter-signature timestamp
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (request_id) REFERENCES standing_requests(id) ON DELETE SET NULL,

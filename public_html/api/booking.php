@@ -335,6 +335,12 @@ function handle_mark_complete(PDO $pdo) {
         " is now due. Pay it from your account dashboard at " . SITE_URL . ".</p>");
 
     if ((float)$b['total'] > 0) {
+        send_email($b['user_email'], "Thank you — {$b['title']}",
+            "<p>Dear {$b['user_name']},</p><p>Thank you for having me cover {$b['meta']}. It was a pleasure working with your team, " .
+            "and I hope it went smoothly on your end as well.</p><p>If anything came up worth mentioning, or if you'd like to get " .
+            "a future date on the calendar, I'm easy to reach — just reply to this email or reach out through your account.</p>" .
+            "<p>Thanks again,<br>Michael L. McPherson, D.C.<br>coveragechiropractor.com</p>");
+
         send_email($b['user_email'], "Quick feedback on your recent coverage?",
             "<p>Thanks for having Dr. McPherson cover {$b['title']}. If you have two minutes, coverage feedback " .
             "helps improve future visits — it's separate from a public review and goes straight to him, never posted anywhere.</p>" .
