@@ -246,6 +246,45 @@
   </div>
 </div>
 
+<div class="modal-bg" id="edit-coverage-modal">
+  <div class="modal">
+    <button class="close" data-close>×</button>
+    <h2>Edit coverage details</h2>
+    <p style="font-size:0.86rem;color:#6b7280;">These help the doctor prep for your specific office — update anytime before the coverage date.</p>
+    <label for="ec-volume" style="margin-top:14px;">Expected patient volume for this day (optional)</label>
+    <input type="number" id="ec-volume" min="0" placeholder="e.g. 40">
+    <label for="ec-dress" style="margin-top:16px;">Dress code requested</label>
+    <select id="ec-dress">
+      <option value="">No preference</option>
+      <option value="Medical scrubs">Medical scrubs</option>
+      <option value="Business casual, tie">Business casual, tie</option>
+      <option value="Clinic jacket over business attire">Clinic jacket over business attire</option>
+      <option value="other">Other (specify below)</option>
+    </select>
+    <input type="text" id="ec-dress-other" class="hidden" placeholder="Describe the dress code" style="margin-top:8px;">
+    <label style="margin-top:16px;">Techniques needed</label>
+    <div class="technique-grid" id="ec-technique-grid">
+      <label class="tq"><input type="checkbox" value="Diversified"> Diversified</label>
+      <label class="tq"><input type="checkbox" value="Gonstead"> Gonstead</label>
+      <label class="tq"><input type="checkbox" value="Thompson"> Thompson</label>
+      <label class="tq"><input type="checkbox" value="Spinal Decompression"> Spinal Decompression</label>
+      <label class="tq"><input type="checkbox" value="Manual Therapy"> Manual Therapy</label>
+      <label class="tq"><input type="checkbox" value="Ultrasound"> Ultrasound</label>
+      <label class="tq"><input type="checkbox" value="E-Stim"> E-Stim</label>
+    </div>
+    <label for="ec-notes">Other treatment requests or needs</label>
+    <textarea id="ec-notes" rows="3" placeholder="Anything else that helps me best serve your patients and staff"></textarea>
+    <label style="margin-top:16px;">Day-of point of contact</label>
+    <div class="poc-grid">
+      <input type="text" id="ec-poc-name" placeholder="Name">
+      <input type="text" id="ec-poc-title" placeholder="Position">
+      <input type="tel" id="ec-poc-phone" placeholder="Mobile number">
+    </div>
+    <div class="err-msg" id="ec-err"></div>
+    <button class="btn" id="ec-submit" style="width:100%;margin-top:14px;">Save details</button>
+  </div>
+</div>
+
 <div class="modal-bg" id="video-modal">
   <div class="modal narrow">
     <button class="close" data-close>×</button>
@@ -561,6 +600,7 @@ function renderDash(){
             ${refundable ? 'Free cancellation window open' : 'Inside 48 hrs — deposit forfeited'}
           </div>
           <div class="bk-actions">
+            ${b.service === 'office' ? `<button class="btn ghost sm" data-editcoverage="${b.id}">Edit details</button>` : ''}
             <button class="btn ghost sm" data-video="${b.id}">Request video interview</button>
             <button class="btn ghost sm" data-resched="${b.id}">Reschedule</button>
             <button class="btn danger sm" data-cancel="${b.id}">Cancel</button>
@@ -583,6 +623,7 @@ function renderDash(){
   el.querySelectorAll('[data-video]').forEach(btn => btn.addEventListener('click', () => openVideoRequest(btn.dataset.video)));
 
   el.querySelectorAll('[data-cancel]').forEach(btn => btn.addEventListener('click', () => openCancel(btn.dataset.cancel)));
+  el.querySelectorAll('[data-editcoverage]').forEach(btn => btn.addEventListener('click', () => openEditCoverage(btn.dataset.editcoverage)));
 
   el.querySelectorAll('[data-resched]').forEach(btn => btn.addEventListener('click', () => {
     const b = bookings.find(x => x.id === btn.dataset.resched);
@@ -726,6 +767,58 @@ $('cancel-confirm').addEventListener('click', async () => {
   }
   await loadMyBookings(); await loadAvailability();
   $('cancel-modal').classList.remove('open');
+  renderDash();
+});
+$('ec-dress').addEventListener('change', () => {
+  $('ec-dress-other').classList.toggle('hidden', $('ec-dress').value !== 'other');
+});
+let editCoverageTargetId = null;
+function openEditCoverage(id){
+  const b = bookings.find(x => x.id === id);
+  if (!b) return;
+  editCoverageTargetId = id;
+  const cd = b.coverage || {};
+  $('ec-volume').value = cd.patientVolume ?? '';
+  const knownDress = ['', 'Medical scrubs', 'Business casual, tie', 'Clinic jacket over business attire'];
+  if (cd.dress && !knownDress.includes(cd.dress)){
+    $('ec-dress').value = 'other';
+    $('ec-dress-other').value = cd.dress;
+    $('ec-dress-other').classList.remove('hidden');
+  } else {
+    $('ec-dress').value = cd.dress || '';
+    $('ec-dress-other').value = '';
+    $('ec-dress-other').classList.add('hidden');
+  }
+  document.querySelectorAll('#ec-technique-grid input').forEach(cb => {
+    cb.checked = !!(cd.techniques && cd.techniques.includes(cb.value));
+  });
+  $('ec-notes').value = cd.notes || '';
+  $('ec-poc-name').value = cd.pocName || '';
+  $('ec-poc-title').value = cd.pocTitle || '';
+  $('ec-poc-phone').value = cd.pocPhone || '';
+  $('ec-err').textContent = '';
+  $('edit-coverage-modal').classList.add('open');
+}
+$('ec-submit').addEventListener('click', async () => {
+  const dressSel = $('ec-dress').value;
+  const dress = dressSel === 'other' ? $('ec-dress-other').value.trim() : dressSel;
+  const techniques = Array.from(document.querySelectorAll('#ec-technique-grid input:checked')).map(el => el.value);
+  const volumeVal = $('ec-volume').value;
+  $('ec-submit').disabled = true;
+  try {
+    await apiFetch('/api/booking.php?action=update_coverage', { method: 'POST', body: JSON.stringify({
+      id: editCoverageTargetId,
+      patientVolume: volumeVal !== '' ? parseInt(volumeVal) : '',
+      dress: dress || '', techniques,
+      notes: $('ec-notes').value.trim(),
+      pocName: $('ec-poc-name').value.trim(),
+      pocTitle: $('ec-poc-title').value.trim(),
+      pocPhone: $('ec-poc-phone').value.trim(),
+    })});
+  } catch (e) { $('ec-err').textContent = e.message; $('ec-submit').disabled = false; return; }
+  $('ec-submit').disabled = false;
+  await loadMyBookings();
+  $('edit-coverage-modal').classList.remove('open');
   renderDash();
 });
 function isWeekday(dateStr){

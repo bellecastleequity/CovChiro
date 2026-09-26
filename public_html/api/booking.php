@@ -11,6 +11,7 @@ switch ($action) {
     case 'list': handle_list($pdo); break;
     case 'get': handle_get($pdo); break;
     case 'cancel': handle_cancel($pdo); break;
+    case 'update_coverage': handle_update_coverage($pdo); break;
     case 'review': handle_review($pdo); break;
     case 'feedback': handle_feedback($pdo); break;
     case 'list_all': handle_list_all($pdo); break;
@@ -169,7 +170,7 @@ function handle_create(PDO $pdo) {
         VALUES (?, ?, "upcoming", ?, ?, ?, "office", ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", ?, NOW(), ?)');
     $stmt->execute([
         $bookingId, $user['id'], json_encode(array_values($sorted)), json_encode(array_values($sortedTypes)), json_encode($dayTimes),
-        json_encode($coverage), json_encode($signature), sanitize($title), sanitize($meta), $region, sanitize($zip), $miles, $total,
+        json_encode(sanitize($coverage)), json_encode($signature), sanitize($title), sanitize($meta), $region, sanitize($zip), $miles, $total,
         $promoRow ? $promoRow['code'] : null, $sorted[0],
     ]);
 
@@ -240,6 +241,48 @@ function handle_cancel(PDO $pdo) {
     send_email(ADMIN_EMAIL, "Booking {$id} cancelled by client", "<p>{$user['email']} cancelled booking {$id}.</p>");
 
     json_response(['success' => true, 'refund_amount' => $refundAmount]);
+}
+
+// Lets a client update the day-of coverage details (expected patient volume,
+// dress code, techniques, notes, day-of contact) on a booking they haven't
+// been covered for yet — these were previously only ever set once, during
+// the original booking wizard, with no way to correct or add them after.
+function handle_update_coverage(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $user = require_login();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+
+    $stmt = $pdo->prepare('SELECT * FROM bookings WHERE id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b || (int)$b['user_id'] !== (int)$user['id']) json_response(['error' => 'Not found'], 404);
+    if (!in_array($b['status'], ['upcoming', 'pending'], true)) {
+        json_response(['error' => 'This booking can no longer be edited.'], 400);
+    }
+
+    // Merge onto the existing coverage rather than replacing it outright —
+    // the edit form doesn't resend fields like postedHours that were only
+    // ever set at original booking time, and those shouldn't get wiped out.
+    $existing = json_decode($b['coverage'] ?? '{}', true) ?: [];
+    $techniques = $body['techniques'] ?? [];
+    $coverage = array_merge($existing, sanitize([
+        'patientVolume' => isset($body['patientVolume']) && $body['patientVolume'] !== '' ? (int)$body['patientVolume'] : null,
+        'dress' => $body['dress'] ?? '',
+        'techniques' => is_array($techniques) ? array_values($techniques) : [],
+        'notes' => $body['notes'] ?? '',
+        'pocName' => $body['pocName'] ?? '',
+        'pocTitle' => $body['pocTitle'] ?? '',
+        'pocPhone' => $body['pocPhone'] ?? '',
+    ]));
+    // patientVolume needs to stay a number (or null) for the dashboard's
+    // truthiness checks — sanitize() stringifies everything it touches.
+    $coverage['patientVolume'] = $coverage['patientVolume'] !== '' ? (int)$coverage['patientVolume'] : null;
+
+    $stmt = $pdo->prepare('UPDATE bookings SET coverage = ? WHERE id = ?');
+    $stmt->execute([json_encode($coverage), $id]);
+
+    json_response(['success' => true, 'coverage' => $coverage]);
 }
 
 function handle_review(PDO $pdo) {

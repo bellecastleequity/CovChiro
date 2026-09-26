@@ -1497,18 +1497,22 @@ $('auth-submit').addEventListener('click', async () => {
     return;
   }
   $('auth-submit').disabled = false;
-  await loadMyBookings();
   $('auth-modal').classList.remove('open');
-  renderAuthState();
   if (pendingBooking){
     // Recompute fresh rather than reusing the pre-login quote: bookings
     // was just loaded for the real, now-known account above, and a quote
     // built before login could have guessed wrong about first-time vs
     // returning status. This ensures what's charged always matches who
     // actually just authenticated, not who we assumed they might be.
+    await loadMyBookings();
+    renderAuthState();
     pendingBooking = null;
     openSignModal(quote());
+    return;
   }
+  // Not mid-booking — sign-in/registration from the header goes straight to
+  // the relevant dashboard rather than leaving the client on the homepage.
+  window.location.href = user.isAdmin ? 'admin.html' : 'dashboard.html';
 });
 let pendingBooking = null;
 $('btn-book').addEventListener('click', () => {

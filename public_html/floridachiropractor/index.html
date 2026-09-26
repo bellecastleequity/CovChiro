@@ -470,12 +470,16 @@ $('auth-submit').addEventListener('click', async () => {
   } catch (e) { $('auth-err').textContent = e.message; $('auth-submit').disabled = false; return; }
   $('auth-submit').disabled = false;
   $('auth-modal').classList.remove('open');
-  renderAuthState();
   if (pendingBooking){
     pendingBooking = false;
+    renderAuthState();
     updateQuote();
     openSignModal(pendingQuote);
+    return;
   }
+  // Not mid-booking — sign-in/registration from the header goes straight to
+  // the relevant dashboard rather than leaving the client on the homepage.
+  window.location.href = user.isAdmin ? '../admin.html' : '../dashboard.html';
 });
 async function loadSession(){
   try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
