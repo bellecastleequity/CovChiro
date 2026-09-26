@@ -373,6 +373,7 @@ async function renderVideoTab(){
       <div>
         <div class="bd">${r.date} · ${r.time}</div>
         <div class="bn">${STATUS_LABEL[r.status] || r.status}${r.bookingRef ? ' · Ref ' + r.bookingRef : ''}</div>
+        ${r.zoomLink && r.status === 'scheduled' ? `<div style="margin-top:6px;"><a class="btn ghost sm" href="${r.zoomLink}" target="_blank" rel="noopener">Join Zoom call</a></div>` : ''}
       </div>
     </div>`).join('');
 }

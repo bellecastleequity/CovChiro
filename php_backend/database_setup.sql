@@ -211,6 +211,8 @@ CREATE TABLE video_requests (
   email VARCHAR(255) NOT NULL,
   requested_date DATE NOT NULL,
   status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending | scheduled | done
+  zoom_link VARCHAR(500),
+  link_sent_at DATETIME NULL,
   requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL,

@@ -2,6 +2,14 @@
 // Coverage Chiropractic - Configuration, DB connection, auth & pricing helpers
 // Keep this file OUTSIDE public_html.
 
+// ========== SECRETS / PER-ENVIRONMENT VALUES ==========
+// DB credentials, Stripe keys, SendGrid key — the things that differ
+// between environments and must never be overwritten by a code update.
+// Lives in its own file (php_backend/secrets.php, .gitignore'd, never
+// shipped in an update) so this file can always be replaced wholesale
+// with a new version without you re-entering anything.
+require_once __DIR__ . '/secrets.php';
+
 // ========== ERROR HANDLING ==========
 // Without this, a PHP warning/notice can silently corrupt a JSON response
 // (the browser then sees a blank or malformed body with no clue why), and an
@@ -22,20 +30,7 @@ set_exception_handler(function ($e) {
     exit;
 });
 
-// ========== DATABASE CONFIGURATION ==========
-define('DB_HOST', 'localhost');
-define('DB_USER', 'your_cpanel_username_dbuser');
-define('DB_PASSWORD', 'your_database_password');
-define('DB_NAME', 'your_cpanel_username_coverage');
-
-// ========== STRIPE CONFIGURATION ==========
-// https://dashboard.stripe.com/apikeys — use sk_test_/pk_test_ until you're ready to go live
-define('STRIPE_SECRET_KEY', 'sk_live_your_secret_key_here');
-define('STRIPE_PUBLISHABLE_KEY', 'pk_live_51SgEuiRpDhUj3wt3ddQxveF6Bt5wIo3HTfYcfe2VUvpWQURB97xGooQw2EXm8nRV0vcjjSwlNof7HgyDQPz4lC6I00wQRddQvd');
-define('STRIPE_WEBHOOK_SECRET', 'whsec_your_webhook_signing_secret_here');
-
-// ========== SENDGRID CONFIGURATION ==========
-define('SENDGRID_API_KEY', 'SG.your_sendgrid_api_key_here');
+// ========== SENDGRID SENDER (not secret — just who mail appears from) ==========
 define('SENDGRID_FROM_EMAIL', 'drmichaelmcpherson@gmail.com');
 define('SENDGRID_FROM_NAME', 'Michael L. McPherson, D.C.');
 

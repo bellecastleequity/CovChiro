@@ -112,3 +112,16 @@ SET @stmt = (SELECT IF(
   'ALTER TABLE payments ADD COLUMN recorded_by VARCHAR(255) NULL',
   'SELECT 1'));
 PREPARE stmt FROM @stmt; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ---------- video_requests: Zoom link processing step (migration 007) ----------
+SET @stmt = (SELECT IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = 'video_requests' AND COLUMN_NAME = 'zoom_link') = 0,
+  'ALTER TABLE video_requests ADD COLUMN zoom_link VARCHAR(500) NULL',
+  'SELECT 1'));
+PREPARE stmt FROM @stmt; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @stmt = (SELECT IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = 'video_requests' AND COLUMN_NAME = 'link_sent_at') = 0,
+  'ALTER TABLE video_requests ADD COLUMN link_sent_at DATETIME NULL',
+  'SELECT 1'));
+PREPARE stmt FROM @stmt; EXECUTE stmt; DEALLOCATE PREPARE stmt;

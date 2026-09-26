@@ -7,6 +7,7 @@ switch ($action) {
     case 'create': handle_create($pdo); break;
     case 'list': handle_list($pdo); break;
     case 'mine': handle_mine($pdo); break;
+    case 'admin_update': handle_admin_update($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -51,6 +52,8 @@ function handle_list(PDO $pdo) {
         'time' => '12:00pm–1:00pm',
         'bookingRef' => $r['booking_id'],
         'status' => $r['status'],
+        'zoomLink' => $r['zoom_link'],
+        'linkSentAt' => to_iso($r['link_sent_at'] ?? null),
         'requestedAt' => to_iso($r['requested_at']),
     ], $rows)]);
 }
@@ -66,6 +69,47 @@ function handle_mine(PDO $pdo) {
         'time' => '12:00pm–1:00pm',
         'bookingRef' => $r['booking_id'],
         'status' => $r['status'],
+        'zoomLink' => $r['zoom_link'],
         'requestedAt' => to_iso($r['requested_at']),
     ], $rows)]);
+}
+
+// Processes a video interview request: paste in the Zoom meeting link
+// (created manually in the office's own Zoom account — no Zoom API
+// integration here) to email it to the client and mark the request
+// scheduled, or mark it done once the call has happened. Either action can
+// carry a status change on its own too (e.g. marking a no-show done
+// without a link).
+function handle_admin_update(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+    $status = $body['status'] ?? '';
+    $zoomLink = trim($body['zoomLink'] ?? '');
+
+    if (!in_array($status, ['scheduled', 'done'], true)) json_response(['error' => 'Invalid status.'], 400);
+    if ($zoomLink !== '' && !preg_match('#^https://#i', $zoomLink)) json_response(['error' => 'Zoom link should be a full https:// URL.'], 400);
+
+    $stmt = $pdo->prepare('SELECT * FROM video_requests WHERE id = ?');
+    $stmt->execute([$id]);
+    $r = $stmt->fetch();
+    if (!$r) json_response(['error' => 'Not found'], 404);
+
+    $sendLink = $status === 'scheduled' && $zoomLink !== '';
+    if ($zoomLink !== '') {
+        $stmt = $pdo->prepare('UPDATE video_requests SET status = ?, zoom_link = ?' . ($sendLink ? ', link_sent_at = NOW()' : '') . ' WHERE id = ?');
+        $stmt->execute([$status, sanitize($zoomLink), $id]);
+    } else {
+        $stmt = $pdo->prepare('UPDATE video_requests SET status = ? WHERE id = ?');
+        $stmt->execute([$status, $id]);
+    }
+
+    if ($sendLink) {
+        send_email($r['email'], "Your video consult link — {$r['requested_date']}",
+            "<p>Hi {$r['name']},</p><p>Here's your Zoom link for our video consult on <strong>{$r['requested_date']}, 12:00–1:00pm</strong>:</p>" .
+            "<p><a href=\"{$zoomLink}\">{$zoomLink}</a></p><p>Talk soon,<br>Michael L. McPherson, D.C.</p>");
+    }
+
+    json_response(['success' => true]);
 }

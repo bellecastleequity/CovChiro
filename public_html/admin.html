@@ -474,14 +474,44 @@ function renderAdmin(){
       el.innerHTML = `<div class="empty">No video interview requests yet.</div>`;
       return;
     }
+    const VID_STATUS_LABEL = { pending: 'Pending', scheduled: 'Scheduled', done: 'Completed' };
+    const VID_STATUS_COLOR = { pending: 'var(--ochre)', scheduled: 'var(--teal-dark)', done: '#6b7280' };
     el.innerHTML = videoRequests.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(r => `
-      <div class="blk booked">
-        <div>
-          <div class="bd">${r.date} · ${r.time}</div>
-          <div class="bn">${r.name} · ${r.email}</div>
+      <div class="blk booked" style="flex-direction:column;align-items:flex-start;">
+        <div style="width:100%;">
+          <div class="bd">${r.date} · ${r.time} <span style="font-size:0.72rem;font-weight:600;color:${VID_STATUS_COLOR[r.status] || '#6b7280'};">· ${VID_STATUS_LABEL[r.status] || r.status}</span></div>
+          <div class="bn">${r.name} · ${r.email}${r.bookingRef ? ' · Ref ' + r.bookingRef : ''}</div>
           <div class="bn" style="margin-top:4px;color:#8a8171;">Requested ${new Date(r.requestedAt).toLocaleDateString()}</div>
+          ${r.zoomLink ? `<div class="bn" style="margin-top:4px;"><a href="${r.zoomLink}" target="_blank" rel="noopener">${r.zoomLink}</a></div>` : ''}
         </div>
+        ${r.status !== 'done' ? `
+        <div style="width:100%;margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <input type="text" class="vid-zoom-input" data-vid-zoom="${r.id}" placeholder="Paste Zoom link" value="${r.zoomLink || ''}" style="flex:1;min-width:200px;">
+          <button class="btn ghost sm" data-vid-schedule="${r.id}">Send link &amp; mark scheduled</button>
+          <button class="btn ghost sm" data-vid-done="${r.id}">Mark complete</button>
+        </div>` : ''}
       </div>`).join('');
+    el.querySelectorAll('[data-vid-schedule]').forEach(btn => btn.addEventListener('click', async () => {
+      const id = btn.dataset.vidSchedule;
+      const link = el.querySelector(`[data-vid-zoom="${id}"]`).value.trim();
+      if (!link){ alert('Paste the Zoom link first.'); return; }
+      btn.disabled = true;
+      try {
+        await apiFetch('/api/video.php?action=admin_update', { method: 'POST', body: JSON.stringify({ id, status: 'scheduled', zoomLink: link }) });
+      } catch (e) { alert(e.message); btn.disabled = false; return; }
+      videoRequests = (await apiFetch('/api/video.php?action=list')).requests || [];
+      renderAdmin();
+    }));
+    el.querySelectorAll('[data-vid-done]').forEach(btn => btn.addEventListener('click', async () => {
+      const id = btn.dataset.vidDone;
+      const link = el.querySelector(`[data-vid-zoom="${id}"]`).value.trim();
+      btn.disabled = true;
+      try {
+        await apiFetch('/api/video.php?action=admin_update', { method: 'POST', body: JSON.stringify({ id, status: 'done', zoomLink: link }) });
+      } catch (e) { alert(e.message); btn.disabled = false; return; }
+      videoRequests = (await apiFetch('/api/video.php?action=list')).requests || [];
+      renderAdmin();
+    }));
   } else if (admView === 'promo'){
     const today = new Date().toISOString().slice(0,10);
     const lmHtml = `
