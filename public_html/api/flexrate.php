@@ -23,19 +23,20 @@ function handle_publish(PDO $pdo) {
     require_admin();
     $body = json_body();
     $date = $body['date'] ?? '';
-    $region = $body['region'] ?? '';
     $type = in_array($body['type'] ?? 'full', ['full', 'half-am', 'half-pm'], true) ? $body['type'] : 'full';
     $discountPct = max(0, min(90, (float)($body['discountPct'] ?? 0)));
     $note = trim($body['note'] ?? '');
 
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) json_response(['error' => 'Invalid date.'], 400);
-    if (!isset(RATES[$region])) json_response(['error' => 'Invalid region.'], 400);
 
     // Replace any existing open listing for this date, same as the original UI intent.
     $pdo->prepare("UPDATE flex_rate_dates SET status = 'withdrawn' WHERE date = ? AND status = 'open'")->execute([$date]);
 
+    // The discount is a % off whatever region rate the client who books it
+    // already qualifies for — there's one calendar and one doctor, so a Flex
+    // Rate date isn't tied to a region; region is left blank here.
     $stmt = $pdo->prepare('INSERT INTO flex_rate_dates (date, region, day_type, discount_rate, note, status) VALUES (?, ?, ?, ?, ?, "open")');
-    $stmt->execute([$date, $region, $type, $discountPct / 100, sanitize($note)]);
+    $stmt->execute([$date, '', $type, $discountPct / 100, sanitize($note)]);
     json_response(['success' => true, 'id' => (int)$pdo->lastInsertId()]);
 }
 
@@ -44,11 +45,9 @@ function handle_bulk_publish(PDO $pdo) {
     require_admin();
     $body = json_body();
     $mode = ($body['mode'] ?? 'range') === 'weekday' ? 'weekday' : 'range';
-    $region = $body['region'] ?? '';
     $type = in_array($body['type'] ?? 'full', ['full', 'half-am', 'half-pm'], true) ? $body['type'] : 'full';
     $discountPct = max(0, min(90, (float)($body['discountPct'] ?? 0)));
     $note = trim($body['note'] ?? '');
-    if (!isset(RATES[$region])) json_response(['error' => 'Invalid region.'], 400);
 
     $today = new DateTime('today');
     $candidates = [];
@@ -101,7 +100,7 @@ function handle_bulk_publish(PDO $pdo) {
             }
             if ($blocked) { $skipped[] = $date; continue; }
             $withdrawStmt->execute([$date]);
-            $insertStmt->execute([$date, $region, $type, $discountPct / 100, sanitize($note)]);
+            $insertStmt->execute([$date, '', $type, $discountPct / 100, sanitize($note)]);
             $published[] = $date;
         }
         $pdo->commit();

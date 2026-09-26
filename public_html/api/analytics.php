@@ -99,8 +99,8 @@ function bucket_lead_days($days) {
     if ($days <= 10) return 'Published 6-10 days out';
     return 'Published 11+ days out';
 }
-$flexByDiscount = []; $flexByRegion = []; $flexByLead = [];
-$flexRows = $pdo->query("SELECT date, region, discount_rate, status, created_at FROM flex_rate_dates WHERE status IN ('booked', 'withdrawn')")->fetchAll();
+$flexByDiscount = []; $flexByLead = [];
+$flexRows = $pdo->query("SELECT date, discount_rate, status, created_at FROM flex_rate_dates WHERE status IN ('booked', 'withdrawn')")->fetchAll();
 foreach ($flexRows as $f) {
     $booked = $f['status'] === 'booked' ? 1 : 0;
 
@@ -109,18 +109,13 @@ foreach ($flexRows as $f) {
     $flexByDiscount[$dBucket]['published']++;
     $flexByDiscount[$dBucket]['booked'] += $booked;
 
-    $r = $f['region'] ?: 'unknown';
-    if (!isset($flexByRegion[$r])) $flexByRegion[$r] = ['published' => 0, 'booked' => 0];
-    $flexByRegion[$r]['published']++;
-    $flexByRegion[$r]['booked'] += $booked;
-
     $leadDays = max(0, (int)round((strtotime($f['date']) - strtotime($f['created_at'])) / 86400));
     $lBucket = bucket_lead_days($leadDays);
     if (!isset($flexByLead[$lBucket])) $flexByLead[$lBucket] = ['published' => 0, 'booked' => 0];
     $flexByLead[$lBucket]['published']++;
     $flexByLead[$lBucket]['booked'] += $booked;
 }
-foreach ([&$flexByDiscount, &$flexByRegion, &$flexByLead] as &$group) {
+foreach ([&$flexByDiscount, &$flexByLead] as &$group) {
     foreach ($group as &$v) { $v['rate'] = $v['published'] ? $v['booked'] / $v['published'] : 0; }
 }
 unset($group, $v);
@@ -132,6 +127,6 @@ json_response([
     'avgRating' => $avgRating !== null ? round($avgRating, 2) : null, 'ratingSampleSize' => count($ratings),
     'utilization' => $utilization, 'windowDays' => $windowDays,
     'seasonal' => $seasonal, 'flexPublished' => $flexPublished, 'flexBooked' => $flexBooked, 'flexConversionRate' => $flexConversionRate,
-    'flexByDiscount' => $flexByDiscount, 'flexByRegion' => $flexByRegion, 'flexByLead' => $flexByLead,
+    'flexByDiscount' => $flexByDiscount, 'flexByLead' => $flexByLead,
     'byService' => $byService,
 ]);

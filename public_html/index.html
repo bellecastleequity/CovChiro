@@ -920,7 +920,6 @@ const CD_TYPE_LABEL = { full: 'Full day', 'half-am': 'Half day — morning', 'ha
 function renderFlexRateList(){
   const el = document.getElementById('flexrate-list');
   if (!el) return;
-  const REGION_LABEL_PUB = { central: 'Central FL', north: 'North FL', south: 'South FL' };
   const today = localDateStr(new Date());
   const active = flexRateDates.filter(f => f.status === 'open' && f.date >= today);
   if (!active.length){
@@ -931,13 +930,15 @@ function renderFlexRateList(){
     <div class="flexrate-card">
       <div>
         <div class="fr-date">${f.date} <span class="fr-pct">${Math.round(f.discountRate*100)}% off</span></div>
-        <div class="fr-detail">${REGION_LABEL_PUB[f.region] || f.region} · ${TYPE_LABEL_SD[f.type]}${f.note ? ' · ' + f.note : ''}</div>
+        <div class="fr-detail">${TYPE_LABEL_SD[f.type]}${f.note ? ' · ' + f.note : ''}</div>
       </div>
-      <button class="btn ghost sm" data-book-flex="${f.date}|${f.type}|${f.region}">Book this date</button>
+      <button class="btn ghost sm" data-book-flex="${f.date}|${f.type}">Book this date</button>
     </div>`).join('');
+  // Discount applies on top of whichever region rate the client has actually
+  // selected (their own ZIP-based rate) — never forces a different region's
+  // base rate, since the discount is a % off, not a fixed regional price.
   el.querySelectorAll('[data-book-flex]').forEach(btn => btn.addEventListener('click', () => {
-    const [date, type, region] = btn.dataset.bookFlex.split('|');
-    $('f-region').value = region;
+    const [date, type] = btn.dataset.bookFlex.split('|');
     if (!coverageDates.some(e => e.date === date)) coverageDates.push({ date, type });
     renderCoverageDateList();
     recalc();

@@ -409,7 +409,6 @@ function renderAdmin(){
     }));
   } else if (admView === 'inventory'){
     const openDates = openDatesInWindow(14);
-    const REGION_LABEL_FLEX = { central: 'Central FL', north: 'North FL', south: 'South FL' };
     const urgent = openDates.filter(d => d.daysOut <= 3);
     const upcoming = openDates.filter(d => d.daysOut > 3);
     const clients = pastClientList();
@@ -498,14 +497,11 @@ function renderAdmin(){
           <input type="number" id="bulk-weeks" min="1" max="12" value="4">
         </div>
         <div class="row2" style="margin-top:12px;">
-          <div><label for="bulk-region">Region</label>
-            <select id="bulk-region"><option value="central">Central FL</option><option value="north">North FL</option><option value="south">South FL</option></select>
-          </div>
           <div><label for="bulk-discount">Discount off standard rate (%)</label><input type="number" id="bulk-discount" min="0" max="90" value="15"></div>
+          <div><label for="bulk-type">Coverage type</label><select id="bulk-type"><option value="full">Full day</option><option value="half-am">Half day — morning</option><option value="half-pm">Half day — afternoon</option></select></div>
         </div>
         <div class="row2" style="margin-top:12px;">
-          <div><label for="bulk-type">Coverage type</label><select id="bulk-type"><option value="full">Full day</option><option value="half-am">Half day — morning</option><option value="half-pm">Half day — afternoon</option></select></div>
-          <div><label for="bulk-note">Note (optional)</label><input type="text" id="bulk-note" placeholder="e.g. Central FL offices"></div>
+          <div style="grid-column:1 / -1;"><label for="bulk-note">Note (optional)</label><input type="text" id="bulk-note" placeholder="e.g. AM-only, please confirm arrival time"></div>
         </div>
         <div style="display:flex;gap:8px;margin-top:14px;">
           <button class="btn ghost sm" id="bulk-preview">Preview matching dates</button>
@@ -519,8 +515,6 @@ function renderAdmin(){
       <div class="admin-card hidden" id="flex-publish-card" style="margin-bottom:20px;border-color:var(--teal);">
         <h3>Publish Flex Rate — <span id="flex-publish-date"></span></h3>
         <p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px;">Sets a promotional rate for this specific date. Shown publicly as "select uncovered dates offered at promotional rates" — not framed as negotiable.</p>
-        <label for="flex-region">Region</label>
-        <select id="flex-region"><option value="central">Central FL</option><option value="north">North FL</option><option value="south">South FL</option></select>
         <div class="row2" style="margin-top:12px;">
           <div><label for="flex-discount">Discount off standard rate (%)</label><input type="number" id="flex-discount" min="0" max="90" value="15"></div>
           <div><label for="flex-hours">Coverage type</label><select id="flex-hours"><option value="full">Full day</option><option value="half-am">Half day — morning</option><option value="half-pm">Half day — afternoon</option></select></div>
@@ -534,7 +528,7 @@ function renderAdmin(){
         <h3>Currently published Flex Rate dates (${activeFlexRates.length})</h3>
         ${activeFlexRates.map(f => `
           <div class="blk" style="margin-bottom:6px;">
-            <div><div class="bd">${f.date}</div><div class="bn">${REGION_LABEL_FLEX[f.region] || f.region} · ${TYPE_LABEL_SD[f.type]} · ${f.discountRate*100}% off${f.note ? ' · ' + f.note : ''}</div></div>
+            <div><div class="bd">${f.date}</div><div class="bn">${TYPE_LABEL_SD[f.type]} · ${f.discountRate*100}% off${f.note ? ' · ' + f.note : ''}</div></div>
             <button class="btn ghost sm" data-flex-unpublish="${f.id}" style="color:var(--red);border-color:var(--red);">Unpublish</button>
           </div>`).join('')}
       </div>` : ''}`;
@@ -610,12 +604,12 @@ function renderAdmin(){
     }));
     const publishAllSuggestedBtn = $('publish-all-suggested');
     if (publishAllSuggestedBtn) publishAllSuggestedBtn.addEventListener('click', async () => {
-      if (!confirm(`Publish Flex Rate on ${suggestedUrgent.length} date(s) at their suggested discounts (Central FL, full day)? You can unpublish or adjust any of them individually afterward.`)) return;
+      if (!confirm(`Publish Flex Rate on ${suggestedUrgent.length} date(s) at their suggested discounts (full day)? You can unpublish or adjust any of them individually afterward.`)) return;
       publishAllSuggestedBtn.disabled = true;
       for (const d of suggestedUrgent){
         try {
           await apiFetch('/api/flexrate.php?action=publish', { method: 'POST', body: JSON.stringify({
-            date: d.date, region: 'central', type: 'full', discountPct: suggestFlexDiscount(d.daysOut, openDates.length), note: 'Auto-suggested'
+            date: d.date, type: 'full', discountPct: suggestFlexDiscount(d.daysOut, openDates.length), note: 'Auto-suggested'
           })});
         } catch (e) { /* keep going even if one date fails */ }
       }
@@ -674,11 +668,10 @@ function renderAdmin(){
     });
     $('bulk-publish-btn').addEventListener('click', async () => {
       const mode = $('bulk-mode').value;
-      const region = $('bulk-region').value;
       const type = $('bulk-type').value;
       const discountPct = Math.max(0, Math.min(90, parseFloat($('bulk-discount').value) || 0));
       const note = $('bulk-note').value.trim();
-      const body = { mode, region, type, discountPct, note };
+      const body = { mode, type, discountPct, note };
       if (mode === 'weekday'){
         body.weekdays = Array.from(document.querySelectorAll('#bulk-weekdays input:checked')).map(el2 => parseInt(el2.value));
         body.weeksAhead = parseInt($('bulk-weeks').value) || 4;
@@ -697,12 +690,11 @@ function renderAdmin(){
     const flexConfirmBtn = $('flex-publish-confirm');
     if (flexConfirmBtn) flexConfirmBtn.addEventListener('click', async () => {
       const date = $('flex-publish-card').dataset.targetDate;
-      const region = $('flex-region').value;
       const discountPct = Math.max(0, Math.min(90, parseFloat($('flex-discount').value) || 0));
       const type = $('flex-hours').value;
       const note = $('flex-note').value.trim();
       try {
-        await apiFetch('/api/flexrate.php?action=publish', { method: 'POST', body: JSON.stringify({ date, region, type, discountPct, note }) });
+        await apiFetch('/api/flexrate.php?action=publish', { method: 'POST', body: JSON.stringify({ date, type, discountPct, note }) });
       } catch (e) { alert(e.message); return; }
       flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || [];
       $('flex-publish-card').classList.add('hidden');
@@ -905,7 +897,6 @@ function renderAdmin(){
         </div>`;
     };
     const flexDiscountHtml = barSection('Flex Rate conversion by discount level', an.flexByDiscount, 'No resolved Flex Rate listings yet — this fills in once published dates get booked or expire.');
-    const flexRegionHtml = barSection('Flex Rate conversion by region', an.flexByRegion, 'No resolved Flex Rate listings yet.');
     const flexLeadHtml = barSection('Flex Rate conversion by how far ahead it was published', an.flexByLead, 'No resolved Flex Rate listings yet.');
 
     const serviceEntries = Object.entries(an.byService || {});
@@ -922,7 +913,7 @@ function renderAdmin(){
           </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No bookings yet.</p>`}
       </div>`;
 
-    el.innerHTML = cardsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexRegionHtml + flexLeadHtml;
+    el.innerHTML = cardsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexLeadHtml;
   } else if (admView === 'messages'){
     renderMessagesTab(el);
   } else if (admView === 'documents'){
