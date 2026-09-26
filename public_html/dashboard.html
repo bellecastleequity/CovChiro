@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Bookings | Dr. Michael McPherson, D.C.</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand"><img src="assets/logo.png" alt="" style="height:44px;width:44px;border-radius:8px;"><div class="brand-text">Dr. Michael McPherson<span>, D.C.</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Chiropractic Office Coverage</div></div></div>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="index.html#rates">Book coverage</a>
+    </nav>
+    <div class="hdr-actions">
+      <a href="#" id="sign-out-link" style="font-size:0.78rem;color:#6b7280;align-self:center;">Sign out</a>
+    </div>
+  </div>
+</header>
+
+<!-- DASHBOARD -->
+<section id="dashboard">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="mono">Your account</span>
+      <h2 id="dash-greeting">Your bookings</h2>
+      <p>View, reschedule, or cancel. Cancellations 48+ hours before the start date are refunded in full.</p>
+      <div id="client-status-badge"></div>
+    </div>
+    <div class="dash-tabs">
+      <button class="dash-tab on" data-view="upcoming">Upcoming</button>
+      <button class="dash-tab" data-view="pending">Awaiting confirmation</button>
+      <button class="dash-tab hidden" data-view="balance">Balance due</button>
+      <button class="dash-tab" data-view="past">Past</button>
+      <button class="dash-tab" data-view="cancelled">Cancelled</button>
+      <button class="dash-tab hidden" data-view="documents">Documents &amp; forms</button>
+    </div>
+    <div id="dash-list"></div>
+    <div id="dash-standing"></div>
+    <div id="dash-documents" class="hidden">
+      <div class="doc-row">
+        <div class="doc-main">
+          <h4>Signed coverage agreement</h4>
+          <p>A signed copy is emailed for every office coverage and event booking. If you need it resent, use the contact form or chat.</p>
+        </div>
+        <a class="btn ghost sm" href="index.html#contact">Request copy</a>
+      </div>
+      <div class="doc-row">
+        <div class="doc-main">
+          <h4>W-9 tax form</h4>
+          <p>A completed W-9 for Key Global LLC is available on request for your accounting or 1099 records.</p>
+        </div>
+        <a class="btn ghost sm" href="index.html#contact">Request copy</a>
+      </div>
+      <div class="doc-row">
+        <div class="doc-main">
+          <h4>Malpractice insurance declaration page</h4>
+          <p>The declarations page from Dr. McPherson's current malpractice policy, showing coverage limits and policy details.</p>
+        </div>
+        <a class="btn ghost sm" href="documents/malpractice-declaration-page.pdf" target="_blank" rel="noopener">Download</a>
+      </div>
+      <div class="doc-row">
+        <div class="doc-main">
+          <h4>Certificate of insurance</h4>
+          <p>Proof of current malpractice liability coverage, provided on request.</p>
+        </div>
+        <a class="btn ghost sm" href="index.html#contact">Request copy</a>
+      </div>
+      <div class="doc-row">
+        <div class="doc-main">
+          <h4>Coverage guidelines &amp; resources</h4>
+          <p>A one-page reference covering what to expect on the day of coverage, plus common tax and liability questions.</p>
+        </div>
+        <a class="btn ghost sm" href="documents/coverage-guidelines.docx">Download</a>
+      </div>
+      <p class="doc-note">These documents apply to office coverage bookings.</p>
+      <p class="doc-note" id="malpractice-pending-note">The malpractice declaration page will be available for download once uploaded — if the link above doesn't open a file yet, use the contact form and a copy will be sent directly.</p>
+    </div>
+  </div>
+</section>
+
+
+
+<div class="modal-bg" id="payment-modal">
+  <div class="modal">
+    <button class="close" data-close>×</button>
+    <h2>Pay to confirm</h2>
+    <p style="font-size:0.86rem;color:#6b7280;" id="payment-sub"></p>
+    <div id="payment-element" style="margin-top:16px;"></div>
+    <div class="err-msg" id="payment-err"></div>
+    <button class="btn" id="payment-submit" style="width:100%;margin-top:16px;">Pay now</button>
+  </div>
+</div>
+
+
+
+<div class="modal-bg" id="review-modal">
+  <div class="modal narrow">
+    <button class="close" data-close>×</button>
+    <h2>Leave a review</h2>
+    <p style="font-size:0.86rem;color:#6b7280;">How was your coverage?</p>
+    <div class="star-picker" id="star-picker">
+      <button type="button" class="star" data-star="1">★</button>
+      <button type="button" class="star" data-star="2">★</button>
+      <button type="button" class="star" data-star="3">★</button>
+      <button type="button" class="star" data-star="4">★</button>
+      <button type="button" class="star" data-star="5">★</button>
+    </div>
+    <label for="review-text">Comments (optional)</label>
+    <textarea id="review-text" rows="3" placeholder="Tell us about your experience"></textarea>
+    <div class="err-msg" id="review-err"></div>
+    <button class="btn" id="review-submit" style="width:100%;margin-top:14px;">Submit review</button>
+    <p style="font-size:0.74rem;color:#6b7280;margin-top:10px;">Submitted reviews are sent to Dr. McPherson and are not posted publicly without your separate permission.</p>
+  </div>
+</div>
+
+<div class="modal-bg" id="feedback-modal">
+  <div class="modal narrow">
+    <button class="close" data-close>×</button>
+    <h2>Coverage feedback</h2>
+    <p style="font-size:0.86rem;color:#6b7280;">This goes straight to Dr. McPherson to help him improve future coverage — it's separate from a public review, and never posted anywhere.</p>
+
+    <div class="fb-row">
+      <label>Punctuality</label>
+      <div class="star-picker" data-fb-field="punctuality">
+        <button type="button" class="star" data-star="1">★</button><button type="button" class="star" data-star="2">★</button>
+        <button type="button" class="star" data-star="3">★</button><button type="button" class="star" data-star="4">★</button>
+        <button type="button" class="star" data-star="5">★</button>
+      </div>
+    </div>
+    <div class="fb-row">
+      <label>Professionalism &amp; bedside manner</label>
+      <div class="star-picker" data-fb-field="professionalism">
+        <button type="button" class="star" data-star="1">★</button><button type="button" class="star" data-star="2">★</button>
+        <button type="button" class="star" data-star="3">★</button><button type="button" class="star" data-star="4">★</button>
+        <button type="button" class="star" data-star="5">★</button>
+      </div>
+    </div>
+    <div class="fb-row">
+      <label>Patient care quality</label>
+      <div class="star-picker" data-fb-field="patientCare">
+        <button type="button" class="star" data-star="1">★</button><button type="button" class="star" data-star="2">★</button>
+        <button type="button" class="star" data-star="3">★</button><button type="button" class="star" data-star="4">★</button>
+        <button type="button" class="star" data-star="5">★</button>
+      </div>
+    </div>
+    <label for="fb-rebook" style="margin-top:10px;">Would you book again?</label>
+    <select id="fb-rebook">
+      <option value="">Select one</option>
+      <option value="yes">Yes, definitely</option>
+      <option value="maybe">Maybe, depends on timing</option>
+      <option value="no">No</option>
+    </select>
+    <label for="fb-notes" style="margin-top:10px;">Anything about staff, equipment, the building, or patients worth knowing?</label>
+    <textarea id="fb-notes" rows="3" placeholder="Optional — anything that would help next time"></textarea>
+    <div class="err-msg" id="feedback-err"></div>
+    <button class="btn" id="feedback-submit" style="width:100%;margin-top:14px;">Submit feedback</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="receipt-modal">
+  <div class="modal" style="max-width:640px;">
+    <button class="close" data-close>×</button>
+    <div id="receipt-content">
+      <div class="receipt-head">
+        <div>
+          <div class="receipt-biz">Key Global LLC</div>
+          <div class="receipt-biz-sub">Michael L. McPherson, D.C. · (650) 713-4326</div>
+        </div>
+        <div class="receipt-status" id="receipt-status">PAID</div>
+      </div>
+      <div class="receipt-meta">
+        <div><strong>Receipt #</strong><span id="receipt-id"></span></div>
+        <div><strong>Date</strong><span id="receipt-date"></span></div>
+        <div><strong>Billed to</strong><span id="receipt-billto"></span></div>
+      </div>
+      <table class="receipt-table">
+        <thead><tr><th>Description</th><th style="text-align:right;">Amount</th></tr></thead>
+        <tbody id="receipt-lines"></tbody>
+        <tfoot>
+          <tr class="receipt-total-row"><td>Total</td><td id="receipt-total" style="text-align:right;"></td></tr>
+          <tr><td>Paid</td><td id="receipt-paid" style="text-align:right;"></td></tr>
+          <tr id="receipt-balance-row"><td>Balance</td><td id="receipt-balance" style="text-align:right;"></td></tr>
+        </tfoot>
+      </table>
+      <p class="receipt-footer">Payments made to Key Global LLC. Credit card only — no cash accepted. Insurance is not billed on the host practice's behalf. A completed W-9 is available on request.</p>
+    </div>
+    <button class="btn" id="receipt-print" style="width:100%;margin-top:16px;" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="cancel-modal">
+  <div class="modal narrow">
+    <button class="close" data-close>×</button>
+    <h2>Cancel this booking?</h2>
+    <p style="font-size:0.88rem;color:#4b5563;margin-top:10px;">Plans change, and that's alright — we understand. Here's what happens if you go ahead:</p>
+    <div class="cancel-summary" id="cancel-summary"></div>
+    <p style="font-size:0.84rem;color:#4b5563;margin-top:14px;">We'd be glad to help whenever you're ready to rebook, or if your plans shift again — just reach out.</p>
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button class="btn ghost" id="cancel-keep" style="flex:1;">Keep booking</button>
+      <button class="btn danger" id="cancel-confirm" style="flex:1;">Cancel booking</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="video-modal">
+  <div class="modal narrow">
+    <button class="close" data-close>×</button>
+    <h2>Request a video interview</h2>
+    <p style="font-size:0.86rem;color:#6b7280;">10 minutes, Monday–Friday, 12:00–1:00pm only. Pick a weekday and Dr. McPherson will email you a Zoom link for that time.</p>
+    <label for="vi-name">Name</label>
+    <input type="text" id="vi-name" placeholder="Your name">
+    <label for="vi-email">Email</label>
+    <input type="email" id="vi-email" placeholder="you@practice.com">
+    <label for="vi-date">Preferred weekday</label>
+    <input type="date" id="vi-date">
+    <p class="vi-note" id="vi-date-note">Weekdays only (Monday–Friday). Weekends aren't available for this call.</p>
+    <div class="err-msg" id="vi-err"></div>
+    <button class="btn" id="vi-submit" style="width:100%;margin-top:14px;">Request Zoom link</button>
+  </div>
+</div>
+
+
+
+<button id="chat-bubble" aria-label="Open chat">💬</button>
+<div id="chat-panel">
+  <div class="chat-head">Chat with the office</div>
+  <div class="chat-body"><div class="chat-msg">Hi — questions about a booking? Send a message and I'll reply directly.</div></div>
+  <div class="chat-input"><input type="text" placeholder="Type a message…" aria-label="Chat message"><button type="button">Send</button></div>
+</div>
+
+<script src="https://js.stripe.com/v3/"></script>
+<script src="assets/app-shared.js"></script>
+<script>
+async function openStandingPaymentModal(agreementId, date, amountLabel, onSuccess){
+  paymentContext = { kind: 'standing', agreementId, date };
+  paymentOnSuccess = onSuccess;
+  await mountPaymentElement('/api/payment.php?action=create_standing_payment_intent', { agreementId, date }, amountLabel);
+}
+document.querySelectorAll('.dash-tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.dash-tab').forEach(x => x.classList.remove('on'));
+  t.classList.add('on'); dashView = t.dataset.view;
+  $('dash-list').classList.toggle('hidden', dashView === 'documents');
+  $('dash-documents').classList.toggle('hidden', dashView !== 'documents');
+  if (dashView !== 'documents') renderDash();
+}));
+function hasDocEligibleBooking(){
+  return bookings.some(b => b.service === 'office' || b.service === 'hourly');
+}
+function bucket(b){
+  if (b.status === 'cancelled') return 'cancelled';
+  if (b.balanceStatus === 'due') return 'balance';
+  if (new Date(b.start) < new Date(new Date().toDateString())) return 'past';
+  return b.status === 'pending' ? 'pending' : 'upcoming';
+}
+function hoursUntil(b){ return (new Date(b.start + 'T08:00:00') - new Date()) / 36e5; }
+function reviewEligible(b){
+  return b.balanceStatus === 'paid' || (b.payType === 'full' && bucket(b) === 'past');
+}
+function reminderStatus(b){
+  if (b.balanceStatus !== 'due' || !b.completedAt) return null;
+  const hoursSince = (Date.now() - new Date(b.completedAt).getTime()) / 36e5;
+  const sent = Math.max(0, Math.floor(hoursSince / 12));
+  const nextIn = 12 - (hoursSince % 12);
+  return { sent, nextIn: nextIn.toFixed(1) };
+}
+function renderClientStatusBadge(){
+  const el = $('client-status-badge');
+  if (!el) return;
+  const hasHistory = user && bookings.length > 0;
+  if (!hasHistory){
+    el.innerHTML = `<div class="status-badge progress"><span class="dot"></span>First booking — 10% off applies automatically</div>`;
+    return;
+  }
+  const rs = recurringStatus(bookings);
+  if (rs.active){
+    const monthsLeft = Math.max(0, Math.ceil((RECURRING_WINDOW_DAYS - rs.daysSinceLast) / 30));
+    el.innerHTML = `<div class="status-badge recurring"><span class="dot"></span>Recurring Clinic — 5% reward active (book again within ${monthsLeft} month${monthsLeft !== 1 ? 's' : ''} of your last visit to keep it)</div>`;
+  } else if (rs.qualified){
+    el.innerHTML = `<div class="status-badge progress"><span class="dot"></span>Recurring reward lapsed — book again to reactivate your 5% rate</div>`;
+  } else {
+    const remaining = Math.max(0, RECURRING_QUALIFY_DAYS - rs.cumDays);
+    el.innerHTML = `<div class="status-badge progress"><span class="dot"></span>${rs.cumDays} of ${RECURRING_QUALIFY_DAYS} qualifying days booked — ${remaining} more unlocks your 5% Recurring Clinic rate</div>`;
+  }
+}
+function standingDateDisplayStatus(d){
+  if (d.status === 'cancelled') return 'cancelled';
+  if (d.status === 'paid') return 'paid';
+  const daysUntil = Math.floor((new Date(d.date + 'T12:00:00') - new Date()) / 864e5);
+  if (daysUntil <= 7) return 'due';
+  return 'scheduled';
+}
+function standingDateRate(agreement, dateType){
+  const rateTable = RATES[agreement.region];
+  const base = dateType === 'full' ? rateTable.full : rateTable.half;
+  const discounted = base * (1 - (agreement.effectiveRate != null ? agreement.effectiveRate : agreement.tier.rate));
+  const found = lookupZip(agreement.zip);
+  const miles = found ? found.miles : 0;
+  const mileRate = tieredMileageRate(miles);
+  const mileage = miles * mileRate;
+  return { discounted, mileage, total: discounted + mileage, miles, mileRate };
+}
+function renderDashStanding(){
+  const el = $('dash-standing');
+  if (!el) return;
+  const mine = standingAgreements.filter(a => user && a.contactEmail === user.email);
+  if (!mine.length){ el.innerHTML = ''; return; }
+  const today = localDateStr(new Date());
+  const DOW_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+  el.innerHTML = mine.map(a => {
+    const upcoming = a.dates.filter(d => d.date >= today);
+    const rows = upcoming.map(d => {
+      const disp = standingDateDisplayStatus(d);
+      const price = standingDateRate(a, d.type);
+      const statusLabel = { paid: 'Paid', cancelled: 'Cancelled', due: 'Due now', scheduled: 'Scheduled' }[disp];
+      const statusColor = disp === 'paid' ? 'var(--teal-dark)' : disp === 'cancelled' ? '#8a8171' : disp === 'due' ? 'var(--ochre)' : '#6b7280';
+      return `
+        <div class="blk" style="margin-bottom:8px;flex-direction:column;align-items:flex-start;${disp==='cancelled'?'opacity:0.55;':''}">
+          <div style="width:100%;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <div class="bd">${d.date} — ${TYPE_LABEL_SD[d.type]}</div>
+              <div class="bn" style="color:${statusColor};font-weight:600;">${statusLabel} · ${money(price.total)}</div>
+            </div>
+            ${disp === 'due' ? `<button class="btn ghost sm" data-pay-standing="${a.id}|${d.date}">Pay now</button>` : ''}
+            ${(disp === 'due' || disp === 'scheduled') ? `<button class="btn ghost sm" data-cancel-standing-date="${a.id}|${d.date}" style="color:var(--red);border-color:var(--red);margin-left:6px;">Cancel date</button>` : ''}
+          </div>
+          ${disp !== 'cancelled' ? `
+          <div style="width:100%;margin-top:8px;">
+            <label style="font-size:0.78rem;" for="pv-${a.id}-${d.date}">Expected patient volume for this date</label>
+            <input type="number" min="0" id="pv-${a.id}-${d.date}" value="${d.patientVolume ?? ''}" placeholder="e.g. 40" style="width:120px;" data-patient-volume="${a.id}|${d.date}">
+          </div>` : ''}
+        </div>`;
+    }).join('');
+
+    const patternSummary = a.patterns.map(p => `${DOW_NAMES[p.dow]}s (${p.freq}, ${TYPE_LABEL_SD[p.type]})`).join(' + ');
+    return `
+      <div class="admin-card" style="margin-top:24px;">
+        <h3>Standing day — ${patternSummary}</h3>
+        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:14px;">${Math.round((a.effectiveRate != null ? a.effectiveRate : a.tier.rate)*100)}% standing-day rate</p>
+        ${rows || `<p style="font-size:0.85rem;color:#6b7280;">No upcoming dates remaining.</p>`}
+        <button class="btn ghost sm" data-cancel-standing-agreement="${a.id}" style="margin-top:14px;color:var(--red);border-color:var(--red);">Cancel entire agreement (30-day notice)</button>
+      </div>`;
+  }).join('');
+
+  el.querySelectorAll('[data-pay-standing]').forEach(btn => btn.addEventListener('click', () => {
+    const [aid, date] = btn.dataset.payStanding.split('|');
+    const a = standingAgreements.find(x => x.id === aid);
+    const d = a && a.dates.find(x => x.date === date);
+    if (!d) return;
+    const price = standingDateRate(a, d.type);
+    openStandingPaymentModal(aid, date, `Standing day coverage — ${date}: ${money(price.total)}`, async () => {
+      await loadMyStanding();
+      renderDashStanding();
+    });
+  }));
+
+  el.querySelectorAll('[data-patient-volume]').forEach(inp => inp.addEventListener('change', async () => {
+    const [aid, date] = inp.dataset.patientVolume.split('|');
+    await apiFetch('/api/standing.php?action=set_patient_volume', { method: 'POST', body: JSON.stringify({
+      agreementId: aid, date, patientVolume: inp.value ? parseInt(inp.value) : ''
+    })});
+  }));
+
+  el.querySelectorAll('[data-cancel-standing-date]').forEach(btn => btn.addEventListener('click', async () => {
+    const [aid, date] = btn.dataset.cancelStandingDate.split('|');
+    const hoursUntilDate = (new Date(date + 'T08:00:00') - new Date()) / 36e5;
+    const refundPct = hoursUntilDate >= 24 ? 80 : 0;
+    if (!confirm(`Cancel this date? ${refundPct}% refund applies per the standing agreement terms.`)) return;
+    try { await apiFetch('/api/standing.php?action=cancel_date', { method: 'POST', body: JSON.stringify({ agreementId: aid, date }) }); }
+    catch (e) { alert(e.message); return; }
+    await loadMyStanding(); await loadAvailability();
+    renderDashStanding();
+  }));
+
+  el.querySelectorAll('[data-cancel-standing-agreement]').forEach(btn => btn.addEventListener('click', async () => {
+    const cutoff = localDateStr(new Date(Date.now() + 30*864e5));
+    if (!confirm(`Cancel this entire standing agreement? Dates before ${cutoff} (30 days out) still occur as scheduled and billed normally. Dates after that are released.`)) return;
+    await apiFetch('/api/standing.php?action=cancel_agreement', { method: 'POST', body: JSON.stringify({ id: btn.dataset.cancelStandingAgreement }) });
+    await loadMyStanding(); await loadAvailability();
+    renderDashStanding();
+  }));
+}
+function renderDash(){
+  renderClientStatusBadge();
+  renderDashStanding();
+  const list = bookings.filter(b => bucket(b) === dashView);
+  const el = $('dash-list');
+  if (!list.length){
+    el.innerHTML = `<div class="empty">No ${dashView === 'balance' ? 'balances due' : dashView} right now.</div>`;
+    return;
+  }
+  el.innerHTML = list.map(b => {
+    const bk = bucket(b);
+    const refundable = hoursUntil(b) >= 48;
+    const paid = b.paid ?? b.deposit ?? 0;
+    const balanceOwed = bk === 'balance' ? +(b.total - paid).toFixed(2) : 0;
+    const rem = reminderStatus(b);
+    return `<div class="bk">
+      <div class="bk-main">
+        <span class="pill ${bk}">${bk === 'pending' ? 'Awaiting confirmation' : bk === 'balance' ? 'Balance due' : bk}</span>
+        <h4>${b.title}</h4>
+        <div class="bk-meta">${b.meta}</div>
+        <div class="bk-meta">${bk === 'pending' ? 'Requested date' : 'Start date'}: ${b.start}</div>
+        ${bk === 'pending' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">I'll contact you to confirm this time slot.</div>` : ''}
+        ${bk === 'balance' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">Coverage complete — balance is due now.${rem ? ` Reminder ${rem.sent} sent so far, next in ~${rem.nextIn}h until paid.` : ''}</div>` : ''}
+        <div class="bk-code">Ref ${b.id}</div>
+        ${b.coverage && (b.coverage.dress || b.coverage.techniques.length || b.coverage.notes || b.coverage.pocName) ? `
+          <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
+            ${b.coverage.dress ? `<div><strong>Dress code:</strong> ${b.coverage.dress}</div>` : ''}
+            ${b.coverage.techniques.length ? `<div style="margin-top:3px;"><strong>Techniques:</strong> ${b.coverage.techniques.join(', ')}</div>` : ''}
+            ${b.coverage.notes ? `<div style="margin-top:3px;"><strong>Notes:</strong> ${b.coverage.notes}</div>` : ''}
+            ${b.coverage.pocName ? `<div style="margin-top:3px;"><strong>Day-of contact:</strong> ${b.coverage.pocName}${b.coverage.pocTitle ? ' (' + b.coverage.pocTitle + ')' : ''}${b.coverage.pocPhone ? ' · ' + b.coverage.pocPhone : ''}</div>` : ''}
+          </div>` : ''}
+        ${reviewEligible(b) ? (b.review
+          ? `<div class="review-tag">★ ${b.review.rating}/5 — thanks for your review</div>`
+          : `<button class="btn ghost sm" data-review="${b.id}" style="margin-top:10px;">Leave a review</button>`) : ''}
+        ${feedbackEligible(b) ? (b.feedback
+          ? `<div class="review-tag">Feedback submitted — thank you</div>`
+          : `<button class="btn ghost sm" data-feedback="${b.id}" style="margin-top:10px;margin-left:8px;">Share coverage feedback</button>`) : ''}
+        <button class="btn ghost sm" data-receipt="${b.id}" style="margin-top:10px;margin-left:8px;">View receipt</button>
+      </div>
+      <div class="bk-side">
+        <div class="bk-amt">${money(b.total)}</div>
+        <div style="font-size:0.76rem;color:#6b7280;">${bk === 'balance' ? `${money(paid)} paid so far` : (b.payType === 'full' ? 'Paid in full' : 'Deposit') + ' ' + money(paid)}</div>
+        ${bk === 'balance' ? `
+          <div style="font-size:0.85rem;color:var(--red);font-weight:600;margin-top:6px;">${money(balanceOwed)} owed</div>
+          <div class="bk-actions"><button class="btn sm" data-paybalance="${b.id}">Pay balance now</button></div>` : ''}
+        ${(bk === 'upcoming' || bk === 'pending') ? `
+          <div style="font-size:0.72rem;color:${refundable?'var(--teal)':'var(--red)'};margin-top:6px;">
+            ${refundable ? 'Free cancellation window open' : 'Inside 48 hrs — deposit forfeited'}
+          </div>
+          <div class="bk-actions">
+            <button class="btn ghost sm" data-video="${b.id}">Request video interview</button>
+            <button class="btn ghost sm" data-resched="${b.id}">Reschedule</button>
+            <button class="btn danger sm" data-cancel="${b.id}">Cancel</button>
+          </div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('[data-paybalance]').forEach(btn => btn.addEventListener('click', async () => {
+    const b = bookings.find(x => x.id === btn.dataset.paybalance);
+    const owed = money(b.total - (b.paid ?? 0));
+    openPaymentModal(b.id, 'balance', `Remaining balance on ${b.id}: ${owed}`, async () => {
+      await loadMyBookings(); renderDash();
+    });
+  }));
+
+  el.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', () => openReview(btn.dataset.review)));
+  el.querySelectorAll('[data-feedback]').forEach(btn => btn.addEventListener('click', () => openFeedback(btn.dataset.feedback)));
+  el.querySelectorAll('[data-receipt]').forEach(btn => btn.addEventListener('click', () => openReceipt(btn.dataset.receipt)));
+  el.querySelectorAll('[data-video]').forEach(btn => btn.addEventListener('click', () => openVideoRequest(btn.dataset.video)));
+
+  el.querySelectorAll('[data-cancel]').forEach(btn => btn.addEventListener('click', () => openCancel(btn.dataset.cancel)));
+
+  el.querySelectorAll('[data-resched]').forEach(btn => btn.addEventListener('click', () => {
+    const b = bookings.find(x => x.id === btn.dataset.resched);
+    const subject = encodeURIComponent(`Reschedule request — ${b.id}`);
+    const body = encodeURIComponent(`I'd like to reschedule booking ${b.id} (currently ${b.start}).\n\nNew preferred date(s):\n`);
+    window.location.href = `mailto:${ADMIN_EMAIL}?subject=${subject}&body=${body}`;
+  }));
+}
+let reviewTargetId = null, reviewRating = 0;
+function openReview(id){
+  reviewTargetId = id; reviewRating = 0;
+  document.querySelectorAll('#star-picker .star').forEach(s => s.classList.remove('on'));
+  $('review-text').value = '';
+  $('review-err').textContent = '';
+  $('review-modal').classList.add('open');
+}
+document.querySelectorAll('#star-picker .star').forEach(s => s.addEventListener('click', () => {
+  reviewRating = parseInt(s.dataset.star);
+  document.querySelectorAll('#star-picker .star').forEach(x => x.classList.toggle('on', parseInt(x.dataset.star) <= reviewRating));
+}));
+$('review-submit').addEventListener('click', async () => {
+  if (!reviewRating){ $('review-err').textContent = 'Pick a star rating.'; return; }
+  try {
+    await apiFetch('/api/booking.php?action=review', { method: 'POST', body: JSON.stringify({
+      id: reviewTargetId, rating: reviewRating, text: $('review-text').value.trim()
+    })});
+  } catch (e) { $('review-err').textContent = e.message; return; }
+  await loadMyBookings();
+  $('review-modal').classList.remove('open');
+  renderDash();
+});
+function feedbackEligible(b){
+  return !!b.completedAt;
+}
+let feedbackTargetId = null;
+let feedbackRatings = { punctuality: 0, professionalism: 0, patientCare: 0 };
+function openFeedback(id){
+  feedbackTargetId = id;
+  feedbackRatings = { punctuality: 0, professionalism: 0, patientCare: 0 };
+  document.querySelectorAll('#feedback-modal .star').forEach(s => s.classList.remove('on'));
+  $('fb-rebook').value = '';
+  $('fb-notes').value = '';
+  $('feedback-err').textContent = '';
+  $('feedback-modal').classList.add('open');
+}
+function openReceipt(id){
+  const b = bookings.find(x => x.id === id);
+  if (!b) return;
+  $('receipt-id').textContent = b.id;
+  $('receipt-date').textContent = new Date(b.created || Date.now()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  $('receipt-billto').textContent = (user && user.clinic) ? user.clinic : (user ? user.name : 'Client');
+
+  const lines = (b.meta || b.title || '').split(' · ').filter(Boolean);
+  $('receipt-lines').innerHTML = lines.length
+    ? lines.map((line, i) => `<tr><td>${b.title}${lines.length > 1 ? ` — ${line}` : ''}</td>${i === 0 ? `<td style="text-align:right;" rowspan="${lines.length}">${money(b.total)}</td>` : ''}</tr>`).join('')
+    : `<tr><td>${b.title}</td><td style="text-align:right;">${money(b.total)}</td></tr>`;
+
+  $('receipt-total').textContent = money(b.total);
+  $('receipt-paid').textContent = money(b.paid);
+  const balance = +(b.total - b.paid).toFixed(2);
+  const statusEl = $('receipt-status');
+  const balanceRow = $('receipt-balance-row');
+  if (balance <= 0.005){
+    statusEl.textContent = 'PAID'; statusEl.className = 'receipt-status paid';
+    balanceRow.classList.add('hidden');
+  } else if (b.payType === 'deposit' && b.balanceStatus !== 'due'){
+    statusEl.textContent = 'DEPOSIT PAID'; statusEl.className = 'receipt-status deposit';
+    balanceRow.classList.remove('hidden');
+    $('receipt-balance').textContent = money(balance);
+  } else {
+    statusEl.textContent = 'BALANCE DUE'; statusEl.className = 'receipt-status due';
+    balanceRow.classList.remove('hidden');
+    $('receipt-balance').textContent = money(balance);
+  }
+  $('receipt-modal').classList.add('open');
+}
+document.querySelectorAll('[data-fb-field] .star').forEach(s => s.addEventListener('click', () => {
+  const picker = s.closest('[data-fb-field]');
+  const field = picker.dataset.fbField;
+  const val = parseInt(s.dataset.star);
+  feedbackRatings[field] = val;
+  picker.querySelectorAll('.star').forEach(x => x.classList.toggle('on', parseInt(x.dataset.star) <= val));
+}));
+$('feedback-submit').addEventListener('click', async () => {
+  const err = $('feedback-err');
+  if (!feedbackRatings.punctuality || !feedbackRatings.professionalism || !feedbackRatings.patientCare){
+    err.textContent = 'Please rate all three categories.'; return;
+  }
+  if (!$('fb-rebook').value){ err.textContent = 'Let us know if you\'d book again.'; return; }
+  err.textContent = '';
+  try {
+    await apiFetch('/api/booking.php?action=feedback', { method: 'POST', body: JSON.stringify({
+      id: feedbackTargetId, punctuality: feedbackRatings.punctuality, professionalism: feedbackRatings.professionalism,
+      patientCare: feedbackRatings.patientCare, wouldRebook: $('fb-rebook').value, notes: $('fb-notes').value.trim()
+    })});
+  } catch (e) { err.textContent = e.message; return; }
+  await loadMyBookings();
+  $('feedback-modal').classList.remove('open');
+  renderDash();
+});
+let cancelTargetId = null;
+function openCancel(id){
+  const b = bookings.find(x => x.id === id);
+  if (!b) return;
+  cancelTargetId = id;
+  const refundable = hoursUntil(b) >= 48;
+  const paid = b.paid ?? b.deposit ?? 0;
+  let rows = '';
+  if (refundable){
+    rows = `<div class="cs-row"><span>Refund amount</span><strong>${money(paid)}</strong></div>
+            <div class="cs-row"><span>Reason</span><span>48+ hours out — fully refundable</span></div>`;
+  } else if (b.payType === 'full'){
+    const forfeit = +(b.total * 0.10).toFixed(2);
+    rows = `<div class="cs-row"><span>Deposit portion (forfeited)</span><strong>${money(forfeit)}</strong></div>
+            <div class="cs-row"><span>Balance refunded</span><strong>${money(paid - forfeit)}</strong></div>
+            <div class="cs-row"><span>Reason</span><span>Inside the 48-hour window</span></div>`;
+  } else {
+    rows = `<div class="cs-row"><span>Deposit (forfeited)</span><strong>${money(paid)}</strong></div>
+            <div class="cs-row"><span>Reason</span><span>Inside the 48-hour window</span></div>`;
+  }
+  const refundNote = (refundable || b.payType === 'full')
+    ? `<div class="cs-note">If a refund is due, Stripe typically issues it to your card within 5–10 business days, depending on your bank.</div>`
+    : '';
+  $('cancel-summary').innerHTML = rows + refundNote;
+  $('cancel-modal').classList.add('open');
+}
+$('cancel-keep').addEventListener('click', () => $('cancel-modal').classList.remove('open'));
+$('cancel-confirm').addEventListener('click', async () => {
+  try {
+    await apiFetch('/api/booking.php?action=cancel', { method: 'POST', body: JSON.stringify({ id: cancelTargetId }) });
+  } catch (e) {
+    $('cancel-modal').classList.remove('open');
+    alert(e.message);
+    return;
+  }
+  await loadMyBookings(); await loadAvailability();
+  $('cancel-modal').classList.remove('open');
+  renderDash();
+});
+function isWeekday(dateStr){
+  const day = new Date(dateStr + 'T12:00:00').getDay();
+  return day >= 1 && day <= 5;
+}
+let viBookingRef = null;
+function openVideoRequest(bookingId){
+  viBookingRef = bookingId || null;
+  $('vi-name').value = user ? user.name : '';
+  $('vi-email').value = user ? user.email : '';
+  $('vi-date').value = '';
+  $('vi-err').textContent = '';
+  $('video-modal').classList.add('open');
+}
+$('vi-date').addEventListener('change', () => {
+  if ($('vi-date').value && !isWeekday($('vi-date').value)){
+    $('vi-err').textContent = "Weekends aren't available — please pick a Monday through Friday date.";
+  } else {
+    $('vi-err').textContent = '';
+  }
+});
+$('vi-submit').addEventListener('click', async () => {
+  const name = $('vi-name').value.trim(), email = $('vi-email').value.trim(), date = $('vi-date').value;
+  if (!name || !email){ $('vi-err').textContent = 'Enter your name and email.'; return; }
+  if (!date){ $('vi-err').textContent = 'Pick a preferred weekday.'; return; }
+  if (!isWeekday(date)){ $('vi-err').textContent = "Weekends aren't available — please pick a Monday through Friday date."; return; }
+  try {
+    await apiFetch('/api/video.php?action=create', { method: 'POST', body: JSON.stringify({ name, email, date, bookingId: viBookingRef }) });
+  } catch (e) { $('vi-err').textContent = e.message; return; }
+  $('video-modal').classList.remove('open');
+  alert(`Thanks, ${name} — your request for ${date}, 12:00–1:00pm, has been sent. Expect a Zoom link by email within one business day.`);
+});
+
+$('chat-bubble').addEventListener('click', () => $('chat-panel').classList.toggle('open'));
+
+async function initDashboardPage(){
+  try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
+  catch (e) { user = null; }
+  if (!user){ window.location.href = 'index.html'; return; }
+  renderAuthState();
+  await loadAvailability();
+  await loadMyBookings();
+  await loadMyStanding();
+  $('dash-greeting').textContent = `${user.name.split(' ').slice(-1)[0]}'s bookings`;
+  renderDash();
+  const docTab = document.querySelector('.dash-tab[data-view="documents"]');
+  if (docTab) docTab.classList.toggle('hidden', !hasDocEligibleBooking());
+}
+initDashboardPage();
+
+</script>
+</body>
+</html>

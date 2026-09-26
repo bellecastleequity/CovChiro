@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Provider Portal | Dr. Michael McPherson, D.C.</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand"><img src="assets/logo.png" alt="" style="height:44px;width:44px;border-radius:8px;"><div class="brand-text">Dr. Michael McPherson<span>, D.C.</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Provider Portal</div></div></div>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="dashboard.html">My bookings</a>
+    </nav>
+    <div class="hdr-actions">
+      <a href="#" id="sign-out-link" style="font-size:0.78rem;color:#6b7280;align-self:center;">Sign out</a>
+    </div>
+  </div>
+</header>
+
+<!-- ADMIN PORTAL -->
+<section id="admin" style="background:var(--paper-2);">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="mono">Provider portal</span>
+      <h2>Availability &amp; schedule</h2>
+      <p>Block out dates you're unavailable. Blocked dates and confirmed bookings are both removed from the public booking calendar automatically.</p>
+    </div>
+    <div class="admin-grid">
+      <div class="admin-card">
+        <h3>Block out dates</h3>
+        <label for="bl-start">From</label>
+        <input type="date" id="bl-start">
+        <label for="bl-end">To (leave blank for a single day)</label>
+        <input type="date" id="bl-end">
+        <label for="bl-scope">Scope</label>
+        <select id="bl-scope">
+          <option value="all">All day — fully unavailable</option>
+          <option value="am">Mornings only (before 12pm)</option>
+          <option value="pm">Afternoons only (after 12pm)</option>
+        </select>
+        <label for="bl-note">Reason (private, for your reference)</label>
+        <input type="text" id="bl-note" placeholder="e.g. CE seminar, family, USVI trip">
+        <button class="btn" id="bl-add" style="width:100%;margin-top:16px;">Block these dates</button>
+        <div class="err-msg" id="bl-err"></div>
+      </div>
+      <div>
+        <div class="dash-tabs">
+          <button class="dash-tab on" data-adm="blocks">Blocked dates</button>
+          <button class="dash-tab" data-adm="booked">Booked dates</button>
+          <button class="dash-tab" data-adm="video">Video requests</button>
+          <button class="dash-tab" data-adm="promo">Promo codes</button>
+          <button class="dash-tab" data-adm="inventory">Inventory alerts</button>
+          <button class="dash-tab" data-adm="standing">Standing days</button>
+          <button class="dash-tab" data-adm="analytics">Analytics</button>
+        </div>
+        <div id="admin-list"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+
+<script src="assets/app-shared.js"></script>
+<script>
+let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null;
+async function loadAdminBookings(){
+  try { adminBookings = (await apiFetch('/api/booking.php?action=list_all')).bookings || []; }
+  catch (e) { adminBookings = []; }
+}
+function openDatesInWindow(daysAhead){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const out = [];
+  for (let i = 1; i <= daysAhead; i++){
+    const d = new Date(today); d.setDate(d.getDate() + i);
+    const dateStr = d.toISOString().slice(0,10);
+    const blackedOut = blackouts.some(b => b.scope === 'all' && rangeDates(b.start, b.end).includes(dateStr));
+    const booked = allBooked.some(bk => bk.dates && bk.dates.includes(dateStr));
+    if (!blackedOut && !booked) out.push({ date: dateStr, daysOut: i });
+  }
+  return out;
+}
+function pastClientList(){
+  const seen = new Map();
+  adminBookings.forEach(b => {
+    if (!b.email) return;
+    if (!seen.has(b.email)) seen.set(b.email, { email: b.email, name: b.who || '', lastDate: b.start });
+    else if (b.start > seen.get(b.email).lastDate) seen.get(b.email).lastDate = b.start;
+  });
+  return Array.from(seen.values()).sort((a,b) => b.lastDate.localeCompare(a.lastDate));
+}
+function standingDatesNeedingVolumeTomorrow(){
+  const tomorrow = localDateStr(new Date(Date.now() + 864e5));
+  const out = [];
+  standingAgreements.forEach(a => {
+    if (a.status === 'cancelled') return;
+    a.dates.forEach(d => {
+      if (d.date === tomorrow && d.status !== 'cancelled' && (d.patientVolume === null || d.patientVolume === undefined)){
+        out.push({ agreementName: a.name, contactEmail: a.contactEmail, date: d.date });
+      }
+    });
+  });
+  return out;
+}
+function draftPatientVolumeReminderEmail(clinicName, dateStr){
+  const subject = `Quick reminder: patient count for tomorrow's coverage (${dateStr})`;
+  const body = `Hi ${clinicName},
+
+Just a reminder that tomorrow, ${dateStr}, is a scheduled standing-day coverage date. If you haven't already, could you log in and note how many patients you have scheduled for that block? It just helps me plan the day accurately.
+
+You can update it directly from your account at coveragechiropractor.com — takes less than a minute.
+
+Michael L. McPherson, D.C.
+coveragechiropractor.com`;
+  return { subject, body };
+}
+function bookingsNeedingFeedback(){
+  return adminBookings.filter(b => b.completedAt && !b.feedback && b.total > 0);
+}
+function draftFeedbackRequestEmail(clinicName, bookingId){
+  const subject = `Quick feedback on your recent coverage?`;
+  const body = `Hi ${clinicName},
+
+Thanks again for having me cover for you recently. If you have two minutes, I'd really appreciate quick feedback on how it went — punctuality, how things felt with your patients, anything worth knowing before the next visit.
+
+You can leave it directly from your account at coveragechiropractor.com — it's separate from a public review and goes straight to me.
+
+Michael L. McPherson, D.C.
+coveragechiropractor.com`;
+  return { subject, body };
+}
+function draftThankYouLetter(booking){
+  const clinicName = booking.who || 'there';
+  const dateRange = booking.dates.length > 1 ? `${booking.dates[0]} through ${booking.dates[booking.dates.length-1]}` : booking.dates[0];
+  const subject = `Thanks for having me — ${dateRange}`;
+  const body = `Dear ${clinicName},
+
+Thank you for having me cover ${dateRange}. I wanted to follow up while it's still fresh, both to say thanks and to pass along anything from the day that might be useful.
+
+How the day went:
+[Patients seen, general flow, anything that stood out]
+
+Staff:
+[Anything worth mentioning about the team, or friction worth smoothing out next time]
+
+Building & equipment:
+[Anything that made the day harder than it needed to be]
+
+Patients:
+[Any patient notes worth passing back to the regular doctor]
+
+If any of this raises a question, I'm easy to reach — cell or email both work. And if you'd like to get a date on the calendar for next time, I'm happy to help with that too.
+
+Thanks again,
+Michael L. McPherson, D.C.
+coveragechiropractor.com`;
+  return { subject, body };
+}
+function draftOutreachEmail(dateStr, daysOut){
+  const dayLabel = daysOut <= 1 ? 'tomorrow' : `in ${daysOut} days`;
+  // The automatic 10% discount only activates within 24 hours of the
+  // date (today/tomorrow) — see isLastMinute(). A date further out than
+  // that shouldn't promise a discount it doesn't actually have yet;
+  // the email just flags the opening and leaves the door open to a
+  // manually-issued promo code if you want to sweeten it yourself.
+  const isDiscounted = daysOut <= 1;
+  const subject = isDiscounted
+    ? `Coverage opening ${dayLabel} — 10% off if booked now`
+    : `Coverage opening ${dayLabel} at my Central FL rate`;
+  const body = isDiscounted
+    ? `Hi,
+
+A coverage date just opened up on ${dateStr} (${dayLabel}). It's within 24 hours, so it automatically qualifies for the 10% last-minute discount when booked.
+
+You can book it directly at coveragechiropractor.com — the discount applies automatically once you're in the window, no code needed. Reply here if you'd rather I just pencil it in.
+
+Michael L. McPherson, D.C.
+coveragechiropractor.com`
+    : `Hi,
+
+A coverage date just opened up on ${dateStr} (${dayLabel} from now). Wanted to flag it in case it's useful for your schedule — vacation coverage, an extra set of hands, or just having someone lined up in advance.
+
+You can see current rates and book directly at coveragechiropractor.com. If you'd like, reply here and I can also put together a specific rate for this date.
+
+Michael L. McPherson, D.C.
+coveragechiropractor.com`;
+  return { subject, body, isDiscounted };
+}
+function renderAdmin(){
+  const el = $('admin-list');
+  if (admView === 'blocks'){
+    if (!blackouts.length){
+      el.innerHTML = `<div class="empty">No blocked dates. Add one on the left to close off time you're unavailable.</div>`;
+      return;
+    }
+    const scopeLabel = s => s === 'all' ? 'All day' : s === 'am' ? 'Mornings' : 'Afternoons';
+    el.innerHTML = blackouts.slice().sort((a,b)=>a.start.localeCompare(b.start)).map(b => `
+      <div class="blk">
+        <div>
+          <div class="bd">${b.start}${b.end && b.end !== b.start ? ' → ' + b.end : ''}</div>
+          <div class="bn">${scopeLabel(b.scope)}${b.note ? ' · ' + b.note : ''}</div>
+        </div>
+        <button class="btn ghost sm" data-unblock="${b.id}">Remove</button>
+      </div>`).join('');
+    el.querySelectorAll('[data-unblock]').forEach(btn => btn.addEventListener('click', async () => {
+      try { await apiFetch('/api/booking.php?action=blackout_remove', { method: 'POST', body: JSON.stringify({ id: btn.dataset.unblock }) }); }
+      catch (e) { alert(e.message); }
+      await loadAvailability(); renderAdmin(); recalc();
+    }));
+  } else if (admView === 'booked') {
+    const list = adminBookings.slice().sort((a,b) => a.dates[0].localeCompare(b.dates[0]));
+    if (!list.length){
+      el.innerHTML = `<div class="empty">No bookings on the calendar yet.</div>`;
+      return;
+    }
+    el.innerHTML = list.map(b => {
+      const owed = b.total != null && b.paid != null ? +(b.total - b.paid).toFixed(2) : null;
+      const canComplete = b.service === 'office' && b.balanceStatus === 'not_due';
+      const rem = (b.balanceStatus === 'due' && b.completedAt) ? (() => {
+        const hoursSince = (Date.now() - new Date(b.completedAt).getTime()) / 36e5;
+        return { sent: Math.max(0, Math.floor(hoursSince / 12)), nextIn: (12 - (hoursSince % 12)).toFixed(1) };
+      })() : null;
+      return `
+      <div class="blk booked">
+        <div>
+          <div class="bd">${b.dates[0]}${b.dates.length > 1 ? ' → ' + b.dates[b.dates.length-1] : ''}</div>
+          <div class="bn">${b.title}${b.who ? ' · ' + b.who : ''} · Ref ${b.id}</div>
+          ${b.meta ? `<div class="bn" style="margin-top:2px;">${b.meta}</div>` : ''}
+          ${b.total != null ? `<div class="bn" style="margin-top:4px;">${money(b.total)} total · ${money(b.paid)} paid${owed > 0 ? ` · <strong style="color:var(--red);">${money(owed)} owed</strong>` : ''}</div>` : ''}
+          ${b.balanceStatus === 'due' ? `<div class="bn" style="color:var(--ochre);margin-top:4px;">Balance due${rem ? ` — reminder ${rem.sent} sent, next in ~${rem.nextIn}h` : ''}</div>` : ''}
+          ${b.balanceStatus === 'paid' ? `<div class="bn" style="color:var(--teal-dark);margin-top:4px;">Paid in full</div>` : ''}
+          ${b.review ? `<div class="bn" style="margin-top:4px;">★ ${b.review.rating}/5${b.review.text ? ' — "' + b.review.text + '"' : ''}</div>` : ''}
+          ${b.coverage && (b.coverage.dress || b.coverage.techniques.length || b.coverage.notes || b.coverage.pocName) ? `
+            <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
+              ${b.coverage.dress ? `<div><strong>Dress code:</strong> ${b.coverage.dress}</div>` : ''}
+              ${b.coverage.techniques.length ? `<div style="margin-top:3px;"><strong>Techniques:</strong> ${b.coverage.techniques.join(', ')}</div>` : ''}
+              ${b.coverage.notes ? `<div style="margin-top:3px;"><strong>Notes:</strong> ${b.coverage.notes}</div>` : ''}
+              ${b.coverage.pocName ? `<div style="margin-top:3px;color:var(--teal-dark);font-weight:600;"><strong>Day-of contact:</strong> ${b.coverage.pocName}${b.coverage.pocTitle ? ' (' + b.coverage.pocTitle + ')' : ''}${b.coverage.pocPhone ? ' · ' + b.coverage.pocPhone : ''}</div>` : ''}
+            </div>` : ''}
+          ${canComplete ? `<div style="margin-top:10px;"><button class="btn sm" data-complete="${b.id}">Mark coverage complete</button></div>` : ''}
+          ${b.completedAt ? `<div style="margin-top:10px;"><button class="btn ghost sm" data-draft-thanks="${b.id}">Draft thank-you letter</button></div>` : ''}
+        </div>
+      </div>`;
+    }).join('') + `
+      <div class="admin-card hidden" id="thanks-draft-card" style="margin-top:20px;">
+        <h3>Draft thank-you letter</h3>
+        <label for="thanks-subject">Subject</label>
+        <input type="text" id="thanks-subject">
+        <label for="thanks-body" style="margin-top:12px;">Body</label>
+        <textarea id="thanks-body" rows="14"></textarea>
+        <button class="btn ghost sm" id="thanks-copy" style="margin-top:12px;">Copy to clipboard</button>
+        <span id="thanks-copied" style="font-size:0.8rem;color:var(--teal-dark);margin-left:10px;"></span>
+      </div>`;
+    el.querySelectorAll('[data-draft-thanks]').forEach(btn => btn.addEventListener('click', () => {
+      const b = adminBookings.find(x => x.id === btn.dataset.draftThanks);
+      if (!b) return;
+      const { subject, body } = draftThankYouLetter(b);
+      $('thanks-subject').value = subject;
+      $('thanks-body').value = body;
+      $('thanks-draft-card').classList.remove('hidden');
+      $('thanks-draft-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }));
+    const thanksCopyBtn = $('thanks-copy');
+    if (thanksCopyBtn) thanksCopyBtn.addEventListener('click', async () => {
+      const text = `Subject: ${$('thanks-subject').value}\n\n${$('thanks-body').value}`;
+      try {
+        await navigator.clipboard.writeText(text);
+        $('thanks-copied').textContent = 'Copied!';
+      } catch {
+        $('thanks-copied').textContent = 'Select the text above and copy manually.';
+      }
+      setTimeout(() => { $('thanks-copied').textContent = ''; }, 3000);
+    });
+    el.querySelectorAll('[data-complete]').forEach(btn => btn.addEventListener('click', async () => {
+      const b = adminBookings.find(x => x.id === btn.dataset.complete);
+      if (!b) return;
+      const owed = +(b.total - b.paid).toFixed(2);
+      if (!confirm(`Mark ${b.id} complete? This invoices ${b.who || 'the client'} for the ${money(owed)} balance and starts twice-daily reminders until it's paid.`)) return;
+      try { await apiFetch('/api/booking.php?action=mark_complete', { method: 'POST', body: JSON.stringify({ id: b.id }) }); }
+      catch (e) { alert(e.message); return; }
+      await loadAdminBookings();
+      renderAdmin();
+    }));
+  } else if (admView === 'video'){
+    if (!videoRequests.length){
+      el.innerHTML = `<div class="empty">No video interview requests yet.</div>`;
+      return;
+    }
+    el.innerHTML = videoRequests.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(r => `
+      <div class="blk booked">
+        <div>
+          <div class="bd">${r.date} · ${r.time}</div>
+          <div class="bn">${r.name} · ${r.email}</div>
+          <div class="bn" style="margin-top:4px;color:#8a8171;">Requested ${new Date(r.requestedAt).toLocaleDateString()}</div>
+        </div>
+      </div>`).join('');
+  } else if (admView === 'promo'){
+    const today = new Date().toISOString().slice(0,10);
+    const lmHtml = `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Last-minute discount</h3>
+        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px;">Automatically takes 10% off any coverage date still open within 24 hours of its start — fills otherwise-empty dates without discounting your standard rate.</p>
+        <label class="tq" style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="lm-toggle" ${lastMinuteEnabled ? 'checked' : ''}>
+          <span>Enabled — apply automatically to qualifying dates</span>
+        </label>
+      </div>`;
+    const formHtml = `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Create promo code</h3>
+        <label for="pc-code">Code</label>
+        <input type="text" id="pc-code" placeholder="e.g. WELCOME10" style="text-transform:uppercase;">
+        <div class="row2">
+          <div><label for="pc-type">Type</label>
+            <select id="pc-type"><option value="percent">% off</option><option value="fixed">$ off</option></select>
+          </div>
+          <div><label for="pc-value">Value</label>
+            <input type="number" id="pc-value" min="0" step="0.01" placeholder="10">
+          </div>
+        </div>
+        <div class="row2">
+          <div><label for="pc-max">Max uses (optional)</label>
+            <input type="number" id="pc-max" min="1" placeholder="Unlimited">
+          </div>
+          <div><label for="pc-expires">Expires (optional)</label>
+            <input type="date" id="pc-expires">
+          </div>
+        </div>
+        <button class="btn" id="pc-add" style="width:100%;margin-top:16px;">Create code</button>
+        <div class="err-msg" id="pc-err"></div>
+      </div>`;
+    if (!promoCodes.length){
+      el.innerHTML = lmHtml + formHtml + `<div class="empty">No promo codes yet.</div>`;
+    } else {
+      const rows = promoCodes.slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(p => {
+        const expired = p.expiresAt && p.expiresAt < today;
+        const usedUp = p.maxUses != null && p.usedCount >= p.maxUses;
+        const status = !p.active ? 'Disabled' : expired ? 'Expired' : usedUp ? 'Used up' : 'Active';
+        const statusColor = status === 'Active' ? 'var(--teal-dark)' : 'var(--red)';
+        return `
+        <div class="blk ${p.active && !expired && !usedUp ? 'booked' : ''}">
+          <div>
+            <div class="bd">${p.code}</div>
+            <div class="bn">${p.type === 'percent' ? p.value + '% off' : money(p.value) + ' off'} · used ${p.usedCount}${p.maxUses != null ? ' / ' + p.maxUses : ''}${p.expiresAt ? ' · expires ' + p.expiresAt : ''}</div>
+            <div class="bn" style="color:${statusColor};margin-top:3px;font-weight:600;">${status}</div>
+          </div>
+          <button class="btn ghost sm" data-toggle-promo="${p.code}">${p.active ? 'Disable' : 'Enable'}</button>
+        </div>`;
+      }).join('');
+      el.innerHTML = lmHtml + formHtml + rows;
+    }
+    $('lm-toggle').addEventListener('change', async (e) => {
+      lastMinuteEnabled = e.target.checked;
+      await apiFetch('/api/settings.php?action=set_last_minute', { method: 'POST', body: JSON.stringify({ enabled: lastMinuteEnabled }) });
+    });
+    $('pc-add').addEventListener('click', async () => {
+      const code = $('pc-code').value.trim().toUpperCase();
+      const type = $('pc-type').value;
+      const value = parseFloat($('pc-value').value);
+      const maxUses = $('pc-max').value ? parseInt($('pc-max').value) : null;
+      const expiresAt = $('pc-expires').value || null;
+      if (!code){ $('pc-err').textContent = 'Enter a code.'; return; }
+      if (!value || value <= 0){ $('pc-err').textContent = 'Enter a value greater than 0.'; return; }
+      if (type === 'percent' && value > 100){ $('pc-err').textContent = 'Percent off cannot exceed 100.'; return; }
+      try {
+        await apiFetch('/api/promo.php?action=create', { method: 'POST', body: JSON.stringify({ code, type, value, maxUses, expiresAt }) });
+      } catch (e){ $('pc-err').textContent = e.message; return; }
+      $('pc-err').textContent = '';
+      promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
+      renderAdmin();
+    });
+    el.querySelectorAll('[data-toggle-promo]').forEach(btn => btn.addEventListener('click', async () => {
+      await apiFetch('/api/promo.php?action=toggle', { method: 'POST', body: JSON.stringify({ code: btn.dataset.togglePromo }) });
+      promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
+      renderAdmin();
+    }));
+  } else if (admView === 'inventory'){
+    const openDates = openDatesInWindow(14);
+    const REGION_LABEL_FLEX = { central: 'Central FL', north: 'North FL', south: 'South FL' };
+    const urgent = openDates.filter(d => d.daysOut <= 3);
+    const upcoming = openDates.filter(d => d.daysOut > 3);
+    const clients = pastClientList();
+    const needsFeedback = bookingsNeedingFeedback();
+
+    const feedbackNeededHtml = needsFeedback.length ? `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Completed bookings awaiting feedback (${needsFeedback.length})</h3>
+        ${needsFeedback.map(b => `
+          <div class="blk" style="margin-bottom:8px;">
+            <div><div class="bd">${b.who || b.email}</div><div class="bn">${b.title} · completed ${new Date(b.completedAt).toLocaleDateString()}</div></div>
+            <button class="btn ghost sm" data-draft-feedback="${b.who || b.email}|${b.id}">Draft request</button>
+          </div>`).join('')}
+        <div class="admin-card hidden" id="feedback-draft-card" style="margin-top:14px;">
+          <label for="fbd-subject">Subject</label>
+          <input type="text" id="fbd-subject">
+          <label for="fbd-body" style="margin-top:12px;">Body</label>
+          <textarea id="fbd-body" rows="8"></textarea>
+          <button class="btn ghost sm" id="fbd-copy" style="margin-top:12px;">Copy to clipboard</button>
+          <span id="fbd-copied" style="font-size:0.8rem;color:var(--teal-dark);margin-left:10px;"></span>
+        </div>
+      </div>` : '';
+
+    const introHtml = `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>How this works</h3>
+        <p style="font-size:0.85rem;color:#6b7280;">This identifies open dates on your calendar and drafts outreach copy — it can't send email on its own from a static site, so sending is still a manual step: copy the draft, paste it into your email client, and send it to whichever clients below make sense. Dates within 3 days are flagged, since that's a natural point to start reminding past clients before the date goes fully to waste.</p>
+      </div>`;
+
+    const urgentHtml = urgent.length ? `
+      <div class="admin-card" style="margin-bottom:20px;border-color:var(--ochre);">
+        <h3 style="color:#7a5a20;">Open within 3 days (${urgent.length})</h3>
+        ${urgent.map(d => `
+          <div class="blk" style="margin-bottom:8px;">
+            <div>
+              <div class="bd">${d.date}</div>
+              <div class="bn">${d.daysOut} day${d.daysOut !== 1 ? 's' : ''} away${d.daysOut <= 1 ? ' · qualifies for automatic 10% last-minute discount' : ''}</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn ghost sm" data-draft="${d.date}" data-daysout="${d.daysOut}">Draft email</button>
+              <button class="btn ghost sm" data-flex-publish="${d.date}">Publish Flex Rate</button>
+            </div>
+          </div>`).join('')}
+      </div>` : `<div class="admin-card" style="margin-bottom:20px;"><p style="font-size:0.85rem;color:#6b7280;">No dates open within the next 3 days right now.</p></div>`;
+
+    const upcomingHtml = upcoming.length ? `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Open 4–14 days out (${upcoming.length})</h3>
+        ${upcoming.map(d => `
+          <div class="blk" style="margin-bottom:8px;">
+            <div><div class="bd">${d.date}</div><div class="bn">${d.daysOut} days away</div></div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn ghost sm" data-draft="${d.date}" data-daysout="${d.daysOut}">Draft email</button>
+              <button class="btn ghost sm" data-flex-publish="${d.date}">Publish Flex Rate</button>
+            </div>
+          </div>`).join('')}
+      </div>` : '';
+
+    const activeFlexRates = flexRateDates.filter(f => f.status === 'open');
+    const flexRateAdminHtml = `
+      <div class="admin-card hidden" id="flex-publish-card" style="margin-bottom:20px;border-color:var(--teal);">
+        <h3>Publish Flex Rate — <span id="flex-publish-date"></span></h3>
+        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px;">Sets a promotional rate for this specific date. Shown publicly as "select uncovered dates offered at promotional rates" — not framed as negotiable.</p>
+        <label for="flex-region">Region</label>
+        <select id="flex-region"><option value="central">Central FL</option><option value="north">North FL</option><option value="south">South FL</option></select>
+        <div class="row2" style="margin-top:12px;">
+          <div><label for="flex-discount">Discount off standard rate (%)</label><input type="number" id="flex-discount" min="0" max="90" value="15"></div>
+          <div><label for="flex-hours">Coverage type</label><select id="flex-hours"><option value="full">Full day</option><option value="half-am">Half day — morning</option><option value="half-pm">Half day — afternoon</option></select></div>
+        </div>
+        <label for="flex-note" style="margin-top:12px;display:block;">Note (optional, shown publicly)</label>
+        <input type="text" id="flex-note" placeholder="e.g. Jacksonville office, 4-8 hours">
+        <button class="btn" id="flex-publish-confirm" style="width:100%;margin-top:14px;">Publish this date</button>
+      </div>
+      ${activeFlexRates.length ? `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Currently published Flex Rate dates (${activeFlexRates.length})</h3>
+        ${activeFlexRates.map(f => `
+          <div class="blk" style="margin-bottom:6px;">
+            <div><div class="bd">${f.date}</div><div class="bn">${REGION_LABEL_FLEX[f.region] || f.region} · ${TYPE_LABEL_SD[f.type]} · ${f.discountRate*100}% off${f.note ? ' · ' + f.note : ''}</div></div>
+            <button class="btn ghost sm" data-flex-unpublish="${f.id}" style="color:var(--red);border-color:var(--red);">Unpublish</button>
+          </div>`).join('')}
+      </div>` : ''}`;
+
+    const clientsHtml = `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Past clients (${clients.length})</h3>
+        ${clients.length ? clients.map(c => `
+          <div class="blk" style="margin-bottom:6px;">
+            <div><div class="bd">${c.name || c.email}</div><div class="bn">${c.email} · last booked ${c.lastDate}</div></div>
+          </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No past clients on record yet.</p>`}
+      </div>`;
+
+    const draftHtml = `
+      <div class="admin-card hidden" id="draft-card">
+        <h3>Draft outreach email</h3>
+        <label for="draft-subject">Subject</label>
+        <input type="text" id="draft-subject">
+        <label for="draft-body" style="margin-top:12px;">Body</label>
+        <textarea id="draft-body" rows="10"></textarea>
+        <button class="btn ghost sm" id="draft-copy" style="margin-top:12px;">Copy to clipboard</button>
+        <span id="draft-copied" style="font-size:0.8rem;color:var(--teal-dark);margin-left:10px;"></span>
+      </div>`;
+
+    el.innerHTML = introHtml + urgentHtml + upcomingHtml + flexRateAdminHtml + feedbackNeededHtml + clientsHtml + draftHtml;
+
+    el.querySelectorAll('[data-draft-feedback]').forEach(btn => btn.addEventListener('click', () => {
+      const [name, bookingId] = btn.dataset.draftFeedback.split('|');
+      const { subject, body } = draftFeedbackRequestEmail(name, bookingId);
+      $('fbd-subject').value = subject;
+      $('fbd-body').value = body;
+      $('feedback-draft-card').classList.remove('hidden');
+      $('feedback-draft-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }));
+    const fbdCopyBtn = $('fbd-copy');
+    if (fbdCopyBtn) fbdCopyBtn.addEventListener('click', async () => {
+      const text = `Subject: ${$('fbd-subject').value}\n\n${$('fbd-body').value}`;
+      try {
+        await navigator.clipboard.writeText(text);
+        $('fbd-copied').textContent = 'Copied!';
+      } catch {
+        $('fbd-copied').textContent = 'Select the text above and copy manually.';
+      }
+      setTimeout(() => { $('fbd-copied').textContent = ''; }, 3000);
+    });
+
+    el.querySelectorAll('[data-draft]').forEach(btn => btn.addEventListener('click', () => {
+      const { subject, body } = draftOutreachEmail(btn.dataset.draft, parseInt(btn.dataset.daysout));
+      $('draft-subject').value = subject;
+      $('draft-body').value = body;
+      $('draft-card').classList.remove('hidden');
+      $('draft-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }));
+    $('draft-copy').addEventListener('click', async () => {
+      const text = `Subject: ${$('draft-subject').value}\n\n${$('draft-body').value}`;
+      try {
+        await navigator.clipboard.writeText(text);
+        $('draft-copied').textContent = 'Copied!';
+      } catch {
+        $('draft-copied').textContent = 'Select the text above and copy manually.';
+      }
+      setTimeout(() => { $('draft-copied').textContent = ''; }, 3000);
+    });
+
+    el.querySelectorAll('[data-flex-publish]').forEach(btn => btn.addEventListener('click', () => {
+      $('flex-publish-date').textContent = btn.dataset.flexPublish;
+      $('flex-publish-card').dataset.targetDate = btn.dataset.flexPublish;
+      $('flex-publish-card').classList.remove('hidden');
+      $('flex-publish-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }));
+    const flexConfirmBtn = $('flex-publish-confirm');
+    if (flexConfirmBtn) flexConfirmBtn.addEventListener('click', async () => {
+      const date = $('flex-publish-card').dataset.targetDate;
+      const region = $('flex-region').value;
+      const discountPct = Math.max(0, Math.min(90, parseFloat($('flex-discount').value) || 0));
+      const type = $('flex-hours').value;
+      const note = $('flex-note').value.trim();
+      try {
+        await apiFetch('/api/flexrate.php?action=publish', { method: 'POST', body: JSON.stringify({ date, region, type, discountPct, note }) });
+      } catch (e) { alert(e.message); return; }
+      flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || [];
+      $('flex-publish-card').classList.add('hidden');
+      renderAdmin();
+    });
+    el.querySelectorAll('[data-flex-unpublish]').forEach(btn => btn.addEventListener('click', async () => {
+      await apiFetch('/api/flexrate.php?action=unpublish', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.flexUnpublish) }) });
+      flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || [];
+      renderAdmin();
+    }));
+  } else if (admView === 'standing'){
+    const pending = standingRequests.filter(r => r.status === 'pending');
+    const DOW_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+    const needsVolume = standingDatesNeedingVolumeTomorrow();
+    const volumeHtml = needsVolume.length ? `
+      <div class="admin-card" style="margin-bottom:20px;border-color:var(--ochre);">
+        <h3 style="color:#7a5a20;">Patient volume not yet confirmed for tomorrow (${needsVolume.length})</h3>
+        <p style="font-size:0.8rem;color:#6b7280;margin-bottom:10px;">These practices haven't logged expected patient volume for a coverage date happening tomorrow. Automated daily reminders at 12pm EST need the real backend to actually send — for now, draft and send manually below.</p>
+        ${needsVolume.map(v => `
+          <div class="blk" style="margin-bottom:8px;">
+            <div><div class="bd">${v.agreementName}</div><div class="bn">${v.date} · ${v.contactEmail}</div></div>
+            <button class="btn ghost sm" data-draft-volume="${v.agreementName}|${v.date}">Draft reminder</button>
+          </div>`).join('')}
+        <div class="admin-card hidden" id="volume-draft-card" style="margin-top:14px;">
+          <label for="vd-subject">Subject</label>
+          <input type="text" id="vd-subject">
+          <label for="vd-body" style="margin-top:12px;">Body</label>
+          <textarea id="vd-body" rows="8"></textarea>
+          <button class="btn ghost sm" id="vd-copy" style="margin-top:12px;">Copy to clipboard</button>
+          <span id="vd-copied" style="font-size:0.8rem;color:var(--teal-dark);margin-left:10px;"></span>
+        </div>
+      </div>` : '';
+
+    const PLAN_LABEL = { standard: 'Standard (billed per-date, 7 days before)', prepay: 'Prepay in full (+2% off)', installment: 'Monthly installment' };
+    const pendingHtml = `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Pending requests (${pending.length})</h3>
+        ${pending.length ? pending.map(r => { const effRate = effectiveStandingRate(r.tier, r.paymentPlan, r.customRate); return `
+          <div class="blk" style="margin-bottom:10px;flex-direction:column;align-items:flex-start;">
+            <div style="width:100%;">
+              <div class="bd">${r.name}</div>
+              ${r.patterns.map(p => `<div class="bn">${DOW_NAMES[p.dow]}s, ${p.freq}, ${TYPE_LABEL_SD[p.type]} · ${p.count} dates, starting ${p.actualStart}</div>`).join('')}
+              <div class="bn" style="font-weight:600;margin-top:4px;">${(r.combinedCount % 1 === 0 ? r.combinedCount : r.combinedCount.toFixed(1))} combined coverage days · earned tier: ${r.tier ? Math.round(r.tier.rate*100) + '%' : 'below minimum'} · ${PLAN_LABEL[r.paymentPlan] || 'Standard'}</div>
+              <div class="bn">${r.region} · ZIP ${r.zip}</div>
+              <div class="bn">${r.contactEmail}${r.notes ? ' · ' + r.notes : ''}</div>
+              <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+                <label style="font-size:0.78rem;margin:0;" for="cr-${r.id}">Custom rate override (%, optional — overrides tier + plan entirely)</label>
+                <input type="number" id="cr-${r.id}" min="0" max="100" step="0.5" placeholder="e.g. 18" style="width:80px;" value="${r.customRate != null ? Math.round(r.customRate*1000)/10 : ''}">
+              </div>
+              <div class="bn" style="margin-top:4px;">Effective rate to be applied: <strong>${Math.round(effRate*1000)/10}%</strong></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button class="btn ghost sm" data-approve="${r.id}">Approve &amp; generate schedule</button>
+              <button class="btn ghost sm" data-decline="${r.id}" style="color:var(--red);border-color:var(--red);">Decline</button>
+            </div>
+          </div>`; }).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No pending requests.</p>`}
+      </div>`;
+
+    const today = localDateStr(new Date());
+    const cancelCutoff = localDateStr(new Date(Date.now() + 30*864e5));
+    const activeAgreements = standingAgreements.filter(a => a.status === 'active');
+    const agreementsHtml = `
+      <div class="admin-card">
+        <h3>Active agreements (${activeAgreements.length})</h3>
+        ${activeAgreements.length ? activeAgreements.map(a => {
+          const upcoming = a.dates.filter(d => d.date >= today && d.status !== 'cancelled');
+          const nextFew = upcoming.slice(0, 3);
+          const patternSummary = a.patterns.map(p => `${DOW_NAMES[p.dow]}s (${p.freq}, ${TYPE_LABEL_SD[p.type]})`).join(' + ');
+          return `
+          <div class="blk" style="margin-bottom:10px;flex-direction:column;align-items:flex-start;">
+            <div style="width:100%;">
+              <div class="bd">${a.name}</div>
+              <div class="bn">${patternSummary} · ${Math.round((a.effectiveRate != null ? a.effectiveRate : a.tier.rate)*100)}% off · ${upcoming.length} coverage days remaining</div>
+              <div class="bn">Next: ${nextFew.map(d => `${d.date} (${TYPE_LABEL_SD[d.type]})`).join(', ') || 'none remaining'}</div>
+            </div>
+            <button class="btn ghost sm" data-cancel-agreement="${a.id}" style="margin-top:8px;color:var(--red);border-color:var(--red);">Cancel agreement (30-day notice)</button>
+          </div>`;
+        }).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No active standing agreements yet.</p>`}
+      </div>`;
+
+    el.innerHTML = volumeHtml + pendingHtml + agreementsHtml;
+
+    pending.forEach(r => {
+      const inp = document.getElementById(`cr-${r.id}`);
+      if (inp) inp.addEventListener('change', async () => {
+        const customRate = inp.value !== '' ? parseFloat(inp.value) : null;
+        r.customRate = customRate !== null ? customRate / 100 : null;
+        await apiFetch('/api/standing.php?action=set_custom_rate', { method: 'POST', body: JSON.stringify({ requestId: r.id, customRate }) });
+        renderAdmin();
+      });
+    });
+
+    el.querySelectorAll('[data-draft-volume]').forEach(btn => btn.addEventListener('click', () => {
+      const [name, date] = btn.dataset.draftVolume.split('|');
+      const { subject, body } = draftPatientVolumeReminderEmail(name, date);
+      $('vd-subject').value = subject;
+      $('vd-body').value = body;
+      $('volume-draft-card').classList.remove('hidden');
+      $('volume-draft-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }));
+    const vdCopyBtn = $('vd-copy');
+    if (vdCopyBtn) vdCopyBtn.addEventListener('click', async () => {
+      const text = `Subject: ${$('vd-subject').value}\n\n${$('vd-body').value}`;
+      try {
+        await navigator.clipboard.writeText(text);
+        $('vd-copied').textContent = 'Copied!';
+      } catch {
+        $('vd-copied').textContent = 'Select the text above and copy manually.';
+      }
+      setTimeout(() => { $('vd-copied').textContent = ''; }, 3000);
+    });
+
+    el.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', async () => {
+      try { await apiFetch('/api/standing.php?action=approve', { method: 'POST', body: JSON.stringify({ id: btn.dataset.approve }) }); }
+      catch (e) { alert(e.message); return; }
+      standingRequests = (await apiFetch('/api/standing.php?action=list_pending')).requests || [];
+      standingAgreements = (await apiFetch('/api/standing.php?action=list_agreements')).agreements || [];
+      await loadAvailability();
+      renderAdmin();
+    }));
+    el.querySelectorAll('[data-decline]').forEach(btn => btn.addEventListener('click', async () => {
+      await apiFetch('/api/standing.php?action=decline', { method: 'POST', body: JSON.stringify({ id: btn.dataset.decline }) });
+      standingRequests = (await apiFetch('/api/standing.php?action=list_pending')).requests || [];
+      renderAdmin();
+    }));
+    el.querySelectorAll('[data-cancel-agreement]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!confirm(`Cancel this standing agreement? Dates before ${cancelCutoff} (30 days out) still occur as scheduled. Dates after that are released.`)) return;
+      await apiFetch('/api/standing.php?action=cancel_agreement', { method: 'POST', body: JSON.stringify({ id: btn.dataset.cancelAgreement }) });
+      standingAgreements = (await apiFetch('/api/standing.php?action=list_agreements')).agreements || [];
+      await loadAvailability();
+      renderAdmin();
+    }));
+  } else if (admView === 'analytics'){
+    const an = latestAnalytics;
+    if (!an){ el.innerHTML = `<div class="empty">Couldn't load analytics right now.</div>`; return; }
+    const REGION_LABEL = { central: 'Central FL', north: 'North FL', south: 'South FL' };
+    const MONTH_LABEL = m => { const [y,mo] = m.split('-'); return new Date(y, mo-1, 1).toLocaleString('en-US', {month:'short', year:'numeric'}); };
+
+    const metricCard = (label, value, sub) => `
+      <div class="an-card">
+        <div class="an-label">${label}</div>
+        <div class="an-value">${value}</div>
+        ${sub ? `<div class="an-sub">${sub}</div>` : ''}
+      </div>`;
+
+    const cardsHtml = `
+      <div class="an-grid">
+        ${metricCard('Average booking value', money(an.avgBookingValue), `${an.totalEver} bookings tracked`)}
+        ${metricCard('Cancellation rate', `${Math.round(an.cancellationRate*100)}%`, `${an.cancelledCount} of ${an.totalEver} ever created`)}
+        ${metricCard('Booking lead time', an.avgLeadTime != null ? `${Math.round(an.avgLeadTime)} days` : 'Not enough data', an.leadTimeSampleSize ? `avg over ${an.leadTimeSampleSize} bookings` : 'needs bookings made after this update')}
+        ${metricCard('Clinic retention', `${Math.round(an.retentionRate*100)}%`, `${an.clientCount} distinct clients`)}
+        ${metricCard('Average rating', an.avgRating != null ? `${an.avgRating.toFixed(1)} / 5` : 'No reviews yet', an.ratingSampleSize ? `from ${an.ratingSampleSize} reviews` : '')}
+        ${metricCard('Utilization', `${Math.round(an.utilization*100)}%`, `next ${an.windowDays} days booked or blocked`)}
+        ${metricCard('Flex Date conversion', an.flexPublished ? `${Math.round(an.flexConversionRate*100)}%` : 'N/A', an.flexPublished ? `${an.flexBooked} of ${an.flexPublished} published dates booked` : 'No Flex Rate dates published yet')}
+        ${metricCard('Pricing elasticity', 'Not yet meaningful', 'needs more historical data across price points')}
+      </div>`;
+
+    const geoEntries = Object.entries(an.geo).sort((a,b) => b[1]-a[1]);
+    const geoMax = Math.max(1, ...geoEntries.map(e => e[1]));
+    const geoHtml = `
+      <div class="admin-card" style="margin-top:20px;">
+        <h3>Geographic demand</h3>
+        ${geoEntries.length ? geoEntries.map(([region, count]) => `
+          <div class="an-bar-row">
+            <span class="an-bar-label">${REGION_LABEL[region] || region}</span>
+            <div class="an-bar-track"><div class="an-bar-fill" style="width:${(count/geoMax*100).toFixed(0)}%;"></div></div>
+            <span class="an-bar-val">${count}</span>
+          </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No region data yet.</p>`}
+      </div>`;
+
+    const seasonalEntries = Object.entries(an.seasonal).sort((a,b) => a[0].localeCompare(b[0]));
+    const seasonalMax = Math.max(1, ...seasonalEntries.map(e => e[1]));
+    const seasonalHtml = `
+      <div class="admin-card" style="margin-top:20px;">
+        <h3>Seasonal demand</h3>
+        ${seasonalEntries.length ? seasonalEntries.map(([month, count]) => `
+          <div class="an-bar-row">
+            <span class="an-bar-label">${MONTH_LABEL(month)}</span>
+            <div class="an-bar-track"><div class="an-bar-fill" style="width:${(count/seasonalMax*100).toFixed(0)}%;"></div></div>
+            <span class="an-bar-val">${count}</span>
+          </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No date data yet.</p>`}
+      </div>`;
+
+    el.innerHTML = cardsHtml + geoHtml + seasonalHtml;
+  }
+}
+document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click', async () => {
+  document.querySelectorAll('[data-adm]').forEach(x => x.classList.remove('on'));
+  t.classList.add('on'); admView = t.dataset.adm;
+  if (admView === 'blocks') await loadAvailability();
+  if (admView === 'booked') await loadAdminBookings();
+  if (admView === 'video'){
+    try { videoRequests = (await apiFetch('/api/video.php?action=list')).requests || []; } catch (e) { videoRequests = []; }
+  }
+  if (admView === 'promo'){
+    try { promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || []; } catch (e) { promoCodes = []; }
+  }
+  if (admView === 'inventory'){
+    await loadAdminBookings();
+    try { flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || []; } catch (e) { flexRateDates = []; }
+  }
+  if (admView === 'standing'){
+    try {
+      standingRequests = (await apiFetch('/api/standing.php?action=list_pending')).requests || [];
+      standingAgreements = (await apiFetch('/api/standing.php?action=list_agreements')).agreements || [];
+    } catch (e) { standingRequests = []; standingAgreements = []; }
+  }
+  if (admView === 'analytics'){
+    try { latestAnalytics = await apiFetch('/api/analytics.php?action=summary'); } catch (e) { latestAnalytics = null; }
+  }
+  renderAdmin();
+}));
+$('bl-add').addEventListener('click', async () => {
+  const start = $('bl-start').value, end = $('bl-end').value || $('bl-start').value;
+  if (!start){ $('bl-err').textContent = 'Pick a start date.'; return; }
+  if (end < start){ $('bl-err').textContent = 'End date is before the start date.'; return; }
+  $('bl-err').textContent = '';
+  try {
+    await apiFetch('/api/booking.php?action=blackout_add', { method: 'POST', body: JSON.stringify({
+      start, end, scope: $('bl-scope').value, note: $('bl-note').value.trim()
+    })});
+  } catch (e) { $('bl-err').textContent = e.message; return; }
+  $('bl-start').value = ''; $('bl-end').value = ''; $('bl-note').value = '';
+  admView = 'blocks';
+  document.querySelectorAll('[data-adm]').forEach(x => x.classList.toggle('on', x.dataset.adm === 'blocks'));
+  await loadAvailability();
+  renderAdmin(); recalc();
+});
+
+
+async function initAdminPage(){
+  try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
+  catch (e) { user = null; }
+  renderAuthState();
+  if (!user || !isAdmin){ window.location.href = 'index.html'; return; }
+  await loadAvailability();
+  renderAdmin();
+}
+initAdminPage();
+
+</script>
+</body>
+</html>
