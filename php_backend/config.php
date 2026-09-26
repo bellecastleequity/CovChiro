@@ -2,6 +2,26 @@
 // Coverage Chiropractic - Configuration, DB connection, auth & pricing helpers
 // Keep this file OUTSIDE public_html.
 
+// ========== ERROR HANDLING ==========
+// Without this, a PHP warning/notice can silently corrupt a JSON response
+// (the browser then sees a blank or malformed body with no clue why), and an
+// uncaught exception produces a blank 500 with nothing in the browser and
+// nothing in this app's own log. Converting both into a clean JSON error —
+// logged here and, for now, echoed back so setup problems are visible — beats
+// debugging blind. The echoed detail can be removed later once things are
+// stable and you don't want file paths visible in an error response.
+set_error_handler(function ($severity, $message, $file, $line) {
+    if (!(error_reporting() & $severity)) return false;
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+set_exception_handler(function ($e) {
+    $detail = $e->getMessage() . ' at ' . basename($e->getFile()) . ':' . $e->getLine();
+    log_error('Uncaught exception', ['detail' => $detail]);
+    if (!headers_sent()) { http_response_code(500); header('Content-Type: application/json'); }
+    echo json_encode(['error' => 'Server error', 'debug' => $detail]);
+    exit;
+});
+
 // ========== DATABASE CONFIGURATION ==========
 define('DB_HOST', 'localhost');
 define('DB_USER', 'your_cpanel_username_dbuser');
