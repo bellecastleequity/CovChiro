@@ -172,7 +172,7 @@
 <div class="modal-bg" id="auth-modal">
   <div class="modal narrow">
     <button class="close" data-close>×</button>
-    <h2 id="auth-title">Create your account</h2>
+    <h2 id="auth-title">Sign in</h2>
     <p style="font-size:0.86rem;color:#6b7280;">One account works across both coveragechiropractor.com and here.</p>
     <div id="auth-name-wrap">
       <label for="a-name">Your name</label><input type="text" id="a-name" placeholder="Jane Smith">
@@ -181,8 +181,8 @@
     <label for="a-email">Email</label><input type="email" id="a-email" placeholder="you@example.com">
     <label for="a-pass">Password</label><input type="password" id="a-pass">
     <div class="err-msg" id="auth-err"></div>
-    <button class="btn" id="auth-submit">Create account</button>
-    <div class="switch-line" id="auth-switch">Already have an account? <button type="button" id="auth-toggle">Sign in</button></div>
+    <button class="btn" id="auth-submit">Sign in</button>
+    <div class="switch-line" id="auth-switch">No account yet? <button type="button" id="auth-toggle">Create one</button></div>
   </div>
 </div>
 
@@ -240,7 +240,7 @@
 <script src="https://js.stripe.com/v3/"></script>
 <script src="../assets/app-shared.js"></script>
 <script>
-let authMode = 'register';
+let authMode = 'login';
 let appliedPromo = null;
 let pendingQuote = null;
 
@@ -391,7 +391,7 @@ $('book-submit').addEventListener('click', () => {
     if (q.hours <= 0){ err.textContent = 'End time must be after start time.'; return; }
     if (!checkDateField('ev-date', 'ev-avail-msg')){ err.textContent = 'That date is unavailable — pick another.'; return; }
   }
-  if (!user){ pendingBooking = true; openAuth('register'); return; }
+  if (!user){ pendingBooking = true; openAuth('login'); return; }
   openSignModal(q);
 });
 $('sign-submit').addEventListener('click', async () => {
@@ -448,7 +448,7 @@ function openAuth(mode){
 }
 $('btn-account').addEventListener('click', () => {
   if (user) window.location.href = '../dashboard.html';
-  else openAuth('register');
+  else openAuth('login');
 });
 $('auth-toggle').addEventListener('click', () => openAuth(authMode === 'register' ? 'login' : 'register'));
 $('auth-submit').addEventListener('click', async () => {

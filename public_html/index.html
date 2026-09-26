@@ -760,7 +760,7 @@
 <div class="modal-bg" id="auth-modal">
   <div class="modal narrow">
     <button class="close" data-close>×</button>
-    <h2 id="auth-title">Create your account</h2>
+    <h2 id="auth-title">Sign in</h2>
     <p style="font-size:0.86rem;color:#6b7280;">Manage every booking in one place — and get first access to discounts and open dates.</p>
     <div id="auth-name-wrap">
       <label for="a-name">Your name</label><input type="text" id="a-name" placeholder="Dr. Jane Smith">
@@ -769,8 +769,8 @@
     <label for="a-email">Email</label><input type="email" id="a-email" placeholder="you@practice.com">
     <label for="a-pass">Password</label><input type="password" id="a-pass">
     <div class="err-msg" id="auth-err"></div>
-    <button class="btn" id="auth-submit">Create account</button>
-    <div class="switch-line" id="auth-switch">Already have an account? <button type="button" id="auth-toggle">Sign in</button></div>
+    <button class="btn" id="auth-submit">Sign in</button>
+    <div class="switch-line" id="auth-switch">No account yet? <button type="button" id="auth-toggle">Create one</button></div>
     <div class="switch-line hidden" id="auth-forgot-line" style="margin-top:6px;"><button type="button" id="auth-forgot-link">Forgot password?</button></div>
   </div>
 </div>
@@ -1409,7 +1409,7 @@ document.querySelectorAll('svg .region').forEach(p =>
 $('cd-dress').addEventListener('change', () => {
   $('cd-dress-other').classList.toggle('hidden', $('cd-dress').value !== 'other');
 });
-let authMode = 'register';
+let authMode = 'login';
 function openAuth(mode){
   authMode = mode;
   $('auth-title').textContent = mode === 'register' ? 'Create your account' : 'Sign in';
@@ -1423,7 +1423,7 @@ function openAuth(mode){
 }
 $('btn-account').addEventListener('click', () => {
   if (user) window.location.href = 'dashboard.html';
-  else openAuth('register');
+  else openAuth('login');
 });
 $('auth-toggle').addEventListener('click', () => openAuth(authMode === 'register' ? 'login' : 'register'));
 $('auth-forgot-link').addEventListener('click', () => {
@@ -1512,7 +1512,7 @@ $('auth-submit').addEventListener('click', async () => {
 let pendingBooking = null;
 $('btn-book').addEventListener('click', () => {
   const q = quote();
-  if (!user){ pendingBooking = q; openAuth('register'); return; }
+  if (!user){ pendingBooking = q; openAuth('login'); return; }
   openSignModal(q);
 });
 let signPendingQuote = null;
