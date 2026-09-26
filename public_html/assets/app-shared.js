@@ -70,6 +70,12 @@ let flexRateDates = []; // admin-published open dates at a set promotional rate 
 let blackouts = [], allBooked = [], isAdmin = false;
 const ADMIN_EMAIL = 'drmichaelmcpherson@gmail.com'; // provider account
 const dstr = d => d.toISOString().slice(0,10);
+function rangeDates(a,b){
+  const out=[], d=new Date(a+'T12:00:00'), end=new Date((b||a)+'T12:00:00');
+  let guard=0;
+  while(d<=end && guard++<400){ out.push(dstr(d)); d.setDate(d.getDate()+1); }
+  return out;
+}
 const localDateStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 let bookedDaySet = [];
 async function apiFetch(url, opts = {}){

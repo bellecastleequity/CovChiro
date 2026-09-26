@@ -214,7 +214,7 @@ function renderAdmin(){
     el.querySelectorAll('[data-unblock]').forEach(btn => btn.addEventListener('click', async () => {
       try { await apiFetch('/api/booking.php?action=blackout_remove', { method: 'POST', body: JSON.stringify({ id: btn.dataset.unblock }) }); }
       catch (e) { alert(e.message); }
-      await loadAvailability(); renderAdmin(); recalc();
+      await loadAvailability(); renderAdmin();
     }));
   } else if (admView === 'booked') {
     const list = adminBookings.slice().sort((a,b) => a.dates[0].localeCompare(b.dates[0]));
@@ -831,7 +831,7 @@ $('bl-add').addEventListener('click', async () => {
   admView = 'blocks';
   document.querySelectorAll('[data-adm]').forEach(x => x.classList.toggle('on', x.dataset.adm === 'blocks'));
   await loadAvailability();
-  renderAdmin(); recalc();
+  renderAdmin();
 });
 
 

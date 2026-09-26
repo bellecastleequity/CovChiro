@@ -870,12 +870,6 @@ function daysBetween(start, n){
   for(let i=0;i<n;i++){ out.push(dstr(d)); d.setDate(d.getDate()+1); }
   return out;
 }
-function rangeDates(a,b){
-  const out=[], d=new Date(a+'T12:00:00'), end=new Date((b||a)+'T12:00:00');
-  let guard=0;
-  while(d<=end && guard++<400){ out.push(dstr(d)); d.setDate(d.getDate()+1); }
-  return out;
-}
 function checkAvailability(entries){
   for(const { date: day, half: wantHalf, time: wantTime } of entries){
     for(const b of blackouts){
