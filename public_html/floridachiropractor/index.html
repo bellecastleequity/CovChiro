@@ -95,6 +95,7 @@
           <div><label for="hv-date">Visit date</label><input type="date" id="hv-date"></div>
           <div><label for="hv-zip">ZIP code</label><input type="text" id="hv-zip" maxlength="5" inputmode="numeric" placeholder="e.g. 32801"></div>
         </div>
+        <p class="avail-msg hidden" id="hv-avail-msg" style="color:var(--red);font-size:0.82rem;margin-top:6px;"></p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:13px;">
           <div><label for="hv-adults">Number of adult patients</label><input type="number" id="hv-adults" min="1" value="1"></div>
           <div><label for="hv-children">Children seen alongside (add-on)</label><input type="number" id="hv-children" min="0" value="0"></div>
@@ -106,6 +107,7 @@
           <div><label for="ev-date">Event date</label><input type="date" id="ev-date"></div>
           <div><label for="ev-name">Event name / location</label><input type="text" id="ev-name" placeholder="e.g. Downtown 5K, Orlando"></div>
         </div>
+        <p class="avail-msg hidden" id="ev-avail-msg" style="color:var(--red);font-size:0.82rem;margin-top:6px;"></p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:13px;">
           <div><label for="ev-start">Start time</label><input type="time" id="ev-start"></div>
           <div><label for="ev-end">End time</label><input type="time" id="ev-end"></div>
@@ -302,6 +304,28 @@ function updateQuote(){
 document.querySelectorAll('#hv-kind, #hv-adults, #hv-children, #hv-zip, #ev-start, #ev-end').forEach(el =>
   el.addEventListener('input', updateQuote));
 $('hv-kind').addEventListener('change', updateQuote);
+
+function dateUnavailableReason(dateStr){
+  if (!dateStr) return null;
+  const blocked = blackouts.some(b => b.scope === 'all' && rangeDates(b.start, b.end).includes(dateStr));
+  if (blocked) return 'blocked off';
+  if (allBooked.some(bk => bk.dates && bk.dates.includes(dateStr))) return 'already booked';
+  return null;
+}
+function checkDateField(inputId, msgId){
+  const dateStr = $(inputId).value;
+  const reason = dateUnavailableReason(dateStr);
+  const msgEl = $(msgId);
+  if (reason){
+    msgEl.textContent = `That date is ${reason} — pick another.`;
+    msgEl.classList.remove('hidden');
+  } else {
+    msgEl.classList.add('hidden');
+  }
+  return !reason;
+}
+$('hv-date').addEventListener('change', () => checkDateField('hv-date', 'hv-avail-msg'));
+$('ev-date').addEventListener('change', () => checkDateField('ev-date', 'ev-avail-msg'));
 $('promo-apply').addEventListener('click', async () => {
   const codeStr = $('promo-input').value.trim();
   const msg = $('promo-msg');
@@ -360,10 +384,12 @@ $('book-submit').addEventListener('click', () => {
   if (q.kind === 'homevisit'){
     if (!$('hv-date').value){ err.textContent = 'Pick a visit date.'; return; }
     if (!/^\d{5}$/.test($('hv-zip').value.trim())){ err.textContent = 'Enter a valid 5-digit ZIP code.'; return; }
+    if (!checkDateField('hv-date', 'hv-avail-msg')){ err.textContent = 'That date is unavailable — pick another.'; return; }
   } else {
     if (!$('ev-date').value){ err.textContent = 'Pick an event date.'; return; }
     if (!$('ev-start').value || !$('ev-end').value){ err.textContent = 'Enter both a start and end time.'; return; }
     if (q.hours <= 0){ err.textContent = 'End time must be after start time.'; return; }
+    if (!checkDateField('ev-date', 'ev-avail-msg')){ err.textContent = 'That date is unavailable — pick another.'; return; }
   }
   if (!user){ pendingBooking = true; openAuth('register'); return; }
   openSignModal(q);
@@ -454,6 +480,7 @@ $('auth-submit').addEventListener('click', async () => {
 async function loadSession(){
   try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
   catch (e) { user = null; }
+  await loadAvailability();
   renderAuthState();
   initChatWidget();
 }

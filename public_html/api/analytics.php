@@ -10,12 +10,24 @@ $totalEver = (int)$pdo->query('SELECT COUNT(*) AS c FROM bookings')->fetch()['c'
 $cancelledCount = (int)$pdo->query("SELECT COUNT(*) AS c FROM bookings WHERE status = 'cancelled'")->fetch()['c'];
 $cancellationRate = $totalEver ? $cancelledCount / $totalEver : 0;
 
-$active = $pdo->query("SELECT user_id, region, total, start_date, created_at, review_rating FROM bookings WHERE status != 'cancelled'")->fetchAll();
+$active = $pdo->query("SELECT user_id, region, total, start_date, created_at, review_rating, coverage_type FROM bookings WHERE status != 'cancelled'")->fetchAll();
 $activeCount = count($active);
 $avgBookingValue = $activeCount ? array_sum(array_column($active, 'total')) / $activeCount : 0;
 
 $geo = [];
 foreach ($active as $b) { if ($b['region']) $geo[$b['region']] = ($geo[$b['region']] ?? 0) + 1; }
+
+// Service-line breakdown — coveragechiropractor.com's office coverage vs.
+// thefloridachiropractor.com's home visits and events, since they share this
+// same bookings table.
+$SERVICE_LABEL = ['office' => 'Office coverage', 'homevisit' => 'Home visits', 'event' => 'Events'];
+$byService = [];
+foreach ($active as $b) {
+    $key = $SERVICE_LABEL[$b['coverage_type']] ?? $b['coverage_type'];
+    if (!isset($byService[$key])) $byService[$key] = ['count' => 0, 'revenue' => 0];
+    $byService[$key]['count']++;
+    $byService[$key]['revenue'] += (float)$b['total'];
+}
 
 $leadTimes = [];
 foreach ($active as $b) {
@@ -121,4 +133,5 @@ json_response([
     'utilization' => $utilization, 'windowDays' => $windowDays,
     'seasonal' => $seasonal, 'flexPublished' => $flexPublished, 'flexBooked' => $flexBooked, 'flexConversionRate' => $flexConversionRate,
     'flexByDiscount' => $flexByDiscount, 'flexByRegion' => $flexByRegion, 'flexByLead' => $flexByLead,
+    'byService' => $byService,
 ]);
