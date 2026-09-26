@@ -89,6 +89,11 @@ function openDatesInWindow(daysAhead){
   }
   return out;
 }
+function suggestFlexDiscount(daysOut, openCount){
+  let pct = daysOut <= 1 ? 0 : daysOut <= 3 ? 20 : daysOut <= 7 ? 15 : daysOut <= 14 ? 10 : 5;
+  if (openCount >= 5) pct += 5; // more open dates nearby means a bigger nudge helps fill them
+  return Math.min(40, pct);
+}
 function pastClientList(){
   const seen = new Map();
   adminBookings.forEach(b => {
@@ -416,34 +421,80 @@ function renderAdmin(){
         <p style="font-size:0.85rem;color:#6b7280;">This identifies open dates on your calendar and drafts outreach copy — it can't send email on its own from a static site, so sending is still a manual step: copy the draft, paste it into your email client, and send it to whichever clients below make sense. Dates within 3 days are flagged, since that's a natural point to start reminding past clients before the date goes fully to waste.</p>
       </div>`;
 
+    const suggestedUrgent = urgent.filter(d => suggestFlexDiscount(d.daysOut, openDates.length) > 0);
     const urgentHtml = urgent.length ? `
       <div class="admin-card" style="margin-bottom:20px;border-color:var(--ochre);">
         <h3 style="color:#7a5a20;">Open within 3 days (${urgent.length})</h3>
-        ${urgent.map(d => `
+        ${urgent.map(d => { const sugg = suggestFlexDiscount(d.daysOut, openDates.length); return `
           <div class="blk" style="margin-bottom:8px;">
             <div>
               <div class="bd">${d.date}</div>
-              <div class="bn">${d.daysOut} day${d.daysOut !== 1 ? 's' : ''} away${d.daysOut <= 1 ? ' · qualifies for automatic 10% last-minute discount' : ''}</div>
+              <div class="bn">${d.daysOut} day${d.daysOut !== 1 ? 's' : ''} away${d.daysOut <= 1 ? ' · qualifies for automatic 10% last-minute discount' : ` · suggested Flex Rate: ${sugg}% off`}</div>
             </div>
             <div style="display:flex;gap:6px;">
               <button class="btn ghost sm" data-draft="${d.date}" data-daysout="${d.daysOut}">Draft email</button>
-              <button class="btn ghost sm" data-flex-publish="${d.date}">Publish Flex Rate</button>
+              <button class="btn ghost sm" data-flex-publish="${d.date}" data-daysout="${d.daysOut}">Publish Flex Rate</button>
             </div>
-          </div>`).join('')}
+          </div>`; }).join('')}
+        ${suggestedUrgent.length ? `<button class="btn ghost sm" id="publish-all-suggested" style="margin-top:6px;">Publish Flex Rate on all ${suggestedUrgent.length} at suggested rates</button>` : ''}
       </div>` : `<div class="admin-card" style="margin-bottom:20px;"><p style="font-size:0.85rem;color:#6b7280;">No dates open within the next 3 days right now.</p></div>`;
 
     const upcomingHtml = upcoming.length ? `
       <div class="admin-card" style="margin-bottom:20px;">
         <h3>Open 4–14 days out (${upcoming.length})</h3>
-        ${upcoming.map(d => `
+        ${upcoming.map(d => { const sugg = suggestFlexDiscount(d.daysOut, openDates.length); return `
           <div class="blk" style="margin-bottom:8px;">
-            <div><div class="bd">${d.date}</div><div class="bn">${d.daysOut} days away</div></div>
+            <div><div class="bd">${d.date}</div><div class="bn">${d.daysOut} days away · suggested Flex Rate: ${sugg}% off</div></div>
             <div style="display:flex;gap:6px;">
               <button class="btn ghost sm" data-draft="${d.date}" data-daysout="${d.daysOut}">Draft email</button>
-              <button class="btn ghost sm" data-flex-publish="${d.date}">Publish Flex Rate</button>
+              <button class="btn ghost sm" data-flex-publish="${d.date}" data-daysout="${d.daysOut}">Publish Flex Rate</button>
             </div>
-          </div>`).join('')}
+          </div>`; }).join('')}
       </div>` : '';
+
+    const bulkFlexHtml = `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Bulk / recurring Flex Rate</h3>
+        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px;">Publish the same Flex Rate across a range of dates, or a recurring weekday pattern (e.g. every open Friday), in one step. Already-booked or blocked dates are skipped automatically — nothing here can double-book a date.</p>
+        <label for="bulk-mode">Mode</label>
+        <select id="bulk-mode">
+          <option value="range">Date range</option>
+          <option value="weekday">Recurring weekday</option>
+        </select>
+        <div id="bulk-range-fields" class="row2" style="margin-top:12px;">
+          <div><label for="bulk-start">Start date</label><input type="date" id="bulk-start"></div>
+          <div><label for="bulk-end">End date</label><input type="date" id="bulk-end"></div>
+        </div>
+        <div id="bulk-weekday-fields" class="hidden" style="margin-top:12px;">
+          <label>Days of week</label>
+          <div class="technique-grid" id="bulk-weekdays">
+            <label class="tq"><input type="checkbox" value="1" checked> Mon</label>
+            <label class="tq"><input type="checkbox" value="2" checked> Tue</label>
+            <label class="tq"><input type="checkbox" value="3" checked> Wed</label>
+            <label class="tq"><input type="checkbox" value="4" checked> Thu</label>
+            <label class="tq"><input type="checkbox" value="5" checked> Fri</label>
+            <label class="tq"><input type="checkbox" value="6"> Sat</label>
+            <label class="tq"><input type="checkbox" value="0"> Sun</label>
+          </div>
+          <label for="bulk-weeks" style="margin-top:10px;">Weeks ahead</label>
+          <input type="number" id="bulk-weeks" min="1" max="12" value="4">
+        </div>
+        <div class="row2" style="margin-top:12px;">
+          <div><label for="bulk-region">Region</label>
+            <select id="bulk-region"><option value="central">Central FL</option><option value="north">North FL</option><option value="south">South FL</option></select>
+          </div>
+          <div><label for="bulk-discount">Discount off standard rate (%)</label><input type="number" id="bulk-discount" min="0" max="90" value="15"></div>
+        </div>
+        <div class="row2" style="margin-top:12px;">
+          <div><label for="bulk-type">Coverage type</label><select id="bulk-type"><option value="full">Full day</option><option value="half-am">Half day — morning</option><option value="half-pm">Half day — afternoon</option></select></div>
+          <div><label for="bulk-note">Note (optional)</label><input type="text" id="bulk-note" placeholder="e.g. Central FL offices"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button class="btn ghost sm" id="bulk-preview">Preview matching dates</button>
+          <button class="btn sm" id="bulk-publish-btn">Publish all</button>
+        </div>
+        <div id="bulk-result" style="margin-top:10px;font-size:0.85rem;color:#414a56;"></div>
+      </div>`;
 
     const activeFlexRates = flexRateDates.filter(f => f.status === 'open');
     const flexRateAdminHtml = `
@@ -490,7 +541,7 @@ function renderAdmin(){
         <span id="draft-copied" style="font-size:0.8rem;color:var(--teal-dark);margin-left:10px;"></span>
       </div>`;
 
-    el.innerHTML = introHtml + urgentHtml + upcomingHtml + flexRateAdminHtml + feedbackNeededHtml + clientsHtml + draftHtml;
+    el.innerHTML = introHtml + bulkFlexHtml + urgentHtml + upcomingHtml + flexRateAdminHtml + feedbackNeededHtml + clientsHtml + draftHtml;
 
     el.querySelectorAll('[data-draft-feedback]').forEach(btn => btn.addEventListener('click', () => {
       const [name, bookingId] = btn.dataset.draftFeedback.split('|');
@@ -533,9 +584,96 @@ function renderAdmin(){
     el.querySelectorAll('[data-flex-publish]').forEach(btn => btn.addEventListener('click', () => {
       $('flex-publish-date').textContent = btn.dataset.flexPublish;
       $('flex-publish-card').dataset.targetDate = btn.dataset.flexPublish;
+      $('flex-discount').value = suggestFlexDiscount(parseInt(btn.dataset.daysout), openDates.length) || 15;
       $('flex-publish-card').classList.remove('hidden');
       $('flex-publish-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }));
+    const publishAllSuggestedBtn = $('publish-all-suggested');
+    if (publishAllSuggestedBtn) publishAllSuggestedBtn.addEventListener('click', async () => {
+      if (!confirm(`Publish Flex Rate on ${suggestedUrgent.length} date(s) at their suggested discounts (Central FL, full day)? You can unpublish or adjust any of them individually afterward.`)) return;
+      publishAllSuggestedBtn.disabled = true;
+      for (const d of suggestedUrgent){
+        try {
+          await apiFetch('/api/flexrate.php?action=publish', { method: 'POST', body: JSON.stringify({
+            date: d.date, region: 'central', type: 'full', discountPct: suggestFlexDiscount(d.daysOut, openDates.length), note: 'Auto-suggested'
+          })});
+        } catch (e) { /* keep going even if one date fails */ }
+      }
+      flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || [];
+      renderAdmin();
+    });
+    $('bulk-mode').addEventListener('change', () => {
+      const isWeekday = $('bulk-mode').value === 'weekday';
+      $('bulk-range-fields').classList.toggle('hidden', isWeekday);
+      $('bulk-weekday-fields').classList.toggle('hidden', !isWeekday);
+    });
+    function bulkFlexCandidates(){
+      const mode = $('bulk-mode').value;
+      const type = $('bulk-type').value;
+      const isOpenDate = (dateStr) => {
+        const blocked = blackouts.some(b => {
+          if (!rangeDates(b.start, b.end).includes(dateStr)) return false;
+          if (b.scope === 'all') return true;
+          if (type === 'full') return true;
+          return (type === 'half-am' && b.scope === 'am') || (type === 'half-pm' && b.scope === 'pm');
+        });
+        if (blocked) return false;
+        return !allBooked.some(bk => bk.dates && bk.dates.includes(dateStr));
+      };
+      const out = [];
+      if (mode === 'weekday'){
+        const weekdays = Array.from(document.querySelectorAll('#bulk-weekdays input:checked')).map(el2 => parseInt(el2.value));
+        const weeks = Math.max(1, Math.min(12, parseInt($('bulk-weeks').value) || 4));
+        const today = new Date(); today.setHours(0,0,0,0);
+        for (let i = 1; i <= weeks * 7; i++){
+          const d = new Date(today); d.setDate(d.getDate() + i);
+          if (weekdays.includes(d.getDay())){
+            const ds = localDateStr(d);
+            if (isOpenDate(ds)) out.push(ds);
+          }
+        }
+      } else {
+        const start = $('bulk-start').value, end = $('bulk-end').value;
+        if (!start || !end) return [];
+        let d = new Date(start + 'T12:00:00');
+        const endD = new Date(end + 'T12:00:00');
+        let guard = 0;
+        while (d <= endD && guard++ < 200){
+          const ds = localDateStr(d);
+          if (isOpenDate(ds)) out.push(ds);
+          d.setDate(d.getDate() + 1);
+        }
+      }
+      return out;
+    }
+    $('bulk-preview').addEventListener('click', () => {
+      const dates = bulkFlexCandidates();
+      $('bulk-result').textContent = dates.length
+        ? `${dates.length} open date${dates.length !== 1 ? 's' : ''} match: ${dates.slice(0, 12).join(', ')}${dates.length > 12 ? '…' : ''}`
+        : 'No open dates match right now.';
+    });
+    $('bulk-publish-btn').addEventListener('click', async () => {
+      const mode = $('bulk-mode').value;
+      const region = $('bulk-region').value;
+      const type = $('bulk-type').value;
+      const discountPct = Math.max(0, Math.min(90, parseFloat($('bulk-discount').value) || 0));
+      const note = $('bulk-note').value.trim();
+      const body = { mode, region, type, discountPct, note };
+      if (mode === 'weekday'){
+        body.weekdays = Array.from(document.querySelectorAll('#bulk-weekdays input:checked')).map(el2 => parseInt(el2.value));
+        body.weeksAhead = parseInt($('bulk-weeks').value) || 4;
+      } else {
+        body.startDate = $('bulk-start').value;
+        body.endDate = $('bulk-end').value;
+      }
+      $('bulk-publish-btn').disabled = true;
+      try {
+        const r = await apiFetch('/api/flexrate.php?action=bulk_publish', { method: 'POST', body: JSON.stringify(body) });
+        flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || [];
+        alert(`Published ${r.published.length} date${r.published.length !== 1 ? 's' : ''}${r.skipped.length ? `, skipped ${r.skipped.length} already booked or blocked` : ''}.`);
+        renderAdmin();
+      } catch (e) { alert(e.message); $('bulk-publish-btn').disabled = false; }
+    });
     const flexConfirmBtn = $('flex-publish-confirm');
     if (flexConfirmBtn) flexConfirmBtn.addEventListener('click', async () => {
       const date = $('flex-publish-card').dataset.targetDate;
@@ -729,7 +867,26 @@ function renderAdmin(){
           </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No date data yet.</p>`}
       </div>`;
 
-    el.innerHTML = cardsHtml + geoHtml + seasonalHtml;
+    const barSection = (title, group, note) => {
+      const entries = Object.entries(group || {});
+      if (!entries.length) return `<div class="admin-card" style="margin-top:20px;"><h3>${title}</h3><p style="font-size:0.85rem;color:#6b7280;">${note}</p></div>`;
+      const maxN = Math.max(1, ...entries.map(([,v]) => v.published));
+      return `
+        <div class="admin-card" style="margin-top:20px;">
+          <h3>${title}</h3>
+          ${entries.map(([label, v]) => `
+            <div class="an-bar-row">
+              <span class="an-bar-label">${label}</span>
+              <div class="an-bar-track"><div class="an-bar-fill" style="width:${(v.published/maxN*100).toFixed(0)}%;"></div></div>
+              <span class="an-bar-val">${Math.round(v.rate*100)}% of ${v.published}</span>
+            </div>`).join('')}
+        </div>`;
+    };
+    const flexDiscountHtml = barSection('Flex Rate conversion by discount level', an.flexByDiscount, 'No resolved Flex Rate listings yet — this fills in once published dates get booked or expire.');
+    const flexRegionHtml = barSection('Flex Rate conversion by region', an.flexByRegion, 'No resolved Flex Rate listings yet.');
+    const flexLeadHtml = barSection('Flex Rate conversion by how far ahead it was published', an.flexByLead, 'No resolved Flex Rate listings yet.');
+
+    el.innerHTML = cardsHtml + geoHtml + seasonalHtml + flexDiscountHtml + flexRegionHtml + flexLeadHtml;
   } else if (admView === 'messages'){
     renderMessagesTab(el);
   }

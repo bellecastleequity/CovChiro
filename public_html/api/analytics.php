@@ -62,6 +62,50 @@ $flexPublished = ($flexCounts['open'] ?? 0) + ($flexCounts['booked'] ?? 0) + ($f
 $flexBooked = (int)($flexCounts['booked'] ?? 0);
 $flexConversionRate = $flexPublished ? $flexBooked / $flexPublished : null;
 
+// Deeper Flex Rate breakdowns: which discount level, region, and how far
+// ahead of the date it was published actually convert best. Only resolved
+// listings (booked or withdrawn) count here — a still-open listing hasn't
+// had its outcome decided yet, so including it would understate rates for
+// dates published only recently.
+function bucket_discount_pct($rate) {
+    $pct = $rate * 100;
+    if ($pct < 10) return '0-9%';
+    if ($pct < 20) return '10-19%';
+    if ($pct < 30) return '20-29%';
+    return '30%+';
+}
+function bucket_lead_days($days) {
+    if ($days <= 1) return 'Published 0-1 days out';
+    if ($days <= 5) return 'Published 2-5 days out';
+    if ($days <= 10) return 'Published 6-10 days out';
+    return 'Published 11+ days out';
+}
+$flexByDiscount = []; $flexByRegion = []; $flexByLead = [];
+$flexRows = $pdo->query("SELECT date, region, discount_rate, status, created_at FROM flex_rate_dates WHERE status IN ('booked', 'withdrawn')")->fetchAll();
+foreach ($flexRows as $f) {
+    $booked = $f['status'] === 'booked' ? 1 : 0;
+
+    $dBucket = bucket_discount_pct($f['discount_rate']);
+    if (!isset($flexByDiscount[$dBucket])) $flexByDiscount[$dBucket] = ['published' => 0, 'booked' => 0];
+    $flexByDiscount[$dBucket]['published']++;
+    $flexByDiscount[$dBucket]['booked'] += $booked;
+
+    $r = $f['region'] ?: 'unknown';
+    if (!isset($flexByRegion[$r])) $flexByRegion[$r] = ['published' => 0, 'booked' => 0];
+    $flexByRegion[$r]['published']++;
+    $flexByRegion[$r]['booked'] += $booked;
+
+    $leadDays = max(0, (int)round((strtotime($f['date']) - strtotime($f['created_at'])) / 86400));
+    $lBucket = bucket_lead_days($leadDays);
+    if (!isset($flexByLead[$lBucket])) $flexByLead[$lBucket] = ['published' => 0, 'booked' => 0];
+    $flexByLead[$lBucket]['published']++;
+    $flexByLead[$lBucket]['booked'] += $booked;
+}
+foreach ([&$flexByDiscount, &$flexByRegion, &$flexByLead] as &$group) {
+    foreach ($group as &$v) { $v['rate'] = $v['published'] ? $v['booked'] / $v['published'] : 0; }
+}
+unset($group, $v);
+
 json_response([
     'totalEver' => $totalEver, 'cancelledCount' => $cancelledCount, 'avgBookingValue' => round($avgBookingValue, 2), 'cancellationRate' => $cancellationRate,
     'geo' => $geo, 'avgLeadTime' => $avgLeadTime !== null ? round($avgLeadTime, 1) : null, 'leadTimeSampleSize' => count($leadTimes),
@@ -69,4 +113,5 @@ json_response([
     'avgRating' => $avgRating !== null ? round($avgRating, 2) : null, 'ratingSampleSize' => count($ratings),
     'utilization' => $utilization, 'windowDays' => $windowDays,
     'seasonal' => $seasonal, 'flexPublished' => $flexPublished, 'flexBooked' => $flexBooked, 'flexConversionRate' => $flexConversionRate,
+    'flexByDiscount' => $flexByDiscount, 'flexByRegion' => $flexByRegion, 'flexByLead' => $flexByLead,
 ]);
