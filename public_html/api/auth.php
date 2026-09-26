@@ -34,7 +34,7 @@ function handle_register(PDO $pdo) {
     $userId = (int)$pdo->lastInsertId();
 
     start_session_for($userId, $email);
-    json_response(['success' => true, 'user' => public_user($email, $name, $clinic)]);
+    json_response(['success' => true, 'user' => public_user($email, $name, $clinic, $phone)]);
 }
 
 function handle_login(PDO $pdo) {
@@ -65,7 +65,7 @@ function handle_login(PDO $pdo) {
     $stmt->execute([$user['id']]);
 
     start_session_for((int)$user['id'], $email);
-    json_response(['success' => true, 'user' => public_user($email, $user['name'], $user['clinic_name'])]);
+    json_response(['success' => true, 'user' => public_user($email, $user['name'], $user['clinic_name'], $user['phone'])]);
 }
 
 function handle_logout() {
@@ -81,11 +81,11 @@ function handle_logout() {
 function handle_me(PDO $pdo) {
     $current = current_user_or_null();
     if (!$current) json_response(['user' => null]);
-    $stmt = $pdo->prepare('SELECT email, name, clinic_name FROM users WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT email, name, clinic_name, phone FROM users WHERE id = ?');
     $stmt->execute([$current['id']]);
     $user = $stmt->fetch();
     if (!$user) json_response(['user' => null]);
-    json_response(['user' => array_merge(public_user($user['email'], $user['name'], $user['clinic_name']), ['isAdmin' => $current['is_admin']])]);
+    json_response(['user' => array_merge(public_user($user['email'], $user['name'], $user['clinic_name'], $user['phone']), ['isAdmin' => $current['is_admin']])]);
 }
 
 function start_session_for($userId, $email) {
@@ -95,11 +95,12 @@ function start_session_for($userId, $email) {
     $_SESSION['is_admin'] = (strtolower($email) === strtolower(ADMIN_EMAIL));
 }
 
-function public_user($email, $name, $clinic) {
+function public_user($email, $name, $clinic, $phone = '') {
     return [
         'email' => $email,
         'name' => $name,
         'clinic' => $clinic ?: '',
+        'phone' => $phone ?: '',
         'isAdmin' => strtolower($email) === strtolower(ADMIN_EMAIL),
     ];
 }

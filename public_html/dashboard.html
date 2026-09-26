@@ -39,10 +39,48 @@
       <button class="dash-tab hidden" data-view="balance">Balance due</button>
       <button class="dash-tab" data-view="past">Past</button>
       <button class="dash-tab" data-view="cancelled">Cancelled</button>
-      <button class="dash-tab hidden" data-view="documents">Documents &amp; forms</button>
+      <button class="dash-tab" data-view="video">Video calls</button>
+      <button class="dash-tab" data-view="documents">Resources &amp; documents</button>
+      <button class="dash-tab" data-view="profile">Profile</button>
     </div>
     <div id="dash-list"></div>
     <div id="dash-standing"></div>
+    <div id="dash-video" class="hidden">
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Request a video consult</h3>
+        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px;">10 minutes, Monday–Friday, 12:00–1:00pm. Pick a weekday and Dr. McPherson will email you a Zoom link for that time.</p>
+        <button class="btn ghost sm" id="video-tab-request">Request a video consult</button>
+      </div>
+      <div id="dash-video-list"></div>
+    </div>
+    <div id="dash-profile" class="hidden">
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Account details</h3>
+        <label for="pf-name">Name</label>
+        <input type="text" id="pf-name">
+        <label for="pf-clinic" style="margin-top:12px;">Clinic name</label>
+        <input type="text" id="pf-clinic">
+        <label for="pf-phone" style="margin-top:12px;">Phone</label>
+        <input type="tel" id="pf-phone">
+        <label for="pf-email" style="margin-top:12px;">Email</label>
+        <input type="email" id="pf-email" disabled style="opacity:0.7;">
+        <button class="btn" id="pf-save" style="width:100%;margin-top:16px;">Save changes</button>
+        <div class="err-msg" id="pf-err"></div>
+        <span id="pf-saved" style="font-size:0.8rem;color:var(--teal-dark);margin-left:6px;"></span>
+      </div>
+      <div class="admin-card">
+        <h3>Change password</h3>
+        <label for="pf-current-pass">Current password</label>
+        <input type="password" id="pf-current-pass">
+        <label for="pf-new-pass" style="margin-top:12px;">New password</label>
+        <input type="password" id="pf-new-pass" placeholder="At least 8 characters">
+        <label for="pf-new-pass2" style="margin-top:12px;">Confirm new password</label>
+        <input type="password" id="pf-new-pass2">
+        <button class="btn" id="pf-pass-save" style="width:100%;margin-top:16px;">Update password</button>
+        <div class="err-msg" id="pf-pass-err"></div>
+        <span id="pf-pass-saved" style="font-size:0.8rem;color:var(--teal-dark);margin-left:6px;"></span>
+      </div>
+    </div>
     <div id="dash-documents" class="hidden">
       <div class="doc-row">
         <div class="doc-main">
@@ -79,7 +117,7 @@
         </div>
         <a class="btn ghost sm" href="documents/coverage-guidelines.docx">Download</a>
       </div>
-      <p class="doc-note">These documents apply to office coverage bookings.</p>
+      <p class="doc-note">Documents and forms available to every account holder.</p>
       <p class="doc-note" id="malpractice-pending-note">The malpractice declaration page will be available for download once uploaded — if the link above doesn't open a file yet, use the contact form and a copy will be sent directly.</p>
     </div>
   </div>
@@ -243,16 +281,69 @@ async function openStandingPaymentModal(agreementId, date, amountLabel, onSucces
   paymentOnSuccess = onSuccess;
   await mountPaymentElement('/api/payment.php?action=create_standing_payment_intent', { agreementId, date }, amountLabel);
 }
-document.querySelectorAll('.dash-tab').forEach(t => t.addEventListener('click', () => {
+const DASH_CUSTOM_VIEWS = ['documents', 'video', 'profile'];
+document.querySelectorAll('.dash-tab').forEach(t => t.addEventListener('click', async () => {
   document.querySelectorAll('.dash-tab').forEach(x => x.classList.remove('on'));
   t.classList.add('on'); dashView = t.dataset.view;
-  $('dash-list').classList.toggle('hidden', dashView === 'documents');
+  const isCustom = DASH_CUSTOM_VIEWS.includes(dashView);
+  $('dash-list').classList.toggle('hidden', isCustom);
   $('dash-documents').classList.toggle('hidden', dashView !== 'documents');
-  if (dashView !== 'documents') renderDash();
+  $('dash-video').classList.toggle('hidden', dashView !== 'video');
+  $('dash-profile').classList.toggle('hidden', dashView !== 'profile');
+  if (dashView === 'video') await renderVideoTab();
+  if (dashView === 'profile') renderProfileTab();
+  if (!isCustom) renderDash();
 }));
-function hasDocEligibleBooking(){
-  return bookings.some(b => b.service === 'office' || b.service === 'hourly');
+async function renderVideoTab(){
+  let mine = [];
+  try { mine = (await apiFetch('/api/video.php?action=mine')).requests || []; } catch (e) { mine = []; }
+  const el = $('dash-video-list');
+  if (!mine.length){ el.innerHTML = `<div class="empty">No video consult requests yet.</div>`; return; }
+  const STATUS_LABEL = { pending: 'Pending', scheduled: 'Scheduled', done: 'Completed' };
+  el.innerHTML = mine.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(r => `
+    <div class="blk">
+      <div>
+        <div class="bd">${r.date} · ${r.time}</div>
+        <div class="bn">${STATUS_LABEL[r.status] || r.status}${r.bookingRef ? ' · Ref ' + r.bookingRef : ''}</div>
+      </div>
+    </div>`).join('');
 }
+function renderProfileTab(){
+  $('pf-name').value = user.name || '';
+  $('pf-clinic').value = user.clinic || '';
+  $('pf-phone').value = user.phone || '';
+  $('pf-email').value = user.email || '';
+  $('pf-err').textContent = ''; $('pf-saved').textContent = '';
+  $('pf-current-pass').value = ''; $('pf-new-pass').value = ''; $('pf-new-pass2').value = '';
+  $('pf-pass-err').textContent = ''; $('pf-pass-saved').textContent = '';
+}
+$('pf-save').addEventListener('click', async () => {
+  const name = $('pf-name').value.trim();
+  if (!name){ $('pf-err').textContent = 'Name is required.'; return; }
+  $('pf-err').textContent = '';
+  try {
+    const res = await apiFetch('/api/profile.php?action=update', { method: 'POST', body: JSON.stringify({
+      name, clinic: $('pf-clinic').value.trim(), phone: $('pf-phone').value.trim()
+    })});
+    user = Object.assign({}, user, res.user);
+    $('dash-greeting').textContent = `${user.name.split(' ').slice(-1)[0]}'s bookings`;
+    $('pf-saved').textContent = 'Saved!';
+    setTimeout(() => { $('pf-saved').textContent = ''; }, 3000);
+  } catch (e) { $('pf-err').textContent = e.message; }
+});
+$('pf-pass-save').addEventListener('click', async () => {
+  const cur = $('pf-current-pass').value, next = $('pf-new-pass').value, next2 = $('pf-new-pass2').value;
+  if (!cur){ $('pf-pass-err').textContent = 'Enter your current password.'; return; }
+  if (next.length < 8){ $('pf-pass-err').textContent = 'New password must be at least 8 characters.'; return; }
+  if (next !== next2){ $('pf-pass-err').textContent = 'New passwords do not match.'; return; }
+  $('pf-pass-err').textContent = '';
+  try {
+    await apiFetch('/api/profile.php?action=change_password', { method: 'POST', body: JSON.stringify({ currentPassword: cur, newPassword: next }) });
+    $('pf-current-pass').value = ''; $('pf-new-pass').value = ''; $('pf-new-pass2').value = '';
+    $('pf-pass-saved').textContent = 'Password updated!';
+    setTimeout(() => { $('pf-pass-saved').textContent = ''; }, 3000);
+  } catch (e) { $('pf-pass-err').textContent = e.message; }
+});
 function bucket(b){
   if (b.status === 'cancelled') return 'cancelled';
   if (b.balanceStatus === 'due') return 'balance';
@@ -411,8 +502,9 @@ function renderDash(){
         ${bk === 'pending' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">I'll contact you to confirm this time slot.</div>` : ''}
         ${bk === 'balance' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">Coverage complete — balance is due now.${rem ? ` Reminder ${rem.sent} sent so far, next in ~${rem.nextIn}h until paid.` : ''}</div>` : ''}
         <div class="bk-code">Ref ${b.id}</div>
-        ${b.coverage && (b.coverage.dress || b.coverage.techniques.length || b.coverage.notes || b.coverage.pocName) ? `
+        ${b.coverage && (b.coverage.patientVolume || b.coverage.dress || b.coverage.techniques.length || b.coverage.notes || b.coverage.pocName) ? `
           <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
+            ${b.coverage.patientVolume ? `<div><strong>Expected patient volume:</strong> ${b.coverage.patientVolume}</div>` : ''}
             ${b.coverage.dress ? `<div><strong>Dress code:</strong> ${b.coverage.dress}</div>` : ''}
             ${b.coverage.techniques.length ? `<div style="margin-top:3px;"><strong>Techniques:</strong> ${b.coverage.techniques.join(', ')}</div>` : ''}
             ${b.coverage.notes ? `<div style="margin-top:3px;"><strong>Notes:</strong> ${b.coverage.notes}</div>` : ''}
@@ -630,6 +722,8 @@ $('vi-submit').addEventListener('click', async () => {
   alert(`Thanks, ${name} — your request for ${date}, 12:00–1:00pm, has been sent. Expect a Zoom link by email within one business day.`);
 });
 
+$('video-tab-request').addEventListener('click', () => openVideoRequest(null));
+
 $('chat-bubble').addEventListener('click', () => $('chat-panel').classList.toggle('open'));
 
 async function initDashboardPage(){
@@ -642,8 +736,6 @@ async function initDashboardPage(){
   await loadMyStanding();
   $('dash-greeting').textContent = `${user.name.split(' ').slice(-1)[0]}'s bookings`;
   renderDash();
-  const docTab = document.querySelector('.dash-tab[data-view="documents"]');
-  if (docTab) docTab.classList.toggle('hidden', !hasDocEligibleBooking());
 }
 initDashboardPage();
 

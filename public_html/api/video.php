@@ -6,6 +6,7 @@ $action = $_GET['action'] ?? '';
 switch ($action) {
     case 'create': handle_create($pdo); break;
     case 'list': handle_list($pdo); break;
+    case 'mine': handle_mine($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -46,6 +47,21 @@ function handle_list(PDO $pdo) {
         'id' => $r['id'],
         'name' => $r['name'],
         'email' => $r['email'],
+        'date' => $r['requested_date'],
+        'time' => '12:00pm–1:00pm',
+        'bookingRef' => $r['booking_id'],
+        'status' => $r['status'],
+        'requestedAt' => to_iso($r['requested_at']),
+    ], $rows)]);
+}
+
+function handle_mine(PDO $pdo) {
+    $user = require_login();
+    $stmt = $pdo->prepare('SELECT * FROM video_requests WHERE user_id = ? ORDER BY requested_date DESC');
+    $stmt->execute([$user['id']]);
+    $rows = $stmt->fetchAll();
+    json_response(['requests' => array_map(fn($r) => [
+        'id' => $r['id'],
         'date' => $r['requested_date'],
         'time' => '12:00pm–1:00pm',
         'bookingRef' => $r['booking_id'],

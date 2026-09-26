@@ -237,8 +237,9 @@ function renderAdmin(){
           ${b.balanceStatus === 'due' ? `<div class="bn" style="color:var(--ochre);margin-top:4px;">Balance due${rem ? ` — reminder ${rem.sent} sent, next in ~${rem.nextIn}h` : ''}</div>` : ''}
           ${b.balanceStatus === 'paid' ? `<div class="bn" style="color:var(--teal-dark);margin-top:4px;">Paid in full</div>` : ''}
           ${b.review ? `<div class="bn" style="margin-top:4px;">★ ${b.review.rating}/5${b.review.text ? ' — "' + b.review.text + '"' : ''}</div>` : ''}
-          ${b.coverage && (b.coverage.dress || b.coverage.techniques.length || b.coverage.notes || b.coverage.pocName) ? `
+          ${b.coverage && (b.coverage.patientVolume || b.coverage.dress || b.coverage.techniques.length || b.coverage.notes || b.coverage.pocName) ? `
             <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
+              ${b.coverage.patientVolume ? `<div><strong>Expected patient volume:</strong> ${b.coverage.patientVolume}</div>` : ''}
               ${b.coverage.dress ? `<div><strong>Dress code:</strong> ${b.coverage.dress}</div>` : ''}
               ${b.coverage.techniques.length ? `<div style="margin-top:3px;"><strong>Techniques:</strong> ${b.coverage.techniques.join(', ')}</div>` : ''}
               ${b.coverage.notes ? `<div style="margin-top:3px;"><strong>Notes:</strong> ${b.coverage.notes}</div>` : ''}

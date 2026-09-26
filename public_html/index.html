@@ -301,7 +301,9 @@
 
           <div class="coverage-details" id="coverage-details">
             <h4>Coverage details</h4>
-            <label for="cd-dress">Dress code requested</label>
+            <label for="cd-volume">Expected patient volume for this day (optional)</label>
+            <input type="number" id="cd-volume" min="0" placeholder="e.g. 40">
+            <label for="cd-dress" style="margin-top:16px;">Dress code requested</label>
             <select id="cd-dress">
               <option value="">No preference</option>
               <option value="Medical scrubs">Medical scrubs</option>
@@ -1199,7 +1201,9 @@ function coverageDetails(){
   const dressSel = $('cd-dress').value;
   const dress = dressSel === 'other' ? $('cd-dress-other').value.trim() : dressSel;
   const techniques = Array.from(document.querySelectorAll('.tq input:checked')).map(el => el.value);
+  const volumeVal = $('cd-volume').value;
   return {
+    patientVolume: volumeVal !== '' ? parseInt(volumeVal) : null,
     dress: dress || '',
     techniques,
     notes: $('cd-notes').value.trim(),
@@ -1490,7 +1494,8 @@ function showConfirmation(b){
     <div class="brow total" style="margin-top:14px;"><span>Total</span><span>${money(b.total)}</span></div>
     <div class="brow deposit"><span>Deposit charged today</span><span>${money(b.paid)}</span></div>
     <div class="mileage-note" style="margin-top:16px;"><strong>Coverage hours:</strong> the hours booked are the billable window — a full day includes one meal break of up to 60 minutes, and anything beyond the booked hours (including a longer break) is billed at $100/hour. Full details are in your signed agreement.</div>
-    ${cd && (cd.dress || (cd.techniques && cd.techniques.length) || cd.notes || cd.pocName) ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:0.83rem;color:#5a6472;">
+    ${cd && (cd.patientVolume || cd.dress || (cd.techniques && cd.techniques.length) || cd.notes || cd.pocName) ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:0.83rem;color:#5a6472;">
+        ${cd.patientVolume ? `<div><strong>Expected patient volume:</strong> ${cd.patientVolume}</div>` : ''}
         ${cd.dress ? `<div><strong>Dress code:</strong> ${cd.dress}</div>` : ''}
         ${cd.techniques && cd.techniques.length ? `<div style="margin-top:4px;"><strong>Techniques:</strong> ${cd.techniques.join(', ')}</div>` : ''}
         ${cd.notes ? `<div style="margin-top:4px;"><strong>Notes:</strong> ${cd.notes}</div>` : ''}
