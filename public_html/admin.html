@@ -13,7 +13,7 @@
 
 <header>
   <div class="wrap">
-    <div class="brand"><img src="assets/logo.png" alt="" style="height:44px;width:44px;border-radius:8px;"><div class="brand-text">Dr. Michael McPherson<span>, D.C.</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Provider Portal</div></div></div>
+    <div class="brand"><img src="assets/logo.png" alt="" style="height:44px;width:44px;border-radius:8px;"><div class="brand-text">Coverage<span> Chiropractor</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Provider Portal</div></div></div>
     <nav>
       <a href="index.html">Home</a>
       <a href="dashboard.html">My bookings</a>
@@ -59,6 +59,7 @@
           <button class="dash-tab" data-adm="inventory">Inventory alerts</button>
           <button class="dash-tab" data-adm="standing">Standing days</button>
           <button class="dash-tab" data-adm="analytics">Analytics</button>
+          <button class="dash-tab" data-adm="messages">Messages</button>
         </div>
         <div id="admin-list"></div>
       </div>
@@ -71,6 +72,7 @@
 <script src="assets/app-shared.js"></script>
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null;
+let chatThreads = [], activeChatThread = null, activeChatMessages = [];
 async function loadAdminBookings(){
   try { adminBookings = (await apiFetch('/api/booking.php?action=list_all')).bookings || []; }
   catch (e) { adminBookings = []; }
@@ -728,7 +730,62 @@ function renderAdmin(){
       </div>`;
 
     el.innerHTML = cardsHtml + geoHtml + seasonalHtml;
+  } else if (admView === 'messages'){
+    renderMessagesTab(el);
   }
+}
+function renderMessagesTab(el){
+  if (!chatThreads.length){
+    el.innerHTML = `<div class="empty">No chat messages yet.</div>`;
+    return;
+  }
+  const listHtml = `
+    <div class="admin-card" style="margin-bottom:20px;">
+      <h3>Conversations</h3>
+      ${chatThreads.map(t => `
+        <div class="blk ${t.unread ? 'booked' : ''} ${activeChatThread === t.threadKey ? '' : ''}" data-open-thread="${t.threadKey}" style="cursor:pointer;">
+          <div>
+            <div class="bd">${t.name || t.email || t.threadKey}${t.unread ? ` <span style="color:var(--red);">(${t.unread} new)</span>` : ''}</div>
+            <div class="bn">${t.email || ''} · ${t.lastSender === 'admin' ? 'You: ' : ''}${(t.lastMessage || '').slice(0, 60)}</div>
+            <div class="bn" style="color:#8a8171;">${new Date(t.lastAt).toLocaleString()}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  const threadHtml = activeChatThread ? `
+    <div class="admin-card" id="thread-view-card">
+      <h3>Conversation</h3>
+      <div id="thread-messages" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+        ${activeChatMessages.map(m => `
+          <div class="blk ${m.sender === 'admin' ? '' : 'booked'}" style="flex-direction:column;align-items:flex-start;">
+            <div class="bn" style="font-weight:600;">${m.sender === 'admin' ? 'You' : m.name}</div>
+            <div style="font-size:0.85rem;">${String(m.message).replace(/</g,'&lt;')}</div>
+            <div class="bn" style="color:#8a8171;margin-top:2px;">${new Date(m.createdAt).toLocaleString()}</div>
+          </div>`).join('')}
+      </div>
+      <label for="thread-reply">Reply</label>
+      <textarea id="thread-reply" rows="3" placeholder="Type your reply — it's emailed directly to them"></textarea>
+      <button class="btn" id="thread-reply-send" style="width:100%;margin-top:10px;">Send reply</button>
+    </div>` : '';
+  el.innerHTML = listHtml + threadHtml;
+  el.querySelectorAll('[data-open-thread]').forEach(row => row.addEventListener('click', async () => {
+    activeChatThread = row.dataset.openThread;
+    try { activeChatMessages = (await apiFetch('/api/chat.php?action=thread&threadKey=' + encodeURIComponent(activeChatThread))).messages || []; }
+    catch (e) { activeChatMessages = []; }
+    chatThreads = (await apiFetch('/api/chat.php?action=list_threads')).threads || [];
+    renderMessagesTab($('admin-list'));
+  }));
+  const replySend = $('thread-reply-send');
+  if (replySend) replySend.addEventListener('click', async () => {
+    const text = $('thread-reply').value.trim();
+    if (!text) return;
+    replySend.disabled = true;
+    try {
+      await apiFetch('/api/chat.php?action=reply', { method: 'POST', body: JSON.stringify({ threadKey: activeChatThread, message: text }) });
+      activeChatMessages = (await apiFetch('/api/chat.php?action=thread&threadKey=' + encodeURIComponent(activeChatThread))).messages || [];
+      chatThreads = (await apiFetch('/api/chat.php?action=list_threads')).threads || [];
+      renderMessagesTab($('admin-list'));
+    } catch (e) { alert(e.message); replySend.disabled = false; }
+  });
 }
 document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click', async () => {
   document.querySelectorAll('[data-adm]').forEach(x => x.classList.remove('on'));
@@ -753,6 +810,10 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
   }
   if (admView === 'analytics'){
     try { latestAnalytics = await apiFetch('/api/analytics.php?action=summary'); } catch (e) { latestAnalytics = null; }
+  }
+  if (admView === 'messages'){
+    activeChatThread = null; activeChatMessages = [];
+    try { chatThreads = (await apiFetch('/api/chat.php?action=list_threads')).threads || []; } catch (e) { chatThreads = []; }
   }
   renderAdmin();
 }));

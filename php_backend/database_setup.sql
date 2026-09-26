@@ -20,6 +20,11 @@ CREATE TABLE users (
   zip_code VARCHAR(10),
   failed_logins INT NOT NULL DEFAULT 0,
   locked_until DATETIME NULL,
+  email_verified TINYINT(1) NOT NULL DEFAULT 0,
+  verification_token VARCHAR(64) NULL,
+  verification_sent_at DATETIME NULL,
+  reset_token VARCHAR(64) NULL,
+  reset_expires DATETIME NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -205,6 +210,25 @@ CREATE TABLE analytics_cache (
   metric_value JSON,
   cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY (metric_name)
+);
+
+-- Support chat widget messages. Threads are keyed by thread_key rather than
+-- email alone so an anonymous visitor's browser-generated token can't be
+-- guessed to read someone else's conversation; a logged-in user's thread_key
+-- is always 'user:<id>' instead.
+CREATE TABLE chat_messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  thread_key VARCHAR(64) NOT NULL,
+  user_id INT NULL,
+  name VARCHAR(255),
+  email VARCHAR(255),
+  sender VARCHAR(10) NOT NULL, -- client | admin
+  message TEXT NOT NULL,
+  read_by_admin TINYINT(1) NOT NULL DEFAULT 0,
+  read_by_client TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  KEY (thread_key)
 );
 
 CREATE INDEX idx_user_bookings ON bookings(user_id, start_date);

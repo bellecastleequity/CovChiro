@@ -212,3 +212,74 @@ document.querySelectorAll('[data-close]').forEach(b =>
   b.addEventListener('click', () => b.closest('.modal-bg').classList.remove('open')));
 document.querySelectorAll('.modal-bg').forEach(bg =>
   bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); }));
+
+function chatGuestKey(){
+  let key = null;
+  try { key = localStorage.getItem('covchiro_chat_key'); } catch (e) {}
+  if (!key){
+    key = 'guest:' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try { localStorage.setItem('covchiro_chat_key', key); } catch (e) {}
+  }
+  return key;
+}
+function renderChatMessages(messages){
+  const body = $('chat-body');
+  if (!body) return;
+  if (!messages.length) return; // leave the default greeting in place
+  body.innerHTML = messages.map(m => `<div class="chat-msg ${m.sender === 'admin' ? 'chat-msg-admin' : 'chat-msg-me'}">${String(m.message).replace(/</g,'&lt;')}</div>`).join('');
+  body.scrollTop = body.scrollHeight;
+}
+async function loadChatHistory(){
+  try {
+    const url = user ? '/api/chat.php?action=history' : `/api/chat.php?action=history&threadKey=${encodeURIComponent(chatGuestKey())}`;
+    const res = await apiFetch(url);
+    renderChatMessages(res.messages || []);
+  } catch (e) { /* best-effort */ }
+}
+let chatPollTimer = null;
+function startChatPolling(){
+  stopChatPolling();
+  chatPollTimer = setInterval(loadChatHistory, 15000);
+}
+function stopChatPolling(){
+  if (chatPollTimer){ clearInterval(chatPollTimer); chatPollTimer = null; }
+}
+async function sendChatMessage(){
+  const input = $('chat-input-text');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  const body = { message: text };
+  if (!user){
+    const nameEl = $('chat-guest-name'), emailEl = $('chat-guest-email');
+    const name = nameEl ? nameEl.value.trim() : '';
+    const email = emailEl ? emailEl.value.trim() : '';
+    if (!name || !email){ alert('Enter your name and email so we can reply.'); return; }
+    try { localStorage.setItem('covchiro_chat_name', name); localStorage.setItem('covchiro_chat_email', email); } catch (e) {}
+    body.threadKey = chatGuestKey();
+    body.name = name;
+    body.email = email;
+  }
+  input.value = '';
+  try {
+    await apiFetch('/api/chat.php?action=send', { method: 'POST', body: JSON.stringify(body) });
+  } catch (e) { alert(e.message); return; }
+  await loadChatHistory();
+}
+function initChatWidget(){
+  const guestFields = $('chat-guest-fields');
+  if (guestFields){
+    guestFields.classList.toggle('hidden', !!user);
+    if (!user){
+      try {
+        const n = localStorage.getItem('covchiro_chat_name'), e = localStorage.getItem('covchiro_chat_email');
+        if (n && $('chat-guest-name')) $('chat-guest-name').value = n;
+        if (e && $('chat-guest-email')) $('chat-guest-email').value = e;
+      } catch (err) {}
+    }
+  }
+  const sendBtn = $('chat-send');
+  if (sendBtn) sendBtn.addEventListener('click', sendChatMessage);
+  const inputText = $('chat-input-text');
+  if (inputText) inputText.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); } });
+}

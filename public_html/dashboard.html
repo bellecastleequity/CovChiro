@@ -13,7 +13,7 @@
 
 <header>
   <div class="wrap">
-    <div class="brand"><img src="assets/logo.png" alt="" style="height:44px;width:44px;border-radius:8px;"><div class="brand-text">Dr. Michael McPherson<span>, D.C.</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Chiropractic Office Coverage</div></div></div>
+    <div class="brand"><img src="assets/logo.png" alt="" style="height:44px;width:44px;border-radius:8px;"><div class="brand-text">Coverage<span> Chiropractor</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Available Statewide: Florida</div></div></div>
     <nav>
       <a href="index.html">Home</a>
       <a href="index.html#rates">Book coverage</a>
@@ -32,6 +32,10 @@
       <h2 id="dash-greeting">Your bookings</h2>
       <p>View, reschedule, or cancel. Cancellations 48+ hours before the start date are refunded in full.</p>
       <div id="client-status-badge"></div>
+      <div id="verify-banner" class="hidden" style="margin-top:10px;padding:10px 14px;background:#FDF3E3;border:1px solid var(--ochre);border-radius:6px;font-size:0.82rem;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <span>Please verify your email address to make sure you receive booking confirmations.</span>
+        <button class="btn ghost sm" id="resend-verify-btn" style="flex-shrink:0;">Resend verification email</button>
+      </div>
     </div>
     <div class="dash-tabs">
       <button class="dash-tab on" data-view="upcoming">Upcoming</button>
@@ -269,8 +273,8 @@
 <button id="chat-bubble" aria-label="Open chat">💬</button>
 <div id="chat-panel">
   <div class="chat-head">Chat with the office</div>
-  <div class="chat-body"><div class="chat-msg">Hi — questions about a booking? Send a message and I'll reply directly.</div></div>
-  <div class="chat-input"><input type="text" placeholder="Type a message…" aria-label="Chat message"><button type="button">Send</button></div>
+  <div class="chat-body" id="chat-body"><div class="chat-msg">Hi — questions about a booking? Send a message and I'll reply directly.</div></div>
+  <div class="chat-input"><input type="text" id="chat-input-text" placeholder="Type a message…" aria-label="Chat message"><button type="button" id="chat-send">Send</button></div>
 </div>
 
 <script src="https://js.stripe.com/v3/"></script>
@@ -724,7 +728,11 @@ $('vi-submit').addEventListener('click', async () => {
 
 $('video-tab-request').addEventListener('click', () => openVideoRequest(null));
 
-$('chat-bubble').addEventListener('click', () => $('chat-panel').classList.toggle('open'));
+$('chat-bubble').addEventListener('click', () => {
+  $('chat-panel').classList.toggle('open');
+  if ($('chat-panel').classList.contains('open')){ loadChatHistory(); startChatPolling(); }
+  else { stopChatPolling(); }
+});
 
 async function initDashboardPage(){
   try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
@@ -735,8 +743,18 @@ async function initDashboardPage(){
   await loadMyBookings();
   await loadMyStanding();
   $('dash-greeting').textContent = `${user.name.split(' ').slice(-1)[0]}'s bookings`;
+  $('verify-banner').classList.toggle('hidden', !!user.emailVerified || !!user.isAdmin);
   renderDash();
+  initChatWidget();
 }
+$('resend-verify-btn').addEventListener('click', async () => {
+  const btn = $('resend-verify-btn');
+  btn.disabled = true;
+  try {
+    await apiFetch('/api/auth.php?action=resend_verification', { method: 'POST' });
+    btn.textContent = 'Sent!';
+  } catch (e) { alert(e.message); btn.disabled = false; }
+});
 initDashboardPage();
 
 </script>
