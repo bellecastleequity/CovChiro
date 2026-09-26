@@ -6,17 +6,17 @@
 <title>TheFloridaChiropractor.com - Home Visits &amp; Event Coverage</title>
 <meta name="description" content="Chiropractic home visits and sporting/corporate event coverage across Florida. Licensed, insured, transparent rates. Book online.">
 <meta name="robots" content="index, follow, max-image-preview:large">
-<link rel="canonical" href="https://coveragechiropractor.com/floridachiropractor/">
+<link rel="canonical" href="https://thefloridachiropractor.com/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Home Visits &amp; Event Coverage in Florida | The Florida Chiropractor">
 <meta property="og:description" content="Chiropractic home visits and sporting/corporate event coverage across Florida. Licensed, insured, transparent rates.">
-<meta property="og:url" content="https://coveragechiropractor.com/floridachiropractor/">
+<meta property="og:url" content="https://thefloridachiropractor.com/">
 <meta property="og:site_name" content="The Florida Chiropractor">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Home Visits &amp; Event Coverage in Florida">
 <meta name="twitter:description" content="Chiropractic home visits and sporting/corporate event coverage across Florida.">
-<link rel="icon" type="image/png" href="../assets/logo.png">
-<link rel="apple-touch-icon" href="../assets/logo.png">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="apple-touch-icon" href="assets/logo.png">
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-5103Z9E4B8"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -26,13 +26,13 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 
 <header>
   <div class="wrap">
-    <div class="brand"><img src="../assets/logo.png" alt="The Florida Chiropractor logo" style="height:44px;width:44px;border-radius:8px;"><div class="brand-text">The Florida<span> Chiropractor</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Home Visits &amp; Event Coverage</div></div></div>
+    <div class="brand"><img src="assets/logo.png" alt="The Florida Chiropractor logo" style="height:44px;width:44px;border-radius:8px;"><div class="brand-text">The Florida<span> Chiropractor</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Home Visits &amp; Event Coverage</div></div></div>
     <nav>
       <a href="https://coveragechiropractor.com/">Office Coverage</a>
       <a href="#pricing">Pricing</a>
@@ -145,7 +145,7 @@
 
 <section id="bio" style="background:var(--paper-2);">
   <div class="wrap bio">
-    <div class="bio-photo"><img src="../assets/logo.png" alt="Dr. Michael McPherson, D.C." style="border-radius:6px;"></div>
+    <div class="bio-photo"><img src="assets/logo.png" alt="Dr. Michael McPherson, D.C." style="border-radius:6px;"></div>
     <div>
       <span class="mono" style="color:var(--teal-dark);font-size:0.71rem;">Bio &amp; credentials</span>
       <h2>Michael L. McPherson, D.C.</h2>
@@ -166,14 +166,14 @@
   </div>
 </section>
 
-<footer><div class="wrap"><div>coveragechiropractor.com/floridachiropractor · Chiropractic home visits &amp; event coverage</div><div>© 2026 Michael L. McPherson, D.C.</div></div></footer>
+<footer><div class="wrap"><div>thefloridachiropractor.com · Chiropractic home visits &amp; event coverage</div><div>© 2026 Michael L. McPherson, D.C.</div></div></footer>
 
 <!-- AUTH MODAL -->
 <div class="modal-bg" id="auth-modal">
   <div class="modal narrow">
     <button class="close" data-close>×</button>
     <h2 id="auth-title">Sign in</h2>
-    <p style="font-size:0.86rem;color:#6b7280;">One account works across both coveragechiropractor.com and here.</p>
+    <p style="font-size:0.86rem;color:#6b7280;">The same email and password work on both coveragechiropractor.com and here — sign in separately on each, your bookings on both show up for the office either way.</p>
     <div id="auth-name-wrap">
       <label for="a-name">Your name</label><input type="text" id="a-name" placeholder="Jane Smith">
       <label for="a-clinic">Practice / organization (optional)</label><input type="text" id="a-clinic">
@@ -238,7 +238,7 @@
 </div>
 
 <script src="https://js.stripe.com/v3/"></script>
-<script src="../assets/app-shared.js"></script>
+<script src="assets/app-shared.js"></script>
 <script>
 let authMode = 'login';
 let appliedPromo = null;
@@ -434,7 +434,7 @@ function showConfirmation(b){
   `;
   $('conf-modal').classList.add('open');
 }
-$('conf-dash').addEventListener('click', () => window.location.href = '../dashboard.html');
+$('conf-dash').addEventListener('click', () => window.location.href = 'dashboard.html');
 
 function openAuth(mode){
   authMode = mode;
@@ -447,7 +447,7 @@ function openAuth(mode){
   $('auth-modal').classList.add('open');
 }
 $('btn-account').addEventListener('click', () => {
-  if (user) window.location.href = '../dashboard.html';
+  if (user) window.location.href = 'dashboard.html';
   else openAuth('login');
 });
 $('auth-toggle').addEventListener('click', () => openAuth(authMode === 'register' ? 'login' : 'register'));
@@ -479,7 +479,7 @@ $('auth-submit').addEventListener('click', async () => {
   }
   // Not mid-booking — sign-in/registration from the header goes straight to
   // the relevant dashboard rather than leaving the client on the homepage.
-  window.location.href = user.isAdmin ? '../admin.html' : '../dashboard.html';
+  window.location.href = user.isAdmin ? MAIN_SITE_URL + '/admin.html' : 'dashboard.html';
 });
 async function loadSession(){
   try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }

@@ -145,6 +145,13 @@ function generate_id($prefix) {
 function json_response($data, $status_code = 200) {
     http_response_code($status_code);
     header('Content-Type: application/json');
+    // Every API response is dynamic (availability, balances, document
+    // status, etc.) and must never be served stale by a browser or an
+    // edge/reverse-proxy cache (this host runs LiteSpeed Cache) — a cached
+    // "not available yet" or cached availability check would be a real bug,
+    // not just a cosmetic one.
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
     echo json_encode($data);
     exit;
 }
