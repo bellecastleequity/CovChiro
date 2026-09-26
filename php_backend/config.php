@@ -394,10 +394,11 @@ function standing_date_rate(array $agreement, string $dateType) {
 // Returns a conflict description array or null if clear.
 // Every date already spoken for: ad-hoc bookings plus every non-cancelled
 // date on an active/cancelling standing-day agreement.
-function all_committed_dates(PDO $pdo) {
+function all_committed_dates(PDO $pdo, ?string $excludeBookingId = null) {
     $dates = [];
-    $bookedStmt = $pdo->query("SELECT dates FROM bookings WHERE status != 'cancelled'");
+    $bookedStmt = $pdo->query("SELECT id, dates FROM bookings WHERE status != 'cancelled'");
     foreach ($bookedStmt->fetchAll() as $r) {
+        if ($excludeBookingId !== null && $r['id'] === $excludeBookingId) continue;
         foreach (json_decode($r['dates'], true) ?: [] as $d) { $dates[] = $d; }
     }
     $agreementStmt = $pdo->query("SELECT scheduled_dates FROM standing_agreements WHERE status != 'cancelled'");
@@ -409,10 +410,10 @@ function all_committed_dates(PDO $pdo) {
     return $dates;
 }
 
-function check_availability(PDO $pdo, array $entries) {
+function check_availability(PDO $pdo, array $entries, ?string $excludeBookingId = null) {
     $blackoutStmt = $pdo->query('SELECT * FROM blackout_dates');
     $blackouts = $blackoutStmt->fetchAll();
-    $committedDates = all_committed_dates($pdo);
+    $committedDates = all_committed_dates($pdo, $excludeBookingId);
 
     foreach ($entries as $entry) {
         $day = $entry['date'];
@@ -535,7 +536,31 @@ function apply_successful_standing_payment(PDO $pdo, string $agreementId, string
     return true;
 }
 
-function booking_to_json(array $r) {
+// Sum of all admin-applied adjustments (positive = charge, negative =
+// discount) on a booking — see booking_adjustments in database_setup.sql.
+function booking_adjustments_total(PDO $pdo, string $bookingId) {
+    $stmt = $pdo->prepare('SELECT COALESCE(SUM(amount), 0) FROM booking_adjustments WHERE booking_id = ?');
+    $stmt->execute([$bookingId]);
+    return (float)$stmt->fetchColumn();
+}
+
+// The authoritative amount owed on a booking: the original signed total,
+// plus any admin adjustments layered on since, minus what's been paid.
+// Can be negative (a credit owed to the client).
+function booking_balance_due(PDO $pdo, array $booking) {
+    return round((float)$booking['total'] + booking_adjustments_total($pdo, $booking['id']) - (float)$booking['paid'], 2);
+}
+
+function booking_to_json(PDO $pdo, array $r) {
+    $stmt = $pdo->prepare('SELECT amount, reason, created_by, created_at FROM booking_adjustments WHERE booking_id = ? ORDER BY created_at');
+    $stmt->execute([$r['id']]);
+    $adjustmentRows = $stmt->fetchAll();
+    $adjustmentsTotal = round(array_sum(array_column($adjustmentRows, 'amount')), 2);
+
+    $stmt = $pdo->prepare("SELECT amount, purpose, payment_method, reference, note, created_at FROM payments WHERE booking_id = ? AND status IN ('succeeded', 'refunded') ORDER BY created_at");
+    $stmt->execute([$r['id']]);
+    $paymentRows = $stmt->fetchAll();
+
     return [
         'id' => $r['id'],
         'service' => $r['coverage_type'],
@@ -560,7 +585,17 @@ function booking_to_json(array $r) {
         'feedbackReminderSentAt' => to_iso($r['feedback_reminder_sent_at'] ?? null),
         'promoCode' => $r['promo_code'],
         'region' => $r['region'],
+        'zip' => $r['zip_code'],
         'miles' => (int)$r['miles'],
+        'adjustments' => array_map(fn($a) => [
+            'amount' => (float)$a['amount'], 'reason' => $a['reason'], 'createdBy' => $a['created_by'], 'createdAt' => to_iso($a['created_at']),
+        ], $adjustmentRows),
+        'adjustmentsTotal' => $adjustmentsTotal,
+        'payments' => array_map(fn($p) => [
+            'amount' => (float)$p['amount'], 'purpose' => $p['purpose'], 'method' => $p['payment_method'],
+            'reference' => $p['reference'], 'note' => $p['note'], 'createdAt' => to_iso($p['created_at']),
+        ], $paymentRows),
+        'balanceDue' => round((float)$r['total'] + $adjustmentsTotal - (float)$r['paid'], 2),
     ];
 }
 

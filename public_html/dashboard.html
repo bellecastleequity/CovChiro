@@ -560,7 +560,8 @@ function renderDash(){
     const bk = bucket(b);
     const refundable = hoursUntil(b) >= 48;
     const paid = b.paid ?? b.deposit ?? 0;
-    const balanceOwed = bk === 'balance' ? +(b.total - paid).toFixed(2) : 0;
+    const balanceOwed = bk === 'balance' ? (b.balanceDue ?? +(b.total - paid).toFixed(2)) : 0;
+    const currentTotal = b.total + (b.adjustmentsTotal || 0);
     const rem = reminderStatus(b);
     return `<div class="bk">
       <div class="bk-main">
@@ -580,6 +581,11 @@ function renderDash(){
             ${b.coverage.notes ? `<div style="margin-top:3px;"><strong>Notes:</strong> ${b.coverage.notes}</div>` : ''}
             ${b.coverage.pocName ? `<div style="margin-top:3px;"><strong>Day-of contact:</strong> ${b.coverage.pocName}${b.coverage.pocTitle ? ' (' + b.coverage.pocTitle + ')' : ''}${b.coverage.pocPhone ? ' · ' + b.coverage.pocPhone : ''}</div>` : ''}
           </div>` : ''}
+        ${(b.adjustmentsTotal || 0) !== 0 ? `
+          <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
+            <strong>Billing adjustments:</strong>
+            ${b.adjustments.map(a => `<div style="margin-top:2px;">${a.amount >= 0 ? '+' : '−'}${money(Math.abs(a.amount))} — ${a.reason}</div>`).join('')}
+          </div>` : ''}
         ${reviewEligible(b) ? (b.review
           ? `<div class="review-tag">★ ${b.review.rating}/5 — thanks for your review</div>`
           : `<button class="btn ghost sm" data-review="${b.id}" style="margin-top:10px;">Leave a review</button>`) : ''}
@@ -590,7 +596,7 @@ function renderDash(){
         <a class="btn ghost sm" href="api/agreement.php?type=booking&id=${b.id}" target="_blank" rel="noopener" style="margin-top:10px;margin-left:8px;">Signed agreement</a>
       </div>
       <div class="bk-side">
-        <div class="bk-amt">${money(b.total)}</div>
+        <div class="bk-amt">${money(currentTotal)}</div>
         <div style="font-size:0.76rem;color:#6b7280;">${bk === 'balance' ? `${money(paid)} paid so far` : (b.payType === 'full' ? 'Paid in full' : 'Deposit') + ' ' + money(paid)}</div>
         ${bk === 'balance' ? `
           <div style="font-size:0.85rem;color:var(--red);font-weight:600;margin-top:6px;">${money(balanceOwed)} owed</div>
@@ -611,7 +617,7 @@ function renderDash(){
 
   el.querySelectorAll('[data-paybalance]').forEach(btn => btn.addEventListener('click', async () => {
     const b = bookings.find(x => x.id === btn.dataset.paybalance);
-    const owed = money(b.total - (b.paid ?? 0));
+    const owed = money(b.balanceDue ?? (b.total - (b.paid ?? 0)));
     openPaymentModal(b.id, 'balance', `Remaining balance on ${b.id}: ${owed}`, async () => {
       await loadMyBookings(); renderDash();
     });
@@ -677,13 +683,16 @@ function openReceipt(id){
   $('receipt-billto').textContent = (user && user.clinic) ? user.clinic : (user ? user.name : 'Client');
 
   const lines = (b.meta || b.title || '').split(' · ').filter(Boolean);
-  $('receipt-lines').innerHTML = lines.length
+  const baseLines = lines.length
     ? lines.map((line, i) => `<tr><td>${b.title}${lines.length > 1 ? ` — ${line}` : ''}</td>${i === 0 ? `<td style="text-align:right;" rowspan="${lines.length}">${money(b.total)}</td>` : ''}</tr>`).join('')
     : `<tr><td>${b.title}</td><td style="text-align:right;">${money(b.total)}</td></tr>`;
+  const adjLines = (b.adjustments || []).map(a => `<tr><td>${a.reason}</td><td style="text-align:right;">${a.amount >= 0 ? '' : '−'}${money(Math.abs(a.amount))}</td></tr>`).join('');
+  $('receipt-lines').innerHTML = baseLines + adjLines;
 
-  $('receipt-total').textContent = money(b.total);
+  const currentTotal = b.total + (b.adjustmentsTotal || 0);
+  $('receipt-total').textContent = money(currentTotal);
   $('receipt-paid').textContent = money(b.paid);
-  const balance = +(b.total - b.paid).toFixed(2);
+  const balance = b.balanceDue ?? +(currentTotal - b.paid).toFixed(2);
   const statusEl = $('receipt-status');
   const balanceRow = $('receipt-balance-row');
   if (balance <= 0.005){

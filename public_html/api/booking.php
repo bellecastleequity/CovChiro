@@ -18,6 +18,10 @@ switch ($action) {
     case 'mark_complete': handle_mark_complete($pdo); break;
     case 'blackout_add': handle_blackout_add($pdo); break;
     case 'blackout_remove': handle_blackout_remove($pdo); break;
+    case 'admin_add_adjustment': handle_admin_add_adjustment($pdo); break;
+    case 'admin_record_payment': handle_admin_record_payment($pdo); break;
+    case 'admin_refund': handle_admin_refund($pdo); break;
+    case 'admin_reschedule': handle_admin_reschedule($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -165,12 +169,19 @@ function handle_create(PDO $pdo) {
     $title = "Office coverage — {$rate['label']}";
 
     $bookingId = generate_id('MM');
+    $sanitizedCoverage = sanitize($coverage);
+    // patientVolume needs to stay a number (or absent) for the dashboard's
+    // truthiness checks and any future arithmetic — sanitize() stringifies
+    // everything it touches.
+    if (isset($sanitizedCoverage['patientVolume'])) {
+        $sanitizedCoverage['patientVolume'] = $sanitizedCoverage['patientVolume'] !== '' ? (int)$sanitizedCoverage['patientVolume'] : null;
+    }
     $stmt = $pdo->prepare('INSERT INTO bookings
         (id, user_id, status, dates, day_types, day_times, coverage_type, coverage, signature, title, meta, region, zip_code, miles, total, paid, balance_status, pay_type, promo_code, created_at, start_date)
         VALUES (?, ?, "upcoming", ?, ?, ?, "office", ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", ?, NOW(), ?)');
     $stmt->execute([
         $bookingId, $user['id'], json_encode(array_values($sorted)), json_encode(array_values($sortedTypes)), json_encode($dayTimes),
-        json_encode(sanitize($coverage)), json_encode($signature), sanitize($title), sanitize($meta), $region, sanitize($zip), $miles, $total,
+        json_encode($sanitizedCoverage), json_encode($signature), sanitize($title), sanitize($meta), $region, sanitize($zip), $miles, $total,
         $promoRow ? $promoRow['code'] : null, $sorted[0],
     ]);
 
@@ -199,7 +210,7 @@ function handle_list(PDO $pdo) {
     $user = require_login();
     $stmt = $pdo->prepare('SELECT * FROM bookings WHERE user_id = ? ORDER BY created_at DESC');
     $stmt->execute([$user['id']]);
-    json_response(['bookings' => array_map('booking_to_json', $stmt->fetchAll())]);
+    json_response(['bookings' => array_map(fn($r) => booking_to_json($pdo, $r), $stmt->fetchAll())]);
 }
 
 function handle_get(PDO $pdo) {
@@ -209,7 +220,7 @@ function handle_get(PDO $pdo) {
     $stmt->execute([$id]);
     $row = $stmt->fetch();
     if (!$row || ((int)$row['user_id'] !== (int)$user['id'] && !$user['is_admin'])) json_response(['error' => 'Not found'], 404);
-    json_response(['booking' => booking_to_json($row)]);
+    json_response(['booking' => booking_to_json($pdo, $row)]);
 }
 
 function handle_cancel(PDO $pdo) {
@@ -257,7 +268,10 @@ function handle_update_coverage(PDO $pdo) {
     $stmt->execute([$id]);
     $b = $stmt->fetch();
     if (!$b || (int)$b['user_id'] !== (int)$user['id']) json_response(['error' => 'Not found'], 404);
-    if (!in_array($b['status'], ['upcoming', 'pending'], true)) {
+    // mark_complete only ever sets completed_at/balance_status — status stays
+    // "upcoming" — so completed_at is the real signal that coverage already
+    // happened and these details are now historical, not editable.
+    if ($b['completed_at'] !== null || !in_array($b['status'], ['upcoming', 'pending'], true)) {
         json_response(['error' => 'This booking can no longer be edited.'], 400);
     }
 
@@ -350,8 +364,8 @@ function handle_list_all(PDO $pdo) {
     require_admin();
     $stmt = $pdo->query('SELECT b.*, u.name AS user_name, u.email AS user_email FROM bookings b JOIN users u ON u.id = b.user_id ORDER BY b.created_at DESC');
     $rows = $stmt->fetchAll();
-    json_response(['bookings' => array_map(function ($r) {
-        $j = booking_to_json($r);
+    json_response(['bookings' => array_map(function ($r) use ($pdo) {
+        $j = booking_to_json($pdo, $r);
         $j['who'] = $r['user_name'];
         $j['email'] = $r['user_email'];
         return $j;
@@ -372,7 +386,7 @@ function handle_mark_complete(PDO $pdo) {
     $stmt = $pdo->prepare("UPDATE bookings SET completed_at = NOW(), balance_status = 'due' WHERE id = ?");
     $stmt->execute([$id]);
 
-    $owed = round($b['total'] - $b['paid'], 2);
+    $owed = booking_balance_due($pdo, $b);
     send_email($b['user_email'], "Coverage complete — balance due on {$id}",
         "<p>Your coverage for booking {$id} is marked complete. The remaining balance of $" . number_format($owed, 2) .
         " is now due. Pay it from your account dashboard at " . SITE_URL . ".</p>");
@@ -391,6 +405,235 @@ function handle_mark_complete(PDO $pdo) {
     }
 
     json_response(['success' => true]);
+}
+
+// Adds an itemized charge (positive amount) or discount (negative amount)
+// to a booking. The original total is never touched — this is a ledger
+// entry on top of it, so the client's receipt can always explain exactly
+// why the balance changed.
+function handle_admin_add_adjustment(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $admin = require_admin();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+    $amount = round((float)($body['amount'] ?? 0), 2);
+    $reason = trim($body['reason'] ?? '');
+
+    if (!$amount) json_response(['error' => 'Enter a non-zero amount.'], 400);
+    if ($reason === '') json_response(['error' => "Enter a reason — this shows on the client's receipt."], 400);
+
+    $stmt = $pdo->prepare('SELECT b.*, u.email AS user_email FROM bookings b JOIN users u ON u.id = b.user_id WHERE b.id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b) json_response(['error' => 'Not found'], 404);
+    if ($b['status'] === 'cancelled') json_response(['error' => 'This booking is cancelled.'], 400);
+
+    $stmt = $pdo->prepare('INSERT INTO booking_adjustments (booking_id, amount, reason, created_by) VALUES (?, ?, ?, ?)');
+    $stmt->execute([$id, $amount, sanitize($reason), $admin['email']]);
+
+    $balanceDue = booking_balance_due($pdo, $b);
+    // A balance that's already due (coverage completed) is recomputed right
+    // away; one that isn't due yet just carries the adjustment forward to
+    // whenever it's eventually invoiced.
+    if ($b['balance_status'] === 'due') {
+        $upd = $pdo->prepare("UPDATE bookings SET balance_status = ? WHERE id = ?");
+        $upd->execute([$balanceDue <= 0 ? 'paid' : 'due', $id]);
+    }
+
+    $kind = $amount > 0 ? 'additional charge' : 'discount';
+    send_email($b['user_email'], "Update to your booking {$id}",
+        "<p>A {$kind} of \$" . number_format(abs($amount), 2) . " was applied to your booking <strong>{$b['title']}</strong> ({$id}).</p>" .
+        '<p>Reason: ' . htmlspecialchars($reason) . '</p>' .
+        '<p>Current balance ' . ($balanceDue < 0 ? 'credit' : 'due') . ': $' . number_format(abs($balanceDue), 2) . '</p>');
+
+    json_response(['success' => true, 'balanceDue' => $balanceDue]);
+}
+
+// Records a payment collected outside Stripe (check, cash, Zelle, etc.).
+// Stripe-collected payments still flow through payment.php/apply_successful_payment
+// as before — this is only for money that arrived some other way.
+function handle_admin_record_payment(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $admin = require_admin();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+    $amount = round((float)($body['amount'] ?? 0), 2);
+    $method = in_array($body['method'] ?? '', ['check', 'cash', 'zelle', 'other'], true) ? $body['method'] : 'other';
+    $reference = trim($body['reference'] ?? '');
+    $note = trim($body['note'] ?? '');
+
+    if ($amount <= 0) json_response(['error' => 'Enter a payment amount.'], 400);
+
+    $stmt = $pdo->prepare('SELECT b.*, u.id AS uid, u.email AS user_email FROM bookings b JOIN users u ON u.id = b.user_id WHERE b.id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b) json_response(['error' => 'Not found'], 404);
+    if ($b['status'] === 'cancelled') json_response(['error' => 'This booking is cancelled.'], 400);
+
+    $newPaid = round((float)$b['paid'] + $amount, 2);
+    $b['paid'] = $newPaid;
+    $balanceDue = booking_balance_due($pdo, $b);
+
+    $stmt = $pdo->prepare('UPDATE bookings SET paid = ?' . ($b['balance_status'] === 'due' && $balanceDue <= 0 ? ", balance_status = 'paid'" : '') . ' WHERE id = ?');
+    $stmt->execute([$newPaid, $id]);
+
+    $stmt = $pdo->prepare("INSERT INTO payments (booking_id, user_id, amount, purpose, payment_method, reference, note, recorded_by, status) VALUES (?, ?, ?, 'manual', ?, ?, ?, ?, 'succeeded')");
+    $stmt->execute([$id, $b['uid'], $amount, $method, sanitize($reference) ?: null, sanitize($note) ?: null, $admin['email']]);
+
+    send_email($b['user_email'], "Payment received — {$id}",
+        '<p>A payment of $' . number_format($amount, 2) . " via {$method} has been recorded on your booking <strong>{$b['title']}</strong> ({$id}).</p>" .
+        '<p>Remaining balance: $' . number_format(max(0, $balanceDue), 2) . '</p>');
+
+    json_response(['success' => true, 'balanceDue' => $balanceDue]);
+}
+
+// Refunds money already collected via Stripe. Never automatic — always a
+// deliberate admin action, since a check/cash payment can't be refunded
+// through Stripe at all and has to be handled directly with the client.
+function handle_admin_refund(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+    $amount = round((float)($body['amount'] ?? 0), 2);
+
+    $stmt = $pdo->prepare('SELECT b.*, u.email AS user_email FROM bookings b JOIN users u ON u.id = b.user_id WHERE b.id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b) json_response(['error' => 'Not found'], 404);
+    if ($amount <= 0 || $amount > (float)$b['paid']) json_response(['error' => 'Enter a valid refund amount (up to what has been paid).'], 400);
+    if (!$b['stripe_payment_intent']) json_response(['error' => "No Stripe payment on file for this booking — refund the check/cash payment directly and record it as a note instead."], 400);
+
+    stripe_refund_booking($pdo, $b, $amount);
+    $newPaid = round((float)$b['paid'] - $amount, 2);
+    $upd = $pdo->prepare('UPDATE bookings SET paid = ? WHERE id = ?');
+    $upd->execute([$newPaid, $id]);
+
+    send_email($b['user_email'], "Refund issued — {$id}",
+        '<p>A refund of $' . number_format($amount, 2) . " has been issued to your card for booking <strong>{$b['title']}</strong> ({$id}).</p>");
+
+    json_response(['success' => true]);
+}
+
+// Recomputes the base coverage cost (day rate + mileage + hotel + overtime,
+// no promos/flex/first-time discounts) for a given schedule — used to price
+// both the old and new schedule on a reschedule, so only the delta between
+// them is charged/credited rather than re-deriving the whole total.
+function booking_recompute_base(array $rate, int $miles, array $dayTypes, array $dayTimes, array $dates) {
+    $fullCount = count(array_filter($dayTypes, fn($t) => $t === 'full'));
+    $base = 0;
+    foreach ($dayTypes as $t) { $base += $t === 'full' ? $rate['full'] : $rate['half']; }
+
+    $overtimeCost = 0;
+    foreach ($dates as $i => $d) {
+        $type = $dayTypes[$i] ?? 'full';
+        $timeEntry = null;
+        foreach ($dayTimes as $dt) { if (($dt['date'] ?? null) === $d) { $timeEntry = $dt; break; } }
+        if ($timeEntry) {
+            $ot = overtime_for_entry($type, $timeEntry['startTime'] ?? null, $timeEntry['endTime'] ?? null);
+            $overtimeCost += $ot['cost'];
+        }
+    }
+
+    $mileRate = tiered_mileage_rate($miles);
+    $numTrips = count(group_consecutive_dates($dates));
+    $mileage = $miles * $mileRate * $numTrips;
+
+    $longDistance = $miles > 300;
+    $hotelNights = $longDistance ? max(1, $fullCount ?: 1) : 0;
+    $hotel = $hotelNights * HOTEL_RATE;
+
+    return round($base + $mileage + $hotel + $overtimeCost, 2);
+}
+
+// Admin-side reschedule: changes a booking's date(s)/day type (and ZIP, if
+// it changed), re-checking availability so it can never create a silent
+// double-booking. The original signed total is left untouched — the price
+// difference between the old and new schedule is added as one itemized
+// adjustment, so the client's receipt always shows exactly what changed and
+// why the balance moved.
+function handle_admin_reschedule(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $admin = require_admin();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+
+    $stmt = $pdo->prepare('SELECT b.*, u.email AS user_email FROM bookings b JOIN users u ON u.id = b.user_id WHERE b.id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b) json_response(['error' => 'Not found'], 404);
+    // mark_complete only ever sets completed_at/balance_status — status stays
+    // "upcoming" — so completed_at is the real signal that coverage already
+    // happened and the schedule is now historical, not reschedulable.
+    if ($b['completed_at'] !== null || !in_array($b['status'], ['upcoming', 'pending'], true)) {
+        json_response(['error' => 'This booking can no longer be rescheduled.'], 400);
+    }
+    if ($b['coverage_type'] !== 'office') json_response(['error' => 'Admin reschedule currently only supports office coverage bookings.'], 400);
+
+    $dates = $body['dates'] ?? [];
+    $dayTypes = $body['dayTypes'] ?? [];
+    $dayTimes = is_array($body['dayTimes'] ?? null) ? $body['dayTimes'] : [];
+    $zip = trim($body['zip'] ?? '') ?: $b['zip_code'];
+
+    if (!is_array($dates) || !count($dates) || count($dates) !== count($dayTypes)) {
+        json_response(['error' => 'Select at least one coverage date.'], 400);
+    }
+    foreach ($dayTypes as $t) {
+        if (!in_array($t, ['full', 'half-am', 'half-pm'], true)) json_response(['error' => 'Invalid day type.'], 400);
+    }
+
+    $entries = [];
+    foreach ($dates as $i => $d) {
+        $half = $dayTypes[$i] !== 'full';
+        $timeEntry = null;
+        foreach ($dayTimes as $dt) { if (($dt['date'] ?? null) === $d) { $timeEntry = $dt; break; } }
+        $entries[] = ['date' => $d, 'half' => $half, 'time' => $timeEntry['startTime'] ?? null];
+    }
+    $conflict = check_availability($pdo, $entries, $id);
+    if ($conflict) json_response(['error' => "That date ({$conflict['day']}) is {$conflict['why']}. Pick a different date."], 409);
+
+    $oldDates = json_decode($b['dates'], true) ?: [];
+    $oldDayTypes = json_decode($b['day_types'], true) ?: [];
+    $oldDayTimes = json_decode($b['day_times'] ?? '[]', true) ?: [];
+    $oldRate = RATES[$b['region']] ?? RATES['central'];
+    $oldBase = booking_recompute_base($oldRate, (int)$b['miles'], $oldDayTypes, $oldDayTimes, $oldDates);
+
+    $zipLookup = lookup_zip($zip);
+    $newRegion = ($zipLookup && isset(RATES[$zipLookup['region'] ?? ''])) ? $zipLookup['region'] : $b['region'];
+    $newMiles = ($zipLookup && isset(RATES[$zipLookup['region'] ?? ''])) ? $zipLookup['miles'] : (int)$b['miles'];
+
+    $sorted = $dates; $sortedTypes = $dayTypes;
+    array_multisort($sorted, $sortedTypes);
+    $newRate = RATES[$newRegion] ?? RATES['central'];
+    $newBase = booking_recompute_base($newRate, $newMiles, $sortedTypes, $dayTimes, $sorted);
+
+    $delta = round($newBase - $oldBase, 2);
+
+    $stmt = $pdo->prepare('UPDATE bookings SET dates = ?, day_types = ?, day_times = ?, region = ?, zip_code = ?, miles = ?, start_date = ? WHERE id = ?');
+    $stmt->execute([
+        json_encode(array_values($sorted)), json_encode(array_values($sortedTypes)), json_encode($dayTimes),
+        $newRegion, sanitize($zip), $newMiles, $sorted[0], $id,
+    ]);
+
+    if ($delta != 0) {
+        $stmt = $pdo->prepare('INSERT INTO booking_adjustments (booking_id, amount, reason, created_by) VALUES (?, ?, ?, ?)');
+        $stmt->execute([$id, $delta, sanitize('Schedule change: ' . implode(', ', $oldDates) . ' → ' . implode(', ', $sorted)), $admin['email']]);
+    }
+
+    // Release any Flex Rate listing this booking had claimed — it no longer
+    // covers that date, so the discount should become available again.
+    $upd = $pdo->prepare("UPDATE flex_rate_dates SET status = 'open', booked_booking_id = NULL WHERE booked_booking_id = ?");
+    $upd->execute([$id]);
+
+    $b['total'] = (float)$b['total'];
+    $balanceDue = booking_balance_due($pdo, $b);
+    send_email($b['user_email'], "Your booking {$id} was rescheduled",
+        "<p>Your coverage schedule for booking {$id} has been updated by the office.</p>" .
+        '<p><strong>New date(s):</strong> ' . implode(', ', $sorted) . '</p>' .
+        ($delta != 0 ? '<p>' . ($delta > 0 ? 'An additional $' : 'A credit of $') . number_format(abs($delta), 2) . ' was applied to reflect the schedule change.</p>' : '') .
+        '<p>Current balance ' . ($balanceDue < 0 ? 'credit' : 'due') . ': $' . number_format(abs($balanceDue), 2) . '</p>');
+
+    json_response(['success' => true, 'delta' => $delta, 'balanceDue' => $balanceDue]);
 }
 
 function handle_blackout_add(PDO $pdo) {

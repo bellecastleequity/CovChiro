@@ -41,7 +41,7 @@ function handle_create_intent(PDO $pdo) {
         $amount = round($b['total'] * DEPOSIT_RATE, 2);
     } elseif ($purpose === 'balance') {
         if ($b['balance_status'] !== 'due') json_response(['error' => 'No balance is due on this booking.'], 400);
-        $amount = round($b['total'] - $b['paid'], 2);
+        $amount = booking_balance_due($pdo, $b);
     } else {
         json_response(['error' => 'Invalid purpose'], 400);
     }

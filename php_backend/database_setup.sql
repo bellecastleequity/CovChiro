@@ -126,12 +126,30 @@ CREATE TABLE payments (
   payment_method VARCHAR(50) DEFAULT 'stripe',
   stripe_payment_intent VARCHAR(255),
   stripe_charge_id VARCHAR(255),
+  reference VARCHAR(255), -- check number etc., for a manually-recorded payment
+  note VARCHAR(255),
+  recorded_by VARCHAR(255), -- admin email, for a manually-recorded payment
   status VARCHAR(50) NOT NULL, -- succeeded | failed | refunded
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
   FOREIGN KEY (standing_agreement_id) REFERENCES standing_agreements(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
   KEY (booking_id), KEY (standing_agreement_id), KEY (status), KEY (created_at)
+);
+
+-- Itemized admin-applied charges/discounts on a booking. The original
+-- `bookings.total` (the price quoted and signed at booking time) is never
+-- edited directly — every change afterward is its own auditable row here,
+-- and balance due = total + SUM(amount) - paid.
+CREATE TABLE booking_adjustments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  booking_id VARCHAR(50) NOT NULL,
+  amount DECIMAL(10,2) NOT NULL, -- positive = additional charge, negative = discount
+  reason VARCHAR(255) NOT NULL,
+  created_by VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+  KEY (booking_id)
 );
 
 -- Blackout dates (admin-managed availability blocks)
