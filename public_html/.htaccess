@@ -1,0 +1,11 @@
+RewriteEngine On
+
+# Force HTTPS
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Force www-less canonical host (adjust/remove if you prefer www.)
+RewriteCond %{HTTP_HOST} ^www\.coveragechiropractor\.com$ [NC]
+RewriteRule ^(.*)$ https://coveragechiropractor.com/$1 [L,R=301]
+
+Options -Indexes

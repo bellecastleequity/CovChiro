@@ -1,0 +1,3 @@
+# Defense in depth: this directory should already be outside public_html and
+# not web-reachable at all. If it's ever exposed by a misconfiguration, deny everything.
+Require all denied
