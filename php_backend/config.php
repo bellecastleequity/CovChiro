@@ -557,6 +557,7 @@ function booking_to_json(array $r) {
         'completedAt' => to_iso($r['completed_at']),
         'review' => $r['review_rating'] ? ['rating' => (int)$r['review_rating'], 'text' => $r['review_text'], 'submittedAt' => to_iso($r['review_submitted_at'])] : null,
         'feedback' => json_decode($r['feedback'] ?? 'null', true),
+        'feedbackReminderSentAt' => to_iso($r['feedback_reminder_sent_at'] ?? null),
         'promoCode' => $r['promo_code'],
         'region' => $r['region'],
         'miles' => (int)$r['miles'],
@@ -564,12 +565,16 @@ function booking_to_json(array $r) {
 }
 
 // ========== CORS HEADERS ==========
-header('Access-Control-Allow-Origin: ' . SITE_URL);
-header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+// Skipped entirely under CLI (cron jobs) — there's no HTTP request to
+// attach headers to, and $_SERVER['REQUEST_METHOD'] doesn't exist there.
+if (php_sapi_name() !== 'cli') {
+    header('Access-Control-Allow-Origin: ' . SITE_URL);
+    header('Access-Control-Allow-Credentials: true');
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+        http_response_code(200);
+        exit;
+    }
 }

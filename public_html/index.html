@@ -102,6 +102,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5103Z9E4B8"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-5103Z9E4B8');
+</script>
 </head>
 <body>
 
@@ -284,9 +291,14 @@
               <div><label>&nbsp;</label><button class="btn" id="cd-date-add" type="button" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Add date</button></div>
             </div>
             <div class="date-builder-row" style="margin-top:10px;">
-              <div><label for="cd-start-time">Start time (optional)</label><input type="time" id="cd-start-time"></div>
-              <div><label for="cd-end-time">End time (optional)</label><input type="time" id="cd-end-time"></div>
-              <div><label>&nbsp;</label><p style="font-size:0.78rem;color:#6b7280;margin:0;">Leave blank for the standard block. If you know your actual hours, entering them here bills any time beyond the booked block automatically — no separate invoice needed. A 60-minute lunch is deducted from full-day hours before anything is billed as extra.</p></div>
+              <div><label for="cd-posted-hours">Your practice's posted hours (for reference)</label><input type="text" id="cd-posted-hours" placeholder="e.g. 8:00 AM – 5:00 PM"></div>
+              <div></div>
+              <div><label>&nbsp;</label><p style="font-size:0.78rem;color:#6b7280;margin:0;">Reference only — this doesn't affect your quote. It just helps orient the covering doctor.</p></div>
+            </div>
+            <div class="date-builder-row" style="margin-top:10px;">
+              <div><label for="cd-start-time">Billable coverage window — start (optional)</label><input type="time" id="cd-start-time"></div>
+              <div><label for="cd-end-time">Billable coverage window — end (optional)</label><input type="time" id="cd-end-time"></div>
+              <div><label>&nbsp;</label><p style="font-size:0.78rem;color:#6b7280;margin:0;">The hours you need the doctor on site — this is what's billed, not your posted hours. If you need him on site before opening or after close (prep, meetings, charting), include that time here. Leave blank for the standard block; a 60-minute lunch is deducted from full-day hours before anything beyond the block is billed as overtime.</p></div>
             </div>
             <div class="err-msg" id="cd-date-err"></div>
             <div id="cd-date-list"></div>
@@ -1227,6 +1239,7 @@ function coverageDetails(){
   const volumeVal = $('cd-volume').value;
   return {
     patientVolume: volumeVal !== '' ? parseInt(volumeVal) : null,
+    postedHours: $('cd-posted-hours').value.trim(),
     dress: dress || '',
     techniques,
     notes: $('cd-notes').value.trim(),
@@ -1568,8 +1581,9 @@ function showConfirmation(b){
     <div class="brow total" style="margin-top:14px;"><span>Total</span><span>${money(b.total)}</span></div>
     <div class="brow deposit"><span>Deposit charged today</span><span>${money(b.paid)}</span></div>
     <div class="mileage-note" style="margin-top:16px;"><strong>Coverage hours:</strong> the hours booked are the billable window — a full day includes one meal break of up to 60 minutes, and anything beyond the booked hours (including a longer break) is billed at $100/hour. Full details are in your signed agreement.</div>
-    ${cd && (cd.patientVolume || cd.dress || (cd.techniques && cd.techniques.length) || cd.notes || cd.pocName) ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:0.83rem;color:#5a6472;">
+    ${cd && (cd.patientVolume || cd.postedHours || cd.dress || (cd.techniques && cd.techniques.length) || cd.notes || cd.pocName) ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:0.83rem;color:#5a6472;">
         ${cd.patientVolume ? `<div><strong>Expected patient volume:</strong> ${cd.patientVolume}</div>` : ''}
+        ${cd.postedHours ? `<div><strong>Practice posted hours (reference only):</strong> ${cd.postedHours}</div>` : ''}
         ${cd.dress ? `<div><strong>Dress code:</strong> ${cd.dress}</div>` : ''}
         ${cd.techniques && cd.techniques.length ? `<div style="margin-top:4px;"><strong>Techniques:</strong> ${cd.techniques.join(', ')}</div>` : ''}
         ${cd.notes ? `<div style="margin-top:4px;"><strong>Notes:</strong> ${cd.notes}</div>` : ''}

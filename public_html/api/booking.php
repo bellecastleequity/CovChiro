@@ -275,17 +275,32 @@ function handle_feedback(PDO $pdo) {
     if (!$b || (int)$b['user_id'] !== (int)$user['id']) json_response(['error' => 'Not found'], 404);
     if (!$b['completed_at']) json_response(['error' => 'This booking is not complete yet.'], 400);
 
+    $punctuality = (int)($body['punctuality'] ?? 0);
+    $professionalism = (int)($body['professionalism'] ?? 0);
+    $patientCare = (int)($body['patientCare'] ?? 0);
+    $wouldRebook = sanitize($body['wouldRebook'] ?? '');
     $feedback = [
-        'punctuality' => (int)($body['punctuality'] ?? 0),
-        'professionalism' => (int)($body['professionalism'] ?? 0),
-        'patientCare' => (int)($body['patientCare'] ?? 0),
-        'wouldRebook' => sanitize($body['wouldRebook'] ?? ''),
+        'punctuality' => $punctuality,
+        'professionalism' => $professionalism,
+        'patientCare' => $patientCare,
+        'wouldRebook' => $wouldRebook,
         'notes' => sanitize($body['notes'] ?? ''),
         'submittedAt' => date('c'),
     ];
     $stmt = $pdo->prepare('UPDATE bookings SET feedback = ? WHERE id = ?');
     $stmt->execute([json_encode($feedback), $id]);
-    json_response(['success' => true]);
+
+    $lowScore = $punctuality <= 2 || $professionalism <= 2 || $patientCare <= 2 || $wouldRebook === 'no';
+    if ($lowScore) {
+        send_email(ADMIN_EMAIL, "Low-score feedback on {$id} — needs follow-up",
+            "<p>Coverage feedback on {$id} needs a look:</p><ul>" .
+            "<li>Punctuality: {$punctuality}/5</li><li>Professionalism: {$professionalism}/5</li>" .
+            "<li>Patient care: {$patientCare}/5</li><li>Would rebook: " . ($wouldRebook ?: 'n/a') . '</li></ul>' .
+            ($feedback['notes'] ? '<p>Notes: ' . htmlspecialchars($feedback['notes']) . '</p>' : ''));
+    }
+
+    $offerPublicReview = $punctuality >= 4 && $professionalism >= 4 && $patientCare >= 4 && $wouldRebook === 'yes';
+    json_response(['success' => true, 'offerPublicReview' => $offerPublicReview, 'lowScore' => $lowScore]);
 }
 
 function handle_list_all(PDO $pdo) {
@@ -318,6 +333,13 @@ function handle_mark_complete(PDO $pdo) {
     send_email($b['user_email'], "Coverage complete — balance due on {$id}",
         "<p>Your coverage for booking {$id} is marked complete. The remaining balance of $" . number_format($owed, 2) .
         " is now due. Pay it from your account dashboard at " . SITE_URL . ".</p>");
+
+    if ((float)$b['total'] > 0) {
+        send_email($b['user_email'], "Quick feedback on your recent coverage?",
+            "<p>Thanks for having Dr. McPherson cover {$b['title']}. If you have two minutes, coverage feedback " .
+            "helps improve future visits — it's separate from a public review and goes straight to him, never posted anywhere.</p>" .
+            '<p><a href="' . SITE_URL . '/dashboard.html?feedback=' . urlencode($id) . '">Share feedback on this booking</a></p>');
+    }
 
     json_response(['success' => true]);
 }

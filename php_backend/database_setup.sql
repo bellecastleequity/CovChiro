@@ -104,6 +104,7 @@ CREATE TABLE bookings (
   review_text TEXT,
   review_submitted_at DATETIME NULL,
   feedback JSON,
+  feedback_reminder_sent_at DATETIME NULL,
   stripe_payment_intent VARCHAR(255),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   KEY (region), KEY (start_date), KEY (created_at), KEY (status)
