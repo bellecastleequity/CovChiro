@@ -229,7 +229,7 @@ function renderAdmin(){
     }
     el.innerHTML = list.map(b => {
       const owed = b.total != null && b.paid != null ? +(b.total - b.paid).toFixed(2) : null;
-      const canComplete = b.service === 'office' && b.balanceStatus === 'not_due';
+      const canComplete = ['office', 'homevisit', 'event'].includes(b.service) && b.balanceStatus === 'not_due';
       const rem = (b.balanceStatus === 'due' && b.completedAt) ? (() => {
         const hoursSince = (Date.now() - new Date(b.completedAt).getTime()) / 36e5;
         return { sent: Math.max(0, Math.floor(hoursSince / 12)), nextIn: (12 - (hoursSince % 12)).toFixed(1) };

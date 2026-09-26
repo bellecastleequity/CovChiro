@@ -3,5 +3,6 @@ Allow: /
 Disallow: /api/
 Disallow: /dashboard.html
 Disallow: /admin.html
+Disallow: /documents/
 
 Sitemap: https://coveragechiropractor.com/sitemap.xml

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home Visits &amp; Event Coverage in Florida | The Florida Chiropractor</title>
+<meta name="description" content="Chiropractic home visits and sporting/corporate event coverage across Florida. Licensed, insured, transparent rates. Book online.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="canonical" href="https://coveragechiropractor.com/floridachiropractor/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Home Visits &amp; Event Coverage in Florida | The Florida Chiropractor">
+<meta property="og:description" content="Chiropractic home visits and sporting/corporate event coverage across Florida. Licensed, insured, transparent rates.">
+<meta property="og:url" content="https://coveragechiropractor.com/floridachiropractor/">
+<meta property="og:site_name" content="The Florida Chiropractor">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Home Visits &amp; Event Coverage in Florida">
+<meta name="twitter:description" content="Chiropractic home visits and sporting/corporate event coverage across Florida.">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5103Z9E4B8"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-5103Z9E4B8');
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand"><img src="../assets/logo.png" alt="The Florida Chiropractor logo" style="height:44px;width:44px;border-radius:8px;"><div class="brand-text">The Florida<span> Chiropractor</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Home Visits &amp; Event Coverage</div></div></div>
+    <nav>
+      <a href="https://coveragechiropractor.com/">Office Coverage</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#book">Book</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <div class="hdr-actions">
+      <button class="btn ghost sm" id="btn-account">Sign in</button>
+      <a href="#" id="sign-out-link" class="hidden" style="font-size:0.78rem;color:#6b7280;align-self:center;">Sign out</a>
+    </div>
+  </div>
+</header>
+
+<section id="hero">
+  <div class="wrap">
+    <span class="mono">Florida — Home Visits &amp; Events</span>
+    <h1 style="margin-top:8px;">Chiropractic care that comes to you.</h1>
+    <p class="lede">Licensed, insured chiropractic home visits for patients who can't make it into an office, plus on-site coverage for sporting events, corporate wellness days, and travel work — from the same doctor behind coveragechiropractor.com.</p>
+    <a href="#book" class="btn" style="margin-top:10px;display:inline-block;">Book now</a>
+  </div>
+</section>
+
+<section id="pricing" style="background:var(--paper-2);">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="mono">Transparent pricing</span>
+      <h2>No surprises, published rates</h2>
+    </div>
+    <div class="admin-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div class="admin-card">
+        <h3>Home visits</h3>
+        <p style="font-size:0.9rem;color:#4b5563;margin-top:8px;">$100 per patient — first patient and each additional adult are both $100. Children seen alongside a parent's visit (add-on) are $70 each. Mileage is $0.20/mile one way from Orlando (32801), charged once per visit regardless of how many patients are seen.</p>
+      </div>
+      <div class="admin-card">
+        <h3>Sporting &amp; corporate events</h3>
+        <p style="font-size:0.9rem;color:#4b5563;margin-top:8px;">$100/hour, 2-hour minimum. No mileage fee. Covers sporting events, corporate wellness days, and other on-site or travel work across Florida.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="book">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="mono">Book online</span>
+      <h2>Get a quote and book instantly</h2>
+    </div>
+    <div class="calc">
+      <h3 id="calc-title">Book a visit or event</h3>
+      <div class="sub">Pick what you need below — the price updates live.</div>
+
+      <label for="hv-kind">What are you booking?</label>
+      <select id="hv-kind">
+        <option value="homevisit">Home visit</option>
+        <option value="event">Sporting / corporate event</option>
+      </select>
+
+      <div id="fields-homevisit" style="margin-top:14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;">
+          <div><label for="hv-date">Visit date</label><input type="date" id="hv-date"></div>
+          <div><label for="hv-zip">ZIP code</label><input type="text" id="hv-zip" maxlength="5" inputmode="numeric" placeholder="e.g. 32801"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:13px;">
+          <div><label for="hv-adults">Number of adult patients</label><input type="number" id="hv-adults" min="1" value="1"></div>
+          <div><label for="hv-children">Children seen alongside (add-on)</label><input type="number" id="hv-children" min="0" value="0"></div>
+        </div>
+      </div>
+
+      <div id="fields-event" class="hidden" style="margin-top:14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;">
+          <div><label for="ev-date">Event date</label><input type="date" id="ev-date"></div>
+          <div><label for="ev-name">Event name / location</label><input type="text" id="ev-name" placeholder="e.g. Downtown 5K, Orlando"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:13px;">
+          <div><label for="ev-start">Start time</label><input type="time" id="ev-start"></div>
+          <div><label for="ev-end">End time</label><input type="time" id="ev-end"></div>
+        </div>
+        <p style="font-size:0.78rem;color:#6b7280;margin-top:8px;">2-hour minimum applies. No mileage fee for events.</p>
+      </div>
+
+      <label style="margin-top:16px;">Point of contact on site</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;">
+        <input type="text" id="hv-poc-name" placeholder="Name">
+        <input type="tel" id="hv-poc-phone" placeholder="Mobile number">
+      </div>
+      <label for="hv-notes" style="margin-top:13px;">Notes (optional)</label>
+      <textarea id="hv-notes" rows="2" placeholder="Anything that helps — access instructions, special requests"></textarea>
+
+      <div class="promo-row">
+        <input type="text" id="promo-input" placeholder="Promo code" autocomplete="off">
+        <button class="btn ghost sm" type="button" id="promo-apply">Apply</button>
+      </div>
+      <p class="promo-msg hidden" id="promo-msg"></p>
+
+      <div class="breakdown">
+        <div class="brow" id="row-subtotal"><span id="lbl-subtotal">Subtotal</span><span id="val-subtotal">$100.00</span></div>
+        <div class="brow hidden" id="row-mileage"><span>Mileage</span><span id="val-mileage">$0.00</span></div>
+        <div class="brow hidden" id="row-promo"><span id="lbl-promo">Promo discount</span><span id="val-promo">-$0.00</span></div>
+        <div class="brow total"><span>Total</span><span id="val-total">$100.00</span></div>
+        <div class="brow deposit"><span>Deposit due today (10%)</span><span id="val-dep">$10.00</span></div>
+      </div>
+
+      <div class="err-msg" id="book-err"></div>
+      <button class="btn" id="book-submit" style="width:100%;margin-top:16px;">Continue</button>
+    </div>
+  </div>
+</section>
+
+<section id="bio" style="background:var(--paper-2);">
+  <div class="wrap bio">
+    <div class="bio-photo"><img src="../assets/logo.png" alt="Dr. Michael McPherson, D.C." style="border-radius:6px;"></div>
+    <div>
+      <span class="mono" style="color:var(--teal-dark);font-size:0.71rem;">Bio &amp; credentials</span>
+      <h2>Michael L. McPherson, D.C.</h2>
+      <div class="cred-line">Licensed &amp; insured Doctor of Chiropractic — Florida &amp; U.S. Virgin Islands</div>
+      <p>The same doctor behind coveragechiropractor.com's office coverage, now bringing that same licensed, insured care directly to patients who can't get into an office, and to events that need a doctor on site. 13+ years of business ownership and clinical experience, personal injury case management background, Graston and Cox Technique certified.</p>
+      <p style="font-size:0.85rem;color:#6b7280;margin-top:10px;">See verified reviews from the office-coverage side of the practice at <a href="https://coveragechiropractor.com/#reviews">coveragechiropractor.com</a>.</p>
+    </div>
+  </div>
+</section>
+
+<section id="contact">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="mono">Questions first?</span>
+      <h2>Get in touch</h2>
+      <p>Email <a href="mailto:drmichaelmcpherson@gmail.com">drmichaelmcpherson@gmail.com</a> or use the chat bubble in the corner — Dr. McPherson replies directly.</p>
+    </div>
+  </div>
+</section>
+
+<footer><div class="wrap"><div>coveragechiropractor.com/floridachiropractor · Chiropractic home visits &amp; event coverage</div><div>© 2026 Michael L. McPherson, D.C.</div></div></footer>
+
+<!-- AUTH MODAL -->
+<div class="modal-bg" id="auth-modal">
+  <div class="modal narrow">
+    <button class="close" data-close>×</button>
+    <h2 id="auth-title">Create your account</h2>
+    <p style="font-size:0.86rem;color:#6b7280;">One account works across both coveragechiropractor.com and here.</p>
+    <div id="auth-name-wrap">
+      <label for="a-name">Your name</label><input type="text" id="a-name" placeholder="Jane Smith">
+      <label for="a-clinic">Practice / organization (optional)</label><input type="text" id="a-clinic">
+    </div>
+    <label for="a-email">Email</label><input type="email" id="a-email" placeholder="you@example.com">
+    <label for="a-pass">Password</label><input type="password" id="a-pass">
+    <div class="err-msg" id="auth-err"></div>
+    <button class="btn" id="auth-submit">Create account</button>
+    <div class="switch-line" id="auth-switch">Already have an account? <button type="button" id="auth-toggle">Sign in</button></div>
+  </div>
+</div>
+
+<!-- SIGN AGREEMENT MODAL -->
+<div class="modal-bg" id="sign-modal">
+  <div class="modal">
+    <button class="close" data-close>×</button>
+    <h2 id="sign-title">Review &amp; sign your agreement</h2>
+    <p style="font-size:0.86rem;color:#6b7280;">Reviewed and pre-filled from your booking — nothing to retype. Sign below to continue to payment.</p>
+    <div class="sign-fields" id="sign-fields"></div>
+    <div class="sign-terms" id="sign-terms"></div>
+    <label for="sign-name" style="margin-top:16px;">Type your full legal name to sign</label>
+    <input type="text" id="sign-name" placeholder="Full legal name">
+    <label class="sign-agree-row"><input type="checkbox" id="sign-agree"> I have read and agree to the terms above.</label>
+    <div class="err-msg" id="sign-err"></div>
+    <button class="btn" id="sign-submit" style="width:100%;margin-top:14px;">Sign &amp; continue to payment</button>
+  </div>
+</div>
+
+<!-- PAYMENT MODAL (Stripe) -->
+<div class="modal-bg" id="payment-modal">
+  <div class="modal">
+    <button class="close" data-close>×</button>
+    <h2>Pay to confirm</h2>
+    <p style="font-size:0.86rem;color:#6b7280;" id="payment-sub"></p>
+    <div id="payment-element" style="margin-top:16px;"></div>
+    <div class="err-msg" id="payment-err"></div>
+    <button class="btn" id="payment-submit" style="width:100%;margin-top:16px;">Pay now</button>
+  </div>
+</div>
+
+<!-- CONFIRMATION -->
+<div class="modal-bg" id="conf-modal">
+  <div class="modal">
+    <button class="close" data-close>×</button>
+    <span class="confirm-badge" id="conf-badge">Booking confirmed</span>
+    <h2>You're on the schedule.</h2>
+    <p style="font-size:0.9rem;color:#4b5563;margin-top:8px;">A confirmation and signed agreement copy are on their way to your email.</p>
+    <div class="confirm-box" id="conf-body"></div>
+    <button class="btn" id="conf-dash">View in my account</button>
+  </div>
+</div>
+
+<button id="chat-bubble" aria-label="Open chat">💬</button>
+<div id="chat-panel">
+  <div class="chat-head">Chat with the office</div>
+  <div class="chat-body" id="chat-body"><div class="chat-msg">Hi — questions about a home visit or event? Send a message and I'll reply directly.</div></div>
+  <div id="chat-guest-fields">
+    <input type="text" id="chat-guest-name" placeholder="Your name">
+    <input type="email" id="chat-guest-email" placeholder="Your email">
+  </div>
+  <div class="chat-input"><input type="text" id="chat-input-text" placeholder="Type a message…" aria-label="Chat message"><button type="button" id="chat-send">Send</button></div>
+</div>
+
+<script src="https://js.stripe.com/v3/"></script>
+<script src="../assets/app-shared.js"></script>
+<script>
+let authMode = 'register';
+let appliedPromo = null;
+let pendingQuote = null;
+
+function currentQuoteInput(){
+  const kind = $('hv-kind').value;
+  if (kind === 'event'){
+    const start = $('ev-start').value, end = $('ev-end').value;
+    let hours = 0;
+    if (start && end){
+      const [sh, sm] = start.split(':').map(Number);
+      const [eh, em] = end.split(':').map(Number);
+      hours = Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
+    }
+    return { kind: 'event', hours, date: $('ev-date').value, eventName: $('ev-name').value.trim() };
+  }
+  return {
+    kind: 'homevisit', date: $('hv-date').value, zip: $('hv-zip').value.trim(),
+    adults: parseInt($('hv-adults').value) || 1, children: parseInt($('hv-children').value) || 0,
+  };
+}
+function localQuote(input){
+  if (input.kind === 'event'){
+    const hours = Math.max(2, input.hours || 0);
+    const subtotal = Math.round(hours * 100 * 100) / 100;
+    return { kind: 'event', hours, subtotal, mileage: 0, total: subtotal };
+  }
+  const adults = Math.max(1, input.adults || 1), children = Math.max(0, input.children || 0);
+  const subtotal = Math.round((adults * 100 + children * 70) * 100) / 100;
+  const found = lookupZip(input.zip);
+  const miles = found ? found.miles : 0;
+  const mileage = Math.round(miles * 0.20 * 100) / 100;
+  return { kind: 'homevisit', adults, children, subtotal, mileage, miles, region: found ? found.region : null, total: Math.round((subtotal + mileage) * 100) / 100 };
+}
+function promoDiscount(subtotal){
+  if (!appliedPromo || subtotal <= 0) return 0;
+  const raw = appliedPromo.type === 'percent' ? subtotal * (appliedPromo.value / 100) : appliedPromo.value;
+  return Math.min(subtotal, +raw.toFixed(2));
+}
+function updateQuote(){
+  const kind = $('hv-kind').value;
+  $('fields-homevisit').classList.toggle('hidden', kind !== 'homevisit');
+  $('fields-event').classList.toggle('hidden', kind !== 'event');
+  const input = currentQuoteInput();
+  const q = localQuote(input);
+  pendingQuote = q;
+  if (kind === 'event'){
+    $('lbl-subtotal').textContent = `${q.hours} hour${q.hours !== 1 ? 's' : ''} × $100`;
+  } else {
+    $('lbl-subtotal').textContent = `${q.adults} adult${q.adults !== 1 ? 's' : ''}${q.children ? ` + ${q.children} child add-on${q.children !== 1 ? 's' : ''}` : ''}`;
+  }
+  $('val-subtotal').textContent = money(q.subtotal);
+  $('row-mileage').classList.toggle('hidden', kind !== 'homevisit');
+  if (kind === 'homevisit') $('val-mileage').textContent = money(q.mileage);
+  const discount = promoDiscount(q.total);
+  $('row-promo').classList.toggle('hidden', discount <= 0);
+  if (discount > 0) $('val-promo').textContent = '-' + money(discount);
+  const total = Math.max(0, q.total - discount);
+  $('val-total').textContent = money(total);
+  $('val-dep').textContent = money(+(total * 0.10).toFixed(2));
+}
+document.querySelectorAll('#hv-kind, #hv-adults, #hv-children, #hv-zip, #ev-start, #ev-end').forEach(el =>
+  el.addEventListener('input', updateQuote));
+$('hv-kind').addEventListener('change', updateQuote);
+$('promo-apply').addEventListener('click', async () => {
+  const codeStr = $('promo-input').value.trim();
+  const msg = $('promo-msg');
+  if (!codeStr){ appliedPromo = null; msg.classList.add('hidden'); updateQuote(); return; }
+  try {
+    const r = await apiFetch('/api/promo.php?action=validate', { method: 'POST', body: JSON.stringify({ code: codeStr }) });
+    appliedPromo = { code: codeStr.trim().toUpperCase(), type: r.type, value: r.value };
+    msg.className = 'promo-msg ok';
+    msg.textContent = `Applied — ${appliedPromo.type === 'percent' ? appliedPromo.value + '% off' : money(appliedPromo.value) + ' off'}`;
+  } catch (e){
+    appliedPromo = null;
+    msg.className = 'promo-msg bad';
+    msg.textContent = e.message;
+  }
+  updateQuote();
+});
+
+function homeVisitEventTermsHtml(){
+  return `
+    <h4>Fees, Deposit &amp; Payment</h4>
+    <ul>
+      <li>Home visits are billed per patient ($100/adult, $70/child add-on) plus mileage ($0.20/mile one way from Orlando, charged once per visit). Events are billed at $100/hour, 2-hour minimum, no mileage.</li>
+      <li>A 10% deposit is due at booking via Stripe. Booking is confirmed instantly upon deposit. Any remaining balance is invoiced after the visit or event is marked complete.</li>
+      <li>Payments are made to Key Global LLC. Credit card only — no cash accepted.</li>
+    </ul>
+    <h4>Cancellation &amp; Refund Policy</h4>
+    <ul>
+      <li>Cancellations 48+ hours before the scheduled date: full refund of deposit and any fees paid.</li>
+      <li>Cancellations inside 48 hours: the 10% deposit is forfeited.</li>
+      <li>If the provider must cancel, a full refund is issued regardless of timing.</li>
+    </ul>
+    <h4>Independent Contractor Status</h4>
+    <ul><li>Services are performed as an independent contractor, not an employee, partner, or agent of the client.</li></ul>
+    <h4>Licensure</h4>
+    <ul><li>Provider holds a current, valid, unrestricted chiropractic license and maintains malpractice insurance, available on request.</li></ul>
+  `;
+}
+function openSignModal(q){
+  $('sign-title').textContent = q.kind === 'event' ? 'Review & sign your event coverage agreement' : 'Review & sign your home visit agreement';
+  const rows = q.kind === 'event'
+    ? [['Type', 'Sporting / corporate event coverage'], ['Hours', q.hours], ['Total', money(Math.max(0, q.total - promoDiscount(q.total)))]]
+    : [['Type', 'Home visit'], ['Patients', `${q.adults} adult${q.adults !== 1 ? 's' : ''}${q.children ? ` + ${q.children} child add-on${q.children !== 1 ? 's' : ''}` : ''}`], ['Total', money(Math.max(0, q.total - promoDiscount(q.total)))]];
+  $('sign-fields').innerHTML = `<div class="sf-row"><span>Contact</span><span>${user.name} · ${user.email}</span></div>` +
+    rows.map(([k, v]) => `<div class="sf-row"><span>${k}</span><span>${v}</span></div>`).join('');
+  $('sign-terms').innerHTML = homeVisitEventTermsHtml();
+  $('sign-name').value = '';
+  $('sign-agree').checked = false;
+  $('sign-err').textContent = '';
+  $('sign-modal').classList.add('open');
+}
+let pendingBooking = false;
+$('book-submit').addEventListener('click', () => {
+  const err = $('book-err');
+  err.textContent = '';
+  const q = pendingQuote;
+  if (q.kind === 'homevisit'){
+    if (!$('hv-date').value){ err.textContent = 'Pick a visit date.'; return; }
+    if (!/^\d{5}$/.test($('hv-zip').value.trim())){ err.textContent = 'Enter a valid 5-digit ZIP code.'; return; }
+  } else {
+    if (!$('ev-date').value){ err.textContent = 'Pick an event date.'; return; }
+    if (!$('ev-start').value || !$('ev-end').value){ err.textContent = 'Enter both a start and end time.'; return; }
+    if (q.hours <= 0){ err.textContent = 'End time must be after start time.'; return; }
+  }
+  if (!user){ pendingBooking = true; openAuth('register'); return; }
+  openSignModal(q);
+});
+$('sign-submit').addEventListener('click', async () => {
+  const name = $('sign-name').value.trim();
+  const err = $('sign-err');
+  if (!name){ err.textContent = 'Type your full legal name to sign.'; return; }
+  if (!$('sign-agree').checked){ err.textContent = 'You must agree to the terms to continue.'; return; }
+  err.textContent = '';
+  const q = pendingQuote;
+  const signature = { name, signedAt: new Date().toISOString(), agreementType: q.kind === 'event' ? 'event-coverage' : 'home-visit' };
+  $('sign-submit').disabled = true;
+  const body = {
+    kind: q.kind, signature, promoCode: appliedPromo ? appliedPromo.code : '',
+    pocName: $('hv-poc-name').value.trim(), pocPhone: $('hv-poc-phone').value.trim(), notes: $('hv-notes').value.trim(),
+  };
+  if (q.kind === 'event'){
+    body.date = $('ev-date').value; body.hours = q.hours; body.eventName = $('ev-name').value.trim();
+  } else {
+    body.date = $('hv-date').value; body.zip = $('hv-zip').value.trim(); body.adults = q.adults; body.children = q.children;
+  }
+  let bookingId = null;
+  try {
+    const r = await apiFetch('/api/homevisit.php?action=create', { method: 'POST', body: JSON.stringify(body) });
+    bookingId = r.booking_id;
+  } catch (e) { err.textContent = e.message; $('sign-submit').disabled = false; return; }
+  $('sign-submit').disabled = false;
+  $('sign-modal').classList.remove('open');
+  openPaymentModal(bookingId, 'deposit', `Deposit due today (10%): ${money(+(Math.max(0, q.total - promoDiscount(q.total)) * 0.10).toFixed(2))}`, (booking) => {
+    showConfirmation(booking);
+  });
+});
+function showConfirmation(b){
+  $('conf-body').innerHTML = `
+    <div class="conf-code">${b.id}</div>
+    <div style="font-family:'Playfair Display',serif;font-size:1.1rem;margin-top:10px;">${b.title}</div>
+    <div style="font-size:0.88rem;color:#5a6472;margin-top:4px;">${b.meta}</div>
+    <div style="font-size:0.88rem;color:#5a6472;">Date: ${b.start}</div>
+    <div class="brow total" style="margin-top:14px;"><span>Total</span><span>${money(b.total)}</span></div>
+    <div class="brow deposit"><span>Deposit charged today</span><span>${money(b.paid)}</span></div>
+  `;
+  $('conf-modal').classList.add('open');
+}
+$('conf-dash').addEventListener('click', () => window.location.href = '../dashboard.html');
+
+function openAuth(mode){
+  authMode = mode;
+  $('auth-title').textContent = mode === 'register' ? 'Create your account' : 'Sign in';
+  $('auth-submit').textContent = mode === 'register' ? 'Create account' : 'Sign in';
+  $('auth-name-wrap').classList.toggle('hidden', mode !== 'register');
+  $('auth-toggle').textContent = mode === 'register' ? 'Sign in' : 'Create one';
+  $('auth-switch').firstChild.textContent = mode === 'register' ? 'Already have an account? ' : 'No account yet? ';
+  $('auth-err').textContent = '';
+  $('auth-modal').classList.add('open');
+}
+$('btn-account').addEventListener('click', () => {
+  if (user) window.location.href = '../dashboard.html';
+  else openAuth('register');
+});
+$('auth-toggle').addEventListener('click', () => openAuth(authMode === 'register' ? 'login' : 'register'));
+$('auth-submit').addEventListener('click', async () => {
+  const email = $('a-email').value.trim(), pass = $('a-pass').value;
+  if (!email || !pass){ $('auth-err').textContent = 'Enter your email and password to continue.'; return; }
+  $('auth-submit').disabled = true;
+  try {
+    if (authMode === 'register'){
+      const name = $('a-name').value.trim();
+      if (!name){ $('auth-err').textContent = 'Enter your name.'; $('auth-submit').disabled = false; return; }
+      const r = await apiFetch('/api/auth.php?action=register', { method: 'POST', body: JSON.stringify({
+        name, email, password: pass, clinic: $('a-clinic').value.trim()
+      })});
+      user = r.user;
+    } else {
+      const r = await apiFetch('/api/auth.php?action=login', { method: 'POST', body: JSON.stringify({ email, password: pass }) });
+      user = r.user;
+    }
+  } catch (e) { $('auth-err').textContent = e.message; $('auth-submit').disabled = false; return; }
+  $('auth-submit').disabled = false;
+  $('auth-modal').classList.remove('open');
+  renderAuthState();
+  if (pendingBooking){
+    pendingBooking = false;
+    updateQuote();
+    openSignModal(pendingQuote);
+  }
+});
+async function loadSession(){
+  try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
+  catch (e) { user = null; }
+  renderAuthState();
+  initChatWidget();
+}
+updateQuote();
+loadSession();
+</script>
+</body>
+</html>

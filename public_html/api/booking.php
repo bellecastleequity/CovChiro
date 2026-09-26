@@ -324,7 +324,7 @@ function handle_mark_complete(PDO $pdo) {
     $stmt->execute([$id]);
     $b = $stmt->fetch();
     if (!$b) json_response(['error' => 'Not found'], 404);
-    if ($b['coverage_type'] !== 'office' || $b['balance_status'] !== 'not_due') json_response(['error' => 'Not eligible to mark complete.'], 400);
+    if (!in_array($b['coverage_type'], ['office', 'homevisit', 'event'], true) || $b['balance_status'] !== 'not_due') json_response(['error' => 'Not eligible to mark complete.'], 400);
 
     $stmt = $pdo->prepare("UPDATE bookings SET completed_at = NOW(), balance_status = 'due' WHERE id = ?");
     $stmt->execute([$id]);

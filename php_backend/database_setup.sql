@@ -82,7 +82,7 @@ CREATE TABLE bookings (
   dates JSON NOT NULL,
   day_types JSON NOT NULL,
   day_times JSON,
-  coverage_type VARCHAR(50) NOT NULL DEFAULT 'office', -- service type (svc) — always 'office' today
+  coverage_type VARCHAR(50) NOT NULL DEFAULT 'office', -- office (coveragechiropractor.com) | homevisit | event (thefloridachiropractor.com)
   coverage JSON,       -- structured coverage details: dress, techniques[], notes, pocName, pocTitle, pocPhone
   signature JSON,       -- {name, signedAt, agreementType}
   title VARCHAR(255) NOT NULL,
