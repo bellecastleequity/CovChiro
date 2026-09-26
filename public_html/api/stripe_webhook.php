@@ -24,9 +24,15 @@ try {
 if ($event->type === 'payment_intent.succeeded') {
     $intent = $event->data->object;
     $bookingId = $intent->metadata->booking_id ?? null;
-    $purpose = $intent->metadata->purpose ?? 'deposit';
+    $agreementId = $intent->metadata->standing_agreement_id ?? null;
     if ($bookingId) {
+        $purpose = $intent->metadata->purpose ?? 'deposit';
         apply_successful_payment($pdo, $bookingId, $intent->id, $purpose, $intent->amount_received / 100, $intent->latest_charge ?? null);
+    } elseif ($agreementId) {
+        $date = $intent->metadata->standing_date ?? null;
+        if ($date) {
+            apply_successful_standing_payment($pdo, $agreementId, $date, $intent->id, $intent->amount_received / 100, $intent->latest_charge ?? null);
+        }
     }
 }
 

@@ -13,7 +13,7 @@ Host:            localhost
 ## config.php values to fill in
 ```
 DB_USER, DB_PASSWORD, DB_NAME     — from the database you create in Step 1
-STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY  — https://dashboard.stripe.com/apikeys
+STRIPE_SECRET_KEY                  — https://dashboard.stripe.com/apikeys (publishable key is already filled in)
 STRIPE_WEBHOOK_SECRET              — from the webhook you create in Step 6
 SENDGRID_API_KEY                   — https://app.sendgrid.com/settings/api_keys
 ```

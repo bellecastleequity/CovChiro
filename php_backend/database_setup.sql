@@ -1,10 +1,12 @@
 -- Coverage Chiropractic Database Schema
 -- Run this in cPanel > MySQL Databases > phpMyAdmin (Import tab)
 --
--- Phase A: real accounts, office-coverage bookings, Stripe payments (deposit +
--- balance), blackout-date management. Tables for standing-day agreements,
--- flex-rate dates, promo codes, and video-interview requests are included so
--- the schema is ready for Phase B, but the Phase A API does not write to them.
+-- Covers: accounts, office-coverage bookings, Stripe payments (deposit +
+-- balance + per-date standing-day payments), blackout-date management,
+-- standing-day agreements, flex-rate dates, promo codes, and
+-- video-interview requests. The admin analytics dashboard is computed live
+-- from these tables (see api/analytics.php) rather than the reserved
+-- analytics_cache table below, which is left for a future caching pass.
 
 -- Users / Clinics
 CREATE TABLE users (
@@ -20,6 +22,51 @@ CREATE TABLE users (
   locked_until DATETIME NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Standing-day requests (a clinic's ask for a recurring weekly/biweekly/
+-- monthly coverage pattern, pending admin approval). No account is required
+-- to submit one — user_id is set only if the visitor happened to be signed
+-- in; ownership for viewing/cancelling is otherwise matched by contact_email.
+CREATE TABLE standing_requests (
+  id VARCHAR(50) PRIMARY KEY,
+  user_id INT NULL,
+  clinic_name VARCHAR(255),
+  contact_email VARCHAR(255),
+  region VARCHAR(50),
+  zip_code VARCHAR(10),
+  patterns JSON NOT NULL, -- [{dow, freq, type, count, actualStart}, ...]
+  notes TEXT,
+  status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending | approved | declined
+  payment_plan VARCHAR(50) NOT NULL DEFAULT 'standard', -- standard | prepay | installment
+  combined_count DECIMAL(5,1),
+  tier_rate DECIMAL(5,4),
+  custom_rate DECIMAL(5,4),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  KEY (status), KEY (region), KEY (created_at), KEY (contact_email)
+);
+
+-- Standing-day agreements (approved requests, with the generated schedule)
+CREATE TABLE standing_agreements (
+  id VARCHAR(50) PRIMARY KEY,
+  user_id INT NULL,
+  request_id VARCHAR(50) NULL,
+  clinic_name VARCHAR(255),
+  contact_email VARCHAR(255),
+  region VARCHAR(50),
+  zip_code VARCHAR(10),
+  patterns JSON NOT NULL,
+  tier_rate DECIMAL(5,4),
+  custom_rate DECIMAL(5,4),
+  effective_rate DECIMAL(5,4) NOT NULL,
+  payment_plan VARCHAR(50) NOT NULL DEFAULT 'standard',
+  scheduled_dates JSON NOT NULL, -- [{date, type, status, patientVolume, paidAt}, ...]
+  status VARCHAR(50) NOT NULL DEFAULT 'active', -- active | cancelling | cancelled
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (request_id) REFERENCES standing_requests(id) ON DELETE SET NULL,
+  KEY (status), KEY (region), KEY (contact_email)
 );
 
 -- Bookings (office coverage)
@@ -57,21 +104,26 @@ CREATE TABLE bookings (
   KEY (region), KEY (start_date), KEY (created_at), KEY (status)
 );
 
--- Payments (one row per Stripe transaction: deposit, balance, or refund)
+-- Payments (one row per Stripe transaction: deposit, balance, refund, or a
+-- single standing-day date payment). Exactly one of booking_id /
+-- standing_agreement_id is set, depending on what was paid for.
 CREATE TABLE payments (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  booking_id VARCHAR(50) NOT NULL,
-  user_id INT NOT NULL,
+  booking_id VARCHAR(50) NULL,
+  standing_agreement_id VARCHAR(50) NULL,
+  standing_date DATE NULL,
+  user_id INT NULL, -- null when the paying agreement predates an account (email-matched instead)
   amount DECIMAL(10,2) NOT NULL,
-  purpose VARCHAR(20) NOT NULL, -- deposit | balance | refund
+  purpose VARCHAR(20) NOT NULL, -- deposit | balance | refund | standing_date
   payment_method VARCHAR(50) DEFAULT 'stripe',
   stripe_payment_intent VARCHAR(255),
   stripe_charge_id VARCHAR(255),
   status VARCHAR(50) NOT NULL, -- succeeded | failed | refunded
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  KEY (booking_id), KEY (status), KEY (created_at)
+  FOREIGN KEY (standing_agreement_id) REFERENCES standing_agreements(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  KEY (booking_id), KEY (standing_agreement_id), KEY (status), KEY (created_at)
 );
 
 -- Blackout dates (admin-managed availability blocks)
@@ -95,99 +147,58 @@ CREATE TABLE payment_reminders (
   KEY (booking_id), KEY (sent_at)
 );
 
--- ============================================================
--- Phase B tables (schema reserved, not yet written to by the API)
--- ============================================================
-
-CREATE TABLE standing_requests (
-  id VARCHAR(50) PRIMARY KEY,
-  user_id INT NOT NULL,
-  clinic_name VARCHAR(255),
-  contact_email VARCHAR(255),
-  region VARCHAR(50),
-  zip_code VARCHAR(10),
-  patterns JSON NOT NULL,
-  notes TEXT,
-  status VARCHAR(50) DEFAULT 'pending',
-  payment_plan VARCHAR(50),
-  combined_count DECIMAL(5,1),
-  tier_rate DECIMAL(4,2),
-  custom_rate DECIMAL(4,2),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  KEY (status), KEY (region), KEY (created_at)
-);
-
-CREATE TABLE standing_agreements (
-  id VARCHAR(50) PRIMARY KEY,
-  user_id INT NOT NULL,
-  clinic_name VARCHAR(255),
-  contact_email VARCHAR(255),
-  region VARCHAR(50),
-  zip_code VARCHAR(10),
-  patterns JSON NOT NULL,
-  tier_rate DECIMAL(4,2),
-  effective_rate DECIMAL(4,2),
-  payment_plan VARCHAR(50),
-  scheduled_dates JSON,
-  status VARCHAR(50) DEFAULT 'active',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  next_due_date DATE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  KEY (status), KEY (region), KEY (next_due_date)
-);
-
+-- Flex Rate dates (admin-published promotional rate for a specific
+-- otherwise-open date; withdrawn/booked rows are kept for analytics)
 CREATE TABLE flex_rate_dates (
   id INT AUTO_INCREMENT PRIMARY KEY,
   date DATE NOT NULL,
-  region VARCHAR(50),
-  coverage_type VARCHAR(50),
-  discount_rate DECIMAL(4,2),
-  note TEXT,
-  status VARCHAR(50) DEFAULT 'open',
-  booked_booking_id VARCHAR(50),
+  region VARCHAR(50) NOT NULL,
+  day_type VARCHAR(20) NOT NULL DEFAULT 'full', -- full | half-am | half-pm
+  discount_rate DECIMAL(4,2) NOT NULL,
+  note VARCHAR(255),
+  status VARCHAR(50) NOT NULL DEFAULT 'open', -- open | booked | withdrawn
+  booked_booking_id VARCHAR(50) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (booked_booking_id) REFERENCES bookings(id) ON DELETE SET NULL,
   KEY (date), KEY (status)
 );
 
+-- Promo codes (admin-managed discount codes)
 CREATE TABLE promo_codes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   code VARCHAR(50) UNIQUE NOT NULL,
-  type VARCHAR(20) NOT NULL, -- percent | flat
+  type VARCHAR(20) NOT NULL, -- percent | fixed
   value DECIMAL(10,2) NOT NULL,
-  active BOOLEAN DEFAULT TRUE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
   expires_at DATE NULL,
   max_uses INT NULL,
   used_count INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Video-interview requests (10-minute pre- or post-booking call request)
 CREATE TABLE video_requests (
   id VARCHAR(50) PRIMARY KEY,
+  user_id INT NULL,
   booking_id VARCHAR(50) NULL,
-  name VARCHAR(255),
-  email VARCHAR(255),
-  requested_date DATE,
-  status VARCHAR(50) DEFAULT 'pending',
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  requested_date DATE NOT NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending | scheduled | done
   requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL,
   KEY (status)
 );
 
-CREATE TABLE clinic_feedback (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  booking_id VARCHAR(50) NOT NULL,
-  user_id INT NOT NULL,
-  punctuality INT,
-  professionalism INT,
-  patient_care INT,
-  would_rebook VARCHAR(50),
-  notes TEXT,
-  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  KEY (booking_id)
+-- Small admin-editable settings (currently just the last-minute discount toggle)
+CREATE TABLE app_settings (
+  name VARCHAR(100) PRIMARY KEY,
+  value_json JSON NOT NULL
 );
 
+-- Reserved for a future caching pass on the admin analytics dashboard —
+-- api/analytics.php currently computes everything live from the tables above.
 CREATE TABLE analytics_cache (
   id INT AUTO_INCREMENT PRIMARY KEY,
   metric_name VARCHAR(100),

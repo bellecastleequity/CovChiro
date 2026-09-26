@@ -31,11 +31,7 @@ function expire_stale_reservations(PDO $pdo) {
 
 function handle_availability(PDO $pdo) {
     $blackouts = $pdo->query('SELECT id, date_start AS start, date_end AS `end`, scope, note FROM blackout_dates ORDER BY date_start')->fetchAll();
-    $bookedRows = $pdo->query("SELECT dates FROM bookings WHERE status != 'cancelled'")->fetchAll();
-    $bookedDates = [];
-    foreach ($bookedRows as $r) {
-        foreach (json_decode($r['dates'], true) ?: [] as $d) { $bookedDates[] = $d; }
-    }
+    $bookedDates = all_committed_dates($pdo);
     json_response(['blackouts' => $blackouts, 'bookedDates' => array_values(array_unique($bookedDates))]);
 }
 
@@ -112,9 +108,24 @@ function handle_create(PDO $pdo) {
     $hotelNights = $longDistance ? max(1, $hotelNightsInput ?: $fullCount ?: 1) : 0;
     $hotel = $hotelNights * HOTEL_RATE;
 
+    // Flex Rate (admin-published promotional rate for a specific date) takes
+    // priority per date; the automatic last-minute discount only applies to
+    // dates that don't already have one — a date never gets both.
+    $lastMinuteOn = last_minute_enabled($pdo);
     $lastMinuteDiscount = 0;
+    $flexDiscount = 0;
+    $flexRateRowsUsed = [];
     foreach ($sorted as $i => $d) {
-        if (is_last_minute($d)) { $lastMinuteDiscount += ($sortedTypes[$i] === 'full' ? $rate['full'] : $rate['half']) * LAST_MINUTE_RATE; }
+        $dayRate = $sortedTypes[$i] === 'full' ? $rate['full'] : $rate['half'];
+        $stmt = $pdo->prepare("SELECT * FROM flex_rate_dates WHERE date = ? AND status = 'open' ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$d]);
+        $flex = $stmt->fetch();
+        if ($flex) {
+            $flexDiscount += $dayRate * (float)$flex['discount_rate'];
+            $flexRateRowsUsed[] = $flex;
+        } elseif ($lastMinuteOn && is_last_minute($d)) {
+            $lastMinuteDiscount += $dayRate * LAST_MINUTE_RATE;
+        }
     }
 
     $preDiscountSubtotal = $base + $mileage + $hotel;
@@ -127,7 +138,21 @@ function handle_create(PDO $pdo) {
         $clientDiscount = $preDiscountSubtotal * RECURRING_DISCOUNT_RATE;
     }
 
-    $total = round($base + $mileage + $hotel + $overtimeCost - $lastMinuteDiscount - $clientDiscount, 2);
+    $preprocessedTotal = round($base + $mileage + $hotel + $overtimeCost - $lastMinuteDiscount - $flexDiscount - $clientDiscount, 2);
+
+    // Promo code (optional) — re-validated server-side; a client can never
+    // dictate its own discount amount.
+    $promoCode = trim($body['promoCode'] ?? '');
+    $promoRow = null;
+    $promoDiscount = 0;
+    if ($promoCode !== '') {
+        $check = validate_promo_code($pdo, $promoCode);
+        if (isset($check['error'])) json_response(['error' => $check['error']], 400);
+        $promoRow = $check['promo'];
+        $promoDiscount = promo_discount_amount($promoRow, $preprocessedTotal);
+    }
+
+    $total = round(max(0, $preprocessedTotal - $promoDiscount), 2);
     if ($total <= 0) json_response(['error' => 'Could not price this booking. Contact us directly.'], 400);
 
     $deposit = round($total * DEPOSIT_RATE, 2);
@@ -140,12 +165,24 @@ function handle_create(PDO $pdo) {
 
     $bookingId = generate_id('MM');
     $stmt = $pdo->prepare('INSERT INTO bookings
-        (id, user_id, status, dates, day_types, day_times, coverage_type, coverage, signature, title, meta, region, zip_code, miles, total, paid, balance_status, pay_type, created_at, start_date)
-        VALUES (?, ?, "upcoming", ?, ?, ?, "office", ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", NOW(), ?)');
+        (id, user_id, status, dates, day_types, day_times, coverage_type, coverage, signature, title, meta, region, zip_code, miles, total, paid, balance_status, pay_type, promo_code, created_at, start_date)
+        VALUES (?, ?, "upcoming", ?, ?, ?, "office", ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", ?, NOW(), ?)');
     $stmt->execute([
         $bookingId, $user['id'], json_encode(array_values($sorted)), json_encode(array_values($sortedTypes)), json_encode($dayTimes),
-        json_encode($coverage), json_encode($signature), sanitize($title), sanitize($meta), $region, sanitize($zip), $miles, $total, $sorted[0],
+        json_encode($coverage), json_encode($signature), sanitize($title), sanitize($meta), $region, sanitize($zip), $miles, $total,
+        $promoRow ? $promoRow['code'] : null, $sorted[0],
     ]);
+
+    // Mark any Flex Rate listing used by this booking as booked, so it drops
+    // off the public list and counts toward the real conversion rate.
+    foreach ($flexRateRowsUsed as $flex) {
+        $upd = $pdo->prepare("UPDATE flex_rate_dates SET status = 'booked', booked_booking_id = ? WHERE id = ?");
+        $upd->execute([$bookingId, $flex['id']]);
+    }
+    if ($promoRow) {
+        $upd = $pdo->prepare('UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ?');
+        $upd->execute([$promoRow['id']]);
+    }
 
     json_response([
         'success' => true,

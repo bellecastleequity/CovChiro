@@ -766,7 +766,7 @@
 
           <div class="avail-msg hidden" id="avail-msg"></div>
 
-          <div class="promo-row hidden">
+          <div class="promo-row">
             <input type="text" id="promo-input" placeholder="Promo code" autocomplete="off">
             <button class="btn ghost sm" type="button" id="promo-apply">Apply</button>
           </div>
@@ -1544,15 +1544,8 @@ function keysMileage(zipNum){
 const money = n => '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
 /* ---------- PROMO CODES ---------- */
-function findValidPromo(codeStr){
-  const today = new Date().toISOString().slice(0,10);
-  const match = promoCodes.find(p => p.code === codeStr.trim().toUpperCase());
-  if (!match) return { error: 'That code isn\'t valid.' };
-  if (!match.active) return { error: 'That code is no longer active.' };
-  if (match.expiresAt && match.expiresAt < today) return { error: 'That code has expired.' };
-  if (match.maxUses != null && match.usedCount >= match.maxUses) return { error: 'That code has reached its usage limit.' };
-  return { promo: match };
-}
+// Validity is always re-checked server-side at booking creation — this is
+// only a live preview so the shopper sees the discount before they book.
 function promoDiscount(subtotal){
   if (!appliedPromo || subtotal <= 0) return 0;
   const raw = appliedPromo.type === 'percent' ? subtotal * (appliedPromo.value / 100) : appliedPromo.value;
@@ -1578,41 +1571,13 @@ function lookupZip(zip){
   return { miles, region };
 }
 
-/* ---------- STORAGE ---------- */
-let mem = {};
-const store = {
-  async get(k){
-    try { const r = await window.storage.get(k); return r ? JSON.parse(r.value) : (mem[k] ?? null); }
-    catch { return mem[k] ?? null; }
-  },
-  async set(k, v){
-    mem[k] = v;
-    try { await window.storage.set(k, JSON.stringify(v)); } catch {}
-  },
-  async getShared(k){
-    try { const r = await window.storage.get(k, true); return r ? JSON.parse(r.value) : (mem['s:'+k] ?? null); }
-    catch { return mem['s:'+k] ?? null; }
-  },
-  async setShared(k, v){
-    mem['s:'+k] = v;
-    try { await window.storage.set(k, JSON.stringify(v), true); } catch {}
-  }
-};
-
 /* ---------- STATE ---------- */
 let user = null, bookings = [], dashView = 'upcoming', svc = 'office';
-let lastMinuteEnabled = true; // default on — overridden by loadSession() from shared settings
+let lastMinuteEnabled = true; // default on — overridden by loadSession() from /api/settings.php
 let coverageDates = []; // office coverage date-builder: [{date, type: 'full'|'half-am'|'half-pm'}]
-// Cancelling a booking removes it from allBooked entirely (frees the date
-// up), which means allBooked alone can never show a true cancellation
-// rate — every cancelled booking simply vanishes from it. This is a
-// separate, append-only record of cancellations specifically so
-// analytics has real data to compute a rate from, rather than always
-// showing 0%.
-let cancelledLog = [];
 let standingRequests = [], standingAgreements = [];
 let flexRateDates = []; // admin-published open dates at a set promotional rate — no bidding, no negotiation
-let blackouts = [], allBooked = [], adminBookings = [], videoRequests = [], promoCodes = [], appliedPromo = null, isAdmin = false, admView = 'blocks';
+let blackouts = [], allBooked = [], adminBookings = [], videoRequests = [], promoCodes = [], appliedPromo = null, isAdmin = false, admView = 'blocks', latestAnalytics = null;
 async function loadAdminBookings(){
   try { adminBookings = (await apiFetch('/api/booking.php?action=list_all')).bookings || []; }
   catch (e) { adminBookings = []; }
@@ -1669,64 +1634,8 @@ function bookedDatesList(){
    outreach content, but it can't run on a schedule or send email on its
    own — that genuinely needs a server. See the Inventory Alerts admin
    tab for what this hands off to a human to finish. */
-/* ---------- ANALYTICS ----------
-   Computed entirely from data already collected in shared storage — no
-   backend needed for this one. Two honest gaps: (1) region/lead-time
-   fields were only added to booking records in this update, so
-   historical bookings made before it won't have them and are silently
-   skipped rather than treated as zero; (2) cancellation tracking only
-   covers the main ad-hoc cancel flow, not standing-day cancellations yet. */
-function computeAnalytics(){
-  const active = allBooked.filter(b => b.total > 0); // excludes $0 standing-day placeholder rows
-  const cancelled = cancelledLog;
-  const totalEver = active.length + cancelled.length;
-
-  const avgBookingValue = active.length ? active.reduce((s,b) => s + b.total, 0) / active.length : 0;
-  const cancellationRate = totalEver ? cancelled.length / totalEver : 0;
-
-  const geo = {};
-  active.forEach(b => { if (b.region) geo[b.region] = (geo[b.region]||0) + 1; });
-
-  const leadTimes = active.filter(b => b.created && b.start).map(b => {
-    const created = new Date(b.created);
-    const start = new Date(b.start + 'T12:00:00');
-    return Math.max(0, Math.round((start - created) / 864e5));
-  });
-  const avgLeadTime = leadTimes.length ? leadTimes.reduce((s,n) => s+n, 0) / leadTimes.length : null;
-
-  const byClient = {};
-  active.forEach(b => { if (b.email) byClient[b.email] = (byClient[b.email]||0) + 1; });
-  const clientEmails = Object.keys(byClient);
-  const retainedClients = clientEmails.filter(e => byClient[e] > 1).length;
-  const retentionRate = clientEmails.length ? retainedClients / clientEmails.length : 0;
-
-  const ratings = active.filter(b => b.review && b.review.rating).map(b => b.review.rating);
-  const avgRating = ratings.length ? ratings.reduce((s,n)=>s+n,0) / ratings.length : null;
-
-  const windowDays = 90;
-  const openInWindow = openDatesInWindow(windowDays).length;
-  const utilization = 1 - (openInWindow / windowDays);
-
-  const seasonal = {};
-  active.forEach(b => {
-    if (!b.start) return;
-    const month = b.start.slice(0,7); // YYYY-MM
-    seasonal[month] = (seasonal[month]||0) + 1;
-  });
-
-  const flexPublished = flexRateDates.filter(f => f.status === 'booked' || f.status === 'open' || f.status === 'withdrawn').length;
-  const flexBooked = flexRateDates.filter(f => f.status === 'booked').length;
-  const flexConversionRate = flexPublished ? flexBooked / flexPublished : null;
-
-  return {
-    totalEver, avgBookingValue, cancellationRate, geo,
-    avgLeadTime, leadTimeSampleSize: leadTimes.length,
-    retentionRate, clientCount: clientEmails.length,
-    avgRating, ratingSampleSize: ratings.length,
-    utilization, windowDays,
-    seasonal, flexPublished, flexBooked, flexConversionRate
-  };
-}
+// Analytics itself is computed server-side (see api/analytics.php) so it
+// reflects every clinic's data, not just what's loaded in this browser.
 
 function openDatesInWindow(daysAhead){
   const today = new Date(); today.setHours(0,0,0,0);
@@ -1742,7 +1651,7 @@ function openDatesInWindow(daysAhead){
 }
 function pastClientList(){
   const seen = new Map();
-  allBooked.forEach(b => {
+  adminBookings.forEach(b => {
     if (!b.email) return;
     if (!seen.has(b.email)) seen.set(b.email, { email: b.email, name: b.who || '', lastDate: b.start });
     else if (b.start > seen.get(b.email).lastDate) seen.get(b.email).lastDate = b.start;
@@ -1788,7 +1697,7 @@ coveragechiropractor.com`;
 // same backend scheduling this whole session has flagged repeatedly;
 // until then, this surfaces the list so it can be sent manually.
 function bookingsNeedingFeedback(){
-  return allBooked.filter(b => b.completedAt && !b.feedback && b.total > 0);
+  return adminBookings.filter(b => b.completedAt && !b.feedback && b.total > 0);
 }
 function draftFeedbackRequestEmail(clinicName, bookingId){
   const subject = `Quick feedback on your recent coverage?`;
@@ -1887,22 +1796,23 @@ async function loadMyBookings(){
   try { bookings = (await apiFetch('/api/booking.php?action=list')).bookings || []; }
   catch (e) { bookings = []; }
 }
+async function loadMyStanding(){
+  if (!user){ standingRequests = []; standingAgreements = []; return; }
+  try {
+    const r = await apiFetch('/api/standing.php?action=list_mine');
+    standingRequests = r.requests || [];
+    standingAgreements = r.agreements || [];
+  } catch (e) { standingRequests = []; standingAgreements = []; }
+}
 async function loadSession(){
   try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
   catch (e) { user = null; }
   await loadAvailability();
   await loadMyBookings();
-  // Phase B (standing day, flex rate, promo codes, video requests) isn't wired to
-  // the server yet — these stay session-local so the existing UI keeps working
-  // without persisting or claiming to save anything real.
-  videoRequests = (await store.getShared('video-interview-requests')) || [];
-  promoCodes = (await store.getShared('promo-codes')) || [];
-  standingRequests = (await store.getShared('standing-requests')) || [];
-  standingAgreements = (await store.getShared('standing-agreements')) || [];
-  cancelledLog = (await store.getShared('cancelled-log')) || [];
-  flexRateDates = (await store.getShared('flex-rate-dates')) || [];
+  await loadMyStanding();
+  try { flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || []; } catch (e) { flexRateDates = []; }
   renderFlexRateList();
-  lastMinuteEnabled = true; // the server always applies the automatic last-minute discount — kept in sync with quote()
+  try { lastMinuteEnabled = (await apiFetch('/api/settings.php?action=get_last_minute')).enabled; } catch (e) { lastMinuteEnabled = true; }
   recalc();
   renderAuthState();
   recalc();
@@ -1942,20 +1852,6 @@ function effectiveStandingRate(tier, paymentPlan, customOverrideRate){
   if (customOverrideRate != null) return customOverrideRate;
   if (!tier) return 0;
   return tier.rate + (paymentPlan === 'prepay' ? STANDING_PREPAY_BONUS : 0);
-}
-// Generates the full list of coverage dates for a standing agreement.
-// Uses local date components throughout (not toISOString) — the same
-// timezone-safe pattern used elsewhere on this site, so a practice in
-// any timezone gets the calendar dates they actually asked for.
-function generateStandingDates(startDateStr, frequency, count){
-  const intervalDays = frequency === 'weekly' ? 7 : frequency === 'biweekly' ? 14 : 28;
-  const dates = [];
-  let d = new Date(startDateStr + 'T12:00:00');
-  for (let i = 0; i < count; i++){
-    dates.push(localDateStr(d));
-    d.setDate(d.getDate() + intervalDays);
-  }
-  return dates;
 }
 // Rolls a start date forward to the next occurrence of the requested
 // weekday, so "Wednesdays starting Aug 25" lands on an actual Wednesday
@@ -2161,20 +2057,15 @@ $('sd-submit').addEventListener('click', async () => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)){ err.textContent = 'Enter a valid contact email.'; return; }
   err.textContent = '';
 
-  const combinedCount = patternDayEquivalents(standingPatterns);
-  const tier = standingTierFor(combinedCount);
   const paymentPlan = $('sd-payment-plan').value;
+  try {
+    await apiFetch('/api/standing.php?action=request', { method: 'POST', body: JSON.stringify({
+      region, zip, name, contactEmail, notes, paymentPlan, patterns: standingPatterns
+    })});
+  } catch (e) { err.textContent = e.message; return; }
 
-  // Standing-day requests aren't wired to the server yet (Phase B) — send a
-  // real email instead of only saving to this browser, so the request
-  // genuinely reaches Dr. McPherson rather than silently vanishing on reload.
-  const patternSummary = standingPatterns.map(p => `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][p.dow]} (${p.freq}, ${p.type})`).join('; ');
-  const subject = encodeURIComponent(`Standing day request — ${name}`);
-  const body = encodeURIComponent(
-    `Practice/clinic: ${name}\nContact email: ${contactEmail}\nRegion: ${region}\nZIP: ${zip}\nPatterns: ${patternSummary}\nCombined coverage days: ${combinedCount}\nPayment plan: ${paymentPlan}\nNotes: ${notes}`
-  );
-  window.location.href = `mailto:${ADMIN_EMAIL}?subject=${subject}&body=${body}`;
-
+  standingPatterns = [];
+  await loadMyStanding();
   $('standing-form').classList.add('hidden');
   $('standing-form-success').classList.remove('hidden');
 });
@@ -2604,7 +2495,6 @@ $('sign-out-link').addEventListener('click', async (e) => {
 
 /* ---------- BOOKING ---------- */
 let pendingBooking = null;
-function code(){ return 'MM-' + Math.random().toString(36).slice(2,7).toUpperCase(); }
 
 $('btn-book').addEventListener('click', () => {
   const q = quote();
@@ -2689,8 +2579,12 @@ async function createBooking(q, signature){
     const r = await apiFetch('/api/booking.php?action=create', { method: 'POST', body: JSON.stringify({
       dates: sorted.map(e => e.date), dayTypes: sorted.map(e => e.type),
       dayTimes: sortedTimes, zip: $('f-zip').value.trim(), region: $('f-region').value,
-      coverage: cd, signature, hotelNights: parseInt($('f-hnights').value) || null
+      coverage: cd, signature, hotelNights: parseInt($('f-hnights').value) || null,
+      promoCode: appliedPromo ? appliedPromo.code : ''
     })});
+    appliedPromo = null;
+    $('promo-input').value = '';
+    $('promo-msg').classList.add('hidden');
     return r.booking_id;
   } catch (e){
     $('sign-err').textContent = e.message;
@@ -2734,16 +2628,25 @@ $('conf-dash').addEventListener('click', () => {
 });
 
 /* ---------- PAYMENT (Stripe) ---------- */
-let stripeInstance = null, stripeElements = null, paymentBookingId = null, paymentOnSuccess = null;
+let stripeInstance = null, stripeElements = null, paymentContext = null, paymentOnSuccess = null;
 async function openPaymentModal(bookingId, purpose, amountLabel, onSuccess){
-  paymentBookingId = bookingId; paymentOnSuccess = onSuccess;
+  paymentContext = { kind: 'booking', bookingId };
+  paymentOnSuccess = onSuccess;
+  await mountPaymentElement('/api/payment.php?action=create_payment_intent', { booking_id: bookingId, purpose }, amountLabel);
+}
+async function openStandingPaymentModal(agreementId, date, amountLabel, onSuccess){
+  paymentContext = { kind: 'standing', agreementId, date };
+  paymentOnSuccess = onSuccess;
+  await mountPaymentElement('/api/payment.php?action=create_standing_payment_intent', { agreementId, date }, amountLabel);
+}
+async function mountPaymentElement(url, body, amountLabel){
   $('payment-sub').textContent = amountLabel;
   $('payment-err').textContent = '';
   $('payment-element').innerHTML = '';
   $('payment-submit').disabled = true;
   $('payment-modal').classList.add('open');
   try {
-    const r = await apiFetch('/api/payment.php?action=create_payment_intent', { method: 'POST', body: JSON.stringify({ booking_id: bookingId, purpose }) });
+    const r = await apiFetch(url, { method: 'POST', body: JSON.stringify(body) });
     stripeInstance = Stripe(r.publishable_key);
     stripeElements = stripeInstance.elements({ clientSecret: r.client_secret });
     stripeElements.create('payment').mount('#payment-element');
@@ -2763,7 +2666,11 @@ $('payment-submit').addEventListener('click', async () => {
     return;
   }
   try {
-    const r = await apiFetch('/api/payment.php?action=confirm_payment', { method: 'POST', body: JSON.stringify({ booking_id: paymentBookingId, payment_intent_id: paymentIntent.id }) });
+    const confirmUrl = paymentContext.kind === 'standing' ? '/api/payment.php?action=confirm_standing_payment' : '/api/payment.php?action=confirm_payment';
+    const confirmBody = paymentContext.kind === 'standing'
+      ? { agreementId: paymentContext.agreementId, date: paymentContext.date, payment_intent_id: paymentIntent.id }
+      : { booking_id: paymentContext.bookingId, payment_intent_id: paymentIntent.id };
+    const r = await apiFetch(confirmUrl, { method: 'POST', body: JSON.stringify(confirmBody) });
     $('payment-modal').classList.remove('open');
     if (paymentOnSuccess) paymentOnSuccess(r.booking);
   } catch (e){
@@ -2884,57 +2791,41 @@ function renderDashStanding(){
       </div>`;
   }).join('');
 
-  el.querySelectorAll('[data-pay-standing]').forEach(btn => btn.addEventListener('click', async () => {
+  el.querySelectorAll('[data-pay-standing]').forEach(btn => btn.addEventListener('click', () => {
     const [aid, date] = btn.dataset.payStanding.split('|');
     const a = standingAgreements.find(x => x.id === aid);
     const d = a && a.dates.find(x => x.date === date);
     if (!d) return;
-    d.status = 'paid';
-    d.paidAt = new Date().toISOString();
-    const rec = allBooked.find(b => b.standingAgreementId === aid && b.start === date);
-    if (rec){ const price = standingDateRate(a, d.type); rec.paid = +price.total.toFixed(2); rec.total = +price.total.toFixed(2); }
-    await store.setShared('standing-agreements', standingAgreements);
-    await store.setShared('schedule:booked', allBooked);
-    renderDashStanding();
+    const price = standingDateRate(a, d.type);
+    openStandingPaymentModal(aid, date, `Standing day coverage — ${date}: ${money(price.total)}`, async () => {
+      await loadMyStanding();
+      renderDashStanding();
+    });
   }));
 
   el.querySelectorAll('[data-patient-volume]').forEach(inp => inp.addEventListener('change', async () => {
     const [aid, date] = inp.dataset.patientVolume.split('|');
-    const a = standingAgreements.find(x => x.id === aid);
-    const d = a && a.dates.find(x => x.date === date);
-    if (!d) return;
-    d.patientVolume = inp.value ? parseInt(inp.value) : null;
-    await store.setShared('standing-agreements', standingAgreements);
+    await apiFetch('/api/standing.php?action=set_patient_volume', { method: 'POST', body: JSON.stringify({
+      agreementId: aid, date, patientVolume: inp.value ? parseInt(inp.value) : ''
+    })});
   }));
 
   el.querySelectorAll('[data-cancel-standing-date]').forEach(btn => btn.addEventListener('click', async () => {
     const [aid, date] = btn.dataset.cancelStandingDate.split('|');
-    const a = standingAgreements.find(x => x.id === aid);
-    const d = a && a.dates.find(x => x.date === date);
-    if (!d) return;
     const hoursUntilDate = (new Date(date + 'T08:00:00') - new Date()) / 36e5;
     const refundPct = hoursUntilDate >= 24 ? 80 : 0;
     if (!confirm(`Cancel this date? ${refundPct}% refund applies per the standing agreement terms.`)) return;
-    d.status = 'cancelled';
-    allBooked = allBooked.filter(b => !(b.standingAgreementId === aid && b.start === date));
-    await store.setShared('standing-agreements', standingAgreements);
-    await store.setShared('schedule:booked', allBooked);
+    try { await apiFetch('/api/standing.php?action=cancel_date', { method: 'POST', body: JSON.stringify({ agreementId: aid, date }) }); }
+    catch (e) { alert(e.message); return; }
+    await loadMyStanding(); await loadAvailability();
     renderDashStanding();
   }));
 
   el.querySelectorAll('[data-cancel-standing-agreement]').forEach(btn => btn.addEventListener('click', async () => {
-    const a = standingAgreements.find(x => x.id === btn.dataset.cancelStandingAgreement);
-    if (!a) return;
     const cutoff = localDateStr(new Date(Date.now() + 30*864e5));
     if (!confirm(`Cancel this entire standing agreement? Dates before ${cutoff} (30 days out) still occur as scheduled and billed normally. Dates after that are released.`)) return;
-    const releasedDates = [];
-    a.dates.forEach(d => {
-      if (d.date >= cutoff && d.status === 'scheduled'){ d.status = 'cancelled'; releasedDates.push(d.date); }
-    });
-    a.status = 'cancelling';
-    allBooked = allBooked.filter(b => !(b.standingAgreementId === a.id && releasedDates.includes(b.start)));
-    await store.setShared('standing-agreements', standingAgreements);
-    await store.setShared('schedule:booked', allBooked);
+    await apiFetch('/api/standing.php?action=cancel_agreement', { method: 'POST', body: JSON.stringify({ id: btn.dataset.cancelStandingAgreement }) });
+    await loadMyStanding(); await loadAvailability();
     renderDashStanding();
   }));
 }
@@ -3134,9 +3025,9 @@ function renderAdmin(){
     const lmHtml = `
       <div class="admin-card" style="margin-bottom:20px;">
         <h3>Last-minute discount</h3>
-        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px;">Automatically takes 10% off any coverage date still open within 24 hours of its start — fills otherwise-empty dates without discounting your standard rate. Always on for now — the server applies it unconditionally, so this toggle is disabled until it can turn the server-side rule off too (coming soon).</p>
-        <label class="tq" style="display:flex;align-items:center;gap:8px;opacity:0.6;">
-          <input type="checkbox" id="lm-toggle" checked disabled>
+        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px;">Automatically takes 10% off any coverage date still open within 24 hours of its start — fills otherwise-empty dates without discounting your standard rate.</p>
+        <label class="tq" style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="lm-toggle" ${lastMinuteEnabled ? 'checked' : ''}>
           <span>Enabled — apply automatically to qualifying dates</span>
         </label>
       </div>`;
@@ -3186,7 +3077,7 @@ function renderAdmin(){
     }
     $('lm-toggle').addEventListener('change', async (e) => {
       lastMinuteEnabled = e.target.checked;
-      await store.setShared('settings:lastMinuteDiscount', { enabled: lastMinuteEnabled });
+      await apiFetch('/api/settings.php?action=set_last_minute', { method: 'POST', body: JSON.stringify({ enabled: lastMinuteEnabled }) });
     });
     $('pc-add').addEventListener('click', async () => {
       const code = $('pc-code').value.trim().toUpperCase();
@@ -3197,17 +3088,16 @@ function renderAdmin(){
       if (!code){ $('pc-err').textContent = 'Enter a code.'; return; }
       if (!value || value <= 0){ $('pc-err').textContent = 'Enter a value greater than 0.'; return; }
       if (type === 'percent' && value > 100){ $('pc-err').textContent = 'Percent off cannot exceed 100.'; return; }
-      if (promoCodes.some(p => p.code === code)){ $('pc-err').textContent = 'That code already exists.'; return; }
+      try {
+        await apiFetch('/api/promo.php?action=create', { method: 'POST', body: JSON.stringify({ code, type, value, maxUses, expiresAt }) });
+      } catch (e){ $('pc-err').textContent = e.message; return; }
       $('pc-err').textContent = '';
-      promoCodes.push({ code, type, value, maxUses, usedCount: 0, expiresAt, active: true, createdAt: new Date().toISOString() });
-      await store.setShared('promo-codes', promoCodes);
+      promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
       renderAdmin();
     });
     el.querySelectorAll('[data-toggle-promo]').forEach(btn => btn.addEventListener('click', async () => {
-      const p = promoCodes.find(x => x.code === btn.dataset.togglePromo);
-      if (!p) return;
-      p.active = !p.active;
-      await store.setShared('promo-codes', promoCodes);
+      await apiFetch('/api/promo.php?action=toggle', { method: 'POST', body: JSON.stringify({ code: btn.dataset.togglePromo }) });
+      promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
       renderAdmin();
     }));
   } else if (admView === 'inventory'){
@@ -3292,7 +3182,7 @@ function renderAdmin(){
         ${activeFlexRates.map(f => `
           <div class="blk" style="margin-bottom:6px;">
             <div><div class="bd">${f.date}</div><div class="bn">${REGION_LABEL_FLEX[f.region] || f.region} · ${TYPE_LABEL_SD[f.type]} · ${f.discountRate*100}% off${f.note ? ' · ' + f.note : ''}</div></div>
-            <button class="btn ghost sm" data-flex-unpublish="${f.date}" style="color:var(--red);border-color:var(--red);">Unpublish</button>
+            <button class="btn ghost sm" data-flex-unpublish="${f.id}" style="color:var(--red);border-color:var(--red);">Unpublish</button>
           </div>`).join('')}
       </div>` : ''}`;
 
@@ -3369,17 +3259,16 @@ function renderAdmin(){
       const discountPct = Math.max(0, Math.min(90, parseFloat($('flex-discount').value) || 0));
       const type = $('flex-hours').value;
       const note = $('flex-note').value.trim();
-      flexRateDates = flexRateDates.filter(f => f.date !== date); // replace any existing listing for this date
-      flexRateDates.push({ date, region, type, discountRate: discountPct / 100, note, status: 'open', createdAt: new Date().toISOString() });
-      await store.setShared('flex-rate-dates', flexRateDates);
+      try {
+        await apiFetch('/api/flexrate.php?action=publish', { method: 'POST', body: JSON.stringify({ date, region, type, discountPct, note }) });
+      } catch (e) { alert(e.message); return; }
+      flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || [];
       $('flex-publish-card').classList.add('hidden');
       renderAdmin();
     });
     el.querySelectorAll('[data-flex-unpublish]').forEach(btn => btn.addEventListener('click', async () => {
-      const f = flexRateDates.find(x => x.date === btn.dataset.flexUnpublish && x.status === 'open');
-      if (!f) return;
-      f.status = 'withdrawn';
-      await store.setShared('flex-rate-dates', flexRateDates);
+      await apiFetch('/api/flexrate.php?action=unpublish', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.flexUnpublish) }) });
+      flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || [];
       renderAdmin();
     }));
   } else if (admView === 'standing'){
@@ -3457,8 +3346,10 @@ function renderAdmin(){
 
     pending.forEach(r => {
       const inp = document.getElementById(`cr-${r.id}`);
-      if (inp) inp.addEventListener('change', () => {
-        r.customRate = inp.value !== '' ? parseFloat(inp.value) / 100 : null;
+      if (inp) inp.addEventListener('change', async () => {
+        const customRate = inp.value !== '' ? parseFloat(inp.value) : null;
+        r.customRate = customRate !== null ? customRate / 100 : null;
+        await apiFetch('/api/standing.php?action=set_custom_rate', { method: 'POST', body: JSON.stringify({ requestId: r.id, customRate }) });
         renderAdmin();
       });
     });
@@ -3484,73 +3375,28 @@ function renderAdmin(){
     });
 
     el.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', async () => {
-      const req = standingRequests.find(r => r.id === btn.dataset.approve);
-      if (!req) return;
-      // Generate each pattern's dates independently (each may have its own
-      // day of week, frequency, and full/half type), then merge into one
-      // chronological schedule for the agreement. A date carries its own
-      // type since two patterns in the same agreement can differ (e.g.
-      // Monday full day + Wednesday half day).
-      let dates = [];
-      req.patterns.forEach(p => {
-        generateStandingDates(p.actualStart, p.freq, p.count).forEach(date => {
-          dates.push({ date, type: p.type, status: 'scheduled', patientVolume: null });
-        });
-      });
-      dates.sort((a, b) => a.date.localeCompare(b.date));
-      const agreementId = code();
-      const effectiveRate = effectiveStandingRate(req.tier, req.paymentPlan, req.customRate);
-      const agreement = {
-        id: agreementId, status: 'active', createdAt: new Date().toISOString(),
-        name: req.name, contactEmail: req.contactEmail, region: req.region, zip: req.zip,
-        patterns: req.patterns, tier: req.tier, paymentPlan: req.paymentPlan || 'standard',
-        customRate: req.customRate ?? null, effectiveRate, dates
-      };
-      standingAgreements.push(agreement);
-      req.status = 'approved';
-      // Reserve every generated date in the shared calendar so the
-      // ad-hoc single-date calculator correctly blocks these days —
-      // a standing commitment should hold the day exclusively, per the
-      // agreement's own terms.
-      dates.forEach(d => {
-        allBooked.push({
-          id: `${agreementId}-${d.date}`, dates: [d.date], title: `Standing day — ${req.name}`,
-          meta: `Standing agreement · ${TYPE_LABEL_SD[d.type]}`, who: req.name, email: req.contactEmail,
-          service: 'office', total: 0, paid: 0, payType: 'standing', start: d.date,
-          balanceStatus: 'not_due', completedAt: null, review: null, standingAgreementId: agreementId
-        });
-      });
-      await store.setShared('standing-agreements', standingAgreements);
-      await store.setShared('standing-requests', standingRequests);
-      await store.setShared('schedule:booked', allBooked);
+      try { await apiFetch('/api/standing.php?action=approve', { method: 'POST', body: JSON.stringify({ id: btn.dataset.approve }) }); }
+      catch (e) { alert(e.message); return; }
+      standingRequests = (await apiFetch('/api/standing.php?action=list_pending')).requests || [];
+      standingAgreements = (await apiFetch('/api/standing.php?action=list_agreements')).agreements || [];
+      await loadAvailability();
       renderAdmin();
     }));
     el.querySelectorAll('[data-decline]').forEach(btn => btn.addEventListener('click', async () => {
-      const req = standingRequests.find(r => r.id === btn.dataset.decline);
-      if (!req) return;
-      req.status = 'declined';
-      await store.setShared('standing-requests', standingRequests);
+      await apiFetch('/api/standing.php?action=decline', { method: 'POST', body: JSON.stringify({ id: btn.dataset.decline }) });
+      standingRequests = (await apiFetch('/api/standing.php?action=list_pending')).requests || [];
       renderAdmin();
     }));
     el.querySelectorAll('[data-cancel-agreement]').forEach(btn => btn.addEventListener('click', async () => {
-      const a = standingAgreements.find(x => x.id === btn.dataset.cancelAgreement);
-      if (!a) return;
       if (!confirm(`Cancel this standing agreement? Dates before ${cancelCutoff} (30 days out) still occur as scheduled. Dates after that are released.`)) return;
-      const releasedDates = [];
-      a.dates.forEach(d => {
-        if (d.date >= cancelCutoff && d.status === 'scheduled'){
-          d.status = 'cancelled';
-          releasedDates.push(d.date);
-        }
-      });
-      a.status = 'cancelling';
-      allBooked = allBooked.filter(b => !(b.standingAgreementId === a.id && releasedDates.includes(b.start)));
-      await store.setShared('standing-agreements', standingAgreements);
-      await store.setShared('schedule:booked', allBooked);
+      await apiFetch('/api/standing.php?action=cancel_agreement', { method: 'POST', body: JSON.stringify({ id: btn.dataset.cancelAgreement }) });
+      standingAgreements = (await apiFetch('/api/standing.php?action=list_agreements')).agreements || [];
+      await loadAvailability();
       renderAdmin();
     }));
   } else if (admView === 'analytics'){
-    const an = computeAnalytics();
+    const an = latestAnalytics;
+    if (!an){ el.innerHTML = `<div class="empty">Couldn't load analytics right now.</div>`; return; }
     const REGION_LABEL = { central: 'Central FL', north: 'North FL', south: 'South FL' };
     const MONTH_LABEL = m => { const [y,mo] = m.split('-'); return new Date(y, mo-1, 1).toLocaleString('en-US', {month:'short', year:'numeric'}); };
 
@@ -3564,7 +3410,7 @@ function renderAdmin(){
     const cardsHtml = `
       <div class="an-grid">
         ${metricCard('Average booking value', money(an.avgBookingValue), `${an.totalEver} bookings tracked`)}
-        ${metricCard('Cancellation rate', `${Math.round(an.cancellationRate*100)}%`, `${cancelledLog.length} of ${an.totalEver} ever created`)}
+        ${metricCard('Cancellation rate', `${Math.round(an.cancellationRate*100)}%`, `${an.cancelledCount} of ${an.totalEver} ever created`)}
         ${metricCard('Booking lead time', an.avgLeadTime != null ? `${Math.round(an.avgLeadTime)} days` : 'Not enough data', an.leadTimeSampleSize ? `avg over ${an.leadTimeSampleSize} bookings` : 'needs bookings made after this update')}
         ${metricCard('Clinic retention', `${Math.round(an.retentionRate*100)}%`, `${an.clientCount} distinct clients`)}
         ${metricCard('Average rating', an.avgRating != null ? `${an.avgRating.toFixed(1)} / 5` : 'No reviews yet', an.ratingSampleSize ? `from ${an.ratingSampleSize} reviews` : '')}
@@ -3608,13 +3454,24 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
   t.classList.add('on'); admView = t.dataset.adm;
   if (admView === 'blocks') await loadAvailability();
   if (admView === 'booked') await loadAdminBookings();
-  // Phase B tabs (video / promo / inventory / standing / analytics) aren't
-  // wired to the server yet — they keep showing session-local demo data.
-  if (admView === 'video') videoRequests = (await store.getShared('video-interview-requests')) || [];
-  if (admView === 'promo') promoCodes = (await store.getShared('promo-codes')) || [];
+  if (admView === 'video'){
+    try { videoRequests = (await apiFetch('/api/video.php?action=list')).requests || []; } catch (e) { videoRequests = []; }
+  }
+  if (admView === 'promo'){
+    try { promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || []; } catch (e) { promoCodes = []; }
+  }
+  if (admView === 'inventory'){
+    await loadAdminBookings();
+    try { flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || []; } catch (e) { flexRateDates = []; }
+  }
   if (admView === 'standing'){
-    standingRequests = (await store.getShared('standing-requests')) || [];
-    standingAgreements = (await store.getShared('standing-agreements')) || [];
+    try {
+      standingRequests = (await apiFetch('/api/standing.php?action=list_pending')).requests || [];
+      standingAgreements = (await apiFetch('/api/standing.php?action=list_agreements')).agreements || [];
+    } catch (e) { standingRequests = []; standingAgreements = []; }
+  }
+  if (admView === 'analytics'){
+    try { latestAnalytics = await apiFetch('/api/analytics.php?action=summary'); } catch (e) { latestAnalytics = null; }
   }
   renderAdmin();
 }));
@@ -3791,19 +3648,19 @@ $('cancel-confirm').addEventListener('click', async () => {
 });
 
 /* ---------- PROMO CODE APPLY ---------- */
-$('promo-apply').addEventListener('click', () => {
+$('promo-apply').addEventListener('click', async () => {
   const codeStr = $('promo-input').value.trim();
   const msg = $('promo-msg');
   if (!codeStr){ appliedPromo = null; msg.classList.add('hidden'); recalc(); return; }
-  const result = findValidPromo(codeStr);
-  if (result.error){
-    appliedPromo = null;
-    msg.className = 'promo-msg bad';
-    msg.textContent = result.error;
-  } else {
-    appliedPromo = result.promo;
+  try {
+    const r = await apiFetch('/api/promo.php?action=validate', { method: 'POST', body: JSON.stringify({ code: codeStr }) });
+    appliedPromo = { code: codeStr.trim().toUpperCase(), type: r.type, value: r.value };
     msg.className = 'promo-msg ok';
     msg.textContent = `Applied — ${appliedPromo.type === 'percent' ? appliedPromo.value + '% off' : money(appliedPromo.value) + ' off'}`;
+  } catch (e){
+    appliedPromo = null;
+    msg.className = 'promo-msg bad';
+    msg.textContent = e.message;
   }
   recalc();
 });
@@ -3834,11 +3691,9 @@ $('vi-submit').addEventListener('click', async () => {
   if (!name || !email){ $('vi-err').textContent = 'Enter your name and email.'; return; }
   if (!date){ $('vi-err').textContent = 'Pick a preferred weekday.'; return; }
   if (!isWeekday(date)){ $('vi-err').textContent = "Weekends aren't available — please pick a Monday through Friday date."; return; }
-  // Video-interview requests aren't wired to the server yet (Phase B) — send
-  // a real email instead of only saving to this browser.
-  const subject = encodeURIComponent(`Video interview request — ${date}`);
-  const body = encodeURIComponent(`Name: ${name}\nEmail: ${email}\nPreferred date: ${date}, 12:00–1:00pm\nBooking reference: ${viBookingRef || '(none)'}`);
-  window.location.href = `mailto:${ADMIN_EMAIL}?subject=${subject}&body=${body}`;
+  try {
+    await apiFetch('/api/video.php?action=create', { method: 'POST', body: JSON.stringify({ name, email, date, bookingId: viBookingRef }) });
+  } catch (e) { $('vi-err').textContent = e.message; return; }
   $('video-modal').classList.remove('open');
   alert(`Thanks, ${name} — your request for ${date}, 12:00–1:00pm, has been sent. Expect a Zoom link by email within one business day.`);
 });

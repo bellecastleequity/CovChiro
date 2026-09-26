@@ -11,7 +11,7 @@ define('DB_NAME', 'your_cpanel_username_coverage');
 // ========== STRIPE CONFIGURATION ==========
 // https://dashboard.stripe.com/apikeys — use sk_test_/pk_test_ until you're ready to go live
 define('STRIPE_SECRET_KEY', 'sk_live_your_secret_key_here');
-define('STRIPE_PUBLISHABLE_KEY', 'pk_live_your_publishable_key_here');
+define('STRIPE_PUBLISHABLE_KEY', 'pk_live_51SgEuiRpDhUj3wt3ddQxveF6Bt5wIo3HTfYcfe2VUvpWQURB97xGooQw2EXm8nRV0vcjjSwlNof7HgyDQPz4lC6I00wQRddQvd');
 define('STRIPE_WEBHOOK_SECRET', 'whsec_your_webhook_signing_secret_here');
 
 // ========== SENDGRID CONFIGURATION ==========
@@ -305,15 +305,94 @@ function has_any_bookings(PDO $pdo, $userId) {
     return (int)$stmt->fetch()['c'] > 0;
 }
 
+function last_minute_enabled(PDO $pdo) {
+    $stmt = $pdo->query('SELECT value_json FROM app_settings WHERE name = "last_minute_discount"');
+    $row = $stmt->fetch();
+    if (!$row) return true; // default on, matching the site's advertised behavior
+    $val = json_decode($row['value_json'], true);
+    return $val['enabled'] ?? true;
+}
+
+// ---------- STANDING DAY (recurring coverage) ----------
+const STANDING_TIER_1 = ['min' => 12, 'rate' => 0.10];
+const STANDING_TIER_2 = ['min' => 24, 'rate' => 0.15];
+const STANDING_TIER_3 = ['min' => 52, 'rate' => 0.20];
+const STANDING_PREPAY_BONUS = 0.02;
+
+function pattern_day_equivalents(array $patterns) {
+    $sum = 0.0;
+    foreach ($patterns as $p) { $sum += (float)$p['count'] * ($p['type'] === 'full' ? 1 : 0.5); }
+    return $sum;
+}
+
+function standing_tier_for(float $count) {
+    if ($count >= STANDING_TIER_3['min']) return STANDING_TIER_3;
+    if ($count >= STANDING_TIER_2['min']) return STANDING_TIER_2;
+    if ($count >= STANDING_TIER_1['min']) return STANDING_TIER_1;
+    return null;
+}
+
+function effective_standing_rate(?array $tier, ?string $paymentPlan, $customRate) {
+    if ($customRate !== null) return (float)$customRate;
+    if (!$tier) return 0;
+    return $tier['rate'] + ($paymentPlan === 'prepay' ? STANDING_PREPAY_BONUS : 0);
+}
+
+// Rolls a start date forward to the next occurrence of the requested weekday.
+function next_weekday_on_or_after(string $dateStr, int $targetDow) {
+    $d = new DateTime($dateStr);
+    while ((int)$d->format('w') !== $targetDow) { $d->modify('+1 day'); }
+    return $d->format('Y-m-d');
+}
+
+function generate_standing_dates(string $startDateStr, string $frequency, int $count) {
+    $intervalDays = $frequency === 'weekly' ? 7 : ($frequency === 'biweekly' ? 14 : 28);
+    $dates = [];
+    $d = new DateTime($startDateStr);
+    for ($i = 0; $i < $count; $i++) {
+        $dates[] = $d->format('Y-m-d');
+        $d->modify("+{$intervalDays} days");
+    }
+    return $dates;
+}
+
+// Mirrors the frontend's standingDateRate(): the discounted day rate plus
+// mileage for one specific scheduled date on an agreement.
+function standing_date_rate(array $agreement, string $dateType) {
+    $rate = RATES[$agreement['region']] ?? RATES['central'];
+    $base = $dateType === 'full' ? $rate['full'] : $rate['half'];
+    $discounted = $base * (1 - (float)$agreement['effective_rate']);
+    $zipLookup = lookup_zip($agreement['zip_code']);
+    $miles = $zipLookup['miles'] ?? 0;
+    $mileage = $miles * tiered_mileage_rate($miles);
+    return ['discounted' => $discounted, 'mileage' => $mileage, 'total' => round($discounted + $mileage, 2), 'miles' => $miles];
+}
+
 // ---------- AVAILABILITY ----------
 
 // $entries: [['date' => 'YYYY-MM-DD', 'half' => bool, 'time' => 'HH:MM'|null], ...]
 // Returns a conflict description array or null if clear.
+// Every date already spoken for: ad-hoc bookings plus every non-cancelled
+// date on an active/cancelling standing-day agreement.
+function all_committed_dates(PDO $pdo) {
+    $dates = [];
+    $bookedStmt = $pdo->query("SELECT dates FROM bookings WHERE status != 'cancelled'");
+    foreach ($bookedStmt->fetchAll() as $r) {
+        foreach (json_decode($r['dates'], true) ?: [] as $d) { $dates[] = $d; }
+    }
+    $agreementStmt = $pdo->query("SELECT scheduled_dates FROM standing_agreements WHERE status != 'cancelled'");
+    foreach ($agreementStmt->fetchAll() as $r) {
+        foreach (json_decode($r['scheduled_dates'], true) ?: [] as $sd) {
+            if (($sd['status'] ?? '') !== 'cancelled') { $dates[] = $sd['date']; }
+        }
+    }
+    return $dates;
+}
+
 function check_availability(PDO $pdo, array $entries) {
     $blackoutStmt = $pdo->query('SELECT * FROM blackout_dates');
     $blackouts = $blackoutStmt->fetchAll();
-    $bookedStmt = $pdo->query("SELECT dates FROM bookings WHERE status != 'cancelled'");
-    $bookedDateSets = array_map(fn($r) => json_decode($r['dates'], true) ?: [], $bookedStmt->fetchAll());
+    $committedDates = all_committed_dates($pdo);
 
     foreach ($entries as $entry) {
         $day = $entry['date'];
@@ -329,11 +408,29 @@ function check_availability(PDO $pdo, array $entries) {
                 if ($b['scope'] === 'pm' && $hour >= 13) return ['day' => $day, 'why' => 'afternoons blocked off'];
             }
         }
-        foreach ($bookedDateSets as $dates) {
-            if (in_array($day, $dates, true)) return ['day' => $day, 'why' => 'already booked'];
-        }
+        if (in_array($day, $committedDates, true)) return ['day' => $day, 'why' => 'already booked'];
     }
     return null;
+}
+
+// Validates a promo code the same way the original client-side
+// findValidPromo() did. Returns ['promo' => row] or ['error' => message].
+function validate_promo_code(PDO $pdo, string $codeStr) {
+    $today = date('Y-m-d');
+    $stmt = $pdo->prepare('SELECT * FROM promo_codes WHERE code = ?');
+    $stmt->execute([strtoupper(trim($codeStr))]);
+    $promo = $stmt->fetch();
+    if (!$promo) return ['error' => "That code isn't valid."];
+    if (!$promo['active']) return ['error' => 'That code is no longer active.'];
+    if ($promo['expires_at'] && $promo['expires_at'] < $today) return ['error' => 'That code has expired.'];
+    if ($promo['max_uses'] !== null && (int)$promo['used_count'] >= (int)$promo['max_uses']) return ['error' => 'That code has reached its usage limit.'];
+    return ['promo' => $promo];
+}
+
+function promo_discount_amount(array $promo, float $subtotal) {
+    if ($subtotal <= 0) return 0;
+    $raw = $promo['type'] === 'percent' ? $subtotal * ((float)$promo['value'] / 100) : (float)$promo['value'];
+    return min($raw, $subtotal);
 }
 
 // Applies a succeeded Stripe payment to a booking exactly once, whichever
@@ -381,6 +478,41 @@ function apply_successful_payment(PDO $pdo, string $bookingId, string $intentId,
 // frontend's date math always works.
 function to_iso($mysqlDatetime) {
     return $mysqlDatetime ? date('c', strtotime($mysqlDatetime)) : null;
+}
+
+// Same idempotent-apply pattern as apply_successful_payment(), for a single
+// paid date on a standing-day agreement.
+function apply_successful_standing_payment(PDO $pdo, string $agreementId, string $date, string $intentId, float $amount, ?string $chargeId) {
+    $exists = $pdo->prepare('SELECT id FROM payments WHERE stripe_payment_intent = ? AND status = "succeeded"');
+    $exists->execute([$intentId]);
+    if ($exists->fetch()) return false;
+
+    $stmt = $pdo->prepare('SELECT * FROM standing_agreements WHERE id = ?');
+    $stmt->execute([$agreementId]);
+    $a = $stmt->fetch();
+    if (!$a) return false;
+
+    $dates = json_decode($a['scheduled_dates'], true) ?: [];
+    $changed = false;
+    foreach ($dates as &$d) {
+        if ($d['date'] === $date && $d['status'] !== 'paid') {
+            $d['status'] = 'paid';
+            $d['paidAt'] = date('c');
+            $changed = true;
+        }
+    }
+    unset($d);
+    if (!$changed) return false;
+
+    $pdo->prepare('UPDATE standing_agreements SET scheduled_dates = ? WHERE id = ?')->execute([json_encode($dates), $agreementId]);
+    $stmt = $pdo->prepare('INSERT INTO payments (standing_agreement_id, standing_date, user_id, amount, purpose, stripe_payment_intent, stripe_charge_id, status) VALUES (?, ?, ?, ?, "standing_date", ?, ?, "succeeded")');
+    $stmt->execute([$agreementId, $date, $a['user_id'], $amount, $intentId, $chargeId]);
+
+    send_email($a['contact_email'], "Payment received — {$date}",
+        "<p>Thank you — your payment of $" . number_format($amount, 2) . " for the standing day coverage on {$date} has been received.</p>");
+    send_email(ADMIN_EMAIL, "Standing day payment received — {$a['clinic_name']}",
+        "<p>{$a['clinic_name']} paid $" . number_format($amount, 2) . " for {$date}.</p>");
+    return true;
 }
 
 function booking_to_json(array $r) {
