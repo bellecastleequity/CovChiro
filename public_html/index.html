@@ -299,14 +299,9 @@
               <div><label>&nbsp;</label><button class="btn" id="cd-date-add" type="button" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Add date</button></div>
             </div>
             <div class="date-builder-row" style="margin-top:10px;">
-              <div><label for="cd-posted-hours">Your practice's posted hours (for reference)</label><input type="text" id="cd-posted-hours" placeholder="e.g. 8:00 AM – 5:00 PM"></div>
-              <div></div>
-              <div><label>&nbsp;</label><p style="font-size:0.78rem;color:#6b7280;margin:0;">Reference only — this doesn't affect your quote. It just helps orient the covering doctor.</p></div>
-            </div>
-            <div class="date-builder-row" style="margin-top:10px;">
-              <div><label for="cd-start-time">Billable coverage window — start</label><input type="time" id="cd-start-time" required></div>
-              <div><label for="cd-end-time">Billable coverage window — end</label><input type="time" id="cd-end-time" required></div>
-              <div><label>&nbsp;</label><p style="font-size:0.78rem;color:#6b7280;margin:0;">The hours you need the doctor on site — this is what's billed, not your posted hours. If you need him on site before opening or after close (prep, meetings, charting), include that time here. A 60-minute lunch is deducted from full-day hours before anything beyond the block is billed as overtime.</p></div>
+              <div><label for="cd-start-time">Billable coverage window — start <span style="color:var(--red);">*</span></label><input type="time" id="cd-start-time" required></div>
+              <div><label for="cd-end-time">Billable coverage window — end <span style="color:var(--red);">*</span></label><input type="time" id="cd-end-time" required></div>
+              <div><label>&nbsp;</label><p style="font-size:0.78rem;color:#6b7280;margin:0;">The hours you need the doctor on site — this is what's billed. If you need him on site before opening or after close (prep, meetings, charting), include that time here. A 60-minute lunch is deducted from full-day hours before anything beyond the block is billed as overtime.</p></div>
             </div>
             <div class="err-msg" id="cd-date-err"></div>
             <div id="cd-date-list"></div>
@@ -1304,7 +1299,6 @@ function coverageDetails(){
   const dress = dressSel === 'other' ? $('cd-dress-other').value.trim() : dressSel;
   const techniques = Array.from(document.querySelectorAll('.tq input:checked')).map(el => el.value);
   return {
-    postedHours: $('cd-posted-hours').value.trim(),
     dress: dress || '',
     techniques,
     notes: $('cd-notes').value.trim(),
