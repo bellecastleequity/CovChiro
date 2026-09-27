@@ -27,6 +27,8 @@ switch ($action) {
     case 'admin_reschedule': handle_admin_reschedule($pdo); break;
     case 'admin_cancel': handle_admin_cancel($pdo); break;
     case 'admin_delete': handle_admin_delete($pdo); break;
+    case 'admin_create_for_client': handle_admin_create_for_client($pdo); break;
+    case 'sign_pending': handle_sign_pending($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -217,6 +219,157 @@ function handle_create(PDO $pdo) {
     ]);
 }
 
+// Lets the provider create a booking on behalf of a caller (a phone
+// booking) without needing that person's password. The booking is created
+// with no signature and no payment — status "pending" — which keeps it off
+// the 30-minute stale-reservation sweep (that only targets "upcoming") while
+// still blocking the calendar like any other committed booking. The client
+// gets an email inviting them to review, sign, and pay the deposit
+// themselves at index.html?booking=ID — the same signature + Stripe flow as
+// booking directly, just picking up partway through. A brand-new client
+// gets an account created for them with a password-reset link folded into
+// the same email, since handle_reset_password() already logs them in on
+// success.
+//
+// Deliberately simpler pricing than handle_create(): day rate + mileage +
+// hotel + overtime only — no flex-rate, last-minute, first-booking/recurring
+// discounts, or promo codes. This is a phone-quoted booking; add a discount
+// afterward as a billing adjustment from "Manage booking" if one applies.
+function handle_admin_create_for_client(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+
+    $name = trim($body['name'] ?? '');
+    $email = strtolower(trim($body['email'] ?? ''));
+    $phone = trim($body['phone'] ?? '');
+    $dates = $body['dates'] ?? [];
+    $dayTypes = $body['dayTypes'] ?? [];
+    $dayTimes = is_array($body['dayTimes'] ?? null) ? $body['dayTimes'] : [];
+    $address = trim($body['address'] ?? '');
+    $clientRegion = $body['region'] ?? 'central';
+    $notes = trim($body['notes'] ?? '');
+    $hotelNightsInput = isset($body['hotelNights']) ? (int)$body['hotelNights'] : null;
+
+    if (!$name) json_response(['error' => "Enter the client's name."], 400);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) json_response(['error' => 'Enter a valid client email.'], 400);
+    if (!$address) json_response(['error' => 'Enter the clinic address.'], 400);
+    if (!is_array($dates) || !count($dates) || count($dates) !== count($dayTypes)) {
+        json_response(['error' => 'Add at least one coverage date.'], 400);
+    }
+    foreach ($dayTypes as $t) {
+        if (!in_array($t, ['full', 'half-am', 'half-pm'], true)) json_response(['error' => 'Invalid day type.'], 400);
+    }
+
+    $entries = [];
+    foreach ($dates as $i => $d) {
+        $half = $dayTypes[$i] !== 'full';
+        $timeEntry = null;
+        foreach ($dayTimes as $dt) { if (($dt['date'] ?? null) === $d) { $timeEntry = $dt; break; } }
+        $entries[] = ['date' => $d, 'half' => $half, 'time' => $timeEntry['startTime'] ?? null];
+    }
+    $conflict = check_availability($pdo, $entries);
+    if ($conflict) json_response(['error' => "That date ({$conflict['day']}) is {$conflict['why']}. Pick a different date."], 409);
+
+    $location = resolve_location($pdo, $address);
+    $region = ($location['region'] && isset(RATES[$location['region']])) ? $location['region'] : $clientRegion;
+    $miles = $location['miles'] ?? 0;
+    $lat = $location['lat'] ?? null;
+    $lng = $location['lng'] ?? null;
+    if (!isset(RATES[$region])) $region = 'central';
+
+    $rate = RATES[$region];
+    $sorted = $dates; $sortedTypes = $dayTypes;
+    array_multisort($sorted, $sortedTypes);
+
+    $fullCount = count(array_filter($sortedTypes, fn($t) => $t === 'full'));
+    $halfCount = count($sortedTypes) - $fullCount;
+    $base = 0;
+    foreach ($sortedTypes as $t) { $base += $t === 'full' ? $rate['full'] : $rate['half']; }
+
+    $overtimeCost = 0;
+    foreach ($sorted as $i => $d) {
+        $type = $sortedTypes[$i];
+        $timeEntry = null;
+        foreach ($dayTimes as $dt) { if (($dt['date'] ?? null) === $d) { $timeEntry = $dt; break; } }
+        if ($timeEntry) {
+            $ot = overtime_for_entry($type, $timeEntry['startTime'] ?? null, $timeEntry['endTime'] ?? null);
+            $overtimeCost += $ot['cost'];
+        }
+    }
+
+    $mileRate = tiered_mileage_rate($miles);
+    $numTrips = count(group_consecutive_dates($sorted));
+    $mileage = $miles * $mileRate * $numTrips;
+
+    $longDistance = $miles > 300;
+    $hotelNights = $longDistance ? max(1, $hotelNightsInput ?: $fullCount ?: 1) : 0;
+    $hotel = $hotelNights * HOTEL_RATE;
+
+    $total = round($base + $mileage + $hotel + $overtimeCost, 2);
+    if ($total <= 0) json_response(['error' => 'Could not price this booking.'], 400);
+    $deposit = round($total * DEPOSIT_RATE, 2);
+
+    $parts = [];
+    if ($fullCount) $parts[] = "$fullCount full day" . ($fullCount > 1 ? 's' : '');
+    if ($halfCount) $parts[] = "$halfCount half day" . ($halfCount > 1 ? 's' : '');
+    $dayDesc = $parts ? implode(' + ', $parts) : 'No dates selected';
+    $meta = "$dayDesc · $address · $miles mi one way" . ($longDistance ? " · $hotelNights hotel night" . ($hotelNights > 1 ? 's' : '') : '');
+    $title = "Office coverage — {$rate['label']}";
+
+    // Find or create the client's account. A brand-new one gets a random,
+    // never-communicated password plus a reset token — handle_reset_password()
+    // already logs the user in on success, so "set your password" doubles as
+    // "activate your account."
+    $stmt = $pdo->prepare('SELECT id FROM users WHERE email = ?');
+    $stmt->execute([$email]);
+    $existingUser = $stmt->fetch();
+    $isNewClient = !$existingUser;
+    $resetToken = null;
+
+    if ($existingUser) {
+        $userId = (int)$existingUser['id'];
+    } else {
+        $randomPassword = bin2hex(random_bytes(16));
+        $hash = password_hash($randomPassword, PASSWORD_DEFAULT);
+        $resetToken = bin2hex(random_bytes(24));
+        $resetExpires = date('Y-m-d H:i:s', time() + 7 * 86400);
+        $stmt = $pdo->prepare('INSERT INTO users (name, email, password_hash, phone, reset_token, reset_expires, email_verified) VALUES (?, ?, ?, ?, ?, ?, 1)');
+        $stmt->execute([sanitize($name), $email, $hash, sanitize($phone), $resetToken, $resetExpires]);
+        $userId = (int)$pdo->lastInsertId();
+    }
+
+    $bookingId = generate_id('MM');
+    $coverage = ['notes' => sanitize($notes)];
+    $stmt = $pdo->prepare('INSERT INTO bookings
+        (id, user_id, status, dates, day_types, day_times, coverage_type, coverage, signature, title, meta, region, zip_code, address, lat, lng, miles, total, paid, balance_status, pay_type, created_at, start_date)
+        VALUES (?, ?, "pending", ?, ?, ?, "office", ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", NOW(), ?)');
+    $stmt->execute([
+        $bookingId, $userId, json_encode(array_values($sorted)), json_encode(array_values($sortedTypes)), json_encode($dayTimes),
+        json_encode($coverage), sanitize($title), sanitize($meta), $region, extract_zip_from_address($address),
+        sanitize($address), $lat, $lng, $miles, $total, $sorted[0],
+    ]);
+
+    $reviewLink = SITE_URL . '/index.html?booking=' . $bookingId . ($resetToken ? '&reset=' . $resetToken : '');
+    if ($isNewClient) {
+        send_email($email, 'A booking has been started for you',
+            "<p>Hi {$name},</p><p>A booking has been started for you at coveragechiropractor.com:</p>" .
+            "<p><strong>{$title}</strong><br>{$meta}<br>Total: $" . number_format($total, 2) . ' · Deposit due: $' . number_format($deposit, 2) . '</p>' .
+            '<p>Click below to set a password, review the coverage agreement, and pay the deposit to confirm:</p>' .
+            "<p><a href=\"{$reviewLink}\">{$reviewLink}</a></p><p>This link expires in 7 days.</p>");
+    } else {
+        send_email($email, 'A booking has been added to your account',
+            "<p>Hi {$name},</p><p>A booking has been added to your account at coveragechiropractor.com:</p>" .
+            "<p><strong>{$title}</strong><br>{$meta}<br>Total: $" . number_format($total, 2) . ' · Deposit due: $' . number_format($deposit, 2) . '</p>' .
+            '<p>Sign in and review it to sign the coverage agreement and pay the deposit to confirm:</p>' .
+            "<p><a href=\"{$reviewLink}\">{$reviewLink}</a></p>");
+    }
+    send_email(ADMIN_EMAIL, "Phone booking started — {$bookingId}",
+        "<p>{$name} ({$email}) — {$title}, {$meta}. Awaiting their signature + deposit.</p>");
+
+    json_response(['success' => true, 'booking_id' => $bookingId, 'is_new_client' => $isNewClient, 'total' => $total, 'deposit' => $deposit]);
+}
+
 function handle_list(PDO $pdo) {
     $user = require_login();
     $stmt = $pdo->prepare('SELECT * FROM bookings WHERE user_id = ? ORDER BY created_at DESC');
@@ -232,6 +385,36 @@ function handle_get(PDO $pdo) {
     $row = $stmt->fetch();
     if (!$row || ((int)$row['user_id'] !== (int)$user['id'] && !$user['is_admin'])) json_response(['error' => 'Not found'], 404);
     json_response(['booking' => booking_to_json($pdo, $row)]);
+}
+
+// The other half of handle_admin_create_for_client()'s flow: the client
+// reviews the pending booking at index.html?booking=ID and signs the
+// coverage agreement themselves (only they can meaningfully agree to it —
+// admin can't sign on their behalf). Doesn't touch payment or status; the
+// deposit PaymentIntent confirmation (apply_successful_payment) is what
+// actually flips the booking from "pending" to "upcoming" once it's paid.
+function handle_sign_pending(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $user = require_login();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+    $signature = $body['signature'] ?? null;
+    if (!$signature || empty($signature['name']) || empty($signature['agreementType'])) {
+        json_response(['error' => 'A signed agreement is required.'], 400);
+    }
+
+    $stmt = $pdo->prepare('SELECT * FROM bookings WHERE id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b || (int)$b['user_id'] !== (int)$user['id']) json_response(['error' => 'Not found'], 404);
+    if ($b['status'] !== 'pending') json_response(['error' => 'This booking has already been confirmed.'], 400);
+    if ($b['signature']) json_response(['error' => 'This booking is already signed.'], 400);
+
+    $pdo->prepare('UPDATE bookings SET signature = ? WHERE id = ?')->execute([json_encode($signature), $id]);
+
+    $stmt = $pdo->prepare('SELECT * FROM bookings WHERE id = ?');
+    $stmt->execute([$id]);
+    json_response(['success' => true, 'booking' => booking_to_json($pdo, $stmt->fetch())]);
 }
 
 function handle_cancel(PDO $pdo) {

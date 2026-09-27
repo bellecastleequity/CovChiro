@@ -41,6 +41,7 @@ function handle_create_intent(PDO $pdo) {
 
     if ($purpose === 'deposit') {
         if ((float)$b['paid'] > 0) json_response(['error' => 'Deposit already paid.'], 400);
+        if ($b['status'] === 'pending' && !$b['signature']) json_response(['error' => 'Sign the coverage agreement before paying the deposit.'], 400);
         $amount = round($b['total'] * DEPOSIT_RATE, 2);
     } elseif ($purpose === 'balance') {
         if ($b['balance_status'] !== 'due') json_response(['error' => 'No balance is due on this booking.'], 400);

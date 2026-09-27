@@ -52,6 +52,24 @@ function haversine(a, b){
   const h = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
+// Splits a sorted list of date strings into runs of consecutive calendar
+// days — each run is one "trip" for mileage purposes (mileage is charged
+// once per trip, not once per day, since a multi-day-in-a-row booking is a
+// single drive out and back).
+function groupConsecutiveDates(sortedDates){
+  const groups = [];
+  let current = [];
+  for (const d of sortedDates){
+    if (!current.length){ current.push(d); continue; }
+    const prev = new Date(current[current.length - 1] + 'T12:00:00');
+    const cur = new Date(d + 'T12:00:00');
+    const diffDays = Math.round((cur - prev) / 864e5);
+    if (diffDays === 1) current.push(d);
+    else { groups.push(current); current = [d]; }
+  }
+  if (current.length) groups.push(current);
+  return groups;
+}
 function lookupZip(zip){
   const z = (zip || '').trim();
   if (!/^\d{5}$/.test(z)) return null;

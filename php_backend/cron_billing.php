@@ -30,7 +30,13 @@ $completed = 0;
 $feesApplied = 0;
 
 // ---------- 1. Auto-complete bookings whose coverage has ended ----------
-$stmt = $pdo->query("SELECT id, dates FROM bookings WHERE completed_at IS NULL AND balance_status = 'not_due' AND status IN ('upcoming', 'pending')");
+// "pending" is deliberately excluded here — that status means an
+// admin-created phone booking the client never signed/paid for (see
+// apply_successful_payment() in config.php, which is the only thing that
+// ever moves a booking from "pending" to "upcoming"). If one of those is
+// still "pending" once its date arrives, nobody confirmed it; step 1a below
+// releases it instead of billing for coverage that was never agreed to.
+$stmt = $pdo->query("SELECT id, dates FROM bookings WHERE completed_at IS NULL AND balance_status = 'not_due' AND status = 'upcoming'");
 foreach ($stmt->fetchAll() as $b) {
     $dates = json_decode($b['dates'], true) ?: [];
     if (!count($dates)) continue;
@@ -39,6 +45,20 @@ foreach ($stmt->fetchAll() as $b) {
         $pdo->prepare("UPDATE bookings SET completed_at = NOW(), balance_status = 'due' WHERE id = ?")->execute([$b['id']]);
         $completed++;
     }
+}
+
+// ---------- 1a. Release abandoned phone-booking invites ----------
+// A "pending" booking (admin-created via admin_create_for_client, awaiting
+// the client's signature + deposit) that's sat unconfirmed for a week is
+// treated as declined — cancel it to free the calendar hold rather than
+// leaving dates blocked indefinitely for a booking that's never coming.
+$released = 0;
+$stmt = $pdo->query("SELECT id, title, meta, created_at FROM bookings WHERE status = 'pending' AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)");
+foreach ($stmt->fetchAll() as $b) {
+    $pdo->prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?")->execute([$b['id']]);
+    $released++;
+    send_email(ADMIN_EMAIL, "Phone booking invite expired — {$b['id']}",
+        "<p>{$b['title']} ({$b['meta']}) was never signed or paid for within 7 days and has been released.</p>");
 }
 
 // ---------- 2. Late fee + interest on overdue booking balances ----------
@@ -97,4 +117,4 @@ foreach ($stmt->fetchAll() as $inv) {
     );
 }
 
-echo "Billing cron complete — {$completed} booking(s) auto-completed, {$feesApplied} fee/interest charge(s) applied.\n";
+echo "Billing cron complete — {$completed} booking(s) auto-completed, {$released} abandoned invite(s) released, {$feesApplied} fee/interest charge(s) applied.\n";

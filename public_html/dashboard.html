@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=6">
+<link rel="stylesheet" href="assets/style.css?v=7">
 </head>
 <body>
 
@@ -326,7 +326,7 @@
 </div>
 
 <script src="https://js.stripe.com/v3/"></script>
-<script src="assets/app-shared.js?v=6"></script>
+<script src="assets/app-shared.js?v=7"></script>
 <script>
 async function openStandingPaymentModal(agreementId, date, amountLabel, onSuccess){
   paymentContext = { kind: 'standing', agreementId, date };
@@ -631,7 +631,7 @@ function renderDash(){
         <h4>${b.title}</h4>
         <div class="bk-meta">${b.meta}</div>
         <div class="bk-meta">${bk === 'pending' ? 'Requested date' : 'Start date'}: ${b.start}</div>
-        ${bk === 'pending' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">I'll contact you to confirm this time slot.</div>` : ''}
+        ${bk === 'pending' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">${b.signature ? 'Signed — pay the deposit to confirm this booking.' : 'Review the coverage agreement, sign, and pay the deposit to confirm this booking.'}</div>` : ''}
         ${bk === 'balance' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">Coverage complete — balance is due now.${rem ? ` ${rem.daysOverdue} day${rem.daysOverdue === 1 ? '' : 's'} overdue.${rem.hasLateFee ? ' A late fee has been applied.' : ''}${rem.interestCount ? ` Interest applied ${rem.interestCount} time${rem.interestCount === 1 ? '' : 's'} so far.` : ''} Pay now to stop further charges.` : ''}</div>` : ''}
         <div class="bk-code">Ref ${b.id}</div>
         ${b.coverage && (b.coverage.postedHours || b.coverage.dress || (b.coverage.techniques && b.coverage.techniques.length) || b.coverage.notes || b.coverage.pocName) ? `
@@ -678,7 +678,13 @@ function renderDash(){
         ${bk === 'balance' ? `
           <div style="font-size:0.85rem;color:var(--red);font-weight:600;margin-top:6px;">${money(balanceOwed)} owed</div>
           <div class="bk-actions"><button class="btn sm" data-paybalance="${b.id}">Pay balance now</button></div>` : ''}
-        ${(bk === 'upcoming' || bk === 'pending') ? `
+        ${bk === 'pending' ? `
+          <div class="bk-actions">
+            <a class="btn sm" href="https://coveragechiropractor.com/index.html?booking=${b.id}">${b.signature ? 'Pay deposit to confirm' : 'Review &amp; confirm'}</a>
+            <button class="btn ghost sm" data-editaddress="${b.id}">Edit address</button>
+            <button class="btn danger sm" data-cancel="${b.id}">Decline</button>
+          </div>` : ''}
+        ${bk === 'upcoming' ? `
           <div style="font-size:0.72rem;color:${refundable?'var(--teal)':'var(--red)'};margin-top:6px;">
             ${refundable ? 'Free cancellation window open' : 'Inside 48 hrs — deposit forfeited'}
           </div>

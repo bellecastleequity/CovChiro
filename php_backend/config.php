@@ -692,10 +692,19 @@ function apply_successful_payment(PDO $pdo, string $bookingId, string $intentId,
     $newPaid = round((float)$b['paid'] + $amount, 2);
     if ($purpose === 'balance') {
         $stmt = $pdo->prepare("UPDATE bookings SET paid = ?, balance_status = 'paid' WHERE id = ?");
+        $stmt->execute([$newPaid, $bookingId]);
+    } elseif ($purpose === 'deposit' && $b['status'] === 'pending') {
+        // An admin-created phone booking sits in "pending" (signed but
+        // unpaid, or not yet even signed) until the client pays their own
+        // deposit — this is the moment it becomes a real, confirmed booking,
+        // same as a self-service booking is "upcoming" from the instant it's
+        // created.
+        $stmt = $pdo->prepare("UPDATE bookings SET paid = ?, status = 'upcoming' WHERE id = ?");
+        $stmt->execute([$newPaid, $bookingId]);
     } else {
         $stmt = $pdo->prepare('UPDATE bookings SET paid = ? WHERE id = ?');
+        $stmt->execute([$newPaid, $bookingId]);
     }
-    $stmt->execute([$newPaid, $bookingId]);
 
     $stmt = $pdo->prepare('INSERT INTO payments (booking_id, user_id, amount, purpose, stripe_payment_intent, stripe_charge_id, status) VALUES (?, ?, ?, ?, ?, ?, "succeeded")');
     $stmt->execute([$bookingId, $b['user_id'], $amount, $purpose, $intentId, $chargeId]);

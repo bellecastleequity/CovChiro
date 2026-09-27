@@ -118,7 +118,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=6">
+<link rel="stylesheet" href="assets/style.css?v=7">
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-5103Z9E4B8"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -756,7 +756,7 @@
 </div>
 
 <script src="https://js.stripe.com/v3/"></script>
-<script src="assets/app-shared.js?v=6"></script>
+<script src="assets/app-shared.js?v=7"></script>
 <script>
 async function loadSession(){
   try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
@@ -771,6 +771,10 @@ async function loadSession(){
   renderAuthState();
   recalc();
   initChatWidget();
+  if (pendingConfirmBookingId){
+    if (user) await showPendingBookingFlow();
+    else if (!resetToken) openAuth('login');
+  }
 }
 const HOTEL_RATE = 110;
 function promoDiscount(subtotal){
@@ -803,20 +807,6 @@ function checkAvailability(entries){
     }
   }
   return null;
-}
-function groupConsecutiveDates(sortedDates){
-  const groups = [];
-  let current = [];
-  for (const d of sortedDates){
-    if (!current.length){ current.push(d); continue; }
-    const prev = new Date(current[current.length - 1] + 'T12:00:00');
-    const cur = new Date(d + 'T12:00:00');
-    const diffDays = Math.round((cur - prev) / 864e5);
-    if (diffDays === 1) current.push(d);
-    else { groups.push(current); current = [d]; }
-  }
-  if (current.length) groups.push(current);
-  return groups;
 }
 const CD_TYPE_LABEL = { full: 'Full day', 'half-am': 'Half day — morning', 'half-pm': 'Half day — afternoon' };
 function renderFlexRateList(){
@@ -1361,20 +1351,33 @@ $('forgot-submit').addEventListener('click', async () => {
   $('forgot-submit').disabled = false;
 });
 let resetToken = null;
+let pendingConfirmBookingId = null;
 $('reset-submit').addEventListener('click', async () => {
   const pass = $('reset-pass').value, pass2 = $('reset-pass2').value;
   if (pass.length < 8){ $('reset-err').textContent = 'Password must be at least 8 characters.'; return; }
   if (pass !== pass2){ $('reset-err').textContent = 'Passwords do not match.'; return; }
   $('reset-submit').disabled = true;
   try {
-    await apiFetch('/api/auth.php?action=reset_password', { method: 'POST', body: JSON.stringify({ token: resetToken, newPassword: pass }) });
-    window.location.href = 'dashboard.html';
+    const r = await apiFetch('/api/auth.php?action=reset_password', { method: 'POST', body: JSON.stringify({ token: resetToken, newPassword: pass }) });
+    if (pendingConfirmBookingId){
+      user = r.user;
+      $('reset-modal').classList.remove('open');
+      await showPendingBookingFlow();
+    } else {
+      window.location.href = 'dashboard.html';
+    }
   } catch (e) { $('reset-err').textContent = e.message; $('reset-submit').disabled = false; }
 });
 (function handleAuthLinkParams(){
   const params = new URLSearchParams(window.location.search);
   const verifyToken = params.get('verify');
   const resetParam = params.get('reset');
+  const bookingParam = params.get('booking');
+  if (bookingParam){
+    pendingConfirmBookingId = bookingParam;
+    params.delete('booking');
+    window.history.replaceState({}, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
+  }
   if (verifyToken){
     apiFetch('/api/auth.php?action=verify_email&token=' + encodeURIComponent(verifyToken))
       .then(() => alert('Your email is verified — thanks!'))
@@ -1426,6 +1429,10 @@ $('auth-submit').addEventListener('click', async () => {
     openSignModal(quote());
     return;
   }
+  if (pendingConfirmBookingId){
+    await showPendingBookingFlow();
+    return;
+  }
   // Not mid-booking — sign-in/registration from the header goes straight to
   // the relevant dashboard rather than leaving the client on the homepage.
   window.location.href = user.isAdmin ? 'admin.html' : 'dashboard.html';
@@ -1438,6 +1445,54 @@ $('btn-book').addEventListener('click', () => {
 });
 let signPendingQuote = null;
 let signFlow = 'office';
+let pendingConfirmBooking = null;
+async function showPendingBookingFlow(){
+  if (!pendingConfirmBookingId) return;
+  const id = pendingConfirmBookingId;
+  pendingConfirmBookingId = null;
+  await loadMyBookings();
+  renderAuthState();
+  try {
+    const r = await apiFetch('/api/booking.php?action=get&id=' + encodeURIComponent(id));
+    openConfirmPendingModal(r.booking);
+  } catch (e) {
+    alert(e.message || 'That booking link is no longer valid.');
+  }
+}
+function openConfirmPendingModal(b){
+  if (!b) return;
+  if (b.status === 'cancelled'){
+    alert('This booking has been cancelled and is no longer available.');
+    window.location.href = 'dashboard.html';
+    return;
+  }
+  if (b.status !== 'pending'){
+    // Already confirmed — e.g. the link was opened again after paying.
+    window.location.href = 'dashboard.html';
+    return;
+  }
+  signFlow = 'pending-booking';
+  pendingConfirmBooking = b;
+  if (b.signature){
+    openPaymentModal(b.id, 'deposit', `Deposit due today (10%): ${money(b.total * 0.10)}`, (booking) => {
+      showConfirmation(booking);
+    });
+    return;
+  }
+  $('sign-title').textContent = 'Review & confirm your coverage booking';
+  $('sign-fields').innerHTML = `
+    <div class="sf-row"><span>Practice / clinic</span><span>${user.clinic || '(not provided)'}</span></div>
+    <div class="sf-row"><span>Contact</span><span>${user.name} · ${user.email}</span></div>
+    <div class="sf-row"><span>Coverage</span><span>${b.title}</span></div>
+    <div class="sf-row"><span>Details</span><span>${b.meta}</span></div>
+    <div class="sf-row"><span>Total</span><span>${money(b.total)}</span></div>
+  `;
+  $('sign-terms').innerHTML = officeCoverageTermsHtml();
+  $('sign-name').value = '';
+  $('sign-agree').checked = false;
+  $('sign-err').textContent = '';
+  $('sign-modal').classList.add('open');
+}
 function officeCoverageTermsHtml(){
   return `
     <h4>Fees, Deposit &amp; Payment</h4>
@@ -1504,6 +1559,25 @@ $('sign-submit').addEventListener('click', async () => {
       region: pendingStandingRequest.region, address: pendingStandingRequest.address,
       patterns: pendingStandingRequest.patterns, paymentPlan: pendingStandingRequest.paymentPlan,
     }, `Signup deposit: ${$('sd-quote-deposit').textContent}`);
+    return;
+  }
+
+  if (signFlow === 'pending-booking'){
+    const signature = { name, signedAt: new Date().toISOString(), agreementType: 'office-coverage' };
+    $('sign-submit').disabled = true;
+    try {
+      const r = await apiFetch('/api/booking.php?action=sign_pending', { method: 'POST', body: JSON.stringify({ id: pendingConfirmBooking.id, signature }) });
+      pendingConfirmBooking = r.booking;
+    } catch (e) {
+      $('sign-err').textContent = e.message;
+      $('sign-submit').disabled = false;
+      return;
+    }
+    $('sign-submit').disabled = false;
+    $('sign-modal').classList.remove('open');
+    openPaymentModal(pendingConfirmBooking.id, 'deposit', `Deposit due today (10%): ${money(pendingConfirmBooking.total * 0.10)}`, (booking) => {
+      showConfirmation(booking);
+    });
     return;
   }
 

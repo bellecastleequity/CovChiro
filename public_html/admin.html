@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=6">
+<link rel="stylesheet" href="assets/style.css?v=7">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
 <body>
@@ -82,7 +82,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="assets/app-shared.js?v=6"></script>
+<script src="assets/app-shared.js?v=7"></script>
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null, adminInvoices = [];
 let showCancelledBookings = false;
@@ -93,6 +93,100 @@ async function loadAdminBookings(){
   catch (e) { adminBookings = []; }
 }
 let adminMapInstance = null, adminMapMarker = null;
+let pbDateRows = [];
+let pbRegionManual = false;
+function renderPbDateRows(){
+  const rrEl = document.getElementById('pb-date-rows');
+  if (!rrEl) return;
+  rrEl.innerHTML = pbDateRows.map((r, i) => `
+    <div class="row2" style="margin-top:8px;align-items:end;" data-pb-row="${i}">
+      <div><input type="date" class="pbr-date" value="${r.date}"></div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select class="pbr-type" style="flex:1;">
+          <option value="full" ${r.type === 'full' ? 'selected' : ''}>Full day</option>
+          <option value="half-am" ${r.type === 'half-am' ? 'selected' : ''}>Half day — morning</option>
+          <option value="half-pm" ${r.type === 'half-pm' ? 'selected' : ''}>Half day — afternoon</option>
+        </select>
+        <button type="button" class="btn ghost sm pbr-remove">Remove</button>
+      </div>
+    </div>`).join('');
+  rrEl.querySelectorAll('[data-pb-row]').forEach(row => {
+    const i = parseInt(row.dataset.pbRow);
+    row.querySelector('.pbr-date').addEventListener('change', (e) => { pbDateRows[i].date = e.target.value; updatePbQuote(); });
+    row.querySelector('.pbr-type').addEventListener('change', (e) => { pbDateRows[i].type = e.target.value; updatePbQuote(); });
+    row.querySelector('.pbr-remove').addEventListener('click', () => { pbDateRows.splice(i, 1); renderPbDateRows(); updatePbQuote(); });
+  });
+}
+function updatePbQuote(){
+  const quoteEl = document.getElementById('pb-quote');
+  if (!quoteEl) return;
+  const addrInput = document.getElementById('pb-address');
+  const found = resolveLocationForInput(addrInput);
+  if (found.region && !pbRegionManual) document.getElementById('pb-region').value = found.region;
+  const region = document.getElementById('pb-region').value;
+  const rateTable = RATES[region];
+  const validRows = pbDateRows.filter(r => r.date);
+  if (!validRows.length){ quoteEl.textContent = ''; return; }
+  const fullCount = validRows.filter(r => r.type === 'full').length;
+  const halfCount = validRows.length - fullCount;
+  let base = 0;
+  validRows.forEach(r => { base += r.type === 'full' ? rateTable.full : rateTable.half; });
+  const miles = found.miles || 0;
+  const mileRate = tieredMileageRate(miles);
+  const numTrips = groupConsecutiveDates(validRows.map(r => r.date)).length;
+  const mileage = miles * mileRate * numTrips;
+  const longDistance = miles > 300;
+  const hotelInput = parseInt(document.getElementById('pb-hnights').value);
+  const hotelNights = longDistance ? Math.max(1, hotelInput || fullCount || 1) : 0;
+  const hotel = hotelNights * 110;
+  const total = base + mileage + hotel;
+  const deposit = total * 0.10;
+  quoteEl.innerHTML = `${fullCount} full day${fullCount !== 1 ? 's' : ''}${halfCount ? ` + ${halfCount} half day${halfCount !== 1 ? 's' : ''}` : ''} · ${miles} mi one way${longDistance ? ` · ${hotelNights} hotel night${hotelNights !== 1 ? 's' : ''}` : ''}<br><strong>Total: ${money(total)} · Deposit due: ${money(deposit)}</strong>`;
+}
+function wirePhoneBookingForm(){
+  const header = document.getElementById('pb-toggle-header');
+  const form = document.getElementById('pb-form');
+  if (!header || !form) return;
+  header.addEventListener('click', () => {
+    form.classList.toggle('hidden');
+    header.textContent = form.classList.contains('hidden') ? '+ Create a booking for a client' : '− Create a booking for a client';
+  });
+  renderPbDateRows();
+  document.getElementById('pb-addrow').addEventListener('click', () => { pbDateRows.push({ date: '', type: 'full' }); renderPbDateRows(); });
+  attachAddressAutosuggest(document.getElementById('pb-address'), { onSelect: updatePbQuote });
+  document.getElementById('pb-address').addEventListener('input', () => { pbRegionManual = false; updatePbQuote(); });
+  document.getElementById('pb-region').addEventListener('change', () => { pbRegionManual = true; });
+  document.getElementById('pb-hnights').addEventListener('input', updatePbQuote);
+  document.getElementById('pb-submit').addEventListener('click', async () => {
+    const err = document.getElementById('pb-err');
+    err.textContent = '';
+    const name = document.getElementById('pb-name').value.trim();
+    const email = document.getElementById('pb-email').value.trim();
+    const phone = document.getElementById('pb-phone').value.trim();
+    const address = document.getElementById('pb-address').value.trim();
+    const region = document.getElementById('pb-region').value;
+    const notes = document.getElementById('pb-notes').value.trim();
+    const hotelNights = document.getElementById('pb-hnights').value ? parseInt(document.getElementById('pb-hnights').value) : null;
+    const validRows = pbDateRows.filter(r => r.date);
+    if (!name){ err.textContent = "Enter the client's name."; return; }
+    if (!email){ err.textContent = 'Enter the client email.'; return; }
+    if (!address){ err.textContent = 'Enter the clinic address.'; return; }
+    if (!validRows.length){ err.textContent = 'Add at least one coverage date.'; return; }
+    document.getElementById('pb-submit').disabled = true;
+    let r;
+    try {
+      r = await apiFetch('/api/booking.php?action=admin_create_for_client', { method: 'POST', body: JSON.stringify({
+        name, email, phone, address, region, notes, hotelNights,
+        dates: validRows.map(row => row.date), dayTypes: validRows.map(row => row.type),
+      })});
+    } catch (e) { err.textContent = e.message; document.getElementById('pb-submit').disabled = false; return; }
+    document.getElementById('pb-submit').disabled = false;
+    alert(`Booking ${r.booking_id} created — ${r.is_new_client ? 'a new account was created and ' : ''}an email has been sent to ${email} to review, sign, and pay the ${money(r.deposit)} deposit.`);
+    pbDateRows = [];
+    await loadAdminBookings();
+    renderAdmin();
+  });
+}
 function openMapModal(b){
   if (!b || b.lat == null || b.lng == null) return;
   $('map-modal-title').textContent = `${b.title || 'Booking'} — Ref ${b.id}`;
@@ -273,6 +367,35 @@ function renderAdmin(){
       await loadAvailability(); renderAdmin();
     }));
   } else if (admView === 'booked') {
+    const phoneBookingCardHtml = `
+      <div class="admin-card" style="margin-bottom:20px;border-color:var(--teal);">
+        <h3 id="pb-toggle-header" style="cursor:pointer;">+ Create a booking for a client</h3>
+        <div id="pb-form" class="hidden" style="margin-top:14px;">
+          <p style="font-size:0.8rem;color:#6b7280;">For a phone booking — this creates the booking and emails the client a link to review, sign, and pay the deposit themselves. If they don't have an account yet, one is created for them with a link to set a password.</p>
+          <div class="row2">
+            <div><label for="pb-name">Client name</label><input type="text" id="pb-name"></div>
+            <div><label for="pb-email">Client email</label><input type="email" id="pb-email"></div>
+          </div>
+          <div class="row2" style="margin-top:12px;">
+            <div><label for="pb-phone">Client phone (optional)</label><input type="tel" id="pb-phone"></div>
+            <div><label for="pb-address">Clinic address</label><input type="text" id="pb-address" placeholder="Start typing an address…"></div>
+          </div>
+          <div class="row2" style="margin-top:12px;">
+            <div><label for="pb-region">Region (auto-detected from address)</label>
+              <select id="pb-region"><option value="central">Central FL</option><option value="north">North FL</option><option value="south">South FL</option></select>
+            </div>
+            <div><label for="pb-hnights">Hotel nights (only applies past 300 mi)</label><input type="number" id="pb-hnights" min="0" placeholder="auto"></div>
+          </div>
+          <label style="margin-top:14px;">Coverage dates</label>
+          <div id="pb-date-rows"></div>
+          <button class="btn ghost sm" id="pb-addrow" style="margin-top:8px;">+ Add date</button>
+          <label for="pb-notes" style="margin-top:14px;">Notes (optional)</label>
+          <textarea id="pb-notes" rows="2"></textarea>
+          <div id="pb-quote" style="margin-top:14px;font-size:0.88rem;color:#414a56;"></div>
+          <div class="err-msg" id="pb-err"></div>
+          <button class="btn" id="pb-submit" style="margin-top:10px;">Create booking &amp; email client</button>
+        </div>
+      </div>`;
     const cancelledCount = adminBookings.filter(b => b.status === 'cancelled').length;
     const list = adminBookings
       .filter(b => showCancelledBookings || b.status !== 'cancelled')
@@ -282,12 +405,13 @@ function renderAdmin(){
         <input type="checkbox" id="toggle-show-cancelled" ${showCancelledBookings ? 'checked' : ''}> Show ${cancelledCount} cancelled booking${cancelledCount === 1 ? '' : 's'}
       </label>` : '';
     if (!list.length){
-      el.innerHTML = toggleHtml + `<div class="empty">${showCancelledBookings ? 'No bookings on the calendar yet.' : 'No active bookings on the calendar — everything is cancelled.'}</div>`;
+      el.innerHTML = phoneBookingCardHtml + toggleHtml + `<div class="empty">${showCancelledBookings ? 'No bookings on the calendar yet.' : 'No active bookings on the calendar — everything is cancelled.'}</div>`;
+      wirePhoneBookingForm();
       const cb = document.getElementById('toggle-show-cancelled');
       if (cb) cb.addEventListener('change', () => { showCancelledBookings = cb.checked; renderAdmin(); });
       return;
     }
-    el.innerHTML = toggleHtml + list.map(b => {
+    el.innerHTML = phoneBookingCardHtml + toggleHtml + list.map(b => {
       const owed = b.balanceDue ?? (b.total != null && b.paid != null ? +(b.total - b.paid).toFixed(2) : null);
       const currentTotal = b.total + (b.adjustmentsTotal || 0);
       const canComplete = ['office', 'homevisit', 'event'].includes(b.service) && b.balanceStatus === 'not_due';
@@ -434,6 +558,7 @@ function renderAdmin(){
       </div>`;
     const showCancelledCb = document.getElementById('toggle-show-cancelled');
     if (showCancelledCb) showCancelledCb.addEventListener('change', () => { showCancelledBookings = showCancelledCb.checked; renderAdmin(); });
+    wirePhoneBookingForm();
     el.querySelectorAll('[data-draft-thanks]').forEach(btn => btn.addEventListener('click', () => {
       const b = adminBookings.find(x => x.id === btn.dataset.draftThanks);
       if (!b) return;
