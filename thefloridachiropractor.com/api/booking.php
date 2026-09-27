@@ -13,6 +13,8 @@ switch ($action) {
     case 'cancel': handle_cancel($pdo); break;
     case 'update_coverage': handle_update_coverage($pdo); break;
     case 'update_patient_volume': handle_update_patient_volume($pdo); break;
+    case 'preview_address_change': handle_preview_address_change($pdo); break;
+    case 'update_address': handle_update_address($pdo); break;
     case 'review': handle_review($pdo); break;
     case 'feedback': handle_feedback($pdo); break;
     case 'list_all': handle_list_all($pdo); break;
@@ -49,7 +51,8 @@ function handle_create(PDO $pdo) {
     $dates = $body['dates'] ?? [];
     $dayTypes = $body['dayTypes'] ?? [];
     $dayTimes = $body['dayTimes'] ?? [];
-    $zip = trim($body['zip'] ?? '');
+    $address = trim($body['address'] ?? '');
+    $zip = trim($body['zip'] ?? '') ?: extract_zip_from_address($address);
     $clientRegion = $body['region'] ?? 'central';
     $coverage = $body['coverage'] ?? [];
     $signature = $body['signature'] ?? null;
@@ -78,11 +81,14 @@ function handle_create(PDO $pdo) {
     $conflict = check_availability($pdo, $entries);
     if ($conflict) json_response(['error' => "That date ({$conflict['day']}) is {$conflict['why']}. Pick a different date."], 409);
 
-    // Region/mileage: authoritative from ZIP lookup; client region only used as a fallback
-    // for ZIPs the lookup table doesn't recognize.
-    $zipLookup = lookup_zip($zip);
-    $region = $zipLookup['region'] ?? $clientRegion;
-    $miles = $zipLookup['miles'] ?? 0;
+    // Region/mileage: authoritative from the geocoded address (falls back to
+    // the ZIP3-centroid estimate if geocoding is unavailable); client region
+    // only used as a last resort for locations the lookup can't place at all.
+    $location = $address !== '' ? resolve_location($pdo, $address) : lookup_zip($zip);
+    $region = $location['region'] ?? $clientRegion;
+    $miles = $location['miles'] ?? 0;
+    $lat = $location['lat'] ?? null;
+    $lng = $location['lng'] ?? null;
     if (!isset(RATES[$region])) $region = $clientRegion;
 
     $rate = RATES[$region];
@@ -166,7 +172,8 @@ function handle_create(PDO $pdo) {
     if ($fullCount) $parts[] = "$fullCount full day" . ($fullCount > 1 ? 's' : '');
     if ($halfCount) $parts[] = "$halfCount half day" . ($halfCount > 1 ? 's' : '');
     $dayDesc = $parts ? implode(' + ', $parts) : 'No dates selected';
-    $meta = "$dayDesc · ZIP $zip · $miles mi one way" . ($longDistance ? " · $hotelNights hotel night" . ($hotelNights > 1 ? 's' : '') : '');
+    $locationLabel = $address !== '' ? $address : "ZIP $zip";
+    $meta = "$dayDesc · $locationLabel · $miles mi one way" . ($longDistance ? " · $hotelNights hotel night" . ($hotelNights > 1 ? 's' : '') : '');
     $title = "Office coverage — {$rate['label']}";
 
     $bookingId = generate_id('MM');
@@ -178,11 +185,12 @@ function handle_create(PDO $pdo) {
         $sanitizedCoverage['patientVolume'] = $sanitizedCoverage['patientVolume'] !== '' ? (int)$sanitizedCoverage['patientVolume'] : null;
     }
     $stmt = $pdo->prepare('INSERT INTO bookings
-        (id, user_id, status, dates, day_types, day_times, coverage_type, coverage, signature, title, meta, region, zip_code, miles, total, paid, balance_status, pay_type, promo_code, created_at, start_date)
-        VALUES (?, ?, "upcoming", ?, ?, ?, "office", ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", ?, NOW(), ?)');
+        (id, user_id, status, dates, day_types, day_times, coverage_type, coverage, signature, title, meta, region, zip_code, address, lat, lng, miles, total, paid, balance_status, pay_type, promo_code, created_at, start_date)
+        VALUES (?, ?, "upcoming", ?, ?, ?, "office", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", ?, NOW(), ?)');
     $stmt->execute([
         $bookingId, $user['id'], json_encode(array_values($sorted)), json_encode(array_values($sortedTypes)), json_encode($dayTimes),
-        json_encode($sanitizedCoverage), json_encode($signature), sanitize($title), sanitize($meta), $region, sanitize($zip), $miles, $total,
+        json_encode($sanitizedCoverage), json_encode($signature), sanitize($title), sanitize($meta), $region, sanitize($zip),
+        $address !== '' ? sanitize($address) : null, $lat, $lng, $miles, $total,
         $promoRow ? $promoRow['code'] : null, $sorted[0],
     ]);
 
@@ -579,6 +587,131 @@ function booking_recompute_base(array $rate, int $miles, array $dayTypes, array 
     $hotel = $hotelNights * HOTEL_RATE;
 
     return round($base + $mileage + $hotel + $overtimeCost, 2);
+}
+
+// Shared by the two client-facing address-change handlers below: geocodes
+// the new address and works out the price delta for whichever pricing model
+// this booking's coverage_type uses. Office coverage's day-rate itself can
+// differ by region, so both the base rate AND the mileage/hotel-nights can
+// shift; home visits only have a flat per-mile mileage component; event
+// coverage has no distance-based pricing at all, so an address change there
+// never affects price — it's purely "so I know where I'm going."
+function compute_address_change_delta(PDO $pdo, array $b, string $newAddress) {
+    $location = resolve_location($pdo, $newAddress);
+    $newMiles = $location['miles'] ?? 0;
+    $newRegion = ($location['region'] && isset(RATES[$location['region']])) ? $location['region'] : $b['region'];
+
+    if ($b['coverage_type'] === 'office') {
+        $dates = json_decode($b['dates'], true) ?: [];
+        $dayTypes = json_decode($b['day_types'], true) ?: [];
+        $dayTimes = json_decode($b['day_times'] ?? '[]', true) ?: [];
+        $oldRate = RATES[$b['region']] ?? RATES['central'];
+        $newRate = RATES[$newRegion] ?? RATES['central'];
+        $oldBase = booking_recompute_base($oldRate, (int)$b['miles'], $dayTypes, $dayTimes, $dates);
+        $newBase = booking_recompute_base($newRate, $newMiles, $dayTypes, $dayTimes, $dates);
+        $delta = round($newBase - $oldBase, 2);
+    } elseif ($b['coverage_type'] === 'homevisit') {
+        $oldMileage = (int)$b['miles'] * HOMEVISIT_MILEAGE_RATE;
+        $newMileage = $newMiles * HOMEVISIT_MILEAGE_RATE;
+        $delta = round($newMileage - $oldMileage, 2);
+    } else {
+        $delta = 0.0;
+    }
+
+    return ['location' => $location, 'newMiles' => $newMiles, 'newRegion' => $newRegion, 'delta' => $delta];
+}
+
+// The one-line "meta" description (shown in the dashboard) has the old
+// address and mileage baked into it as plain text from whenever the booking
+// was created — swapping the stored address/miles columns alone would leave
+// that description silently stale. Rather than re-deriving the full string
+// per coverage_type (day-count phrasing for office, adult/child counts for
+// home visits — neither of which has its own column to rebuild from), just
+// replace the old location text and mileage number wherever they appear;
+// harmless no-ops if either substring isn't found (e.g. no address was ever
+// on file, or an event booking with no mileage segment at all).
+function rebuild_booking_meta(array $b, string $newAddress, int $newMiles) {
+    $oldLabel = $b['address'] ?: ($b['zip_code'] ? "ZIP {$b['zip_code']}" : '');
+    $meta = $b['meta'];
+    if ($oldLabel !== '') $meta = str_replace($oldLabel, $newAddress, $meta);
+    return preg_replace('/\d+ mi one way/', "{$newMiles} mi one way", $meta, 1);
+}
+
+function load_editable_own_booking(PDO $pdo, $user, $id) {
+    $stmt = $pdo->prepare('SELECT * FROM bookings WHERE id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b || (int)$b['user_id'] !== (int)$user['id']) json_response(['error' => 'Not found'], 404);
+    if ($b['completed_at'] !== null || !in_array($b['status'], ['upcoming', 'pending'], true)) {
+        json_response(['error' => 'This booking can no longer be edited.'], 400);
+    }
+    return $b;
+}
+
+// Dry run for the dashboard's "edit address" flow — geocodes the candidate
+// address and reports the price impact WITHOUT saving anything, so the
+// client can be shown a clear warning before committing to a change that
+// costs (or saves) money.
+function handle_preview_address_change(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $user = require_login();
+    $body = json_body();
+    $newAddress = trim($body['address'] ?? '');
+    if ($newAddress === '') json_response(['error' => 'Enter an address.'], 400);
+
+    $b = load_editable_own_booking($pdo, $user, $body['id'] ?? '');
+    $result = compute_address_change_delta($pdo, $b, $newAddress);
+    $currentTotal = round((float)$b['total'] + booking_adjustments_total($pdo, $b['id']), 2);
+
+    json_response([
+        'address' => $newAddress,
+        'miles' => $result['newMiles'],
+        'region' => $result['newRegion'],
+        'delta' => $result['delta'],
+        'currentTotal' => $currentTotal,
+        'newTotal' => round($currentTotal + $result['delta'], 2),
+        'geocoded' => $result['location']['lat'] !== null,
+    ]);
+}
+
+// Commits an address change. If it moves the price, a first call without
+// `confirmed: true` is rejected with the delta so the frontend can show the
+// same warning handle_preview_address_change describes and only resubmit
+// with confirmation once the client has agreed — mirrors the two-step
+// create/confirm pattern already used for payments.
+function handle_update_address(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $user = require_login();
+    $body = json_body();
+    $newAddress = trim($body['address'] ?? '');
+    $confirmed = !empty($body['confirmed']);
+    if ($newAddress === '') json_response(['error' => 'Enter an address.'], 400);
+
+    $b = load_editable_own_booking($pdo, $user, $body['id'] ?? '');
+    $result = compute_address_change_delta($pdo, $b, $newAddress);
+
+    if ($result['delta'] != 0 && !$confirmed) {
+        json_response([
+            'error' => 'This address change affects your total — confirm to continue.',
+            'requiresConfirmation' => true,
+            'delta' => $result['delta'],
+        ], 409);
+    }
+
+    $location = $result['location'];
+    $newZip = extract_zip_from_address($newAddress) ?: $b['zip_code'];
+    $newMeta = rebuild_booking_meta($b, $newAddress, $result['newMiles']);
+    $stmt = $pdo->prepare('UPDATE bookings SET address = ?, lat = ?, lng = ?, zip_code = ?, region = ?, miles = ?, meta = ? WHERE id = ?');
+    $stmt->execute([sanitize($newAddress), $location['lat'], $location['lng'], sanitize($newZip), $result['newRegion'], $result['newMiles'], sanitize($newMeta), $b['id']]);
+
+    if ($result['delta'] != 0) {
+        $stmt = $pdo->prepare('INSERT INTO booking_adjustments (booking_id, amount, reason, created_by) VALUES (?, ?, ?, ?)');
+        $stmt->execute([$b['id'], $result['delta'], sanitize("Address change: {$b['miles']} mi → {$result['newMiles']} mi"), $user['email']]);
+    }
+
+    $stmt = $pdo->prepare('SELECT * FROM bookings WHERE id = ?');
+    $stmt->execute([$b['id']]);
+    json_response(['success' => true, 'booking' => booking_to_json($pdo, $stmt->fetch())]);
 }
 
 // Admin-side reschedule: changes a booking's date(s)/day type (and ZIP, if

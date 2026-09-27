@@ -45,7 +45,8 @@ function handle_request(PDO $pdo) {
     $user = current_user_or_null();
     $body = json_body();
     $region = $body['region'] ?? '';
-    $zip = trim($body['zip'] ?? '');
+    $address = trim($body['address'] ?? '');
+    $zip = extract_zip_from_address($address);
     $name = trim($body['name'] ?? '');
     $contactEmail = trim($body['contactEmail'] ?? '');
     $notes = trim($body['notes'] ?? '');
@@ -54,7 +55,7 @@ function handle_request(PDO $pdo) {
     $signature = $body['signature'] ?? null;
     $depositIntentId = trim($body['depositPaymentIntentId'] ?? '');
 
-    if (!preg_match('/^\d{5}$/', $zip)) json_response(['error' => 'Enter a valid 5-digit ZIP code.'], 400);
+    if (!$address) json_response(['error' => 'Enter your clinic address.'], 400);
     $err = validate_patterns($patterns);
     if ($err) json_response(['error' => $err], 400);
     if (!$name) json_response(['error' => 'Enter your practice or clinic name.'], 400);
@@ -79,7 +80,7 @@ function handle_request(PDO $pdo) {
     if (($intent->metadata['purpose'] ?? null) !== 'standing_signup_deposit') {
         json_response(['error' => 'Payment does not match this request.'], 400);
     }
-    $expectedDeposit = estimate_standing_deposit($region, $zip, $patterns, $paymentPlan);
+    $expectedDeposit = estimate_standing_deposit($pdo, $region, $address, $patterns, $paymentPlan);
     $depositPaid = $intent->amount_received / 100;
     if ($depositPaid < $expectedDeposit - 0.01) json_response(['error' => 'Deposit amount does not match this request.'], 400);
     $stripeCustomerId = $intent->customer;
@@ -99,14 +100,16 @@ function handle_request(PDO $pdo) {
 
     $combinedCount = pattern_day_equivalents($patterns);
     $tier = standing_tier_for($combinedCount);
+    $location = resolve_location($pdo, $address);
 
     $id = generate_id('SD');
     $stmt = $pdo->prepare('INSERT INTO standing_requests
-        (id, user_id, clinic_name, contact_email, region, zip_code, patterns, notes, payment_plan, combined_count, tier_rate, signature,
+        (id, user_id, clinic_name, contact_email, region, zip_code, address, lat, lng, patterns, notes, payment_plan, combined_count, tier_rate, signature,
          stripe_customer_id, stripe_payment_method_id, deposit_payment_intent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     $stmt->execute([
         $id, $user['id'] ?? null, sanitize($name), sanitize($contactEmail), $region, sanitize($zip),
+        sanitize($address), $location['lat'], $location['lng'],
         json_encode($patterns), sanitize($notes), $paymentPlan, $combinedCount, $tier ? $tier['rate'] : null, json_encode($signature),
         $stripeCustomerId, $stripePaymentMethodId, $depositIntentId,
     ]);
@@ -190,11 +193,12 @@ function handle_approve(PDO $pdo) {
 
     $agreementId = generate_id('SA');
     $stmt = $pdo->prepare('INSERT INTO standing_agreements
-        (id, user_id, request_id, clinic_name, contact_email, region, zip_code, patterns, tier_rate, custom_rate, effective_rate, payment_plan, scheduled_dates, signature,
+        (id, user_id, request_id, clinic_name, contact_email, region, zip_code, address, lat, lng, patterns, tier_rate, custom_rate, effective_rate, payment_plan, scheduled_dates, signature,
          stripe_customer_id, stripe_payment_method_id, installment_count, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")');
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")');
     $stmt->execute([
         $agreementId, $req['user_id'], $req['id'], $req['clinic_name'], $req['contact_email'], $req['region'], $req['zip_code'],
+        $req['address'], $req['lat'], $req['lng'],
         json_encode($patterns), $req['tier_rate'], $req['custom_rate'], $effectiveRate, $req['payment_plan'], json_encode($dates), $req['signature'],
         $req['stripe_customer_id'], $req['stripe_payment_method_id'], $installmentCount,
     ]);
@@ -355,6 +359,9 @@ function standing_request_to_json(array $r) {
         'createdAt' => to_iso($r['created_at']),
         'region' => $r['region'],
         'zip' => $r['zip_code'],
+        'address' => $r['address'] ?? null,
+        'lat' => isset($r['lat']) ? (float)$r['lat'] : null,
+        'lng' => isset($r['lng']) ? (float)$r['lng'] : null,
         'patterns' => json_decode($r['patterns'], true) ?: [],
         'name' => $r['clinic_name'],
         'contactEmail' => $r['contact_email'],
@@ -377,6 +384,9 @@ function standing_agreement_to_json(array $r) {
         'contactEmail' => $r['contact_email'],
         'region' => $r['region'],
         'zip' => $r['zip_code'],
+        'address' => $r['address'] ?? null,
+        'lat' => isset($r['lat']) ? (float)$r['lat'] : null,
+        'lng' => isset($r['lng']) ? (float)$r['lng'] : null,
         'patterns' => json_decode($r['patterns'], true) ?: [],
         'tier' => $r['tier_rate'] !== null ? ['rate' => (float)$r['tier_rate']] : null,
         'paymentPlan' => $r['payment_plan'],

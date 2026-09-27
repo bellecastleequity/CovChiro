@@ -281,8 +281,8 @@
 
           <div class="calc-fields" id="fields-office">
             <div>
-              <label for="f-zip">Clinic ZIP code</label>
-              <input type="text" id="f-zip" value="33701" maxlength="5" inputmode="numeric" placeholder="e.g. 33701">
+              <label for="f-address">Clinic address</label>
+              <input type="text" id="f-address" placeholder="Start typing your clinic's street address…">
               <div class="zip-status" id="zip-status"></div>
             </div>
             <div>
@@ -418,7 +418,7 @@
           <div><label for="sd-region">Region</label>
             <select id="sd-region"><option value="central">Central FL</option><option value="north">North FL</option><option value="south">South FL</option></select>
           </div>
-          <div><label for="sd-zip">Clinic ZIP code</label><input type="text" id="sd-zip" maxlength="5" inputmode="numeric" placeholder="e.g. 33701"></div>
+          <div><label for="sd-address">Clinic address</label><input type="text" id="sd-address" placeholder="Start typing your clinic's street address…"></div>
         </div>
 
         <div class="date-builder" style="margin-top:20px;">
@@ -1079,9 +1079,8 @@ function updateStandingQuote(tier, effectiveRate){
   if (!standingPatterns.length){ quoteEl.classList.add('hidden'); return; }
 
   const region = $('sd-region').value;
-  const zip = $('sd-zip').value.trim();
   const rateTable = RATES[region];
-  const found = /^\d{5}$/.test(zip) ? lookupZip(zip) : null;
+  const found = resolveLocationForInput($('sd-address'));
   const miles = found ? found.miles : 0;
   const mileRate = tieredMileageRate(miles);
   const mileage = miles * mileRate;
@@ -1110,7 +1109,9 @@ function updateStandingQuote(tier, effectiveRate){
   quoteEl.classList.remove('hidden');
 }
 $('sd-region').addEventListener('change', () => updateStandingTierPreview());
-$('sd-zip').addEventListener('input', () => updateStandingTierPreview());
+$('sd-address').addEventListener('input', () => updateStandingTierPreview());
+$('sd-address').addEventListener('change', () => updateStandingTierPreview());
+attachAddressAutosuggest($('sd-address'), { onSelect: () => updateStandingTierPreview() });
 $('sd-payment-plan').addEventListener('change', () => updateStandingTierPreview());
 $('sd-pattern-add').addEventListener('click', () => {
   const err = $('sd-pattern-err');
@@ -1174,19 +1175,19 @@ function openStandingSignModal(req){
 $('sd-submit').addEventListener('click', async () => {
   const err = $('sd-err');
   const region = $('sd-region').value;
-  const zip = $('sd-zip').value.trim();
+  const address = $('sd-address').value.trim();
   const name = $('sd-name').value.trim();
   const contactEmail = $('sd-contact-email').value.trim();
   const notes = $('sd-notes').value.trim();
 
-  if (!/^\d{5}$/.test(zip)){ err.textContent = 'Enter a valid 5-digit ZIP code.'; return; }
+  if (!address){ err.textContent = 'Enter your clinic address.'; return; }
   if (!standingPatterns.length){ err.textContent = 'Add at least one coverage pattern.'; return; }
   if (!name){ err.textContent = 'Enter your practice or clinic name.'; return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)){ err.textContent = 'Enter a valid contact email.'; return; }
   err.textContent = '';
 
   const paymentPlan = $('sd-payment-plan').value;
-  openStandingSignModal({ region, zip, name, contactEmail, notes, paymentPlan, patterns: standingPatterns });
+  openStandingSignModal({ region, address, name, contactEmail, notes, paymentPlan, patterns: standingPatterns });
 });
 function isLastMinute(dateStr){
   // Office coverage dates are calendar days with no attached time, so
@@ -1261,7 +1262,7 @@ function quote(){
     }
   });
 
-  const found = lookupZip($('f-zip').value);
+  const found = resolveLocationForInput($('f-address'));
   const miles = found ? found.miles : 0;
   const mileRate = tieredMileageRate(miles);
   const dateGroups = groupConsecutiveDates(entries.map(e => e.date));
@@ -1319,7 +1320,7 @@ function quote(){
     overtimeCost, overtimeHoursTotal, overtimeDates, overtimeBreakdown,
     total: base + mileage + hotel + overtimeCost - lastMinuteDiscount - flexRateDiscount - clientDiscount, usvi: false,
     title: `Office coverage — ${RATES[region].label}`,
-    meta: `${dayDesc} · ZIP ${$('f-zip').value} · ${miles} mi one way${tripNote}${longDistance ? ` · ${hotelNights} hotel night${hotelNights>1?'s':''} (${money(hotel)})` : ''}${otNote}${lmNote}${frNote}${cdNote}`
+    meta: `${dayDesc} · ${$('f-address').value.trim() || 'no address entered'} · ${miles} mi one way${tripNote}${longDistance ? ` · ${hotelNights} hotel night${hotelNights>1?'s':''} (${money(hotel)})` : ''}${otNote}${lmNote}${frNote}${cdNote}`
   };
 }
 function coverageDetails(){
@@ -1350,15 +1351,16 @@ function selectedDates(){
   return { dates, entries };
 }
 function recalc(){
-  const found = lookupZip($('f-zip').value);
+  const addressVal = $('f-address').value.trim();
+  const found = resolveLocationForInput($('f-address'));
   const st = $('zip-status');
-  if (found){
+  if (found.region){
     st.className = 'zip-status';
-    st.textContent = `${found.miles} mi one way · ${RATES[found.region].label}`;
+    st.textContent = `${found.miles} mi one way · ${RATES[found.region].label}${found.lat != null ? '' : ' (estimated)'}`;
     if (!$('f-region').dataset.manual) $('f-region').value = found.region;
   } else {
     st.className = 'zip-status err';
-    st.textContent = $('f-zip').value ? 'ZIP not recognized — mileage will be confirmed manually' : '';
+    st.textContent = addressVal ? 'Address not recognized yet — pick a suggestion, or mileage will be confirmed manually' : '';
   }
   const q = quote();
   $('lbl-base').textContent = q.baseLabel;
@@ -1455,10 +1457,12 @@ function recalc(){
   document.querySelectorAll('svg .region').forEach(p => p.classList.toggle('sel', p.dataset.region === region));
   document.querySelectorAll('.rate-table tbody tr').forEach(tr => tr.classList.toggle('active', tr.dataset.row === region));
 }
-['f-zip','f-hnights']
+['f-address','f-hnights']
   .forEach(id => $(id).addEventListener('input', recalc));
+$('f-address').addEventListener('change', recalc);
+attachAddressAutosuggest($('f-address'), { onSelect: recalc });
 $('f-region').addEventListener('change', e => { e.target.dataset.manual = '1'; recalc(); });
-$('f-zip').addEventListener('input', () => { delete $('f-region').dataset.manual; });
+$('f-address').addEventListener('input', () => { delete $('f-region').dataset.manual; });
 document.querySelectorAll('svg .region').forEach(p =>
   p.addEventListener('click', () => { $('f-region').value = p.dataset.region; $('f-region').dataset.manual='1'; recalc(); }));
 $('cd-dress').addEventListener('change', () => {
@@ -1639,7 +1643,7 @@ $('sign-submit').addEventListener('click', async () => {
     };
     await mountPaymentElement('/api/payment.php?action=create_standing_deposit_intent', {
       email: pendingStandingRequest.contactEmail, name: pendingStandingRequest.name,
-      region: pendingStandingRequest.region, zip: pendingStandingRequest.zip,
+      region: pendingStandingRequest.region, address: pendingStandingRequest.address,
       patterns: pendingStandingRequest.patterns, paymentPlan: pendingStandingRequest.paymentPlan,
     }, `Signup deposit: ${$('sd-quote-deposit').textContent}`);
     return;
@@ -1664,7 +1668,7 @@ async function createBooking(q, signature){
   try {
     const r = await apiFetch('/api/booking.php?action=create', { method: 'POST', body: JSON.stringify({
       dates: sorted.map(e => e.date), dayTypes: sorted.map(e => e.type),
-      dayTimes: sortedTimes, zip: $('f-zip').value.trim(), region: $('f-region').value,
+      dayTimes: sortedTimes, address: $('f-address').value.trim(), region: $('f-region').value,
       coverage: cd, signature, hotelNights: parseInt($('f-hnights').value) || null,
       promoCode: appliedPromo ? appliedPromo.code : ''
     })});

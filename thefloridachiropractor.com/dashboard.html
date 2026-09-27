@@ -285,6 +285,20 @@
   </div>
 </div>
 
+<div class="modal-bg" id="edit-address-modal">
+  <div class="modal">
+    <button class="close" data-close>×</button>
+    <h2>Edit address</h2>
+    <p style="font-size:0.86rem;color:#6b7280;">Update the address for this booking. If the new distance changes your mileage charge, you'll see exactly how before anything is confirmed.</p>
+    <label for="ea-address" style="margin-top:14px;">Address</label>
+    <input type="text" id="ea-address" placeholder="Start typing the new address…">
+    <div id="ea-warning" class="hidden" style="margin-top:14px;padding:12px 14px;border-radius:4px;background:#fdf6e8;border-left:3px solid var(--ochre);font-size:0.85rem;"></div>
+    <div class="err-msg" id="ea-err"></div>
+    <button class="btn" id="ea-preview" style="width:100%;margin-top:14px;">Save address</button>
+    <button class="btn" id="ea-confirm" style="width:100%;margin-top:10px;" hidden>Confirm change</button>
+  </div>
+</div>
+
 <div class="modal-bg" id="video-modal">
   <div class="modal narrow">
     <button class="close" data-close>×</button>
@@ -666,6 +680,7 @@ function renderDash(){
           </div>
           <div class="bk-actions">
             ${b.service === 'office' ? `<button class="btn ghost sm" data-editcoverage="${b.id}">Edit details</button>` : ''}
+            <button class="btn ghost sm" data-editaddress="${b.id}">Edit address</button>
             <button class="btn ghost sm" data-video="${b.id}">Request video interview</button>
             <button class="btn ghost sm" data-resched="${b.id}">Reschedule</button>
             <button class="btn danger sm" data-cancel="${b.id}">Cancel</button>
@@ -699,6 +714,7 @@ function renderDash(){
 
   el.querySelectorAll('[data-cancel]').forEach(btn => btn.addEventListener('click', () => openCancel(btn.dataset.cancel)));
   el.querySelectorAll('[data-editcoverage]').forEach(btn => btn.addEventListener('click', () => openEditCoverage(btn.dataset.editcoverage)));
+  el.querySelectorAll('[data-editaddress]').forEach(btn => btn.addEventListener('click', () => openEditAddress(btn.dataset.editaddress)));
 
   el.querySelectorAll('[data-resched]').forEach(btn => btn.addEventListener('click', () => {
     const b = bookings.find(x => x.id === btn.dataset.resched);
@@ -896,6 +912,60 @@ $('ec-submit').addEventListener('click', async () => {
   $('edit-coverage-modal').classList.remove('open');
   renderDash();
 });
+let editAddressTargetId = null;
+let editAddressPendingConfirm = null; // set once a preview shows a nonzero delta, awaiting explicit confirmation
+function openEditAddress(id){
+  const b = bookings.find(x => x.id === id);
+  if (!b) return;
+  editAddressTargetId = id;
+  editAddressPendingConfirm = null;
+  $('ea-address').value = b.address || '';
+  delete $('ea-address').dataset.lat; delete $('ea-address').dataset.lng;
+  $('ea-warning').classList.add('hidden');
+  $('ea-confirm').hidden = true;
+  $('ea-preview').hidden = false;
+  $('ea-err').textContent = '';
+  $('edit-address-modal').classList.add('open');
+}
+attachAddressAutosuggest($('ea-address'));
+$('ea-preview').addEventListener('click', async () => {
+  const address = $('ea-address').value.trim();
+  const err = $('ea-err');
+  err.textContent = '';
+  if (!address){ err.textContent = 'Enter an address.'; return; }
+  $('ea-preview').disabled = true;
+  let preview;
+  try {
+    preview = await apiFetch('/api/booking.php?action=preview_address_change', { method: 'POST', body: JSON.stringify({ id: editAddressTargetId, address }) });
+  } catch (e) { err.textContent = e.message; $('ea-preview').disabled = false; return; }
+  $('ea-preview').disabled = false;
+
+  if (preview.delta === 0){
+    await commitAddressChange(address, false);
+    return;
+  }
+  editAddressPendingConfirm = address;
+  const up = preview.delta > 0;
+  $('ea-warning').innerHTML = `Changing this address changes your travel distance to <strong>${preview.miles} mi</strong> one way, which ${up ? 'adds' : 'saves'} <strong>${money(Math.abs(preview.delta))}</strong> — your total moves from ${money(preview.currentTotal)} to ${money(preview.newTotal)}. Confirm below to apply this change.`;
+  $('ea-warning').classList.remove('hidden');
+  $('ea-preview').hidden = true;
+  $('ea-confirm').hidden = false;
+});
+$('ea-confirm').addEventListener('click', async () => {
+  if (!editAddressPendingConfirm) return;
+  await commitAddressChange(editAddressPendingConfirm, true);
+});
+async function commitAddressChange(address, confirmed){
+  const err = $('ea-err');
+  $('ea-confirm').disabled = true; $('ea-preview').disabled = true;
+  try {
+    await apiFetch('/api/booking.php?action=update_address', { method: 'POST', body: JSON.stringify({ id: editAddressTargetId, address, confirmed }) });
+  } catch (e) { err.textContent = e.message; $('ea-confirm').disabled = false; $('ea-preview').disabled = false; return; }
+  $('ea-confirm').disabled = false; $('ea-preview').disabled = false;
+  await loadMyBookings();
+  $('edit-address-modal').classList.remove('open');
+  renderDash();
+}
 function isWeekday(dateStr){
   const day = new Date(dateStr + 'T12:00:00').getDay();
   return day >= 1 && day <= 5;

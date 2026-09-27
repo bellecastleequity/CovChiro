@@ -63,6 +63,33 @@ function lookupZip(zip){
   const miles = Math.round(haversine(ORIGIN, {lat, lng}) * ROAD_FACTOR);
   return { miles, region };
 }
+function extractZipFromAddress(address){
+  const m = String(address || '').match(/\b(\d{5})(-\d{4})?\b/);
+  return m ? m[1] : '';
+}
+// Live client-side quote preview for an address field with
+// attachAddressAutosuggest() attached: prefers the lat/lng the client picked
+// from a suggestion (precise, real distance) and falls back to the ZIP3
+// estimate for whatever ZIP appears in the typed text (works even before a
+// suggestion is chosen, or if the geocoder is unreachable). The server
+// always re-geocodes and re-prices authoritatively at submit time — this is
+// purely so the on-page quote updates live as someone types/picks an address.
+function resolveLocationClient(address, lat, lng){
+  const zip = extractZipFromAddress(address);
+  const zipLookup = lookupZip(zip);
+  const latNum = parseFloat(lat), lngNum = parseFloat(lng);
+  if (!isNaN(latNum) && !isNaN(lngNum)){
+    const miles = Math.round(haversine(ORIGIN, {lat: latNum, lng: lngNum}) * ROAD_FACTOR);
+    return { miles, region: zipLookup ? zipLookup.region : null, lat: latNum, lng: lngNum };
+  }
+  return { miles: zipLookup ? zipLookup.miles : 0, region: zipLookup ? zipLookup.region : null, lat: null, lng: null };
+}
+// Convenience wrapper for the common case of an <input> that
+// attachAddressAutosuggest() is attached to (address in .value, lat/lng in
+// .dataset from the last picked suggestion, if any).
+function resolveLocationForInput(input){
+  return resolveLocationClient(input.value, input.dataset.lat, input.dataset.lng);
+}
 let user = null, bookings = [], dashView = 'upcoming', svc = 'office', myInvoices = [];
 let lastMinuteEnabled = true; // default on — overridden by loadSession() from /api/settings.php
 let standingRequests = [], standingAgreements = [];
@@ -472,4 +499,91 @@ function attachDatePicker(input, opts){
   function onKeydown(e){ if (e.key === 'Escape') close(); }
 
   input.addEventListener('click', () => { if (popup.classList.contains('hidden')) open(); else close(); });
+}
+
+// Free, no-API-key address autosuggest via OpenStreetMap's Nominatim search
+// endpoint, called directly from the browser (Nominatim's usage policy is
+// satisfied by the page's own Referer header — no API key exists to send).
+// Debounced well under Nominatim's ~1 request/second fair-use limit, and
+// biased to a Florida bounding box since that's the only area this site
+// serves. Selecting a suggestion fills the input with the full address and
+// stores the suggestion's lat/lng on the input's dataset for an instant
+// client-side quote preview — the server always re-geocodes and re-prices
+// authoritatively when the booking is actually submitted, so a stale or
+// missing suggestion here never affects what a client is actually charged.
+const ADDRESS_SUGGEST_VIEWBOX = '-87.7,31.1,-79.7,24.3'; // left,top,right,bottom (lon,lat,lon,lat)
+function attachAddressAutosuggest(input, opts){
+  opts = opts || {};
+  const onSelect = opts.onSelect || (() => {});
+  input.autocomplete = 'off';
+  input.classList.add('addr-input');
+
+  const popup = document.createElement('div');
+  popup.className = 'addr-popup hidden';
+  document.body.appendChild(popup);
+
+  let debounceTimer = null;
+  let abortController = null;
+  let items = [];
+
+  function position(){
+    const r = input.getBoundingClientRect();
+    popup.style.top = (r.bottom + window.scrollY + 4) + 'px';
+    popup.style.left = (r.left + window.scrollX) + 'px';
+    popup.style.width = r.width + 'px';
+  }
+  function close(){
+    popup.classList.add('hidden');
+    document.removeEventListener('click', onOutsideClick, true);
+  }
+  function onOutsideClick(e){ if (!popup.contains(e.target) && e.target !== input) close(); }
+
+  function renderItems(){
+    if (!items.length){ close(); return; }
+    popup.innerHTML = items.map((it, i) => `<button type="button" class="addr-item" data-i="${i}">${it.display_name}</button>`).join('');
+    popup.querySelectorAll('.addr-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const it = items[Number(btn.dataset.i)];
+        input.value = it.display_name;
+        input.dataset.lat = it.lat;
+        input.dataset.lng = it.lon;
+        close();
+        onSelect(it);
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
+    position();
+    popup.classList.remove('hidden');
+    document.addEventListener('click', onOutsideClick, true);
+  }
+
+  async function search(q){
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
+    const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
+      format: 'json', addressdetails: '1', limit: '5', countrycodes: 'us',
+      viewbox: ADDRESS_SUGGEST_VIEWBOX, bounded: '1', q,
+    });
+    try {
+      const res = await fetch(url, { signal: abortController.signal });
+      if (!res.ok) throw new Error('geocoder error');
+      items = await res.json();
+      renderItems();
+    } catch (e) {
+      // Geocoder unreachable, rate-limited, or the request was superseded by
+      // a newer keystroke (AbortError) — fail silently either way. The field
+      // still works as a plain text input; the server prices authoritatively
+      // from whatever address is actually submitted.
+      items = [];
+    }
+  }
+
+  input.addEventListener('input', () => {
+    delete input.dataset.lat; delete input.dataset.lng;
+    clearTimeout(debounceTimer);
+    const q = input.value.trim();
+    if (q.length < 6){ close(); return; }
+    debounceTimer = setTimeout(() => search(q), 500);
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 }

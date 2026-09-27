@@ -77,6 +77,16 @@ const MILE_TIERS = [
     ['max' => PHP_INT_MAX, 'rate' => 0.60],
 ];
 
+// TheFloridaChiropractor.com home visit / event coverage pricing (unrelated
+// to the office-coverage day-rates/tiered mileage above) — kept here rather
+// than in homevisit.php so booking.php's address-change handler can also
+// reach HOMEVISIT_MILEAGE_RATE when recomputing a home visit's mileage.
+define('HOMEVISIT_ADULT_RATE', 100.00);
+define('HOMEVISIT_CHILD_RATE', 70.00);
+define('EVENT_HOURLY_RATE', 100.00);
+define('EVENT_MIN_HOURS', 2);
+define('HOMEVISIT_MILEAGE_RATE', 0.20); // flat, one-way, once per visit — not the tiered office-coverage rate
+
 // ZIP3 prefix -> [lat, lng, region]. Same demo dataset as the frontend.
 const ZIP3 = [
     '320' => [30.33, -81.66, 'north'],   '321' => [29.21, -81.02, 'central'],
@@ -266,6 +276,95 @@ function lookup_zip($zip) {
     return ['miles' => $miles, 'region' => $region];
 }
 
+define('GEOCODE_USER_AGENT', 'CoverageChiropractor.com booking system (contact: drmichaelmcpherson@gmail.com)');
+define('GEOCODE_TIMEOUT_SECONDS', 6);
+
+// Looks up a full street address via OpenStreetMap's free Nominatim
+// geocoder, caching the result in geocode_cache (Nominatim's usage policy
+// requires caching rather than re-querying the same address repeatedly, and
+// it makes repeat bookings at the same clinic/home address instant). Returns
+// ['lat'=>float, 'lng'=>float, 'postcode'=>?string] or null if the address
+// can't be resolved or the geocoder is unreachable.
+function geocode_address(PDO $pdo, string $address) {
+    $address = trim($address);
+    if ($address === '') return null;
+    $hash = md5(strtolower(preg_replace('/\s+/', ' ', $address)));
+
+    $stmt = $pdo->prepare('SELECT lat, lng, postcode FROM geocode_cache WHERE address_hash = ?');
+    $stmt->execute([$hash]);
+    $cached = $stmt->fetch();
+    if ($cached) return ['lat' => (float)$cached['lat'], 'lng' => (float)$cached['lng'], 'postcode' => $cached['postcode']];
+
+    $url = 'https://nominatim.openstreetmap.org/search?' . http_build_query([
+        'q' => $address,
+        'format' => 'json',
+        'addressdetails' => 1,
+        'limit' => 1,
+        'countrycodes' => 'us',
+    ]);
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'header' => "User-Agent: " . GEOCODE_USER_AGENT . "\r\n",
+            'timeout' => GEOCODE_TIMEOUT_SECONDS,
+        ],
+    ]);
+
+    $raw = @file_get_contents($url, false, $context);
+    if ($raw === false) {
+        log_error('Geocoding request failed', ['address' => $address]);
+        return null;
+    }
+    $results = json_decode($raw, true);
+    if (empty($results[0]['lat']) || empty($results[0]['lon'])) return null;
+
+    $lat = (float)$results[0]['lat'];
+    $lng = (float)$results[0]['lon'];
+    $postcode = $results[0]['address']['postcode'] ?? null;
+    $postcode = $postcode ? substr(preg_replace('/[^0-9]/', '', $postcode), 0, 5) : null;
+
+    $stmt = $pdo->prepare('INSERT INTO geocode_cache (address_hash, address, lat, lng, postcode) VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE lat = VALUES(lat), lng = VALUES(lng), postcode = VALUES(postcode)');
+    $stmt->execute([$hash, $address, $lat, $lng, $postcode]);
+
+    return ['lat' => $lat, 'lng' => $lng, 'postcode' => $postcode];
+}
+
+// Pulls a trailing 5-digit ZIP out of a free-typed address ("123 Main St,
+// Orlando, FL 32801") so the ZIP3 region/mileage fallback still works when
+// geocoding is unavailable.
+function extract_zip_from_address(string $address) {
+    if (preg_match('/\b(\d{5})(-\d{4})?\b/', $address, $m)) return $m[1];
+    return '';
+}
+
+// Resolves a booking location for pricing: prefers the real geocoded address
+// (accurate straight-line distance to the actual door, not just a ZIP3
+// centroid) and falls back to the existing ZIP-based estimate whenever
+// geocoding is unavailable — Nominatim down, rate-limited, or an address it
+// can't parse — so a network hiccup never blocks a booking, it just falls
+// back to a less precise estimate instead of failing outright.
+function resolve_location(PDO $pdo, string $address) {
+    $geo = geocode_address($pdo, $address);
+    if ($geo) {
+        $miles = (int)round(haversine_miles(ORIGIN_LAT, ORIGIN_LNG, $geo['lat'], $geo['lng']) * ROAD_FACTOR);
+        $zipLookup = lookup_zip($geo['postcode'] ?: extract_zip_from_address($address));
+        return [
+            'miles' => $miles,
+            'region' => $zipLookup['region'] ?? null,
+            'lat' => $geo['lat'],
+            'lng' => $geo['lng'],
+        ];
+    }
+    $zipLookup = lookup_zip(extract_zip_from_address($address));
+    return [
+        'miles' => $zipLookup['miles'] ?? 0,
+        'region' => $zipLookup['region'] ?? null,
+        'lat' => null,
+        'lng' => null,
+    ];
+}
+
 function is_last_minute($dateStr) {
     $today = new DateTime('today');
     $target = new DateTime($dateStr);
@@ -388,14 +487,27 @@ function generate_standing_dates(string $startDateStr, string $frequency, int $c
     return $dates;
 }
 
+// An agreement's lat/lng is geocoded once, at request/approval time, and
+// stored on the row — recurring billing (this function, called for every
+// scheduled date) never needs to re-geocode or even touch $pdo, it just
+// measures from the coordinates already on hand. Falls back to the
+// ZIP3-centroid estimate for agreements created before geocoding existed
+// (no lat/lng stored) or whose address never resolved.
+function standing_agreement_miles(array $agreement) {
+    if (!empty($agreement['lat']) && !empty($agreement['lng'])) {
+        return (int)round(haversine_miles(ORIGIN_LAT, ORIGIN_LNG, (float)$agreement['lat'], (float)$agreement['lng']) * ROAD_FACTOR);
+    }
+    $zipLookup = lookup_zip($agreement['zip_code']);
+    return $zipLookup['miles'] ?? 0;
+}
+
 // Mirrors the frontend's standingDateRate(): the discounted day rate plus
 // mileage for one specific scheduled date on an agreement.
 function standing_date_rate(array $agreement, string $dateType) {
     $rate = RATES[$agreement['region']] ?? RATES['central'];
     $base = $dateType === 'full' ? $rate['full'] : $rate['half'];
     $discounted = $base * (1 - (float)$agreement['effective_rate']);
-    $zipLookup = lookup_zip($agreement['zip_code']);
-    $miles = $zipLookup['miles'] ?? 0;
+    $miles = standing_agreement_miles($agreement);
     $mileage = $miles * tiered_mileage_rate($miles);
     return ['discounted' => $discounted, 'mileage' => $mileage, 'total' => round($discounted + $mileage, 2), 'miles' => $miles];
 }
@@ -403,9 +515,11 @@ function standing_date_rate(array $agreement, string $dateType) {
 // Estimates the signup-deposit amount for a standing-day REQUEST (before an
 // agreement row exists), mirroring the frontend's updateStandingQuote(): the
 // first pattern's day rate, discounted at the tier/plan the combined
-// pattern count qualifies for, plus mileage. Used to verify the client's
-// deposit PaymentIntent wasn't for less than expected.
-function estimate_standing_deposit(string $region, string $zip, array $patterns, ?string $paymentPlan) {
+// pattern count qualifies for, plus mileage from the clinic's geocoded
+// address (falling back to the ZIP3-centroid estimate if geocoding is
+// unavailable). Used to verify the client's deposit PaymentIntent wasn't for
+// less than expected.
+function estimate_standing_deposit(PDO $pdo, string $region, string $address, array $patterns, ?string $paymentPlan) {
     if (!count($patterns)) return 0;
     $rate = RATES[$region] ?? RATES['central'];
     $combined = pattern_day_equivalents($patterns);
@@ -413,8 +527,8 @@ function estimate_standing_deposit(string $region, string $zip, array $patterns,
     $effectiveRate = effective_standing_rate($tier, $paymentPlan, null);
     $first = $patterns[0];
     $base = ($first['type'] ?? 'full') === 'full' ? $rate['full'] : $rate['half'];
-    $zipLookup = lookup_zip($zip);
-    $miles = $zipLookup['miles'] ?? 0;
+    $location = resolve_location($pdo, $address);
+    $miles = $location['miles'] ?? 0;
     $mileage = $miles * tiered_mileage_rate($miles);
     return round(($base * (1 - $effectiveRate)) + $mileage, 2);
 }
@@ -755,6 +869,9 @@ function booking_to_json(PDO $pdo, array $r) {
         'promoCode' => $r['promo_code'],
         'region' => $r['region'],
         'zip' => $r['zip_code'],
+        'address' => $r['address'] ?? null,
+        'lat' => isset($r['lat']) ? (float)$r['lat'] : null,
+        'lng' => isset($r['lng']) ? (float)$r['lng'] : null,
         'miles' => (int)$r['miles'],
         'adjustments' => array_map(fn($a) => [
             'amount' => (float)$a['amount'], 'reason' => $a['reason'], 'createdBy' => $a['created_by'], 'createdAt' => to_iso($a['created_at']),

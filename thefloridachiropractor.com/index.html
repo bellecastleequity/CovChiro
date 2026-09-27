@@ -176,7 +176,7 @@
       <div id="fields-homevisit" style="margin-top:14px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;">
           <div><label for="hv-date">Visit date</label><input type="text" id="hv-date" placeholder="Select a date"><span style="font-size:0.74rem;color:#8a8171;">Monday–Friday only</span></div>
-          <div><label for="hv-zip">ZIP code</label><input type="text" id="hv-zip" maxlength="5" inputmode="numeric" placeholder="e.g. 32801"></div>
+          <div><label for="hv-address">Home address</label><input type="text" id="hv-address" placeholder="Start typing the visit address…"></div>
         </div>
         <p class="avail-msg hidden" id="hv-avail-msg" style="color:var(--red);font-size:0.82rem;margin-top:6px;"></p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:13px;">
@@ -188,8 +188,9 @@
       <div id="fields-event" class="hidden" style="margin-top:14px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;">
           <div><label for="ev-date">Event date</label><input type="text" id="ev-date" placeholder="Select a date"></div>
-          <div><label for="ev-name">Event name / location</label><input type="text" id="ev-name" placeholder="e.g. Downtown 5K, Orlando"></div>
+          <div><label for="ev-name">Event name</label><input type="text" id="ev-name" placeholder="e.g. Downtown 5K"></div>
         </div>
+        <div style="margin-top:13px;"><label for="ev-address">Event address</label><input type="text" id="ev-address" placeholder="Start typing the venue address…"></div>
         <p class="avail-msg hidden" id="ev-avail-msg" style="color:var(--red);font-size:0.82rem;margin-top:6px;"></p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:13px;">
           <div><label for="ev-start">Start time</label><input type="time" id="ev-start"></div>
@@ -428,10 +429,10 @@ function currentQuoteInput(){
       const [eh, em] = end.split(':').map(Number);
       hours = Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
     }
-    return { kind: 'event', hours, date: $('ev-date').value, eventName: $('ev-name').value.trim() };
+    return { kind: 'event', hours, date: $('ev-date').value, eventName: $('ev-name').value.trim(), address: $('ev-address').value.trim() };
   }
   return {
-    kind: 'homevisit', date: $('hv-date').value, zip: $('hv-zip').value.trim(),
+    kind: 'homevisit', date: $('hv-date').value, address: $('hv-address').value.trim(),
     adults: parseInt($('hv-adults').value) || 1, children: parseInt($('hv-children').value) || 0,
   };
 }
@@ -443,7 +444,7 @@ function localQuote(input){
   }
   const adults = Math.max(1, input.adults || 1), children = Math.max(0, input.children || 0);
   const subtotal = Math.round((adults * 100 + children * 70) * 100) / 100;
-  const found = lookupZip(input.zip);
+  const found = resolveLocationForInput($('hv-address'));
   const miles = found ? found.miles : 0;
   const mileage = Math.round(miles * 0.20 * 100) / 100;
   return { kind: 'homevisit', adults, children, subtotal, mileage, miles, region: found ? found.region : null, total: Math.round((subtotal + mileage) * 100) / 100 };
@@ -475,9 +476,11 @@ function updateQuote(){
   $('val-total').textContent = money(total);
   $('val-dep').textContent = money(+(total * 0.10).toFixed(2));
 }
-document.querySelectorAll('#hv-kind, #hv-adults, #hv-children, #hv-zip, #ev-start, #ev-end').forEach(el =>
+document.querySelectorAll('#hv-kind, #hv-adults, #hv-children, #hv-address, #ev-address, #ev-start, #ev-end').forEach(el =>
   el.addEventListener('input', updateQuote));
 $('hv-kind').addEventListener('change', updateQuote);
+attachAddressAutosuggest($('hv-address'), { onSelect: updateQuote });
+attachAddressAutosuggest($('ev-address'), { onSelect: updateQuote });
 
 function dateUnavailableReason(dateStr, kind){
   if (!dateStr) return null;
@@ -577,7 +580,7 @@ $('book-submit').addEventListener('click', () => {
   const q = pendingQuote;
   if (q.kind === 'homevisit'){
     if (!$('hv-date').value){ err.textContent = 'Pick a visit date.'; return; }
-    if (!/^\d{5}$/.test($('hv-zip').value.trim())){ err.textContent = 'Enter a valid 5-digit ZIP code.'; return; }
+    if (!$('hv-address').value.trim()){ err.textContent = 'Enter the visit address.'; return; }
     if (!checkDateField('hv-date', 'hv-avail-msg', 'homevisit')){ err.textContent = 'That date is unavailable — pick another.'; return; }
   } else {
     if (!$('ev-date').value){ err.textContent = 'Pick an event date.'; return; }
@@ -602,9 +605,9 @@ $('sign-submit').addEventListener('click', async () => {
     pocName: $('hv-poc-name').value.trim(), pocPhone: $('hv-poc-phone').value.trim(), notes: $('hv-notes').value.trim(),
   };
   if (q.kind === 'event'){
-    body.date = $('ev-date').value; body.hours = q.hours; body.eventName = $('ev-name').value.trim();
+    body.date = $('ev-date').value; body.hours = q.hours; body.eventName = $('ev-name').value.trim(); body.address = $('ev-address').value.trim();
   } else {
-    body.date = $('hv-date').value; body.zip = $('hv-zip').value.trim(); body.adults = q.adults; body.children = q.children;
+    body.date = $('hv-date').value; body.address = $('hv-address').value.trim(); body.adults = q.adults; body.children = q.children;
   }
   let bookingId = null;
   try {

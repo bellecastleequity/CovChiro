@@ -8,45 +8,49 @@
 // live in the same `bookings` table (coverage_type 'homevisit' or 'event')
 // and every one of those endpoints already operates generically on any row.
 require_once __DIR__ . '/../../php_backend/config.php';
-
-define('HOMEVISIT_ADULT_RATE', 100.00);
-define('HOMEVISIT_CHILD_RATE', 70.00);
-define('EVENT_HOURLY_RATE', 100.00);
-define('EVENT_MIN_HOURS', 2);
-define('HOMEVISIT_MILEAGE_RATE', 0.20); // flat, one-way, once per visit — not the tiered office-coverage rate
+// HOMEVISIT_ADULT_RATE, HOMEVISIT_CHILD_RATE, EVENT_HOURLY_RATE,
+// EVENT_MIN_HOURS, and HOMEVISIT_MILEAGE_RATE are defined in config.php —
+// booking.php's address-change handler needs HOMEVISIT_MILEAGE_RATE too.
 
 $action = $_GET['action'] ?? '';
 switch ($action) {
-    case 'quote': handle_quote(); break;
+    case 'quote': handle_quote($pdo); break;
     case 'create': handle_create($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
-function compute_quote($body) {
+function compute_quote(PDO $pdo, $body) {
     $kind = ($body['kind'] ?? '') === 'event' ? 'event' : 'homevisit';
+    $address = trim($body['address'] ?? '');
     if ($kind === 'event') {
         $hours = max(EVENT_MIN_HOURS, (float)($body['hours'] ?? 0));
         $subtotal = round($hours * EVENT_HOURLY_RATE, 2);
+        // Event pricing is flat hourly with no mileage component — the venue
+        // address (when given) is geocoded purely so it shows up on the
+        // admin map, and never changes the price.
+        $loc = $address !== '' ? resolve_location($pdo, $address) : null;
         return [
             'kind' => 'event', 'hours' => $hours, 'subtotal' => $subtotal,
             'mileage' => 0, 'miles' => 0, 'region' => null, 'total' => $subtotal,
+            'lat' => $loc['lat'] ?? null, 'lng' => $loc['lng'] ?? null,
         ];
     }
     $adults = max(1, (int)($body['adults'] ?? 1));
     $children = max(0, (int)($body['children'] ?? 0));
     $subtotal = round($adults * HOMEVISIT_ADULT_RATE + $children * HOMEVISIT_CHILD_RATE, 2);
-    $found = lookup_zip(trim($body['zip'] ?? ''));
-    $miles = $found ? $found['miles'] : 0;
-    $region = $found ? $found['region'] : null;
+    $found = $address !== '' ? resolve_location($pdo, $address) : lookup_zip(trim($body['zip'] ?? ''));
+    $miles = $found['miles'] ?? 0;
+    $region = $found['region'] ?? null;
     $mileage = round($miles * HOMEVISIT_MILEAGE_RATE, 2);
     return [
         'kind' => 'homevisit', 'adults' => $adults, 'children' => $children, 'subtotal' => $subtotal,
         'mileage' => $mileage, 'miles' => $miles, 'region' => $region, 'total' => round($subtotal + $mileage, 2),
+        'lat' => $found['lat'] ?? null, 'lng' => $found['lng'] ?? null,
     ];
 }
 
-function handle_quote() {
-    json_response(compute_quote(json_body()));
+function handle_quote(PDO $pdo) {
+    json_response(compute_quote($pdo, json_body()));
 }
 
 function handle_create(PDO $pdo) {
@@ -80,7 +84,7 @@ function handle_create(PDO $pdo) {
         }
     }
 
-    $quote = compute_quote($body);
+    $quote = compute_quote($pdo, $body);
 
     $promoCode = trim($body['promoCode'] ?? '');
     $promoRow = null;
@@ -94,17 +98,19 @@ function handle_create(PDO $pdo) {
     $total = round(max(0, $quote['total'] - $promoDiscount), 2);
     if ($total <= 0) json_response(['error' => 'Could not price this booking. Contact us directly.'], 400);
 
-    $zip = trim($body['zip'] ?? '');
+    $address = trim($body['address'] ?? '');
+    $zip = trim($body['zip'] ?? '') ?: extract_zip_from_address($address);
+    $locationLabel = $address !== '' ? $address : ($zip ? "ZIP {$zip}" : '');
     if ($quote['kind'] === 'event') {
         $eventName = trim($body['eventName'] ?? '');
         $title = 'Sporting / corporate event coverage';
         $hoursLabel = $quote['hours'] . ' hour' . ($quote['hours'] != 1 ? 's' : '');
-        $meta = $hoursLabel . ($eventName ? " · {$eventName}" : '');
+        $meta = $hoursLabel . ($eventName ? " · {$eventName}" : '') . ($locationLabel ? " · {$locationLabel}" : '');
     } else {
         $title = 'Home visit';
         $parts = [$quote['adults'] . ' adult' . ($quote['adults'] != 1 ? 's' : '')];
         if ($quote['children']) $parts[] = $quote['children'] . ' child add-on' . ($quote['children'] != 1 ? 's' : '');
-        $meta = implode(' + ', $parts) . ($zip ? " · ZIP {$zip} · {$quote['miles']} mi one way" : '');
+        $meta = implode(' + ', $parts) . ($locationLabel ? " · {$locationLabel} · {$quote['miles']} mi one way" : '');
     }
 
     $coverage = [
@@ -115,12 +121,13 @@ function handle_create(PDO $pdo) {
 
     $bookingId = generate_id($quote['kind'] === 'event' ? 'EV' : 'HV');
     $stmt = $pdo->prepare('INSERT INTO bookings
-        (id, user_id, status, dates, day_types, day_times, coverage_type, coverage, signature, title, meta, region, zip_code, miles, total, paid, balance_status, pay_type, promo_code, created_at, start_date)
-        VALUES (?, ?, "upcoming", ?, JSON_ARRAY("full"), JSON_ARRAY(), ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", ?, NOW(), ?)');
+        (id, user_id, status, dates, day_types, day_times, coverage_type, coverage, signature, title, meta, region, zip_code, address, lat, lng, miles, total, paid, balance_status, pay_type, promo_code, created_at, start_date)
+        VALUES (?, ?, "upcoming", ?, JSON_ARRAY("full"), JSON_ARRAY(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", ?, NOW(), ?)');
     $stmt->execute([
         $bookingId, $user['id'], json_encode([$date]), $quote['kind'],
         json_encode($coverage), json_encode($signature), sanitize($title), sanitize($meta),
-        $quote['region'], sanitize($zip), $quote['miles'] ?? 0, $total, $promoRow ? $promoRow['code'] : null, $date,
+        $quote['region'], sanitize($zip), $address !== '' ? sanitize($address) : null, $quote['lat'] ?? null, $quote['lng'] ?? null,
+        $quote['miles'] ?? 0, $total, $promoRow ? $promoRow['code'] : null, $date,
     ]);
 
     if ($promoRow) {

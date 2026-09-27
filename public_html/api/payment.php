@@ -156,7 +156,7 @@ function handle_create_standing_deposit_intent(PDO $pdo) {
     $email = trim($body['email'] ?? '');
     $name = trim($body['name'] ?? '');
     $region = $body['region'] ?? '';
-    $zip = trim($body['zip'] ?? '');
+    $address = trim($body['address'] ?? '');
     $patterns = $body['patterns'] ?? [];
     $paymentPlan = $body['paymentPlan'] ?? 'standard';
 
@@ -164,7 +164,7 @@ function handle_create_standing_deposit_intent(PDO $pdo) {
     if (!isset(RATES[$region])) json_response(['error' => 'Invalid region.'], 400);
     if (!is_array($patterns) || !count($patterns)) json_response(['error' => 'Add at least one coverage pattern first.'], 400);
 
-    $amount = estimate_standing_deposit($region, $zip, $patterns, $paymentPlan);
+    $amount = estimate_standing_deposit($pdo, $region, $address, $patterns, $paymentPlan);
     if ($amount <= 0) json_response(['error' => 'Could not calculate a deposit amount.'], 400);
 
     try {
