@@ -517,8 +517,12 @@ function standingDateRate(agreement, dateType){
   const rateTable = RATES[agreement.region];
   const base = dateType === 'full' ? rateTable.full : rateTable.half;
   const discounted = base * (1 - (agreement.effectiveRate != null ? agreement.effectiveRate : agreement.tier.rate));
-  const found = lookupZip(agreement.zip);
-  const miles = found ? found.miles : 0;
+  // Mirrors the server's standing_agreement_miles(): prefer the agreement's
+  // geocoded coordinates (set once at signup) over the ZIP3-centroid
+  // estimate, so this live preview matches what actually gets charged.
+  const miles = (agreement.lat != null && agreement.lng != null)
+    ? Math.round(haversine(ORIGIN, { lat: agreement.lat, lng: agreement.lng }) * ROAD_FACTOR)
+    : (lookupZip(agreement.zip) ? lookupZip(agreement.zip).miles : 0);
   const mileRate = tieredMileageRate(miles);
   const mileage = miles * mileRate;
   return { discounted, mileage, total: discounted + mileage, miles, mileRate };

@@ -966,7 +966,7 @@ function renderAdmin(){
               <div class="bd">${r.name}</div>
               ${r.patterns.map(p => `<div class="bn">${DOW_NAMES[p.dow]}s, ${p.freq}, ${TYPE_LABEL_SD[p.type]} · ${p.count} dates, starting ${p.actualStart}</div>`).join('')}
               <div class="bn" style="font-weight:600;margin-top:4px;">${(r.combinedCount % 1 === 0 ? r.combinedCount : r.combinedCount.toFixed(1))} combined coverage days · earned tier: ${r.tier ? Math.round(r.tier.rate*100) + '%' : 'below minimum'} · ${PLAN_LABEL[r.paymentPlan] || 'Standard'}</div>
-              <div class="bn">${r.region} · ZIP ${r.zip}</div>
+              <div class="bn">${r.region} · ${r.address || (r.zip ? `ZIP ${r.zip}` : 'no address on file')}${(r.lat != null && r.lng != null) ? ` · <button class="btn ghost sm" data-viewmap-standing="${r.id}" style="padding:1px 8px;font-size:0.72rem;">📍 View map</button>` : ''}</div>
               <div class="bn">${r.contactEmail}${r.notes ? ' · ' + r.notes : ''}</div>
               <div class="bn" style="${r.cardOnFile ? 'color:var(--teal-dark);' : 'color:var(--red);font-weight:600;'}">${r.cardOnFile ? 'Card on file — approving will bill automatically per the payment plan' : 'No card on file — approving will NOT auto-charge; this request predates auto-pay'}</div>
               <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
@@ -998,14 +998,22 @@ function renderAdmin(){
               <div class="bd">${a.name}</div>
               <div class="bn">${patternSummary} · ${Math.round((a.effectiveRate != null ? a.effectiveRate : a.tier.rate)*100)}% off · ${upcoming.length} coverage days remaining</div>
               <div class="bn">Next: ${nextFew.map(d => `${d.date} (${TYPE_LABEL_SD[d.type]})`).join(', ') || 'none remaining'}</div>
+              <div class="bn">${a.region} · ${a.address || (a.zip ? `ZIP ${a.zip}` : 'no address on file')}</div>
             </div>
             <a class="btn ghost sm" href="api/agreement.php?type=standing&id=${a.id}" target="_blank" rel="noopener" style="margin-top:8px;">Signed agreement</a>
             <button class="btn ghost sm" data-cancel-agreement="${a.id}" style="margin-top:8px;margin-left:8px;color:var(--red);border-color:var(--red);">Cancel agreement (30-day notice)</button>
+            ${(a.lat != null && a.lng != null) ? `<button class="btn ghost sm" data-viewmap-standing="${a.id}" style="margin-top:8px;margin-left:8px;">📍 View map</button>` : ''}
           </div>`;
         }).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No active standing agreements yet.</p>`}
       </div>`;
 
     el.innerHTML = volumeHtml + pendingHtml + agreementsHtml;
+
+    el.querySelectorAll('[data-viewmap-standing]').forEach(btn => btn.addEventListener('click', () => {
+      const id = btn.dataset.viewmapStanding;
+      const rec = standingRequests.find(x => x.id === id) || standingAgreements.find(x => x.id === id);
+      if (rec) openMapModal({ id: rec.id, title: rec.name, address: rec.address, lat: rec.lat, lng: rec.lng });
+    }));
 
     pending.forEach(r => {
       const inp = document.getElementById(`cr-${r.id}`);
