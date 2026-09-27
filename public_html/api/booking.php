@@ -591,12 +591,14 @@ function handle_feedback(PDO $pdo) {
 
 function handle_list_all(PDO $pdo) {
     require_admin();
-    $stmt = $pdo->query('SELECT b.*, u.name AS user_name, u.email AS user_email FROM bookings b JOIN users u ON u.id = b.user_id ORDER BY b.created_at DESC');
+    $stmt = $pdo->query('SELECT b.*, u.name AS user_name, u.email AS user_email, u.clinic_name AS user_clinic, u.phone AS user_phone FROM bookings b JOIN users u ON u.id = b.user_id ORDER BY b.created_at DESC');
     $rows = $stmt->fetchAll();
     json_response(['bookings' => array_map(function ($r) use ($pdo) {
         $j = booking_to_json($pdo, $r);
         $j['who'] = $r['user_name'];
         $j['email'] = $r['user_email'];
+        $j['clinic'] = $r['user_clinic'];
+        $j['phone'] = $r['user_phone'];
         return $j;
     }, $rows)]);
 }

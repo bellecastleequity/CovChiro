@@ -103,6 +103,14 @@
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null, adminInvoices = [];
 let showCancelledBookings = false;
+let bookedSearchQuery = '';
+function bookingMatchesSearch(b, query){
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [b.id, b.title, b.meta, b.who, b.email, b.clinic, b.phone, ...(b.dates || [])]
+    .filter(Boolean).join(' ').toLowerCase();
+  return q.split(/\s+/).every(term => haystack.includes(term));
+}
 let latestEarnings = null;
 let latestProjected = null;
 const EARN_SERVICE_LABEL = { office: 'Office coverage', homevisit: 'Home visits', event: 'Events', standing: 'Standing coverage', invoice: 'Other invoices' };
@@ -566,21 +574,43 @@ function renderAdmin(){
         </div>
       </div>`;
     const cancelledCount = adminBookings.filter(b => b.status === 'cancelled').length;
-    const list = adminBookings
-      .filter(b => showCancelledBookings || b.status !== 'cancelled')
+    const preSearchList = adminBookings.filter(b => showCancelledBookings || b.status !== 'cancelled');
+    const list = preSearchList
+      .filter(b => bookingMatchesSearch(b, bookedSearchQuery))
       .sort((a,b) => a.dates[0].localeCompare(b.dates[0]));
+    const searchHtml = `
+      <div style="margin-bottom:16px;">
+        <input type="text" id="booked-search" placeholder="Search by clinic, contact, email, phone, date, or ref…" value="${(bookedSearchQuery || '').replace(/"/g, '&quot;')}" style="width:100%;max-width:440px;padding:9px 12px;border:1px solid var(--line);border-radius:4px;font-size:0.88rem;font-family:inherit;">
+      </div>`;
     const toggleHtml = cancelledCount ? `
       <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:#6b7280;margin-bottom:16px;cursor:pointer;">
         <input type="checkbox" id="toggle-show-cancelled" ${showCancelledBookings ? 'checked' : ''}> Show ${cancelledCount} cancelled booking${cancelledCount === 1 ? '' : 's'}
       </label>` : '';
-    if (!list.length){
-      el.innerHTML = phoneBookingCardHtml + toggleHtml + `<div class="empty">${showCancelledBookings ? 'No bookings on the calendar yet.' : 'No active bookings on the calendar — everything is cancelled.'}</div>`;
-      wirePhoneBookingForm();
+    function wireBookedSearch(){
       const cb = document.getElementById('toggle-show-cancelled');
       if (cb) cb.addEventListener('change', () => { showCancelledBookings = cb.checked; renderAdmin(); });
+      const search = document.getElementById('booked-search');
+      if (search) search.addEventListener('input', () => {
+        bookedSearchQuery = search.value;
+        const pos = search.selectionStart;
+        renderAdmin();
+        const fresh = document.getElementById('booked-search');
+        if (fresh){ fresh.focus(); fresh.setSelectionRange(pos, pos); }
+      });
+    }
+    if (!preSearchList.length){
+      el.innerHTML = phoneBookingCardHtml + toggleHtml + `<div class="empty">${showCancelledBookings ? 'No bookings on the calendar yet.' : 'No active bookings on the calendar — everything is cancelled.'}</div>`;
+      wirePhoneBookingForm();
+      wireBookedSearch();
       return;
     }
-    el.innerHTML = phoneBookingCardHtml + toggleHtml + list.map(b => {
+    if (!list.length){
+      el.innerHTML = phoneBookingCardHtml + searchHtml + toggleHtml + `<div class="empty">No bookings match your search.</div>`;
+      wirePhoneBookingForm();
+      wireBookedSearch();
+      return;
+    }
+    el.innerHTML = phoneBookingCardHtml + searchHtml + toggleHtml + list.map(b => {
       const owed = b.balanceDue ?? (b.total != null && b.paid != null ? +(b.total - b.paid).toFixed(2) : null);
       const currentTotal = b.total + (b.adjustmentsTotal || 0);
       const canComplete = ['office', 'homevisit', 'event'].includes(b.service) && b.balanceStatus === 'not_due';
@@ -726,8 +756,7 @@ function renderAdmin(){
 
         <div class="err-msg" id="bm-err"></div>
       </div>`;
-    const showCancelledCb = document.getElementById('toggle-show-cancelled');
-    if (showCancelledCb) showCancelledCb.addEventListener('change', () => { showCancelledBookings = showCancelledCb.checked; renderAdmin(); });
+    wireBookedSearch();
     wirePhoneBookingForm();
     el.querySelectorAll('[data-draft-thanks]').forEach(btn => btn.addEventListener('click', () => {
       const b = adminBookings.find(x => x.id === btn.dataset.draftThanks);
