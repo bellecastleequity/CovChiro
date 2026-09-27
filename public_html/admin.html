@@ -102,6 +102,13 @@
 <script src="assets/app-shared.js?v=10"></script>
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null, adminInvoices = [];
+let allLeads = [], leadsSearchQuery = '';
+function leadMatchesSearch(l, query){
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [l.name, l.email, l.code, l.site, l.status].filter(Boolean).join(' ').toLowerCase();
+  return q.split(/\s+/).every(term => haystack.includes(term));
+}
 let showCancelledBookings = false;
 let bookedSearchQuery = '';
 function bookingMatchesSearch(b, query){
@@ -252,6 +259,7 @@ function wirePhoneBookingForm(){
     const region = document.getElementById('pb-region').value;
     const notes = document.getElementById('pb-notes').value.trim();
     const hotelNights = document.getElementById('pb-hnights').value ? parseInt(document.getElementById('pb-hnights').value) : null;
+    const promoCode = document.getElementById('pb-promo').value.trim();
     const validRows = pbDateRows.filter(r => r.date);
     if (!name){ err.textContent = "Enter the client's name."; return; }
     if (!email){ err.textContent = 'Enter the client email.'; return; }
@@ -261,13 +269,14 @@ function wirePhoneBookingForm(){
     let r;
     try {
       r = await apiFetch('/api/booking.php?action=admin_create_for_client', { method: 'POST', body: JSON.stringify({
-        name, email, phone, address, region, notes, hotelNights,
+        name, email, phone, address, region, notes, hotelNights, promoCode,
         dates: validRows.map(row => row.date), dayTypes: validRows.map(row => row.type),
       })});
     } catch (e) { err.textContent = e.message; document.getElementById('pb-submit').disabled = false; return; }
     document.getElementById('pb-submit').disabled = false;
-    alert(`Booking ${r.booking_id} created — ${r.is_new_client ? 'a new account was created and ' : ''}an email has been sent to ${email} to review, sign, and pay the ${money(r.deposit)} deposit.`);
+    alert(`Booking ${r.booking_id} created${r.promoDiscount > 0 ? ` (${money(r.promoDiscount)} promo discount applied)` : ''} — ${r.is_new_client ? 'a new account was created and ' : ''}an email has been sent to ${email} to review, sign, and pay the ${money(r.deposit)} deposit.`);
     pbDateRows = [];
+    document.getElementById('pb-promo').value = '';
     await loadAdminBookings();
     renderAdmin();
   });
@@ -568,6 +577,9 @@ function renderAdmin(){
           <button class="btn ghost sm" id="pb-addrow" style="margin-top:8px;">+ Add date</button>
           <label for="pb-notes" style="margin-top:14px;">Notes (optional)</label>
           <textarea id="pb-notes" rows="2"></textarea>
+          <label for="pb-promo" style="margin-top:14px;">Promo code (optional)</label>
+          <input type="text" id="pb-promo" placeholder="e.g. a lead's WELCOME-XXXX code" style="text-transform:uppercase;">
+          <p style="font-size:0.76rem;color:#8a8171;margin-top:4px;">Re-validated when you submit — same rules as a self-service booking (a welcome-offer code must match this client's email and their first booking).</p>
           <div id="pb-quote" style="margin-top:14px;font-size:0.88rem;color:#414a56;"></div>
           <div class="err-msg" id="pb-err"></div>
           <button class="btn" id="pb-submit" style="margin-top:10px;">Create booking &amp; email client</button>
@@ -1867,20 +1879,65 @@ function renderAdmin(){
       </div>`;
 
     const LEAD_STATUS = { active: ['Active', 'var(--teal-dark)'], converted: ['Booked', 'var(--teal-dark)'], unsubscribed: ['Unsubscribed', '#8a8171'], expired: ['Expired', 'var(--red)'] };
+    const filteredLeads = allLeads.filter(l => leadMatchesSearch(l, leadsSearchQuery));
     const leadsHtml = L.tableMissing ? '' : `
       <div class="admin-card" style="margin-top:20px;">
-        <h3>Recent welcome-offer leads</h3>
+        <h3>Welcome-offer leads</h3>
         <p style="font-size:0.85rem;color:#6b7280;margin-bottom:10px;">Visitors who took the 15% pop-up offer on either site. Each gets a single-use code tied to their email and a short email sequence (days 3, 10, 30, 80) until they book, unsubscribe, or the code expires.</p>
-        ${L.recent.length ? L.recent.map(l => { const [label, color] = LEAD_STATUS[l.status] || [l.status, 'inherit']; return `
+        ${allLeads.length ? `<input type="text" id="leads-search" placeholder="Search by name, email, code, site, or status…" value="${(leadsSearchQuery || '').replace(/"/g, '&quot;')}" style="width:100%;max-width:440px;padding:9px 12px;border:1px solid var(--line);border-radius:4px;font-size:0.88rem;font-family:inherit;margin-bottom:14px;">` : ''}
+        ${!allLeads.length ? `<p style="font-size:0.85rem;color:#6b7280;">No signups yet — the pop-up appears to new visitors after about 8 seconds or once they've scrolled 40% of the homepage.</p>`
+          : !filteredLeads.length ? `<p style="font-size:0.85rem;color:#6b7280;">No leads match your search.</p>`
+          : filteredLeads.map(l => { const [label, color] = LEAD_STATUS[l.status] || [l.status, 'inherit']; return `
           <div class="blk" style="margin-bottom:8px;">
             <div>
               <div class="bd">${l.name} <span style="font-weight:400;color:#6b7280;">· ${l.email}</span></div>
               <div class="bn">${l.site === 'florida' ? 'thefloridachiropractor.com' : 'coveragechiropractor.com'} · ${l.code || 'no code'}${l.expiresAt ? ' · expires ' + l.expiresAt : ''} · signed up ${new Date(l.createdAt).toLocaleDateString()}${l.status === 'active' ? ` · ${l.dripStep} of 4 follow-ups sent` : ''}${l.convertedAt ? ' · booked ' + new Date(l.convertedAt).toLocaleDateString() : ''}</div>
               <div class="bn" style="color:${color};margin-top:3px;font-weight:600;">${label}</div>
+              <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+                ${l.status === 'active' ? `<button class="btn ghost sm" data-lead-resend="${l.id}">Resend email</button>` : ''}
+                ${l.status === 'active' ? `<button class="btn ghost sm" data-lead-unsub="${l.id}">Unsubscribe</button>` : ''}
+                <button class="btn ghost sm" data-lead-delete="${l.id}" style="color:var(--red);border-color:var(--red);">Delete</button>
+              </div>
             </div>
-          </div>`; }).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No signups yet — the pop-up appears to new visitors after about 8 seconds or once they've scrolled 40% of the homepage.</p>`}
+          </div>`; }).join('')}
       </div>`;
     el.innerHTML = diagnosticsHtml + cardsHtml + leadsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexLeadHtml;
+
+    function wireLeadsSearch(){
+      const search = document.getElementById('leads-search');
+      if (search) search.addEventListener('input', () => {
+        leadsSearchQuery = search.value;
+        const pos = search.selectionStart;
+        renderAdmin();
+        const fresh = document.getElementById('leads-search');
+        if (fresh){ fresh.focus(); fresh.setSelectionRange(pos, pos); }
+      });
+    }
+    wireLeadsSearch();
+    document.querySelectorAll('[data-lead-resend]').forEach(btn => btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await apiFetch('/api/leads.php?action=admin_resend', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.leadResend) }) });
+        showToast('Email resent.');
+      } catch (e) { alert(e.message); }
+      btn.disabled = false;
+    }));
+    document.querySelectorAll('[data-lead-unsub]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!confirm('Unsubscribe this lead from future welcome-offer emails? Their code keeps working if they book anyway.')) return;
+      try { await apiFetch('/api/leads.php?action=admin_unsubscribe', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.leadUnsub) }) }); }
+      catch (e) { alert(e.message); return; }
+      allLeads = (await apiFetch('/api/leads.php?action=admin_list')).leads || [];
+      renderAdmin();
+      showToast('Lead unsubscribed.');
+    }));
+    document.querySelectorAll('[data-lead-delete]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!confirm('Delete this lead permanently and deactivate their promo code? This cannot be undone.')) return;
+      try { await apiFetch('/api/leads.php?action=admin_delete', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.leadDelete) }) }); }
+      catch (e) { alert(e.message); return; }
+      allLeads = (await apiFetch('/api/leads.php?action=admin_list')).leads || [];
+      renderAdmin();
+      showToast('Lead deleted.');
+    }));
 
     document.getElementById('diag-send-test').addEventListener('click', async () => {
       const btn = document.getElementById('diag-send-test');
@@ -2069,6 +2126,7 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
   }
   if (admView === 'analytics'){
     try { latestAnalytics = await apiFetch('/api/analytics.php?action=summary'); } catch (e) { latestAnalytics = null; }
+    try { allLeads = (await apiFetch('/api/leads.php?action=admin_list')).leads || []; } catch (e) { allLeads = []; }
     try { latestCronStatus = await apiFetch('/api/settings.php?action=cron_status'); } catch (e) { latestCronStatus = null; }
   }
   if (admView === 'messages'){

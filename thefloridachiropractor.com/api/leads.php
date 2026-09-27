@@ -6,6 +6,10 @@ $action = $_GET['action'] ?? '';
 switch ($action) {
     case 'capture': handle_capture($pdo); break;
     case 'unsubscribe': handle_unsubscribe($pdo); break;
+    case 'admin_list': handle_admin_list($pdo); break;
+    case 'admin_resend': handle_admin_resend($pdo); break;
+    case 'admin_unsubscribe': handle_admin_unsubscribe($pdo); break;
+    case 'admin_delete': handle_admin_delete($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -73,6 +77,75 @@ function create_welcome_promo(PDO $pdo, string $email) {
     $stmt = $pdo->prepare('INSERT INTO promo_codes (code, type, value, max_uses, expires_at, active, assigned_email, is_welcome) VALUES (?, "percent", ?, 1, ?, 1, ?, 1)');
     $stmt->execute([$code, WELCOME_OFFER_PCT, $expires, $email]);
     return promo_by_code($pdo, $code);
+}
+
+// Full, searchable lead list for the admin panel — analytics.php's summary
+// only embeds the most recent 25 for the at-a-glance cards.
+function handle_admin_list(PDO $pdo) {
+    require_admin();
+    $rows = $pdo->query("SELECT l.id, l.name, l.email, l.site, l.promo_code, l.status, l.created_at, l.converted_at, l.drip_step,
+        p.expires_at, p.value AS promo_value, p.used_count, p.max_uses
+        FROM leads l LEFT JOIN promo_codes p ON p.code = l.promo_code
+        ORDER BY l.created_at DESC LIMIT 500")->fetchAll();
+    json_response(['leads' => array_map(fn($r) => [
+        'id' => (int)$r['id'], 'name' => $r['name'], 'email' => $r['email'], 'site' => $r['site'], 'code' => $r['promo_code'],
+        'status' => $r['status'], 'createdAt' => to_iso($r['created_at']), 'convertedAt' => to_iso($r['converted_at']),
+        'dripStep' => (int)$r['drip_step'], 'expiresAt' => $r['expires_at'],
+        'discountPct' => $r['promo_value'] !== null ? (float)$r['promo_value'] : null,
+        'codeUsed' => $r['used_count'] !== null && $r['max_uses'] !== null && (int)$r['used_count'] >= (int)$r['max_uses'],
+    ], $rows)]);
+}
+
+// "This lead says they never got the code" — resends whichever email they're
+// currently on (the welcome email if no drip step has gone out yet, or the
+// most recent drip step otherwise). Only for active leads: someone who
+// unsubscribed asked to stop, and an expired/converted lead has nothing
+// current left to resend.
+function handle_admin_resend(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+    $id = (int)($body['id'] ?? 0);
+    $stmt = $pdo->prepare('SELECT * FROM leads WHERE id = ?');
+    $stmt->execute([$id]);
+    $lead = $stmt->fetch();
+    if (!$lead) json_response(['error' => 'Lead not found.'], 404);
+    if ($lead['status'] !== 'active') json_response(['error' => 'This lead is ' . $lead['status'] . " — there's nothing current to resend."], 400);
+    $promo = $lead['promo_code'] ? promo_by_code($pdo, $lead['promo_code']) : null;
+    if (!$promo) json_response(['error' => "This lead's promo code no longer exists."], 400);
+    $sent = send_lead_email($lead, $promo, (int)$lead['drip_step']);
+    if (!$sent) json_response(['error' => 'Email send failed — check the diagnostics above.'], 502);
+    json_response(['success' => true]);
+}
+
+function handle_admin_unsubscribe(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+    $id = (int)($body['id'] ?? 0);
+    $stmt = $pdo->prepare('SELECT id FROM leads WHERE id = ?');
+    $stmt->execute([$id]);
+    if (!$stmt->fetch()) json_response(['error' => 'Lead not found.'], 404);
+    $pdo->prepare("UPDATE leads SET status = 'unsubscribed', unsubscribed_at = ? WHERE id = ?")->execute([date('Y-m-d H:i:s'), $id]);
+    json_response(['success' => true]);
+}
+
+// Deletes the lead record entirely and deactivates its promo code (rather
+// than leaving an orphaned, still-usable code with no lead behind it).
+function handle_admin_delete(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+    $id = (int)($body['id'] ?? 0);
+    $stmt = $pdo->prepare('SELECT * FROM leads WHERE id = ?');
+    $stmt->execute([$id]);
+    $lead = $stmt->fetch();
+    if (!$lead) json_response(['error' => 'Lead not found.'], 404);
+    if ($lead['promo_code']) {
+        $pdo->prepare('UPDATE promo_codes SET active = 0 WHERE code = ?')->execute([$lead['promo_code']]);
+    }
+    $pdo->prepare('DELETE FROM leads WHERE id = ?')->execute([$id]);
+    json_response(['success' => true]);
 }
 
 // One-click unsubscribe from the drip (linked in every email). Renders a

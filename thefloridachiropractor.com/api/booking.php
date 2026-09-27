@@ -255,6 +255,7 @@ function handle_admin_create_for_client(PDO $pdo) {
     $clientRegion = $body['region'] ?? 'central';
     $notes = trim($body['notes'] ?? '');
     $hotelNightsInput = isset($body['hotelNights']) ? (int)$body['hotelNights'] : null;
+    $promoCode = trim($body['promoCode'] ?? '');
 
     if (!$name) json_response(['error' => "Enter the client's name."], 400);
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) json_response(['error' => 'Enter a valid client email.'], 400);
@@ -311,9 +312,7 @@ function handle_admin_create_for_client(PDO $pdo) {
     $hotelNights = $longDistance ? max(1, $hotelNightsInput ?: $fullCount ?: 1) : 0;
     $hotel = $hotelNights * HOTEL_RATE;
 
-    $total = round($base + $mileage + $hotel + $overtimeCost, 2);
-    if ($total <= 0) json_response(['error' => 'Could not price this booking.'], 400);
-    $deposit = round($total * DEPOSIT_RATE, 2);
+    $preDiscountTotal = round($base + $mileage + $hotel + $overtimeCost, 2);
 
     $parts = [];
     if ($fullCount) $parts[] = "$fullCount full day" . ($fullCount > 1 ? 's' : '');
@@ -344,16 +343,40 @@ function handle_admin_create_for_client(PDO $pdo) {
         $userId = (int)$pdo->lastInsertId();
     }
 
+    // Any promo code — including a lead's welcome-offer code — can be typed
+    // in here manually for a phone booking, re-validated the same way as a
+    // self-service one (bound to this client's email, first-booking-only if
+    // it's a welcome code).
+    $promoRow = null;
+    if ($promoCode !== '') {
+        $check = validate_promo_code($pdo, $promoCode, $email);
+        if (isset($check['error'])) json_response(['error' => $check['error']], 400);
+        $promoRow = $check['promo'];
+        if (!empty($promoRow['is_welcome']) && has_any_bookings($pdo, $userId)) {
+            json_response(['error' => "The welcome offer applies to a client's first booking only."], 400);
+        }
+    }
+    $promoDiscount = $promoRow ? promo_discount_amount($promoRow, $preDiscountTotal) : 0;
+    $total = round(max(0, $preDiscountTotal - $promoDiscount), 2);
+    if ($total <= 0) json_response(['error' => 'Could not price this booking.'], 400);
+    $deposit = round($total * DEPOSIT_RATE, 2);
+
     $bookingId = generate_id('MM');
     $coverage = ['notes' => sanitize($notes)];
     $stmt = $pdo->prepare('INSERT INTO bookings
-        (id, user_id, status, dates, day_types, day_times, coverage_type, coverage, signature, title, meta, region, zip_code, address, lat, lng, miles, total, paid, balance_status, pay_type, created_at, start_date)
-        VALUES (?, ?, "pending", ?, ?, ?, "office", ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", NOW(), ?)');
+        (id, user_id, status, dates, day_types, day_times, coverage_type, coverage, signature, title, meta, region, zip_code, address, lat, lng, miles, total, paid, balance_status, pay_type, promo_code, created_at, start_date)
+        VALUES (?, ?, "pending", ?, ?, ?, "office", ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, "not_due", "deposit", ?, NOW(), ?)');
     $stmt->execute([
         $bookingId, $userId, json_encode(array_values($sorted)), json_encode(array_values($sortedTypes)), json_encode($dayTimes),
         json_encode($coverage), sanitize($title), sanitize($meta), $region, extract_zip_from_address($address),
-        sanitize($address), $lat, $lng, $miles, $total, $sorted[0],
+        sanitize($address), $lat, $lng, $miles, $total, $promoRow ? $promoRow['code'] : null, $sorted[0],
     ]);
+
+    if ($promoRow) {
+        $upd = $pdo->prepare('UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ?');
+        $upd->execute([$promoRow['id']]);
+        if (!empty($promoRow['is_welcome'])) mark_lead_converted($pdo, $promoRow['code'], $bookingId);
+    }
 
     $reviewLink = SITE_URL . '/index.html?booking=' . $bookingId . ($resetToken ? '&reset=' . $resetToken : '');
     if ($isNewClient) {
@@ -372,7 +395,7 @@ function handle_admin_create_for_client(PDO $pdo) {
     send_email(ADMIN_EMAIL, "Phone booking started — {$bookingId}",
         "<p>{$name} ({$email}) — {$title}, {$meta}. Awaiting their signature + deposit.</p>");
 
-    json_response(['success' => true, 'booking_id' => $bookingId, 'is_new_client' => $isNewClient, 'total' => $total, 'deposit' => $deposit]);
+    json_response(['success' => true, 'booking_id' => $bookingId, 'is_new_client' => $isNewClient, 'total' => $total, 'deposit' => $deposit, 'promoDiscount' => $promoDiscount]);
 }
 
 function handle_list(PDO $pdo) {
