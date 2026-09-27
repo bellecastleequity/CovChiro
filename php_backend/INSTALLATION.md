@@ -128,6 +128,26 @@ Command: /usr/bin/php /home/[username]/php_backend/cron/payment_reminders.php
 This sends up to 10 reminders (roughly every 12 hours) to a clinic with an
 unpaid balance, then stops and needs a manual follow-up.
 
+**Note:** this `cron/payment_reminders.php` script is referenced above but
+does not exist yet in this codebase — the balance-due reminder emails this
+step describes are not currently being sent automatically. Ask if you'd
+like this built; it's a separate piece of work from the standing-day
+auto-pay cron below.
+
+**Standing day auto-pay** (new): cPanel → **Cron Jobs** → **Add New Cron Job**:
+
+```
+Minute: 0   Hour: 6   (once daily, any quiet hour works)
+Command: /usr/bin/php /home/[username]/php_backend/cron_standing_charges.php
+```
+
+This is what actually charges the card on file for standing-day agreements
+— per-date billing 7 days out, the prepay retry, and monthly installments.
+Without this cron job running, cards are only ever charged once (the signup
+deposit at request time); nothing else gets billed automatically. Safe to
+run more than once a day or to miss a day — every charge is gated on
+whether that date or installment is already paid.
+
 ## STEP 8: TEST END TO END
 
 **Office coverage:**

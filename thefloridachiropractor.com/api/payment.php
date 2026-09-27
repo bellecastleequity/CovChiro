@@ -15,6 +15,7 @@ switch ($action) {
     case 'confirm_payment': handle_confirm($pdo); break;
     case 'create_standing_payment_intent': handle_create_standing_intent($pdo); break;
     case 'confirm_standing_payment': handle_confirm_standing($pdo); break;
+    case 'create_standing_deposit_intent': handle_create_standing_deposit_intent($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -136,6 +137,48 @@ function handle_create_standing_intent(PDO $pdo) {
         ]);
     } catch (\Exception $e) {
         log_error('Stripe standing PaymentIntent creation failed', ['agreement' => $agreementId, 'date' => $date, 'error' => $e->getMessage()]);
+        json_response(['error' => 'Could not start payment. Try again in a moment.'], 502);
+    }
+
+    json_response(['client_secret' => $intent->client_secret, 'publishable_key' => STRIPE_PUBLISHABLE_KEY, 'amount' => $amount]);
+}
+
+// Charges the signup deposit for a NOT-YET-SUBMITTED standing day request
+// and, via setup_future_usage, saves the card on the resulting Customer so
+// it can be charged automatically later without the client present — see
+// standing.php's handle_request(), which verifies this PaymentIntent and
+// pulls the customer/payment_method off of it before creating the request.
+function handle_create_standing_deposit_intent(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $body = json_body();
+    $email = trim($body['email'] ?? '');
+    $name = trim($body['name'] ?? '');
+    $region = $body['region'] ?? '';
+    $zip = trim($body['zip'] ?? '');
+    $patterns = $body['patterns'] ?? [];
+    $paymentPlan = $body['paymentPlan'] ?? 'standard';
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) json_response(['error' => 'A valid contact email is required.'], 400);
+    if (!isset(RATES[$region])) json_response(['error' => 'Invalid region.'], 400);
+    if (!is_array($patterns) || !count($patterns)) json_response(['error' => 'Add at least one coverage pattern first.'], 400);
+
+    $amount = estimate_standing_deposit($region, $zip, $patterns, $paymentPlan);
+    if ($amount <= 0) json_response(['error' => 'Could not calculate a deposit amount.'], 400);
+
+    try {
+        $existing = \Stripe\Customer::all(['email' => $email, 'limit' => 1]);
+        $customer = $existing->data[0] ?? \Stripe\Customer::create(['email' => $email, 'name' => $name ?: null]);
+        $intent = \Stripe\PaymentIntent::create([
+            'amount' => (int)round($amount * 100),
+            'currency' => 'usd',
+            'customer' => $customer->id,
+            'setup_future_usage' => 'off_session',
+            'receipt_email' => $email,
+            'description' => 'Coverage Chiropractic — standing day signup deposit',
+            'metadata' => ['purpose' => 'standing_signup_deposit'],
+        ]);
+    } catch (\Exception $e) {
+        log_error('Stripe standing deposit intent creation failed', ['email' => $email, 'error' => $e->getMessage()]);
         json_response(['error' => 'Could not start payment. Try again in a moment.'], 502);
     }
 

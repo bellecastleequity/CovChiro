@@ -107,7 +107,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=3">
+<link rel="stylesheet" href="assets/style.css?v=4">
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-5103Z9E4B8"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -288,7 +288,7 @@
             <h4>Coverage dates</h4>
             <p class="sub">Add one date at a time — mix full and half days, consecutive or scattered across weeks. Mileage is charged once per continuous run of days, not once per date, since a scattered schedule means separate trips out.</p>
             <div class="date-builder-row">
-              <div><label for="cd-date-input">Date</label><input type="date" id="cd-date-input"></div>
+              <div><label for="cd-date-input">Date</label><input type="text" id="cd-date-input" placeholder="Select a date"></div>
               <div><label for="cd-date-type">Coverage type</label>
                 <select id="cd-date-type">
                   <option value="full">Full day</option>
@@ -466,7 +466,7 @@
         <label for="sd-notes" style="display:block;margin-top:13px;">Notes (optional)</label>
         <textarea id="sd-notes" rows="3" placeholder="Anything I should know — techniques, dress code, scheduling constraints"></textarea>
         <div class="err-msg" id="sd-err"></div>
-        <p class="refund-note">You pay nothing at this step — the estimate above is illustrative. Payment only begins once I personally confirm your schedule and send the agreement.</p>
+        <p class="refund-note">Signing charges the signup deposit above now and securely saves your card for future billing — it's only charged automatically once your schedule is confirmed and per the payment plan you selected. Nothing else is charged today.</p>
         <button class="btn" type="button" id="sd-submit" style="width:100%;margin-top:10px;">Request standing day</button>
       </div>
       <div id="standing-form-success" class="hidden">
@@ -883,7 +883,7 @@
 </div>
 
 <script src="https://js.stripe.com/v3/"></script>
-<script src="assets/app-shared.js?v=3"></script>
+<script src="assets/app-shared.js?v=4"></script>
 <script>
 async function loadSession(){
   try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
@@ -916,13 +916,13 @@ function checkAvailability(entries){
   for(const { date: day, half: wantHalf, time: wantTime } of entries){
     for(const b of blackouts){
       if(!rangeDates(b.start,b.end).includes(day)) continue;
-      if(b.scope === 'all') return { day, why: 'blocked off' };
+      if(b.scope === 'all') return { day, why: 'unavailable' };
       // half-day blocks only conflict with full days or the matching half
-      if(!wantHalf) return { day, why: `${b.scope === 'am' ? 'mornings' : 'afternoons'} blocked off` };
+      if(!wantHalf) return { day, why: `${b.scope === 'am' ? 'mornings' : 'afternoons'} unavailable` };
       if(wantTime){
         const hour = parseInt(wantTime.split(':')[0], 10);
-        if(b.scope === 'am' && hour < 12) return { day, why: 'mornings blocked off' };
-        if(b.scope === 'pm' && hour >= 13) return { day, why: 'afternoons blocked off' };
+        if(b.scope === 'am' && hour < 12) return { day, why: 'mornings unavailable' };
+        if(b.scope === 'pm' && hour >= 13) return { day, why: 'afternoons unavailable' };
       }
     }
     for(const b of allBooked){
@@ -1005,6 +1005,17 @@ function renderCoverageDateList(){
     recalc();
   }));
 }
+attachDatePicker($('cd-date-input'), {
+  isDisabled: (dateStr) => {
+    // Coarse "not bookable at all" check for greying out the calendar —
+    // half-day-only blackouts (am/pm scope) don't grey the whole date here
+    // since a half-day booking might still work; checkAvailability() still
+    // catches those specific conflicts by reason when the date is added.
+    if (blackouts.some(b => b.scope === 'all' && rangeDates(b.start, b.end).includes(dateStr))) return true;
+    if (allBooked.some(bk => bk.dates.includes(dateStr))) return true;
+    return false;
+  },
+});
 $('cd-date-add').addEventListener('click', () => {
   const date = $('cd-date-input').value;
   const type = $('cd-date-type').value;
@@ -1107,9 +1118,11 @@ function standingAgreementTermsHtml(){
   return `
     <h4>Billing &amp; Payment</h4>
     <ul>
-      <li>Each scheduled coverage date is charged automatically 7 days before it occurs, at the rate shown above. A manual "Pay now" option is also available in your account dashboard.</li>
+      <li>Signing authorizes an immediate charge of the signup deposit shown above, and securely saves this card on file to be charged automatically for future coverage dates under this agreement — no further action is required on your part.</li>
+      <li>Standard plan: each remaining scheduled coverage date is charged automatically 7 days before it occurs, at the rate shown above. A manual "Pay now" option is also available in your account dashboard.</li>
+      <li>Prepay plan: the full remaining commitment is charged automatically once your schedule is confirmed.</li>
+      <li>Installment plan: the remaining balance is split into even monthly charges, billed automatically roughly every 30 days until paid in full.</li>
       <li>Payments are made to Key Global LLC. Credit card only — no cash accepted.</li>
-      <li>If a prepay or installment plan was selected, billing follows that plan's terms instead of the standard per-date schedule.</li>
     </ul>
     <h4>Cancellation &amp; Notice</h4>
     <ul>
@@ -1601,18 +1614,19 @@ $('sign-submit').addEventListener('click', async () => {
 
   if (signFlow === 'standing'){
     const signature = { name, signedAt: new Date().toISOString(), agreementType: 'standing-day' };
-    $('sign-submit').disabled = true;
-    try {
-      await apiFetch('/api/standing.php?action=request', { method: 'POST', body: JSON.stringify({
-        ...pendingStandingRequest, signature
-      })});
-    } catch (e) { err.textContent = e.message; $('sign-submit').disabled = false; return; }
-    $('sign-submit').disabled = false;
     $('sign-modal').classList.remove('open');
-    standingPatterns = [];
-    await loadMyStanding();
-    $('standing-form').classList.add('hidden');
-    $('standing-form-success').classList.remove('hidden');
+    paymentContext = { kind: 'standing_deposit', requestBody: { ...pendingStandingRequest, signature } };
+    paymentOnSuccess = async () => {
+      standingPatterns = [];
+      await loadMyStanding();
+      $('standing-form').classList.add('hidden');
+      $('standing-form-success').classList.remove('hidden');
+    };
+    await mountPaymentElement('/api/payment.php?action=create_standing_deposit_intent', {
+      email: pendingStandingRequest.contactEmail, name: pendingStandingRequest.name,
+      region: pendingStandingRequest.region, zip: pendingStandingRequest.zip,
+      patterns: pendingStandingRequest.patterns, paymentPlan: pendingStandingRequest.paymentPlan,
+    }, `Signup deposit: ${$('sd-quote-deposit').textContent}`);
     return;
   }
 

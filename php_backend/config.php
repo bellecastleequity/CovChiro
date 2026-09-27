@@ -390,6 +390,68 @@ function standing_date_rate(array $agreement, string $dateType) {
     return ['discounted' => $discounted, 'mileage' => $mileage, 'total' => round($discounted + $mileage, 2), 'miles' => $miles];
 }
 
+// Estimates the signup-deposit amount for a standing-day REQUEST (before an
+// agreement row exists), mirroring the frontend's updateStandingQuote(): the
+// first pattern's day rate, discounted at the tier/plan the combined
+// pattern count qualifies for, plus mileage. Used to verify the client's
+// deposit PaymentIntent wasn't for less than expected.
+function estimate_standing_deposit(string $region, string $zip, array $patterns, ?string $paymentPlan) {
+    if (!count($patterns)) return 0;
+    $rate = RATES[$region] ?? RATES['central'];
+    $combined = pattern_day_equivalents($patterns);
+    $tier = standing_tier_for($combined);
+    $effectiveRate = effective_standing_rate($tier, $paymentPlan, null);
+    $first = $patterns[0];
+    $base = ($first['type'] ?? 'full') === 'full' ? $rate['full'] : $rate['half'];
+    $zipLookup = lookup_zip($zip);
+    $miles = $zipLookup['miles'] ?? 0;
+    $mileage = $miles * tiered_mileage_rate($miles);
+    return round(($base * (1 - $effectiveRate)) + $mileage, 2);
+}
+
+// Like apply_successful_standing_payment(), but for a single Stripe charge
+// that covers several scheduled dates at once (a prepay lump sum, or one
+// installment slice) rather than exactly one date. Marks the earliest
+// unpaid scheduled dates paid, in date order, until the charged amount is
+// used up, and records one payments row for the whole charge — standing_date
+// stays null since no single date applies to a bulk charge.
+function apply_successful_standing_bulk_payment(PDO $pdo, string $agreementId, string $intentId, float $amount, ?string $chargeId, string $purpose) {
+    $exists = $pdo->prepare('SELECT id FROM payments WHERE stripe_payment_intent = ? AND status = "succeeded"');
+    $exists->execute([$intentId]);
+    if ($exists->fetch()) return false;
+
+    $stmt = $pdo->prepare('SELECT * FROM standing_agreements WHERE id = ?');
+    $stmt->execute([$agreementId]);
+    $a = $stmt->fetch();
+    if (!$a) return false;
+
+    $dates = json_decode($a['scheduled_dates'], true) ?: [];
+    usort($dates, fn($x, $y) => strcmp($x['date'], $y['date']));
+    $remaining = $amount;
+    foreach ($dates as &$d) {
+        if ($remaining <= 0.005) break;
+        if ($d['status'] !== 'scheduled' || !empty($d['paidAt'])) continue;
+        $price = standing_date_rate($a, $d['type'])['total'];
+        if ($price <= $remaining + 0.01) {
+            $d['status'] = 'paid';
+            $d['paidAt'] = date('c');
+            $remaining -= $price;
+        }
+    }
+    unset($d);
+
+    $pdo->prepare('UPDATE standing_agreements SET scheduled_dates = ? WHERE id = ?')->execute([json_encode($dates), $agreementId]);
+    $stmt = $pdo->prepare('INSERT INTO payments (standing_agreement_id, user_id, amount, purpose, stripe_payment_intent, stripe_charge_id, status) VALUES (?, ?, ?, ?, ?, ?, "succeeded")');
+    $stmt->execute([$agreementId, $a['user_id'], $amount, $purpose, $intentId, $chargeId]);
+
+    $label = $purpose === 'prepay' ? 'your full prepay commitment' : 'this installment';
+    send_email($a['contact_email'], 'Payment received — standing day agreement',
+        "<p>Thank you — your payment of $" . number_format($amount, 2) . " for {$label} has been received.</p>");
+    send_email(ADMIN_EMAIL, "Standing day {$purpose} payment received — {$a['clinic_name']}",
+        "<p>{$a['clinic_name']} paid $" . number_format($amount, 2) . " ({$purpose}).</p>");
+    return true;
+}
+
 // ---------- AVAILABILITY ----------
 
 // $entries: [['date' => 'YYYY-MM-DD', 'half' => bool, 'time' => 'HH:MM'|null], ...]

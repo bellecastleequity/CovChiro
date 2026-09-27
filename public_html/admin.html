@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=3">
+<link rel="stylesheet" href="assets/style.css?v=4">
 </head>
 <body>
 
@@ -72,7 +72,7 @@
 
 
 
-<script src="assets/app-shared.js?v=3"></script>
+<script src="assets/app-shared.js?v=4"></script>
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null;
 let chatThreads = [], activeChatThread = null, activeChatMessages = [];
@@ -930,6 +930,7 @@ function renderAdmin(){
               <div class="bn" style="font-weight:600;margin-top:4px;">${(r.combinedCount % 1 === 0 ? r.combinedCount : r.combinedCount.toFixed(1))} combined coverage days · earned tier: ${r.tier ? Math.round(r.tier.rate*100) + '%' : 'below minimum'} · ${PLAN_LABEL[r.paymentPlan] || 'Standard'}</div>
               <div class="bn">${r.region} · ZIP ${r.zip}</div>
               <div class="bn">${r.contactEmail}${r.notes ? ' · ' + r.notes : ''}</div>
+              <div class="bn" style="${r.cardOnFile ? 'color:var(--teal-dark);' : 'color:var(--red);font-weight:600;'}">${r.cardOnFile ? 'Card on file — approving will bill automatically per the payment plan' : 'No card on file — approving will NOT auto-charge; this request predates auto-pay'}</div>
               <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
                 <label style="font-size:0.78rem;margin:0;" for="cr-${r.id}">Custom rate override (%, optional — overrides tier + plan entirely)</label>
                 <input type="number" id="cr-${r.id}" min="0" max="100" step="0.5" placeholder="e.g. 18" style="width:80px;" value="${r.customRate != null ? Math.round(r.customRate*1000)/10 : ''}">

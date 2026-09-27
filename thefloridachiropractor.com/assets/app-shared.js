@@ -210,6 +210,14 @@ if ($('payment-submit')) $('payment-submit').addEventListener('click', async () 
     return;
   }
   try {
+    if (paymentContext.kind === 'standing_deposit'){
+      await apiFetch('/api/standing.php?action=request', { method: 'POST', body: JSON.stringify({
+        ...paymentContext.requestBody, depositPaymentIntentId: paymentIntent.id,
+      })});
+      $('payment-modal').classList.remove('open');
+      if (paymentOnSuccess) await paymentOnSuccess();
+      return;
+    }
     const confirmUrl = paymentContext.kind === 'standing' ? '/api/payment.php?action=confirm_standing_payment' : '/api/payment.php?action=confirm_payment';
     const confirmBody = paymentContext.kind === 'standing'
       ? { agreementId: paymentContext.agreementId, date: paymentContext.date, payment_intent_id: paymentIntent.id }
@@ -319,4 +327,99 @@ function initChatWidget(){
   if (sendBtn) sendBtn.addEventListener('click', sendChatMessage);
   const inputText = $('chat-input-text');
   if (inputText) inputText.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); } });
+}
+
+// ---------- Custom date picker ----------
+// Replaces the native <input type="date"> popup (which can't grey out
+// individual dates) with a small calendar that visually disables anything
+// the caller's isDisabled(dateStr) predicate flags, so a customer can't even
+// select an unavailable date in the first place. Writes the same
+// YYYY-MM-DD string a native date input would and dispatches a real
+// 'change' event, so any existing listener on the input keeps working
+// unchanged.
+const DP_MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DP_DOW_LABELS = ['S','M','T','W','T','F','S'];
+function attachDatePicker(input, opts){
+  opts = opts || {};
+  const isDisabled = opts.isDisabled || (() => false);
+  const minDate = opts.minDate || localDateStr(new Date());
+
+  input.type = 'text';
+  input.readOnly = true;
+  input.classList.add('dp-input');
+  if (!input.placeholder) input.placeholder = opts.placeholder || 'Select a date';
+
+  const popup = document.createElement('div');
+  popup.className = 'dp-popup hidden';
+  document.body.appendChild(popup);
+
+  let viewYear, viewMonth; // viewMonth is 0-indexed
+
+  function ymd(y, m, d){ return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`; }
+
+  function render(){
+    const first = new Date(viewYear, viewMonth, 1);
+    const startDow = first.getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const todayStr = localDateStr(new Date());
+    let cells = '';
+    for (let i = 0; i < startDow; i++) cells += `<span class="dp-cell dp-empty"></span>`;
+    for (let d = 1; d <= daysInMonth; d++){
+      const dateStr = ymd(viewYear, viewMonth, d);
+      const disabled = dateStr < minDate || isDisabled(dateStr);
+      const cls = ['dp-cell'];
+      if (disabled) cls.push('dp-disabled');
+      if (dateStr === todayStr) cls.push('dp-today');
+      if (dateStr === input.value) cls.push('dp-selected');
+      cells += `<button type="button" class="${cls.join(' ')}" data-date="${dateStr}" ${disabled ? 'disabled' : ''}>${d}</button>`;
+    }
+    popup.innerHTML = `
+      <div class="dp-header">
+        <button type="button" class="dp-nav" data-nav="-1" aria-label="Previous month">&#8249;</button>
+        <span class="dp-title">${DP_MONTH_NAMES[viewMonth]} ${viewYear}</span>
+        <button type="button" class="dp-nav" data-nav="1" aria-label="Next month">&#8250;</button>
+      </div>
+      <div class="dp-dow-row">${DP_DOW_LABELS.map(l => `<span>${l}</span>`).join('')}</div>
+      <div class="dp-grid">${cells}</div>`;
+    popup.querySelector('[data-nav="-1"]').addEventListener('click', (e) => {
+      e.stopPropagation(); viewMonth--; if (viewMonth < 0){ viewMonth = 11; viewYear--; } render();
+    });
+    popup.querySelector('[data-nav="1"]').addEventListener('click', (e) => {
+      e.stopPropagation(); viewMonth++; if (viewMonth > 11){ viewMonth = 0; viewYear++; } render();
+    });
+    popup.querySelectorAll('.dp-cell:not(.dp-disabled):not(.dp-empty)').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        input.value = btn.dataset.date;
+        close();
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
+  }
+  function position(){
+    const r = input.getBoundingClientRect();
+    popup.style.top = (r.bottom + window.scrollY + 4) + 'px';
+    popup.style.left = (r.left + window.scrollX) + 'px';
+  }
+  function open(){
+    const base = /^\d{4}-\d{2}-\d{2}$/.test(input.value) ? input.value : minDate;
+    const [y, m] = base.split('-').map(Number);
+    viewYear = y; viewMonth = m - 1;
+    render();
+    position();
+    popup.classList.remove('hidden');
+    document.addEventListener('click', onOutsideClick, true);
+    document.addEventListener('keydown', onKeydown, true);
+    window.addEventListener('scroll', close, { passive: true, once: true, capture: true });
+    window.addEventListener('resize', close, { once: true });
+  }
+  function close(){
+    popup.classList.add('hidden');
+    document.removeEventListener('click', onOutsideClick, true);
+    document.removeEventListener('keydown', onKeydown, true);
+  }
+  function onOutsideClick(e){ if (!popup.contains(e.target) && e.target !== input) close(); }
+  function onKeydown(e){ if (e.key === 'Escape') close(); }
+
+  input.addEventListener('click', () => { if (popup.classList.contains('hidden')) open(); else close(); });
 }

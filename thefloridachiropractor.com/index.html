@@ -91,7 +91,7 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=3">
+<link rel="stylesheet" href="assets/style.css?v=4">
 </head>
 <body>
 
@@ -168,7 +168,7 @@
 
       <div id="fields-homevisit" style="margin-top:14px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;">
-          <div><label for="hv-date">Visit date</label><input type="date" id="hv-date"><span style="font-size:0.74rem;color:#8a8171;">Monday–Friday only</span></div>
+          <div><label for="hv-date">Visit date</label><input type="text" id="hv-date" placeholder="Select a date"><span style="font-size:0.74rem;color:#8a8171;">Monday–Friday only</span></div>
           <div><label for="hv-zip">ZIP code</label><input type="text" id="hv-zip" maxlength="5" inputmode="numeric" placeholder="e.g. 32801"></div>
         </div>
         <p class="avail-msg hidden" id="hv-avail-msg" style="color:var(--red);font-size:0.82rem;margin-top:6px;"></p>
@@ -180,7 +180,7 @@
 
       <div id="fields-event" class="hidden" style="margin-top:14px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;">
-          <div><label for="ev-date">Event date</label><input type="date" id="ev-date"></div>
+          <div><label for="ev-date">Event date</label><input type="text" id="ev-date" placeholder="Select a date"></div>
           <div><label for="ev-name">Event name / location</label><input type="text" id="ev-name" placeholder="e.g. Downtown 5K, Orlando"></div>
         </div>
         <p class="avail-msg hidden" id="ev-avail-msg" style="color:var(--red);font-size:0.82rem;margin-top:6px;"></p>
@@ -405,7 +405,7 @@
 </div>
 
 <script src="https://js.stripe.com/v3/"></script>
-<script src="assets/app-shared.js?v=3"></script>
+<script src="assets/app-shared.js?v=4"></script>
 <script>
 let authMode = 'login';
 let appliedPromo = null;
@@ -479,7 +479,7 @@ function dateUnavailableReason(dateStr, kind){
     if (dow === 0 || dow === 6) return 'a weekend — home visits are Monday through Friday only';
   }
   const blocked = blackouts.some(b => b.scope === 'all' && rangeDates(b.start, b.end).includes(dateStr));
-  if (blocked) return 'blocked off';
+  if (blocked) return 'unavailable';
   if (allBooked.some(bk => bk.dates && bk.dates.includes(dateStr))) return 'already booked';
   return null;
 }
@@ -497,6 +497,22 @@ function checkDateField(inputId, msgId, kind){
 }
 $('hv-date').addEventListener('change', () => checkDateField('hv-date', 'hv-avail-msg', 'homevisit'));
 $('ev-date').addEventListener('change', () => checkDateField('ev-date', 'ev-avail-msg'));
+attachDatePicker($('hv-date'), {
+  isDisabled: (dateStr) => {
+    const dow = new Date(dateStr + 'T12:00:00').getDay();
+    if (dow === 0 || dow === 6) return true; // home visits Monday-Friday only
+    if (blackouts.some(b => b.scope === 'all' && rangeDates(b.start, b.end).includes(dateStr))) return true;
+    if (allBooked.some(bk => bk.dates && bk.dates.includes(dateStr))) return true;
+    return false;
+  },
+});
+attachDatePicker($('ev-date'), {
+  isDisabled: (dateStr) => {
+    if (blackouts.some(b => b.scope === 'all' && rangeDates(b.start, b.end).includes(dateStr))) return true;
+    if (allBooked.some(bk => bk.dates && bk.dates.includes(dateStr))) return true;
+    return false;
+  },
+});
 $('promo-apply').addEventListener('click', async () => {
   const codeStr = $('promo-input').value.trim();
   const msg = $('promo-msg');

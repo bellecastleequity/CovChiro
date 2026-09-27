@@ -1,6 +1,15 @@
 <?php
 require_once __DIR__ . '/../../php_backend/config.php';
 
+// Loaded on demand (not unconditionally) since most actions here — listing,
+// declining, cancelling — don't touch Stripe at all.
+function require_stripe() {
+    $autoload = __DIR__ . '/../../php_backend/vendor/autoload.php';
+    if (!file_exists($autoload)) json_response(['error' => 'Payment system is not configured yet (Stripe library not installed on the server).'], 503);
+    require_once $autoload;
+    \Stripe\Stripe::setApiKey(STRIPE_SECRET_KEY);
+}
+
 $action = $_GET['action'] ?? '';
 
 switch ($action) {
@@ -43,6 +52,7 @@ function handle_request(PDO $pdo) {
     $paymentPlan = in_array($body['paymentPlan'] ?? 'standard', ['standard', 'prepay', 'installment'], true) ? $body['paymentPlan'] : 'standard';
     $patterns = $body['patterns'] ?? [];
     $signature = $body['signature'] ?? null;
+    $depositIntentId = trim($body['depositPaymentIntentId'] ?? '');
 
     if (!preg_match('/^\d{5}$/', $zip)) json_response(['error' => 'Enter a valid 5-digit ZIP code.'], 400);
     $err = validate_patterns($patterns);
@@ -52,6 +62,30 @@ function handle_request(PDO $pdo) {
     if (!isset(RATES[$region])) json_response(['error' => 'Invalid region.'], 400);
     if (!$signature || empty($signature['name']) || empty($signature['agreementType'])) {
         json_response(['error' => 'Please review and sign the standing day agreement first.'], 400);
+    }
+    if (!$depositIntentId) json_response(['error' => 'Pay the signup deposit first.'], 400);
+
+    // Verify the deposit was actually paid (never trust a client-supplied
+    // amount/customer/payment-method) and pull the reusable card off of it —
+    // setup_future_usage on that PaymentIntent is what makes payment_method
+    // chargeable off-session later, once this request is approved.
+    require_stripe();
+    try {
+        $intent = \Stripe\PaymentIntent::retrieve($depositIntentId);
+    } catch (\Exception $e) {
+        json_response(['error' => 'Could not verify your deposit payment.'], 502);
+    }
+    if ($intent->status !== 'succeeded') json_response(['error' => 'Your deposit payment has not completed yet.'], 402);
+    if (($intent->metadata['purpose'] ?? null) !== 'standing_signup_deposit') {
+        json_response(['error' => 'Payment does not match this request.'], 400);
+    }
+    $expectedDeposit = estimate_standing_deposit($region, $zip, $patterns, $paymentPlan);
+    $depositPaid = $intent->amount_received / 100;
+    if ($depositPaid < $expectedDeposit - 0.01) json_response(['error' => 'Deposit amount does not match this request.'], 400);
+    $stripeCustomerId = $intent->customer;
+    $stripePaymentMethodId = $intent->payment_method;
+    if (!$stripeCustomerId || !$stripePaymentMethodId) {
+        json_response(['error' => 'Could not save your card for future billing. Try again.'], 502);
     }
 
     // Recompute each pattern's actualStart server-side (rolled forward to the
@@ -68,11 +102,13 @@ function handle_request(PDO $pdo) {
 
     $id = generate_id('SD');
     $stmt = $pdo->prepare('INSERT INTO standing_requests
-        (id, user_id, clinic_name, contact_email, region, zip_code, patterns, notes, payment_plan, combined_count, tier_rate, signature)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        (id, user_id, clinic_name, contact_email, region, zip_code, patterns, notes, payment_plan, combined_count, tier_rate, signature,
+         stripe_customer_id, stripe_payment_method_id, deposit_payment_intent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     $stmt->execute([
         $id, $user['id'] ?? null, sanitize($name), sanitize($contactEmail), $region, sanitize($zip),
         json_encode($patterns), sanitize($notes), $paymentPlan, $combinedCount, $tier ? $tier['rate'] : null, json_encode($signature),
+        $stripeCustomerId, $stripePaymentMethodId, $depositIntentId,
     ]);
 
     send_email(ADMIN_EMAIL, "Standing day request — {$name}",
@@ -142,18 +178,95 @@ function handle_approve(PDO $pdo) {
     $tier = $req['tier_rate'] !== null ? ['rate' => (float)$req['tier_rate']] : null;
     $effectiveRate = effective_standing_rate($tier, $req['payment_plan'], $req['custom_rate'] !== null ? (float)$req['custom_rate'] : null);
 
+    // Installments split whatever's left after the signup deposit evenly
+    // across the term (one calendar month per 30 days of coverage span,
+    // minimum one), with the last installment absorbing any rounding so the
+    // total always matches exactly — see the cron for how these are charged.
+    $installmentCount = null;
+    if ($req['payment_plan'] === 'installment' && count($dates)) {
+        $spanDays = (strtotime(end($dates)['date']) - strtotime($dates[0]['date'])) / 86400;
+        $installmentCount = max(1, (int)round($spanDays / 30));
+    }
+
     $agreementId = generate_id('SA');
     $stmt = $pdo->prepare('INSERT INTO standing_agreements
-        (id, user_id, request_id, clinic_name, contact_email, region, zip_code, patterns, tier_rate, custom_rate, effective_rate, payment_plan, scheduled_dates, signature, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")');
+        (id, user_id, request_id, clinic_name, contact_email, region, zip_code, patterns, tier_rate, custom_rate, effective_rate, payment_plan, scheduled_dates, signature,
+         stripe_customer_id, stripe_payment_method_id, installment_count, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")');
     $stmt->execute([
         $agreementId, $req['user_id'], $req['id'], $req['clinic_name'], $req['contact_email'], $req['region'], $req['zip_code'],
         json_encode($patterns), $req['tier_rate'], $req['custom_rate'], $effectiveRate, $req['payment_plan'], json_encode($dates), $req['signature'],
+        $req['stripe_customer_id'], $req['stripe_payment_method_id'], $installmentCount,
     ]);
     $pdo->prepare("UPDATE standing_requests SET status = 'approved' WHERE id = ?")->execute([$id]);
 
+    // Apply the signup deposit already paid at request time — it counts
+    // toward the earliest scheduled date(s) regardless of billing plan.
+    if ($req['deposit_payment_intent'] && $req['stripe_customer_id']) {
+        require_stripe();
+        try {
+            $depositIntent = \Stripe\PaymentIntent::retrieve($req['deposit_payment_intent']);
+            if ($depositIntent->status === 'succeeded') {
+                apply_successful_standing_bulk_payment($pdo, $agreementId, $depositIntent->id,
+                    $depositIntent->amount_received / 100, $depositIntent->latest_charge ?? null, 'deposit');
+            }
+        } catch (\Exception $e) {
+            log_error('Could not apply standing deposit at approval', ['agreement' => $agreementId, 'error' => $e->getMessage()]);
+        }
+    }
+
+    // Prepay tries to collect everything else right away rather than waiting
+    // on the cron; if it fails (declined card, etc.) the dates stay
+    // "scheduled" and the cron's per-date 7-day backstop will keep retrying.
+    if ($req['payment_plan'] === 'prepay' && $req['stripe_customer_id'] && $req['stripe_payment_method_id']) {
+        require_stripe();
+        $refreshed = $pdo->prepare('SELECT * FROM standing_agreements WHERE id = ?');
+        $refreshed->execute([$agreementId]);
+        $agreement = $refreshed->fetch();
+        $remaining = 0;
+        foreach (json_decode($agreement['scheduled_dates'], true) ?: [] as $d) {
+            if ($d['status'] === 'scheduled' && empty($d['paidAt'])) $remaining += standing_date_rate($agreement, $d['type'])['total'];
+        }
+        if ($remaining > 0.005) {
+            try {
+                $prepayIntent = \Stripe\PaymentIntent::create([
+                    'amount' => (int)round($remaining * 100),
+                    'currency' => 'usd',
+                    'customer' => $req['stripe_customer_id'],
+                    'payment_method' => $req['stripe_payment_method_id'],
+                    'off_session' => true,
+                    'confirm' => true,
+                    'description' => "Coverage Chiropractic — standing day agreement {$agreementId} (prepay)",
+                    'metadata' => ['standing_agreement_id' => $agreementId, 'purpose' => 'prepay'],
+                ]);
+                if ($prepayIntent->status === 'succeeded') {
+                    apply_successful_standing_bulk_payment($pdo, $agreementId, $prepayIntent->id, $remaining, $prepayIntent->latest_charge ?? null, 'prepay');
+                }
+            } catch (\Exception $e) {
+                log_error('Standing prepay charge failed at approval', ['agreement' => $agreementId, 'error' => $e->getMessage()]);
+            }
+        }
+        $pdo->prepare('UPDATE standing_agreements SET prepay_charged = 1 WHERE id = ?')->execute([$agreementId]);
+    }
+
+    // Fix the per-installment amount once, now that the deposit has already
+    // been deducted — the cron charges this amount each month and lets the
+    // final installment absorb any rounding difference.
+    if ($req['payment_plan'] === 'installment' && $installmentCount) {
+        $refreshed = $pdo->prepare('SELECT * FROM standing_agreements WHERE id = ?');
+        $refreshed->execute([$agreementId]);
+        $agreement = $refreshed->fetch();
+        $remaining = 0;
+        foreach (json_decode($agreement['scheduled_dates'], true) ?: [] as $d) {
+            if ($d['status'] === 'scheduled' && empty($d['paidAt'])) $remaining += standing_date_rate($agreement, $d['type'])['total'];
+        }
+        $installmentAmount = round($remaining / $installmentCount, 2);
+        $pdo->prepare('UPDATE standing_agreements SET installment_amount = ? WHERE id = ?')->execute([$installmentAmount, $agreementId]);
+    }
+
     send_email($req['contact_email'], 'Your standing day agreement is approved',
-        "<p>Your standing day request has been approved at a {$effectiveRate}% rate.</p><p>" . count($dates) . ' coverage dates have been scheduled — view them in your account dashboard.</p>');
+        "<p>Your standing day request has been approved at a {$effectiveRate}% rate.</p><p>" . count($dates) . ' coverage dates have been scheduled — view them in your account dashboard.</p>' .
+        '<p>Your card on file will be billed automatically per your selected payment plan; you never need to come back and pay manually unless you want to.</p>');
 
     json_response(['success' => true, 'agreement_id' => $agreementId]);
 }
@@ -251,6 +364,7 @@ function standing_request_to_json(array $r) {
         'tier' => $r['tier_rate'] !== null ? ['rate' => (float)$r['tier_rate']] : null,
         'customRate' => $r['custom_rate'] !== null ? (float)$r['custom_rate'] : null,
         'signature' => json_decode($r['signature'] ?? 'null', true),
+        'cardOnFile' => !empty($r['stripe_customer_id']) && !empty($r['stripe_payment_method_id']),
     ];
 }
 
