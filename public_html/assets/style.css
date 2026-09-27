@@ -425,8 +425,11 @@
   #chat-panel .chat-avatar{width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;}
   #chat-panel .chat-avatar-initial{width:26px;height:26px;border-radius:50%;background:var(--teal);color:var(--white);
     display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;flex-shrink:0;font-family:'IBM Plex Sans',sans-serif;}
+  #chat-panel .chat-avatar-bot{width:26px;height:26px;border-radius:50%;background:var(--ochre);color:var(--white);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   #chat-panel .chat-bubble-wrap{display:flex;flex-direction:column;min-width:0;}
   #chat-panel .chat-row-me .chat-bubble-wrap{align-items:flex-end;}
+  #chat-panel .chat-msg-label{font-size:0.64rem;color:#9a8354;text-transform:uppercase;letter-spacing:0.04em;margin:0 3px 2px;font-family:'IBM Plex Mono',monospace;}
   #chat-panel .chat-msg{background:var(--paper);padding:10px 12px;border-radius:6px;max-width:100%;overflow-wrap:break-word;}
   #chat-panel .chat-msg-me{background:var(--teal);color:var(--white);}
   #chat-panel .chat-msg-admin{background:var(--paper);}

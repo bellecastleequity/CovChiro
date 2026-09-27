@@ -242,15 +242,21 @@ function renderChatMessages(messages){
   if (!messages.length) return; // leave the default greeting in place
   body.innerHTML = messages.map(m => {
     const isAdmin = m.sender === 'admin';
+    const isBot = m.sender === 'bot';
+    const isOffice = isAdmin || isBot;
     const initial = (m.name || '?').trim().charAt(0).toUpperCase() || '?';
     const avatar = isAdmin
       ? `<img class="chat-avatar" src="assets/headshot.jpg" alt="Dr. McPherson">`
+      : isBot
+      ? `<div class="chat-avatar-bot" title="Automated answer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M12 8V5M9 5h6"/><circle cx="8.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="14" r="1.2" fill="currentColor" stroke="none"/></svg></div>`
       : `<div class="chat-avatar-initial">${initial}</div>`;
     const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-    return `<div class="chat-msg-row ${isAdmin ? 'chat-row-admin' : 'chat-row-me'}">
+    const label = isBot ? `<div class="chat-msg-label">Automated answer</div>` : '';
+    return `<div class="chat-msg-row ${isOffice ? 'chat-row-admin' : 'chat-row-me'}">
       ${avatar}
       <div class="chat-bubble-wrap">
-        <div class="chat-msg ${isAdmin ? 'chat-msg-admin' : 'chat-msg-me'}">${String(m.message).replace(/</g,'&lt;')}</div>
+        ${label}
+        <div class="chat-msg ${isOffice ? 'chat-msg-admin' : 'chat-msg-me'}">${String(m.message).replace(/</g,'&lt;')}</div>
         ${time ? `<div class="chat-msg-time">${time}</div>` : ''}
       </div>
     </div>`;

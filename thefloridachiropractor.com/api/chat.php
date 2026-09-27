@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/../../php_backend/config.php';
+require_once __DIR__ . '/../../php_backend/faqbot.php';
+require_once __DIR__ . '/../../php_backend/faqbot_kb_florida.php';
 
 $action = $_GET['action'] ?? '';
 
@@ -51,17 +53,32 @@ function handle_send(PDO $pdo) {
     $stmt = $pdo->prepare('INSERT INTO chat_messages (thread_key, user_id, name, email, sender, message, read_by_admin, read_by_client) VALUES (?, ?, ?, ?, ?, ?, 0, 1)');
     $stmt->execute([$threadKey, $userId, sanitize($name), sanitize($email), 'client', sanitize($message)]);
 
-    // A brief, immediate placeholder reply so a first-time visitor isn't
-    // staring at silence — this is not a real person, just a holding
-    // message until the office actually replies from the Messages tab.
-    if ($isNewThread) {
+    // Try the knowledge-base bot first — if it has a confident answer, the
+    // visitor gets it immediately and the office isn't emailed for a
+    // question that's already answered on the site. Anything the bot can't
+    // handle (or an explicit request for a person) falls through to the
+    // existing human-reply flow, unchanged.
+    $botResult = faqbot_wants_human($message) ? null : faqbot_match(FAQBOT_KB, $message);
+
+    if ($botResult) {
+        $auto = $pdo->prepare('INSERT INTO chat_messages (thread_key, user_id, name, email, sender, message, read_by_admin, read_by_client) VALUES (?, ?, ?, ?, "bot", ?, 1, 0)');
+        $auto->execute([$threadKey, $userId, sanitize($name), sanitize($email), $botResult['answer']]);
+    } elseif ($isNewThread) {
+        // A brief, immediate placeholder reply so a first-time visitor isn't
+        // staring at silence — this is not a real person, just a holding
+        // message until the office actually replies from the Messages tab.
         $auto = $pdo->prepare('INSERT INTO chat_messages (thread_key, user_id, name, email, sender, message, read_by_admin, read_by_client) VALUES (?, ?, ?, ?, "admin", ?, 1, 0)');
         $auto->execute([$threadKey, $userId, sanitize($name), sanitize($email), "Thanks for reaching out — I'll get back to you as soon as I can, usually within a few hours."]);
+        send_email(ADMIN_EMAIL, "New chat message from {$name}",
+            "<p>{$name} ({$email}) sent:</p><blockquote>" . nl2br($message) . '</blockquote>' .
+            '<p>Reply from the Messages tab in your provider portal.</p>');
+    } else {
+        $auto = $pdo->prepare('INSERT INTO chat_messages (thread_key, user_id, name, email, sender, message, read_by_admin, read_by_client) VALUES (?, ?, ?, ?, "bot", ?, 1, 0)');
+        $auto->execute([$threadKey, $userId, sanitize($name), sanitize($email), "I'll flag this for Dr. McPherson so he can reply here directly."]);
+        send_email(ADMIN_EMAIL, "New chat message from {$name}",
+            "<p>{$name} ({$email}) sent:</p><blockquote>" . nl2br($message) . '</blockquote>' .
+            '<p>Reply from the Messages tab in your provider portal.</p>');
     }
-
-    send_email(ADMIN_EMAIL, "New chat message from {$name}",
-        "<p>{$name} ({$email}) sent:</p><blockquote>" . nl2br($message) . '</blockquote>' .
-        '<p>Reply from the Messages tab in your provider portal.</p>');
 
     json_response(['success' => true]);
 }

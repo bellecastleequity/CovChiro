@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20260927">
+<link rel="stylesheet" href="assets/style.css?v=3">
 </head>
 <body>
 
@@ -72,7 +72,7 @@
 
 
 
-<script src="assets/app-shared.js?v=20260927"></script>
+<script src="assets/app-shared.js?v=3"></script>
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null;
 let chatThreads = [], activeChatThread = null, activeChatMessages = [];
@@ -1162,7 +1162,7 @@ function renderMessagesTab(el){
         <div class="blk ${t.unread ? 'booked' : ''} ${activeChatThread === t.threadKey ? '' : ''}" data-open-thread="${t.threadKey}" style="cursor:pointer;">
           <div>
             <div class="bd">${t.name || t.email || t.threadKey}${t.unread ? ` <span style="color:var(--red);">(${t.unread} new)</span>` : ''}</div>
-            <div class="bn">${t.email || ''} · ${t.lastSender === 'admin' ? 'You: ' : ''}${(t.lastMessage || '').slice(0, 60)}</div>
+            <div class="bn">${t.email || ''} · ${t.lastSender === 'admin' ? 'You: ' : t.lastSender === 'bot' ? 'Bot: ' : ''}${(t.lastMessage || '').slice(0, 60)}</div>
             <div class="bn" style="color:#8a8171;">${new Date(t.lastAt).toLocaleString()}</div>
           </div>
         </div>`).join('')}
@@ -1172,8 +1172,8 @@ function renderMessagesTab(el){
       <h3>Conversation</h3>
       <div id="thread-messages" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
         ${activeChatMessages.map(m => `
-          <div class="blk ${m.sender === 'admin' ? '' : 'booked'}" style="flex-direction:column;align-items:flex-start;">
-            <div class="bn" style="font-weight:600;">${m.sender === 'admin' ? 'You' : m.name}</div>
+          <div class="blk ${m.sender === 'client' ? 'booked' : ''}" style="flex-direction:column;align-items:flex-start;">
+            <div class="bn" style="font-weight:600;">${m.sender === 'admin' ? 'You' : m.sender === 'bot' ? 'Bot (automated)' : m.name}</div>
             <div style="font-size:0.85rem;">${String(m.message).replace(/</g,'&lt;')}</div>
             <div class="bn" style="color:#8a8171;margin-top:2px;">${new Date(m.createdAt).toLocaleString()}</div>
           </div>`).join('')}
