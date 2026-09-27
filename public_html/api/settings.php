@@ -8,6 +8,7 @@ switch ($action) {
     case 'set_last_minute': handle_set($pdo); break;
     case 'test_email': handle_test_email($pdo); break;
     case 'cron_status': handle_cron_status($pdo); break;
+    case 'install_cron': handle_install_cron($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -94,4 +95,80 @@ function handle_cron_status(PDO $pdo) {
         'lastRan' => isset($rows['daily_route_cron_last_ran']) ? json_decode($rows['daily_route_cron_last_ran'], true) : null,
         'lastSentDate' => isset($rows['daily_route_digest_sent']) ? json_decode($rows['daily_route_digest_sent'], true) : null,
     ]);
+}
+
+// Reconciles this cPanel account's crontab against every script this app
+// actually expects to run on a schedule — an alternative to hand-editing
+// cPanel > Cron Jobs, for hosts that allow PHP's exec(). Idempotent and
+// self-correcting: matches existing lines by filename fragment, so re-running
+// this fixes a wrong schedule (or a stale path after a move) in place rather
+// than piling up duplicates, and known-defunct entries (scripts that don't
+// exist in this codebase, e.g. a leftover update_analytics.php reference)
+// get stripped outright. Any OTHER cron line already on the account —
+// anything not matching one of these markers — is left completely alone.
+// Many shared hosts disable exec()/proc_open() for security, so this is
+// expected to fail gracefully on some accounts — the manual cPanel steps in
+// INSTALLATION.md always work as the fallback.
+function handle_install_cron(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+
+    $base = realpath(__DIR__ . '/../../php_backend');
+    if (!$base) json_response(['success' => false, 'reason' => 'Could not locate php_backend/ on this server.']);
+
+    $desired = [
+        'cron_billing.php' => "0 3 * * * /usr/bin/php {$base}/cron_billing.php",
+        'cron_standing_charges.php' => "0 6 * * * /usr/bin/php {$base}/cron_standing_charges.php",
+        'cron_daily_routes.php' => "*/5 * * * * /usr/bin/php {$base}/cron_daily_routes.php",
+        'cron/payment_reminders.php' => "0 9,21 * * * /usr/bin/php {$base}/cron/payment_reminders.php",
+        'cron/feedback_reminders.php' => "0 10 * * * /usr/bin/php {$base}/cron/feedback_reminders.php",
+    ];
+    // Referenced by an early draft of INSTALLATION.md / QUICK_REFERENCE.md
+    // but never built as a script — nothing should point here.
+    $removeMarkers = ['update_analytics.php'];
+
+    try {
+        $existingLines = [];
+        @exec('crontab -l 2>/dev/null', $existingLines);
+    } catch (\Throwable $e) {
+        json_response(['success' => false, 'reason' => 'exec() is disabled on this server (' . $e->getMessage() . ') — manage cron jobs manually via cPanel > Cron Jobs; see INSTALLATION.md.']);
+    }
+
+    $report = ['added' => [], 'updated' => [], 'unchanged' => [], 'removed' => []];
+    $kept = [];
+    foreach ($existingLines as $line) {
+        if (trim($line) === '') continue;
+        $matched = null;
+        foreach ($desired as $marker => $wantLine) {
+            if (strpos($line, $marker) !== false) { $matched = $marker; break; }
+        }
+        if ($matched !== null) {
+            $report[trim($line) === trim($desired[$matched]) ? 'unchanged' : 'updated'][] = $matched;
+            continue; // the correct line for this script gets appended below either way
+        }
+        $stale = false;
+        foreach ($removeMarkers as $marker) {
+            if (strpos($line, $marker) !== false) { $report['removed'][] = trim($line); $stale = true; break; }
+        }
+        if (!$stale) $kept[] = $line; // unrelated to this app — leave it exactly as-is
+    }
+    foreach ($desired as $marker => $wantLine) {
+        if (!in_array($marker, $report['unchanged'], true) && !in_array($marker, $report['updated'], true)) {
+            $report['added'][] = $marker;
+        }
+        $kept[] = $wantLine;
+    }
+
+    $tmpFile = tempnam(sys_get_temp_dir(), 'cron');
+    file_put_contents($tmpFile, implode("\n", $kept) . "\n");
+    $output = [];
+    $returnCode = 0;
+    exec('crontab ' . escapeshellarg($tmpFile) . ' 2>&1', $output, $returnCode);
+    @unlink($tmpFile);
+
+    if ($returnCode !== 0) {
+        json_response(['success' => false, 'reason' => 'crontab command failed (exit ' . $returnCode . '): ' . implode(' ', $output) . ' — manage cron jobs manually via cPanel > Cron Jobs instead.']);
+    }
+
+    json_response(['success' => true, 'report' => $report]);
 }

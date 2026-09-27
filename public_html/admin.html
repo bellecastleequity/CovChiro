@@ -1637,6 +1637,11 @@ function renderAdmin(){
             <div style="font-size:0.85rem;">Last digest sent for: ${cs && cs.lastSentDate ? cs.lastSentDate : 'Never'}</div>
             ${!cs || !cs.lastRan ? `<div style="font-size:0.78rem;color:var(--red);margin-top:4px;">No record of this cron ever running — check it's added in cPanel → Cron Jobs.</div>` : ''}
           </div>
+          <div>
+            <p style="font-size:0.85rem;color:#6b7280;margin-bottom:8px;"><strong>Set up all cron jobs</strong><br>Writes every cron job this app needs (billing, standing-day auto-pay, payment &amp; feedback reminders, daily route digest) directly into this account's crontab, fixes any with a wrong schedule, and removes known-stale entries — leaves anything else on the account untouched. Only works if this host allows PHP's exec(); otherwise add them manually via cPanel → Cron Jobs (see INSTALLATION.md).</p>
+            <button class="btn ghost sm" id="diag-sync-crons">Set up cron jobs automatically</button>
+            <div id="diag-cron-result" style="margin-top:10px;font-size:0.85rem;"></div>
+          </div>
         </div>
       </div>`;
 
@@ -1742,6 +1747,34 @@ function renderAdmin(){
         if (allOk) lines.push(`Check the inbox (and spam folder) for ${r.adminEmail}.`);
         out.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
         out.style.color = allOk ? 'var(--teal-dark)' : 'var(--red)';
+      } catch (e) {
+        out.textContent = 'Request failed: ' + e.message;
+        out.style.color = 'var(--red)';
+      }
+      btn.disabled = false;
+    });
+    document.getElementById('diag-sync-crons').addEventListener('click', async () => {
+      const btn = document.getElementById('diag-sync-crons');
+      const out = document.getElementById('diag-cron-result');
+      btn.disabled = true;
+      out.textContent = 'Setting up…';
+      try {
+        const r = await apiFetch('/api/settings.php?action=install_cron', { method: 'POST', body: '{}' });
+        if (!r.success) {
+          out.textContent = 'FAILED — ' + r.reason;
+          out.style.color = 'var(--red)';
+        } else {
+          const rep = r.report;
+          const lines = [];
+          if (rep.added.length) lines.push(`Added: ${rep.added.join(', ')}`);
+          if (rep.updated.length) lines.push(`Fixed schedule: ${rep.updated.join(', ')}`);
+          if (rep.removed.length) lines.push(`Removed stale entries: ${rep.removed.join(', ')}`);
+          if (rep.unchanged.length) lines.push(`Already correct: ${rep.unchanged.join(', ')}`);
+          if (!lines.length) lines.push('Nothing to change — all cron jobs already correct.');
+          lines.push('"Last ran" above will update within 5 minutes once cPanel actually calls the daily route script.');
+          out.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+          out.style.color = 'var(--teal-dark)';
+        }
       } catch (e) {
         out.textContent = 'Request failed: ' + e.message;
         out.style.color = 'var(--red)';

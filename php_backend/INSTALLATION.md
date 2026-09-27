@@ -118,6 +118,14 @@ but worth covering. It covers both office-coverage and standing-day payments.
 
 ## STEP 7: CRON JOBS
 
+**Shortcut:** Admin panel → **Analytics** tab → **Email & cron diagnostics**
+→ **Set up cron jobs automatically** adds/fixes all five jobs below in one
+click, on hosts that allow PHP's `exec()` — it reconciles the account's
+crontab (adds anything missing, corrects a wrong schedule, strips known-stale
+entries) and leaves any other, unrelated cron job on the account untouched.
+Where that isn't available (some shared hosts disable `exec()`), add each
+one manually below.
+
 cPanel → **Cron Jobs** → **Add New Cron Job**:
 
 ```
@@ -125,12 +133,21 @@ Minute: 0   Hour: 9,21   (twice daily — matches the "next reminder in ~Xh" tex
 Command: /usr/bin/php /home/[username]/php_backend/cron/payment_reminders.php
 ```
 
-**Note:** this `cron/payment_reminders.php` script is referenced above but
-does not exist in this codebase — this specific twice-daily reminder-email
-step was never built. It's superseded by `cron_billing.php` below, which
-covers the same underlying need (telling a client their balance is overdue)
-plus the actual late fee/interest charges, so no separate action is needed
-here unless you specifically want a reminder email with no fee attached.
+This sends a reminder email (no fee) for any booking with a balance due,
+roughly every 12 hours, capped at 10 reminders per booking. It's
+complementary to `cron_billing.php` below, not a duplicate: this one is a
+friendly nudge with no financial consequence; `cron_billing.php` is what
+actually applies the late fee/interest.
+
+**Feedback follow-up** (new): cPanel → **Cron Jobs** → **Add New Cron Job**:
+
+```
+Minute: 0   Hour: 10   (once daily, any quiet hour works)
+Command: /usr/bin/php /home/[username]/php_backend/cron/feedback_reminders.php
+```
+
+Sends one follow-up email 3 days after coverage is marked complete, if the
+clinic hasn't submitted feedback yet — never more than once per booking.
 
 **Late fees, interest & invoices** (new): cPanel → **Cron Jobs** → **Add New Cron Job**:
 

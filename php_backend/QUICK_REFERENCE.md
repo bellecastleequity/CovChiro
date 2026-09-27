@@ -18,10 +18,16 @@ STRIPE_WEBHOOK_SECRET              — from the webhook you create in Step 6
 SENDGRID_API_KEY                   — https://app.sendgrid.com/settings/api_keys
 ```
 
-## Cron job
+## Cron jobs
+Shortcut: Admin panel → Analytics → Email & cron diagnostics → **Set up
+cron jobs automatically** sets up all five below in one click (where the
+host allows it). Otherwise add each manually — see INSTALLATION.md Step 7:
 ```
-Twice daily (e.g. 9:00 and 21:00)
-/usr/bin/php /home/[username]/php_backend/cron/payment_reminders.php
+0 9,21 * * *   /usr/bin/php /home/[username]/php_backend/cron/payment_reminders.php
+0 10 * * *     /usr/bin/php /home/[username]/php_backend/cron/feedback_reminders.php
+0 3 * * *      /usr/bin/php /home/[username]/php_backend/cron_billing.php
+0 6 * * *      /usr/bin/php /home/[username]/php_backend/cron_standing_charges.php
+*/5 * * * *    /usr/bin/php /home/[username]/php_backend/cron_daily_routes.php
 ```
 
 ## Admin access
