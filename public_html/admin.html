@@ -880,6 +880,7 @@ function renderAdmin(){
       const reason = $('bm-adj-reason').value.trim();
       if (!amount){ $('bm-err').textContent = 'Enter a non-zero amount.'; return; }
       if (!reason){ $('bm-err').textContent = 'Enter a reason — this shows on the client\'s receipt.'; return; }
+      if (!confirm(`Add a ${amount >= 0 ? 'charge' : 'credit'} of ${money(Math.abs(amount))} to this booking? The client will see "${reason}" on their receipt.`)) return;
       $('bm-err').textContent = '';
       try { await apiFetch('/api/booking.php?action=admin_add_adjustment', { method: 'POST', body: JSON.stringify({ id: billingTargetId, amount, reason }) }); }
       catch (e) { $('bm-err').textContent = e.message; return; }
@@ -892,6 +893,7 @@ function renderAdmin(){
     $('bm-pay-submit').addEventListener('click', async () => {
       const amount = parseFloat($('bm-pay-amount').value);
       if (!amount || amount <= 0){ $('bm-err').textContent = 'Enter a payment amount.'; return; }
+      if (!confirm(`Record a payment of ${money(amount)} via ${$('bm-pay-method').value}? This updates the booking's balance due.`)) return;
       $('bm-err').textContent = '';
       try {
         await apiFetch('/api/booking.php?action=admin_record_payment', { method: 'POST', body: JSON.stringify({
@@ -921,6 +923,7 @@ function renderAdmin(){
       const dates = reschedRows.map(r => r.date);
       const dayTypes = reschedRows.map(r => r.type);
       if (!dates.length || dates.some(d => !d)){ $('bm-err').textContent = 'Every row needs a date.'; return; }
+      if (!confirm('Save this new schedule? Availability will be re-checked and any price difference is applied automatically as a charge or credit.')) return;
       $('bm-err').textContent = '';
       let r;
       try {
@@ -1529,6 +1532,7 @@ function renderAdmin(){
     });
 
     el.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!confirm('Approve this standing day request? This generates the full recurring schedule and commits the clinic to the agreement — the client is notified and billing begins per the selected payment plan.')) return;
       try { await apiFetch('/api/standing.php?action=approve', { method: 'POST', body: JSON.stringify({ id: btn.dataset.approve }) }); }
       catch (e) { alert(e.message); return; }
       standingRequests = (await apiFetch('/api/standing.php?action=list_pending')).requests || [];
@@ -1538,6 +1542,7 @@ function renderAdmin(){
       showToast('Standing day request approved.');
     }));
     el.querySelectorAll('[data-decline]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!confirm('Decline this standing day request? The clinic will be notified.')) return;
       try { await apiFetch('/api/standing.php?action=decline', { method: 'POST', body: JSON.stringify({ id: btn.dataset.decline }) }); }
       catch (e) { alert(e.message); return; }
       standingRequests = (await apiFetch('/api/standing.php?action=list_pending')).requests || [];
@@ -1586,6 +1591,7 @@ function renderAdmin(){
       const email = $('inv-email').value.trim();
       const description = $('inv-desc').value.trim();
       const amount = parseFloat($('inv-amount').value);
+      if (!confirm(`Send an invoice for ${money(amount || 0)} to ${email || 'this client'}? They'll be emailed a payment link.`)) return;
       err.textContent = '';
       try {
         await apiFetch('/api/invoice.php?action=admin_create', { method: 'POST', body: JSON.stringify({ email, description, amount }) });
