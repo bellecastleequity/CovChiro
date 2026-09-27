@@ -250,10 +250,8 @@
   <div class="modal">
     <button class="close" data-close>×</button>
     <h2>Edit coverage details</h2>
-    <p style="font-size:0.86rem;color:#6b7280;">These help the doctor prep for your specific office — update anytime before the coverage date.</p>
-    <label for="ec-volume" style="margin-top:14px;">Expected patient volume for this day (optional)</label>
-    <input type="number" id="ec-volume" min="0" placeholder="e.g. 40">
-    <label for="ec-dress" style="margin-top:16px;">Dress code requested</label>
+    <p style="font-size:0.86rem;color:#6b7280;">These help the doctor prep for your specific office — update anytime before the coverage date. Expected patient volume is set per date directly on the booking, since it can vary night to night.</p>
+    <label for="ec-dress" style="margin-top:14px;">Dress code requested</label>
     <select id="ec-dress">
       <option value="">No preference</option>
       <option value="Medical scrubs">Medical scrubs</option>
@@ -573,15 +571,30 @@ function renderDash(){
         ${bk === 'pending' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">I'll contact you to confirm this time slot.</div>` : ''}
         ${bk === 'balance' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">Coverage complete — balance is due now.${rem ? ` Reminder ${rem.sent} sent so far, next in ~${rem.nextIn}h until paid.` : ''}</div>` : ''}
         <div class="bk-code">Ref ${b.id}</div>
-        ${b.coverage && (b.coverage.patientVolume || b.coverage.postedHours || b.coverage.dress || (b.coverage.techniques && b.coverage.techniques.length) || b.coverage.notes || b.coverage.pocName) ? `
+        ${b.coverage && (b.coverage.postedHours || b.coverage.dress || (b.coverage.techniques && b.coverage.techniques.length) || b.coverage.notes || b.coverage.pocName) ? `
           <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
-            ${b.coverage.patientVolume ? `<div><strong>Expected patient volume:</strong> ${b.coverage.patientVolume}</div>` : ''}
             ${b.coverage.postedHours ? `<div><strong>Practice posted hours (reference only):</strong> ${b.coverage.postedHours}</div>` : ''}
             ${b.coverage.dress ? `<div><strong>Dress code:</strong> ${b.coverage.dress}</div>` : ''}
             ${b.coverage.techniques && b.coverage.techniques.length ? `<div style="margin-top:3px;"><strong>Techniques:</strong> ${b.coverage.techniques.join(', ')}</div>` : ''}
             ${b.coverage.notes ? `<div style="margin-top:3px;"><strong>Notes:</strong> ${b.coverage.notes}</div>` : ''}
             ${b.coverage.pocName ? `<div style="margin-top:3px;"><strong>Day-of contact:</strong> ${b.coverage.pocName}${b.coverage.pocTitle ? ' (' + b.coverage.pocTitle + ')' : ''}${b.coverage.pocPhone ? ' · ' + b.coverage.pocPhone : ''}</div>` : ''}
           </div>` : ''}
+        ${b.service === 'office' ? (() => {
+          const pvByDate = (b.coverage && b.coverage.patientVolumeByDate) || {};
+          const canEditVolume = bk === 'upcoming' || bk === 'pending';
+          if (!canEditVolume && !Object.keys(pvByDate).length) return '';
+          return `
+          <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
+            <strong>Expected patient volume by date:</strong>
+            ${b.dates.map(d => `
+              <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+                <span style="min-width:92px;">${d}</span>
+                ${canEditVolume
+                  ? `<input type="number" min="0" placeholder="e.g. 40" style="width:90px;padding:4px 8px;border:1px solid var(--line);border-radius:4px;" value="${pvByDate[d] ?? ''}" data-pv="${b.id}|${d}">`
+                  : `<span>${pvByDate[d] ?? '—'}</span>`}
+              </div>`).join('')}
+          </div>`;
+        })() : ''}
         ${(b.adjustmentsTotal || 0) !== 0 ? `
           <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
             <strong>Billing adjustments:</strong>
@@ -627,6 +640,16 @@ function renderDash(){
   el.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', () => openReview(btn.dataset.review)));
   el.querySelectorAll('[data-feedback]').forEach(btn => btn.addEventListener('click', () => openFeedback(btn.dataset.feedback)));
   el.querySelectorAll('[data-receipt]').forEach(btn => btn.addEventListener('click', () => openReceipt(btn.dataset.receipt)));
+  el.querySelectorAll('[data-pv]').forEach(inp => inp.addEventListener('change', async () => {
+    const [bid, date] = inp.dataset.pv.split('|');
+    try {
+      await apiFetch('/api/booking.php?action=update_patient_volume', { method: 'POST', body: JSON.stringify({
+        id: bid, date, patientVolume: inp.value ? parseInt(inp.value) : ''
+      })});
+      await loadMyBookings();
+      renderDash();
+    } catch (e) { alert(e.message); }
+  }));
   el.querySelectorAll('[data-video]').forEach(btn => btn.addEventListener('click', () => openVideoRequest(btn.dataset.video)));
 
   el.querySelectorAll('[data-cancel]').forEach(btn => btn.addEventListener('click', () => openCancel(btn.dataset.cancel)));
@@ -788,7 +811,6 @@ function openEditCoverage(id){
   if (!b) return;
   editCoverageTargetId = id;
   const cd = b.coverage || {};
-  $('ec-volume').value = cd.patientVolume ?? '';
   const knownDress = ['', 'Medical scrubs', 'Business casual, tie', 'Clinic jacket over business attire'];
   if (cd.dress && !knownDress.includes(cd.dress)){
     $('ec-dress').value = 'other';
@@ -813,12 +835,10 @@ $('ec-submit').addEventListener('click', async () => {
   const dressSel = $('ec-dress').value;
   const dress = dressSel === 'other' ? $('ec-dress-other').value.trim() : dressSel;
   const techniques = Array.from(document.querySelectorAll('#ec-technique-grid input:checked')).map(el => el.value);
-  const volumeVal = $('ec-volume').value;
   $('ec-submit').disabled = true;
   try {
     await apiFetch('/api/booking.php?action=update_coverage', { method: 'POST', body: JSON.stringify({
       id: editCoverageTargetId,
-      patientVolume: volumeVal !== '' ? parseInt(volumeVal) : '',
       dress: dress || '', techniques,
       notes: $('ec-notes').value.trim(),
       pocName: $('ec-poc-name').value.trim(),

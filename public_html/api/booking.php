@@ -12,6 +12,7 @@ switch ($action) {
     case 'get': handle_get($pdo); break;
     case 'cancel': handle_cancel($pdo); break;
     case 'update_coverage': handle_update_coverage($pdo); break;
+    case 'update_patient_volume': handle_update_patient_volume($pdo); break;
     case 'review': handle_review($pdo); break;
     case 'feedback': handle_feedback($pdo); break;
     case 'list_all': handle_list_all($pdo); break;
@@ -276,12 +277,12 @@ function handle_update_coverage(PDO $pdo) {
     }
 
     // Merge onto the existing coverage rather than replacing it outright —
-    // the edit form doesn't resend fields like postedHours that were only
-    // ever set at original booking time, and those shouldn't get wiped out.
+    // the edit form doesn't resend fields like postedHours (or
+    // patientVolumeByDate, set separately per date) that shouldn't get
+    // wiped out just because this form doesn't carry them.
     $existing = json_decode($b['coverage'] ?? '{}', true) ?: [];
     $techniques = $body['techniques'] ?? [];
     $coverage = array_merge($existing, sanitize([
-        'patientVolume' => isset($body['patientVolume']) && $body['patientVolume'] !== '' ? (int)$body['patientVolume'] : null,
         'dress' => $body['dress'] ?? '',
         'techniques' => is_array($techniques) ? array_values($techniques) : [],
         'notes' => $body['notes'] ?? '',
@@ -289,14 +290,48 @@ function handle_update_coverage(PDO $pdo) {
         'pocTitle' => $body['pocTitle'] ?? '',
         'pocPhone' => $body['pocPhone'] ?? '',
     ]));
-    // patientVolume needs to stay a number (or null) for the dashboard's
-    // truthiness checks — sanitize() stringifies everything it touches.
-    $coverage['patientVolume'] = $coverage['patientVolume'] !== '' ? (int)$coverage['patientVolume'] : null;
 
     $stmt = $pdo->prepare('UPDATE bookings SET coverage = ? WHERE id = ?');
     $stmt->execute([json_encode($coverage), $id]);
 
     json_response(['success' => true, 'coverage' => $coverage]);
+}
+
+// Sets the expected patient volume for one specific date on a booking —
+// separate from the rest of the coverage-details edit since volume can
+// reasonably differ night to night across a multi-day booking, unlike
+// dress code/techniques/notes which apply to the whole engagement.
+function handle_update_patient_volume(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $user = require_login();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+    $date = $body['date'] ?? '';
+
+    $stmt = $pdo->prepare('SELECT * FROM bookings WHERE id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b || (int)$b['user_id'] !== (int)$user['id']) json_response(['error' => 'Not found'], 404);
+    if ($b['completed_at'] !== null || !in_array($b['status'], ['upcoming', 'pending'], true)) {
+        json_response(['error' => 'This booking can no longer be edited.'], 400);
+    }
+    $dates = json_decode($b['dates'], true) ?: [];
+    if (!in_array($date, $dates, true)) json_response(['error' => 'That date is not part of this booking.'], 400);
+
+    $volume = isset($body['patientVolume']) && $body['patientVolume'] !== '' ? (int)$body['patientVolume'] : null;
+    $coverage = json_decode($b['coverage'] ?? '{}', true) ?: [];
+    if (!isset($coverage['patientVolumeByDate']) || !is_array($coverage['patientVolumeByDate'])) {
+        $coverage['patientVolumeByDate'] = [];
+    }
+    if ($volume === null) {
+        unset($coverage['patientVolumeByDate'][$date]);
+    } else {
+        $coverage['patientVolumeByDate'][$date] = $volume;
+    }
+
+    $stmt = $pdo->prepare('UPDATE bookings SET coverage = ? WHERE id = ?');
+    $stmt->execute([json_encode($coverage), $id]);
+    json_response(['success' => true]);
 }
 
 function handle_review(PDO $pdo) {

@@ -34,7 +34,7 @@ VALUES (
   JSON_ARRAY(),
   'office',
   JSON_OBJECT(
-    'patientVolume', 45,
+    'patientVolumeByDate', JSON_OBJECT(DATE_FORMAT(@demo_date, '%Y-%m-%d'), 45),
     'dress', 'Business casual, tie',
     'techniques', JSON_ARRAY('Diversified', 'Gonstead'),
     'notes', 'This is a demo booking for trying out the dashboard and provider portal — safe to ignore or delete.',

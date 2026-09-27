@@ -120,7 +120,7 @@
       <a href="#capability">Services</a>
       <a href="#rates">Rates</a>
       <a href="#standing">Standing Days</a>
-      <a href="#flexrate">Flex Rate Days</a>
+      <a href="#flexrate">Promotional Rate Dates</a>
       <a href="#reviews">Reviews</a>
       <a href="#faq">FAQ</a>
       <a href="#help">Help Center</a>
@@ -299,9 +299,9 @@
               <div><label>&nbsp;</label><p style="font-size:0.78rem;color:#6b7280;margin:0;">Reference only — this doesn't affect your quote. It just helps orient the covering doctor.</p></div>
             </div>
             <div class="date-builder-row" style="margin-top:10px;">
-              <div><label for="cd-start-time">Billable coverage window — start (optional)</label><input type="time" id="cd-start-time"></div>
-              <div><label for="cd-end-time">Billable coverage window — end (optional)</label><input type="time" id="cd-end-time"></div>
-              <div><label>&nbsp;</label><p style="font-size:0.78rem;color:#6b7280;margin:0;">The hours you need the doctor on site — this is what's billed, not your posted hours. If you need him on site before opening or after close (prep, meetings, charting), include that time here. Leave blank for the standard block; a 60-minute lunch is deducted from full-day hours before anything beyond the block is billed as overtime.</p></div>
+              <div><label for="cd-start-time">Billable coverage window — start</label><input type="time" id="cd-start-time" required></div>
+              <div><label for="cd-end-time">Billable coverage window — end</label><input type="time" id="cd-end-time" required></div>
+              <div><label>&nbsp;</label><p style="font-size:0.78rem;color:#6b7280;margin:0;">The hours you need the doctor on site — this is what's billed, not your posted hours. If you need him on site before opening or after close (prep, meetings, charting), include that time here. A 60-minute lunch is deducted from full-day hours before anything beyond the block is billed as overtime.</p></div>
             </div>
             <div class="err-msg" id="cd-date-err"></div>
             <div id="cd-date-list"></div>
@@ -316,9 +316,8 @@
 
           <div class="coverage-details" id="coverage-details">
             <h4>Coverage details</h4>
-            <label for="cd-volume">Expected patient volume for this day (optional)</label>
-            <input type="number" id="cd-volume" min="0" placeholder="e.g. 40">
-            <label for="cd-dress" style="margin-top:16px;">Dress code requested</label>
+            <p style="font-size:0.82rem;color:#6b7280;">Expected patient volume can be set per date from your dashboard once this booking is confirmed — useful since it can vary night to night across a multi-day booking.</p>
+            <label for="cd-dress" style="margin-top:4px;">Dress code requested</label>
             <select id="cd-dress">
               <option value="">No preference</option>
               <option value="Medical scrubs">Medical scrubs</option>
@@ -480,9 +479,9 @@
 <section id="flexrate">
   <div class="wrap">
     <div class="section-head">
-      <span class="mono">Flex Rate Days</span>
-      <h2>Some dates are offered at a promotional rate</h2>
-      <p>Select uncovered dates may be offered at promotional rates based on doctor availability — set in advance, not negotiated. If one of these works for your schedule, book it directly below.</p>
+      <span class="mono">Promotional Rate Dates</span>
+      <h2>Upcoming promotional rate dates</h2>
+      <p>These dates are pre-set at a discount based on doctor availability — not negotiated. If one works for your schedule, book it directly below.</p>
     </div>
     <div id="flexrate-list"></div>
   </div>
@@ -984,8 +983,8 @@ $('cd-date-add').addEventListener('click', () => {
   const err = $('cd-date-err');
   if (!date){ err.textContent = 'Pick a date first.'; return; }
   if (coverageDates.some(e => e.date === date)){ err.textContent = 'That date is already on the list — remove it first to change its type.'; return; }
-  if ((startTime && !endTime) || (!startTime && endTime)){ err.textContent = 'Enter both a start and end time, or leave both blank.'; return; }
-  if (startTime && endTime && endTime <= startTime){ err.textContent = 'End time must be after start time.'; return; }
+  if (!startTime || !endTime){ err.textContent = 'Enter both a start and end time for the billable coverage window.'; return; }
+  if (endTime <= startTime){ err.textContent = 'End time must be after start time.'; return; }
   err.textContent = '';
   coverageDates.push({ date, type, startTime, endTime });
   $('cd-date-input').value = '';
@@ -1269,9 +1268,7 @@ function coverageDetails(){
   const dressSel = $('cd-dress').value;
   const dress = dressSel === 'other' ? $('cd-dress-other').value.trim() : dressSel;
   const techniques = Array.from(document.querySelectorAll('.tq input:checked')).map(el => el.value);
-  const volumeVal = $('cd-volume').value;
   return {
-    patientVolume: volumeVal !== '' ? parseInt(volumeVal) : null,
     postedHours: $('cd-posted-hours').value.trim(),
     dress: dress || '',
     techniques,
@@ -1638,8 +1635,7 @@ function showConfirmation(b){
     <div class="brow total" style="margin-top:14px;"><span>Total</span><span>${money(b.total)}</span></div>
     <div class="brow deposit"><span>Deposit charged today</span><span>${money(b.paid)}</span></div>
     <div class="mileage-note" style="margin-top:16px;"><strong>Coverage hours:</strong> the hours booked are the billable window — a full day includes one meal break of up to 60 minutes, and anything beyond the booked hours (including a longer break) is billed at $100/hour. Full details are in your signed agreement.</div>
-    ${cd && (cd.patientVolume || cd.postedHours || cd.dress || (cd.techniques && cd.techniques.length) || cd.notes || cd.pocName) ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:0.83rem;color:#5a6472;">
-        ${cd.patientVolume ? `<div><strong>Expected patient volume:</strong> ${cd.patientVolume}</div>` : ''}
+    ${cd && (cd.postedHours || cd.dress || (cd.techniques && cd.techniques.length) || cd.notes || cd.pocName) ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:0.83rem;color:#5a6472;">
         ${cd.postedHours ? `<div><strong>Practice posted hours (reference only):</strong> ${cd.postedHours}</div>` : ''}
         ${cd.dress ? `<div><strong>Dress code:</strong> ${cd.dress}</div>` : ''}
         ${cd.techniques && cd.techniques.length ? `<div style="margin-top:4px;"><strong>Techniques:</strong> ${cd.techniques.join(', ')}</div>` : ''}

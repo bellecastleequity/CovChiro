@@ -262,14 +262,18 @@ function renderAdmin(){
           ${b.review ? `<div class="bn" style="margin-top:4px;">★ ${b.review.rating}/5${b.review.text ? ' — "' + b.review.text + '"' : ''}</div>` : ''}
           ${b.feedback ? (() => { const f = b.feedback; const low = f.punctuality <= 2 || f.professionalism <= 2 || f.patientCare <= 2 || f.wouldRebook === 'no'; return `
             <div class="bn" style="margin-top:4px;${low ? 'color:var(--red);font-weight:600;' : ''}">${low ? '⚠ Needs follow-up — ' : ''}Feedback: punctuality ${f.punctuality}/5, professionalism ${f.professionalism}/5, patient care ${f.patientCare}/5, rebook: ${f.wouldRebook}${f.notes ? ' — "' + f.notes + '"' : ''}</div>`; })() : ''}
-          ${b.coverage && (b.coverage.patientVolume || b.coverage.postedHours || b.coverage.dress || (b.coverage.techniques && b.coverage.techniques.length) || b.coverage.notes || b.coverage.pocName) ? `
+          ${b.coverage && (b.coverage.postedHours || b.coverage.dress || (b.coverage.techniques && b.coverage.techniques.length) || b.coverage.notes || b.coverage.pocName) ? `
             <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
-              ${b.coverage.patientVolume ? `<div><strong>Expected patient volume:</strong> ${b.coverage.patientVolume}</div>` : ''}
               ${b.coverage.postedHours ? `<div><strong>Practice posted hours (reference only):</strong> ${b.coverage.postedHours}</div>` : ''}
               ${b.coverage.dress ? `<div><strong>Dress code:</strong> ${b.coverage.dress}</div>` : ''}
               ${b.coverage.techniques && b.coverage.techniques.length ? `<div style="margin-top:3px;"><strong>Techniques:</strong> ${b.coverage.techniques.join(', ')}</div>` : ''}
               ${b.coverage.notes ? `<div style="margin-top:3px;"><strong>Notes:</strong> ${b.coverage.notes}</div>` : ''}
               ${b.coverage.pocName ? `<div style="margin-top:3px;color:var(--teal-dark);font-weight:600;"><strong>Day-of contact:</strong> ${b.coverage.pocName}${b.coverage.pocTitle ? ' (' + b.coverage.pocTitle + ')' : ''}${b.coverage.pocPhone ? ' · ' + b.coverage.pocPhone : ''}</div>` : ''}
+            </div>` : ''}
+          ${b.coverage && b.coverage.patientVolumeByDate && Object.keys(b.coverage.patientVolumeByDate).length ? `
+            <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
+              <strong>Expected patient volume by date:</strong>
+              ${Object.entries(b.coverage.patientVolumeByDate).map(([d, v]) => `<div style="margin-top:2px;">${d}: ${v}</div>`).join('')}
             </div>` : ''}
           ${canComplete ? `<div style="margin-top:10px;"><button class="btn sm" data-complete="${b.id}">Mark coverage complete</button></div>` : ''}
           ${b.completedAt ? `<div style="margin-top:10px;"><button class="btn ghost sm" data-draft-thanks="${b.id}">Draft thank-you letter</button></div>` : ''}
@@ -699,7 +703,7 @@ function renderAdmin(){
     const flexRateAdminHtml = `
       <div class="admin-card hidden" id="flex-publish-card" style="margin-bottom:20px;border-color:var(--teal);">
         <h3>Publish Flex Rate — <span id="flex-publish-date"></span></h3>
-        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px;">Sets a promotional rate for this specific date. Shown publicly as "select uncovered dates offered at promotional rates" — not framed as negotiable.</p>
+        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px;">Sets a promotional rate for this specific date. Shown publicly under "Upcoming promotional rate dates" — not framed as negotiable.</p>
         <div class="row2" style="margin-top:12px;">
           <div><label for="flex-discount">Discount off standard rate (%)</label><input type="number" id="flex-discount" min="0" max="90" value="15"></div>
           <div><label for="flex-hours">Coverage type</label><select id="flex-hours"><option value="full">Full day</option><option value="half-am">Half day — morning</option><option value="half-pm">Half day — afternoon</option></select></div>
