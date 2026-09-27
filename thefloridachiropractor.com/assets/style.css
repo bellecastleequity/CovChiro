@@ -216,6 +216,8 @@
   .standing-form-card .sub{font-size:0.85rem;color:#6b7280;margin-bottom:20px;line-height:1.5;}
   .standing-form-card textarea{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:3px;background:var(--paper);
     font-family:'IBM Plex Sans',sans-serif;font-size:0.87rem;resize:vertical;}
+  .standing-form-card select,.standing-form-card input{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:3px;
+    background:var(--paper);font-family:'IBM Plex Sans',sans-serif;font-size:0.87rem;}
   .sd-tier-preview{padding:10px 11px;background:rgba(47,93,83,0.10);border:1px solid var(--teal);border-radius:3px;
     font-weight:600;color:var(--teal-dark);text-align:center;}
   .sd-quote{margin-top:22px;background:var(--paper-2);border:1px solid var(--teal);border-radius:6px;padding:22px 24px;}
@@ -380,10 +382,10 @@
   .modal{background:var(--paper);border-radius:6px;max-width:660px;width:100%;padding:32px;position:relative;}
   .modal.narrow{max-width:420px;}
   .sign-fields{background:var(--paper-2);border-radius:4px;padding:16px 18px;margin-top:16px;font-size:0.86rem;}
-  .sign-fields .sf-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);}
+  .sign-fields .sf-row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid var(--line);}
   .sign-fields .sf-row:last-child{border-bottom:none;}
-  .sign-fields .sf-row span:first-child{color:#6b7280;}
-  .sign-fields .sf-row span:last-child{font-weight:600;text-align:right;}
+  .sign-fields .sf-row span:first-child{color:#6b7280;flex-shrink:0;}
+  .sign-fields .sf-row span:last-child{font-weight:600;text-align:right;overflow-wrap:anywhere;min-width:0;}
   .sign-terms{max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:4px;padding:16px 18px;
     margin-top:16px;font-size:0.82rem;line-height:1.6;color:#3d4552;background:var(--white);}
   .sign-terms h4{font-family:'Playfair Display',serif;font-size:0.95rem;margin:14px 0 6px;color:var(--ink);}
@@ -519,7 +521,13 @@
     .bio,.contact-grid{grid-template-columns:1fr;}
     .bio-photo{max-width:165px;}
     nav{display:none;}
+    .hdr-actions{flex-wrap:wrap;justify-content:flex-end;row-gap:8px;}
     .bk{grid-template-columns:1fr;}
     .bk .bk-side{text-align:left;}
     .bk .bk-actions{justify-content:flex-start;}
+    .admin-grid{grid-template-columns:1fr;gap:20px;}
+    .modal-bg{padding:20px 12px;}
+    .modal{padding:22px 18px;}
+    .sign-fields .sf-row{flex-direction:column;align-items:flex-start;gap:2px;}
+    .sign-fields .sf-row span:last-child{text-align:left;}
   }
