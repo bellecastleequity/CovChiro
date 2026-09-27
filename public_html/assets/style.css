@@ -263,6 +263,7 @@
   .admin-bar .wrap{display:flex;justify-content:space-between;align-items:center;gap:12px;}
   .admin-grid{display:grid;grid-template-columns:340px 1fr;gap:34px;align-items:start;}
   .admin-card{background:var(--white);border:1px solid var(--line);border-radius:5px;padding:22px;}
+  .admin-card-photo{width:100%;aspect-ratio:4/5;object-fit:cover;object-position:top;border-radius:4px;margin-bottom:14px;display:block;}
   .an-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
   .an-card{background:var(--white);border:1px solid var(--line);border-radius:5px;padding:18px;}
   .an-label{font-family:'IBM Plex Mono',monospace;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.04em;color:#8a8171;}
