@@ -63,7 +63,7 @@ function lookupZip(zip){
   const miles = Math.round(haversine(ORIGIN, {lat, lng}) * ROAD_FACTOR);
   return { miles, region };
 }
-let user = null, bookings = [], dashView = 'upcoming', svc = 'office';
+let user = null, bookings = [], dashView = 'upcoming', svc = 'office', myInvoices = [];
 let lastMinuteEnabled = true; // default on — overridden by loadSession() from /api/settings.php
 let standingRequests = [], standingAgreements = [];
 let flexRateDates = []; // admin-published open dates at a set promotional rate — no bidding, no negotiation
@@ -218,9 +218,13 @@ if ($('payment-submit')) $('payment-submit').addEventListener('click', async () 
       if (paymentOnSuccess) await paymentOnSuccess();
       return;
     }
-    const confirmUrl = paymentContext.kind === 'standing' ? '/api/payment.php?action=confirm_standing_payment' : '/api/payment.php?action=confirm_payment';
+    const confirmUrl = paymentContext.kind === 'standing' ? '/api/payment.php?action=confirm_standing_payment'
+      : paymentContext.kind === 'invoice' ? '/api/payment.php?action=confirm_invoice_payment'
+      : '/api/payment.php?action=confirm_payment';
     const confirmBody = paymentContext.kind === 'standing'
       ? { agreementId: paymentContext.agreementId, date: paymentContext.date, payment_intent_id: paymentIntent.id }
+      : paymentContext.kind === 'invoice'
+      ? { invoice_id: paymentContext.invoiceId, payment_intent_id: paymentIntent.id }
       : { booking_id: paymentContext.bookingId, payment_intent_id: paymentIntent.id };
     const r = await apiFetch(confirmUrl, { method: 'POST', body: JSON.stringify(confirmBody) });
     $('payment-modal').classList.remove('open');

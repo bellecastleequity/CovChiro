@@ -16,6 +16,8 @@ switch ($action) {
     case 'create_standing_payment_intent': handle_create_standing_intent($pdo); break;
     case 'confirm_standing_payment': handle_confirm_standing($pdo); break;
     case 'create_standing_deposit_intent': handle_create_standing_deposit_intent($pdo); break;
+    case 'create_invoice_payment_intent': handle_create_invoice_intent($pdo); break;
+    case 'confirm_invoice_payment': handle_confirm_invoice($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -95,7 +97,7 @@ function handle_confirm(PDO $pdo) {
     $stmt = $pdo->prepare('SELECT * FROM bookings WHERE id = ?');
     $stmt->execute([$bookingId]);
     $updated = $stmt->fetch();
-    json_response(['success' => true, 'booking' => booking_to_json($updated)]);
+    json_response(['success' => true, 'booking' => booking_to_json($pdo, $updated)]);
 }
 
 function load_owned_agreement_for_payment(PDO $pdo, $agreementId, $user) {
@@ -183,6 +185,67 @@ function handle_create_standing_deposit_intent(PDO $pdo) {
     }
 
     json_response(['client_secret' => $intent->client_secret, 'publishable_key' => STRIPE_PUBLISHABLE_KEY, 'amount' => $amount]);
+}
+
+function load_owned_invoice(PDO $pdo, $invoiceId, $user) {
+    $stmt = $pdo->prepare('SELECT * FROM invoices WHERE id = ?');
+    $stmt->execute([$invoiceId]);
+    $inv = $stmt->fetch();
+    if (!$inv || (int)$inv['user_id'] !== (int)$user['id']) json_response(['error' => 'Invoice not found'], 404);
+    return $inv;
+}
+
+function handle_create_invoice_intent(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $user = require_login();
+    $body = json_body();
+    $invoiceId = $body['invoice_id'] ?? '';
+
+    $inv = load_owned_invoice($pdo, $invoiceId, $user);
+    if ($inv['status'] !== 'due') json_response(['error' => 'This invoice is not payable.'], 400);
+    $amount = invoice_balance_due($pdo, $inv);
+    if ($amount <= 0) json_response(['error' => 'Nothing to charge.'], 400);
+
+    try {
+        $intent = \Stripe\PaymentIntent::create([
+            'amount' => (int)round($amount * 100),
+            'currency' => 'usd',
+            'metadata' => ['invoice_id' => $invoiceId],
+            'receipt_email' => $user['email'],
+            'description' => "Coverage Chiropractic — {$inv['description']}",
+        ]);
+    } catch (\Exception $e) {
+        log_error('Stripe invoice PaymentIntent creation failed', ['invoice' => $invoiceId, 'error' => $e->getMessage()]);
+        json_response(['error' => 'Could not start payment. Try again in a moment.'], 502);
+    }
+
+    $pdo->prepare('UPDATE invoices SET stripe_payment_intent = ? WHERE id = ?')->execute([$intent->id, $invoiceId]);
+    json_response(['client_secret' => $intent->client_secret, 'publishable_key' => STRIPE_PUBLISHABLE_KEY, 'amount' => $amount]);
+}
+
+function handle_confirm_invoice(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    $user = require_login();
+    $body = json_body();
+    $invoiceId = $body['invoice_id'] ?? '';
+    $intentId = $body['payment_intent_id'] ?? '';
+
+    $inv = load_owned_invoice($pdo, $invoiceId, $user);
+    if ($inv['stripe_payment_intent'] !== $intentId) json_response(['error' => 'Payment does not match this invoice.'], 400);
+
+    try {
+        $intent = \Stripe\PaymentIntent::retrieve($intentId);
+    } catch (\Exception $e) {
+        json_response(['error' => 'Could not verify payment.'], 502);
+    }
+    if ($intent->status !== 'succeeded') json_response(['error' => 'Payment has not completed yet.'], 402);
+
+    $amount = $intent->amount_received / 100;
+    apply_successful_invoice_payment($pdo, $invoiceId, $intentId, $amount, $intent->latest_charge ?? null);
+
+    $stmt = $pdo->prepare('SELECT * FROM invoices WHERE id = ?');
+    $stmt->execute([$invoiceId]);
+    json_response(['success' => true, 'invoice' => invoice_to_json($pdo, $stmt->fetch())]);
 }
 
 function handle_confirm_standing(PDO $pdo) {

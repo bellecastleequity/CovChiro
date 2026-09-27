@@ -43,6 +43,7 @@
       <button class="dash-tab on" data-view="upcoming">Upcoming</button>
       <button class="dash-tab" data-view="pending">Awaiting confirmation</button>
       <button class="dash-tab hidden" data-view="balance">Balance due</button>
+      <button class="dash-tab hidden" data-view="invoices">Invoices</button>
       <button class="dash-tab" data-view="past">Past</button>
       <button class="dash-tab" data-view="cancelled">Cancelled</button>
       <button class="dash-tab" data-view="video">Video calls</button>
@@ -51,6 +52,7 @@
     </div>
     <div id="dash-list"></div>
     <div id="dash-standing"></div>
+    <div id="dash-invoices" class="hidden"></div>
     <div id="dash-video" class="hidden">
       <div class="admin-card" style="margin-bottom:20px;">
         <h3>Request a video consult</h3>
@@ -317,7 +319,7 @@ async function openStandingPaymentModal(agreementId, date, amountLabel, onSucces
   paymentOnSuccess = onSuccess;
   await mountPaymentElement('/api/payment.php?action=create_standing_payment_intent', { agreementId, date }, amountLabel);
 }
-const DASH_CUSTOM_VIEWS = ['documents', 'video', 'profile'];
+const DASH_CUSTOM_VIEWS = ['documents', 'video', 'profile', 'invoices'];
 document.querySelectorAll('.dash-tab').forEach(t => t.addEventListener('click', async () => {
   document.querySelectorAll('.dash-tab').forEach(x => x.classList.remove('on'));
   t.classList.add('on'); dashView = t.dataset.view;
@@ -326,11 +328,51 @@ document.querySelectorAll('.dash-tab').forEach(t => t.addEventListener('click', 
   $('dash-documents').classList.toggle('hidden', dashView !== 'documents');
   $('dash-video').classList.toggle('hidden', dashView !== 'video');
   $('dash-profile').classList.toggle('hidden', dashView !== 'profile');
+  $('dash-invoices').classList.toggle('hidden', dashView !== 'invoices');
   if (dashView === 'video') await renderVideoTab();
   if (dashView === 'profile') renderProfileTab();
   if (dashView === 'documents') await renderDocumentsTab();
+  if (dashView === 'invoices') renderInvoicesTab();
   if (!isCustom) renderDash();
 }));
+async function loadMyInvoices(){
+  if (!user){ myInvoices = []; return; }
+  try { myInvoices = (await apiFetch('/api/invoice.php?action=list_mine')).invoices || []; }
+  catch (e) { myInvoices = []; }
+  const dueCount = myInvoices.filter(i => i.status === 'due').length;
+  const tab = document.querySelector('.dash-tab[data-view="invoices"]');
+  if (tab) tab.classList.toggle('hidden', myInvoices.length === 0);
+}
+function renderInvoicesTab(){
+  const el = $('dash-invoices');
+  if (!myInvoices.length){ el.innerHTML = `<div class="empty">No invoices right now.</div>`; return; }
+  el.innerHTML = myInvoices.map(i => `
+    <div class="bk">
+      <div class="bk-main">
+        <span class="pill ${i.status === 'due' ? 'balance' : i.status}">${i.status === 'due' ? 'Due' : i.status === 'paid' ? 'Paid' : i.status}</span>
+        <h4>${i.description}</h4>
+        <div class="bk-meta">Ref ${i.id} · ${new Date(i.createdAt).toLocaleDateString()}</div>
+        ${(i.adjustmentsTotal || 0) !== 0 ? `
+          <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
+            <strong>Billing adjustments:</strong>
+            ${i.adjustments.map(a => `<div style="margin-top:2px;">${a.amount >= 0 ? '+' : '−'}${money(Math.abs(a.amount))} — ${a.reason}</div>`).join('')}
+          </div>` : ''}
+      </div>
+      <div class="bk-side">
+        <div class="bk-amt">${money(i.amount + (i.adjustmentsTotal || 0))}</div>
+        <div style="font-size:0.76rem;color:#6b7280;">${money(i.paid)} paid so far</div>
+        ${i.status === 'due' ? `
+          <div style="font-size:0.85rem;color:var(--red);font-weight:600;margin-top:6px;">${money(i.balanceDue)} owed</div>
+          <div class="bk-actions"><button class="btn sm" data-payinvoice="${i.id}">Pay now</button></div>` : ''}
+      </div>
+    </div>`).join('');
+  el.querySelectorAll('[data-payinvoice]').forEach(btn => btn.addEventListener('click', async () => {
+    const inv = myInvoices.find(x => x.id === btn.dataset.payinvoice);
+    paymentContext = { kind: 'invoice', invoiceId: inv.id };
+    paymentOnSuccess = async () => { await loadMyInvoices(); renderInvoicesTab(); };
+    await mountPaymentElement('/api/payment.php?action=create_invoice_payment_intent', { invoice_id: inv.id }, `${inv.description}: ${money(inv.balanceDue)}`);
+  }));
+}
 const DOC_LABELS = { license: 'Chiropractic license', malpractice: 'Malpractice insurance & certificate of insurance', w9: 'W-9 tax form' };
 async function renderDocumentsTab(){
   let status = {};
@@ -421,12 +463,15 @@ function hoursUntil(b){ return (new Date(b.start + 'T08:00:00') - new Date()) / 
 function reviewEligible(b){
   return b.balanceStatus === 'paid' || (b.payType === 'full' && bucket(b) === 'past');
 }
+// Reflects what's actually been charged (via the adjustments ledger a daily
+// billing cron writes to), not a simulated/assumed schedule.
 function reminderStatus(b){
   if (b.balanceStatus !== 'due' || !b.completedAt) return null;
   const hoursSince = (Date.now() - new Date(b.completedAt).getTime()) / 36e5;
-  const sent = Math.max(0, Math.floor(hoursSince / 12));
-  const nextIn = 12 - (hoursSince % 12);
-  return { sent, nextIn: nextIn.toFixed(1) };
+  if (hoursSince < 24) return null;
+  const hasLateFee = (b.adjustments || []).some(a => a.reason && a.reason.startsWith('Late fee'));
+  const interestCount = (b.adjustments || []).filter(a => a.reason && a.reason.startsWith('Interest')).length;
+  return { daysOverdue: Math.floor(hoursSince / 24), hasLateFee, interestCount };
 }
 function renderClientStatusBadge(){
   const el = $('client-status-badge');
@@ -569,7 +614,7 @@ function renderDash(){
         <div class="bk-meta">${b.meta}</div>
         <div class="bk-meta">${bk === 'pending' ? 'Requested date' : 'Start date'}: ${b.start}</div>
         ${bk === 'pending' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">I'll contact you to confirm this time slot.</div>` : ''}
-        ${bk === 'balance' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">Coverage complete — balance is due now.${rem ? ` Reminder ${rem.sent} sent so far, next in ~${rem.nextIn}h until paid.` : ''}</div>` : ''}
+        ${bk === 'balance' ? `<div class="bk-meta" style="color:var(--ochre);margin-top:6px;">Coverage complete — balance is due now.${rem ? ` ${rem.daysOverdue} day${rem.daysOverdue === 1 ? '' : 's'} overdue.${rem.hasLateFee ? ' A late fee has been applied.' : ''}${rem.interestCount ? ` Interest applied ${rem.interestCount} time${rem.interestCount === 1 ? '' : 's'} so far.` : ''} Pay now to stop further charges.` : ''}</div>` : ''}
         <div class="bk-code">Ref ${b.id}</div>
         ${b.coverage && (b.coverage.postedHours || b.coverage.dress || (b.coverage.techniques && b.coverage.techniques.length) || b.coverage.notes || b.coverage.pocName) ? `
           <div style="font-size:0.78rem;color:#5a6472;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
@@ -899,6 +944,7 @@ async function initDashboardPage(){
   await loadAvailability();
   await loadMyBookings();
   await loadMyStanding();
+  await loadMyInvoices();
   $('dash-greeting').textContent = `${user.name.split(' ').slice(-1)[0]}'s bookings`;
   $('verify-banner').classList.toggle('hidden', !!user.emailVerified || !!user.isAdmin);
   renderDash();

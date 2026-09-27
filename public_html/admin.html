@@ -60,6 +60,7 @@
           <button class="dash-tab" data-adm="promo">Promo codes</button>
           <button class="dash-tab" data-adm="inventory">Inventory alerts</button>
           <button class="dash-tab" data-adm="standing">Standing days</button>
+          <button class="dash-tab" data-adm="invoices">Invoices</button>
           <button class="dash-tab" data-adm="analytics">Analytics</button>
           <button class="dash-tab" data-adm="messages">Messages</button>
           <button class="dash-tab" data-adm="documents">Documents</button>
@@ -74,7 +75,7 @@
 
 <script src="assets/app-shared.js?v=5"></script>
 <script>
-let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null;
+let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null, adminInvoices = [];
 let chatThreads = [], activeChatThread = null, activeChatMessages = [];
 let docStatus = {};
 async function loadAdminBookings(){
@@ -1019,6 +1020,53 @@ function renderAdmin(){
       await loadAvailability();
       renderAdmin();
     }));
+  } else if (admView === 'invoices'){
+    const createHtml = `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Create a new invoice</h3>
+        <p style="font-size:0.8rem;color:#6b7280;margin-bottom:10px;">Charges the client's account immediately — they'll see it in their dashboard and get an email right away. They need an existing account.</p>
+        <label for="inv-email">Client email</label>
+        <input type="email" id="inv-email" placeholder="clinic@example.com">
+        <label for="inv-desc" style="margin-top:12px;">Description</label>
+        <input type="text" id="inv-desc" placeholder="e.g. Replacement adjustment table strap">
+        <label for="inv-amount" style="margin-top:12px;">Amount ($)</label>
+        <input type="number" id="inv-amount" min="0.01" step="0.01" placeholder="e.g. 45.00">
+        <div class="err-msg" id="inv-err"></div>
+        <button class="btn" id="inv-create" style="width:100%;margin-top:14px;">Create &amp; send invoice</button>
+      </div>`;
+    const listHtml = `
+      <div class="admin-card">
+        <h3>All invoices (${adminInvoices.length})</h3>
+        ${adminInvoices.length ? adminInvoices.map(i => `
+          <div class="blk" style="margin-bottom:8px;flex-direction:column;align-items:flex-start;">
+            <div style="width:100%;">
+              <div class="bd">${i.description} <span style="font-weight:400;color:#6b7280;">— ${i.userName} (${i.userEmail})</span></div>
+              <div class="bn">Ref ${i.id} · ${new Date(i.createdAt).toLocaleDateString()} · ${i.status === 'due' ? `${money(i.balanceDue)} owed` : i.status}</div>
+              ${(i.adjustmentsTotal || 0) !== 0 ? `<div class="bn">${i.adjustments.map(a => `${a.amount >= 0 ? '+' : '−'}${money(Math.abs(a.amount))} — ${a.reason}`).join(' · ')}</div>` : ''}
+            </div>
+            ${i.status === 'due' ? `<button class="btn ghost sm" data-void-invoice="${i.id}" style="margin-top:8px;color:var(--red);border-color:var(--red);">Void</button>` : ''}
+          </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No invoices yet.</p>`}
+      </div>`;
+    el.innerHTML = createHtml + listHtml;
+    $('inv-create').addEventListener('click', async () => {
+      const err = $('inv-err');
+      const email = $('inv-email').value.trim();
+      const description = $('inv-desc').value.trim();
+      const amount = parseFloat($('inv-amount').value);
+      err.textContent = '';
+      try {
+        await apiFetch('/api/invoice.php?action=admin_create', { method: 'POST', body: JSON.stringify({ email, description, amount }) });
+      } catch (e) { err.textContent = e.message; return; }
+      $('inv-email').value = ''; $('inv-desc').value = ''; $('inv-amount').value = '';
+      adminInvoices = (await apiFetch('/api/invoice.php?action=admin_list')).invoices || [];
+      renderAdmin();
+    });
+    el.querySelectorAll('[data-void-invoice]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!confirm('Void this invoice? This cannot be undone.')) return;
+      await apiFetch('/api/invoice.php?action=admin_void', { method: 'POST', body: JSON.stringify({ id: btn.dataset.voidInvoice }) });
+      adminInvoices = (await apiFetch('/api/invoice.php?action=admin_list')).invoices || [];
+      renderAdmin();
+    }));
   } else if (admView === 'analytics'){
     const an = latestAnalytics;
     if (!an){ el.innerHTML = `<div class="empty">Couldn't load analytics right now.</div>`; return; }
@@ -1224,6 +1272,9 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
       standingRequests = (await apiFetch('/api/standing.php?action=list_pending')).requests || [];
       standingAgreements = (await apiFetch('/api/standing.php?action=list_agreements')).agreements || [];
     } catch (e) { standingRequests = []; standingAgreements = []; }
+  }
+  if (admView === 'invoices'){
+    try { adminInvoices = (await apiFetch('/api/invoice.php?action=admin_list')).invoices || []; } catch (e) { adminInvoices = []; }
   }
   if (admView === 'analytics'){
     try { latestAnalytics = await apiFetch('/api/analytics.php?action=summary'); } catch (e) { latestAnalytics = null; }

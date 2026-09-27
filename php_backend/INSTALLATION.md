@@ -125,14 +125,38 @@ Minute: 0   Hour: 9,21   (twice daily — matches the "next reminder in ~Xh" tex
 Command: /usr/bin/php /home/[username]/php_backend/cron/payment_reminders.php
 ```
 
-This sends up to 10 reminders (roughly every 12 hours) to a clinic with an
-unpaid balance, then stops and needs a manual follow-up.
-
 **Note:** this `cron/payment_reminders.php` script is referenced above but
-does not exist yet in this codebase — the balance-due reminder emails this
-step describes are not currently being sent automatically. Ask if you'd
-like this built; it's a separate piece of work from the standing-day
-auto-pay cron below.
+does not exist in this codebase — this specific twice-daily reminder-email
+step was never built. It's superseded by `cron_billing.php` below, which
+covers the same underlying need (telling a client their balance is overdue)
+plus the actual late fee/interest charges, so no separate action is needed
+here unless you specifically want a reminder email with no fee attached.
+
+**Late fees, interest & invoices** (new): cPanel → **Cron Jobs** → **Add New Cron Job**:
+
+```
+Minute: 0   Hour: 3   (once daily, any quiet hour works)
+Command: /usr/bin/php /home/[username]/php_backend/cron_billing.php
+```
+
+This is what actually enforces the billing terms clients agree to:
+1. Auto-marks a booking's balance "due" the moment its last coverage date
+   passes (this is what starts the billing clock — it no longer depends on
+   staff remembering to click "mark complete").
+2. Applies a flat $25 late fee once a balance (booking or invoice) is 24+
+   hours overdue, and 1.5% interest every 7 days it stays unpaid after
+   that, compounding on the running balance — emailing the client and
+   `ADMIN_EMAIL` each time a fee is added.
+3. Applies the same late fee/interest rules to standalone invoices created
+   from the admin dashboard's "Invoices" tab (invoices are due immediately
+   on creation).
+Safe to run more than once a day or to miss a day — every fee/interest
+charge is gated on whether that exact charge has already been applied, so
+nothing double-charges. The $25/1.5%-per-7-days figures are set as
+constants (`LATE_FEE_AMOUNT`, `INTEREST_RATE_PER_PERIOD`) near the top of
+`config.php` — confirm these are compliant with Florida law (and any
+client agreement language) with your accountant/attorney before relying on
+them for real charges.
 
 **Standing day auto-pay** (new): cPanel → **Cron Jobs** → **Add New Cron Job**:
 

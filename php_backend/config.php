@@ -55,6 +55,16 @@ define('RECURRING_WINDOW_DAYS', 365);
 define('DEPOSIT_RATE', 0.10);
 define('CANCEL_FULL_REFUND_HOURS', 48);
 
+// Late fee / interest — a flat fee once a balance is 24+ hours overdue, then
+// interest re-applied every 7 days it stays unpaid, compounding on the
+// balance (including any fees/interest already added). Confirm these numbers
+// with an accountant/attorney before relying on them — allowed rates and
+// required disclosures for late fees and interest can vary by state.
+define('LATE_FEE_AMOUNT', 25.00);
+define('LATE_FEE_GRACE_HOURS', 24);
+define('INTEREST_RATE_PER_PERIOD', 0.015);
+define('INTEREST_PERIOD_DAYS', 7);
+
 const RATES = [
     'central' => ['half' => 325, 'full' => 575, 'label' => 'Central FL'],
     'north'   => ['half' => 375, 'full' => 625, 'label' => 'North FL'],
@@ -558,6 +568,31 @@ function apply_successful_payment(PDO $pdo, string $bookingId, string $intentId,
     return true;
 }
 
+function apply_successful_invoice_payment(PDO $pdo, string $invoiceId, string $intentId, float $amount, ?string $chargeId) {
+    $exists = $pdo->prepare('SELECT id FROM payments WHERE stripe_payment_intent = ? AND status = "succeeded"');
+    $exists->execute([$intentId]);
+    if ($exists->fetch()) return false;
+
+    $stmt = $pdo->prepare('SELECT i.*, u.email AS user_email, u.name AS user_name FROM invoices i JOIN users u ON u.id = i.user_id WHERE i.id = ?');
+    $stmt->execute([$invoiceId]);
+    $inv = $stmt->fetch();
+    if (!$inv) return false;
+
+    $newPaid = round((float)$inv['paid'] + $amount, 2);
+    $remaining = invoice_balance_due($pdo, array_merge($inv, ['paid' => $newPaid]));
+    $stmt = $pdo->prepare('UPDATE invoices SET paid = ?' . ($remaining <= 0 ? ", status = 'paid'" : '') . ' WHERE id = ?');
+    $stmt->execute([$newPaid, $invoiceId]);
+
+    $stmt = $pdo->prepare('INSERT INTO payments (invoice_id, user_id, amount, purpose, stripe_payment_intent, stripe_charge_id, status) VALUES (?, ?, ?, "invoice", ?, ?, "succeeded")');
+    $stmt->execute([$invoiceId, $inv['user_id'], $amount, $intentId, $chargeId]);
+
+    send_email($inv['user_email'], "Payment received — {$inv['description']}",
+        '<p>Thank you — your payment of $' . number_format($amount, 2) . " for \"{$inv['description']}\" has been received.</p>");
+    send_email(ADMIN_EMAIL, "Invoice paid — {$invoiceId}",
+        "<p>{$inv['user_name']} paid $" . number_format($amount, 2) . " on invoice {$invoiceId} ({$inv['description']}).</p>");
+    return true;
+}
+
 // MySQL DATETIME/TIMESTAMP strings ("2025-01-15 10:23:45") aren't reliably
 // parsed by `new Date(...)` in every browser — convert to ISO 8601 so the
 // frontend's date math always works.
@@ -613,6 +648,76 @@ function booking_adjustments_total(PDO $pdo, string $bookingId) {
 // Can be negative (a credit owed to the client).
 function booking_balance_due(PDO $pdo, array $booking) {
     return round((float)$booking['total'] + booking_adjustments_total($pdo, $booking['id']) - (float)$booking['paid'], 2);
+}
+
+// ---------- STANDALONE INVOICES ----------
+// A provider-created charge not tied to any booking (a broken piece of
+// equipment, a no-show fee, anything ad hoc) — mirrors the booking
+// adjustments ledger pattern above.
+
+function invoice_adjustments_total(PDO $pdo, string $invoiceId) {
+    $stmt = $pdo->prepare('SELECT COALESCE(SUM(amount), 0) FROM invoice_adjustments WHERE invoice_id = ?');
+    $stmt->execute([$invoiceId]);
+    return (float)$stmt->fetchColumn();
+}
+
+function invoice_balance_due(PDO $pdo, array $invoice) {
+    return round((float)$invoice['amount'] + invoice_adjustments_total($pdo, $invoice['id']) - (float)$invoice['paid'], 2);
+}
+
+function invoice_to_json(PDO $pdo, array $r) {
+    $stmt = $pdo->prepare('SELECT amount, reason, created_by, created_at FROM invoice_adjustments WHERE invoice_id = ? ORDER BY created_at');
+    $stmt->execute([$r['id']]);
+    $adjustmentRows = $stmt->fetchAll();
+    $adjustmentsTotal = round(array_sum(array_column($adjustmentRows, 'amount')), 2);
+    return [
+        'id' => $r['id'],
+        'description' => $r['description'],
+        'amount' => (float)$r['amount'],
+        'paid' => (float)$r['paid'],
+        'status' => $r['status'],
+        'adjustments' => array_map(fn($a) => [
+            'amount' => (float)$a['amount'], 'reason' => $a['reason'], 'createdBy' => $a['created_by'], 'createdAt' => to_iso($a['created_at']),
+        ], $adjustmentRows),
+        'adjustmentsTotal' => $adjustmentsTotal,
+        'balanceDue' => invoice_balance_due($pdo, $r),
+        'createdAt' => to_iso($r['created_at']),
+    ];
+}
+
+// Applies the standard automatic late fee (once, 24h after due) and
+// compounding weekly interest to any due booking/invoice — shared by
+// cron_billing.php for both bookings and standalone invoices, since the
+// logic is identical apart from which ledger table and email copy is used.
+// $dueAt: DateTime the balance became due. $currentBalance: callable that
+// returns the fresh current balance (re-read after each insert, since
+// interest compounds on top of previously-added fees/interest).
+function apply_late_billing(PDO $pdo, string $ledgerTable, string $foreignKeyCol, string $id, DateTime $dueAt, callable $currentBalance, callable $insertAdjustment, callable $notify) {
+    $now = new DateTime();
+    $hoursLate = ($now->getTimestamp() - $dueAt->getTimestamp()) / 3600;
+    if ($hoursLate < LATE_FEE_GRACE_HOURS) return;
+
+    $lateFeeReason = 'Late fee (24+ hours overdue)';
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM {$ledgerTable} WHERE {$foreignKeyCol} = ? AND reason = ?");
+    $stmt->execute([$id, $lateFeeReason]);
+    if ((int)$stmt->fetchColumn() === 0 && $currentBalance() > 0) {
+        $insertAdjustment(LATE_FEE_AMOUNT, $lateFeeReason);
+        $notify('late_fee', LATE_FEE_AMOUNT, $lateFeeReason);
+    }
+
+    $weeksLate = (int)floor($hoursLate / (INTEREST_PERIOD_DAYS * 24));
+    for ($week = 1; $week <= $weeksLate; $week++) {
+        $reason = "Interest — week {$week} overdue";
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM {$ledgerTable} WHERE {$foreignKeyCol} = ? AND reason = ?");
+        $stmt->execute([$id, $reason]);
+        if ((int)$stmt->fetchColumn() > 0) continue;
+        $balance = $currentBalance();
+        if ($balance <= 0) break;
+        $interest = round($balance * INTEREST_RATE_PER_PERIOD, 2);
+        if ($interest <= 0) continue;
+        $insertAdjustment($interest, $reason);
+        $notify('interest', $interest, $reason);
+    }
 }
 
 function booking_to_json(PDO $pdo, array $r) {
