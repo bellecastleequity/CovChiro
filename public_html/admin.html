@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=9">
+<link rel="stylesheet" href="assets/style.css?v=10">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
 <body>
@@ -36,22 +36,38 @@
       <p>Block out dates you're unavailable. Blocked dates and confirmed bookings are both removed from the public booking calendar automatically.</p>
     </div>
     <div class="admin-grid">
-      <div class="admin-card">
-        <h3>Block out dates</h3>
-        <label for="bl-start">From</label>
-        <input type="date" id="bl-start">
-        <label for="bl-end">To (leave blank for a single day)</label>
-        <input type="date" id="bl-end">
-        <label for="bl-scope">Scope</label>
-        <select id="bl-scope">
-          <option value="all">All day — fully unavailable</option>
-          <option value="am">Mornings only (before 12pm)</option>
-          <option value="pm">Afternoons only (after 12pm)</option>
-        </select>
-        <label for="bl-note">Reason (private, for your reference)</label>
-        <input type="text" id="bl-note" placeholder="e.g. CE seminar, family, USVI trip">
-        <button class="btn" id="bl-add" style="width:100%;margin-top:16px;">Block these dates</button>
-        <div class="err-msg" id="bl-err"></div>
+      <div>
+        <div class="admin-card">
+          <h3>Block out dates</h3>
+          <label for="bl-start">From</label>
+          <input type="date" id="bl-start">
+          <label for="bl-end">To (leave blank for a single day)</label>
+          <input type="date" id="bl-end">
+          <label for="bl-scope">Scope</label>
+          <select id="bl-scope">
+            <option value="all">All day — fully unavailable</option>
+            <option value="am">Mornings only (before 12pm)</option>
+            <option value="pm">Afternoons only (after 12pm)</option>
+          </select>
+          <label for="bl-note">Reason (private, for your reference)</label>
+          <input type="text" id="bl-note" placeholder="e.g. CE seminar, family, USVI trip">
+          <button class="btn" id="bl-add" style="width:100%;margin-top:16px;">Block these dates</button>
+          <div class="err-msg" id="bl-err"></div>
+        </div>
+        <div class="admin-card" id="quickcal-card" style="margin-top:20px;">
+          <div class="qc-nav">
+            <button class="btn ghost sm" id="qc-prev" aria-label="Previous month">‹</button>
+            <h3 style="margin:0;font-size:0.95rem;" id="qc-month-label"></h3>
+            <button class="btn ghost sm" id="qc-next" aria-label="Next month">›</button>
+          </div>
+          <div class="qc-grid" id="qc-grid"></div>
+          <div class="qc-legend">
+            <span><i class="qc-swatch qc-green"></i>Booked</span>
+            <span><i class="qc-swatch qc-yellow"></i>Pending</span>
+            <span><i class="qc-swatch qc-blocked">×</i>Blocked</span>
+            <span><i class="qc-swatch qc-white"></i>Open</span>
+          </div>
+        </div>
       </div>
       <div>
         <div class="dash-tabs">
@@ -94,6 +110,60 @@ let earningsFilters = { service: 'all', region: 'all', period: 'month', anchor: 
 let latestCronStatus = null;
 let chatThreads = [], activeChatThread = null, activeChatMessages = [];
 let docStatus = {};
+let qcViewDate = new Date(); qcViewDate.setDate(1); qcViewDate.setHours(0, 0, 0, 0);
+// Two generic "shift" slots per day rather than tracking AM/PM specifically —
+// a standing-day agreement's half-day dates don't carry AM/PM granularity,
+// so slot position is just "first commitment, second commitment" for that
+// date, not tied to a literal morning/afternoon.
+function quickCalDaySlots(dateStr){
+  let slots = [];
+  for (const b of adminBookings){
+    if (b.status === 'cancelled') continue;
+    const idx = (b.dates || []).indexOf(dateStr);
+    if (idx === -1) continue;
+    const color = b.status === 'pending' ? 'yellow' : 'green';
+    const dayType = (b.dayTypes || [])[idx];
+    slots.push(color);
+    if (dayType === 'full') slots.push(color);
+  }
+  for (const a of (standingAgreements || [])){
+    for (const sd of (a.dates || [])){
+      if (sd.date !== dateStr || sd.status === 'cancelled') continue;
+      slots.push('green');
+      if (sd.type === 'full') slots.push('green');
+    }
+  }
+  slots = slots.slice(0, 2);
+  while (slots.length < 2) slots.push(null);
+  const blockedAll = blackouts.some(bl => bl.scope === 'all' && dateStr >= bl.start && dateStr <= bl.end);
+  const blockedHalf = blackouts.some(bl => bl.scope !== 'all' && dateStr >= bl.start && dateStr <= bl.end);
+  if (blockedAll) slots = ['blocked', 'blocked'];
+  else if (blockedHalf) slots = slots.map(s => s || 'blocked');
+  return slots;
+}
+function renderQuickCalendar(){
+  const grid = $('qc-grid');
+  if (!grid) return;
+  const year = qcViewDate.getFullYear(), month = qcViewDate.getMonth();
+  $('qc-month-label').textContent = qcViewDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayStr = localDateStr(new Date());
+  const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  let html = DOW.map(d => `<div class="qc-dow">${d}</div>`).join('');
+  for (let i = 0; i < firstDow; i++) html += `<div class="qc-day qc-empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++){
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const slots = quickCalDaySlots(dateStr);
+    const barHtml = s => s === 'blocked' ? `<div class="qc-bar qc-blocked">×</div>` : `<div class="qc-bar${s ? ' qc-' + s : ''}"></div>`;
+    html += `<div class="qc-day${dateStr === todayStr ? ' qc-today' : ''}" title="${dateStr}">
+      <div class="qc-daynum">${d}</div>${barHtml(slots[0])}${barHtml(slots[1])}
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+$('qc-prev').addEventListener('click', () => { qcViewDate.setMonth(qcViewDate.getMonth() - 1); renderQuickCalendar(); });
+$('qc-next').addEventListener('click', () => { qcViewDate.setMonth(qcViewDate.getMonth() + 1); renderQuickCalendar(); });
 async function loadAdminBookings(){
   try { adminBookings = (await apiFetch('/api/booking.php?action=list_all')).bookings || []; }
   catch (e) { adminBookings = []; }
@@ -434,6 +504,7 @@ function earnMonthlyInsights(payments){
 }
 function renderAdmin(){
   const el = $('admin-list');
+  renderQuickCalendar();
   if (admView === 'blocks'){
     if (!blackouts.length){
       el.innerHTML = `<div class="empty">No blocked dates. Add one on the left to close off time you're unavailable.</div>`;
@@ -1947,6 +2018,8 @@ async function initAdminPage(){
   renderAuthState();
   if (!user || !isAdmin){ window.location.href = 'index.html'; return; }
   await loadAvailability();
+  await loadAdminBookings();
+  try { standingAgreements = (await apiFetch('/api/standing.php?action=list_agreements')).agreements || []; } catch (e) { standingAgreements = []; }
   renderAdmin();
 }
 initAdminPage();

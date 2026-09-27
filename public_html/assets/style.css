@@ -282,6 +282,24 @@
   .admin-grid{display:grid;grid-template-columns:340px 1fr;gap:34px;align-items:start;}
   .admin-card{background:var(--white);border:1px solid var(--line);border-radius:5px;padding:22px;}
   .admin-card-photo{width:100%;aspect-ratio:4/5;object-fit:cover;object-position:top;border-radius:4px;margin-bottom:14px;display:block;}
+  .qc-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .qc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+  .qc-dow{font-size:0.6rem;text-align:center;color:#8a8171;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:0.02em;padding-bottom:4px;}
+  .qc-day{aspect-ratio:1/1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:3px 2px;border-radius:3px;background:var(--paper-2);cursor:default;}
+  .qc-day.qc-empty{background:none;}
+  .qc-day.qc-today{box-shadow:inset 0 0 0 1.5px var(--teal-dark);}
+  .qc-daynum{font-size:0.66rem;color:#4b5563;line-height:1.2;}
+  .qc-bar{width:100%;height:5px;border-radius:2px;margin-top:2px;background:var(--white);border:1px solid var(--line);}
+  .qc-bar.qc-green{background:var(--teal);border-color:var(--teal);}
+  .qc-bar.qc-yellow{background:var(--ochre);border-color:var(--ochre);}
+  .qc-bar.qc-blocked{background:none;border:none;color:var(--red);font-weight:700;font-size:0.6rem;line-height:5px;text-align:center;}
+  .qc-legend{display:flex;flex-wrap:wrap;gap:5px 12px;margin-top:12px;font-size:0.68rem;color:#6b7280;}
+  .qc-legend span{display:flex;align-items:center;}
+  .qc-swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;}
+  .qc-swatch.qc-green{background:var(--teal);}
+  .qc-swatch.qc-yellow{background:var(--ochre);}
+  .qc-swatch.qc-white{background:var(--white);border:1px solid var(--line);}
+  .qc-swatch.qc-blocked{width:auto;height:auto;background:none;color:var(--red);font-weight:700;font-size:0.75rem;line-height:1;margin-right:3px;}
   .an-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
   .an-card{background:var(--white);border:1px solid var(--line);border-radius:5px;padding:18px;}
   .an-label{font-family:'IBM Plex Mono',monospace;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.04em;color:#8a8171;}
