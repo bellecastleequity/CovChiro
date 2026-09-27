@@ -99,14 +99,33 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="assets/qrcode.js"></script>
 <script src="assets/app-shared.js?v=10"></script>
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null, adminInvoices = [];
 let allLeads = [], leadsSearchQuery = '';
+let promoLandingOpen = null;
+function promoLandingUrl(p){
+  return `${p.landingSite === 'florida' ? 'https://thefloridachiropractor.com' : 'https://coveragechiropractor.com'}/offer/${encodeURIComponent(p.code)}`;
+}
+// Renders a crisp, print-sized QR code (quiet-zone included) into a canvas
+// using the vendored qrcode-generator library (assets/qrcode.js).
+function drawQrCode(canvas, text){
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  const n = qr.getModuleCount(), margin = 4, scale = Math.max(4, Math.floor(1024 / (n + margin * 2)));
+  const size = (n + margin * 2) * scale;
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = '#1C2430';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) ctx.fillRect((c + margin) * scale, (r + margin) * scale, scale, scale);
+}
 function leadMatchesSearch(l, query){
   const q = (query || '').trim().toLowerCase();
   if (!q) return true;
-  const haystack = [l.name, l.email, l.code, l.site, l.status].filter(Boolean).join(' ').toLowerCase();
+  const haystack = [l.name, l.email, l.code, l.site, l.status, l.campaign || 'welcome pop-up'].filter(Boolean).join(' ').toLowerCase();
   return q.split(/\s+/).every(term => haystack.includes(term));
 }
 let showCancelledBookings = false;
@@ -1085,17 +1104,88 @@ function renderAdmin(){
         const usedUp = p.maxUses != null && p.usedCount >= p.maxUses;
         const status = !p.active ? 'Disabled' : expired ? 'Expired' : usedUp ? 'Used up' : 'Active';
         const statusColor = status === 'Active' ? 'var(--teal-dark)' : 'var(--red)';
+        const offer = p.type === 'percent' ? p.value + '% off' : money(p.value) + ' off';
+        const cs = p.campaignStats || { signups: 0, bookings: 0, revenue: 0 };
+        const url = promoLandingUrl(p);
+        const editorHtml = promoLandingOpen !== p.code ? '' : `
+        <div class="admin-card" style="margin:-4px 0 14px;border-color:var(--teal);">
+          <h4 style="margin-top:0;">Landing page — ${p.code}</h4>
+          <label class="tq" style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <input type="checkbox" id="lp-enabled" ${p.landingEnabled ? 'checked' : ''}>
+            <span>Landing page on</span>
+          </label>
+          <p style="font-size:0.8rem;color:#6b7280;margin-top:6px;">While it's on, ${p.code} itself can't be used at checkout. Each person who signs up on the page gets their own single-use version (like ${p.code}-7K2F), tied to their email and good for 90 days or until this code's own expiry, whichever comes first. They also get the same follow-up emails as the welcome offer.</p>
+          <label for="lp-site">Show on</label>
+          <select id="lp-site">
+            <option value="coverage" ${p.landingSite === 'coverage' ? 'selected' : ''}>CoverageChiropractor.com — office coverage</option>
+            <option value="florida" ${p.landingSite === 'florida' ? 'selected' : ''}>TheFloridaChiropractor.com — home visits &amp; events</option>
+          </select>
+          <label for="lp-headline">Headline</label>
+          <input type="text" id="lp-headline" maxlength="200" value="${p.landingHeadline || ''}" placeholder="${offer} your next booking">
+          <label for="lp-desc">Description</label>
+          <textarea id="lp-desc" rows="3" maxlength="1000" placeholder="A sentence or two about the offer — who it's for, why now." style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:3px;background:var(--paper);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;resize:vertical;">${p.landingDescription || ''}</textarea>
+          <button class="btn sm" id="lp-save" style="margin-top:12px;">Save landing page</button>
+          <div class="err-msg" id="lp-err"></div>
+          ${p.landingEnabled ? `
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+            <label for="lp-url">Share link</label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="lp-url" value="${url}" readonly style="flex:1;min-width:0;">
+              <button class="btn ghost sm" id="lp-copy" type="button">Copy</button>
+            </div>
+            <a href="${url}?preview=1" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-size:0.82rem;color:var(--teal-dark);">Preview page ↗</a>
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:14px;">
+              <canvas id="lp-qr" style="width:160px;height:160px;border:1px solid var(--line);border-radius:4px;"></canvas>
+              <div>
+                <p style="font-size:0.8rem;color:#6b7280;max-width:260px;">For flyers, business cards, and signage — scanning it opens the page above.</p>
+                <a class="btn ghost sm" id="lp-qr-download" download="${p.code}-qr.png" style="margin-top:8px;display:inline-block;">Download QR code (PNG)</a>
+              </div>
+            </div>
+          </div>` : ''}
+        </div>`;
         return `
         <div class="blk ${p.active && !expired && !usedUp ? 'booked' : ''}">
-          <div>
-            <div class="bd">${p.code}</div>
-            <div class="bn">${p.type === 'percent' ? p.value + '% off' : money(p.value) + ' off'} · used ${p.usedCount}${p.maxUses != null ? ' / ' + p.maxUses : ''}${p.expiresAt ? ' · expires ' + p.expiresAt : ''}${p.isWelcome ? ' · welcome offer' : ''}${p.assignedEmail ? ' · for ' + p.assignedEmail : ''}</div>
+          <div style="min-width:0;">
+            <div class="bd">${p.code}${p.landingEnabled ? ' <span style="font-family:\'IBM Plex Sans\',sans-serif;font-size:0.7rem;font-weight:600;color:var(--white);background:var(--ochre);padding:2px 8px;border-radius:10px;margin-left:6px;">Landing page on</span>' : ''}</div>
+            <div class="bn">${offer} · used ${p.usedCount}${p.maxUses != null ? ' / ' + p.maxUses : ''}${p.expiresAt ? ' · expires ' + p.expiresAt : ''}</div>
+            ${p.landingEnabled || cs.signups ? `<div class="bn">${p.landingVisits} page visit${p.landingVisits !== 1 ? 's' : ''} · ${cs.signups} sign-up${cs.signups !== 1 ? 's' : ''} · ${cs.bookings} booking${cs.bookings !== 1 ? 's' : ''} · ${money(cs.revenue)} revenue</div>` : ''}
             <div class="bn" style="color:${statusColor};margin-top:3px;font-weight:600;">${status}</div>
           </div>
-          <button class="btn ghost sm" data-toggle-promo="${p.code}">${p.active ? 'Disable' : 'Enable'}</button>
-        </div>`;
+          <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
+            <button class="btn ghost sm" data-landing-toggle="${p.code}">${promoLandingOpen === p.code ? 'Close' : 'Landing page'}</button>
+            <button class="btn ghost sm" data-toggle-promo="${p.code}">${p.active ? 'Disable' : 'Enable'}</button>
+          </div>
+        </div>${editorHtml}`;
       }).join('');
       el.innerHTML = lmHtml + formHtml + rows;
+      el.querySelectorAll('[data-landing-toggle]').forEach(btn => btn.addEventListener('click', () => {
+        promoLandingOpen = promoLandingOpen === btn.dataset.landingToggle ? null : btn.dataset.landingToggle;
+        renderAdmin();
+      }));
+      const openPromo = promoCodes.find(p => p.code === promoLandingOpen);
+      if (openPromo && $('lp-save')) {
+        $('lp-save').addEventListener('click', async () => {
+          const enabled = $('lp-enabled').checked;
+          if (enabled && !openPromo.landingEnabled && !confirm(`Turn on the landing page for ${openPromo.code}? From now on ${openPromo.code} itself can't be used at checkout — only the personal codes issued on the page. Anyone already holding ${openPromo.code} won't be able to use it.`)) return;
+          $('lp-err').textContent = '';
+          try {
+            await apiFetch('/api/promo.php?action=save_landing', { method: 'POST', body: JSON.stringify({
+              code: openPromo.code, enabled, site: $('lp-site').value, headline: $('lp-headline').value.trim(), description: $('lp-desc').value.trim(),
+            })});
+          } catch (e) { $('lp-err').textContent = e.message; return; }
+          promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
+          renderAdmin();
+          showToast(enabled ? `Landing page for ${openPromo.code} saved.` : `Landing page for ${openPromo.code} turned off.`);
+        });
+        if ($('lp-qr')) {
+          drawQrCode($('lp-qr'), promoLandingUrl(openPromo));
+          $('lp-qr-download').href = $('lp-qr').toDataURL('image/png');
+          $('lp-copy').addEventListener('click', async () => {
+            try { await navigator.clipboard.writeText($('lp-url').value); showToast('Link copied.'); }
+            catch (e) { $('lp-url').select(); showToast('Select the link and copy it manually.', 'error'); }
+          });
+        }
+      }
     }
     $('lm-toggle').addEventListener('change', async (e) => {
       lastMinuteEnabled = e.target.checked;
@@ -1807,8 +1897,8 @@ function renderAdmin(){
     const L = an.leads || { captured: 0, active: 0, converted: 0, unsubscribed: 0, expired: 0, conversionRate: null, recent: [], tableMissing: false };
     const cardsHtml = `
       <div class="an-grid">
-        ${metricCard('Welcome leads captured', L.tableMissing ? 'Not set up' : L.captured, L.tableMissing ? 'run migration_012_lead_capture.sql' : `${L.active} active · ${L.unsubscribed} unsubscribed · ${L.expired} expired`)}
-        ${metricCard('Lead → first booking', L.captured ? `${Math.round((L.conversionRate || 0) * 100)}%` : 'N/A', L.captured ? `${L.converted} of ${L.captured} welcome-offer signups booked` : 'no welcome-offer signups yet')}
+        ${metricCard('Leads captured', L.tableMissing ? 'Not set up' : L.captured, L.tableMissing ? 'run migration_012_lead_capture.sql' : `${L.active} active · ${L.unsubscribed} unsubscribed · ${L.expired} expired`)}
+        ${metricCard('Lead → booking', L.captured ? `${Math.round((L.conversionRate || 0) * 100)}%` : 'N/A', L.captured ? `${L.converted} of ${L.captured} signups booked (pop-up + offer pages)` : 'no signups yet')}
         ${metricCard('Average booking value', money(an.avgBookingValue), `${an.totalEver} bookings tracked`)}
         ${metricCard('Cancellation rate', `${Math.round(an.cancellationRate*100)}%`, `${an.cancelledCount} of ${an.totalEver} ever created`)}
         ${metricCard('Booking lead time', an.avgLeadTime != null ? `${Math.round(an.avgLeadTime)} days` : 'Not enough data', an.leadTimeSampleSize ? `avg over ${an.leadTimeSampleSize} bookings` : 'needs bookings made after this update')}
@@ -1878,12 +1968,12 @@ function renderAdmin(){
           </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No bookings yet.</p>`}
       </div>`;
 
-    const LEAD_STATUS = { active: ['Active', 'var(--teal-dark)'], converted: ['Booked', 'var(--teal-dark)'], unsubscribed: ['Unsubscribed', '#8a8171'], expired: ['Expired', 'var(--red)'] };
+    const LEAD_STATUS = { active: ['Active', 'var(--teal-dark)'], converted: ['Booked', 'var(--teal-dark)'], unsubscribed: ['Unsubscribed', '#8a8171'], expired: ['Expired', 'var(--red)'], superseded: ['Emails paused — signed up for a newer offer', '#8a8171'] };
     const filteredLeads = allLeads.filter(l => leadMatchesSearch(l, leadsSearchQuery));
     const leadsHtml = L.tableMissing ? '' : `
       <div class="admin-card" style="margin-top:20px;">
         <h3>Welcome-offer leads</h3>
-        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:10px;">Visitors who took the 15% pop-up offer on either site. Each gets a single-use code tied to their email and a short email sequence (days 3, 10, 30, 80) until they book, unsubscribe, or the code expires.</p>
+        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:10px;">Visitors who signed up through the 15% welcome pop-up or a campaign offer page. Each gets a single-use code tied to their email and a short follow-up sequence until they book, unsubscribe, or the code expires.</p>
         ${allLeads.length ? `<input type="text" id="leads-search" placeholder="Search by name, email, code, site, or status…" value="${(leadsSearchQuery || '').replace(/"/g, '&quot;')}" style="width:100%;max-width:440px;padding:9px 12px;border:1px solid var(--line);border-radius:4px;font-size:0.88rem;font-family:inherit;margin-bottom:14px;">` : ''}
         ${!allLeads.length ? `<p style="font-size:0.85rem;color:#6b7280;">No signups yet — the pop-up appears to new visitors after about 8 seconds or once they've scrolled 40% of the homepage.</p>`
           : !filteredLeads.length ? `<p style="font-size:0.85rem;color:#6b7280;">No leads match your search.</p>`
@@ -1891,7 +1981,7 @@ function renderAdmin(){
           <div class="blk" style="margin-bottom:8px;">
             <div>
               <div class="bd">${l.name} <span style="font-weight:400;color:#6b7280;">· ${l.email}</span></div>
-              <div class="bn">${l.site === 'florida' ? 'thefloridachiropractor.com' : 'coveragechiropractor.com'} · ${l.code || 'no code'}${l.expiresAt ? ' · expires ' + l.expiresAt : ''} · signed up ${new Date(l.createdAt).toLocaleDateString()}${l.status === 'active' ? ` · ${l.dripStep} of 4 follow-ups sent` : ''}${l.convertedAt ? ' · booked ' + new Date(l.convertedAt).toLocaleDateString() : ''}</div>
+              <div class="bn">${l.campaign ? `via ${l.campaign} offer page` : 'via welcome pop-up'} · ${l.site === 'florida' ? 'thefloridachiropractor.com' : 'coveragechiropractor.com'} · ${l.code || 'no code'}${l.expiresAt ? ' · expires ' + l.expiresAt : ''} · signed up ${new Date(l.createdAt).toLocaleDateString()}${l.status === 'active' ? ` · ${l.dripStep} of 4 follow-ups sent` : ''}${l.convertedAt ? ' · booked ' + new Date(l.convertedAt).toLocaleDateString() : ''}</div>
               <div class="bn" style="color:${color};margin-top:3px;font-weight:600;">${label}</div>
               <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
                 ${l.status === 'active' ? `<button class="btn ghost sm" data-lead-resend="${l.id}">Resend email</button>` : ''}

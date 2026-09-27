@@ -136,7 +136,7 @@ function handle_create(PDO $pdo) {
     if ($promoRow) {
         $upd = $pdo->prepare('UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ?');
         $upd->execute([$promoRow['id']]);
-        if (!empty($promoRow['is_welcome'])) mark_lead_converted($pdo, $promoRow['code'], $bookingId);
+        mark_lead_converted($pdo, $promoRow['code'], $bookingId);
     }
 
     json_response([

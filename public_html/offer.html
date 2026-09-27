@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5103Z9E4B8"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-5103Z9E4B8');
+</script>
+<title>Special offer | CoverageChiropractor.com</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="/assets/logo-square.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=13">
+<style>
+  .offer-hero{padding:56px 0 64px;background:linear-gradient(135deg, var(--paper) 0%, var(--paper-2) 60%, rgba(184,134,63,0.16) 100%);}
+  .offer-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,0.9fr);gap:44px;align-items:start;}
+  .offer-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ochre);font-weight:600;display:block;margin-bottom:14px;}
+  .offer-hero h1{font-size:2.7rem;line-height:1.08;margin-bottom:16px;}
+  .offer-badge-lg{display:inline-flex;align-items:center;gap:10px;background:var(--ochre);color:var(--white);padding:9px 16px;border-radius:20px;font-size:0.9rem;font-weight:600;margin-bottom:18px;}
+  .offer-desc{font-size:1.04rem;color:#3d4552;line-height:1.6;max-width:560px;white-space:pre-line;}
+  .offer-points{list-style:none;margin:24px 0 0;padding:0;display:grid;gap:10px;}
+  .offer-points li{display:flex;gap:10px;align-items:flex-start;font-size:0.93rem;color:#3d4552;}
+  .offer-points li::before{content:'';flex-shrink:0;width:18px;height:18px;margin-top:2px;border-radius:50%;background:var(--teal) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center/11px no-repeat;}
+  .offer-card{background:var(--white);border:1px solid var(--line);border-top:5px solid var(--ochre);border-radius:8px;padding:28px;box-shadow:0 14px 34px rgba(28,36,48,0.10);}
+  .offer-card h2{font-size:1.45rem;margin-bottom:6px;}
+  .offer-card .sub{font-size:0.88rem;color:#6b7280;margin-bottom:6px;}
+  .offer-card label{display:block;font-size:0.75rem;color:#4b5563;margin:14px 0 5px;}
+  .offer-card input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:3px;background:var(--paper);font-family:'IBM Plex Sans',sans-serif;font-size:0.95rem;}
+  .offer-card .btn{width:100%;margin-top:18px;padding:13px 20px;font-size:0.98rem;}
+  .offer-fine{font-size:0.72rem;color:#8a8171;line-height:1.45;margin-top:12px;}
+  .offer-code{font-family:'IBM Plex Mono',monospace;font-size:1.6rem;font-weight:600;letter-spacing:0.05em;color:var(--teal-dark);background:var(--paper-2);border:1px dashed var(--teal);border-radius:6px;padding:16px 12px;margin:16px 0;text-align:center;user-select:all;}
+  .offer-ended{text-align:center;padding:90px 0;}
+  .offer-ended h1{font-size:2.2rem;margin-bottom:12px;}
+  .offer-loading{padding:120px 0;text-align:center;color:#8a8171;}
+  @media (max-width:820px){
+    .offer-grid{grid-template-columns:minmax(0,1fr);gap:28px;}
+    .offer-hero{padding:34px 0 44px;}
+    .offer-hero h1{font-size:2.05rem;}
+    .offer-card{padding:22px 18px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a href="/" class="brand" style="color:inherit;text-decoration:none;"><img src="/assets/logo-square.png" alt="Coverage Chiropractor logo" class="brand-logo"><div class="brand-text">Coverage<span> Chiropractor</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Available Statewide: Florida</div></div></a>
+    <div class="hdr-actions"><a href="/" class="btn ghost sm">Visit the site</a></div>
+  </div>
+</header>
+
+<main id="offer-root">
+  <div class="offer-loading wrap">Loading your offer…</div>
+</main>
+
+<footer><div class="wrap"><div>coveragechiropractor.com · Chiropractic office coverage &amp; vacation coverage</div><div>© 2026 Michael L. McPherson, D.C.</div></div></footer>
+
+<script>
+(function(){
+  const SITE = 'coverage';
+  const POINTS = [
+    'Licensed, insured Doctor of Chiropractic — anywhere in Florida',
+    'Book by the day, week, or month at published rates, no agency markup',
+    'Instant online confirmation with just a 10% deposit',
+  ];
+  const root = document.getElementById('offer-root');
+  const params = new URLSearchParams(location.search);
+  const code = (params.get('c') || location.pathname.split('/offer/')[1] || '').replace(/\/+$/, '').trim().toUpperCase();
+  const preview = params.get('preview') ? '&preview=1' : '';
+  const bookAnchor = SITE === 'florida' ? '#book' : '#rates';
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
+
+  async function api(url, opts){
+    const res = await fetch(url, Object.assign({ credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } }, opts || {}));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Something went wrong. Try again.');
+    return data;
+  }
+
+  function renderEnded(msg){
+    root.innerHTML = `<section class="offer-ended"><div class="wrap">
+      <span class="offer-eyebrow">Offer unavailable</span>
+      <h1>${esc(msg || 'This offer has ended')}</h1>
+      <p class="offer-desc" style="margin:0 auto 24px;">You can still book at our standard published rates — and first-time practices get an automatic discount.</p>
+      <a href="/index.html${bookAnchor}" class="btn">See rates &amp; availability</a>
+    </div></section>`;
+  }
+
+  function render(c){
+    // Headline/description arrive HTML-escaped from the server (sanitized on save).
+    const headline = c.headline || `${esc(c.offer)} your next booking`;
+    document.title = `${c.offer} — CoverageChiropractor.com`;
+    root.innerHTML = `<section class="offer-hero"><div class="wrap offer-grid">
+      <div>
+        <span class="offer-eyebrow">Limited-time offer</span>
+        <h1>${headline}</h1>
+        <div class="offer-badge-lg">${esc(c.offer)} · good through ${esc(fmtDate(c.expiresAt))}</div>
+        ${c.description ? `<p class="offer-desc">${c.description}</p>` : ''}
+        <ul class="offer-points">${POINTS.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
+      </div>
+      <div class="offer-card" id="offer-card">
+        <div id="offer-form">
+          <h2>Claim your ${esc(c.offer)}</h2>
+          <p class="sub">We'll email your personal code right away, so it's there whenever you're ready to book.</p>
+          <label for="of-name">Your name</label>
+          <input type="text" id="of-name" autocomplete="name">
+          <label for="of-email">Email</label>
+          <input type="email" id="of-email" autocomplete="email" placeholder="you@yourpractice.com">
+          <div class="err-msg" id="of-err"></div>
+          <button class="btn" id="of-submit">Get my code</button>
+          <p class="offer-fine">Single use and tied to your email. Can't be combined with other promo codes. We'll send a few helpful emails while your code is active — unsubscribe any time.</p>
+        </div>
+        <div id="offer-done" class="hidden">
+          <span class="offer-eyebrow">You're in</span>
+          <h2>Your code is ready</h2>
+          <div class="offer-code" id="of-code"></div>
+          <p class="sub" id="of-done-msg"></p>
+          <a class="btn" id="of-book" href="#">Book now with ${esc(c.offer)}</a>
+        </div>
+      </div>
+    </div></section>`;
+
+    async function submit(){
+      const name = document.getElementById('of-name').value.trim();
+      const email = document.getElementById('of-email').value.trim();
+      const err = document.getElementById('of-err');
+      err.textContent = '';
+      if (!name){ err.textContent = 'Enter your name.'; return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ err.textContent = 'Enter a valid email address.'; return; }
+      const btn = document.getElementById('of-submit');
+      btn.disabled = true;
+      let r;
+      try { r = await api('/api/leads.php?action=capture', { method: 'POST', body: JSON.stringify({ name, email, campaign: c.code }) }); }
+      catch (e) { err.textContent = e.message; btn.disabled = false; return; }
+      // Remembered so the homepage booking form applies it automatically and
+      // skips its own welcome pop-up.
+      try { localStorage.setItem('welcomeLead', JSON.stringify({ email: email.toLowerCase(), code: r.code, expiresAt: r.expiresAt })); } catch (e) {}
+      if (typeof gtag === 'function') gtag('event', 'generate_lead', { campaign: c.code });
+      document.getElementById('of-code').textContent = r.code;
+      document.getElementById('of-done-msg').textContent = (r.alreadySignedUp ? "You'd already signed up — here's your code again. " : "We've emailed it to you too. ")
+        + (r.expiresAt ? `Good through ${fmtDate(r.expiresAt)}.` : '');
+      document.getElementById('of-book').href = `/index.html?welcome=${encodeURIComponent(r.code)}&lead=${encodeURIComponent(email.toLowerCase())}${bookAnchor}`;
+      document.getElementById('offer-form').classList.add('hidden');
+      document.getElementById('offer-done').classList.remove('hidden');
+    }
+    document.getElementById('of-submit').addEventListener('click', submit);
+    ['of-name', 'of-email'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') submit(); }));
+  }
+
+  if (!code){ renderEnded("That offer link isn't complete"); return; }
+  api(`/api/leads.php?action=campaign&c=${encodeURIComponent(code)}${preview}`)
+    .then(c => {
+      // A campaign set to live on the other site: send the visitor there so
+      // the page, emails and booking all match.
+      if (c.site !== SITE && /(^|\.)(coveragechiropractor|thefloridachiropractor)\.com$/.test(location.hostname)) {
+        location.replace(`${c.siteUrl}/offer/${encodeURIComponent(c.code)}${location.search}`);
+        return;
+      }
+      render(c);
+    })
+    .catch(e => renderEnded(e.message));
+})();
+</script>
+</body>
+</html>

@@ -1,14 +1,19 @@
 <?php
-// Welcome-offer drip. After the homepage pop-up issues a 15% code, this sends
-// a short follow-up sequence (days 3, 10, 30 and 80 after signup) until the
-// lead books, unsubscribes, or the code expires. At most one email per lead
-// per run, so if the cron is down for a while it catches up one step a day
-// rather than dumping the whole sequence at once. Run once daily via cPanel
-// Cron Jobs.
+// Offer follow-up drip, for leads from the homepage welcome pop-up and from
+// campaign landing pages. Steps 1-3 go out 3, 10 and 30 days after signup;
+// step 4 ("last call") goes out once the code is within 10 days of
+// expiring — for a 90-day code that's about day 80, and for a shorter
+// campaign it may come sooner, skipping any middle steps that no longer fit.
+// Stops as soon as the lead books, unsubscribes, or the code expires. At most
+// one email per lead per run, so if the cron is down for a while it catches
+// up one step a day rather than sending several at once. Run once daily via
+// cPanel Cron Jobs.
 //   Command: /usr/bin/php /home/[USERNAME]/php_backend/cron/lead_drip.php
 require_once __DIR__ . '/../config.php';
 
-$STEP_DAYS = [1 => 3, 2 => 10, 3 => 30, 4 => 80];
+$STEP_DAYS = [1 => 3, 2 => 10, 3 => 30];
+$LAST_CALL_DAYS = 10;
+$MIN_DAYS_BEFORE_FOLLOWUP = 3;
 $today = date('Y-m-d');
 $now = time();
 
@@ -19,12 +24,26 @@ $leads = $pdo->query("SELECT l.*, p.expires_at, p.used_count, p.active AS promo_
 $sent = 0; $converted = 0; $expired = 0;
 foreach ($leads as $lead) {
     // Booked some other way (a different code, or none at all) — the sequence
-    // has done its job, stop here.
-    $u = $pdo->prepare('SELECT id FROM users WHERE email = ?');
-    $u->execute([$lead['email']]);
-    $userRow = $u->fetch();
-    if ((int)$lead['used_count'] > 0 || ($userRow && has_any_bookings($pdo, (int)$userRow['id']))) {
-        $pdo->prepare("UPDATE leads SET status = 'converted', converted_at = ? WHERE id = ?")->execute([date('Y-m-d H:i:s'), $lead['id']]);
+    // has done its job. A welcome lead converts on any booking (the welcome
+    // code is first-booking-only, so a past client can't use it anyway); a
+    // campaign can target past clients, so only a booking made after they
+    // signed up counts.
+    $convertedBookingId = null;
+    $isConverted = (int)$lead['used_count'] > 0;
+    if (!$isConverted) {
+        $u = $pdo->prepare('SELECT id FROM users WHERE email = ?');
+        $u->execute([$lead['email']]);
+        $userRow = $u->fetch();
+        if ($userRow) {
+            $b = $pdo->prepare('SELECT id FROM bookings WHERE user_id = ? AND created_at >= ? ORDER BY created_at LIMIT 1');
+            $b->execute([(int)$userRow['id'], lead_is_campaign($lead) ? $lead['created_at'] : '1970-01-01']);
+            $booking = $b->fetch();
+            if ($booking) { $isConverted = true; $convertedBookingId = $booking['id']; }
+        }
+    }
+    if ($isConverted) {
+        $pdo->prepare("UPDATE leads SET status = 'converted', converted_at = ?, converted_booking_id = COALESCE(converted_booking_id, ?) WHERE id = ?")
+            ->execute([date('Y-m-d H:i:s'), $convertedBookingId, $lead['id']]);
         $converted++;
         continue;
     }
@@ -34,18 +53,26 @@ foreach ($leads as $lead) {
         continue;
     }
 
-    $nextStep = (int)$lead['drip_step'] + 1;
-    if (!isset($STEP_DAYS[$nextStep])) continue;
+    $step = (int)$lead['drip_step'];
+    if ($step >= 4) continue;
     $daysSince = (int)floor(($now - strtotime($lead['created_at'])) / 86400);
-    if ($daysSince < $STEP_DAYS[$nextStep]) continue;
+    if ($daysSince < $MIN_DAYS_BEFORE_FOLLOWUP) continue;
+    $daysLeft = $lead['expires_at'] ? (int)floor((strtotime($lead['expires_at'] . ' 23:59:59') - $now) / 86400) : null;
+
+    if ($daysLeft !== null && $daysLeft <= $LAST_CALL_DAYS) {
+        $sendStep = 4;
+    } else {
+        $sendStep = $step + 1;
+        if (!isset($STEP_DAYS[$sendStep]) || $daysSince < $STEP_DAYS[$sendStep]) continue;
+    }
 
     $promo = promo_by_code($pdo, $lead['promo_code']);
     if (!$promo) continue;
-    if (send_lead_email($lead, $promo, $nextStep)) {
-        $pdo->prepare('UPDATE leads SET drip_step = ?, last_drip_sent_at = ? WHERE id = ?')->execute([$nextStep, date('Y-m-d H:i:s'), $lead['id']]);
+    if (send_lead_email($lead, $promo, $sendStep)) {
+        $pdo->prepare('UPDATE leads SET drip_step = ?, last_drip_sent_at = ? WHERE id = ?')->execute([$sendStep, date('Y-m-d H:i:s'), $lead['id']]);
         $sent++;
     } else {
-        log_error('Lead drip email failed to send', ['lead' => $lead['id'], 'step' => $nextStep]);
+        log_error('Lead drip email failed to send', ['lead' => $lead['id'], 'step' => $sendStep]);
     }
 }
 

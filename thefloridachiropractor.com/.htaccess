@@ -8,6 +8,9 @@ RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 RewriteCond %{HTTP_HOST} ^www\.thefloridachiropractor\.com$ [NC]
 RewriteRule ^(.*)$ https://thefloridachiropractor.com/$1 [L,R=301]
 
+# Campaign landing pages: /offer/CODE serves offer.html?c=CODE
+RewriteRule ^offer/([A-Za-z0-9_-]+)/?$ offer.html?c=$1 [L,QSA,NC]
+
 Options -Indexes
 
 # Browser-side hardening. HSTS is deliberately left out for now — add it

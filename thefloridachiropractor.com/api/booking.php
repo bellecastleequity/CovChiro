@@ -211,7 +211,7 @@ function handle_create(PDO $pdo) {
     if ($promoRow) {
         $upd = $pdo->prepare('UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ?');
         $upd->execute([$promoRow['id']]);
-        if ($isWelcomePromo) mark_lead_converted($pdo, $promoRow['code'], $bookingId);
+        mark_lead_converted($pdo, $promoRow['code'], $bookingId);
     }
 
     json_response([
@@ -375,7 +375,7 @@ function handle_admin_create_for_client(PDO $pdo) {
     if ($promoRow) {
         $upd = $pdo->prepare('UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ?');
         $upd->execute([$promoRow['id']]);
-        if (!empty($promoRow['is_welcome'])) mark_lead_converted($pdo, $promoRow['code'], $bookingId);
+        mark_lead_converted($pdo, $promoRow['code'], $bookingId);
     }
 
     $reviewLink = SITE_URL . '/index.html?booking=' . $bookingId . ($resetToken ? '&reset=' . $resetToken : '');

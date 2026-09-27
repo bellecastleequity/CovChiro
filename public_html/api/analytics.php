@@ -123,10 +123,10 @@ unset($group, $v);
 // Welcome-offer lead funnel: homepage pop-up → 15% code → first booking.
 // Guarded so the rest of the analytics still load if migration_012 hasn't
 // been run on this database yet.
-$leads = ['captured' => 0, 'active' => 0, 'converted' => 0, 'unsubscribed' => 0, 'expired' => 0, 'conversionRate' => null, 'recent' => [], 'tableMissing' => false];
+$leads = ['captured' => 0, 'active' => 0, 'converted' => 0, 'unsubscribed' => 0, 'expired' => 0, 'superseded' => 0, 'conversionRate' => null, 'recent' => [], 'tableMissing' => false];
 try {
     $leadCounts = $pdo->query("SELECT status, COUNT(*) AS c FROM leads GROUP BY status")->fetchAll(PDO::FETCH_KEY_PAIR);
-    foreach (['active', 'converted', 'unsubscribed', 'expired'] as $s) $leads[$s] = (int)($leadCounts[$s] ?? 0);
+    foreach (['active', 'converted', 'unsubscribed', 'expired', 'superseded'] as $s) $leads[$s] = (int)($leadCounts[$s] ?? 0);
     $leads['captured'] = (int)array_sum($leadCounts);
     $leads['conversionRate'] = $leads['captured'] ? $leads['converted'] / $leads['captured'] : null;
     $recent = $pdo->query("SELECT l.name, l.email, l.site, l.promo_code, l.status, l.created_at, l.converted_at, l.drip_step, p.expires_at

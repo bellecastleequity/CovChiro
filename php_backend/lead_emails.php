@@ -1,7 +1,8 @@
 <?php
-// Welcome-offer lead emails: the immediate "here's your code" message plus the
-// four-step drip the cron sends afterwards. Loaded by config.php, so every
-// API endpoint and cron script has these available.
+// Offer emails for leads captured by the homepage welcome pop-up or a
+// campaign landing page: the immediate "here's your code" message plus the
+// four-step follow-up the cron sends afterwards. Loaded by config.php, so
+// every API endpoint and cron script has these available.
 
 function promo_by_code(PDO $pdo, string $code) {
     $stmt = $pdo->prepare('SELECT * FROM promo_codes WHERE code = ?');
@@ -9,9 +10,22 @@ function promo_by_code(PDO $pdo, string $code) {
     return $stmt->fetch() ?: null;
 }
 
+// "15% off" / "$50 off"
+function promo_offer_label(array $promo) {
+    $v = (float)$promo['value'];
+    if (($promo['type'] ?? 'percent') === 'fixed') return '$' . number_format($v, floor($v) == $v ? 0 : 2) . ' off';
+    return rtrim(rtrim(number_format($v, 2), '0'), '.') . '% off';
+}
+
+// A code used on any booking marks the lead it was issued to as converted;
+// a no-op for codes that don't belong to a lead.
 function mark_lead_converted(PDO $pdo, string $promoCode, string $bookingId) {
     $stmt = $pdo->prepare("UPDATE leads SET status = 'converted', converted_at = ?, converted_booking_id = ? WHERE promo_code = ? AND status != 'converted'");
     $stmt->execute([date('Y-m-d H:i:s'), $bookingId, strtoupper(trim($promoCode))]);
+}
+
+function lead_is_campaign(array $lead) {
+    return !empty($lead['campaign_code']);
 }
 
 function lead_unsubscribe_url(array $lead) {
@@ -19,7 +33,7 @@ function lead_unsubscribe_url(array $lead) {
 }
 
 // Deep link that lands on the booking form with the code pre-applied — the
-// pop-up script on the homepage reads ?welcome= and ?lead= and fills them in.
+// homepage script reads ?welcome= and ?lead= and fills them in.
 function lead_booking_url(array $lead, array $promo) {
     $anchor = $lead['site'] === 'florida' ? '#book' : '#rates';
     return site_url_for($lead['site']) . '/index.html?welcome=' . urlencode($promo['code']) . '&lead=' . urlencode($lead['email']) . $anchor;
@@ -33,19 +47,23 @@ function lead_first_name(array $lead) {
 function lead_email_layout(array $lead, ?array $promo, string $heading, string $bodyHtml, string $ctaLabel) {
     $site = $lead['site'];
     $siteName = site_name_for($site);
+    $campaign = lead_is_campaign($lead);
     $tagline = $site === 'florida' ? 'Home visits &amp; event coverage across Florida' : 'Chiropractic office coverage across Florida';
     $codeBox = '';
     if ($promo) {
         $expires = $promo['expires_at'] ? date('F j, Y', strtotime($promo['expires_at'])) : '';
         $codeBox = '<div style="margin:22px 0;padding:16px;border:1px dashed #2F5D53;border-radius:6px;background:#E5DFD2;text-align:center;">'
-            . '<div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#8a8171;">Your welcome code</div>'
+            . '<div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#8a8171;">' . ($campaign ? 'Your personal code' : 'Your welcome code') . '</div>'
             . '<div style="font-family:Menlo,Consolas,monospace;font-size:24px;font-weight:700;color:#1F3F38;margin:6px 0;">' . htmlspecialchars($promo['code']) . '</div>'
-            . '<div style="font-size:13px;color:#4b5563;">' . (int)$promo['value'] . '% off your first booking' . ($expires ? ' &middot; good through ' . $expires : '') . '</div>'
+            . '<div style="font-size:13px;color:#4b5563;">' . htmlspecialchars(promo_offer_label($promo)) . ($campaign ? ' your next booking' : ' your first booking') . ($expires ? ' &middot; good through ' . $expires : '') . '</div>'
             . '</div>';
     }
     $cta = $promo
         ? '<p style="text-align:center;margin:24px 0;"><a href="' . htmlspecialchars(lead_booking_url($lead, $promo)) . '" style="display:inline-block;background:#2F5D53;color:#FBF9F4;text-decoration:none;padding:12px 22px;border-radius:4px;font-weight:600;">' . htmlspecialchars($ctaLabel) . '</a></p>'
         : '';
+    $footer = $campaign
+        ? 'You\'re receiving this because you requested an offer at ' . htmlspecialchars($siteName) . '. The code is single-use, tied to your email address, and can\'t be combined with other promo codes. '
+        : 'You\'re receiving this because you requested a welcome offer at ' . htmlspecialchars($siteName) . '. The code is single-use, for a first booking only, and can\'t be combined with other promo codes. ';
     return '<div style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#1C2430;max-width:560px;margin:0 auto;">'
         . '<div style="padding:18px 0 10px;border-bottom:2px solid #2F5D53;margin-bottom:18px;">'
         . '<div style="font-size:19px;font-weight:700;color:#1F3F38;">' . htmlspecialchars($siteName) . '</div>'
@@ -55,28 +73,30 @@ function lead_email_layout(array $lead, ?array $promo, string $heading, string $
         . $bodyHtml . $codeBox . $cta
         . '<p style="margin-top:22px;">Dr. Michael McPherson, D.C.<br><span style="color:#6b7280;font-size:13px;">' . htmlspecialchars($siteName) . '</span></p>'
         . '<p style="margin-top:28px;padding-top:14px;border-top:1px solid #CFC7B4;font-size:12px;color:#8a8171;line-height:1.5;">'
-        . 'You\'re receiving this because you requested a welcome offer at ' . htmlspecialchars($siteName) . '. '
-        . 'The code is single-use, for a first booking only, and can\'t be combined with other promo codes. '
+        . $footer
         . '<a href="' . htmlspecialchars(lead_unsubscribe_url($lead)) . '" style="color:#8a8171;">Unsubscribe</a> from these emails any time.'
         . '</p></div>';
 }
 
-// One entry per step: 0 is the immediate welcome, 1-4 are the drip (sent at
-// 3, 10, 30 and 80 days by cron/lead_drip.php). Copy differs by site since
-// coveragechiropractor.com sells office coverage to practice owners and
+// One entry per step: 0 is the immediate email with the code, 1-3 go out 3,
+// 10 and 30 days after signup, and 4 is the "last call" sent once the code is
+// within 10 days of expiring (see cron/lead_drip.php). Copy differs by site
+// since coveragechiropractor.com sells office coverage to practice owners and
 // thefloridachiropractor.com sells home visits and event coverage.
 function lead_email_content(array $lead, array $promo, int $step) {
     $first = htmlspecialchars(lead_first_name($lead));
-    $pct = (int)$promo['value'];
+    $firstPlain = lead_first_name($lead);
+    $offer = promo_offer_label($promo);
     $expires = $promo['expires_at'] ? date('F j, Y', strtotime($promo['expires_at'])) : 'its expiry date';
     $florida = $lead['site'] === 'florida';
+    $campaign = lead_is_campaign($lead);
 
     if ($step === 0) {
         return [
-            'subject' => "Your {$pct}% welcome code, " . lead_first_name($lead),
-            'heading' => "Here's your {$pct}% off — no rush to use it",
-            'cta' => 'Book with ' . $pct . '% off',
-            'body' => "<p>Hi {$first},</p><p>Thanks for stopping by. Your welcome code is below — it's good for 90 days, so there's no pressure to decide today. "
+            'subject' => $campaign ? "Your {$offer} code, {$firstPlain}" : 'Your ' . (($promo['type'] ?? 'percent') === 'percent' ? rtrim(rtrim(number_format((float)$promo['value'], 2), '0'), '.') . '%' : $offer) . " welcome code, {$firstPlain}",
+            'heading' => "Here's your {$offer} — no rush to use it",
+            'cta' => "Book with {$offer}",
+            'body' => "<p>Hi {$first},</p><p>Thanks for stopping by. Your " . ($campaign ? 'personal code' : 'welcome code') . " is below — it's good through {$expires}, so there's no pressure to decide today. "
                 . "When you're ready, book online and enter it at checkout (or just use the button below and it's applied for you).</p>"
                 . ($florida
                     ? "<p>A quick reminder of what's on offer: chiropractic home visits at \$100 per patient (children seen alongside a parent are \$70), Monday through Friday, and on-site coverage for sporting events and corporate wellness days at \$100/hour with a 2-hour minimum. Licensed, insured, and available across Florida.</p>"
@@ -98,7 +118,7 @@ function lead_email_content(array $lead, array $promo, int $step) {
         return [
             'subject' => $florida ? 'What patients say about Dr. McPherson' : 'What practices and patients say',
             'heading' => 'A few words from people who\'ve been on the table',
-            'cta' => 'Book with ' . $pct . '% off',
+            'cta' => "Book with {$offer}",
             'body' => "<p>Hi {$first},</p><p>Rather than tell you about the care, here's what patients have said:</p>"
                 . "<blockquote style=\"margin:14px 0;padding:10px 14px;border-left:3px solid #B8863F;background:#F5F1E8;\">&ldquo;He's genuine, kind, and an excellent chiropractor. I recommended him to my husband as well.&rdquo; <span style=\"color:#6b7280;\">&mdash; L.</span></blockquote>"
                 . "<blockquote style=\"margin:14px 0;padding:10px 14px;border-left:3px solid #B8863F;background:#F5F1E8;\">&ldquo;Very knowledgeable, professional &amp; has amazing interpersonal skills.&rdquo; <span style=\"color:#6b7280;\">&mdash; B.H.</span></blockquote>"
@@ -109,20 +129,20 @@ function lead_email_content(array $lead, array $promo, int $step) {
     }
     if ($step === 3) {
         return [
-            'subject' => "60 days left on your {$pct}% code",
+            'subject' => "Your {$offer} code is good through {$expires}",
             'heading' => $florida ? 'Planning a trip, a season, or an event?' : 'Planning time away this season?',
             'cta' => 'Check available dates',
             'body' => "<p>Hi {$first},</p>"
                 . ($florida
-                    ? "<p>Your welcome code is still good through {$expires}. If a trip to Florida, a tournament, or a corporate wellness day is on the calendar, it's worth locking the date in early — event weekends and peak-season weeks fill first.</p><p>And if something comes up suddenly — a visiting athlete who needs care today, a guest who can't get to an office — same-day requests get a fast, direct reply.</p>"
-                    : "<p>Your welcome code is still good through {$expires}. If a vacation, CE weekend, or holiday closure is coming up, the dates around them fill first — booking a few weeks ahead keeps your patients on schedule and your revenue steady.</p><p>And if you're ever caught short — an associate out sick, a sudden gap in the schedule — same-day and next-day coverage requests get an immediate response, any hour.</p>"),
+                    ? "<p>Your code is still good through {$expires}. If a trip to Florida, a tournament, or a corporate wellness day is on the calendar, it's worth locking the date in early — event weekends and peak-season weeks fill first.</p><p>And if something comes up suddenly — a visiting athlete who needs care today, a guest who can't get to an office — same-day requests get a fast, direct reply.</p>"
+                    : "<p>Your code is still good through {$expires}. If a vacation, CE weekend, or holiday closure is coming up, the dates around them fill first — booking a few weeks ahead keeps your patients on schedule and your revenue steady.</p><p>And if you're ever caught short — an associate out sick, a sudden gap in the schedule — same-day and next-day coverage requests get an immediate response, any hour.</p>"),
         ];
     }
     return [
-        'subject' => "Last call: your {$pct}% welcome code expires {$expires}",
-        'heading' => 'Your welcome code is almost up',
-        'cta' => 'Use my ' . $pct . '% before it expires',
-        'body' => "<p>Hi {$first},</p><p>Just a heads-up that your {$pct}% welcome code expires on {$expires}. After that it can't be extended, so if there's a date you've been meaning to book, this is the week to do it.</p>"
+        'subject' => "Last call: your {$offer} " . ($campaign ? 'code' : 'welcome code') . " expires {$expires}",
+        'heading' => $campaign ? 'Your code is almost up' : 'Your welcome code is almost up',
+        'cta' => "Use my {$offer} before it expires",
+        'body' => "<p>Hi {$first},</p><p>Just a heads-up that your {$offer} code expires on {$expires}. After that it can't be extended, so if there's a date you've been meaning to book, this is the week to do it.</p>"
             . "<p>No hard feelings if the timing isn't right — you can always book at the standard published rates later, and " . ($florida ? "I'm happy to answer questions any time." : "first-time practices still receive an automatic discount.") . "</p>",
     ];
 }

@@ -844,6 +844,10 @@ function validate_promo_code(PDO $pdo, string $codeStr, ?string $email = null) {
     if (!$promo['active']) return ['error' => 'That code is no longer active.'];
     if ($promo['expires_at'] && $promo['expires_at'] < $today) return ['error' => 'That code has expired.'];
     if ($promo['max_uses'] !== null && (int)$promo['used_count'] >= (int)$promo['max_uses']) return ['error' => 'That code has reached its usage limit.'];
+    // A code with a landing page is a campaign template: each person who signs
+    // up on the page gets their own single-use version, so the template itself
+    // (which appears in the page's URL) can't be redeemed directly.
+    if (!empty($promo['landing_enabled'])) return ['error' => 'Sign up on the offer page to get your personal code.'];
     if (!empty($promo['assigned_email']) && ($email === null || strcasecmp(trim($email), $promo['assigned_email']) !== 0)) {
         return ['error' => 'That code is tied to the email address it was sent to — book with that email to use it.'];
     }
