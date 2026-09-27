@@ -88,6 +88,8 @@ define('STRIPE_PUBLISHABLE_KEY', 'pk_live_...');  // already filled in with the 
 define('STRIPE_WEBHOOK_SECRET', 'whsec_...');     // from Step 6 below
 
 define('SENDGRID_API_KEY', 'SG...');              // https://app.sendgrid.com/settings/api_keys
+
+define('GEMINI_API_KEY', '...');                  // optional — https://aistudio.google.com (admin AI drafting buttons)
 ```
 
 Everything else (rates, mileage tiers, discount rules, standing-day tiers)

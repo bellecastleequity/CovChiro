@@ -8,6 +8,7 @@ switch ($action) {
     case 'create': handle_create($pdo); break;
     case 'toggle': handle_toggle($pdo); break;
     case 'save_landing': handle_save_landing($pdo); break;
+    case 'save_emails': handle_save_emails($pdo); break;
     case 'validate': handle_validate($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
@@ -65,6 +66,33 @@ function handle_save_landing(PDO $pdo) {
     json_response(['success' => true]);
 }
 
+// Custom follow-up email copy for a campaign — subject + opening paragraph
+// for each of the 5 offer emails. Blank fields use the standard email.
+// Stored as plain text; lead_emails.php escapes it when building the email.
+function handle_save_emails(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+    $code = strtoupper(trim((string)($body['code'] ?? '')));
+    $stmt = $pdo->prepare('SELECT id FROM promo_codes WHERE code = ? AND parent_code IS NULL AND is_welcome = 0');
+    $stmt->execute([$code]);
+    $row = $stmt->fetch();
+    if (!$row) json_response(['error' => 'Not found'], 404);
+    $emails = [];
+    $any = false;
+    for ($i = 0; $i < 5; $i++) {
+        $e = is_array($body['emails'][$i] ?? null) ? $body['emails'][$i] : [];
+        $subject = trim(preg_replace('/\s+/', ' ', strip_tags((string)($e['subject'] ?? ''))));
+        $intro = trim(strip_tags((string)($e['intro'] ?? '')));
+        if (mb_strlen($subject) > DRIP_SUBJECT_MAX) json_response(['error' => 'Email ' . ($i + 1) . ': keep the subject under ' . DRIP_SUBJECT_MAX . ' characters.'], 400);
+        if (mb_strlen($intro) > DRIP_INTRO_MAX) json_response(['error' => 'Email ' . ($i + 1) . ': keep the opening paragraph under ' . DRIP_INTRO_MAX . ' characters.'], 400);
+        if ($subject !== '' || $intro !== '') $any = true;
+        $emails[] = ['subject' => $subject, 'intro' => $intro];
+    }
+    $pdo->prepare('UPDATE promo_codes SET drip_custom = ? WHERE id = ?')->execute([$any ? json_encode($emails) : null, $row['id']]);
+    json_response(['success' => true]);
+}
+
 function handle_create(PDO $pdo) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
     require_admin();
@@ -118,5 +146,6 @@ function promo_to_json(array $r) {
         'landingHeadline' => $r['landing_headline'] ?? null,
         'landingDescription' => $r['landing_description'] ?? null,
         'landingVisits' => (int)($r['landing_visits'] ?? 0),
+        'dripCustom' => array_key_exists('drip_custom', $r) ? promo_drip_custom($r['drip_custom']) : null,
     ];
 }

@@ -11,6 +11,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css?v=13">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  .ai-box{margin:14px 0 4px;padding:12px 14px;border:1px dashed var(--teal);border-radius:4px;background:rgba(47,93,83,0.05);}
+  .ai-box > label:first-child{margin-top:0;}
+  .ai-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .ai-row input{flex:1 1 200px;min-width:0;}
+  .ai-option{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:4px;background:var(--white);overflow-wrap:anywhere;}
+  .ai-copy{margin-top:10px;border:1px solid var(--line);border-radius:4px;background:var(--white);}
+  .ai-copy-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--line);font-size:0.78rem;font-weight:600;}
+  .ai-copy-head span:first-child{flex:1 1 auto;min-width:0;}
+  .ai-copy-text{padding:8px 10px;font-size:0.86rem;white-space:pre-wrap;overflow-wrap:anywhere;}
+  .ai-email-step{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);}
+  .ai-email-step textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:3px;background:var(--paper);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;resize:vertical;}
+  details.ai-emails > summary{cursor:pointer;font-weight:600;font-size:0.9rem;}
+</style>
 </head>
 <body>
 
@@ -121,6 +135,89 @@ function drawQrCode(canvas, text){
   ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, size, size);
   ctx.fillStyle = '#1C2430';
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) ctx.fillRect((c + margin) * scale, (r + margin) * scale, scale, scale);
+}
+
+// ---------- AI drafting (Gemini via /api/ai.php) ----------
+// Results are kept here so they survive re-renders until the page reloads.
+const aiCache = { landing: {}, ads: {}, ideas: null, ideaCopy: {}, summary: null, notes: {}, emailsOpen: null };
+let aiCopyTexts = [];
+function escHtml(s){
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+async function aiCall(action, payload, btn){
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Writing…';
+  try { return await apiFetch(`/api/ai.php?action=${action}`, { method: 'POST', body: JSON.stringify(payload) }); }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+function aiCopyBlock(label, text, limit){
+  if (!text) return '';
+  const i = aiCopyTexts.push(text) - 1;
+  const over = limit && text.length > limit;
+  return `
+    <div class="ai-copy">
+      <div class="ai-copy-head">
+        <span>${label}</span>
+        <span style="color:${over ? 'var(--red)' : '#8a8171'};">${text.length}${limit ? ' / ' + limit : ''} chars</span>
+        <button class="btn ghost sm" type="button" data-ai-copy="${i}">Copy</button>
+      </div>
+      <div class="ai-copy-text">${escHtml(text)}</div>
+    </div>`;
+}
+function wireAiCopy(root){
+  root.querySelectorAll('[data-ai-copy]').forEach(btn => btn.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(aiCopyTexts[+btn.dataset.aiCopy]); showToast('Copied.'); }
+    catch (e) { showToast('Copy failed — select the text and copy it manually.', 'error'); }
+  }));
+}
+function aiLandingOptionsHtml(code){
+  const opts = aiCache.landing[code];
+  if (!opts) return '';
+  return opts.map((o, i) => `
+    <div class="ai-option">
+      <div style="font-weight:600;">${escHtml(o.headline)}</div>
+      <div style="font-size:0.84rem;color:#4b5563;margin-top:4px;white-space:pre-line;">${escHtml(o.description)}</div>
+      <button class="btn ghost sm" type="button" data-ai-use-landing="${i}" style="margin-top:8px;">Use this</button>
+    </div>`).join('');
+}
+function aiAdsHtml(code){
+  const d = aiCache.ads[code];
+  if (!d) return '';
+  return `
+    <p style="font-size:0.78rem;color:#6b7280;margin:10px 0 0;">The link to this page is already added where it's needed. Only text people who've agreed to hear from you by text.</p>
+    ${aiCopyBlock('Facebook / Instagram post', d.facebook)}
+    ${(d.googleHeadlines || []).map((h, i) => aiCopyBlock(`Google ad headline ${i + 1}`, h, 30)).join('')}
+    ${(d.googleDescriptions || []).map((h, i) => aiCopyBlock(`Google ad description ${i + 1}`, h, 90)).join('')}
+    ${aiCopyBlock('Text message (link included)', d.sms, 160)}
+    ${aiCopyBlock('Email blast — subject', d.emailSubject)}
+    ${aiCopyBlock('Email blast — body', d.emailBody)}
+    ${aiCopyBlock('Flyer — headline', d.flyerHeadline)}
+    ${aiCopyBlock('Flyer — text', d.flyerBody)}
+    ${aiCopyBlock('Flyer — next to the QR code', d.flyerCta)}`;
+}
+function aiIdeasHtml(){
+  const ideas = aiCache.ideas;
+  if (!ideas) return '';
+  return ideas.map((it, i) => `
+    <div class="ai-option">
+      <div style="font-weight:600;font-family:'IBM Plex Mono',monospace;">${escHtml(it.code)}</div>
+      <div style="font-size:0.82rem;color:#4b5563;margin-top:2px;">${it.type === 'percent' ? escHtml(it.value) + '% off' : money(it.value) + ' off'} · ${it.site === 'florida' ? 'TheFloridaChiropractor.com' : 'CoverageChiropractor.com'}${it.expiresAt ? ' · ends ' + escHtml(it.expiresAt) : ''}</div>
+      <div style="font-size:0.84rem;margin-top:6px;">${escHtml(it.why)}</div>
+      ${it.headline ? `<div style="font-size:0.8rem;color:#6b7280;margin-top:4px;">Landing headline idea: “${escHtml(it.headline)}”</div>` : ''}
+      <button class="btn ghost sm" type="button" data-ai-use-idea="${i}" style="margin-top:8px;">Use this</button>
+    </div>`).join('');
+}
+function aiSummaryHtml(){
+  const s = aiCache.summary;
+  if (!s) return '';
+  const list = (title, items) => items && items.length ? `<div style="font-weight:600;font-size:0.85rem;margin-top:12px;">${title}</div><ul style="margin:4px 0 0;padding-left:20px;font-size:0.88rem;">${items.map(x => `<li style="margin:3px 0;">${escHtml(x)}</li>`).join('')}</ul>` : '';
+  return `
+    <div style="margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:4px;background:var(--paper);">
+      <p style="margin:0;font-size:0.92rem;line-height:1.55;">${escHtml(s.summary)}</p>
+      ${list('Highlights', s.highlights)}
+      ${list('Suggested next steps', s.suggestions)}
+      <div style="font-size:0.75rem;color:#8a8171;margin-top:10px;">Generated ${new Date(s.generatedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} · AI can misread numbers — the cards below are the source of truth.</div>
+    </div>`;
 }
 function leadMatchesSearch(l, query){
   const q = (query || '').trim().toLowerCase();
@@ -1062,6 +1159,7 @@ function renderAdmin(){
       showToast('Marked complete.');
     }));
   } else if (admView === 'promo'){
+    aiCopyTexts = [];
     const today = new Date().toISOString().slice(0,10);
     const lmHtml = `
       <div class="admin-card" style="margin-bottom:20px;">
@@ -1075,6 +1173,15 @@ function renderAdmin(){
     const formHtml = `
       <div class="admin-card" style="margin-bottom:20px;">
         <h3>Create promo code</h3>
+        <div class="ai-box">
+          <label for="pc-ai-note">Need ideas? Ask AI (optional: an occasion or goal)</label>
+          <div class="ai-row">
+            <input type="text" id="pc-ai-note" maxlength="300" placeholder="e.g. summer slowdown, Thanksgiving week, slow Mondays" value="${escHtml(aiCache.notes.ideas || '')}">
+            <button class="btn ghost sm" type="button" id="pc-ai-ideas">Suggest ideas</button>
+          </div>
+          <div class="err-msg" id="pc-ai-err"></div>
+          <div id="pc-ai-out">${aiIdeasHtml()}</div>
+        </div>
         <label for="pc-code">Code</label>
         <input type="text" id="pc-code" placeholder="e.g. WELCOME10" style="text-transform:uppercase;">
         <div class="row2">
@@ -1107,6 +1214,9 @@ function renderAdmin(){
         const offer = p.type === 'percent' ? p.value + '% off' : money(p.value) + ' off';
         const cs = p.campaignStats || { signups: 0, bookings: 0, revenue: 0 };
         const url = promoLandingUrl(p);
+        // A code created from an AI idea pre-fills its landing page until one is saved.
+        const idea = !p.landingEnabled && !p.landingHeadline ? aiCache.ideaCopy[p.code] : null;
+        const lpSite = idea ? idea.site : p.landingSite;
         const editorHtml = promoLandingOpen !== p.code ? '' : `
         <div class="admin-card" style="margin:-4px 0 14px;border-color:var(--teal);">
           <h4 style="margin-top:0;">Landing page — ${p.code}</h4>
@@ -1117,11 +1227,19 @@ function renderAdmin(){
           <p style="font-size:0.8rem;color:#6b7280;margin-top:6px;">While it's on, ${p.code} itself can't be used at checkout. Each person who signs up on the page gets their own single-use version (like ${p.code}-7K2F), tied to their email and good for 90 days or until this code's own expiry, whichever comes first. They also get the same follow-up emails as the welcome offer.</p>
           <label for="lp-site">Show on</label>
           <select id="lp-site">
-            <option value="coverage" ${p.landingSite === 'coverage' ? 'selected' : ''}>CoverageChiropractor.com — office coverage</option>
-            <option value="florida" ${p.landingSite === 'florida' ? 'selected' : ''}>TheFloridaChiropractor.com — home visits &amp; events</option>
+            <option value="coverage" ${lpSite === 'coverage' ? 'selected' : ''}>CoverageChiropractor.com — office coverage</option>
+            <option value="florida" ${lpSite === 'florida' ? 'selected' : ''}>TheFloridaChiropractor.com — home visits &amp; events</option>
           </select>
+          <div class="ai-box">
+            <label for="lp-ai-note">Notes for AI (optional): theme, audience, timing</label>
+            <input type="text" id="lp-ai-note" maxlength="300" placeholder="e.g. CE seminar season, aimed at solo practices" value="${escHtml(aiCache.notes[p.code] || '')}">
+            <p style="font-size:0.76rem;color:#6b7280;margin:6px 0 0;">Used by every AI button below. Only the offer, the site, and these notes are sent to Google — never client details.</p>
+            <button class="btn ghost sm" type="button" id="lp-ai-suggest" style="margin-top:10px;">Suggest headline &amp; description</button>
+            <div class="err-msg" id="lp-ai-err"></div>
+            <div id="lp-ai-options">${aiLandingOptionsHtml(p.code)}</div>
+          </div>
           <label for="lp-headline">Headline</label>
-          <input type="text" id="lp-headline" maxlength="200" value="${p.landingHeadline || ''}" placeholder="${offer} your next booking">
+          <input type="text" id="lp-headline" maxlength="200" value="${p.landingHeadline || escHtml(idea ? idea.headline : '')}" placeholder="${offer} your next booking">
           <label for="lp-desc">Description</label>
           <textarea id="lp-desc" rows="3" maxlength="1000" placeholder="A sentence or two about the offer — who it's for, why now." style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:3px;background:var(--paper);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;resize:vertical;">${p.landingDescription || ''}</textarea>
           <button class="btn sm" id="lp-save" style="margin-top:12px;">Save landing page</button>
@@ -1141,7 +1259,35 @@ function renderAdmin(){
                 <a class="btn ghost sm" id="lp-qr-download" download="${p.code}-qr.png" style="margin-top:8px;display:inline-block;">Download QR code (PNG)</a>
               </div>
             </div>
+          </div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+            <h4 style="margin:0 0 4px;">Ads, texts &amp; flyer copy</h4>
+            <p style="font-size:0.8rem;color:#6b7280;margin:0;">Ready-to-paste copy for Facebook/Instagram, Google Ads, a text message, an email blast, and a flyer to go with the QR code.</p>
+            <button class="btn ghost sm" type="button" id="lp-ai-ads" style="margin-top:10px;">${aiCache.ads[p.code] ? 'Write new versions' : 'Write ads &amp; texts with AI'}</button>
+            <div class="err-msg" id="lp-ads-err"></div>
+            <div id="lp-ads-out">${aiAdsHtml(p.code)}</div>
           </div>` : ''}
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+            ${p.dripCustom == null ? `<p style="font-size:0.82rem;color:#6b7280;margin:0;"><strong>Follow-up emails:</strong> run <code>migration_014_campaign_email_copy.sql</code> in phpMyAdmin to customise this campaign's emails.</p>` : `
+            <details class="ai-emails" id="lp-emails" ${aiCache.emailsOpen === p.code ? 'open' : ''}>
+              <summary>Follow-up emails for this campaign${p.dripCustom.some(e => e.subject || e.intro) ? ' — customised' : ' — using the standard emails'}</summary>
+              <p style="font-size:0.8rem;color:#6b7280;margin:8px 0 0;">Everyone who signs up on this page gets these 5 emails (fewer if they book first). Each already has the standard text, their code, and a booking button — here you can give each one its own subject line and an opening paragraph that fits this campaign. Leave anything blank to keep the standard version. You can use <code>{name}</code>, <code>{offer}</code> and <code>{expires}</code>.</p>
+              ${['Email 1 — sent right away, with the code', 'Email 2 — 3 days later', 'Email 3 — 10 days later', 'Email 4 — 30 days later', 'Email 5 — last call, about 10 days before the code expires'].map((label, i) => `
+              <div class="ai-email-step">
+                <div style="font-size:0.82rem;font-weight:600;">${label}</div>
+                <label for="lp-em-s-${i}" style="margin-top:6px;">Subject</label>
+                <input type="text" id="lp-em-s-${i}" maxlength="150" placeholder="Standard subject" value="${escHtml(p.dripCustom[i].subject)}">
+                <label for="lp-em-i-${i}">Opening paragraph (after “Hi {name},”)</label>
+                <textarea id="lp-em-i-${i}" rows="2" maxlength="600" placeholder="Standard email, no extra opening">${escHtml(p.dripCustom[i].intro)}</textarea>
+              </div>`).join('')}
+              <div class="ai-row" style="margin-top:12px;">
+                <button class="btn ghost sm" type="button" id="lp-em-ai">Draft all 5 with AI</button>
+                <button class="btn ghost sm" type="button" id="lp-em-clear">Clear</button>
+                <button class="btn sm" type="button" id="lp-em-save">Save emails</button>
+              </div>
+              <div class="err-msg" id="lp-em-err"></div>
+            </details>`}
+          </div>
         </div>`;
         return `
         <div class="blk ${p.active && !expired && !usedUp ? 'booked' : ''}">
@@ -1177,6 +1323,63 @@ function renderAdmin(){
           renderAdmin();
           showToast(enabled ? `Landing page for ${openPromo.code} saved.` : `Landing page for ${openPromo.code} turned off.`);
         });
+        const noteEl = $('lp-ai-note');
+        noteEl.addEventListener('input', () => { aiCache.notes[openPromo.code] = noteEl.value; });
+        const aiPayload = () => ({ code: openPromo.code, site: $('lp-site').value, note: noteEl.value.trim() });
+        const wireLandingOptions = () => $('lp-ai-options').querySelectorAll('[data-ai-use-landing]').forEach(btn => btn.addEventListener('click', () => {
+          const o = aiCache.landing[openPromo.code][+btn.dataset.aiUseLanding];
+          $('lp-headline').value = o.headline;
+          $('lp-desc').value = o.description;
+          showToast('Filled in — edit if you like, then click Save landing page.');
+        }));
+        wireLandingOptions();
+        $('lp-ai-suggest').addEventListener('click', async (e) => {
+          $('lp-ai-err').textContent = '';
+          try { aiCache.landing[openPromo.code] = (await aiCall('landing_copy', aiPayload(), e.currentTarget)).options; }
+          catch (err) { $('lp-ai-err').textContent = err.message; return; }
+          $('lp-ai-options').innerHTML = aiLandingOptionsHtml(openPromo.code);
+          wireLandingOptions();
+        });
+        if ($('lp-ai-ads')) {
+          wireAiCopy($('lp-ads-out'));
+          $('lp-ai-ads').addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            $('lp-ads-err').textContent = '';
+            try { aiCache.ads[openPromo.code] = await aiCall('ad_copy', { ...aiPayload(), site: openPromo.landingSite }, btn); }
+            catch (err) { $('lp-ads-err').textContent = err.message; return; }
+            $('lp-ads-out').innerHTML = aiAdsHtml(openPromo.code);
+            btn.textContent = 'Write new versions';
+            wireAiCopy($('lp-ads-out'));
+          });
+        }
+        if ($('lp-emails')) {
+          $('lp-emails').addEventListener('toggle', () => { aiCache.emailsOpen = $('lp-emails').open ? openPromo.code : null; });
+          const STEPS = [0, 1, 2, 3, 4];
+          const readEmails = () => STEPS.map(i => ({ subject: $(`lp-em-s-${i}`).value.trim(), intro: $(`lp-em-i-${i}`).value.trim() }));
+          $('lp-em-ai').addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            if (readEmails().some(x => x.subject || x.intro) && !confirm('Replace what\'s in these boxes with new AI drafts? Nothing is saved until you click Save emails.')) return;
+            $('lp-em-err').textContent = '';
+            let r;
+            try { r = await aiCall('drip_copy', aiPayload(), btn); }
+            catch (err) { $('lp-em-err').textContent = err.message; return; }
+            r.emails.forEach((x, i) => { $(`lp-em-s-${i}`).value = x.subject; $(`lp-em-i-${i}`).value = x.intro; });
+            showToast('Drafted — review them, then click Save emails.');
+          });
+          $('lp-em-clear').addEventListener('click', () => {
+            STEPS.forEach(i => { $(`lp-em-s-${i}`).value = ''; $(`lp-em-i-${i}`).value = ''; });
+            showToast('Cleared — click Save emails to go back to the standard emails.');
+          });
+          $('lp-em-save').addEventListener('click', async () => {
+            const emails = readEmails();
+            $('lp-em-err').textContent = '';
+            try { await apiFetch('/api/promo.php?action=save_emails', { method: 'POST', body: JSON.stringify({ code: openPromo.code, emails }) }); }
+            catch (err) { $('lp-em-err').textContent = err.message; return; }
+            promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
+            $('lp-emails').querySelector('summary').textContent = 'Follow-up emails for this campaign' + (emails.some(x => x.subject || x.intro) ? ' — customised' : ' — using the standard emails');
+            showToast(`Emails for ${openPromo.code} saved.`);
+          });
+        }
         if ($('lp-qr')) {
           drawQrCode($('lp-qr'), promoLandingUrl(openPromo));
           $('lp-qr-download').href = $('lp-qr').toDataURL('image/png');
@@ -1192,6 +1395,25 @@ function renderAdmin(){
       await apiFetch('/api/settings.php?action=set_last_minute', { method: 'POST', body: JSON.stringify({ enabled: lastMinuteEnabled }) });
       showToast(`Last-minute discount ${lastMinuteEnabled ? 'enabled' : 'disabled'}.`);
     });
+    const wireIdeas = () => $('pc-ai-out').querySelectorAll('[data-ai-use-idea]').forEach(btn => btn.addEventListener('click', () => {
+      const it = aiCache.ideas[+btn.dataset.aiUseIdea];
+      $('pc-code').value = it.code;
+      $('pc-type').value = it.type;
+      $('pc-value').value = it.value;
+      $('pc-expires').value = it.expiresAt || '';
+      aiCache.ideaCopy[it.code] = { site: it.site, headline: it.headline };
+      $('pc-code').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      showToast('Filled in — adjust anything, then click Create code.');
+    }));
+    wireIdeas();
+    $('pc-ai-note').addEventListener('input', (e) => { aiCache.notes.ideas = e.target.value; });
+    $('pc-ai-ideas').addEventListener('click', async (e) => {
+      $('pc-ai-err').textContent = '';
+      try { aiCache.ideas = (await aiCall('promo_ideas', { note: $('pc-ai-note').value.trim() }, e.currentTarget)).ideas; }
+      catch (err) { $('pc-ai-err').textContent = err.message; return; }
+      $('pc-ai-out').innerHTML = aiIdeasHtml();
+      wireIdeas();
+    });
     $('pc-add').addEventListener('click', async () => {
       const code = $('pc-code').value.trim().toUpperCase();
       const type = $('pc-type').value;
@@ -1206,6 +1428,7 @@ function renderAdmin(){
       } catch (e){ $('pc-err').textContent = e.message; return; }
       $('pc-err').textContent = '';
       promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
+      if (aiCache.ideaCopy[code]) promoLandingOpen = code;
       renderAdmin();
       showToast(`Promo code ${code} created.`);
     });
@@ -1894,6 +2117,15 @@ function renderAdmin(){
         ${sub ? `<div class="an-sub">${sub}</div>` : ''}
       </div>`;
 
+    const aiSummaryCard = `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>AI summary</h3>
+        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:10px;">A plain-English read of the last 30 days against the 30 before, with suggested next steps. Only totals are sent to Google — no names, emails, or addresses.</p>
+        <button class="btn ghost sm" type="button" id="an-ai-btn">${aiCache.summary ? 'Summarize again' : 'Summarize the last 30 days'}</button>
+        <div class="err-msg" id="an-ai-err"></div>
+        <div id="an-ai-out">${aiSummaryHtml()}</div>
+      </div>`;
+
     const L = an.leads || { captured: 0, active: 0, converted: 0, unsubscribed: 0, expired: 0, conversionRate: null, recent: [], tableMissing: false };
     const cardsHtml = `
       <div class="an-grid">
@@ -1991,7 +2223,7 @@ function renderAdmin(){
             </div>
           </div>`; }).join('')}
       </div>`;
-    el.innerHTML = diagnosticsHtml + cardsHtml + leadsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexLeadHtml;
+    el.innerHTML = aiSummaryCard + diagnosticsHtml + cardsHtml + leadsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexLeadHtml;
 
     function wireLeadsSearch(){
       const search = document.getElementById('leads-search');
@@ -2004,6 +2236,14 @@ function renderAdmin(){
       });
     }
     wireLeadsSearch();
+    document.getElementById('an-ai-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      document.getElementById('an-ai-err').textContent = '';
+      try { aiCache.summary = await aiCall('analytics_summary', {}, btn); }
+      catch (err) { document.getElementById('an-ai-err').textContent = err.message; return; }
+      document.getElementById('an-ai-out').innerHTML = aiSummaryHtml();
+      btn.textContent = 'Summarize again';
+    });
     document.querySelectorAll('[data-lead-resend]').forEach(btn => btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {

@@ -39,8 +39,9 @@ function lead_booking_url(array $lead, array $promo) {
     return site_url_for($lead['site']) . '/index.html?welcome=' . urlencode($promo['code']) . '&lead=' . urlencode($lead['email']) . $anchor;
 }
 
+// Plain text — leads.name is stored HTML-escaped, so decode it first.
 function lead_first_name(array $lead) {
-    $first = trim(explode(' ', trim($lead['name']))[0] ?? '');
+    $first = trim(explode(' ', trim(html_entity_decode($lead['name'], ENT_QUOTES, 'UTF-8')))[0] ?? '');
     return $first !== '' ? $first : 'there';
 }
 
@@ -147,8 +148,61 @@ function lead_email_content(array $lead, array $promo, int $step) {
     ];
 }
 
-function send_lead_email(array $lead, array $promo, int $step) {
+define('DRIP_SUBJECT_MAX', 150);
+define('DRIP_INTRO_MAX', 600);
+
+// A campaign's custom email copy (promo_codes.drip_custom): always 5 entries
+// of {subject, intro}, one per step; blank strings mean "use the standard".
+function promo_drip_custom(?string $json) {
+    $data = $json ? json_decode($json, true) : null;
+    $out = [];
+    for ($i = 0; $i < 5; $i++) {
+        $e = is_array($data) && isset($data[$i]) && is_array($data[$i]) ? $data[$i] : [];
+        $out[] = ['subject' => (string)($e['subject'] ?? ''), 'intro' => (string)($e['intro'] ?? '')];
+    }
+    return $out;
+}
+
+function lead_custom_copy(array $lead, int $step) {
+    global $pdo;
+    if (!lead_is_campaign($lead) || !($pdo instanceof PDO)) return null;
+    try {
+        $stmt = $pdo->prepare('SELECT drip_custom FROM promo_codes WHERE code = ?');
+        $stmt->execute([$lead['campaign_code']]);
+        $json = $stmt->fetchColumn();
+    } catch (PDOException $e) {
+        return null; // migration_014 not run yet — standard copy
+    }
+    $c = promo_drip_custom($json ?: null)[$step] ?? null;
+    return $c && ($c['subject'] !== '' || $c['intro'] !== '') ? $c : null;
+}
+
+// Plain text in, plain text out — callers escape for HTML.
+function fill_drip_placeholders(string $text, array $lead, array $promo) {
+    return strtr($text, [
+        '{name}' => lead_first_name($lead),
+        '{offer}' => promo_offer_label($promo),
+        '{expires}' => $promo['expires_at'] ? date('F j, Y', strtotime($promo['expires_at'])) : 'its expiry date',
+        '{code}' => $promo['code'],
+    ]);
+}
+
+// Returns ['subject' => ..., 'html' => ...] with any campaign-specific copy applied.
+function lead_email_build(array $lead, array $promo, int $step) {
     $c = lead_email_content($lead, $promo, $step);
-    $html = lead_email_layout($lead, $promo, $c['heading'], $c['body'], $c['cta']);
-    return send_email($lead['email'], $c['subject'], $html, null, $lead['site']);
+    $custom = lead_custom_copy($lead, $step);
+    if ($custom) {
+        if ($custom['subject'] !== '') $c['subject'] = fill_drip_placeholders($custom['subject'], $lead, $promo);
+        if ($custom['intro'] !== '') {
+            $greeting = '<p>Hi ' . htmlspecialchars(lead_first_name($lead)) . ',</p>';
+            $intro = '<p>' . nl2br(htmlspecialchars(fill_drip_placeholders($custom['intro'], $lead, $promo))) . '</p>';
+            $c['body'] = strpos($c['body'], $greeting) === 0 ? $greeting . $intro . substr($c['body'], strlen($greeting)) : $intro . $c['body'];
+        }
+    }
+    return ['subject' => $c['subject'], 'html' => lead_email_layout($lead, $promo, $c['heading'], $c['body'], $c['cta'])];
+}
+
+function send_lead_email(array $lead, array $promo, int $step) {
+    $e = lead_email_build($lead, $promo, $step);
+    return send_email($lead['email'], $e['subject'], $e['html'], null, $lead['site']);
 }

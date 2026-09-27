@@ -18,3 +18,10 @@ define('STRIPE_WEBHOOK_SECRET', 'whsec_your_webhook_signing_secret_here');
 
 // ========== SENDGRID API KEY ==========
 define('SENDGRID_API_KEY', 'SG.your_sendgrid_api_key_here');
+
+// ========== GOOGLE GEMINI (optional — admin AI drafting buttons) ==========
+// Free key from https://aistudio.google.com → Get API key. Leave this line
+// out and the admin's AI buttons just say AI isn't set up; nothing else changes.
+define('GEMINI_API_KEY', 'your_gemini_api_key_here');
+// Optional: pin a specific model instead of Google's "latest Flash" alias.
+// define('GEMINI_MODEL', 'gemini-flash-latest');
