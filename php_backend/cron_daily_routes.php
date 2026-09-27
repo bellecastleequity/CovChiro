@@ -9,6 +9,14 @@ require_once __DIR__ . '/config.php';
 // rather than trying to translate "4:30am Eastern" into a server-local cron
 // hour that could be wrong depending on the box.
 $now = new DateTime('now');
+
+// Heartbeat, written on every single invocation regardless of whether this
+// is the send-minute — lets the admin panel's diagnostics show when cPanel
+// last actually called this script, so "no digest arrived" can be told
+// apart from "cron isn't configured/running at all" rather than guessed at.
+$pdo->prepare('INSERT INTO app_settings (name, value_json) VALUES ("daily_route_cron_last_ran", ?) ON DUPLICATE KEY UPDATE value_json = VALUES(value_json)')
+    ->execute([json_encode($now->format('c'))]);
+
 $hour = (int)$now->format('H');
 $minute = (int)$now->format('i');
 if ($hour !== 4 || $minute < 30 || $minute >= 35) {

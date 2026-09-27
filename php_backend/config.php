@@ -185,11 +185,19 @@ function log_error($message, $context = []) {
     error_log($log_entry, 3, $log_dir . '/error.log');
 }
 
-function send_email($to, $subject, $body, $reply_to = null) {
+// Full-detail version of send_email() — used by send_email() itself and by
+// the admin "Send test email" diagnostic. A plain true/false swallows *why*
+// a send failed: the SendGrid SDK only throws for transport-level problems
+// (DNS, connection refused, etc.); a rejected API key, an unverified sender
+// identity, or bad content all come back as a normal HTTP response with a
+// non-202 status and a body explaining why, which the old version of this
+// function never even logged. That's the gap that made "emails just aren't
+// arriving" impossible to diagnose from the logs alone.
+function send_email_detailed($to, $subject, $body, $reply_to = null) {
     $autoload = __DIR__ . '/vendor/autoload.php';
     if (!file_exists($autoload)) {
         log_error('SendGrid vendor not installed, email not sent', ['to' => $to, 'subject' => $subject]);
-        return false;
+        return ['ok' => false, 'reason' => 'SendGrid PHP library not installed — run `composer install` in php_backend/.'];
     }
     require_once $autoload;
 
@@ -203,11 +211,19 @@ function send_email($to, $subject, $body, $reply_to = null) {
     $sendgrid = new \SendGrid(SENDGRID_API_KEY);
     try {
         $response = $sendgrid->send($email);
-        return $response->statusCode() === 202;
+        if ((int)$response->statusCode() === 202) {
+            return ['ok' => true, 'status' => $response->statusCode()];
+        }
+        log_error('Email rejected by SendGrid', ['to' => $to, 'subject' => $subject, 'status' => $response->statusCode(), 'body' => $response->body()]);
+        return ['ok' => false, 'status' => $response->statusCode(), 'body' => $response->body()];
     } catch (\Exception $e) {
         log_error('Email send failed', ['to' => $to, 'error' => $e->getMessage()]);
-        return false;
+        return ['ok' => false, 'reason' => $e->getMessage()];
     }
+}
+
+function send_email($to, $subject, $body, $reply_to = null) {
+    return send_email_detailed($to, $subject, $body, $reply_to)['ok'];
 }
 
 // A Google Maps "get directions" deep link — tapping it in the Gmail app on

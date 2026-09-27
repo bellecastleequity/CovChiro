@@ -91,6 +91,7 @@ let latestEarnings = null;
 const EARN_SERVICE_LABEL = { office: 'Office coverage', homevisit: 'Home visits', event: 'Events', standing: 'Standing coverage', invoice: 'Other invoices' };
 const EARN_REGION_LABEL = { central: 'Central FL', north: 'North FL', south: 'South FL' };
 let earningsFilters = { service: 'all', region: 'all', period: 'month', anchor: new Date().toISOString().slice(0, 10), customFrom: null, customTo: null };
+let latestCronStatus = null;
 let chatThreads = [], activeChatThread = null, activeChatMessages = [];
 let docStatus = {};
 async function loadAdminBookings(){
@@ -1591,6 +1592,26 @@ function renderAdmin(){
     const REGION_LABEL = { central: 'Central FL', north: 'North FL', south: 'South FL' };
     const MONTH_LABEL = m => { const [y,mo] = m.split('-'); return new Date(y, mo-1, 1).toLocaleString('en-US', {month:'short', year:'numeric'}); };
 
+    const cs = latestCronStatus;
+    const fmtWhen = (iso) => iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
+    const diagnosticsHtml = `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Email &amp; cron diagnostics</h3>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;">
+          <div>
+            <p style="font-size:0.85rem;color:#6b7280;margin-bottom:8px;">Send a real test email right now and see exactly what happens — including reasons SendGrid may silently reject a send that never show up as a PHP error.</p>
+            <button class="btn ghost sm" id="diag-send-test">Send test email</button>
+            <div id="diag-test-result" style="margin-top:10px;font-size:0.85rem;"></div>
+          </div>
+          <div>
+            <p style="font-size:0.85rem;color:#6b7280;margin-bottom:4px;"><strong>Daily route cron</strong></p>
+            <div style="font-size:0.85rem;">Last ran: ${cs ? fmtWhen(cs.lastRan) : 'Unknown'}</div>
+            <div style="font-size:0.85rem;">Last digest sent for: ${cs && cs.lastSentDate ? cs.lastSentDate : 'Never'}</div>
+            ${!cs || !cs.lastRan ? `<div style="font-size:0.78rem;color:var(--red);margin-top:4px;">No record of this cron ever running — check it's added in cPanel → Cron Jobs.</div>` : ''}
+          </div>
+        </div>
+      </div>`;
+
     const metricCard = (label, value, sub) => `
       <div class="an-card">
         <div class="an-label">${label}</div>
@@ -1669,7 +1690,31 @@ function renderAdmin(){
           </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No bookings yet.</p>`}
       </div>`;
 
-    el.innerHTML = cardsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexLeadHtml;
+    el.innerHTML = diagnosticsHtml + cardsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexLeadHtml;
+
+    document.getElementById('diag-send-test').addEventListener('click', async () => {
+      const btn = document.getElementById('diag-send-test');
+      const out = document.getElementById('diag-test-result');
+      btn.disabled = true;
+      out.textContent = 'Sending…';
+      try {
+        const r = await apiFetch('/api/settings.php?action=test_email', { method: 'POST', body: '{}' });
+        const lines = [
+          `SendGrid library installed: ${r.vendorInstalled ? 'yes' : 'NO — run composer install in php_backend/'}`,
+          `API key looks set: ${r.apiKeyLooksSet ? 'yes' : 'NO — check SENDGRID_API_KEY in secrets.php'}`,
+          `Sending to: ${r.adminEmail} · From: ${r.fromEmail}`,
+          r.result.ok
+            ? `Result: sent successfully (status ${r.result.status}). Check the inbox (and spam folder) for ${r.adminEmail}.`
+            : `Result: FAILED — ${r.result.reason || `SendGrid returned status ${r.result.status}: ${r.result.body || ''}`}`,
+        ];
+        out.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+        out.style.color = r.result.ok ? 'var(--teal-dark)' : 'var(--red)';
+      } catch (e) {
+        out.textContent = 'Request failed: ' + e.message;
+        out.style.color = 'var(--red)';
+      }
+      btn.disabled = false;
+    });
   } else if (admView === 'messages'){
     renderMessagesTab(el);
   } else if (admView === 'documents'){
@@ -1799,6 +1844,7 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
   }
   if (admView === 'analytics'){
     try { latestAnalytics = await apiFetch('/api/analytics.php?action=summary'); } catch (e) { latestAnalytics = null; }
+    try { latestCronStatus = await apiFetch('/api/settings.php?action=cron_status'); } catch (e) { latestCronStatus = null; }
   }
   if (admView === 'messages'){
     activeChatThread = null; activeChatMessages = [];
