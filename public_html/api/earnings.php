@@ -4,7 +4,8 @@ require_once __DIR__ . '/../../php_backend/config.php';
 require_admin();
 
 $action = $_GET['action'] ?? 'list';
-if ($action !== 'list') json_response(['error' => 'Unknown action'], 400);
+if (!in_array($action, ['list', 'projected'], true)) json_response(['error' => 'Unknown action'], 400);
+if ($action === 'projected') { handle_projected($pdo); exit; }
 
 // One raw, tagged row per payment ledger entry — every real dollar in or out
 // (bookings, standing-day agreements, and standalone invoices all post into
@@ -51,3 +52,66 @@ foreach ($stmt->fetchAll() as $r) {
 }
 
 json_response(['payments' => $payments]);
+
+// Expected/contracted revenue from bookings that are active (status =
+// "upcoming" — this schema never renames status on completion, so this
+// covers already-completed coverage too) or booked standing-day dates that
+// haven't been cancelled — regardless of whether they've actually been paid
+// yet. This is a different lens than the payments ledger above: "how much
+// business do I have on the books for this period" rather than "how much
+// cash have I actually collected." A multi-day booking's total (including
+// any billing adjustments) is split evenly across its coverage dates so a
+// booking spanning a month/quarter boundary attributes fairly to each side,
+// rather than crediting the whole thing to its start date. Standalone
+// invoices are deliberately excluded — they're not tied to a "booking" at
+// all, which is specifically what was asked to be projected here.
+//
+// Shaped identically to the payments list above (status/purpose forced to
+// values earnPaymentNet() on the frontend already treats as a plain full
+// contribution) so every existing filter/bucket/insight function on the
+// admin side works unchanged against either data set.
+function handle_projected(PDO $pdo) {
+    $entries = [];
+
+    $stmt = $pdo->query("SELECT b.*, COALESCE(adj.total, 0) AS adjustments_total FROM bookings b
+        LEFT JOIN (SELECT booking_id, SUM(amount) AS total FROM booking_adjustments GROUP BY booking_id) adj
+            ON adj.booking_id = b.id
+        WHERE b.status = 'upcoming'");
+    foreach ($stmt->fetchAll() as $b) {
+        $dates = json_decode($b['dates'], true) ?: [];
+        $n = count($dates);
+        if (!$n) continue;
+        $fullValue = (float)$b['total'] + (float)$b['adjustments_total'];
+        $perDate = round($fullValue / $n, 2);
+        foreach ($dates as $d) {
+            $entries[] = [
+                'id' => $b['id'] . '-' . $d,
+                'amount' => $perDate,
+                'purpose' => 'expected',
+                'status' => 'succeeded',
+                'createdAt' => to_iso($d),
+                'service' => $b['coverage_type'] ?: 'office',
+                'region' => $b['region'],
+            ];
+        }
+    }
+
+    $stmt = $pdo->query("SELECT * FROM standing_agreements WHERE status != 'cancelled'");
+    foreach ($stmt->fetchAll() as $a) {
+        foreach (json_decode($a['scheduled_dates'], true) ?: [] as $sd) {
+            if (($sd['status'] ?? '') === 'cancelled') continue;
+            $rate = standing_date_rate($a, $sd['type'] ?? 'full');
+            $entries[] = [
+                'id' => $a['id'] . '-' . $sd['date'],
+                'amount' => $rate['total'],
+                'purpose' => 'expected',
+                'status' => 'succeeded',
+                'createdAt' => to_iso($sd['date']),
+                'service' => 'standing',
+                'region' => $a['region'],
+            ];
+        }
+    }
+
+    json_response(['payments' => $entries]);
+}

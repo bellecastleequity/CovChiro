@@ -104,9 +104,10 @@
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null, adminInvoices = [];
 let showCancelledBookings = false;
 let latestEarnings = null;
+let latestProjected = null;
 const EARN_SERVICE_LABEL = { office: 'Office coverage', homevisit: 'Home visits', event: 'Events', standing: 'Standing coverage', invoice: 'Other invoices' };
 const EARN_REGION_LABEL = { central: 'Central FL', north: 'North FL', south: 'South FL' };
-let earningsFilters = { service: 'all', region: 'all', period: 'month', anchor: new Date().toISOString().slice(0, 10), customFrom: null, customTo: null };
+let earningsFilters = { mode: 'actual', service: 'all', region: 'all', period: 'month', anchor: new Date().toISOString().slice(0, 10), customFrom: null, customTo: null };
 let latestCronStatus = null;
 let chatThreads = [], activeChatThread = null, activeChatMessages = [];
 let docStatus = {};
@@ -440,6 +441,14 @@ function earnPeriodBounds(period, anchorStr, customFrom, customTo){
     const start = new Date(anchor); const end = new Date(anchor); end.setDate(end.getDate() + 1);
     return { start, end, label: anchor.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) };
   }
+  if (period === 'week'){
+    const dow = anchor.getDay(); // 0=Sun..6=Sat
+    const diffToMonday = (dow + 6) % 7;
+    const start = new Date(anchor); start.setDate(anchor.getDate() - diffToMonday);
+    const end = new Date(start); end.setDate(start.getDate() + 7);
+    const endDisplay = new Date(end); endDisplay.setDate(end.getDate() - 1);
+    return { start, end, label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endDisplay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` };
+  }
   if (period === 'quarter'){
     const q = Math.floor(anchor.getMonth() / 3);
     const start = new Date(anchor.getFullYear(), q * 3, 1); const end = new Date(anchor.getFullYear(), q * 3 + 3, 1);
@@ -461,6 +470,7 @@ function earnPeriodBounds(period, anchorStr, customFrom, customTo){
 function earnShiftAnchor(period, anchorStr, dir){
   const d = new Date(anchorStr + 'T00:00:00');
   if (period === 'day') d.setDate(d.getDate() + dir);
+  else if (period === 'week') d.setDate(d.getDate() + dir * 7);
   else if (period === 'quarter') d.setMonth(d.getMonth() + dir * 3);
   else if (period === 'year') d.setFullYear(d.getFullYear() + dir);
   else d.setMonth(d.getMonth() + dir);
@@ -1565,9 +1575,11 @@ function renderAdmin(){
       showToast('Invoice voided.');
     }));
   } else if (admView === 'earnings'){
-    if (!latestEarnings){ el.innerHTML = `<div class="empty">Couldn't load earnings right now.</div>`; return; }
     const f = earningsFilters;
-    const filtered = earnFilterPayments(latestEarnings, f.service, f.region);
+    const isExpected = f.mode === 'expected';
+    const sourceData = isExpected ? latestProjected : latestEarnings;
+    if (!sourceData){ el.innerHTML = `<div class="empty">Couldn't load earnings right now.</div>`; return; }
+    const filtered = earnFilterPayments(sourceData, f.service, f.region);
     const { start, end, label } = earnPeriodBounds(f.period, f.anchor, f.customFrom, f.customTo);
     const inPeriod = filtered.filter(p => { const d = new Date(p.createdAt); return d >= start && d < end; });
     const netTotal = inPeriod.reduce((s, p) => s + earnPaymentNet(p), 0);
@@ -1592,10 +1604,17 @@ function renderAdmin(){
       </div>`;
     const cardsHtml = `
       <div class="an-grid">
-        ${metricCard('Net earnings', earnMoney(netTotal), `${label}`)}
-        ${metricCard('Gross received', money(grossTotal), `${payCount} payment${payCount === 1 ? '' : 's'}`)}
-        ${metricCard('Refunded', money(refundTotal), refundTotal ? 'issued this period' : 'none this period')}
-        ${metricCard('vs. prior period', prevDelta === null ? 'N/A' : `${prevDelta >= 0 ? '+' : ''}${Math.round(prevDelta)}%`, prevLabel ? `vs ${prevLabel}` : 'custom range has no prior period')}
+        ${isExpected ? `
+          ${metricCard('Expected revenue', earnMoney(netTotal), `${label}`)}
+          ${metricCard('Coverage days', String(payCount), `booked in this period`)}
+          ${metricCard('Avg per day', payCount ? earnMoney(netTotal / payCount) : money(0), 'across those days')}
+          ${metricCard('vs. prior period', prevDelta === null ? 'N/A' : `${prevDelta >= 0 ? '+' : ''}${Math.round(prevDelta)}%`, prevLabel ? `vs ${prevLabel}` : 'custom range has no prior period')}
+        ` : `
+          ${metricCard('Net earnings', earnMoney(netTotal), `${label}`)}
+          ${metricCard('Gross received', money(grossTotal), `${payCount} payment${payCount === 1 ? '' : 's'}`)}
+          ${metricCard('Refunded', money(refundTotal), refundTotal ? 'issued this period' : 'none this period')}
+          ${metricCard('vs. prior period', prevDelta === null ? 'N/A' : `${prevDelta >= 0 ? '+' : ''}${Math.round(prevDelta)}%`, prevLabel ? `vs ${prevLabel}` : 'custom range has no prior period')}
+        `}
       </div>`;
 
     const periodNavHtml = f.period === 'custom' ? `
@@ -1609,9 +1628,19 @@ function renderAdmin(){
       <button class="btn ghost sm" id="earn-next">Next ›</button>
     `;
 
+    const modeToggleHtml = `
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button class="btn ${isExpected ? 'ghost' : ''} sm" id="earn-mode-actual">Actual (received)</button>
+        <button class="btn ${isExpected ? '' : 'ghost'} sm" id="earn-mode-expected">Expected (booked)</button>
+      </div>`;
+
     const filtersHtml = `
       <div class="admin-card" style="margin-bottom:20px;">
         <h3>Earnings</h3>
+        ${modeToggleHtml}
+        <p style="font-size:0.8rem;color:#6b7280;margin-bottom:12px;">${isExpected
+          ? 'Contracted value of active and completed bookings and standing-day dates for this period, whether or not they\'ve been paid yet — a forward-looking projection, not cash actually collected.'
+          : 'Actual money received (and refunded) from the payments ledger for this period.'}</p>
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:4px;">
           <div><label for="earn-service">Service</label>
             <select id="earn-service">
@@ -1627,7 +1656,8 @@ function renderAdmin(){
           </div>
           <div><label for="earn-period">Breakdown by</label>
             <select id="earn-period">
-              <option value="day" ${f.period === 'day' ? 'selected' : ''}>Day</option>
+              <option value="day" ${f.period === 'day' ? 'selected' : ''}>Today</option>
+              <option value="week" ${f.period === 'week' ? 'selected' : ''}>Week (Mon–Sun)</option>
               <option value="month" ${f.period === 'month' ? 'selected' : ''}>Month</option>
               <option value="quarter" ${f.period === 'quarter' ? 'selected' : ''}>Quarter</option>
               <option value="year" ${f.period === 'year' ? 'selected' : ''}>Year</option>
@@ -1648,26 +1678,30 @@ function renderAdmin(){
             <span class="an-bar-label">${b.label}</span>
             <div class="an-bar-track"><div class="an-bar-fill" style="width:${(Math.abs(b.total) / breakdownMax * 100).toFixed(0)}%;${b.total < 0 ? 'background:var(--red);' : ''}"></div></div>
             <span class="an-bar-val" style="width:auto;min-width:80px;">${earnMoney(b.total)}</span>
-          </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No payments in this period.</p>`}
+          </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">${isExpected ? 'Nothing booked in this period.' : 'No payments in this period.'}</p>`}
       </div>`;
 
     const insights = earnMonthlyInsights(filtered);
     const insightList = (rows) => rows.length
       ? rows.map(r => `<div class="an-bar-row" style="margin-bottom:6px;"><span class="an-bar-label" style="width:auto;flex:1;">${r.label}</span><span class="an-bar-val" style="width:auto;min-width:80px;">${earnMoney(r.total)}</span></div>`).join('')
       : `<p style="font-size:0.85rem;color:#6b7280;">Not enough history yet.</p>`;
+    const topLabel = isExpected ? 'Most booked' : 'Most profitable';
+    const bottomLabel = isExpected ? 'Slowest booked' : 'Slowest';
     const insightsHtml = `
       <div class="admin-card" style="margin-top:20px;">
-        <h3>Most profitable months${f.service !== 'all' || f.region !== 'all' ? ' (filtered)' : ''}</h3>
+        <h3>${topLabel} months${f.service !== 'all' || f.region !== 'all' ? ' (filtered)' : ''}</h3>
         ${insightList(insights.mostProfitable)}
       </div>
       <div class="admin-card" style="margin-top:20px;">
-        <h3>Slowest months${f.service !== 'all' || f.region !== 'all' ? ' (filtered)' : ''}</h3>
+        <h3>${bottomLabel} months${f.service !== 'all' || f.region !== 'all' ? ' (filtered)' : ''}</h3>
         ${insightList(insights.slowest)}
         ${insights.monthCount ? `<p style="font-size:0.78rem;color:#6b7280;margin-top:8px;">Across ${insights.monthCount} month${insights.monthCount === 1 ? '' : 's'} of history.</p>` : ''}
       </div>`;
 
     el.innerHTML = filtersHtml + breakdownHtml + insightsHtml;
 
+    $('earn-mode-actual').addEventListener('click', () => { earningsFilters.mode = 'actual'; renderAdmin(); });
+    $('earn-mode-expected').addEventListener('click', () => { earningsFilters.mode = 'expected'; renderAdmin(); });
     $('earn-service').addEventListener('change', (e) => { earningsFilters.service = e.target.value; renderAdmin(); });
     $('earn-region').addEventListener('change', (e) => { earningsFilters.region = e.target.value; renderAdmin(); });
     $('earn-period').addEventListener('change', (e) => {
@@ -1979,6 +2013,7 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
   }
   if (admView === 'earnings'){
     try { latestEarnings = (await apiFetch('/api/earnings.php?action=list')).payments || []; } catch (e) { latestEarnings = null; }
+    try { latestProjected = (await apiFetch('/api/earnings.php?action=projected')).payments || []; } catch (e) { latestProjected = null; }
   }
   if (admView === 'analytics'){
     try { latestAnalytics = await apiFetch('/api/analytics.php?action=summary'); } catch (e) { latestAnalytics = null; }
