@@ -409,7 +409,11 @@
   #chat-panel .chat-msg-me{background:var(--teal);color:var(--white);align-self:flex-end;}
   #chat-panel .chat-msg-admin{background:var(--paper);align-self:flex-start;}
   #chat-panel #chat-guest-fields{padding:0 15px 10px;display:flex;flex-direction:column;gap:6px;}
-  #chat-panel #chat-guest-fields input{border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:0.82rem;font-family:'IBM Plex Sans',sans-serif;}
+  #chat-panel #chat-guest-fields input{width:100%;border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:0.82rem;font-family:'IBM Plex Sans',sans-serif;}
+  /* Neutralizes the browser's native yellow autofill highlight (shows up
+     here often since these fields are exactly what a browser has saved) so
+     it doesn't clash with the panel's cream background. */
+  #chat-panel #chat-guest-fields input:-webkit-autofill{-webkit-box-shadow:0 0 0 30px var(--white) inset;-webkit-text-fill-color:var(--ink);}
   #chat-panel .chat-input{display:flex;border-top:1px solid var(--line);}
   #chat-panel .chat-input input{flex:1;border:none;padding:12px;font-size:0.84rem;font-family:'IBM Plex Sans',sans-serif;}
   #chat-panel .chat-input button{border:none;background:var(--teal);color:var(--white);padding:0 15px;cursor:pointer;}
