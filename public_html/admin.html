@@ -138,6 +138,18 @@ function drawQrCode(canvas, text){
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) ctx.fillRect((c + margin) * scale, (r + margin) * scale, scale, scale);
 }
 
+// Admin-only: a generic "Server error" also shows the logged cause (the API
+// already returns it as `debug`), so problems like a missing table are
+// visible on screen instead of needing the error log.
+const baseApiFetch = apiFetch;
+apiFetch = async (...args) => {
+  try { return await baseApiFetch(...args); }
+  catch (e) {
+    if (e.data && e.data.debug) e.message = `${e.message}: ${e.data.debug}`;
+    throw e;
+  }
+};
+
 // ---------- AI drafting (Gemini via /api/ai.php) ----------
 // Results are kept here so they survive re-renders until the page reloads.
 const aiCache = { landing: {}, ads: {}, ideas: null, ideaCopy: {}, summary: null, notes: {} };
