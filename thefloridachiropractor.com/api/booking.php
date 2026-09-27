@@ -379,21 +379,19 @@ function handle_admin_create_for_client(PDO $pdo) {
     }
 
     $reviewLink = SITE_URL . '/index.html?booking=' . $bookingId . ($resetToken ? '&reset=' . $resetToken : '');
-    if ($isNewClient) {
-        send_email($email, 'A booking has been started for you',
-            "<p>Hi {$name},</p><p>A booking has been started for you at coveragechiropractor.com:</p>" .
-            "<p><strong>{$title}</strong><br>{$meta}<br>Total: $" . number_format($total, 2) . ' · Deposit due: $' . number_format($deposit, 2) . '</p>' .
-            '<p>Click below to set a password, review the coverage agreement, and pay the deposit to confirm:</p>' .
-            "<p><a href=\"{$reviewLink}\">{$reviewLink}</a></p><p>This link expires in 7 days.</p>");
-    } else {
-        send_email($email, 'A booking has been added to your account',
-            "<p>Hi {$name},</p><p>A booking has been added to your account at coveragechiropractor.com:</p>" .
-            "<p><strong>{$title}</strong><br>{$meta}<br>Total: $" . number_format($total, 2) . ' · Deposit due: $' . number_format($deposit, 2) . '</p>' .
-            '<p>Sign in and review it to sign the coverage agreement and pay the deposit to confirm:</p>' .
-            "<p><a href=\"{$reviewLink}\">{$reviewLink}</a></p>");
-    }
-    send_email(ADMIN_EMAIL, "Phone booking started — {$bookingId}",
-        "<p>{$name} ({$email}) — {$title}, {$meta}. Awaiting their signature + deposit.</p>");
+    $pending = ['id' => $bookingId, 'title' => $title, 'meta' => $meta, 'dates' => json_encode($sorted)];
+    send_branded_email($email, $isNewClient ? 'Your coverage booking is ready to confirm' : 'A booking has been added to your account',
+        email_heading('Your coverage is almost booked, ' . email_first_name($name) . '.', 'Action needed')
+        . email_p('As discussed, I’ve put together your coverage booking. Your dates are being held — review the details, sign the coverage agreement, and pay the 10% deposit to confirm.')
+        . email_booking_facts($pending, ['Total' => em_money($total), 'Deposit due now' => ['html' => '<strong>' . em_money($deposit) . '</strong>']])
+        . email_buttons([[$isNewClient ? 'Set password & confirm booking' : 'Review & confirm booking', $reviewLink]])
+        . email_callout($isNewClient
+            ? 'This link creates your account password, then walks you through the agreement and deposit. <strong>It expires in 7 days</strong>, after which the held dates are released.'
+            : 'Sign in with your existing account to review and confirm. <strong>The held dates are released after 7 days</strong> if the booking isn’t confirmed.', 'warn'),
+        ['site' => 'coverage', 'preheader' => 'Review, sign, and pay the ' . em_money($deposit) . ' deposit to confirm your dates.']);
+    send_admin_email("Phone booking started — {$bookingId}", 'Phone booking sent to client',
+        email_facts(['Client' => "{$name} ({$email})", 'Service' => $title, 'Date(s)' => email_booking_dates($pending), 'Details' => $meta, 'Total' => em_money($total), 'Deposit due' => em_money($deposit), 'Reference' => $bookingId])
+        . email_p('Awaiting their signature and deposit.'), ['kicker' => 'Awaiting client']);
 
     json_response(['success' => true, 'booking_id' => $bookingId, 'is_new_client' => $isNewClient, 'total' => $total, 'deposit' => $deposit, 'promoDiscount' => $promoDiscount]);
 }
@@ -469,9 +467,18 @@ function handle_cancel(PDO $pdo) {
     $stmt = $pdo->prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?");
     $stmt->execute([$id]);
 
-    send_email($user['email'], "Booking {$id} cancelled", "<p>Your booking {$id} has been cancelled." .
-        ($refundAmount > 0 ? " A refund of $" . number_format($refundAmount, 2) . " has been issued to your card." : " Since this was inside the 48-hour window, the deposit is not refundable.") . "</p>");
-    send_email(ADMIN_EMAIL, "Booking {$id} cancelled by client", "<p>{$user['email']} cancelled booking {$id}.</p>");
+    $site = booking_site($b);
+    send_branded_email($user['email'], "Booking {$id} cancelled",
+        email_heading('Your booking has been cancelled', 'Cancellation confirmed')
+        . email_booking_facts($b, ['Refund' => $refundAmount > 0 ? em_money($refundAmount) . ' to your card' : 'None'])
+        . email_p($refundAmount > 0
+            ? 'A refund of <strong>' . em_money($refundAmount) . '</strong> has been issued to your card. Depending on your bank it can take 5–10 business days to appear.'
+            : 'Since this was inside the ' . CANCEL_FULL_REFUND_HOURS . '-hour window, the deposit isn’t refundable.')
+        . email_p('If your plans change again, you can rebook any open date online in a couple of minutes.')
+        . email_buttons([[$site === 'florida' ? 'Book a new visit' : 'Book new dates', email_brand($site)['book']]]),
+        ['site' => $site, 'preheader' => "Booking {$id} is cancelled."]);
+    send_admin_email("Booking {$id} cancelled by client", 'Booking cancelled by client',
+        email_facts(['Client' => $user['email'], 'Service' => $b['title'], 'Date(s)' => email_booking_dates($b), 'Refund' => em_money($refundAmount), 'Reference' => $id]), ['kicker' => 'Cancellation', 'site' => $site]);
 
     json_response(['success' => true, 'refund_amount' => $refundAmount]);
 }
@@ -572,7 +579,8 @@ function handle_review(PDO $pdo) {
 
     $stmt = $pdo->prepare('UPDATE bookings SET review_rating = ?, review_text = ?, review_submitted_at = NOW() WHERE id = ?');
     $stmt->execute([$rating, sanitize($text), $id]);
-    send_email(ADMIN_EMAIL, "New review on {$id}", "<p>{$rating}/5 — " . htmlspecialchars($text) . '</p>');
+    send_admin_email("New review on {$id}", 'New review: ' . str_repeat('★', (int)$rating) . str_repeat('☆', 5 - (int)$rating),
+        email_facts(['Rating' => "{$rating} / 5", 'Booking' => $b['title'] ?? $id, 'Reference' => $id]) . ($text !== '' ? email_quote($text) : ''), ['kicker' => 'Review']);
     json_response(['success' => true]);
 }
 
@@ -605,11 +613,9 @@ function handle_feedback(PDO $pdo) {
 
     $lowScore = $punctuality <= 2 || $professionalism <= 2 || $patientCare <= 2 || $wouldRebook === 'no';
     if ($lowScore) {
-        send_email(ADMIN_EMAIL, "Low-score feedback on {$id} — needs follow-up",
-            "<p>Coverage feedback on {$id} needs a look:</p><ul>" .
-            "<li>Punctuality: {$punctuality}/5</li><li>Professionalism: {$professionalism}/5</li>" .
-            "<li>Patient care: {$patientCare}/5</li><li>Would rebook: " . ($wouldRebook ?: 'n/a') . '</li></ul>' .
-            ($feedback['notes'] ? '<p>Notes: ' . htmlspecialchars($feedback['notes']) . '</p>' : ''));
+        send_admin_email("Low-score feedback on {$id} — needs follow-up", 'Feedback needs a follow-up',
+            email_facts(['Punctuality' => "{$punctuality} / 5", 'Professionalism' => "{$professionalism} / 5", 'Patient care' => "{$patientCare} / 5", 'Would rebook' => $wouldRebook ?: 'n/a', 'Booking' => $b['title'] ?? $id, 'Reference' => $id])
+            . ($feedback['notes'] ? email_quote($feedback['notes']) : ''), ['kicker' => 'Private feedback']);
     }
 
     $offerPublicReview = $punctuality >= 4 && $professionalism >= 4 && $patientCare >= 4 && $wouldRebook === 'yes';
@@ -645,21 +651,33 @@ function handle_mark_complete(PDO $pdo) {
     $stmt->execute([$id]);
 
     $owed = booking_balance_due($pdo, $b);
-    send_email($b['user_email'], "Coverage complete — balance due on {$id}",
-        "<p>Your coverage for booking {$id} is marked complete. The remaining balance of $" . number_format($owed, 2) .
-        " is now due. Pay it from your account dashboard at " . SITE_URL . ".</p>");
+    $site = booking_site($b);
+    $florida = $site === 'florida';
+    if ($owed > 0) {
+        send_branded_email($b['user_email'], "Balance due — {$b['title']}",
+            email_heading($florida ? 'Your visit is complete' : 'Your coverage is complete', 'Balance due')
+            . email_amount('Balance due', $owed, 'Booking ' . em($id))
+            . email_booking_facts($b, ['Total' => em_money((float)$b['total'] + booking_adjustments_total($pdo, $id)), 'Paid so far' => em_money($b['paid'])])
+            . email_buttons([['Pay balance now', dashboard_url($site, 'balance')]])
+            . email_small('Balances are due within ' . LATE_FEE_GRACE_HOURS . ' hours of completion; after that a ' . em_money(LATE_FEE_AMOUNT) . ' late fee applies. Pay securely by card from your account.'),
+            ['site' => $site, 'preheader' => em_money($owed) . ' is now due — pay securely online.']);
+    }
 
     if ((float)$b['total'] > 0) {
-        send_email($b['user_email'], "Thank you — {$b['title']}",
-            "<p>Dear {$b['user_name']},</p><p>Thank you for having me cover {$b['meta']}. It was a pleasure working with your team, " .
-            "and I hope it went smoothly on your end as well.</p><p>If anything came up worth mentioning, or if you'd like to get " .
-            "a future date on the calendar, I'm easy to reach — just reply to this email or reach out through your account.</p>" .
-            "<p>Thanks again,<br>Michael L. McPherson, D.C.<br>coveragechiropractor.com</p>");
+        send_branded_email($b['user_email'], "Thank you — {$b['title']}",
+            email_heading('Thank you, ' . email_first_name($b['user_name']) . '.')
+            . email_p($florida
+                ? 'Thank you for having me out on ' . em(email_booking_dates($b) ?? 'your visit') . '. It was a pleasure, and I hope everyone is feeling the difference.'
+                : 'Thank you for trusting me with your practice for ' . em(email_booking_dates($b) ?? $b['title']) . '. It was a pleasure working with your team, and I hope it went smoothly on your end as well.')
+            . email_p('If anything came up worth mentioning, or you’d like to get a future date on the calendar, I’m easy to reach — just reply to this email.')
+            . email_buttons([[$florida ? 'Book another visit' : 'Book your next coverage', email_brand($site)['book']]]),
+            ['site' => $site, 'reading' => true, 'preheader' => 'It was a pleasure — thank you.']);
 
-        send_email($b['user_email'], "Quick feedback on your recent coverage?",
-            "<p>Thanks for having Dr. McPherson cover {$b['title']}. If you have two minutes, coverage feedback " .
-            "helps improve future visits — it's separate from a public review and goes straight to him, never posted anywhere.</p>" .
-            '<p><a href="' . SITE_URL . '/dashboard.html?feedback=' . urlencode($id) . '">Share feedback on this booking</a></p>');
+        send_branded_email($b['user_email'], $florida ? 'Quick feedback on your recent visit?' : 'Quick feedback on your recent coverage?',
+            email_heading('How did it go?', 'Two-minute feedback')
+            . email_p('If you have two minutes, a few quick ratings on ' . em($b['title']) . ' help improve future ' . ($florida ? 'visits' : 'coverage') . '. It’s private — it goes straight to Dr. McPherson and is never posted anywhere.')
+            . email_buttons([['Share feedback', dashboard_url($site, null, ['feedback' => $id])]]),
+            ['site' => $site, 'preheader' => 'Three quick ratings — private, never posted.']);
     }
 
     json_response(['success' => true]);
@@ -699,10 +717,15 @@ function handle_admin_add_adjustment(PDO $pdo) {
     }
 
     $kind = $amount > 0 ? 'additional charge' : 'discount';
-    send_email($b['user_email'], "Update to your booking {$id}",
-        "<p>A {$kind} of \$" . number_format(abs($amount), 2) . " was applied to your booking <strong>{$b['title']}</strong> ({$id}).</p>" .
-        '<p>Reason: ' . htmlspecialchars($reason) . '</p>' .
-        '<p>Current balance ' . ($balanceDue < 0 ? 'credit' : 'due') . ': $' . number_format(abs($balanceDue), 2) . '</p>');
+    $site = booking_site($b);
+    send_branded_email($b['user_email'], "Update to your booking {$id}",
+        email_heading($amount > 0 ? 'A charge was added to your booking' : 'A discount was applied to your booking', 'Booking update')
+        . email_booking_facts($b, [ucfirst($kind) => em_money(abs($amount)), 'Reason' => $reason, $balanceDue < 0 ? 'Credit on booking' : 'Balance due' => em_money(abs($balanceDue))])
+        . ($balanceDue > 0 && $b['balance_status'] === 'due'
+            ? email_buttons([['Pay balance now', dashboard_url($site, 'balance')]])
+            : email_buttons([['View my booking', dashboard_url($site, 'upcoming')]]))
+        . email_small('Questions about this change? Just reply to this email.'),
+        ['site' => $site, 'preheader' => ucfirst($kind) . ' of ' . em_money(abs($amount)) . ' on booking ' . $id . '.']);
 
     json_response(['success' => true, 'balanceDue' => $balanceDue]);
 }
@@ -738,9 +761,13 @@ function handle_admin_record_payment(PDO $pdo) {
     $stmt = $pdo->prepare("INSERT INTO payments (booking_id, user_id, amount, purpose, payment_method, reference, note, recorded_by, status) VALUES (?, ?, ?, 'manual', ?, ?, ?, ?, 'succeeded')");
     $stmt->execute([$id, $b['uid'], $amount, $method, sanitize($reference) ?: null, sanitize($note) ?: null, $admin['email']]);
 
-    send_email($b['user_email'], "Payment received — {$id}",
-        '<p>A payment of $' . number_format($amount, 2) . " via {$method} has been recorded on your booking <strong>{$b['title']}</strong> ({$id}).</p>" .
-        '<p>Remaining balance: $' . number_format(max(0, $balanceDue), 2) . '</p>');
+    $site = booking_site($b);
+    send_branded_email($b['user_email'], "Payment received — {$id}",
+        email_heading('Payment received — thank you', 'Payment recorded')
+        . email_amount('Amount received', $amount, 'via ' . em($method))
+        . email_booking_facts($b, ['Remaining balance' => em_money(max(0, $balanceDue))])
+        . email_buttons([['View my account', dashboard_url($site)]]),
+        ['site' => $site, 'preheader' => 'We recorded your ' . em_money($amount) . ' payment.']);
 
     json_response(['success' => true, 'balanceDue' => $balanceDue]);
 }
@@ -767,8 +794,13 @@ function handle_admin_refund(PDO $pdo) {
     $upd = $pdo->prepare('UPDATE bookings SET paid = ? WHERE id = ?');
     $upd->execute([$newPaid, $id]);
 
-    send_email($b['user_email'], "Refund issued — {$id}",
-        '<p>A refund of $' . number_format($amount, 2) . " has been issued to your card for booking <strong>{$b['title']}</strong> ({$id}).</p>");
+    $site = booking_site($b);
+    send_branded_email($b['user_email'], "Refund issued — {$id}",
+        email_heading('Your refund is on its way', 'Refund issued')
+        . email_amount('Refund amount', $amount, 'to your card on file')
+        . email_booking_facts($b)
+        . email_small('Refunds usually appear within 5–10 business days, depending on your bank.'),
+        ['site' => $site, 'preheader' => em_money($amount) . ' is being refunded to your card.']);
 
     json_response(['success' => true]);
 }
@@ -801,8 +833,13 @@ function handle_admin_cancel(PDO $pdo) {
 
     $pdo->prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?")->execute([$id]);
 
-    send_email($b['user_email'], "Booking {$id} cancelled", "<p>Your booking {$id} ({$b['title']}) has been cancelled." .
-        ($refundAmount > 0 ? ' A refund of $' . number_format($refundAmount, 2) . ' has been issued to your card.' : '') . '</p>');
+    $site = booking_site($b);
+    send_branded_email($b['user_email'], "Booking {$id} cancelled",
+        email_heading('Your booking has been cancelled', 'Booking update')
+        . email_booking_facts($b, ['Refund' => $refundAmount > 0 ? em_money($refundAmount) . ' to your card' : null])
+        . email_p($refundAmount > 0 ? 'A refund of <strong>' . em_money($refundAmount) . '</strong> has been issued to your card; it usually appears within 5–10 business days.' : 'If you have any questions about this cancellation, just reply to this email.')
+        . email_buttons([[$site === 'florida' ? 'Book a new visit' : 'Book new dates', email_brand($site)['book']]]),
+        ['site' => $site, 'preheader' => "Booking {$id} has been cancelled."]);
 
     json_response(['success' => true, 'refund_amount' => $refundAmount]);
 }
@@ -853,7 +890,7 @@ function handle_admin_send_route(PDO $pdo) {
     $who = $b['clinic_name'] ?: $b['client_name'];
     $address = $b['address'] ?: "ZIP {$b['zip_code']}";
     $whenLabel = 'Starts ' . date('l, F j, Y', strtotime($b['start_date']));
-    send_email(ADMIN_EMAIL, "Route: {$who} — {$b['start_date']}", route_stop_email_block($who, $address, $whenLabel, $b['title']));
+    send_admin_email("Route: {$who} — {$b['start_date']}", 'Route to ' . html_entity_decode($who, ENT_QUOTES, 'UTF-8'), route_stop_email_block($who, $address, $whenLabel, $b['title']), ['kicker' => 'Directions']);
     json_response(['success' => true]);
 }
 
@@ -1094,11 +1131,17 @@ function handle_admin_reschedule(PDO $pdo) {
 
     $b['total'] = (float)$b['total'];
     $balanceDue = booking_balance_due($pdo, $b);
-    send_email($b['user_email'], "Your booking {$id} was rescheduled",
-        "<p>Your coverage schedule for booking {$id} has been updated by the office.</p>" .
-        '<p><strong>New date(s):</strong> ' . implode(', ', $sorted) . '</p>' .
-        ($delta != 0 ? '<p>' . ($delta > 0 ? 'An additional $' : 'A credit of $') . number_format(abs($delta), 2) . ' was applied to reflect the schedule change.</p>' : '') .
-        '<p>Current balance ' . ($balanceDue < 0 ? 'credit' : 'due') . ': $' . number_format(abs($balanceDue), 2) . '</p>');
+    $site = booking_site($b);
+    $b['dates'] = json_encode($sorted);
+    send_branded_email($b['user_email'], "Your booking {$id} was rescheduled",
+        email_heading('Your booking has new dates', 'Schedule updated')
+        . email_booking_facts($b, [
+            'Price change' => $delta != 0 ? ($delta > 0 ? '+' : '−') . em_money(abs($delta)) : null,
+            $balanceDue < 0 ? 'Credit on booking' : 'Current balance' => em_money(abs($balanceDue)),
+        ], 'Updated schedule')
+        . email_p('Your calendar has been updated to the dates above. If they don’t look right, just reply to this email.')
+        . email_buttons([['View my booking', dashboard_url($site, 'upcoming')]]),
+        ['site' => $site, 'preheader' => 'New date(s): ' . email_booking_dates($b)]);
 
     json_response(['success' => true, 'delta' => $delta, 'balanceDue' => $balanceDue]);
 }

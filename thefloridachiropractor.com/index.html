@@ -713,14 +713,24 @@ $('auth-submit').addEventListener('click', async () => {
   }
   // Not mid-booking — sign-in/registration from the header goes straight to
   // the relevant dashboard rather than leaving the client on the homepage.
-  window.location.href = user.isAdmin ? MAIN_SITE_URL + '/admin.html' : 'dashboard.html';
+  window.location.href = user.isAdmin ? MAIN_SITE_URL + '/admin.html' : (pendingNext || 'dashboard.html');
 });
+let pendingNext = null;
 async function loadSession(){
   try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
   catch (e) { user = null; }
   await loadAvailability();
   renderAuthState();
   initChatWidget();
+  // Email links to a dashboard tab come here first when signed out.
+  const params = new URLSearchParams(window.location.search);
+  const nextParam = params.get('next');
+  if (nextParam && /^dashboard\.html(\?[\w=&%.-]*)?$/.test(nextParam)){
+    params.delete('next');
+    window.history.replaceState({}, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
+    if (user && !user.isAdmin){ window.location.href = nextParam; return; }
+    if (!user){ pendingNext = nextParam; openAuth('login'); }
+  }
 }
 $('chat-bubble').addEventListener('click', () => {
   $('chat-panel').classList.toggle('open');

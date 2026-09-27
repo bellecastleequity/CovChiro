@@ -623,6 +623,8 @@ function renderDashStanding(){
   }));
 }
 function renderDash(){
+  const balanceTab = document.querySelector('.dash-tab[data-view="balance"]');
+  if (balanceTab) balanceTab.classList.toggle('hidden', !bookings.some(b => bucket(b) === 'balance'));
   renderClientStatusBadge();
   renderDashStanding();
   const list = bookings.filter(b => bucket(b) === dashView);
@@ -1038,7 +1040,11 @@ $('chat-bubble').addEventListener('click', () => {
 async function initDashboardPage(){
   try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
   catch (e) { user = null; }
-  if (!user){ window.location.href = 'index.html'; return; }
+  if (!user){
+    // Email links (e.g. ?view=invoices) survive the trip through sign-in.
+    window.location.href = 'index.html' + (location.search ? '?next=' + encodeURIComponent('dashboard.html' + location.search) : '');
+    return;
+  }
   renderAuthState();
   await loadAvailability();
   await loadMyBookings();
@@ -1049,6 +1055,13 @@ async function initDashboardPage(){
   renderDash();
   initChatWidget();
   const params = new URLSearchParams(window.location.search);
+  const viewParam = params.get('view');
+  if (viewParam && /^[a-z]+$/.test(viewParam)){
+    const tab = document.querySelector(`.dash-tab[data-view="${viewParam}"]`);
+    if (tab && !tab.classList.contains('hidden')) tab.click();
+    params.delete('view');
+    window.history.replaceState({}, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
+  }
   const feedbackId = params.get('feedback');
   if (feedbackId){
     const b = bookings.find(x => x.id === feedbackId);

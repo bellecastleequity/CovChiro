@@ -23,9 +23,14 @@ foreach ($due as $b) {
     if ($hoursSinceLast < 11.5) continue; // not due for the next reminder yet
 
     $owed = round($b['total'] - $b['paid'], 2);
-    $ok = send_email($b['user_email'], "Reminder: balance due on {$b['id']}",
-        "<p>This is a reminder that the remaining balance of $" . number_format($owed, 2) . " on booking {$b['id']} is due.</p>" .
-        '<p>Pay it from your account dashboard at ' . SITE_URL . '.</p>');
+    $site = booking_site($b);
+    $ok = send_branded_email($b['user_email'], "Reminder: balance due on {$b['id']}",
+        email_heading('Friendly reminder: balance due', 'Payment reminder')
+        . email_amount('Balance due', $owed, 'Booking ' . em($b['id']))
+        . email_booking_facts($b)
+        . email_buttons([['Pay balance now', dashboard_url($site, 'balance')]])
+        . email_small('Already paid by check or another method? Reply to this email and we’ll update your account.'),
+        ['site' => $site, 'preheader' => em_money($owed) . ' is due — pay securely online in a minute.']);
 
     if ($ok) {
         $ins = $pdo->prepare('INSERT INTO payment_reminders (booking_id, reminder_number) VALUES (?, ?)');

@@ -57,8 +57,9 @@ $stmt = $pdo->query("SELECT id, title, meta, created_at FROM bookings WHERE stat
 foreach ($stmt->fetchAll() as $b) {
     $pdo->prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?")->execute([$b['id']]);
     $released++;
-    send_email(ADMIN_EMAIL, "Phone booking invite expired — {$b['id']}",
-        "<p>{$b['title']} ({$b['meta']}) was never signed or paid for within 7 days and has been released.</p>");
+    send_admin_email("Phone booking invite expired — {$b['id']}", 'Phone booking invite expired',
+        email_facts(['Booking' => $b['title'], 'Details' => $b['meta'], 'Reference' => $b['id']])
+        . email_p('It was never signed or paid for within 7 days, so the held dates have been released.'), ['kicker' => 'Released']);
 }
 
 // ---------- 2. Late fee + interest on overdue booking balances ----------
@@ -80,11 +81,17 @@ foreach ($stmt->fetchAll() as $b) {
         function ($kind, $amount, $reason) use ($pdo, $b, &$feesApplied) {
             $feesApplied++;
             $label = $kind === 'late_fee' ? 'a late fee' : 'interest';
-            send_email($b['user_email'], "Balance overdue — {$b['id']}",
-                "<p>Your balance on {$b['id']} ({$b['title']}) is still unpaid, and {$label} of $" . number_format($amount, 2) . " has been added.</p>" .
-                '<p>Pay any time from your account dashboard to stop further charges.</p>');
-            send_email(ADMIN_EMAIL, "Overdue {$kind} applied — {$b['id']}",
-                "<p>{$b['user_name']} — {$reason}: $" . number_format($amount, 2) . " added to {$b['id']}.</p>");
+            $site = booking_site($b);
+            $owed = booking_balance_due($pdo, $b);
+            send_branded_email($b['user_email'], "Balance overdue — {$b['id']}",
+                email_heading('Your balance is overdue', 'Payment reminder')
+                . email_amount('Balance now due', $owed, 'includes ' . em($label) . ' of ' . em_money($amount), 'red')
+                . email_booking_facts($b)
+                . email_buttons([['Pay balance now', dashboard_url($site, 'balance')]])
+                . email_small('Paying now stops any further late charges. If you’ve already sent payment another way, or need to talk about it, just reply to this email.'),
+                ['site' => $site, 'preheader' => em_money($owed) . ' is overdue — pay now to stop further charges.']);
+            send_admin_email("Overdue " . str_replace("_", " ", $kind) . " applied — {$b['id']}", 'Overdue charge applied',
+                email_facts(['Client' => $b['user_name'], 'Charge' => $reason, 'Amount' => em_money($amount), 'Reference' => $b['id']]), ['kicker' => 'Auto-billing']);
         }
     );
 }
@@ -108,11 +115,17 @@ foreach ($stmt->fetchAll() as $inv) {
         function ($kind, $amount, $reason) use ($pdo, $inv, &$feesApplied) {
             $feesApplied++;
             $label = $kind === 'late_fee' ? 'a late fee' : 'interest';
-            send_email($inv['user_email'], "Invoice overdue — {$inv['description']}",
-                "<p>Your invoice for \"{$inv['description']}\" is still unpaid, and {$label} of $" . number_format($amount, 2) . " has been added.</p>" .
-                '<p>Pay any time from your account dashboard to stop further charges.</p>');
-            send_email(ADMIN_EMAIL, "Overdue {$kind} applied — invoice {$inv['id']}",
-                "<p>{$inv['user_name']} — {$reason}: $" . number_format($amount, 2) . " added to invoice {$inv['id']}.</p>");
+            $site = user_site($pdo, $inv['user_id']);
+            $owed = invoice_balance_due($pdo, $inv);
+            send_branded_email($inv['user_email'], 'Invoice overdue — ' . html_entity_decode($inv['description'], ENT_QUOTES, 'UTF-8'),
+                email_heading('Your invoice is overdue', 'Payment reminder')
+                . email_amount('Amount now due', $owed, 'includes ' . em($label) . ' of ' . em_money($amount), 'red')
+                . email_facts(['Invoice' => $inv['description'], 'Reference' => $inv['id'], 'Issued' => date('F j, Y', strtotime($inv['created_at']))])
+                . email_buttons([['Pay invoice now', dashboard_url($site, 'invoices')]])
+                . email_small('Paying now stops any further late charges. Questions? Just reply to this email.'),
+                ['site' => $site, 'preheader' => em_money($owed) . ' is overdue — pay now to stop further charges.']);
+            send_admin_email("Overdue " . str_replace("_", " ", $kind) . " applied — invoice {$inv['id']}", 'Overdue charge applied',
+                email_facts(['Client' => $inv['user_name'], 'Charge' => $reason, 'Amount' => em_money($amount), 'Invoice' => $inv['id']]), ['kicker' => 'Auto-billing']);
         }
     );
 }

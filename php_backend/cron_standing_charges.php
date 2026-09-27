@@ -95,9 +95,12 @@ foreach ($agreements as $a) {
         } catch (\Stripe\Exception\CardException $e) {
             $failed++;
             log_error('Standing autopay declined', ['agreement' => $agreement['id'], 'date' => $d['date'], 'error' => $e->getMessage()]);
-            send_email($agreement['contact_email'], 'Action needed — payment declined for your standing day coverage',
-                "<p>We tried to charge your card on file for your {$d['date']} standing day coverage and it was declined.</p>" .
-                '<p>Please log into your account to update your payment method, or reply to this email so we can resolve it before that date.</p>');
+            send_branded_email($agreement['contact_email'], 'Action needed — payment declined for your standing day coverage',
+                email_heading('Your card was declined', 'Action needed')
+                . email_p('We tried to charge your card on file for your standing day coverage on <strong>' . em(date('l, F j, Y', strtotime($d['date']))) . '</strong>, and it was declined.')
+                . email_callout('Please update your payment method, or reply to this email, so we can sort it out before that date.', 'warn')
+                . email_buttons([['Update payment method', dashboard_url('coverage', 'upcoming')]]),
+                ['site' => 'coverage', 'preheader' => 'Your card was declined for ' . $d['date'] . ' — please update it.']);
         } catch (\Exception $e) {
             $failed++;
             log_error('Standing autopay error', ['agreement' => $agreement['id'], 'date' => $d['date'], 'error' => $e->getMessage()]);
@@ -125,9 +128,12 @@ foreach ($agreements as $a) {
             } catch (\Exception $e) {
                 $failed++;
                 log_error('Standing prepay retry failed', ['agreement' => $agreement['id'], 'error' => $e->getMessage()]);
-                send_email($agreement['contact_email'], 'Action needed — prepay charge failed for your standing day agreement',
-                    '<p>We tried to charge your card on file for your prepay standing day agreement and it failed.</p>' .
-                    '<p>Please log into your account or reply to this email so we can resolve it.</p>');
+                send_branded_email($agreement['contact_email'], 'Action needed — prepay charge failed for your standing day agreement',
+                    email_heading('Your prepay charge didn’t go through', 'Action needed')
+                    . email_p('We tried to charge your card on file for your prepaid standing day agreement, and the payment failed.')
+                    . email_callout('Please update your payment method, or reply to this email, so we can resolve it and keep your dates in place.', 'warn')
+                    . email_buttons([['Update payment method', dashboard_url('coverage', 'upcoming')]]),
+                    ['site' => 'coverage', 'preheader' => 'Your prepay charge failed — please update your card.']);
             }
         }
         $pdo->prepare('UPDATE standing_agreements SET prepay_charged = 1 WHERE id = ?')->execute([$agreement['id']]);
@@ -157,9 +163,12 @@ foreach ($agreements as $a) {
                 } catch (\Exception $e) {
                     $failed++;
                     log_error('Standing installment charge failed', ['agreement' => $agreement['id'], 'error' => $e->getMessage()]);
-                    send_email($agreement['contact_email'], 'Action needed — installment payment failed for your standing day agreement',
-                        '<p>We tried to charge your scheduled installment payment and it failed.</p>' .
-                        '<p>Please log into your account or reply to this email so we can resolve it.</p>');
+                    send_branded_email($agreement['contact_email'], 'Action needed — installment payment failed for your standing day agreement',
+                        email_heading('Your installment payment didn’t go through', 'Action needed')
+                        . email_p('We tried to charge your scheduled standing day installment, and the payment failed.')
+                        . email_callout('Please update your payment method, or reply to this email, so we can resolve it and keep your dates in place.', 'warn')
+                        . email_buttons([['Update payment method', dashboard_url('coverage', 'upcoming')]]),
+                        ['site' => 'coverage', 'preheader' => 'Your installment payment failed — please update your card.']);
                 }
             }
         }

@@ -144,10 +144,17 @@ function handle_request_reset(PDO $pdo) {
         $expires = date('Y-m-d H:i:s', time() + 3600);
         $stmt = $pdo->prepare('UPDATE users SET reset_token = ?, reset_expires = ? WHERE id = ?');
         $stmt->execute([$resetToken, $expires, $user['id']]);
+        // Reset/verify links always go to coveragechiropractor.com — that's
+        // the homepage that handles ?reset= and ?verify= for both sites.
+        $site = 'coverage';
         $link = SITE_URL . '/index.html?reset=' . $resetToken;
-        send_email($email, 'Reset your password',
-            "<p>Hi {$user['name']},</p><p>Click the link below to set a new password. This link expires in 1 hour.</p>" .
-            "<p><a href=\"{$link}\">{$link}</a></p><p>If you didn't request this, you can ignore this email.</p>");
+        send_branded_email($email, 'Reset your password',
+            email_heading('Reset your password', 'Account security')
+            . email_p('Hi ' . em(email_first_name($user['name'])) . ', we received a request to reset the password for your account. Click below to choose a new one.')
+            . email_buttons([['Choose a new password', $link]])
+            . email_callout('This link expires in <strong>1 hour</strong>. If you didn’t request a reset, you can ignore this email — your password won’t change.', 'warn')
+            . email_small('Button not working? Copy this link into your browser:<br><a href="' . em($link) . '" style="color:' . EM_TEAL . ';word-break:break-all;">' . em($link) . '</a>'),
+            ['site' => $site, 'signature' => false, 'preheader' => 'Your password reset link (expires in 1 hour).']);
     }
     // Always return success — never reveal whether an account exists for this email.
     json_response(['success' => true]);
@@ -177,10 +184,18 @@ function handle_reset_password(PDO $pdo) {
 }
 
 function send_verification_email($email, $name, $token) {
+    $site = 'coverage';
+    $b = email_brand($site);
     $link = SITE_URL . '/index.html?verify=' . $token;
-    send_email($email, 'Verify your email — coveragechiropractor.com',
-        "<p>Hi {$name},</p><p>Thanks for creating an account. Please confirm your email address by clicking the link below:</p>" .
-        "<p><a href=\"{$link}\">{$link}</a></p><p>If you didn't create this account, you can ignore this email.</p>");
+    send_branded_email($email, 'Confirm your email — ' . $b['domain'],
+        email_heading('Welcome, ' . email_first_name($name) . '!', 'One quick step')
+        . email_p('Thanks for creating your ' . em($b['domain']) . ' account. Please confirm your email address so booking confirmations, invoices and reminders reach you.')
+        . email_buttons([['Confirm my email', $link]])
+        . email_p($site === 'florida'
+            ? 'Once you’re set, you can book home or hotel visits and event coverage online, sign agreements, and manage everything from your account.'
+            : 'Once you’re set, you can book office coverage by the day, week or month, sign the coverage agreement online, and manage bookings and invoices from your account.')
+        . email_small('Didn’t create this account? You can safely ignore this email.<br>Button not working? Copy this link: <a href="' . em($link) . '" style="color:' . EM_TEAL . ';word-break:break-all;">' . em($link) . '</a>'),
+        ['site' => $site, 'reading' => true, 'preheader' => 'Confirm your email to finish setting up your account.']);
 }
 
 function start_session_for($userId, $email) {

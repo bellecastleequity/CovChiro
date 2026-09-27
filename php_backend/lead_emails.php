@@ -49,34 +49,23 @@ function lead_email_layout(array $lead, ?array $promo, string $heading, string $
     $site = $lead['site'];
     $siteName = site_name_for($site);
     $campaign = lead_is_campaign($lead);
-    $tagline = $site === 'florida' ? 'Home visits &amp; event coverage across Florida' : 'Chiropractic office coverage across Florida';
     $codeBox = '';
     if ($promo) {
         $expires = $promo['expires_at'] ? date('F j, Y', strtotime($promo['expires_at'])) : '';
-        $codeBox = '<div style="margin:22px 0;padding:16px;border:1px dashed #2F5D53;border-radius:6px;background:#E5DFD2;text-align:center;">'
-            . '<div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#8a8171;">' . ($campaign ? 'Your personal code' : 'Your welcome code') . '</div>'
-            . '<div style="font-family:Menlo,Consolas,monospace;font-size:24px;font-weight:700;color:#1F3F38;margin:6px 0;">' . htmlspecialchars($promo['code']) . '</div>'
-            . '<div style="font-size:13px;color:#4b5563;">' . htmlspecialchars(promo_offer_label($promo)) . ($campaign ? ' your next booking' : ' your first booking') . ($expires ? ' &middot; good through ' . $expires : '') . '</div>'
+        $codeBox = '<div style="margin:24px 0 8px;padding:20px 16px;border:2px dashed ' . EM_TEAL . ';border-radius:10px;background:' . EM_PAPER_2 . ';text-align:center;">'
+            . '<div style="font-family:' . EM_FONT . ';font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:' . EM_GOLD . ';font-weight:bold;">' . ($campaign ? 'Your personal code' : 'Your welcome code') . '</div>'
+            . '<div style="font-family:Menlo,Consolas,monospace;font-size:28px;font-weight:bold;letter-spacing:0.06em;color:' . EM_TEAL_DARK . ';margin:8px 0 6px;">' . em($promo['code']) . '</div>'
+            . '<div style="font-family:' . EM_FONT . ';font-size:14px;color:' . EM_MUTED . ';">' . em(promo_offer_label($promo)) . ($campaign ? ' your next booking' : ' your first booking') . ($expires ? ' &middot; good through ' . em($expires) : '') . '</div>'
             . '</div>';
     }
-    $cta = $promo
-        ? '<p style="text-align:center;margin:24px 0;"><a href="' . htmlspecialchars(lead_booking_url($lead, $promo)) . '" style="display:inline-block;background:#2F5D53;color:#FBF9F4;text-decoration:none;padding:12px 22px;border-radius:4px;font-weight:600;">' . htmlspecialchars($ctaLabel) . '</a></p>'
-        : '';
+    $cta = $promo ? email_buttons([[$ctaLabel, lead_booking_url($lead, $promo)]], 'center') : '';
     $footer = $campaign
-        ? 'You\'re receiving this because you requested an offer at ' . htmlspecialchars($siteName) . '. The code is single-use, tied to your email address, and can\'t be combined with other promo codes. '
-        : 'You\'re receiving this because you requested a welcome offer at ' . htmlspecialchars($siteName) . '. The code is single-use, for a first booking only, and can\'t be combined with other promo codes. ';
-    return '<div style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#1C2430;max-width:560px;margin:0 auto;">'
-        . '<div style="padding:18px 0 10px;border-bottom:2px solid #2F5D53;margin-bottom:18px;">'
-        . '<div style="font-size:19px;font-weight:700;color:#1F3F38;">' . htmlspecialchars($siteName) . '</div>'
-        . '<div style="font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:#8a8171;">' . $tagline . '</div>'
-        . '</div>'
-        . '<h2 style="font-size:22px;line-height:1.25;margin:0 0 12px;color:#1C2430;">' . htmlspecialchars($heading) . '</h2>'
-        . $bodyHtml . $codeBox . $cta
-        . '<p style="margin-top:22px;">Dr. Michael McPherson, D.C.<br><span style="color:#6b7280;font-size:13px;">' . htmlspecialchars($siteName) . '</span></p>'
-        . '<p style="margin-top:28px;padding-top:14px;border-top:1px solid #CFC7B4;font-size:12px;color:#8a8171;line-height:1.5;">'
-        . $footer
-        . '<a href="' . htmlspecialchars(lead_unsubscribe_url($lead)) . '" style="color:#8a8171;">Unsubscribe</a> from these emails any time.'
-        . '</p></div>';
+        ? 'You’re receiving this because you requested an offer at ' . em($siteName) . '. The code is single-use, tied to your email address, and can’t be combined with other promo codes.'
+        : 'You’re receiving this because you requested a welcome offer at ' . em($siteName) . '. The code is single-use, for a first booking only, and can’t be combined with other promo codes.';
+    return email_shell(email_heading($heading) . $bodyHtml . $codeBox . $cta, [
+        'site' => $site, 'reading' => true, 'footer_note' => $footer, 'unsubscribe' => lead_unsubscribe_url($lead),
+        'preheader' => $promo ? promo_offer_label($promo) . ' with code ' . $promo['code'] . ($promo['expires_at'] ? ' — good through ' . date('F j', strtotime($promo['expires_at'])) : '') : '',
+    ]);
 }
 
 // One entry per step: 0 is the immediate email with the code, 1-3 go out 3,

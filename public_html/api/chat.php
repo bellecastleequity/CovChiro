@@ -69,15 +69,15 @@ function handle_send(PDO $pdo) {
         // message until the office actually replies from the Messages tab.
         $auto = $pdo->prepare('INSERT INTO chat_messages (thread_key, user_id, name, email, sender, message, read_by_admin, read_by_client) VALUES (?, ?, ?, ?, "admin", ?, 1, 0)');
         $auto->execute([$threadKey, $userId, sanitize($name), sanitize($email), "Thanks for reaching out — I'll get back to you as soon as I can, usually within a few hours."]);
-        send_email(ADMIN_EMAIL, "New chat message from {$name}",
-            "<p>{$name} ({$email}) sent:</p><blockquote>" . nl2br($message) . '</blockquote>' .
-            '<p>Reply from the Messages tab in your provider portal.</p>');
+        send_admin_email("New chat message from {$name}", 'New chat message',
+            email_facts(['From' => $name, 'Email' => $email ?: '(not given)']) . email_quote($message)
+            . email_p('Reply from the Messages tab so it shows up in their chat.'), ['kicker' => 'Website chat', 'cta' => 'Reply in the Messages tab']);
     } else {
         $auto = $pdo->prepare('INSERT INTO chat_messages (thread_key, user_id, name, email, sender, message, read_by_admin, read_by_client) VALUES (?, ?, ?, ?, "bot", ?, 1, 0)');
         $auto->execute([$threadKey, $userId, sanitize($name), sanitize($email), "I'll flag this for Dr. McPherson so he can reply here directly."]);
-        send_email(ADMIN_EMAIL, "New chat message from {$name}",
-            "<p>{$name} ({$email}) sent:</p><blockquote>" . nl2br($message) . '</blockquote>' .
-            '<p>Reply from the Messages tab in your provider portal.</p>');
+        send_admin_email("New chat message from {$name}", 'New chat message',
+            email_facts(['From' => $name, 'Email' => $email ?: '(not given)']) . email_quote($message)
+            . email_p('Reply from the Messages tab so it shows up in their chat.'), ['kicker' => 'Website chat', 'cta' => 'Reply in the Messages tab']);
     }
 
     json_response(['success' => true]);
@@ -163,8 +163,14 @@ function handle_reply(PDO $pdo) {
     $stmt->execute([$threadKey, $lastRow['user_id'], $lastRow['name'], $lastRow['email'], 'admin', sanitize($message)]);
 
     if ($lastRow['email']) {
-        send_email($lastRow['email'], 'New message from Dr. McPherson',
-            '<p>' . nl2br($message) . '</p><p>Reply at ' . SITE_URL . '.</p>');
+        $site = email_site(null);
+        send_branded_email($lastRow['email'], 'New message from Dr. McPherson',
+            email_heading('You have a new message', 'Reply from Dr. McPherson')
+            . email_p('Hi ' . em(email_first_name($lastRow['name'])) . ', here’s my reply to your message on ' . em(email_brand($site)['domain']) . ':')
+            . email_quote($message)
+            . email_buttons([['Reply on the website', site_url_for($site) . '/index.html']])
+            . email_small('You can also simply reply to this email.'),
+            ['site' => $site, 'preheader' => mb_substr(trim(preg_replace('/\s+/', ' ', html_entity_decode($message, ENT_QUOTES, 'UTF-8'))), 0, 90)]);
     }
 
     json_response(['success' => true]);

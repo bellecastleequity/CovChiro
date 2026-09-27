@@ -52,9 +52,15 @@ function handle_admin_create(PDO $pdo) {
     $stmt = $pdo->prepare('INSERT INTO invoices (id, user_id, description, amount, created_by) VALUES (?, ?, ?, ?, ?)');
     $stmt->execute([$id, $client['id'], sanitize($description), $amount, $admin['email']]);
 
-    send_email($email, 'New charge added to your account',
-        "<p>A new charge has been added to your account: <strong>{$description}</strong> — $" . number_format($amount, 2) . '.</p>' .
-        '<p>This is due immediately — pay it any time from your account dashboard.</p>');
+    $site = user_site($pdo, $client['id']);
+    send_branded_email($email, 'New invoice: ' . $description . ' — $' . number_format($amount, 2),
+        email_heading('You have a new invoice', 'Invoice ' . $id)
+        . email_p('Hi ' . em(email_first_name($client['name'])) . ', a new charge has been added to your account.')
+        . email_amount('Amount due', $amount, em($description))
+        . email_facts(['Description' => $description, 'Invoice' => $id, 'Issued' => date('F j, Y'), 'Due' => 'Upon receipt'])
+        . email_buttons([['Pay now', dashboard_url($site, 'invoices')]])
+        . email_small('Pay securely by card from your account. Invoices unpaid after ' . LATE_FEE_GRACE_HOURS . ' hours incur a ' . em_money(LATE_FEE_AMOUNT) . ' late fee. Questions? Just reply to this email.'),
+        ['site' => $site, 'preheader' => em_money($amount) . ' due for ' . $description . ' — pay securely online.']);
 
     json_response(['success' => true, 'id' => $id]);
 }

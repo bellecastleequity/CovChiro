@@ -817,6 +817,9 @@ async function loadSession(){
   if (pendingConfirmBookingId){
     if (user) await showPendingBookingFlow();
     else if (!resetToken) openAuth('login');
+  } else if (pendingNext){
+    if (user && !user.isAdmin) window.location.href = pendingNext;
+    else if (!user && !resetToken) openAuth('login');
   }
 }
 const HOTEL_RATE = 110;
@@ -1397,6 +1400,7 @@ $('forgot-submit').addEventListener('click', async () => {
 });
 let resetToken = null;
 let pendingConfirmBookingId = null;
+let pendingNext = null;
 $('reset-submit').addEventListener('click', async () => {
   const pass = $('reset-pass').value, pass2 = $('reset-pass2').value;
   if (pass.length < 8){ $('reset-err').textContent = 'Password must be at least 8 characters.'; return; }
@@ -1418,6 +1422,12 @@ $('reset-submit').addEventListener('click', async () => {
   const verifyToken = params.get('verify');
   const resetParam = params.get('reset');
   const bookingParam = params.get('booking');
+  const nextParam = params.get('next');
+  if (nextParam && /^dashboard\.html(\?[\w=&%.-]*)?$/.test(nextParam)){
+    pendingNext = nextParam;
+    params.delete('next');
+    window.history.replaceState({}, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
+  }
   if (bookingParam){
     pendingConfirmBookingId = bookingParam;
     params.delete('booking');
@@ -1480,7 +1490,7 @@ $('auth-submit').addEventListener('click', async () => {
   }
   // Not mid-booking — sign-in/registration from the header goes straight to
   // the relevant dashboard rather than leaving the client on the homepage.
-  window.location.href = user.isAdmin ? 'admin.html' : 'dashboard.html';
+  window.location.href = user.isAdmin ? 'admin.html' : (pendingNext || 'dashboard.html');
 });
 let pendingBooking = null;
 $('btn-book').addEventListener('click', () => {

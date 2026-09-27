@@ -114,9 +114,9 @@ function handle_request(PDO $pdo) {
         $stripeCustomerId, $stripePaymentMethodId, $depositIntentId,
     ]);
 
-    send_email(ADMIN_EMAIL, "Standing day request — {$name}",
-        "<p>{$name} ({$contactEmail}) requested a standing day agreement.</p><p>Combined coverage days: {$combinedCount} · Region: {$region} · Payment plan: {$paymentPlan}</p>" .
-        '<p>Review it in the admin "Standing days" tab.</p>');
+    send_admin_email("Standing day request — {$name}", 'New standing day request',
+        email_facts(['Clinic' => $name, 'Email' => $contactEmail, 'Coverage days' => (string)$combinedCount, 'Region' => $region, 'Payment plan' => $paymentPlan])
+        . email_p('Review and approve it in the Standing days tab.'), ['kicker' => 'Needs review', 'cta' => 'Review in Standing days', 'reply_to' => $contactEmail]);
 
     json_response(['success' => true, 'id' => $id]);
 }
@@ -268,9 +268,15 @@ function handle_approve(PDO $pdo) {
         $pdo->prepare('UPDATE standing_agreements SET installment_amount = ? WHERE id = ?')->execute([$installmentAmount, $agreementId]);
     }
 
-    send_email($req['contact_email'], 'Your standing day agreement is approved',
-        "<p>Your standing day request has been approved at a {$effectiveRate}% rate.</p><p>" . count($dates) . ' coverage dates have been scheduled — view them in your account dashboard.</p>' .
-        '<p>Your card on file will be billed automatically per your selected payment plan; you never need to come back and pay manually unless you want to.</p>');
+    $sortedDates = array_map(fn($d) => $d['date'], $dates);
+    sort($sortedDates);
+    send_branded_email($req['contact_email'], 'Your standing day agreement is approved',
+        email_heading('Your standing days are approved', 'Standing day agreement')
+        . email_p('Great news — your standing day request is approved and your recurring coverage is on the calendar.')
+        . email_facts(['Rate' => "{$effectiveRate}% standing-day rate", 'Dates scheduled' => (string)count($dates), 'First date' => $sortedDates ? date('l, F j, Y', strtotime($sortedDates[0])) : null, 'Billing' => 'Automatic, per your payment plan'])
+        . email_callout('Your card on file is billed automatically on your selected plan — you never need to come back and pay manually unless you want to.', 'success')
+        . email_buttons([['View my standing days', dashboard_url('coverage', 'upcoming')]]),
+        ['site' => 'coverage', 'preheader' => count($dates) . ' coverage dates scheduled at your standing-day rate.']);
 
     json_response(['success' => true, 'agreement_id' => $agreementId]);
 }
@@ -285,8 +291,12 @@ function handle_decline(PDO $pdo) {
     $req = $stmt->fetch();
     if (!$req) json_response(['error' => 'Not found'], 404);
     $pdo->prepare("UPDATE standing_requests SET status = 'declined' WHERE id = ?")->execute([$id]);
-    send_email($req['contact_email'], 'Update on your standing day request',
-        '<p>Thanks for your interest in a standing day agreement — unfortunately we\'re not able to accommodate this request right now. Feel free to reach out directly to discuss alternatives.</p>');
+    send_branded_email($req['contact_email'], 'Update on your standing day request',
+        email_heading('About your standing day request', 'Standing day agreement')
+        . email_p('Thank you for your interest in a standing day agreement. Unfortunately I’m not able to accommodate this particular schedule right now.')
+        . email_p('I’d still be glad to help — individual coverage dates can be booked online any time, and I’m happy to talk through alternatives. Just reply to this email.')
+        . email_buttons([['See open dates', email_brand('coverage')['book']]]),
+        ['site' => 'coverage', 'preheader' => 'An update on your standing day request.']);
     json_response(['success' => true]);
 }
 
@@ -304,8 +314,12 @@ function handle_cancel_agreement(PDO $pdo) {
     unset($d);
     $stmt = $pdo->prepare("UPDATE standing_agreements SET status = 'cancelling', scheduled_dates = ? WHERE id = ?");
     $stmt->execute([json_encode($dates), $id]);
-    send_email($a['contact_email'], 'Your standing day agreement is being cancelled',
-        "<p>Your standing day agreement is being cancelled. Dates within the next 30 days still occur as scheduled; dates after that have been released.</p>");
+    send_branded_email($a['contact_email'], 'Your standing day agreement is being cancelled',
+        email_heading('Your standing day agreement is ending', 'Cancellation confirmed')
+        . email_facts(['Next 30 days' => 'Still take place as scheduled', 'After that' => 'Released — no further charges'])
+        . email_p('Thank you for having me as part of your schedule. If you ever need coverage again, individual dates can be booked online in minutes.')
+        . email_buttons([['View my schedule', dashboard_url('coverage', 'upcoming')], ['Book individual dates', email_brand('coverage')['book'], 'secondary']]),
+        ['site' => 'coverage', 'preheader' => 'Dates in the next 30 days still occur; later dates are released.']);
     json_response(['success' => true]);
 }
 

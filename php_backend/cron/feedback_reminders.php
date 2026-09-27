@@ -20,10 +20,12 @@ $due = $stmt->fetchAll();
 
 $sentCount = 0;
 foreach ($due as $b) {
-    $ok = send_email($b['user_email'], "Quick reminder — feedback on your recent coverage?",
-        "<p>Just a friendly follow-up — if you have two minutes, feedback on {$b['title']} helps Dr. McPherson improve " .
-        "future coverage. It's separate from a public review and goes straight to him, never posted anywhere.</p>" .
-        '<p><a href="' . SITE_URL . '/dashboard.html?feedback=' . urlencode($b['id']) . '">Share feedback on this booking</a></p>');
+    $site = booking_site($b);
+    $ok = send_branded_email($b['user_email'], $site === 'florida' ? 'Quick reminder — feedback on your recent visit?' : 'Quick reminder — feedback on your recent coverage?',
+        email_heading('Got two minutes?', 'Quick follow-up')
+        . email_p('Just a friendly follow-up — a few quick ratings on ' . em($b['title']) . ' help improve future ' . ($site === 'florida' ? 'visits' : 'coverage') . '. It’s private: it goes straight to Dr. McPherson and is never posted anywhere.')
+        . email_buttons([['Share feedback', dashboard_url($site, null, ['feedback' => $b['id']])]]),
+        ['site' => $site, 'preheader' => 'Three quick ratings — private, never posted.']);
 
     if ($ok) {
         $upd = $pdo->prepare('UPDATE bookings SET feedback_reminder_sent_at = NOW() WHERE id = ?');

@@ -35,8 +35,9 @@ function handle_create(PDO $pdo) {
     $stmt = $pdo->prepare('INSERT INTO video_requests (id, user_id, booking_id, name, email, requested_date) VALUES (?, ?, ?, ?, ?, ?)');
     $stmt->execute([$id, $user['id'], $bookingId, sanitize($name), sanitize($email), $date]);
 
-    send_email(ADMIN_EMAIL, "Video interview request — {$date}",
-        "<p>Name: {$name}<br>Email: {$email}<br>Preferred date: {$date}, 12:00–1:00pm<br>Booking reference: " . ($bookingId ?: '(none)') . '</p>');
+    send_admin_email("Video interview request — {$date}", 'New video consult request',
+        email_facts(['Name' => $name, 'Email' => $email, 'Preferred date' => date('l, F j, Y', strtotime($date)) . ', 12:00–1:00pm', 'Booking' => $bookingId ?: '(none)'])
+        . email_p('Send the Zoom link from the Video requests tab.'), ['kicker' => 'Video consult', 'reply_to' => $email]);
 
     json_response(['success' => true, 'id' => $id]);
 }
@@ -106,9 +107,14 @@ function handle_admin_update(PDO $pdo) {
     }
 
     if ($sendLink) {
-        send_email($r['email'], "Your video consult link — {$r['requested_date']}",
-            "<p>Hi {$r['name']},</p><p>Here's your Zoom link for our video consult on <strong>{$r['requested_date']}, 12:00–1:00pm</strong>:</p>" .
-            "<p><a href=\"{$zoomLink}\">{$zoomLink}</a></p><p>Talk soon,<br>Michael L. McPherson, D.C.</p>");
+        $when = date('l, F j, Y', strtotime($r['requested_date']));
+        send_branded_email($r['email'], "Your video consult link — {$r['requested_date']}",
+            email_heading('Your video consult is set', 'See you on Zoom')
+            . email_p('Hi ' . em(email_first_name($r['name'])) . ', looking forward to talking. Here are the details:')
+            . email_facts(['When' => "{$when}, 12:00–1:00pm (Eastern)", 'Where' => 'Zoom — link below'])
+            . email_buttons([['Join the Zoom call', $zoomLink]])
+            . email_small('Tip: open the link a couple of minutes early to test your audio and camera. Link not working? Copy it: <a href="' . em($zoomLink) . '" style="color:' . EM_TEAL . ';word-break:break-all;">' . em($zoomLink) . '</a>'),
+            ['site' => email_site(null), 'preheader' => "Zoom link for {$when}, 12:00–1:00pm."]);
     }
 
     json_response(['success' => true]);

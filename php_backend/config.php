@@ -271,6 +271,17 @@ function log_error($message, $context = []) {
 // function never even logged. That's the gap that made "emails just aren't
 // arriving" impossible to diagnose from the logs alone.
 function send_email_detailed($to, $subject, $body, $reply_to = null, $site = null) {
+    // Anything not already built with email_shell() still goes out branded.
+    if (stripos(ltrim($body), '<!DOCTYPE') !== 0) {
+        $body = email_shell($body, ['site' => $site, 'admin' => $to === ADMIN_EMAIL, 'signature' => false]);
+    }
+    // Local testing only: define EMAIL_CAPTURE_DIR in secrets.php to write
+    // emails to files instead of sending them.
+    if (defined('EMAIL_CAPTURE_DIR')) {
+        $file = EMAIL_CAPTURE_DIR . '/' . hrtime(true) . '.html';
+        file_put_contents($file, '<!-- to: ' . htmlspecialchars($to) . ' | subject: ' . htmlspecialchars($subject) . ' -->' . "\n" . $body);
+        return ['ok' => true, 'status' => 202];
+    }
     $autoload = __DIR__ . '/vendor/autoload.php';
     if (!file_exists($autoload)) {
         log_error('SendGrid vendor not installed, email not sent', ['to' => $to, 'subject' => $subject]);
@@ -283,6 +294,7 @@ function send_email_detailed($to, $subject, $body, $reply_to = null, $site = nul
     $email->setFrom($fromEmail, $fromName);
     $email->setSubject($subject);
     $email->addTo($to);
+    $email->addContent('text/plain', email_plain_text($body));
     $email->addContent('text/html', $body);
     if ($reply_to) { $email->setReplyTo($reply_to); }
 
@@ -314,10 +326,12 @@ function maps_directions_link($address) {
 // One stop on the admin's route digest — used for both the on-demand
 // per-booking "Send route" button and the 4:30am daily digest.
 function route_stop_email_block($title, $address, $whenLabel, $note = null) {
-    return "<div style=\"margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #ddd;\">" .
-        "<strong>{$title}</strong><br>{$address}<br>{$whenLabel}" .
-        ($note ? "<br>{$note}" : '') .
-        "<br><a href=\"" . maps_directions_link($address) . "\">Get directions</a></div>";
+    return '<div style="margin:0 0 14px;padding:14px 16px;background:' . EM_PAPER_2 . ';border:1px solid ' . EM_LINE . ';border-radius:8px;font-family:' . EM_FONT . ';">'
+        . '<div style="font-size:16px;font-weight:bold;color:' . EM_INK . ';">' . em($title) . '</div>'
+        . '<div style="font-size:14px;color:' . EM_INK . ';margin-top:4px;">' . em($address) . '</div>'
+        . '<div style="font-size:13px;color:' . EM_MUTED . ';margin-top:2px;">' . em($whenLabel) . ($note ? ' · ' . em($note) : '') . '</div>'
+        . email_buttons([['Get directions', maps_directions_link($address)]])
+        . '</div>';
 }
 
 // Every non-cancelled office/homevisit/event booking and standing-day
@@ -375,13 +389,13 @@ function send_daily_route_digest(PDO $pdo, ?string $dateStr = null) {
     $dateLabel = date('l, F j, Y', strtotime($dateStr));
 
     if (!count($stops)) {
-        send_email(ADMIN_EMAIL, "Today's route — {$dateLabel} — no appointments", "<p>No appointments or bookings scheduled for today ({$dateLabel}).</p>");
+        send_admin_email("Today's route — {$dateLabel} — no appointments", "Nothing on the calendar today", email_p('No appointments or bookings are scheduled for ' . em($dateLabel) . '.'), ['kicker' => "Today's route"]);
         return 0;
     }
 
-    $body = "<p>" . count($stops) . " appointment" . (count($stops) === 1 ? '' : 's') . " scheduled for {$dateLabel}:</p>";
+    $body = email_p('<strong>' . count($stops) . ' stop' . (count($stops) === 1 ? '' : 's') . '</strong> scheduled for ' . em($dateLabel) . '. Tap “Get directions” to start navigation.');
     foreach ($stops as $s) { $body .= route_stop_email_block($s['title'], $s['address'], $s['whenLabel'], $s['note']); }
-    send_email(ADMIN_EMAIL, "Today's route — {$dateLabel} — " . count($stops) . " stop" . (count($stops) === 1 ? '' : 's'), $body);
+    send_admin_email("Today's route — {$dateLabel} — " . count($stops) . " stop" . (count($stops) === 1 ? '' : 's'), "Today's route", $body, ['kicker' => $dateLabel]);
     return count($stops);
 }
 
@@ -778,10 +792,14 @@ function apply_successful_standing_bulk_payment(PDO $pdo, string $agreementId, s
     $stmt->execute([$agreementId, $a['user_id'], $amount, $purpose, $intentId, $chargeId]);
 
     $label = $purpose === 'prepay' ? 'your full prepay commitment' : 'this installment';
-    send_email($a['contact_email'], 'Payment received — standing day agreement',
-        "<p>Thank you — your payment of $" . number_format($amount, 2) . " for {$label} has been received.</p>");
-    send_email(ADMIN_EMAIL, "Standing day {$purpose} payment received — {$a['clinic_name']}",
-        "<p>{$a['clinic_name']} paid $" . number_format($amount, 2) . " ({$purpose}).</p>");
+    send_branded_email($a['contact_email'], 'Payment received — standing day agreement',
+        email_heading('Payment received — thank you', 'Standing day agreement')
+        . email_amount('Amount paid', $amount, 'for ' . em($label))
+        . email_p('Your standing day coverage schedule and payment history are always available in your account.')
+        . email_buttons([['View my standing days', dashboard_url('coverage', 'upcoming')]]),
+        ['site' => 'coverage', 'preheader' => 'We received ' . em_money($amount) . ' for ' . $label . '.']);
+    send_admin_email("Standing day {$purpose} payment received — {$a['clinic_name']}", 'Standing day payment received',
+        email_facts(['Clinic' => $a['clinic_name'], 'Amount' => em_money($amount), 'Type' => $purpose]), ['kicker' => 'Payment']);
     return true;
 }
 
@@ -860,6 +878,7 @@ function promo_discount_amount(array $promo, float $subtotal) {
     return min($raw, $subtotal);
 }
 
+require_once __DIR__ . '/email_templates.php';
 require_once __DIR__ . '/lead_emails.php';
 require_once __DIR__ . '/ai.php';
 
@@ -896,18 +915,34 @@ function apply_successful_payment(PDO $pdo, string $bookingId, string $intentId,
     $stmt = $pdo->prepare('INSERT INTO payments (booking_id, user_id, amount, purpose, stripe_payment_intent, stripe_charge_id, status) VALUES (?, ?, ?, ?, ?, ?, "succeeded")');
     $stmt->execute([$bookingId, $b['user_id'], $amount, $purpose, $intentId, $chargeId]);
 
+    $site = booking_site($b);
     if ($purpose === 'deposit') {
-        send_email($b['user_email'], "Booking confirmed — {$b['id']}",
-            "<p>Your booking is confirmed.</p><p><strong>{$b['title']}</strong><br>{$b['meta']}</p>" .
-            '<p>Deposit charged: $' . number_format($amount, 2) . '<br>Total: $' . number_format($b['total'], 2) . '</p>' .
-            "<p>Reference: {$b['id']}</p>");
-        send_email(ADMIN_EMAIL, "New booking — {$b['id']}",
-            "<p>{$b['user_name']} ({$b['user_email']}) booked {$b['title']}.</p><p>{$b['meta']}</p><p>Deposit paid: $" . number_format($amount, 2) . '</p>');
+        $florida = $site === 'florida';
+        send_branded_email($b['user_email'], "Booking confirmed — {$b['id']}",
+            email_heading("You're booked, " . email_first_name($b['user_name']) . '.', 'Booking confirmed')
+            . email_p($florida
+                ? 'Thank you — your visit is confirmed and on the calendar. Here are the details:'
+                : 'Thank you — your coverage is confirmed and the date' . (count(json_decode($b['dates'] ?? '[]', true) ?: []) > 1 ? 's are' : ' is') . ' now held for you. Here are the details:')
+            . email_booking_facts($b, ['Deposit paid' => em_money($amount), 'Total' => em_money($b['total']), 'Balance' => $florida ? 'Due after the visit' : 'Invoiced after coverage is complete'])
+            . email_callout($florida
+                ? '<strong>What happens next:</strong> Dr. McPherson will arrive at the scheduled time with everything needed. If anything changes — address, number of patients, timing — just reply to this email or update it from your account.'
+                : '<strong>What happens next:</strong> make sure your day-of details (posted hours, techniques, point of contact) are up to date in your account so your covering doctor walks in prepared. You can edit them any time before the coverage date.')
+            . email_buttons([['View my booking', dashboard_url($site, 'upcoming')], [$florida ? 'Book another visit' : 'Book more dates', email_brand($site)['book'], 'secondary']])
+            . email_small('Need to change or cancel? Cancellations more than ' . CANCEL_FULL_REFUND_HOURS . ' hours before the start receive a full refund of the deposit.'),
+            ['site' => $site, 'reading' => true, 'preheader' => "Confirmed: {$b['title']} — " . (email_booking_dates($b) ?? '')]);
+        send_admin_email("New booking — {$b['id']}", 'New booking',
+            email_facts(['Client' => $b['user_name'] . ' (' . $b['user_email'] . ')', 'Service' => $b['title'], 'Date(s)' => email_booking_dates($b), 'Details' => $b['meta'], 'Deposit paid' => em_money($amount), 'Total' => em_money($b['total']), 'Reference' => $b['id']]),
+            ['kicker' => 'Deposit received', 'site' => $site]);
     } else {
-        send_email($b['user_email'], "Balance paid — {$b['id']}",
-            '<p>Thank you — the remaining balance of $' . number_format($amount, 2) . " on booking {$b['id']} has been received. You're paid in full.</p>");
-        send_email(ADMIN_EMAIL, "Balance paid — {$b['id']}",
-            "<p>{$b['user_name']} paid the remaining balance of $" . number_format($amount, 2) . " on {$b['id']}.</p>");
+        send_branded_email($b['user_email'], "Balance paid — {$b['id']}",
+            email_heading("You're paid in full", 'Payment received')
+            . email_amount('Balance paid', $amount, 'Booking ' . em($b['id']))
+            . email_p('Thank you, ' . em(email_first_name($b['user_name'])) . ' — your booking is now fully settled. A record of every payment is in your account.')
+            . email_booking_facts($b)
+            . email_buttons([['View payment history', dashboard_url($site, 'past')], [$site === 'florida' ? 'Book another visit' : 'Book your next coverage', email_brand($site)['book'], 'secondary']]),
+            ['site' => $site, 'reading' => true, 'preheader' => 'We received ' . em_money($amount) . ' — thank you!']);
+        send_admin_email("Balance paid — {$b['id']}", 'Balance paid',
+            email_facts(['Client' => $b['user_name'], 'Amount' => em_money($amount), 'Booking' => $b['title'], 'Reference' => $b['id']]), ['kicker' => 'Payment', 'site' => $site]);
     }
     return true;
 }
@@ -930,10 +965,15 @@ function apply_successful_invoice_payment(PDO $pdo, string $invoiceId, string $i
     $stmt = $pdo->prepare('INSERT INTO payments (invoice_id, user_id, amount, purpose, stripe_payment_intent, stripe_charge_id, status) VALUES (?, ?, ?, "invoice", ?, ?, "succeeded")');
     $stmt->execute([$invoiceId, $inv['user_id'], $amount, $intentId, $chargeId]);
 
-    send_email($inv['user_email'], "Payment received — {$inv['description']}",
-        '<p>Thank you — your payment of $' . number_format($amount, 2) . " for \"{$inv['description']}\" has been received.</p>");
-    send_email(ADMIN_EMAIL, "Invoice paid — {$invoiceId}",
-        "<p>{$inv['user_name']} paid $" . number_format($amount, 2) . " on invoice {$invoiceId} ({$inv['description']}).</p>");
+    $site = user_site($pdo, $inv['user_id']);
+    send_branded_email($inv['user_email'], 'Payment received — ' . html_entity_decode($inv['description'], ENT_QUOTES, 'UTF-8'),
+        email_heading('Payment received — thank you', 'Invoice ' . $invoiceId)
+        . email_amount('Amount paid', $amount, em($inv['description']))
+        . email_p('Thanks, ' . em(email_first_name($inv['user_name'])) . ' — this has been applied to your account. Your full payment history is available any time.')
+        . email_buttons([['View my invoices', dashboard_url($site, 'invoices')]]),
+        ['site' => $site, 'preheader' => 'We received ' . em_money($amount) . '.']);
+    send_admin_email("Invoice paid — {$invoiceId}", 'Invoice paid',
+        email_facts(['Client' => $inv['user_name'], 'Amount' => em_money($amount), 'Invoice' => $inv['description'], 'Reference' => $invoiceId]), ['kicker' => 'Payment']);
     return true;
 }
 
@@ -972,10 +1012,13 @@ function apply_successful_standing_payment(PDO $pdo, string $agreementId, string
     $stmt = $pdo->prepare('INSERT INTO payments (standing_agreement_id, standing_date, user_id, amount, purpose, stripe_payment_intent, stripe_charge_id, status) VALUES (?, ?, ?, ?, "standing_date", ?, ?, "succeeded")');
     $stmt->execute([$agreementId, $date, $a['user_id'], $amount, $intentId, $chargeId]);
 
-    send_email($a['contact_email'], "Payment received — {$date}",
-        "<p>Thank you — your payment of $" . number_format($amount, 2) . " for the standing day coverage on {$date} has been received.</p>");
-    send_email(ADMIN_EMAIL, "Standing day payment received — {$a['clinic_name']}",
-        "<p>{$a['clinic_name']} paid $" . number_format($amount, 2) . " for {$date}.</p>");
+    send_branded_email($a['contact_email'], "Payment received — {$date}",
+        email_heading('Payment received — thank you', 'Standing day coverage')
+        . email_amount('Amount paid', $amount, 'for coverage on ' . em(date('l, F j, Y', strtotime($date))))
+        . email_buttons([['View my standing days', dashboard_url('coverage', 'upcoming')]]),
+        ['site' => 'coverage', 'preheader' => 'We received ' . em_money($amount) . ' for ' . $date . '.']);
+    send_admin_email("Standing day payment received — {$a['clinic_name']}", 'Standing day payment received',
+        email_facts(['Clinic' => $a['clinic_name'], 'Amount' => em_money($amount), 'Coverage date' => $date]), ['kicker' => 'Payment']);
     return true;
 }
 
