@@ -448,6 +448,11 @@
   #chat-panel .chat-bubble-wrap{display:flex;flex-direction:column;min-width:0;}
   #chat-panel .chat-row-me .chat-bubble-wrap{align-items:flex-end;}
   #chat-panel .chat-msg-label{font-size:0.64rem;color:#9a8354;text-transform:uppercase;letter-spacing:0.04em;margin:0 3px 2px;font-family:'IBM Plex Mono',monospace;}
+  #chat-panel .chat-typing-dots{display:flex;gap:4px;padding:12px 12px;align-items:center;}
+  #chat-panel .chat-typing-dots span{width:6px;height:6px;border-radius:50%;background:#a8b0ba;display:inline-block;animation:chat-typing-bounce 1.1s infinite ease-in-out;}
+  #chat-panel .chat-typing-dots span:nth-child(2){animation-delay:0.15s;}
+  #chat-panel .chat-typing-dots span:nth-child(3){animation-delay:0.3s;}
+  @keyframes chat-typing-bounce{0%,60%,100%{transform:translateY(0);opacity:0.5;}30%{transform:translateY(-4px);opacity:1;}}
   #chat-panel .chat-msg{background:var(--paper);padding:10px 12px;border-radius:6px;max-width:100%;overflow-wrap:break-word;}
   #chat-panel .chat-msg-me{background:var(--teal);color:var(--white);}
   #chat-panel .chat-msg-admin{background:var(--paper);}

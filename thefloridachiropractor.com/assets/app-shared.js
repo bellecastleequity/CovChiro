@@ -244,6 +244,7 @@ function chatGuestKey(){
   }
   return key;
 }
+const CHAT_BOT_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
 function renderChatMessages(messages){
   const body = $('chat-body');
   if (!body) return;
@@ -256,10 +257,10 @@ function renderChatMessages(messages){
     const avatar = isAdmin
       ? `<img class="chat-avatar" src="assets/headshot.jpg" alt="Dr. McPherson">`
       : isBot
-      ? `<div class="chat-avatar-bot" title="Automated answer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M12 8V5M9 5h6"/><circle cx="8.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="14" r="1.2" fill="currentColor" stroke="none"/></svg></div>`
+      ? `<div class="chat-avatar-bot" title="Quick reply">${CHAT_BOT_ICON}</div>`
       : `<div class="chat-avatar-initial">${initial}</div>`;
     const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-    const label = isBot ? `<div class="chat-msg-label">Automated answer</div>` : '';
+    const label = isBot ? `<div class="chat-msg-label">Quick reply</div>` : '';
     return `<div class="chat-msg-row ${isOffice ? 'chat-row-admin' : 'chat-row-me'}">
       ${avatar}
       <div class="chat-bubble-wrap">
@@ -273,6 +274,34 @@ function renderChatMessages(messages){
   body.querySelectorAll('img.chat-avatar').forEach(img => {
     if (!img.complete) img.addEventListener('load', () => { body.scrollTop = body.scrollHeight; }, { once: true });
   });
+}
+function showChatTyping(){
+  const body = $('chat-body');
+  if (!body) return;
+  body.insertAdjacentHTML('beforeend', `<div class="chat-msg-row chat-row-admin" id="chat-typing">
+    <div class="chat-avatar-bot">${CHAT_BOT_ICON}</div>
+    <div class="chat-bubble-wrap"><div class="chat-msg chat-msg-admin chat-typing-dots"><span></span><span></span><span></span></div></div>
+  </div>`);
+  body.scrollTop = body.scrollHeight;
+}
+function hideChatTyping(){
+  const el = document.getElementById('chat-typing');
+  if (el) el.remove();
+}
+function appendOptimisticChatMessage(text){
+  const body = $('chat-body');
+  if (!body) return;
+  const nameSource = user ? user.name : ($('chat-guest-name') ? $('chat-guest-name').value : '');
+  const initial = (nameSource || '?').trim().charAt(0).toUpperCase() || '?';
+  const time = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  body.insertAdjacentHTML('beforeend', `<div class="chat-msg-row chat-row-me">
+    <div class="chat-avatar-initial">${initial}</div>
+    <div class="chat-bubble-wrap">
+      <div class="chat-msg chat-msg-me">${String(text).replace(/</g,'&lt;')}</div>
+      <div class="chat-msg-time">${time}</div>
+    </div>
+  </div>`);
+  body.scrollTop = body.scrollHeight;
 }
 async function loadChatHistory(){
   try {
@@ -306,22 +335,39 @@ async function sendChatMessage(){
     body.email = email;
   }
   input.value = '';
+  appendOptimisticChatMessage(text);
+  const guestFields = $('chat-guest-fields');
+  if (guestFields && !user) guestFields.classList.add('hidden'); // captured above — no need to show them again
+  showChatTyping();
+  let sendError = null;
   try {
     await apiFetch('/api/chat.php?action=send', { method: 'POST', body: JSON.stringify(body) });
-  } catch (e) { alert(e.message); return; }
-  await loadChatHistory();
+  } catch (e) { sendError = e; }
+  // A brief, natural-feeling pause before the reply appears, rather than
+  // popping in instantly — the message itself is still clearly labeled as
+  // a "Quick reply" (automated), this just avoids an abrupt instant reply.
+  setTimeout(async () => {
+    hideChatTyping();
+    if (sendError){ alert(sendError.message); return; }
+    await loadChatHistory();
+  }, 1600 + Math.random() * 2200);
 }
 function initChatWidget(){
   const guestFields = $('chat-guest-fields');
   if (guestFields){
-    guestFields.classList.toggle('hidden', !!user);
+    let identified = false;
     if (!user){
       try {
         const n = localStorage.getItem('covchiro_chat_name'), e = localStorage.getItem('covchiro_chat_email');
         if (n && $('chat-guest-name')) $('chat-guest-name').value = n;
         if (e && $('chat-guest-email')) $('chat-guest-email').value = e;
+        identified = !!(n && e);
       } catch (err) {}
     }
+    // Already have a name/email on file for this visitor (or they're
+    // logged in) — no reason to keep showing empty-looking fields on every
+    // visit once they've already been captured and are being reused.
+    guestFields.classList.toggle('hidden', !!user || identified);
   }
   const sendBtn = $('chat-send');
   if (sendBtn) sendBtn.addEventListener('click', sendChatMessage);
