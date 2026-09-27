@@ -10,6 +10,16 @@ RewriteRule ^(.*)$ https://coveragechiropractor.com/$1 [L,R=301]
 
 Options -Indexes
 
+# Browser-side hardening. HSTS is deliberately left out for now — add it
+# only once HTTPS delivery is confirmed rock-solid, since a cached HSTS
+# header can lock out visitors if TLS ever hiccups on this domain.
+<IfModule mod_headers.c>
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(), camera=(), microphone=()"
+</IfModule>
+
 # This account runs LiteSpeed Cache. Every API response is dynamic
 # (availability, balances, document upload status, etc.) — nothing under
 # /api/ should ever be served from cache, even if a future LSCache setting

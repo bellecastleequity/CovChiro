@@ -54,7 +54,10 @@ function handle_login(PDO $pdo) {
     $stmt = $pdo->prepare('SELECT * FROM users WHERE email = ?');
     $stmt->execute([$email]);
     $user = $stmt->fetch();
-    if (!$user) json_response(['error' => 'No account found for that email.'], 404);
+    // Deliberately identical wording/status for "no such account" and "wrong
+    // password" below — telling them apart lets an attacker enumerate which
+    // emails have accounts here.
+    if (!$user) json_response(['error' => 'Incorrect email or password.'], 401);
 
     if ($user['locked_until'] && strtotime($user['locked_until']) > time()) {
         json_response(['error' => 'Too many failed attempts. Try again in a few minutes.'], 429);
@@ -65,7 +68,7 @@ function handle_login(PDO $pdo) {
         $lockUntil = $fails >= 5 ? date('Y-m-d H:i:s', time() + 900) : null;
         $stmt = $pdo->prepare('UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?');
         $stmt->execute([$fails, $lockUntil, $user['id']]);
-        json_response(['error' => 'Incorrect password.'], 401);
+        json_response(['error' => 'Incorrect email or password.'], 401);
     }
 
     $stmt = $pdo->prepare('UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?');
