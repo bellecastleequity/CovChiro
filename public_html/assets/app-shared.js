@@ -256,6 +256,9 @@ function renderChatMessages(messages){
     </div>`;
   }).join('');
   body.scrollTop = body.scrollHeight;
+  body.querySelectorAll('img.chat-avatar').forEach(img => {
+    if (!img.complete) img.addEventListener('load', () => { body.scrollTop = body.scrollHeight; }, { once: true });
+  });
 }
 async function loadChatHistory(){
   try {
