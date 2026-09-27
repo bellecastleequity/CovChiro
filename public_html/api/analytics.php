@@ -120,7 +120,27 @@ foreach ([&$flexByDiscount, &$flexByLead] as &$group) {
 }
 unset($group, $v);
 
+// Welcome-offer lead funnel: homepage pop-up → 15% code → first booking.
+// Guarded so the rest of the analytics still load if migration_012 hasn't
+// been run on this database yet.
+$leads = ['captured' => 0, 'active' => 0, 'converted' => 0, 'unsubscribed' => 0, 'expired' => 0, 'conversionRate' => null, 'recent' => [], 'tableMissing' => false];
+try {
+    $leadCounts = $pdo->query("SELECT status, COUNT(*) AS c FROM leads GROUP BY status")->fetchAll(PDO::FETCH_KEY_PAIR);
+    foreach (['active', 'converted', 'unsubscribed', 'expired'] as $s) $leads[$s] = (int)($leadCounts[$s] ?? 0);
+    $leads['captured'] = (int)array_sum($leadCounts);
+    $leads['conversionRate'] = $leads['captured'] ? $leads['converted'] / $leads['captured'] : null;
+    $recent = $pdo->query("SELECT l.name, l.email, l.site, l.promo_code, l.status, l.created_at, l.converted_at, l.drip_step, p.expires_at
+        FROM leads l LEFT JOIN promo_codes p ON p.code = l.promo_code ORDER BY l.created_at DESC LIMIT 25")->fetchAll();
+    $leads['recent'] = array_map(fn($r) => [
+        'name' => $r['name'], 'email' => $r['email'], 'site' => $r['site'], 'code' => $r['promo_code'], 'status' => $r['status'],
+        'createdAt' => to_iso($r['created_at']), 'convertedAt' => to_iso($r['converted_at']), 'dripStep' => (int)$r['drip_step'], 'expiresAt' => $r['expires_at'],
+    ], $recent);
+} catch (PDOException $e) {
+    $leads['tableMissing'] = true;
+}
+
 json_response([
+    'leads' => $leads,
     'totalEver' => $totalEver, 'cancelledCount' => $cancelledCount, 'avgBookingValue' => round($avgBookingValue, 2), 'cancellationRate' => $cancellationRate,
     'geo' => $geo, 'avgLeadTime' => $avgLeadTime !== null ? round($avgLeadTime, 1) : null, 'leadTimeSampleSize' => count($leadTimes),
     'retentionRate' => $retentionRate, 'clientCount' => $clientCount, 'recurringActiveCount' => $recurringActiveCount,

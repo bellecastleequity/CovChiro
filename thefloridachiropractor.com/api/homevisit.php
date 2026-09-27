@@ -90,9 +90,12 @@ function handle_create(PDO $pdo) {
     $promoRow = null;
     $promoDiscount = 0;
     if ($promoCode !== '') {
-        $check = validate_promo_code($pdo, $promoCode);
+        $check = validate_promo_code($pdo, $promoCode, $user['email']);
         if (isset($check['error'])) json_response(['error' => $check['error']], 400);
         $promoRow = $check['promo'];
+        if (!empty($promoRow['is_welcome']) && has_any_bookings($pdo, $user['id'])) {
+            json_response(['error' => 'The welcome offer applies to your first booking only.'], 400);
+        }
         $promoDiscount = promo_discount_amount($promoRow, $quote['total']);
     }
     $total = round(max(0, $quote['total'] - $promoDiscount), 2);
@@ -133,6 +136,7 @@ function handle_create(PDO $pdo) {
     if ($promoRow) {
         $upd = $pdo->prepare('UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ?');
         $upd->execute([$promoRow['id']]);
+        if (!empty($promoRow['is_welcome'])) mark_lead_converted($pdo, $promoRow['code'], $bookingId);
     }
 
     json_response([

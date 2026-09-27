@@ -112,7 +112,7 @@
     {
       "@type": "Question",
       "name": "Are there any discounts available?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes, and they apply automatically — no code needed. First-time practices get 10% off their first booking. After booking 3 full days of coverage (6 half days counts the same), you earn Recurring Clinic status: 5% off, active as long as you book at least once every 12 months. Any date still open within 24 hours of its start also gets an automatic 10% discount. These can stack, and are shown live in your quote before you commit." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes, and they apply automatically — no code needed. First-time practices get 10% off their first booking. After booking 3 full days of coverage (6 half days counts the same), you earn Recurring Clinic status: 5% off, active as long as you book at least once every 12 months. Any date still open within 24 hours of its start also gets an automatic 10% discount. These can stack, and are shown live in your quote before you commit. New practices that sign up for the welcome offer on the site get 15% off their first booking in place of the automatic 10%; that code is single-use and can't be combined with other promo codes." }
     },
     {
       "@type": "Question",
@@ -135,7 +135,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=12">
+<link rel="stylesheet" href="assets/style.css?v=13">
 </head>
 <body>
 
@@ -656,7 +656,7 @@
       </details>
       <details class="faq-item">
         <summary>Are there any discounts available?</summary>
-        <p>Yes, and they apply automatically — no code needed. First-time practices get 10% off their first booking. After booking 3 full days of coverage (6 half days counts the same), you earn Recurring Clinic status: 5% off, active as long as you book at least once every 12 months. Any date still open within 24 hours of its start also gets an automatic 10% discount. These can stack, and are shown live in your quote before you commit.</p>
+        <p>Yes, and they apply automatically — no code needed. First-time practices get 10% off their first booking. After booking 3 full days of coverage (6 half days counts the same), you earn Recurring Clinic status: 5% off, active as long as you book at least once every 12 months. Any date still open within 24 hours of its start also gets an automatic 10% discount. These can stack, and are shown live in your quote before you commit. New practices that sign up for the welcome offer on this page get 15% off their first booking in place of the automatic 10% — that code is single-use and can't be combined with other promo codes.</p>
       </details>
       <details class="faq-item">
         <summary>How is coveragechiropractor.com different from a chiropractic staffing agency?</summary>
@@ -773,8 +773,33 @@
   <div class="chat-input"><input type="text" id="chat-input-text" placeholder="Type a message…" aria-label="Chat message"><button type="button" id="chat-send">Send</button></div>
 </div>
 
+<div class="modal-bg" id="welcome-modal">
+  <div class="modal narrow welcome-modal">
+    <button class="close" data-close aria-label="Close">×</button>
+    <div id="welcome-step-form">
+      <span class="welcome-eyebrow">Welcome offer</span>
+      <h2>15% off your <em>first booking</em></h2>
+      <p class="welcome-sub">Not ready to book today? Grab your code now — it's good for 90 days, and we'll send it straight to your inbox so it's there when you need coverage.</p>
+      <label for="welcome-name">Your name</label>
+      <input type="text" id="welcome-name" autocomplete="name">
+      <label for="welcome-email">Email</label>
+      <input type="email" id="welcome-email" autocomplete="email" placeholder="you@yourpractice.com">
+      <div class="err-msg" id="welcome-err"></div>
+      <button class="btn" id="welcome-submit">Send my 15% code</button>
+      <p class="welcome-fine">Single use, first booking only, replaces the standard first-booking discount and can't be combined with other promo codes. We'll send a few helpful emails over the next 90 days — unsubscribe any time.</p>
+    </div>
+    <div id="welcome-step-done" class="hidden">
+      <span class="welcome-eyebrow">You're in</span>
+      <h2>Your code is ready</h2>
+      <div class="welcome-code" id="welcome-code"></div>
+      <p class="welcome-sub" id="welcome-done-msg"></p>
+      <button class="btn" id="welcome-book-now">Book now with 15% off</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://js.stripe.com/v3/"></script>
-<script src="assets/app-shared.js?v=9"></script>
+<script src="assets/app-shared.js?v=10"></script>
 <script>
 async function loadSession(){
   try { user = (await apiFetch('/api/auth.php?action=me')).user || null; }
@@ -1161,7 +1186,9 @@ function quote(){
   const isFirstTimeEver = !(user && bookings.length > 0);
   const preDiscountSubtotal = base + mileage + hotel;
   let clientDiscount = 0, clientDiscountLabel = '';
-  if (isFirstTimeEver && preDiscountSubtotal > 0){
+  // A welcome-offer code stands in for the first-booking discount rather
+  // than stacking on it (the server enforces the same rule).
+  if (isFirstTimeEver && preDiscountSubtotal > 0 && !(appliedPromo && appliedPromo.isWelcome)){
     clientDiscount = preDiscountSubtotal * FIRST_BOOKING_RATE;
     clientDiscountLabel = 'First booking discount (10%)';
   } else if (rStatus.active){
@@ -1270,7 +1297,7 @@ function recalc(){
   const finalTotal = Math.max(0, q.total - discount);
   $('row-promo').classList.toggle('hidden', discount <= 0);
   if (discount > 0){
-    $('lbl-promo').textContent = `Promo discount (${appliedPromo.code})`;
+    $('lbl-promo').textContent = appliedPromo.isWelcome ? `Welcome offer (${appliedPromo.code})` : `Promo discount (${appliedPromo.code})`;
     $('val-promo').textContent = '-' + money(discount);
   }
 
@@ -1680,10 +1707,10 @@ $('promo-apply').addEventListener('click', async () => {
   const msg = $('promo-msg');
   if (!codeStr){ appliedPromo = null; msg.classList.add('hidden'); recalc(); return; }
   try {
-    const r = await apiFetch('/api/promo.php?action=validate', { method: 'POST', body: JSON.stringify({ code: codeStr }) });
-    appliedPromo = { code: codeStr.trim().toUpperCase(), type: r.type, value: r.value };
+    const r = await apiFetch('/api/promo.php?action=validate', { method: 'POST', body: JSON.stringify({ code: codeStr, email: (user && user.email) || welcomeLeadEmail() }) });
+    appliedPromo = { code: codeStr.trim().toUpperCase(), type: r.type, value: r.value, isWelcome: !!r.isWelcome };
     msg.className = 'promo-msg ok';
-    msg.textContent = `Applied — ${appliedPromo.type === 'percent' ? appliedPromo.value + '% off' : money(appliedPromo.value) + ' off'}`;
+    msg.textContent = `Applied — ${appliedPromo.type === 'percent' ? appliedPromo.value + '% off' : money(appliedPromo.value) + ' off'}${appliedPromo.isWelcome ? ' (welcome offer — replaces the first-booking discount)' : ''}`;
   } catch (e){
     appliedPromo = null;
     msg.className = 'promo-msg bad';

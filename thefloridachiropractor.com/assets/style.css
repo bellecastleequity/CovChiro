@@ -400,6 +400,16 @@
   .modal input,.modal select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:3px;
     background:var(--white);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;}
   .modal .btn{width:100%;margin-top:18px;}
+  /* WELCOME OFFER POP-UP */
+  .welcome-modal{text-align:center;border-top:5px solid var(--ochre);}
+  .welcome-eyebrow{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ochre);font-weight:600;margin-bottom:10px;}
+  .welcome-modal h2{font-size:1.9rem;line-height:1.15;margin-bottom:8px;}
+  .welcome-modal h2 em{font-style:italic;color:var(--teal);}
+  .welcome-sub{font-size:0.9rem;color:#4b5563;line-height:1.5;margin-bottom:6px;}
+  .welcome-modal label{text-align:left;}
+  .welcome-modal .btn{margin-top:14px;}
+  .welcome-fine{font-size:0.72rem;color:#8a8171;line-height:1.45;margin-top:12px;}
+  .welcome-code{font-family:'IBM Plex Mono',monospace;font-size:1.5rem;font-weight:600;letter-spacing:0.06em;color:var(--teal-dark);background:var(--paper-2);border:1px dashed var(--teal);border-radius:6px;padding:14px 12px;margin:14px 0;user-select:all;}
   .switch-line{text-align:center;font-size:0.82rem;color:#6b7280;margin-top:14px;}
   .switch-line button{background:none;border:none;color:var(--teal);cursor:pointer;text-decoration:underline;font-size:0.82rem;}
   .err-msg{color:var(--red);font-size:0.8rem;margin-top:10px;min-height:18px;}

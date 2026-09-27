@@ -303,6 +303,85 @@ document.querySelectorAll('[data-close]').forEach(b =>
 document.querySelectorAll('.modal-bg').forEach(bg =>
   bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); }));
 
+// ===== Welcome offer pop-up (homepage lead capture) =====
+// The code the visitor received is remembered in this browser so it's
+// re-applied to the booking form on later visits, and so the pre-login promo
+// preview can prove which email it belongs to.
+const WELCOME_SITE = location.hostname.includes('thefloridachiropractor') ? 'florida' : 'coverage';
+function welcomeLead(){ try { return JSON.parse(localStorage.getItem('welcomeLead') || 'null'); } catch (e) { return null; } }
+function welcomeLeadEmail(){ const l = welcomeLead(); return l && l.email ? l.email : ''; }
+function rememberWelcomeLead(data){ try { localStorage.setItem('welcomeLead', JSON.stringify(data)); } catch (e) {} }
+function applyWelcomeCode(){
+  const l = welcomeLead(), input = $('promo-input'), apply = $('promo-apply');
+  if (!l || !l.code || !input || !apply) return false;
+  if (input.value.trim().toUpperCase() === l.code) return true;
+  input.value = l.code;
+  apply.click();
+  return true;
+}
+(function initWelcomeOffer(){
+  const modal = $('welcome-modal');
+  if (!modal) return;
+  const params = new URLSearchParams(location.search);
+  const urlCode = (params.get('welcome') || '').trim().toUpperCase();
+  const urlEmail = (params.get('lead') || '').trim().toLowerCase();
+  if (urlCode) rememberWelcomeLead(Object.assign(welcomeLead() || {}, { code: urlCode, email: urlEmail || (welcomeLead() || {}).email || '' }));
+  window.addEventListener('load', () => setTimeout(applyWelcomeCode, 300));
+
+  let dismissedAt = 0;
+  try { dismissedAt = parseInt(localStorage.getItem('welcomeDismissedAt') || '0', 10) || 0; } catch (e) {}
+  const recentlyDismissed = dismissedAt && (Date.now() - dismissedAt) < 30 * 864e5;
+  let shown = false;
+  // Only for visitors who haven't already grabbed a code, closed it in the
+  // last month, or signed in (an account holder isn't a new lead).
+  function maybeShow(){
+    if (shown || welcomeLead() || recentlyDismissed || user) return;
+    shown = true;
+    modal.classList.add('open');
+    setTimeout(() => { const n = $('welcome-name'); if (n) n.focus(); }, 250);
+  }
+  setTimeout(maybeShow, 8000);
+  window.addEventListener('scroll', () => {
+    const pct = (window.scrollY + window.innerHeight) / Math.max(1, document.documentElement.scrollHeight);
+    if (pct >= 0.4) maybeShow();
+  }, { passive: true });
+  modal.addEventListener('click', e => {
+    if (e.target === modal || e.target.closest('[data-close]')) {
+      try { localStorage.setItem('welcomeDismissedAt', String(Date.now())); } catch (err) {}
+    }
+  });
+
+  async function submitWelcome(){
+    const name = $('welcome-name').value.trim(), email = $('welcome-email').value.trim();
+    const err = $('welcome-err');
+    err.textContent = '';
+    if (!name){ err.textContent = 'Enter your name.'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ err.textContent = 'Enter a valid email address.'; return; }
+    const btn = $('welcome-submit');
+    btn.disabled = true;
+    let r;
+    try { r = await apiFetch('/api/leads.php?action=capture', { method: 'POST', body: JSON.stringify({ name, email, site: WELCOME_SITE }) }); }
+    catch (e) { err.textContent = e.message; btn.disabled = false; return; }
+    btn.disabled = false;
+    rememberWelcomeLead({ email: email.toLowerCase(), code: r.code, expiresAt: r.expiresAt });
+    $('welcome-code').textContent = r.code;
+    const exp = r.expiresAt ? new Date(r.expiresAt + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
+    $('welcome-done-msg').textContent = (r.alreadySignedUp ? "You'd already signed up — here's your code again. " : "We've emailed it to you too. ")
+      + (exp ? `Good through ${exp}, first booking only.` : 'First booking only.');
+    $('welcome-step-form').classList.add('hidden');
+    $('welcome-step-done').classList.remove('hidden');
+    applyWelcomeCode();
+  }
+  $('welcome-submit').addEventListener('click', submitWelcome);
+  ['welcome-name', 'welcome-email'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') submitWelcome(); }));
+  $('welcome-book-now').addEventListener('click', () => {
+    modal.classList.remove('open');
+    applyWelcomeCode();
+    const target = $('rates') || $('book');
+    if (target) target.scrollIntoView({ behavior: 'smooth' });
+  });
+})();
+
 function chatGuestKey(){
   let key = null;
   try { key = localStorage.getItem('covchiro_chat_key'); } catch (e) {}

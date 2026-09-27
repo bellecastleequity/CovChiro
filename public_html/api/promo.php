@@ -17,9 +17,10 @@ switch ($action) {
 function handle_validate(PDO $pdo) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
     $body = json_body();
-    $check = validate_promo_code($pdo, $body['code'] ?? '');
+    $email = trim((string)($body['email'] ?? ''));
+    $check = validate_promo_code($pdo, $body['code'] ?? '', $email !== '' ? $email : null);
     if (isset($check['error'])) json_response(['error' => $check['error']], 400);
-    json_response(['type' => $check['promo']['type'], 'value' => (float)$check['promo']['value']]);
+    json_response(['type' => $check['promo']['type'], 'value' => (float)$check['promo']['value'], 'isWelcome' => !empty($check['promo']['is_welcome'])]);
 }
 
 function handle_list(PDO $pdo) {
@@ -76,5 +77,7 @@ function promo_to_json(array $r) {
         'maxUses' => $r['max_uses'] !== null ? (int)$r['max_uses'] : null,
         'usedCount' => (int)$r['used_count'],
         'createdAt' => to_iso($r['created_at']),
+        'assignedEmail' => $r['assigned_email'] ?? null,
+        'isWelcome' => !empty($r['is_welcome']),
     ];
 }

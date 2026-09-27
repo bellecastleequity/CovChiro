@@ -145,29 +145,32 @@ function handle_create(PDO $pdo) {
         }
     }
 
+    // Promo code (optional) — re-validated server-side; a client can never
+    // dictate its own discount amount. Checked before the client-status
+    // discounts because a welcome-offer code replaces the automatic
+    // first-booking discount rather than stacking on top of it.
+    $promoCode = trim($body['promoCode'] ?? '');
+    $promoRow = null;
+    if ($promoCode !== '') {
+        $check = validate_promo_code($pdo, $promoCode, $user['email']);
+        if (isset($check['error'])) json_response(['error' => $check['error']], 400);
+        $promoRow = $check['promo'];
+    }
+    $isWelcomePromo = $promoRow && !empty($promoRow['is_welcome']);
+
     $preDiscountSubtotal = $base + $mileage + $hotel;
     $isFirstTimeEver = !has_any_bookings($pdo, $user['id']);
+    if ($isWelcomePromo && !$isFirstTimeEver) json_response(['error' => "The welcome offer applies to a clinic's first booking only."], 400);
     $rStatus = recurring_status($pdo, $user['id']);
     $clientDiscount = 0;
-    if ($isFirstTimeEver && $preDiscountSubtotal > 0) {
+    if ($isFirstTimeEver && $preDiscountSubtotal > 0 && !$isWelcomePromo) {
         $clientDiscount = $preDiscountSubtotal * FIRST_BOOKING_RATE;
     } elseif ($rStatus['active']) {
         $clientDiscount = $preDiscountSubtotal * RECURRING_DISCOUNT_RATE;
     }
 
     $preprocessedTotal = round($base + $mileage + $hotel + $overtimeCost - $lastMinuteDiscount - $flexDiscount - $clientDiscount, 2);
-
-    // Promo code (optional) — re-validated server-side; a client can never
-    // dictate its own discount amount.
-    $promoCode = trim($body['promoCode'] ?? '');
-    $promoRow = null;
-    $promoDiscount = 0;
-    if ($promoCode !== '') {
-        $check = validate_promo_code($pdo, $promoCode);
-        if (isset($check['error'])) json_response(['error' => $check['error']], 400);
-        $promoRow = $check['promo'];
-        $promoDiscount = promo_discount_amount($promoRow, $preprocessedTotal);
-    }
+    $promoDiscount = $promoRow ? promo_discount_amount($promoRow, $preprocessedTotal) : 0;
 
     $total = round(max(0, $preprocessedTotal - $promoDiscount), 2);
     if ($total <= 0) json_response(['error' => 'Could not price this booking. Contact us directly.'], 400);
@@ -208,6 +211,7 @@ function handle_create(PDO $pdo) {
     if ($promoRow) {
         $upd = $pdo->prepare('UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ?');
         $upd->execute([$promoRow['id']]);
+        if ($isWelcomePromo) mark_lead_converted($pdo, $promoRow['code'], $bookingId);
     }
 
     json_response([

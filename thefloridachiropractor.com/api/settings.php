@@ -122,6 +122,7 @@ function handle_install_cron(PDO $pdo) {
         'cron_daily_routes.php' => "*/5 * * * * /usr/bin/php {$base}/cron_daily_routes.php",
         'cron/payment_reminders.php' => "0 9,21 * * * /usr/bin/php {$base}/cron/payment_reminders.php",
         'cron/feedback_reminders.php' => "0 10 * * * /usr/bin/php {$base}/cron/feedback_reminders.php",
+        'cron/lead_drip.php' => "0 11 * * * /usr/bin/php {$base}/cron/lead_drip.php",
     ];
     // Referenced by an early draft of INSTALLATION.md / QUICK_REFERENCE.md
     // but never built as a script — nothing should point here.

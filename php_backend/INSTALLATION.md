@@ -119,7 +119,7 @@ but worth covering. It covers both office-coverage and standing-day payments.
 ## STEP 7: CRON JOBS
 
 **Shortcut:** Admin panel → **Analytics** tab → **Email & cron diagnostics**
-→ **Set up cron jobs automatically** adds/fixes all five jobs below in one
+→ **Set up cron jobs automatically** adds/fixes all six jobs below in one
 click, on hosts that allow PHP's `exec()` — it reconciles the account's
 crontab (adds anything missing, corrects a wrong schedule, strips known-stale
 entries) and leaves any other, unrelated cron job on the account untouched.
@@ -148,6 +148,18 @@ Command: /usr/bin/php /home/[username]/php_backend/cron/feedback_reminders.php
 
 Sends one follow-up email 3 days after coverage is marked complete, if the
 clinic hasn't submitted feedback yet — never more than once per booking.
+
+**Welcome-offer drip** (new): cPanel → **Cron Jobs** → **Add New Cron Job**:
+
+```
+Minute: 0   Hour: 11   (once daily, any quiet hour works)
+Command: /usr/bin/php /home/[username]/php_backend/cron/lead_drip.php
+```
+
+Follows up with visitors who took the homepage welcome offer (15% off a first
+booking) — one email at 3, 10, 30 and 80 days after signup, stopping as soon
+as they book, unsubscribe, or the code expires. Requires
+`migration_012_lead_capture.sql` to have been run.
 
 **Late fees, interest & invoices** (new): cPanel → **Cron Jobs** → **Add New Cron Job**:
 

@@ -43,9 +43,11 @@ define('SENDGRID_FROM_EMAIL', 'mail@coveragechiropractor.com');
 define('SENDGRID_FROM_NAME', 'Michael L. McPherson, D.C.');
 define('SENDGRID_FROM_EMAIL_FLORIDA', 'mail@thefloridachiropractor.com');
 define('SENDGRID_FROM_NAME_FLORIDA', 'The Florida Chiropractor');
-function sendgrid_sender() {
-    $host = $_SERVER['HTTP_HOST'] ?? '';
-    if (stripos($host, 'thefloridachiropractor.com') !== false) {
+// Pass $site ('coverage' | 'florida') explicitly from cron scripts, where
+// there's no request Host header to infer it from.
+function sendgrid_sender($site = null) {
+    if ($site === null) $site = site_key_from_host() ?? 'coverage';
+    if ($site === 'florida') {
         return [SENDGRID_FROM_EMAIL_FLORIDA, SENDGRID_FROM_NAME_FLORIDA];
     }
     return [SENDGRID_FROM_EMAIL, SENDGRID_FROM_NAME];
@@ -53,6 +55,17 @@ function sendgrid_sender() {
 
 // ========== SITE CONFIGURATION ==========
 define('SITE_URL', 'https://coveragechiropractor.com');
+define('SITE_URL_FLORIDA', 'https://thefloridachiropractor.com');
+define('WELCOME_OFFER_PCT', 15);
+define('WELCOME_OFFER_DAYS', 90);
+function site_key_from_host() {
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if (stripos($host, 'thefloridachiropractor.com') !== false) return 'florida';
+    if (stripos($host, 'coveragechiropractor.com') !== false) return 'coverage';
+    return null;
+}
+function site_url_for($site) { return $site === 'florida' ? SITE_URL_FLORIDA : SITE_URL; }
+function site_name_for($site) { return $site === 'florida' ? 'The Florida Chiropractor' : 'CoverageChiropractor.com'; }
 define('ADMIN_EMAIL', 'drmichaelmcpherson@gmail.com');
 define('PHONE_NUMBER', '(650) 713-4326');
 define('TIMEZONE', 'America/New_York');
@@ -257,7 +270,7 @@ function log_error($message, $context = []) {
 // non-202 status and a body explaining why, which the old version of this
 // function never even logged. That's the gap that made "emails just aren't
 // arriving" impossible to diagnose from the logs alone.
-function send_email_detailed($to, $subject, $body, $reply_to = null) {
+function send_email_detailed($to, $subject, $body, $reply_to = null, $site = null) {
     $autoload = __DIR__ . '/vendor/autoload.php';
     if (!file_exists($autoload)) {
         log_error('SendGrid vendor not installed, email not sent', ['to' => $to, 'subject' => $subject]);
@@ -265,7 +278,7 @@ function send_email_detailed($to, $subject, $body, $reply_to = null) {
     }
     require_once $autoload;
 
-    [$fromEmail, $fromName] = sendgrid_sender();
+    [$fromEmail, $fromName] = sendgrid_sender($site);
     $email = new \SendGrid\Mail\Mail();
     $email->setFrom($fromEmail, $fromName);
     $email->setSubject($subject);
@@ -287,8 +300,8 @@ function send_email_detailed($to, $subject, $body, $reply_to = null) {
     }
 }
 
-function send_email($to, $subject, $body, $reply_to = null) {
-    return send_email_detailed($to, $subject, $body, $reply_to)['ok'];
+function send_email($to, $subject, $body, $reply_to = null, $site = null) {
+    return send_email_detailed($to, $subject, $body, $reply_to, $site)['ok'];
 }
 
 // A Google Maps "get directions" deep link — tapping it in the Gmail app on
@@ -820,7 +833,9 @@ function check_availability(PDO $pdo, array $entries, ?string $excludeBookingId 
 
 // Validates a promo code the same way the original client-side
 // findValidPromo() did. Returns ['promo' => row] or ['error' => message].
-function validate_promo_code(PDO $pdo, string $codeStr) {
+// $email is whoever is trying to use the code — a code issued by the welcome
+// offer is bound to the address it was sent to and rejected for anyone else.
+function validate_promo_code(PDO $pdo, string $codeStr, ?string $email = null) {
     $today = date('Y-m-d');
     $stmt = $pdo->prepare('SELECT * FROM promo_codes WHERE code = ?');
     $stmt->execute([strtoupper(trim($codeStr))]);
@@ -829,6 +844,9 @@ function validate_promo_code(PDO $pdo, string $codeStr) {
     if (!$promo['active']) return ['error' => 'That code is no longer active.'];
     if ($promo['expires_at'] && $promo['expires_at'] < $today) return ['error' => 'That code has expired.'];
     if ($promo['max_uses'] !== null && (int)$promo['used_count'] >= (int)$promo['max_uses']) return ['error' => 'That code has reached its usage limit.'];
+    if (!empty($promo['assigned_email']) && ($email === null || strcasecmp(trim($email), $promo['assigned_email']) !== 0)) {
+        return ['error' => 'That code is tied to the email address it was sent to — book with that email to use it.'];
+    }
     return ['promo' => $promo];
 }
 
@@ -837,6 +855,8 @@ function promo_discount_amount(array $promo, float $subtotal) {
     $raw = $promo['type'] === 'percent' ? $subtotal * ((float)$promo['value'] / 100) : (float)$promo['value'];
     return min($raw, $subtotal);
 }
+
+require_once __DIR__ . '/lead_emails.php';
 
 // Applies a succeeded Stripe payment to a booking exactly once, whichever
 // caller notices it first (the browser's confirm call or the Stripe

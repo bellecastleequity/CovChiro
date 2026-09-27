@@ -98,7 +98,7 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=13">
+<link rel="stylesheet" href="assets/style.css?v=14">
 </head>
 <body>
 
@@ -424,8 +424,33 @@
   <div class="chat-input"><input type="text" id="chat-input-text" placeholder="Type a message…" aria-label="Chat message"><button type="button" id="chat-send">Send</button></div>
 </div>
 
+<div class="modal-bg" id="welcome-modal">
+  <div class="modal narrow welcome-modal">
+    <button class="close" data-close aria-label="Close">×</button>
+    <div id="welcome-step-form">
+      <span class="welcome-eyebrow">Welcome offer</span>
+      <h2>15% off your <em>first visit or event</em></h2>
+      <p class="welcome-sub">Not ready to book today? Grab your code now — it's good for 90 days, and we'll send it straight to your inbox so it's there when you need care.</p>
+      <label for="welcome-name">Your name</label>
+      <input type="text" id="welcome-name" autocomplete="name">
+      <label for="welcome-email">Email</label>
+      <input type="email" id="welcome-email" autocomplete="email" placeholder="you@example.com">
+      <div class="err-msg" id="welcome-err"></div>
+      <button class="btn" id="welcome-submit">Send my 15% code</button>
+      <p class="welcome-fine">Single use, first booking only, can't be combined with other promo codes. We'll send a few helpful emails over the next 90 days — unsubscribe any time.</p>
+    </div>
+    <div id="welcome-step-done" class="hidden">
+      <span class="welcome-eyebrow">You're in</span>
+      <h2>Your code is ready</h2>
+      <div class="welcome-code" id="welcome-code"></div>
+      <p class="welcome-sub" id="welcome-done-msg"></p>
+      <button class="btn" id="welcome-book-now">Book now with 15% off</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://js.stripe.com/v3/"></script>
-<script src="assets/app-shared.js?v=9"></script>
+<script src="assets/app-shared.js?v=10"></script>
 <script>
 let authMode = 'login';
 let appliedPromo = null;
@@ -540,10 +565,10 @@ $('promo-apply').addEventListener('click', async () => {
   const msg = $('promo-msg');
   if (!codeStr){ appliedPromo = null; msg.classList.add('hidden'); updateQuote(); return; }
   try {
-    const r = await apiFetch('/api/promo.php?action=validate', { method: 'POST', body: JSON.stringify({ code: codeStr }) });
-    appliedPromo = { code: codeStr.trim().toUpperCase(), type: r.type, value: r.value };
+    const r = await apiFetch('/api/promo.php?action=validate', { method: 'POST', body: JSON.stringify({ code: codeStr, email: (user && user.email) || welcomeLeadEmail() }) });
+    appliedPromo = { code: codeStr.trim().toUpperCase(), type: r.type, value: r.value, isWelcome: !!r.isWelcome };
     msg.className = 'promo-msg ok';
-    msg.textContent = `Applied — ${appliedPromo.type === 'percent' ? appliedPromo.value + '% off' : money(appliedPromo.value) + ' off'}`;
+    msg.textContent = `Applied — ${appliedPromo.type === 'percent' ? appliedPromo.value + '% off' : money(appliedPromo.value) + ' off'}${appliedPromo.isWelcome ? ' (welcome offer)' : ''}`;
   } catch (e){
     appliedPromo = null;
     msg.className = 'promo-msg bad';

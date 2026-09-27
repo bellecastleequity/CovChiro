@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=12">
+<link rel="stylesheet" href="assets/style.css?v=13">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
 <body>
@@ -99,7 +99,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="assets/app-shared.js?v=9"></script>
+<script src="assets/app-shared.js?v=10"></script>
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null, adminInvoices = [];
 let showCancelledBookings = false;
@@ -1077,7 +1077,7 @@ function renderAdmin(){
         <div class="blk ${p.active && !expired && !usedUp ? 'booked' : ''}">
           <div>
             <div class="bd">${p.code}</div>
-            <div class="bn">${p.type === 'percent' ? p.value + '% off' : money(p.value) + ' off'} · used ${p.usedCount}${p.maxUses != null ? ' / ' + p.maxUses : ''}${p.expiresAt ? ' · expires ' + p.expiresAt : ''}</div>
+            <div class="bn">${p.type === 'percent' ? p.value + '% off' : money(p.value) + ' off'} · used ${p.usedCount}${p.maxUses != null ? ' / ' + p.maxUses : ''}${p.expiresAt ? ' · expires ' + p.expiresAt : ''}${p.isWelcome ? ' · welcome offer' : ''}${p.assignedEmail ? ' · for ' + p.assignedEmail : ''}</div>
             <div class="bn" style="color:${statusColor};margin-top:3px;font-weight:600;">${status}</div>
           </div>
           <button class="btn ghost sm" data-toggle-promo="${p.code}">${p.active ? 'Disable' : 'Enable'}</button>
@@ -1778,7 +1778,7 @@ function renderAdmin(){
             ${!cs || !cs.lastRan ? `<div style="font-size:0.78rem;color:var(--red);margin-top:4px;">No record of this cron ever running — check it's added in cPanel → Cron Jobs.</div>` : ''}
           </div>
           <div>
-            <p style="font-size:0.85rem;color:#6b7280;margin-bottom:8px;"><strong>Set up all cron jobs</strong><br>Writes every cron job this app needs (billing, standing-day auto-pay, payment &amp; feedback reminders, daily route digest) directly into this account's crontab, fixes any with a wrong schedule, and removes known-stale entries — leaves anything else on the account untouched. Only works if this host allows PHP's exec(); otherwise add them manually via cPanel → Cron Jobs (see INSTALLATION.md).</p>
+            <p style="font-size:0.85rem;color:#6b7280;margin-bottom:8px;"><strong>Set up all cron jobs</strong><br>Writes every cron job this app needs (billing, standing-day auto-pay, payment &amp; feedback reminders, welcome-offer drip, daily route digest) directly into this account's crontab, fixes any with a wrong schedule, and removes known-stale entries — leaves anything else on the account untouched. Only works if this host allows PHP's exec(); otherwise add them manually via cPanel → Cron Jobs (see INSTALLATION.md).</p>
             <button class="btn ghost sm" id="diag-sync-crons">Set up cron jobs automatically</button>
             <div id="diag-cron-result" style="margin-top:10px;font-size:0.85rem;"></div>
           </div>
@@ -1792,8 +1792,11 @@ function renderAdmin(){
         ${sub ? `<div class="an-sub">${sub}</div>` : ''}
       </div>`;
 
+    const L = an.leads || { captured: 0, active: 0, converted: 0, unsubscribed: 0, expired: 0, conversionRate: null, recent: [], tableMissing: false };
     const cardsHtml = `
       <div class="an-grid">
+        ${metricCard('Welcome leads captured', L.tableMissing ? 'Not set up' : L.captured, L.tableMissing ? 'run migration_012_lead_capture.sql' : `${L.active} active · ${L.unsubscribed} unsubscribed · ${L.expired} expired`)}
+        ${metricCard('Lead → first booking', L.captured ? `${Math.round((L.conversionRate || 0) * 100)}%` : 'N/A', L.captured ? `${L.converted} of ${L.captured} welcome-offer signups booked` : 'no welcome-offer signups yet')}
         ${metricCard('Average booking value', money(an.avgBookingValue), `${an.totalEver} bookings tracked`)}
         ${metricCard('Cancellation rate', `${Math.round(an.cancellationRate*100)}%`, `${an.cancelledCount} of ${an.totalEver} ever created`)}
         ${metricCard('Booking lead time', an.avgLeadTime != null ? `${Math.round(an.avgLeadTime)} days` : 'Not enough data', an.leadTimeSampleSize ? `avg over ${an.leadTimeSampleSize} bookings` : 'needs bookings made after this update')}
@@ -1863,7 +1866,21 @@ function renderAdmin(){
           </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No bookings yet.</p>`}
       </div>`;
 
-    el.innerHTML = diagnosticsHtml + cardsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexLeadHtml;
+    const LEAD_STATUS = { active: ['Active', 'var(--teal-dark)'], converted: ['Booked', 'var(--teal-dark)'], unsubscribed: ['Unsubscribed', '#8a8171'], expired: ['Expired', 'var(--red)'] };
+    const leadsHtml = L.tableMissing ? '' : `
+      <div class="admin-card" style="margin-top:20px;">
+        <h3>Recent welcome-offer leads</h3>
+        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:10px;">Visitors who took the 15% pop-up offer on either site. Each gets a single-use code tied to their email and a short email sequence (days 3, 10, 30, 80) until they book, unsubscribe, or the code expires.</p>
+        ${L.recent.length ? L.recent.map(l => { const [label, color] = LEAD_STATUS[l.status] || [l.status, 'inherit']; return `
+          <div class="blk" style="margin-bottom:8px;">
+            <div>
+              <div class="bd">${l.name} <span style="font-weight:400;color:#6b7280;">· ${l.email}</span></div>
+              <div class="bn">${l.site === 'florida' ? 'thefloridachiropractor.com' : 'coveragechiropractor.com'} · ${l.code || 'no code'}${l.expiresAt ? ' · expires ' + l.expiresAt : ''} · signed up ${new Date(l.createdAt).toLocaleDateString()}${l.status === 'active' ? ` · ${l.dripStep} of 4 follow-ups sent` : ''}${l.convertedAt ? ' · booked ' + new Date(l.convertedAt).toLocaleDateString() : ''}</div>
+              <div class="bn" style="color:${color};margin-top:3px;font-weight:600;">${label}</div>
+            </div>
+          </div>`; }).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No signups yet — the pop-up appears to new visitors after about 8 seconds or once they've scrolled 40% of the homepage.</p>`}
+      </div>`;
+    el.innerHTML = diagnosticsHtml + cardsHtml + leadsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexLeadHtml;
 
     document.getElementById('diag-send-test').addEventListener('click', async () => {
       const btn = document.getElementById('diag-send-test');
