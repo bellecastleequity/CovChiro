@@ -44,8 +44,20 @@ function handle_send(PDO $pdo) {
         $userId = null;
     }
 
+    $countStmt = $pdo->prepare('SELECT COUNT(*) FROM chat_messages WHERE thread_key = ?');
+    $countStmt->execute([$threadKey]);
+    $isNewThread = (int)$countStmt->fetchColumn() === 0;
+
     $stmt = $pdo->prepare('INSERT INTO chat_messages (thread_key, user_id, name, email, sender, message, read_by_admin, read_by_client) VALUES (?, ?, ?, ?, ?, ?, 0, 1)');
     $stmt->execute([$threadKey, $userId, sanitize($name), sanitize($email), 'client', sanitize($message)]);
+
+    // A brief, immediate placeholder reply so a first-time visitor isn't
+    // staring at silence — this is not a real person, just a holding
+    // message until the office actually replies from the Messages tab.
+    if ($isNewThread) {
+        $auto = $pdo->prepare('INSERT INTO chat_messages (thread_key, user_id, name, email, sender, message, read_by_admin, read_by_client) VALUES (?, ?, ?, ?, "admin", ?, 1, 0)');
+        $auto->execute([$threadKey, $userId, sanitize($name), sanitize($email), "Thanks for reaching out — I'll get back to you as soon as I can, usually within a few hours."]);
+    }
 
     send_email(ADMIN_EMAIL, "New chat message from {$name}",
         "<p>{$name} ({$email}) sent:</p><blockquote>" . nl2br($message) . '</blockquote>' .
