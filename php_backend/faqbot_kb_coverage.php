@@ -139,6 +139,6 @@ const FAQBOT_KB = [
     [
         'question' => 'How do I contact the office?',
         'keywords' => ['contact', 'email', 'phone', 'reach', 'get in touch'],
-        'answer' => "You're in the right place — send your question here in chat, or email drmichaelmcpherson@gmail.com. Dr. McPherson replies directly.",
+        'answer' => "You're in the right place — send your question here in chat, or email mail@coveragechiropractor.com. Dr. McPherson replies directly.",
     ],
 ];

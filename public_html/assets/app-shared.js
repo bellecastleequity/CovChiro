@@ -132,7 +132,7 @@ let lastMinuteEnabled = true; // default on — overridden by loadSession() from
 let standingRequests = [], standingAgreements = [];
 let flexRateDates = []; // admin-published open dates at a set promotional rate — no bidding, no negotiation
 let blackouts = [], allBooked = [], isAdmin = false;
-const ADMIN_EMAIL = 'drmichaelmcpherson@gmail.com'; // provider account
+const ADMIN_EMAIL = 'mail@coveragechiropractor.com'; // provider account
 // coveragechiropractor.com and thefloridachiropractor.com are separate
 // domains (separate cPanel document roots, separate browser origins) that
 // happen to share this same file and the same backend/database. A handful
