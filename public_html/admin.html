@@ -85,6 +85,7 @@
 <script src="assets/app-shared.js?v=6"></script>
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null, adminInvoices = [];
+let showCancelledBookings = false;
 let chatThreads = [], activeChatThread = null, activeChatMessages = [];
 let docStatus = {};
 async function loadAdminBookings(){
@@ -272,12 +273,21 @@ function renderAdmin(){
       await loadAvailability(); renderAdmin();
     }));
   } else if (admView === 'booked') {
-    const list = adminBookings.slice().sort((a,b) => a.dates[0].localeCompare(b.dates[0]));
+    const cancelledCount = adminBookings.filter(b => b.status === 'cancelled').length;
+    const list = adminBookings
+      .filter(b => showCancelledBookings || b.status !== 'cancelled')
+      .sort((a,b) => a.dates[0].localeCompare(b.dates[0]));
+    const toggleHtml = cancelledCount ? `
+      <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:#6b7280;margin-bottom:16px;cursor:pointer;">
+        <input type="checkbox" id="toggle-show-cancelled" ${showCancelledBookings ? 'checked' : ''}> Show ${cancelledCount} cancelled booking${cancelledCount === 1 ? '' : 's'}
+      </label>` : '';
     if (!list.length){
-      el.innerHTML = `<div class="empty">No bookings on the calendar yet.</div>`;
+      el.innerHTML = toggleHtml + `<div class="empty">${showCancelledBookings ? 'No bookings on the calendar yet.' : 'No active bookings on the calendar — everything is cancelled.'}</div>`;
+      const cb = document.getElementById('toggle-show-cancelled');
+      if (cb) cb.addEventListener('change', () => { showCancelledBookings = cb.checked; renderAdmin(); });
       return;
     }
-    el.innerHTML = list.map(b => {
+    el.innerHTML = toggleHtml + list.map(b => {
       const owed = b.balanceDue ?? (b.total != null && b.paid != null ? +(b.total - b.paid).toFixed(2) : null);
       const currentTotal = b.total + (b.adjustmentsTotal || 0);
       const canComplete = ['office', 'homevisit', 'event'].includes(b.service) && b.balanceStatus === 'not_due';
@@ -315,7 +325,7 @@ function renderAdmin(){
           ${b.completedAt ? `<div style="margin-top:10px;"><button class="btn ghost sm" data-draft-thanks="${b.id}">Draft thank-you letter</button></div>` : ''}
           <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
             <a class="btn ghost sm" href="api/agreement.php?type=booking&id=${b.id}" target="_blank" rel="noopener">Signed agreement</a>
-            ${b.status !== 'cancelled' ? `<button class="btn ghost sm" data-manage-billing="${b.id}">Manage billing</button>` : ''}
+            <button class="btn ghost sm" data-manage-billing="${b.id}">Manage booking</button>
             ${(b.lat != null && b.lng != null) ? `<button class="btn ghost sm" data-viewmap="${b.id}">📍 View map</button>` : ''}
           </div>
         </div>
@@ -331,11 +341,43 @@ function renderAdmin(){
         <span id="thanks-copied" style="font-size:0.8rem;color:var(--teal-dark);margin-left:10px;"></span>
       </div>
       <div class="admin-card hidden" id="billing-manage-card" style="margin-top:20px;border-color:var(--teal);">
-        <h3>Manage billing — <span id="bm-ref"></span></h3>
+        <h3>Manage booking — <span id="bm-ref"></span></h3>
         <div id="bm-summary" style="font-size:0.85rem;color:#414a56;margin-bottom:12px;"></div>
         <div id="bm-history" style="margin-bottom:16px;"></div>
 
-        <h4 style="margin-top:0;">Add a charge or discount</h4>
+        <div id="bm-coverage-section" class="hidden">
+          <h4 style="margin-top:0;">Coverage details</h4>
+          <label for="bm-cov-dress">Dress code requested</label>
+          <select id="bm-cov-dress">
+            <option value="">No preference</option>
+            <option value="Medical scrubs">Medical scrubs</option>
+            <option value="Business casual, tie">Business casual, tie</option>
+            <option value="Clinic jacket over business attire">Clinic jacket over business attire</option>
+            <option value="other">Other (specify below)</option>
+          </select>
+          <input type="text" id="bm-cov-dress-other" class="hidden" placeholder="Describe the dress code" style="margin-top:8px;">
+          <label style="margin-top:12px;">Techniques needed</label>
+          <div class="technique-grid" id="bm-cov-technique-grid">
+            <label class="tq"><input type="checkbox" value="Diversified"> Diversified</label>
+            <label class="tq"><input type="checkbox" value="Gonstead"> Gonstead</label>
+            <label class="tq"><input type="checkbox" value="Thompson"> Thompson</label>
+            <label class="tq"><input type="checkbox" value="Spinal Decompression"> Spinal Decompression</label>
+            <label class="tq"><input type="checkbox" value="Manual Therapy"> Manual Therapy</label>
+            <label class="tq"><input type="checkbox" value="Ultrasound"> Ultrasound</label>
+            <label class="tq"><input type="checkbox" value="E-Stim"> E-Stim</label>
+          </div>
+          <label for="bm-cov-notes">Other treatment requests or needs</label>
+          <textarea id="bm-cov-notes" rows="2"></textarea>
+          <label style="margin-top:12px;">Day-of point of contact</label>
+          <div class="poc-grid">
+            <input type="text" id="bm-cov-poc-name" placeholder="Name">
+            <input type="text" id="bm-cov-poc-title" placeholder="Position">
+            <input type="tel" id="bm-cov-poc-phone" placeholder="Mobile number">
+          </div>
+          <button class="btn ghost sm" id="bm-cov-submit" style="margin-top:8px;">Save coverage details</button>
+        </div>
+
+        <h4 style="margin-top:20px;">Add a charge or discount</h4>
         <div class="row2">
           <div><label for="bm-adj-amount">Amount (negative = discount)</label><input type="number" id="bm-adj-amount" step="0.01" placeholder="e.g. 50 or -25"></div>
           <div><label for="bm-adj-reason">Reason (shown to client)</label><input type="text" id="bm-adj-reason" placeholder="e.g. Extra hour on site"></div>
@@ -372,8 +414,26 @@ function renderAdmin(){
           <div><label for="bm-resched-zip">ZIP (leave as-is unless it changed)</label><input type="text" id="bm-resched-zip"></div>
           <div><label>&nbsp;</label><button class="btn sm" id="bm-resched-submit" style="width:100%;">Save new schedule</button></div>
         </div>
+
+        <div id="bm-cancel-section" style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line);">
+          <h4 style="margin-top:0;color:var(--red);">Cancel this booking</h4>
+          <p style="font-size:0.8rem;color:#6b7280;">Cancels the booking and, if you enter an amount, issues a Stripe refund for exactly that much — this is separate from the 48-hour rule clients get, so enter whatever refund was actually agreed to (or leave it at $0).</p>
+          <div class="row2">
+            <div><label for="bm-cancel-refund">Refund amount (optional)</label><input type="number" id="bm-cancel-refund" step="0.01" min="0" placeholder="0.00"></div>
+            <div><label>&nbsp;</label><button class="btn danger sm" id="bm-cancel-submit" style="width:100%;">Cancel booking</button></div>
+          </div>
+        </div>
+
+        <div id="bm-delete-section" class="hidden" style="margin-top:20px;">
+          <h4 style="margin-top:0;color:var(--red);">Delete this booking</h4>
+          <p style="font-size:0.8rem;color:#6b7280;">No payments or charges are on file for this booking, so it can be permanently deleted instead of cancelled — use this only for a test entry, duplicate, or mistaken booking.</p>
+          <button class="btn danger sm" id="bm-delete-submit">Delete permanently</button>
+        </div>
+
         <div class="err-msg" id="bm-err"></div>
       </div>`;
+    const showCancelledCb = document.getElementById('toggle-show-cancelled');
+    if (showCancelledCb) showCancelledCb.addEventListener('change', () => { showCancelledBookings = showCancelledCb.checked; renderAdmin(); });
     el.querySelectorAll('[data-draft-thanks]').forEach(btn => btn.addEventListener('click', () => {
       const b = adminBookings.find(x => x.id === btn.dataset.draftThanks);
       if (!b) return;
@@ -449,6 +509,33 @@ function renderAdmin(){
       $('bm-resched-zip').value = b.zip || '';
       reschedRows = b.dates.map((d, i) => ({ date: d, type: b.dayTypes[i] }));
       renderReschedRows();
+
+      $('bm-coverage-section').classList.toggle('hidden', b.service !== 'office');
+      if (b.service === 'office'){
+        const cd = b.coverage || {};
+        const knownDress = ['', 'Medical scrubs', 'Business casual, tie', 'Clinic jacket over business attire'];
+        if (cd.dress && !knownDress.includes(cd.dress)){
+          $('bm-cov-dress').value = 'other';
+          $('bm-cov-dress-other').value = cd.dress;
+          $('bm-cov-dress-other').classList.remove('hidden');
+        } else {
+          $('bm-cov-dress').value = cd.dress || '';
+          $('bm-cov-dress-other').value = '';
+          $('bm-cov-dress-other').classList.add('hidden');
+        }
+        document.querySelectorAll('#bm-cov-technique-grid input').forEach(cb => {
+          cb.checked = !!(cd.techniques && cd.techniques.includes(cb.value));
+        });
+        $('bm-cov-notes').value = cd.notes || '';
+        $('bm-cov-poc-name').value = cd.pocName || '';
+        $('bm-cov-poc-title').value = cd.pocTitle || '';
+        $('bm-cov-poc-phone').value = cd.pocPhone || '';
+      }
+
+      const hasFinancialActivity = b.paid > 0 || (b.adjustments && b.adjustments.length) || (b.payments && b.payments.length);
+      $('bm-delete-section').classList.toggle('hidden', hasFinancialActivity);
+      $('bm-cancel-refund').value = '';
+
       $('bm-err').textContent = '';
       $('billing-manage-card').classList.remove('hidden');
       $('billing-manage-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -507,6 +594,52 @@ function renderAdmin(){
         })});
       } catch (e) { $('bm-err').textContent = e.message; return; }
       alert(`Schedule updated.${r.delta ? ` ${r.delta > 0 ? 'Charge' : 'Credit'} of ${money(Math.abs(r.delta))} applied.` : ''}`);
+      await loadAdminBookings();
+      $('billing-manage-card').classList.add('hidden');
+      renderAdmin();
+    });
+
+    $('bm-cov-dress').addEventListener('change', () => {
+      $('bm-cov-dress-other').classList.toggle('hidden', $('bm-cov-dress').value !== 'other');
+    });
+    $('bm-cov-submit').addEventListener('click', async () => {
+      const dressSel = $('bm-cov-dress').value;
+      const dress = dressSel === 'other' ? $('bm-cov-dress-other').value.trim() : dressSel;
+      const techniques = Array.from(document.querySelectorAll('#bm-cov-technique-grid input:checked')).map(el => el.value);
+      $('bm-err').textContent = '';
+      try {
+        await apiFetch('/api/booking.php?action=update_coverage', { method: 'POST', body: JSON.stringify({
+          id: billingTargetId,
+          dress: dress || '', techniques,
+          notes: $('bm-cov-notes').value.trim(),
+          pocName: $('bm-cov-poc-name').value.trim(),
+          pocTitle: $('bm-cov-poc-title').value.trim(),
+          pocPhone: $('bm-cov-poc-phone').value.trim(),
+        })});
+      } catch (e) { $('bm-err').textContent = e.message; return; }
+      await loadAdminBookings();
+      openBillingManage(billingTargetId);
+    });
+
+    $('bm-cancel-submit').addEventListener('click', async () => {
+      const refundAmount = parseFloat($('bm-cancel-refund').value) || 0;
+      const msg = refundAmount > 0
+        ? `Cancel this booking and refund ${money(refundAmount)} to the client's card?`
+        : 'Cancel this booking? No refund will be issued.';
+      if (!confirm(msg)) return;
+      $('bm-err').textContent = '';
+      try { await apiFetch('/api/booking.php?action=admin_cancel', { method: 'POST', body: JSON.stringify({ id: billingTargetId, refundAmount }) }); }
+      catch (e) { $('bm-err').textContent = e.message; return; }
+      await loadAdminBookings();
+      $('billing-manage-card').classList.add('hidden');
+      renderAdmin();
+    });
+
+    $('bm-delete-submit').addEventListener('click', async () => {
+      if (!confirm('Permanently delete this booking? This cannot be undone.')) return;
+      $('bm-err').textContent = '';
+      try { await apiFetch('/api/booking.php?action=admin_delete', { method: 'POST', body: JSON.stringify({ id: billingTargetId }) }); }
+      catch (e) { $('bm-err').textContent = e.message; return; }
       await loadAdminBookings();
       $('billing-manage-card').classList.add('hidden');
       renderAdmin();

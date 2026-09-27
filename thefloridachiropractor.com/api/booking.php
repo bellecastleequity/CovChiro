@@ -25,6 +25,8 @@ switch ($action) {
     case 'admin_record_payment': handle_admin_record_payment($pdo); break;
     case 'admin_refund': handle_admin_refund($pdo); break;
     case 'admin_reschedule': handle_admin_reschedule($pdo); break;
+    case 'admin_cancel': handle_admin_cancel($pdo); break;
+    case 'admin_delete': handle_admin_delete($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -276,7 +278,7 @@ function handle_update_coverage(PDO $pdo) {
     $stmt = $pdo->prepare('SELECT * FROM bookings WHERE id = ?');
     $stmt->execute([$id]);
     $b = $stmt->fetch();
-    if (!$b || (int)$b['user_id'] !== (int)$user['id']) json_response(['error' => 'Not found'], 404);
+    if (!$b || ((int)$b['user_id'] !== (int)$user['id'] && !$user['is_admin'])) json_response(['error' => 'Not found'], 404);
     // mark_complete only ever sets completed_at/balance_status — status stays
     // "upcoming" — so completed_at is the real signal that coverage already
     // happened and these details are now historical, not editable.
@@ -555,6 +557,69 @@ function handle_admin_refund(PDO $pdo) {
     send_email($b['user_email'], "Refund issued — {$id}",
         '<p>A refund of $' . number_format($amount, 2) . " has been issued to your card for booking <strong>{$b['title']}</strong> ({$id}).</p>");
 
+    json_response(['success' => true]);
+}
+
+// Admin-side cancellation: unlike the client's self-service cancel action
+// (handle_cancel, gated to the owner and the automatic 48-hour full-refund
+// rule), this works on any booking and lets the admin decide the refund
+// amount directly — for a provider-initiated cancellation (full refund
+// regardless of timing) or a late cancellation a client requested by phone
+// with whatever refund was agreed to. A $0 refund still cancels the
+// booking; it just doesn't touch Stripe.
+function handle_admin_cancel(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+    $refundAmount = round((float)($body['refundAmount'] ?? 0), 2);
+
+    $stmt = $pdo->prepare('SELECT b.*, u.email AS user_email FROM bookings b JOIN users u ON u.id = b.user_id WHERE b.id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b) json_response(['error' => 'Not found'], 404);
+    if ($b['status'] === 'cancelled') json_response(['error' => 'Already cancelled'], 400);
+
+    if ($refundAmount > 0) {
+        if ($refundAmount > (float)$b['paid']) json_response(['error' => "Refund amount can't exceed what has been paid."], 400);
+        if (!$b['stripe_payment_intent']) json_response(['error' => 'No Stripe payment on file — refund the check/cash payment directly and cancel with a $0 refund here.'], 400);
+        stripe_refund_booking($pdo, $b, $refundAmount);
+    }
+
+    $pdo->prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?")->execute([$id]);
+
+    send_email($b['user_email'], "Booking {$id} cancelled", "<p>Your booking {$id} ({$b['title']}) has been cancelled." .
+        ($refundAmount > 0 ? ' A refund of $' . number_format($refundAmount, 2) . ' has been issued to your card.' : '') . '</p>');
+
+    json_response(['success' => true, 'refund_amount' => $refundAmount]);
+}
+
+// Only allowed when the booking has zero financial activity (nothing paid,
+// no payment or adjustment rows) — a hard delete would otherwise destroy an
+// audit trail real money leaves behind. Anything with financial history
+// should be cancelled (handle_admin_cancel), not deleted; this is strictly
+// for cleaning up test entries, duplicates, or mistaken bookings.
+function handle_admin_delete(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+
+    $stmt = $pdo->prepare('SELECT * FROM bookings WHERE id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b) json_response(['error' => 'Not found'], 404);
+    if ((float)$b['paid'] > 0) json_response(['error' => 'This booking has payments on file — cancel it instead of deleting.'], 400);
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM payments WHERE booking_id = ?');
+    $stmt->execute([$id]);
+    if ((int)$stmt->fetchColumn() > 0) json_response(['error' => 'This booking has payment records on file — cancel it instead of deleting.'], 400);
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM booking_adjustments WHERE booking_id = ?');
+    $stmt->execute([$id]);
+    if ((int)$stmt->fetchColumn() > 0) json_response(['error' => 'This booking has billing adjustments on file — cancel it instead of deleting.'], 400);
+
+    $pdo->prepare('DELETE FROM bookings WHERE id = ?')->execute([$id]);
     json_response(['success' => true]);
 }
 
