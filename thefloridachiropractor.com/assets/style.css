@@ -221,7 +221,7 @@
   .cd-entry .cd-remove{background:none;border:none;color:var(--red);cursor:pointer;font-size:0.8rem;
     text-decoration:underline;font-family:'IBM Plex Sans',sans-serif;}
   .cd-trip-note{font-size:0.76rem;color:#8a8171;margin-top:8px;}
-  @media (max-width:600px){ .poc-grid{grid-template-columns:1fr;} }
+  @media (max-width:600px){ .poc-grid{grid-template-columns:1fr;} .date-builder-row{grid-template-columns:1fr;} }
   .avail-msg{margin-top:14px;padding:12px 16px;border-radius:0 4px 4px 0;font-size:0.85rem;border-left:3px solid;}
   .avail-msg.ok{background:rgba(47,93,83,0.10);border-color:var(--teal);color:var(--teal-dark);}
   .avail-msg.bad{background:rgba(155,59,46,0.10);border-color:var(--red);color:var(--red);}
