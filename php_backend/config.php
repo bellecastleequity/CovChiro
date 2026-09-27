@@ -163,6 +163,53 @@ session_start();
 
 // ========== HELPER FUNCTIONS ==========
 
+// Per-IP throttle for public, unauthenticated endpoints (login, register,
+// password-reset request). Complements the per-account lockout in
+// users.failed_logins/locked_until, which only stops brute-forcing ONE
+// known email — this catches spraying attempts across many guessed emails,
+// mass fake registrations, or reset-email spam from a single source.
+// Counts every call toward the limit regardless of outcome, so the
+// thresholds are set well above anything a real user would trigger.
+function check_rate_limit(PDO $pdo, string $action, int $maxAttempts, int $windowMinutes, int $blockMinutes) {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $stmt = $pdo->prepare('SELECT * FROM ip_rate_limits WHERE ip_address = ? AND action = ?');
+    $stmt->execute([$ip, $action]);
+    $row = $stmt->fetch();
+    $now = time();
+    $blockedMsg = ['error' => 'Too many attempts from your network. Please try again later.'];
+
+    // window_start/blocked_until are always written from PHP's clock (below),
+    // never MySQL's NOW() — config.php forces PHP's timezone to
+    // America/New_York regardless of what timezone the DB server itself
+    // runs in, so mixing the two would skew every strtotime() comparison
+    // here by whatever that offset happens to be.
+    if (!$row) {
+        $stmt = $pdo->prepare('INSERT INTO ip_rate_limits (ip_address, action, attempt_count, window_start) VALUES (?, ?, 1, ?)');
+        $stmt->execute([$ip, $action, date('Y-m-d H:i:s', $now)]);
+        return;
+    }
+
+    if ($row['blocked_until'] && strtotime($row['blocked_until']) > $now) {
+        json_response($blockedMsg, 429);
+    }
+
+    if (($now - strtotime($row['window_start'])) > $windowMinutes * 60) {
+        $stmt = $pdo->prepare('UPDATE ip_rate_limits SET attempt_count = 1, window_start = ?, blocked_until = NULL WHERE id = ?');
+        $stmt->execute([date('Y-m-d H:i:s', $now), $row['id']]);
+        return;
+    }
+
+    $newCount = $row['attempt_count'] + 1;
+    if ($newCount > $maxAttempts) {
+        $blockedUntil = date('Y-m-d H:i:s', $now + $blockMinutes * 60);
+        $stmt = $pdo->prepare('UPDATE ip_rate_limits SET attempt_count = ?, blocked_until = ? WHERE id = ?');
+        $stmt->execute([$newCount, $blockedUntil, $row['id']]);
+        json_response($blockedMsg, 429);
+    }
+    $stmt = $pdo->prepare('UPDATE ip_rate_limits SET attempt_count = ? WHERE id = ?');
+    $stmt->execute([$newCount, $row['id']]);
+}
+
 function sanitize($input) {
     if (is_array($input)) {
         return array_map('sanitize', $input);

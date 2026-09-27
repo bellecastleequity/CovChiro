@@ -17,6 +17,7 @@ switch ($action) {
 
 function handle_register(PDO $pdo) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    check_rate_limit($pdo, 'register', 8, 60, 30);
     $body = json_body();
     $name = trim($body['name'] ?? '');
     $email = strtolower(trim($body['email'] ?? ''));
@@ -46,6 +47,7 @@ function handle_register(PDO $pdo) {
 
 function handle_login(PDO $pdo) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    check_rate_limit($pdo, 'login', 20, 15, 15);
     $body = json_body();
     $email = strtolower(trim($body['email'] ?? ''));
     $password = (string)($body['password'] ?? '');
@@ -129,6 +131,7 @@ function handle_resend_verification(PDO $pdo) {
 
 function handle_request_reset(PDO $pdo) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    check_rate_limit($pdo, 'request_reset', 8, 60, 30);
     $body = json_body();
     $email = strtolower(trim($body['email'] ?? ''));
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) json_response(['error' => 'Enter a valid email address.'], 400);
