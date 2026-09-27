@@ -279,6 +279,50 @@ function lookup_zip($zip) {
 define('GEOCODE_USER_AGENT', 'CoverageChiropractor.com booking system (contact: drmichaelmcpherson@gmail.com)');
 define('GEOCODE_TIMEOUT_SECONDS', 6);
 
+// Fetches a URL with a custom User-Agent, preferring cURL (nearly always
+// enabled, even on locked-down shared hosting) over file_get_contents()
+// (silently returns false when the host has allow_url_fopen disabled for
+// outbound requests — common on shared cPanel hosting — which would
+// otherwise make every geocode attempt fail with no clear signal why).
+// Logs the specific failure reason so it's diagnosable from logs/error.log
+// rather than just "the map never shows up."
+function geocode_http_get(string $url) {
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => ['User-Agent: ' . GEOCODE_USER_AGENT],
+            CURLOPT_TIMEOUT => GEOCODE_TIMEOUT_SECONDS,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $raw = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        if ($raw !== false && $httpCode >= 200 && $httpCode < 300) return $raw;
+        log_error('Geocoding request failed (curl)', ['url' => $url, 'http_code' => $httpCode, 'curl_error' => $curlError]);
+        return null;
+    }
+
+    if (!ini_get('allow_url_fopen')) {
+        log_error('Geocoding unavailable: neither curl nor allow_url_fopen is enabled on this server', ['url' => $url]);
+        return null;
+    }
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'header' => "User-Agent: " . GEOCODE_USER_AGENT . "\r\n",
+            'timeout' => GEOCODE_TIMEOUT_SECONDS,
+        ],
+    ]);
+    $raw = @file_get_contents($url, false, $context);
+    if ($raw === false) {
+        log_error('Geocoding request failed (file_get_contents)', ['url' => $url]);
+        return null;
+    }
+    return $raw;
+}
+
 // Looks up a full street address via OpenStreetMap's free Nominatim
 // geocoder, caching the result in geocode_cache (Nominatim's usage policy
 // requires caching rather than re-querying the same address repeatedly, and
@@ -302,19 +346,9 @@ function geocode_address(PDO $pdo, string $address) {
         'limit' => 1,
         'countrycodes' => 'us',
     ]);
-    $context = stream_context_create([
-        'http' => [
-            'method' => 'GET',
-            'header' => "User-Agent: " . GEOCODE_USER_AGENT . "\r\n",
-            'timeout' => GEOCODE_TIMEOUT_SECONDS,
-        ],
-    ]);
 
-    $raw = @file_get_contents($url, false, $context);
-    if ($raw === false) {
-        log_error('Geocoding request failed', ['address' => $address]);
-        return null;
-    }
+    $raw = geocode_http_get($url);
+    if ($raw === null) return null;
     $results = json_decode($raw, true);
     if (empty($results[0]['lat']) || empty($results[0]['lon'])) return null;
 
