@@ -1730,13 +1730,18 @@ function renderAdmin(){
         const lines = [
           `SendGrid library installed: ${r.vendorInstalled ? 'yes' : 'NO — run composer install in php_backend/'}`,
           `API key looks set: ${r.apiKeyLooksSet ? 'yes' : 'NO — check SENDGRID_API_KEY in secrets.php'}`,
-          `Sending to: ${r.adminEmail} · From: ${r.fromEmail}`,
-          r.result.ok
-            ? `Result: sent successfully (status ${r.result.status}). Check the inbox (and spam folder) for ${r.adminEmail}.`
-            : `Result: FAILED — ${r.result.reason || `SendGrid returned status ${r.result.status}: ${r.result.body || ''}`}`,
+          `Sending to: ${r.adminEmail}`,
         ];
+        let allOk = true;
+        for (const [site, res] of Object.entries(r.results)) {
+          if (!res.ok) allOk = false;
+          lines.push(res.ok
+            ? `${site} (from ${res.fromEmail}): sent successfully (status ${res.status}).`
+            : `${site} (from ${res.fromEmail}): FAILED — ${res.reason || `SendGrid returned status ${res.status}: ${res.body || ''}`}`);
+        }
+        if (allOk) lines.push(`Check the inbox (and spam folder) for ${r.adminEmail}.`);
         out.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
-        out.style.color = r.result.ok ? 'var(--teal-dark)' : 'var(--red)';
+        out.style.color = allOk ? 'var(--teal-dark)' : 'var(--red)';
       } catch (e) {
         out.textContent = 'Request failed: ' + e.message;
         out.style.color = 'var(--red)';

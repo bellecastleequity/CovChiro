@@ -34,17 +34,49 @@ function handle_test_email(PDO $pdo) {
     require_admin();
     $vendorInstalled = file_exists(__DIR__ . '/../../php_backend/vendor/autoload.php');
     $apiKeyLooksSet = defined('SENDGRID_API_KEY') && SENDGRID_API_KEY !== '' && strpos(SENDGRID_API_KEY, 'your_sendgrid') === false;
-    $result = send_email_detailed(
-        ADMIN_EMAIL,
-        'Test email — ' . date('Y-m-d H:i:s T'),
-        '<p>This is a test email sent from the admin panel\'s email diagnostics. If it reached your inbox, sending is working.</p>'
-    );
+
+    // Tests both sites' verified sender identities in one click, rather than
+    // just whichever one the current request's Host header happens to
+    // resolve to — the admin panel only ever runs on coveragechiropractor.com,
+    // so a single host-based test would never actually check the Florida
+    // sender that this same shared config.php also sends from.
+    $senders = [
+        'coveragechiropractor.com' => [SENDGRID_FROM_EMAIL, SENDGRID_FROM_NAME],
+        'thefloridachiropractor.com' => [SENDGRID_FROM_EMAIL_FLORIDA, SENDGRID_FROM_NAME_FLORIDA],
+    ];
+    $results = [];
+    foreach ($senders as $site => [$fromEmail, $fromName]) {
+        $autoload = __DIR__ . '/../../php_backend/vendor/autoload.php';
+        if (!file_exists($autoload)) {
+            $results[$site] = ['ok' => false, 'reason' => 'SendGrid PHP library not installed.', 'fromEmail' => $fromEmail];
+            continue;
+        }
+        require_once $autoload;
+        $email = new \SendGrid\Mail\Mail();
+        $email->setFrom($fromEmail, $fromName);
+        $email->setSubject('Test email — ' . $site . ' — ' . date('Y-m-d H:i:s T'));
+        $email->addTo(ADMIN_EMAIL);
+        $email->addContent('text/html', "<p>This is a test email sent from the admin panel's email diagnostics, from <strong>{$fromEmail}</strong>. If it reached your inbox, sending is working for {$site}.</p>");
+        $sendgrid = new \SendGrid(SENDGRID_API_KEY);
+        try {
+            $response = $sendgrid->send($email);
+            if ((int)$response->statusCode() === 202) {
+                $results[$site] = ['ok' => true, 'status' => $response->statusCode(), 'fromEmail' => $fromEmail];
+            } else {
+                log_error('Email rejected by SendGrid', ['to' => ADMIN_EMAIL, 'site' => $site, 'status' => $response->statusCode(), 'body' => $response->body()]);
+                $results[$site] = ['ok' => false, 'status' => $response->statusCode(), 'body' => $response->body(), 'fromEmail' => $fromEmail];
+            }
+        } catch (\Exception $e) {
+            log_error('Email send failed', ['to' => ADMIN_EMAIL, 'site' => $site, 'error' => $e->getMessage()]);
+            $results[$site] = ['ok' => false, 'reason' => $e->getMessage(), 'fromEmail' => $fromEmail];
+        }
+    }
+
     json_response([
         'vendorInstalled' => $vendorInstalled,
         'apiKeyLooksSet' => $apiKeyLooksSet,
         'adminEmail' => ADMIN_EMAIL,
-        'fromEmail' => SENDGRID_FROM_EMAIL,
-        'result' => $result,
+        'results' => $results,
     ]);
 }
 

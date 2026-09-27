@@ -31,8 +31,25 @@ set_exception_handler(function ($e) {
 });
 
 // ========== SENDGRID SENDER (not secret — just who mail appears from) ==========
-define('SENDGRID_FROM_EMAIL', 'drmichaelmcpherson@gmail.com');
+// One shared config.php serves both sites' api/ folders, and each site now
+// has its own verified Sender Identity in SendGrid (a Gmail address can
+// never be used here — Gmail's own DMARC policy rejects mail claiming to be
+// "From" gmail.com that wasn't actually sent through Google's servers,
+// which is why nothing arrived even when SendGrid reported success).
+// sendgrid_sender() picks the right one from the request's Host header, so
+// a coveragechiropractor.com booking sends from that domain and a
+// thefloridachiropractor.com one sends from its own.
+define('SENDGRID_FROM_EMAIL', 'mail@coveragechiropractor.com');
 define('SENDGRID_FROM_NAME', 'Michael L. McPherson, D.C.');
+define('SENDGRID_FROM_EMAIL_FLORIDA', 'mail@thefloridachiropractor.com');
+define('SENDGRID_FROM_NAME_FLORIDA', 'The Florida Chiropractor');
+function sendgrid_sender() {
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if (stripos($host, 'thefloridachiropractor.com') !== false) {
+        return [SENDGRID_FROM_EMAIL_FLORIDA, SENDGRID_FROM_NAME_FLORIDA];
+    }
+    return [SENDGRID_FROM_EMAIL, SENDGRID_FROM_NAME];
+}
 
 // ========== SITE CONFIGURATION ==========
 define('SITE_URL', 'https://coveragechiropractor.com');
@@ -201,8 +218,9 @@ function send_email_detailed($to, $subject, $body, $reply_to = null) {
     }
     require_once $autoload;
 
+    [$fromEmail, $fromName] = sendgrid_sender();
     $email = new \SendGrid\Mail\Mail();
-    $email->setFrom(SENDGRID_FROM_EMAIL, SENDGRID_FROM_NAME);
+    $email->setFrom($fromEmail, $fromName);
     $email->setSubject($subject);
     $email->addTo($to);
     $email->addContent('text/html', $body);
