@@ -321,7 +321,7 @@
   .an-bar-label{width:110px;font-size:0.85rem;color:#3d4552;flex-shrink:0;}
   .an-bar-track{flex:1;height:16px;background:var(--paper-2);border-radius:3px;overflow:hidden;}
   .an-bar-fill{height:100%;background:var(--teal);border-radius:3px;}
-  .an-bar-val{width:30px;text-align:right;font-size:0.85rem;font-weight:600;color:var(--teal-dark);}
+  .an-bar-val{min-width:30px;flex-shrink:1;text-align:right;font-size:0.85rem;font-weight:600;color:var(--teal-dark);overflow-wrap:anywhere;}
   .admin-card h3{font-size:1.05rem;margin-bottom:12px;}
   .admin-card label{display:block;font-size:0.73rem;color:#4b5563;margin:10px 0 4px;}
   .admin-card input,.admin-card select{width:100%;padding:9px 11px;border:1px solid var(--line);
@@ -525,7 +525,9 @@
     .bk{grid-template-columns:1fr;}
     .bk .bk-side{text-align:left;}
     .bk .bk-actions{justify-content:flex-start;}
-    .admin-grid{grid-template-columns:1fr;gap:20px;}
+    .admin-grid{grid-template-columns:minmax(0,1fr);gap:20px;}
+    .an-grid{grid-template-columns:1fr;}
+    .an-bar-label{width:84px;font-size:0.8rem;}
     .modal-bg{padding:20px 12px;}
     .modal{padding:22px 18px;}
     .sign-fields .sf-row{flex-direction:column;align-items:flex-start;gap:2px;}
