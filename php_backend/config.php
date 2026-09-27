@@ -210,6 +210,87 @@ function send_email($to, $subject, $body, $reply_to = null) {
     }
 }
 
+// A Google Maps "get directions" deep link — tapping it in the Gmail app on
+// a phone opens turn-by-turn navigation straight away, no separate copy/paste
+// of the address needed.
+function maps_directions_link($address) {
+    return 'https://www.google.com/maps/dir/?api=1&destination=' . urlencode($address);
+}
+
+// One stop on the admin's route digest — used for both the on-demand
+// per-booking "Send route" button and the 4:30am daily digest.
+function route_stop_email_block($title, $address, $whenLabel, $note = null) {
+    return "<div style=\"margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #ddd;\">" .
+        "<strong>{$title}</strong><br>{$address}<br>{$whenLabel}" .
+        ($note ? "<br>{$note}" : '') .
+        "<br><a href=\"" . maps_directions_link($address) . "\">Get directions</a></div>";
+}
+
+// Every non-cancelled office/homevisit/event booking and standing-day
+// occurrence scheduled for $dateStr (default today), across both sites —
+// they share this same bookings/standing_agreements data. Used by the daily
+// 4:30am route-digest cron and could be reused anywhere else that needs
+// "what's on the calendar today."
+function todays_appointments(PDO $pdo, ?string $dateStr = null) {
+    $dateStr = $dateStr ?? date('Y-m-d');
+    $stops = [];
+
+    $stmt = $pdo->query("SELECT b.*, u.name AS client_name, u.clinic_name FROM bookings b JOIN users u ON u.id = b.user_id WHERE b.status != 'cancelled'");
+    foreach ($stmt->fetchAll() as $b) {
+        $dates = json_decode($b['dates'], true) ?: [];
+        if (!in_array($dateStr, $dates, true)) continue;
+        $dayTimes = json_decode($b['day_times'] ?? '[]', true) ?: [];
+        $timeEntry = null;
+        foreach ($dayTimes as $dt) { if (($dt['date'] ?? null) === $dateStr) { $timeEntry = $dt; break; } }
+        $whenLabel = $timeEntry ? "{$timeEntry['startTime']}–{$timeEntry['endTime']}" : 'Time not specified';
+        $stops[] = [
+            'title' => $b['clinic_name'] ?: $b['client_name'],
+            'address' => $b['address'] ?: "ZIP {$b['zip_code']}",
+            'whenLabel' => $whenLabel,
+            'note' => $b['title'],
+            'sortTime' => $timeEntry['startTime'] ?? '99:99',
+        ];
+    }
+
+    $stmt = $pdo->query("SELECT * FROM standing_agreements WHERE status != 'cancelled'");
+    foreach ($stmt->fetchAll() as $a) {
+        $scheduledDates = json_decode($a['scheduled_dates'], true) ?: [];
+        foreach ($scheduledDates as $sd) {
+            if ($sd['date'] !== $dateStr || ($sd['status'] ?? '') === 'cancelled') continue;
+            $stops[] = [
+                'title' => $a['clinic_name'],
+                'address' => $a['address'] ?: "ZIP {$a['zip_code']}",
+                'whenLabel' => $sd['type'] === 'half' ? 'Half day' : 'Full day',
+                'note' => 'Standing day agreement',
+                'sortTime' => '99:99',
+            ];
+        }
+    }
+
+    usort($stops, fn($a, $b) => $a['sortTime'] <=> $b['sortTime']);
+    return $stops;
+}
+
+// Emails ADMIN_EMAIL every appointment scheduled for $dateStr (default
+// today) in one digest, with a "get directions" link for each — sent every
+// morning by cron_daily_routes.php regardless of whether there's anything on
+// the calendar, so a quiet inbox never gets mistaken for a missed cron run.
+function send_daily_route_digest(PDO $pdo, ?string $dateStr = null) {
+    $dateStr = $dateStr ?? date('Y-m-d');
+    $stops = todays_appointments($pdo, $dateStr);
+    $dateLabel = date('l, F j, Y', strtotime($dateStr));
+
+    if (!count($stops)) {
+        send_email(ADMIN_EMAIL, "Today's route — {$dateLabel} — no appointments", "<p>No appointments or bookings scheduled for today ({$dateLabel}).</p>");
+        return 0;
+    }
+
+    $body = "<p>" . count($stops) . " appointment" . (count($stops) === 1 ? '' : 's') . " scheduled for {$dateLabel}:</p>";
+    foreach ($stops as $s) { $body .= route_stop_email_block($s['title'], $s['address'], $s['whenLabel'], $s['note']); }
+    send_email(ADMIN_EMAIL, "Today's route — {$dateLabel} — " . count($stops) . " stop" . (count($stops) === 1 ? '' : 's'), $body);
+    return count($stops);
+}
+
 function require_login() {
     if (empty($_SESSION['user_id'])) {
         json_response(['error' => 'Not signed in'], 401);

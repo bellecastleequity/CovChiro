@@ -62,6 +62,7 @@
           <button class="dash-tab" data-adm="inventory">Inventory alerts</button>
           <button class="dash-tab" data-adm="standing">Standing days</button>
           <button class="dash-tab" data-adm="invoices">Invoices</button>
+          <button class="dash-tab" data-adm="earnings">Earnings</button>
           <button class="dash-tab" data-adm="analytics">Analytics</button>
           <button class="dash-tab" data-adm="messages">Messages</button>
           <button class="dash-tab" data-adm="documents">Documents</button>
@@ -86,6 +87,10 @@
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null, adminInvoices = [];
 let showCancelledBookings = false;
+let latestEarnings = null;
+const EARN_SERVICE_LABEL = { office: 'Office coverage', homevisit: 'Home visits', event: 'Events', standing: 'Standing coverage', invoice: 'Other invoices' };
+const EARN_REGION_LABEL = { central: 'Central FL', north: 'North FL', south: 'South FL' };
+let earningsFilters = { service: 'all', region: 'all', period: 'month', anchor: new Date().toISOString().slice(0, 10), customFrom: null, customTo: null };
 let chatThreads = [], activeChatThread = null, activeChatMessages = [];
 let docStatus = {};
 async function loadAdminBookings(){
@@ -345,6 +350,87 @@ Michael L. McPherson, D.C.
 coveragechiropractor.com`;
   return { subject, body, isDiscounted };
 }
+// A succeeded payment counts in full; a refund row (always logged as a
+// positive amount with purpose "refund") subtracts back out. Anything else
+// (failed, etc.) never reaches this list — earnings.php only returns
+// succeeded/refunded rows to begin with.
+function earnMoney(n){ return n < 0 ? `−${money(Math.abs(n))}` : money(n); }
+function earnPaymentNet(p){
+  if (p.status === 'succeeded') return p.amount;
+  if (p.status === 'refunded' && p.purpose === 'refund') return -p.amount;
+  return 0;
+}
+function earnFilterPayments(payments, service, region){
+  return payments.filter(p => (service === 'all' || p.service === service) && (region === 'all' || p.region === region));
+}
+function earnPeriodBounds(period, anchorStr, customFrom, customTo){
+  const anchor = new Date(anchorStr + 'T00:00:00');
+  if (period === 'day'){
+    const start = new Date(anchor); const end = new Date(anchor); end.setDate(end.getDate() + 1);
+    return { start, end, label: anchor.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) };
+  }
+  if (period === 'quarter'){
+    const q = Math.floor(anchor.getMonth() / 3);
+    const start = new Date(anchor.getFullYear(), q * 3, 1); const end = new Date(anchor.getFullYear(), q * 3 + 3, 1);
+    return { start, end, label: `Q${q + 1} ${anchor.getFullYear()}` };
+  }
+  if (period === 'year'){
+    const start = new Date(anchor.getFullYear(), 0, 1); const end = new Date(anchor.getFullYear() + 1, 0, 1);
+    return { start, end, label: String(anchor.getFullYear()) };
+  }
+  if (period === 'custom'){
+    const start = new Date((customFrom || anchorStr) + 'T00:00:00');
+    const end = new Date((customTo || anchorStr) + 'T00:00:00'); end.setDate(end.getDate() + 1);
+    return { start, end, label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} – ${new Date(end - 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` };
+  }
+  // month (default)
+  const start = new Date(anchor.getFullYear(), anchor.getMonth(), 1); const end = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1);
+  return { start, end, label: start.toLocaleString('en-US', { month: 'long', year: 'numeric' }) };
+}
+function earnShiftAnchor(period, anchorStr, dir){
+  const d = new Date(anchorStr + 'T00:00:00');
+  if (period === 'day') d.setDate(d.getDate() + dir);
+  else if (period === 'quarter') d.setMonth(d.getMonth() + dir * 3);
+  else if (period === 'year') d.setFullYear(d.getFullYear() + dir);
+  else d.setMonth(d.getMonth() + dir);
+  return d.toISOString().slice(0, 10);
+}
+// Sub-buckets the payments already known to fall within [start,end) — by day
+// for a short window (a month, or a short custom range), by month for a
+// longer one (a quarter, a year, or a long custom range).
+function earnBucketBreakdown(payments, start, end){
+  const spanDays = Math.round((end - start) / 86400000);
+  const byMonth = spanDays > 62;
+  const buckets = {};
+  for (const p of payments){
+    const d = new Date(p.createdAt);
+    const key = byMonth ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : d.toISOString().slice(0, 10);
+    buckets[key] = (buckets[key] || 0) + earnPaymentNet(p);
+  }
+  const label = byMonth
+    ? (key) => { const [y, m] = key.split('-'); return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' }); }
+    : (key) => new Date(key + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return Object.entries(buckets).sort((a, b) => a[0].localeCompare(b[0])).map(([key, total]) => ({ key, label: label(key), total }));
+}
+// All-time (within the current service/region filter) monthly totals, for
+// the "most profitable" / "slowest" call-outs — independent of whatever
+// period is currently selected above, since a single month only means
+// anything next to the clinic's other months.
+function earnMonthlyInsights(payments){
+  const byMonth = {};
+  for (const p of payments){
+    const d = new Date(p.createdAt);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    byMonth[key] = (byMonth[key] || 0) + earnPaymentNet(p);
+  }
+  const entries = Object.entries(byMonth).map(([key, total]) => {
+    const [y, m] = key.split('-');
+    return { key, total, label: new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' }) };
+  });
+  const byTotalDesc = [...entries].sort((a, b) => b.total - a.total);
+  const byTotalAsc = [...entries].sort((a, b) => a.total - b.total);
+  return { monthCount: entries.length, mostProfitable: byTotalDesc.slice(0, 3), slowest: byTotalAsc.slice(0, 3) };
+}
 function renderAdmin(){
   const el = $('admin-list');
   if (admView === 'blocks'){
@@ -451,6 +537,7 @@ function renderAdmin(){
             <a class="btn ghost sm" href="api/agreement.php?type=booking&id=${b.id}" target="_blank" rel="noopener">Signed agreement</a>
             <button class="btn ghost sm" data-manage-billing="${b.id}">Manage booking</button>
             ${(b.lat != null && b.lng != null) ? `<button class="btn ghost sm" data-viewmap="${b.id}">📍 View map</button>` : ''}
+            <button class="btn ghost sm" data-send-route="${b.id}">📍 Send route</button>
           </div>
         </div>
       </div>`;
@@ -667,6 +754,13 @@ function renderAdmin(){
     }
     el.querySelectorAll('[data-manage-billing]').forEach(btn => btn.addEventListener('click', () => openBillingManage(btn.dataset.manageBilling)));
     el.querySelectorAll('[data-viewmap]').forEach(btn => btn.addEventListener('click', () => openMapModal(adminBookings.find(x => x.id === btn.dataset.viewmap))));
+    el.querySelectorAll('[data-send-route]').forEach(btn => btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await apiFetch('/api/booking.php?action=admin_send_route', { method: 'POST', body: JSON.stringify({ id: btn.dataset.sendRoute }) });
+        btn.textContent = 'Sent ✓';
+      } catch (e) { alert(e.message); btn.disabled = false; }
+    }));
 
     $('bm-adj-submit').addEventListener('click', async () => {
       const amount = parseFloat($('bm-adj-amount').value);
@@ -1370,6 +1464,127 @@ function renderAdmin(){
       adminInvoices = (await apiFetch('/api/invoice.php?action=admin_list')).invoices || [];
       renderAdmin();
     }));
+  } else if (admView === 'earnings'){
+    if (!latestEarnings){ el.innerHTML = `<div class="empty">Couldn't load earnings right now.</div>`; return; }
+    const f = earningsFilters;
+    const filtered = earnFilterPayments(latestEarnings, f.service, f.region);
+    const { start, end, label } = earnPeriodBounds(f.period, f.anchor, f.customFrom, f.customTo);
+    const inPeriod = filtered.filter(p => { const d = new Date(p.createdAt); return d >= start && d < end; });
+    const netTotal = inPeriod.reduce((s, p) => s + earnPaymentNet(p), 0);
+    const grossTotal = inPeriod.filter(p => p.status === 'succeeded').reduce((s, p) => s + p.amount, 0);
+    const refundTotal = inPeriod.filter(p => p.status === 'refunded').reduce((s, p) => s + p.amount, 0);
+    const payCount = inPeriod.filter(p => p.status === 'succeeded').length;
+
+    let prevLabel = '', prevDelta = null;
+    if (f.period !== 'custom'){
+      const prevAnchor = earnShiftAnchor(f.period, f.anchor, -1);
+      const prevBounds = earnPeriodBounds(f.period, prevAnchor);
+      const prevTotal = filtered.filter(p => { const d = new Date(p.createdAt); return d >= prevBounds.start && d < prevBounds.end; }).reduce((s, p) => s + earnPaymentNet(p), 0);
+      prevLabel = prevBounds.label;
+      prevDelta = prevTotal !== 0 ? ((netTotal - prevTotal) / Math.abs(prevTotal)) * 100 : (netTotal !== 0 ? null : 0);
+    }
+
+    const metricCard = (label, value, sub) => `
+      <div class="an-card">
+        <div class="an-label">${label}</div>
+        <div class="an-value">${value}</div>
+        ${sub ? `<div class="an-sub">${sub}</div>` : ''}
+      </div>`;
+    const cardsHtml = `
+      <div class="an-grid">
+        ${metricCard('Net earnings', earnMoney(netTotal), `${label}`)}
+        ${metricCard('Gross received', money(grossTotal), `${payCount} payment${payCount === 1 ? '' : 's'}`)}
+        ${metricCard('Refunded', money(refundTotal), refundTotal ? 'issued this period' : 'none this period')}
+        ${metricCard('vs. prior period', prevDelta === null ? 'N/A' : `${prevDelta >= 0 ? '+' : ''}${Math.round(prevDelta)}%`, prevLabel ? `vs ${prevLabel}` : 'custom range has no prior period')}
+      </div>`;
+
+    const periodNavHtml = f.period === 'custom' ? `
+      <input type="date" id="earn-from" value="${f.customFrom || f.anchor}" style="width:auto;">
+      <span style="align-self:center;">to</span>
+      <input type="date" id="earn-to" value="${f.customTo || f.anchor}" style="width:auto;">
+      <button class="btn ghost sm" id="earn-apply-custom">Apply</button>
+    ` : `
+      <button class="btn ghost sm" id="earn-prev">‹ Prev</button>
+      <span style="align-self:center;font-weight:600;min-width:160px;text-align:center;">${label}</span>
+      <button class="btn ghost sm" id="earn-next">Next ›</button>
+    `;
+
+    const filtersHtml = `
+      <div class="admin-card" style="margin-bottom:20px;">
+        <h3>Earnings</h3>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:4px;">
+          <div><label for="earn-service">Service</label>
+            <select id="earn-service">
+              <option value="all" ${f.service === 'all' ? 'selected' : ''}>All services</option>
+              ${Object.entries(EARN_SERVICE_LABEL).map(([k, v]) => `<option value="${k}" ${f.service === k ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>
+          </div>
+          <div><label for="earn-region">Region</label>
+            <select id="earn-region">
+              <option value="all" ${f.region === 'all' ? 'selected' : ''}>All regions</option>
+              ${Object.entries(EARN_REGION_LABEL).map(([k, v]) => `<option value="${k}" ${f.region === k ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>
+          </div>
+          <div><label for="earn-period">Breakdown by</label>
+            <select id="earn-period">
+              <option value="day" ${f.period === 'day' ? 'selected' : ''}>Day</option>
+              <option value="month" ${f.period === 'month' ? 'selected' : ''}>Month</option>
+              <option value="quarter" ${f.period === 'quarter' ? 'selected' : ''}>Quarter</option>
+              <option value="year" ${f.period === 'year' ? 'selected' : ''}>Year</option>
+              <option value="custom" ${f.period === 'custom' ? 'selected' : ''}>Custom range</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;">${periodNavHtml}</div>
+        </div>
+      </div>` + cardsHtml;
+
+    const breakdown = earnBucketBreakdown(inPeriod, start, end);
+    const breakdownMax = Math.max(1, ...breakdown.map(b => Math.abs(b.total)));
+    const breakdownHtml = `
+      <div class="admin-card" style="margin-top:20px;">
+        <h3>Breakdown — ${label}</h3>
+        ${breakdown.length ? breakdown.map(b => `
+          <div class="an-bar-row">
+            <span class="an-bar-label">${b.label}</span>
+            <div class="an-bar-track"><div class="an-bar-fill" style="width:${(Math.abs(b.total) / breakdownMax * 100).toFixed(0)}%;${b.total < 0 ? 'background:var(--red);' : ''}"></div></div>
+            <span class="an-bar-val" style="width:auto;min-width:80px;">${earnMoney(b.total)}</span>
+          </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No payments in this period.</p>`}
+      </div>`;
+
+    const insights = earnMonthlyInsights(filtered);
+    const insightList = (rows) => rows.length
+      ? rows.map(r => `<div class="an-bar-row" style="margin-bottom:6px;"><span class="an-bar-label" style="width:auto;flex:1;">${r.label}</span><span class="an-bar-val" style="width:auto;min-width:80px;">${earnMoney(r.total)}</span></div>`).join('')
+      : `<p style="font-size:0.85rem;color:#6b7280;">Not enough history yet.</p>`;
+    const insightsHtml = `
+      <div class="admin-card" style="margin-top:20px;">
+        <h3>Most profitable months${f.service !== 'all' || f.region !== 'all' ? ' (filtered)' : ''}</h3>
+        ${insightList(insights.mostProfitable)}
+      </div>
+      <div class="admin-card" style="margin-top:20px;">
+        <h3>Slowest months${f.service !== 'all' || f.region !== 'all' ? ' (filtered)' : ''}</h3>
+        ${insightList(insights.slowest)}
+        ${insights.monthCount ? `<p style="font-size:0.78rem;color:#6b7280;margin-top:8px;">Across ${insights.monthCount} month${insights.monthCount === 1 ? '' : 's'} of history.</p>` : ''}
+      </div>`;
+
+    el.innerHTML = filtersHtml + breakdownHtml + insightsHtml;
+
+    $('earn-service').addEventListener('change', (e) => { earningsFilters.service = e.target.value; renderAdmin(); });
+    $('earn-region').addEventListener('change', (e) => { earningsFilters.region = e.target.value; renderAdmin(); });
+    $('earn-period').addEventListener('change', (e) => {
+      earningsFilters.period = e.target.value;
+      if (e.target.value === 'custom' && !earningsFilters.customFrom){ earningsFilters.customFrom = earningsFilters.anchor; earningsFilters.customTo = earningsFilters.anchor; }
+      renderAdmin();
+    });
+    if (f.period === 'custom'){
+      document.getElementById('earn-apply-custom').addEventListener('click', () => {
+        earningsFilters.customFrom = document.getElementById('earn-from').value || earningsFilters.customFrom;
+        earningsFilters.customTo = document.getElementById('earn-to').value || earningsFilters.customTo;
+        renderAdmin();
+      });
+    } else {
+      document.getElementById('earn-prev').addEventListener('click', () => { earningsFilters.anchor = earnShiftAnchor(f.period, f.anchor, -1); renderAdmin(); });
+      document.getElementById('earn-next').addEventListener('click', () => { earningsFilters.anchor = earnShiftAnchor(f.period, f.anchor, 1); renderAdmin(); });
+    }
   } else if (admView === 'analytics'){
     const an = latestAnalytics;
     if (!an){ el.innerHTML = `<div class="empty">Couldn't load analytics right now.</div>`; return; }
@@ -1578,6 +1793,9 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
   }
   if (admView === 'invoices'){
     try { adminInvoices = (await apiFetch('/api/invoice.php?action=admin_list')).invoices || []; } catch (e) { adminInvoices = []; }
+  }
+  if (admView === 'earnings'){
+    try { latestEarnings = (await apiFetch('/api/earnings.php?action=list')).payments || []; } catch (e) { latestEarnings = null; }
   }
   if (admView === 'analytics'){
     try { latestAnalytics = await apiFetch('/api/analytics.php?action=summary'); } catch (e) { latestAnalytics = null; }

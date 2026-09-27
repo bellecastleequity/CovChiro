@@ -172,6 +172,32 @@ deposit at request time); nothing else gets billed automatically. Safe to
 run more than once a day or to miss a day — every charge is gated on
 whether that date or installment is already paid.
 
+**Daily route digest** (new): cPanel → **Cron Jobs** → **Add New Cron Job**:
+
+```
+Minute: */5   Hour: *   (every 5 minutes, all day)
+Command: /usr/bin/php /home/[username]/php_backend/cron_daily_routes.php
+```
+
+Unlike the two cron jobs above, this one's schedule genuinely needs to run
+every 5 minutes around the clock — it's a no-op almost every time it fires
+(a single date check), only actually sending once it's 4:30am
+America/New_York. That's deliberate: cPanel's cron hour/minute fields run in
+whatever timezone the server's OS is set to, which may not be Eastern and
+may not match `config.php`'s forced `TIMEZONE`, so scheduling a single
+"Hour: 4" slot could silently fire at the wrong real-world time (and would
+need re-checking every DST change). Checking the actual Eastern clock time
+from inside the script sidesteps that entirely.
+
+Emails `ADMIN_EMAIL` one digest listing every office/home-visit/event
+booking and standing-day occurrence scheduled for that day, each with a
+tap-to-navigate Google Maps "get directions" link — or a plain "no
+appointments today" email if the calendar is empty, every single day
+(including weekends), so a missing email always means the cron didn't run
+rather than an assumed quiet day. A manual "📍 Send route" button next to
+each booking in **Booked dates** sends that one booking's address the same
+way, on demand, independent of this daily cron.
+
 ## STEP 8: TEST END TO END
 
 **Office coverage:**

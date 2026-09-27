@@ -29,6 +29,7 @@ switch ($action) {
     case 'admin_delete': handle_admin_delete($pdo); break;
     case 'admin_create_for_client': handle_admin_create_for_client($pdo); break;
     case 'sign_pending': handle_sign_pending($pdo); break;
+    case 'admin_send_route': handle_admin_send_route($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -803,6 +804,27 @@ function handle_admin_delete(PDO $pdo) {
     if ((int)$stmt->fetchColumn() > 0) json_response(['error' => 'This booking has billing adjustments on file — cancel it instead of deleting.'], 400);
 
     $pdo->prepare('DELETE FROM bookings WHERE id = ?')->execute([$id]);
+    json_response(['success' => true]);
+}
+
+// Emails ADMIN_EMAIL this one booking's address with a "get directions" link
+// — for pulling up a single stop on short notice, separate from the 4:30am
+// digest that covers the whole day at once.
+function handle_admin_send_route(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+    $id = $body['id'] ?? '';
+
+    $stmt = $pdo->prepare('SELECT b.*, u.name AS client_name, u.clinic_name FROM bookings b JOIN users u ON u.id = b.user_id WHERE b.id = ?');
+    $stmt->execute([$id]);
+    $b = $stmt->fetch();
+    if (!$b) json_response(['error' => 'Not found'], 404);
+
+    $who = $b['clinic_name'] ?: $b['client_name'];
+    $address = $b['address'] ?: "ZIP {$b['zip_code']}";
+    $whenLabel = 'Starts ' . date('l, F j, Y', strtotime($b['start_date']));
+    send_email(ADMIN_EMAIL, "Route: {$who} — {$b['start_date']}", route_stop_email_block($who, $address, $whenLabel, $b['title']));
     json_response(['success' => true]);
 }
 
