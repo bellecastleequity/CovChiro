@@ -89,6 +89,7 @@
           <button class="dash-tab" data-adm="booked">Booked dates</button>
           <button class="dash-tab" data-adm="video">Video requests</button>
           <button class="dash-tab" data-adm="promo">Promo codes</button>
+          <button class="dash-tab" data-adm="leads">Leads</button>
           <button class="dash-tab" data-adm="inventory">Inventory alerts</button>
           <button class="dash-tab" data-adm="standing">Standing days</button>
           <button class="dash-tab" data-adm="invoices">Invoices</button>
@@ -139,7 +140,7 @@ function drawQrCode(canvas, text){
 
 // ---------- AI drafting (Gemini via /api/ai.php) ----------
 // Results are kept here so they survive re-renders until the page reloads.
-const aiCache = { landing: {}, ads: {}, ideas: null, ideaCopy: {}, summary: null, notes: {}, emailsOpen: null };
+const aiCache = { landing: {}, ads: {}, ideas: null, ideaCopy: {}, summary: null, notes: {} };
 let aiCopyTexts = [];
 function escHtml(s){
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -218,6 +219,345 @@ function aiSummaryHtml(){
       ${list('Suggested next steps', s.suggestions)}
       <div style="font-size:0.75rem;color:#8a8171;margin-top:10px;">Generated ${new Date(s.generatedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} · AI can misread numbers — the cards below are the source of truth.</div>
     </div>`;
+}
+// ---------- Leads tab: overview, sources, follow-up emails, lead list ----------
+const LEAD_STATUS = { active: ['In follow-up', 'var(--teal-dark)'], converted: ['Booked', 'var(--teal-dark)'], unsubscribed: ['Unsubscribed', '#8a8171'], expired: ['Expired', 'var(--red)'], superseded: ['Emails paused — signed up for a newer offer', '#8a8171'] };
+const LEAD_EMAIL_TIMING = ['Sent right away, with the code', '3 days after sign-up', '10 days after sign-up', '30 days after sign-up', 'Last call — about 10 days before the code expires'];
+let leadsUi = { seq: 'welcome:coverage', status: 'all', source: 'all' };
+let leadsLoadError = null;
+const leadSeqCache = {};
+function decodeHtml(s){ const t = document.createElement('textarea'); t.innerHTML = s ?? ''; return t.value; }
+function leadSiteLabel(site){ return site === 'florida' ? 'TheFloridaChiropractor.com' : 'CoverageChiropractor.com'; }
+function leadCampaigns(){
+  const withLeads = new Set(allLeads.map(l => l.campaign).filter(Boolean));
+  return promoCodes.filter(p => p.landingEnabled || withLeads.has(p.code) || (p.dripCustom || []).some(e => e.subject || e.intro));
+}
+async function loadLeadSequence(key){
+  const [kind, val] = key.split(':');
+  leadSeqCache[key] = await apiFetch('/api/leads.php?action=admin_email_preview', { method: 'POST', body: JSON.stringify(kind === 'welcome' ? { campaign: '', site: val } : { campaign: val }) });
+}
+async function loadLeadsTab(){
+  leadsLoadError = null;
+  try { allLeads = (await apiFetch('/api/leads.php?action=admin_list')).leads || []; } catch (e) { allLeads = []; leadsLoadError = e.message; }
+  try { promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || []; } catch (e) { promoCodes = []; }
+  if (leadsUi.seq.startsWith('campaign:') && !promoCodes.some(p => 'campaign:' + p.code === leadsUi.seq)) leadsUi.seq = 'welcome:coverage';
+  try { await loadLeadSequence(leadsUi.seq); } catch (e) { /* shown as unavailable */ }
+}
+function goToLeadEmails(code){
+  leadsUi.seq = 'campaign:' + code;
+  document.querySelector('[data-adm="leads"]').click();
+  setTimeout(() => { const c = document.getElementById('leads-emails'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 400);
+}
+function leadSources(){
+  const groups = new Map([['', { label: 'Welcome pop-up', code: '', leads: [] }]]);
+  leadCampaigns().forEach(p => groups.set(p.code, { label: `${p.code} offer page`, code: p.code, promo: p, leads: [] }));
+  allLeads.forEach(l => {
+    const k = l.campaign || '';
+    if (!groups.has(k)) groups.set(k, { label: `${k} offer page`, code: k, leads: [] });
+    groups.get(k).leads.push(l);
+  });
+  return [...groups.values()];
+}
+function leadStatsFor(list){
+  const booked = list.filter(l => l.status === 'converted');
+  return {
+    signups: list.length, active: list.filter(l => l.status === 'active').length, booked: booked.length,
+    rate: list.length ? Math.round(booked.length / list.length * 100) : null,
+    revenue: booked.reduce((sum, l) => sum + (l.bookingTotal || 0), 0),
+  };
+}
+function leadsOverviewHtml(){
+  const st = leadStatsFor(allLeads);
+  const soon = new Date(); soon.setDate(soon.getDate() + 14);
+  const soonStr = localDateStr(soon), todayStr = localDateStr(new Date());
+  const expiring = allLeads.filter(l => l.status === 'active' && l.expiresAt && l.expiresAt >= todayStr && l.expiresAt <= soonStr).length;
+  const card = (label, value, sub) => `<div class="an-card"><div class="an-label">${label}</div><div class="an-value">${value}</div>${sub ? `<div class="an-sub">${sub}</div>` : ''}</div>`;
+  return `<div class="an-grid">
+    ${card('Leads captured', st.signups, `${allLeads.filter(l => l.status === 'unsubscribed').length} unsubscribed · ${allLeads.filter(l => l.status === 'expired').length} expired`)}
+    ${card('In follow-up', st.active, 'receiving the email sequence now')}
+    ${card('Lead → booking', st.rate != null ? st.rate + '%' : 'N/A', st.signups ? `${st.booked} of ${st.signups} booked` : 'no sign-ups yet')}
+    ${card('Revenue from leads', money(st.revenue), 'bookings made by leads')}
+    ${card('Codes expiring soon', expiring, 'active leads, next 14 days')}
+  </div>`;
+}
+function leadsSourcesHtml(){
+  return leadSources().map(g => {
+    const st = leadStatsFor(g.leads);
+    const site = g.promo ? leadSiteLabel(g.promo.landingSite) : 'both sites';
+    return `
+    <div class="blk" style="margin-bottom:8px;">
+      <div style="min-width:0;">
+        <div class="bd">${g.label}${g.promo && !g.promo.landingEnabled ? ' <span style="font-size:0.72rem;color:#8a8171;font-weight:400;">(page off)</span>' : ''}</div>
+        <div class="bn">${site}${g.promo ? ` · ${g.promo.landingVisits} page visit${g.promo.landingVisits !== 1 ? 's' : ''}` : ''} · ${st.signups} sign-up${st.signups !== 1 ? 's' : ''} · ${st.booked} booked${st.rate != null ? ` (${st.rate}%)` : ''} · ${money(st.revenue)} · ${st.active} in follow-up</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
+        <button class="btn ghost sm" type="button" data-src-emails="${g.code ? 'campaign:' + g.code : 'welcome:coverage'}">Emails</button>
+        <button class="btn ghost sm" type="button" data-src-leads="${g.code || '__welcome'}">Leads</button>
+        ${g.promo ? `<button class="btn ghost sm" type="button" data-src-page="${g.code}">Offer page</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+function leadsEmailsHtml(){
+  const key = leadsUi.seq;
+  const [kind, val] = key.split(':');
+  const campaigns = leadCampaigns();
+  const promo = kind === 'campaign' ? promoCodes.find(p => p.code === val) : null;
+  const seq = leadSeqCache[key];
+  const options = [
+    ['welcome:coverage', 'Welcome pop-up — CoverageChiropractor.com'],
+    ['welcome:florida', 'Welcome pop-up — TheFloridaChiropractor.com'],
+    ...campaigns.map(p => ['campaign:' + p.code, `${p.code} offer page — ${leadSiteLabel(p.landingSite)}`]),
+  ];
+  const editable = !!(promo && promo.dripCustom);
+  let steps;
+  if (!seq) steps = `<p style="font-size:0.85rem;color:var(--red);margin-top:12px;">Couldn't load this sequence. Check that all the lead migrations (012–014) have been run.</p>`;
+  else steps = LEAD_EMAIL_TIMING.map((timing, i) => `
+    <div class="ai-email-step">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div style="font-size:0.84rem;font-weight:600;flex:1 1 220px;">Email ${i + 1} — ${timing}</div>
+        <button class="btn ghost sm" type="button" data-em-preview="${i}">Preview</button>
+        <button class="btn ghost sm" type="button" data-em-test="${i}">Send me a test</button>
+      </div>
+      ${editable ? `
+      <label for="em-s-${i}" style="margin-top:6px;">Subject</label>
+      <input type="text" id="em-s-${i}" maxlength="150" placeholder="${escHtml(seq.steps[i].standardSubject)}" value="${escHtml(promo.dripCustom[i].subject)}">
+      <label for="em-i-${i}">Opening paragraph (after “Hi {name},”)</label>
+      <textarea id="em-i-${i}" rows="2" maxlength="600" placeholder="None — the standard email starts right after the greeting">${escHtml(promo.dripCustom[i].intro)}</textarea>`
+      : `<div style="font-size:0.86rem;margin-top:4px;overflow-wrap:anywhere;"><span style="color:#8a8171;">Subject:</span> ${escHtml(seq.steps[i].subject)}</div>`}
+    </div>`).join('');
+  return `
+    <label for="em-seq">Email sequence</label>
+    <select id="em-seq">${options.map(([k, label]) => `<option value="${k}" ${k === key ? 'selected' : ''}>${escHtml(label)}</option>`).join('')}</select>
+    <p style="font-size:0.8rem;color:#6b7280;margin:8px 0 0;">${kind === 'welcome'
+      ? `Everyone who signs up through the homepage pop-up on ${leadSiteLabel(val)} gets these 5 emails, with their own 15% code. They stop as soon as the person books, unsubscribes, or the code expires. These use the standard copy.`
+      : promo && !promo.dripCustom ? `Run <code>migration_014_campaign_email_copy.sql</code> in phpMyAdmin to customise this campaign's emails.`
+      : `Everyone who signs up on the ${val} offer page gets these 5 emails (fewer if they book first). Each has the standard text, their code, and a booking button — give any of them its own subject and opening paragraph here, or leave blank for the standard version. You can use <code>{name}</code>, <code>{offer}</code> and <code>{expires}</code>. Preview shows what's in the boxes, even before you save.`}</p>
+    ${editable ? `
+    <div class="ai-box">
+      <label for="em-ai-note">Notes for AI (optional): theme, audience, timing</label>
+      <input type="text" id="em-ai-note" maxlength="300" placeholder="e.g. CE seminar season, aimed at solo practices" value="${escHtml(aiCache.notes[val] || '')}">
+      <button class="btn ghost sm" type="button" id="em-ai" style="margin-top:10px;">Draft all 5 with AI</button>
+      <div class="err-msg" id="em-ai-err"></div>
+    </div>` : ''}
+    ${steps}
+    ${editable ? `
+    <div class="ai-row" style="margin-top:14px;">
+      <button class="btn ghost sm" type="button" id="em-clear">Clear</button>
+      <button class="btn sm" type="button" id="em-save">Save emails</button>
+    </div>
+    <div class="err-msg" id="em-err"></div>` : ''}`;
+}
+function filteredLeadList(){
+  return allLeads.filter(l => (leadsUi.status === 'all' || l.status === leadsUi.status)
+    && (leadsUi.source === 'all' || (leadsUi.source === '__welcome' ? !l.campaign : l.campaign === leadsUi.source))
+    && leadMatchesSearch(l, leadsSearchQuery));
+}
+function leadsListHtml(){
+  if (!allLeads.length) return `<p style="font-size:0.85rem;color:#6b7280;">No sign-ups yet — the pop-up appears to new visitors after about 8 seconds or once they've scrolled 40% of the homepage.</p>`;
+  const list = filteredLeadList();
+  if (!list.length) return `<p style="font-size:0.85rem;color:#6b7280;">No leads match these filters.</p>`;
+  return `<div style="font-size:0.78rem;color:#8a8171;margin-bottom:8px;">${list.length} lead${list.length !== 1 ? 's' : ''}</div>` + list.map(l => { const [label, color] = LEAD_STATUS[l.status] || [l.status, 'inherit']; return `
+    <div class="blk" style="margin-bottom:8px;">
+      <div style="min-width:0;">
+        <div class="bd" style="overflow-wrap:anywhere;">${l.name} <span style="font-weight:400;color:#6b7280;">· ${escHtml(l.email)}</span></div>
+        <div class="bn">${l.campaign ? `via ${l.campaign} offer page` : 'via welcome pop-up'} · ${l.site === 'florida' ? 'thefloridachiropractor.com' : 'coveragechiropractor.com'} · ${l.code || 'no code'}${l.expiresAt ? ' · expires ' + l.expiresAt : ''}</div>
+        <div class="bn">Signed up ${new Date(l.createdAt).toLocaleDateString()} · ${l.dripStep} of 4 follow-ups sent${l.lastEmailAt ? ' · last email ' + new Date(l.lastEmailAt).toLocaleDateString() : ''}${l.convertedAt ? ' · booked ' + new Date(l.convertedAt).toLocaleDateString() : ''}${l.bookingTotal != null ? ' · ' + money(l.bookingTotal) : ''}</div>
+        <div class="bn" style="color:${color};margin-top:3px;font-weight:600;">${label}</div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          ${l.status === 'active' ? `<button class="btn ghost sm" data-lead-resend="${l.id}">Resend current email</button>` : ''}
+          ${l.status === 'active' ? `<button class="btn ghost sm" data-lead-unsub="${l.id}">Unsubscribe</button>` : ''}
+          <button class="btn ghost sm" data-lead-delete="${l.id}" style="color:var(--red);border-color:var(--red);">Delete</button>
+        </div>
+      </div>
+    </div>`; }).join('');
+}
+function renderLeadsTab(el){
+  if (leadsLoadError){
+    el.innerHTML = `<div class="admin-card"><h3>Leads</h3><p style="font-size:0.85rem;color:var(--red);">Couldn't load leads (${escHtml(leadsLoadError)}). If this is a new install, run migration_012_lead_capture.sql, migration_013 and migration_014 in phpMyAdmin.</p></div>`;
+    return;
+  }
+  const sources = leadSources();
+  el.innerHTML = `
+    <div id="leads-overview">${leadsOverviewHtml()}</div>
+    <div class="admin-card" style="margin-top:20px;">
+      <h3>Where leads come from</h3>
+      <p style="font-size:0.85rem;color:#6b7280;margin-bottom:10px;">The homepage welcome pop-up and each promo code's offer page. New offer pages are set up from the Promo codes tab.</p>
+      <div id="leads-sources">${leadsSourcesHtml()}</div>
+    </div>
+    <div class="admin-card" style="margin-top:20px;" id="leads-emails">
+      <h3>Follow-up emails</h3>
+      <div id="leads-emails-body">${leadsEmailsHtml()}</div>
+    </div>
+    <div class="admin-card" style="margin-top:20px;" id="leads-list-card">
+      <h3>All leads</h3>
+      <div class="ai-row" style="margin-bottom:12px;">
+        <input type="text" id="leads-search" placeholder="Search name, email, code…" value="${escHtml(leadsSearchQuery || '')}">
+        <select id="leads-status" style="flex:0 1 170px;width:auto;">
+          ${[['all', 'All statuses'], ...Object.entries(LEAD_STATUS).map(([k, v]) => [k, v[0].split(' —')[0]])].map(([k, label]) => `<option value="${k}" ${leadsUi.status === k ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+        <select id="leads-source" style="flex:0 1 190px;width:auto;">
+          <option value="all">All sources</option>
+          ${sources.map(g => `<option value="${g.code || '__welcome'}" ${leadsUi.source === (g.code || '__welcome') ? 'selected' : ''}>${escHtml(g.label)}</option>`).join('')}
+        </select>
+        <button class="btn ghost sm" type="button" id="leads-export">Export CSV</button>
+      </div>
+      <div id="leads-list">${leadsListHtml()}</div>
+    </div>`;
+  wireLeadsSources();
+  wireLeadsEmails();
+  wireLeadsList();
+  const refreshList = () => { $('leads-list').innerHTML = leadsListHtml(); wireLeadsList(); };
+  $('leads-search').addEventListener('input', (e) => { leadsSearchQuery = e.target.value; refreshList(); });
+  $('leads-status').addEventListener('change', (e) => { leadsUi.status = e.target.value; refreshList(); });
+  $('leads-source').addEventListener('change', (e) => { leadsUi.source = e.target.value; refreshList(); });
+  $('leads-export').addEventListener('click', exportLeadsCsv);
+}
+async function refreshLeadsData(){
+  allLeads = (await apiFetch('/api/leads.php?action=admin_list')).leads || [];
+  $('leads-overview').innerHTML = leadsOverviewHtml();
+  $('leads-sources').innerHTML = leadsSourcesHtml();
+  wireLeadsSources();
+  $('leads-list').innerHTML = leadsListHtml();
+  wireLeadsList();
+}
+function wireLeadsSources(){
+  document.querySelectorAll('[data-src-emails]').forEach(btn => btn.addEventListener('click', async () => {
+    await selectLeadSequence(btn.dataset.srcEmails);
+    $('leads-emails').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+  document.querySelectorAll('[data-src-leads]').forEach(btn => btn.addEventListener('click', () => {
+    leadsUi.source = btn.dataset.srcLeads; leadsUi.status = 'all';
+    $('leads-source').value = leadsUi.source; $('leads-status').value = 'all';
+    $('leads-list').innerHTML = leadsListHtml(); wireLeadsList();
+    $('leads-list-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+  document.querySelectorAll('[data-src-page]').forEach(btn => btn.addEventListener('click', () => {
+    promoLandingOpen = btn.dataset.srcPage;
+    document.querySelector('[data-adm="promo"]').click();
+  }));
+}
+async function selectLeadSequence(key){
+  leadsUi.seq = key;
+  if (!leadSeqCache[key]) { try { await loadLeadSequence(key); } catch (e) { /* rendered as unavailable */ } }
+  $('leads-emails-body').innerHTML = leadsEmailsHtml();
+  wireLeadsEmails();
+}
+function showEmailPreview(subject, html){
+  const old = document.getElementById('email-preview-modal');
+  if (old) old.remove();
+  const m = document.createElement('div');
+  m.id = 'email-preview-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(28,36,48,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  m.innerHTML = `
+    <div style="background:var(--white);border-radius:6px;width:100%;max-width:680px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-bottom:1px solid var(--line);">
+        <div style="flex:1;min-width:0;"><div style="font-size:0.7rem;letter-spacing:0.06em;text-transform:uppercase;color:#8a8171;">Subject</div><div style="font-weight:600;overflow-wrap:anywhere;">${escHtml(subject)}</div></div>
+        <button class="btn ghost sm" type="button" id="epm-close">Close</button>
+      </div>
+      <iframe sandbox="" title="Email preview" style="border:0;width:100%;height:72vh;background:#fff;"></iframe>
+    </div>`;
+  document.body.appendChild(m);
+  m.querySelector('iframe').srcdoc = `<!doctype html><meta charset="utf-8"><body style="margin:0;padding:16px;background:#fff;">${html}</body>`;
+  const close = () => { m.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  m.addEventListener('click', (e) => { if (e.target === m) close(); });
+  m.querySelector('#epm-close').addEventListener('click', close);
+}
+function wireLeadsEmails(){
+  const [kind, val] = leadsUi.seq.split(':');
+  const seqSel = $('em-seq');
+  if (seqSel) seqSel.addEventListener('change', () => selectLeadSequence(seqSel.value));
+  const editable = !!$('em-save');
+  const payloadFor = (i) => {
+    const p = kind === 'welcome' ? { campaign: '', site: val, step: i } : { campaign: val, step: i };
+    if (editable) p.custom = { subject: $(`em-s-${i}`).value.trim(), intro: $(`em-i-${i}`).value.trim() };
+    return p;
+  };
+  document.querySelectorAll('[data-em-preview]').forEach(btn => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try { const r = await apiFetch('/api/leads.php?action=admin_email_preview', { method: 'POST', body: JSON.stringify(payloadFor(+btn.dataset.emPreview)) }); showEmailPreview(r.subject, r.html); }
+    catch (e) { alert(e.message); }
+    btn.disabled = false;
+  }));
+  document.querySelectorAll('[data-em-test]').forEach(btn => btn.addEventListener('click', async () => {
+    btn.disabled = true; const label = btn.textContent; btn.textContent = 'Sending…';
+    try { const r = await apiFetch('/api/leads.php?action=admin_email_preview', { method: 'POST', body: JSON.stringify({ ...payloadFor(+btn.dataset.emTest), send: true }) }); showToast(`Test sent to ${r.to}.`); }
+    catch (e) { alert(e.message); }
+    btn.disabled = false; btn.textContent = label;
+  }));
+  if (!editable) return;
+  const STEPS = [0, 1, 2, 3, 4];
+  const readEmails = () => STEPS.map(i => ({ subject: $(`em-s-${i}`).value.trim(), intro: $(`em-i-${i}`).value.trim() }));
+  const promo = promoCodes.find(p => p.code === val);
+  $('em-ai-note').addEventListener('input', (e) => { aiCache.notes[val] = e.target.value; });
+  $('em-ai').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (readEmails().some(x => x.subject || x.intro) && !confirm('Replace what\'s in these boxes with new AI drafts? Nothing is saved until you click Save emails.')) return;
+    $('em-ai-err').textContent = '';
+    let r;
+    try { r = await aiCall('drip_copy', { code: val, site: promo.landingSite, note: $('em-ai-note').value.trim() }, btn); }
+    catch (err) { $('em-ai-err').textContent = err.message; return; }
+    r.emails.forEach((x, i) => { $(`em-s-${i}`).value = x.subject; $(`em-i-${i}`).value = x.intro; });
+    showToast('Drafted — preview them, then click Save emails.');
+  });
+  $('em-clear').addEventListener('click', () => {
+    STEPS.forEach(i => { $(`em-s-${i}`).value = ''; $(`em-i-${i}`).value = ''; });
+    showToast('Cleared — click Save emails to go back to the standard emails.');
+  });
+  $('em-save').addEventListener('click', async () => {
+    const emails = readEmails();
+    $('em-err').textContent = '';
+    try { await apiFetch('/api/promo.php?action=save_emails', { method: 'POST', body: JSON.stringify({ code: val, emails }) }); }
+    catch (err) { $('em-err').textContent = err.message; return; }
+    promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
+    try { await loadLeadSequence(leadsUi.seq); } catch (e) { /* keep showing the saved boxes */ }
+    showToast(`Emails for ${val} saved.`);
+  });
+}
+function wireLeadsList(){
+  document.querySelectorAll('[data-lead-resend]').forEach(btn => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      await apiFetch('/api/leads.php?action=admin_resend', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.leadResend) }) });
+      showToast('Email resent.');
+    } catch (e) { alert(e.message); }
+    btn.disabled = false;
+  }));
+  document.querySelectorAll('[data-lead-unsub]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Unsubscribe this lead from future offer emails? Their code keeps working if they book anyway.')) return;
+    try { await apiFetch('/api/leads.php?action=admin_unsubscribe', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.leadUnsub) }) }); }
+    catch (e) { alert(e.message); return; }
+    await refreshLeadsData();
+    showToast('Lead unsubscribed.');
+  }));
+  document.querySelectorAll('[data-lead-delete]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Delete this lead permanently and deactivate their promo code? This cannot be undone.')) return;
+    try { await apiFetch('/api/leads.php?action=admin_delete', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.leadDelete) }) }); }
+    catch (e) { alert(e.message); return; }
+    await refreshLeadsData();
+    showToast('Lead deleted.');
+  }));
+}
+function exportLeadsCsv(){
+  const cell = (v) => {
+    let s = String(v ?? '');
+    if (/^[=+\-@]/.test(s)) s = "'" + s;
+    return '"' + s.replace(/"/g, '""') + '"';
+  };
+  const rows = [['Name', 'Email', 'Site', 'Source', 'Code', 'Status', 'Signed up', 'Code expires', 'Follow-ups sent', 'Booked on', 'Booking total']];
+  filteredLeadList().forEach(l => rows.push([
+    decodeHtml(l.name), l.email, l.site === 'florida' ? 'thefloridachiropractor.com' : 'coveragechiropractor.com', l.campaign ? `${l.campaign} offer page` : 'Welcome pop-up',
+    l.code || '', (LEAD_STATUS[l.status] || [l.status])[0], l.createdAt ? l.createdAt.slice(0, 10) : '', l.expiresAt || '', l.dripStep,
+    l.convertedAt ? l.convertedAt.slice(0, 10) : '', l.bookingTotal != null ? l.bookingTotal.toFixed(2) : '',
+  ]));
+  const blob = new Blob(['﻿' + rows.map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `leads-${localDateStr(new Date())}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 function leadMatchesSearch(l, query){
   const q = (query || '').trim().toLowerCase();
@@ -1267,26 +1607,9 @@ function renderAdmin(){
             <div class="err-msg" id="lp-ads-err"></div>
             <div id="lp-ads-out">${aiAdsHtml(p.code)}</div>
           </div>` : ''}
-          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-            ${p.dripCustom == null ? `<p style="font-size:0.82rem;color:#6b7280;margin:0;"><strong>Follow-up emails:</strong> run <code>migration_014_campaign_email_copy.sql</code> in phpMyAdmin to customise this campaign's emails.</p>` : `
-            <details class="ai-emails" id="lp-emails" ${aiCache.emailsOpen === p.code ? 'open' : ''}>
-              <summary>Follow-up emails for this campaign${p.dripCustom.some(e => e.subject || e.intro) ? ' — customised' : ' — using the standard emails'}</summary>
-              <p style="font-size:0.8rem;color:#6b7280;margin:8px 0 0;">Everyone who signs up on this page gets these 5 emails (fewer if they book first). Each already has the standard text, their code, and a booking button — here you can give each one its own subject line and an opening paragraph that fits this campaign. Leave anything blank to keep the standard version. You can use <code>{name}</code>, <code>{offer}</code> and <code>{expires}</code>.</p>
-              ${['Email 1 — sent right away, with the code', 'Email 2 — 3 days later', 'Email 3 — 10 days later', 'Email 4 — 30 days later', 'Email 5 — last call, about 10 days before the code expires'].map((label, i) => `
-              <div class="ai-email-step">
-                <div style="font-size:0.82rem;font-weight:600;">${label}</div>
-                <label for="lp-em-s-${i}" style="margin-top:6px;">Subject</label>
-                <input type="text" id="lp-em-s-${i}" maxlength="150" placeholder="Standard subject" value="${escHtml(p.dripCustom[i].subject)}">
-                <label for="lp-em-i-${i}">Opening paragraph (after “Hi {name},”)</label>
-                <textarea id="lp-em-i-${i}" rows="2" maxlength="600" placeholder="Standard email, no extra opening">${escHtml(p.dripCustom[i].intro)}</textarea>
-              </div>`).join('')}
-              <div class="ai-row" style="margin-top:12px;">
-                <button class="btn ghost sm" type="button" id="lp-em-ai">Draft all 5 with AI</button>
-                <button class="btn ghost sm" type="button" id="lp-em-clear">Clear</button>
-                <button class="btn sm" type="button" id="lp-em-save">Save emails</button>
-              </div>
-              <div class="err-msg" id="lp-em-err"></div>
-            </details>`}
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-size:0.84rem;flex:1 1 220px;"><strong>Follow-up emails</strong> for people who sign up on this page${(p.dripCustom || []).some(e => e.subject || e.intro) ? ' (customised)' : ''} are managed in the Leads tab.</span>
+            <button class="btn ghost sm" type="button" data-goto-lead-emails="${p.code}">Edit follow-up emails</button>
           </div>
         </div>`;
         return `
@@ -1352,34 +1675,7 @@ function renderAdmin(){
             wireAiCopy($('lp-ads-out'));
           });
         }
-        if ($('lp-emails')) {
-          $('lp-emails').addEventListener('toggle', () => { aiCache.emailsOpen = $('lp-emails').open ? openPromo.code : null; });
-          const STEPS = [0, 1, 2, 3, 4];
-          const readEmails = () => STEPS.map(i => ({ subject: $(`lp-em-s-${i}`).value.trim(), intro: $(`lp-em-i-${i}`).value.trim() }));
-          $('lp-em-ai').addEventListener('click', async (e) => {
-            const btn = e.currentTarget;
-            if (readEmails().some(x => x.subject || x.intro) && !confirm('Replace what\'s in these boxes with new AI drafts? Nothing is saved until you click Save emails.')) return;
-            $('lp-em-err').textContent = '';
-            let r;
-            try { r = await aiCall('drip_copy', aiPayload(), btn); }
-            catch (err) { $('lp-em-err').textContent = err.message; return; }
-            r.emails.forEach((x, i) => { $(`lp-em-s-${i}`).value = x.subject; $(`lp-em-i-${i}`).value = x.intro; });
-            showToast('Drafted — review them, then click Save emails.');
-          });
-          $('lp-em-clear').addEventListener('click', () => {
-            STEPS.forEach(i => { $(`lp-em-s-${i}`).value = ''; $(`lp-em-i-${i}`).value = ''; });
-            showToast('Cleared — click Save emails to go back to the standard emails.');
-          });
-          $('lp-em-save').addEventListener('click', async () => {
-            const emails = readEmails();
-            $('lp-em-err').textContent = '';
-            try { await apiFetch('/api/promo.php?action=save_emails', { method: 'POST', body: JSON.stringify({ code: openPromo.code, emails }) }); }
-            catch (err) { $('lp-em-err').textContent = err.message; return; }
-            promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
-            $('lp-emails').querySelector('summary').textContent = 'Follow-up emails for this campaign' + (emails.some(x => x.subject || x.intro) ? ' — customised' : ' — using the standard emails');
-            showToast(`Emails for ${openPromo.code} saved.`);
-          });
-        }
+        el.querySelectorAll('[data-goto-lead-emails]').forEach(btn => btn.addEventListener('click', () => goToLeadEmails(btn.dataset.gotoLeadEmails)));
         if ($('lp-qr')) {
           drawQrCode($('lp-qr'), promoLandingUrl(openPromo));
           $('lp-qr-download').href = $('lp-qr').toDataURL('image/png');
@@ -1439,6 +1735,8 @@ function renderAdmin(){
       renderAdmin();
       showToast(`Promo code ${btn.dataset.togglePromo} updated.`);
     }));
+  } else if (admView === 'leads'){
+    renderLeadsTab(el);
   } else if (admView === 'inventory'){
     const openDates = openDatesInWindow(14);
     const urgent = openDates.filter(d => d.daysOut <= 3);
@@ -2126,11 +2424,8 @@ function renderAdmin(){
         <div id="an-ai-out">${aiSummaryHtml()}</div>
       </div>`;
 
-    const L = an.leads || { captured: 0, active: 0, converted: 0, unsubscribed: 0, expired: 0, conversionRate: null, recent: [], tableMissing: false };
     const cardsHtml = `
       <div class="an-grid">
-        ${metricCard('Leads captured', L.tableMissing ? 'Not set up' : L.captured, L.tableMissing ? 'run migration_012_lead_capture.sql' : `${L.active} active · ${L.unsubscribed} unsubscribed · ${L.expired} expired`)}
-        ${metricCard('Lead → booking', L.captured ? `${Math.round((L.conversionRate || 0) * 100)}%` : 'N/A', L.captured ? `${L.converted} of ${L.captured} signups booked (pop-up + offer pages)` : 'no signups yet')}
         ${metricCard('Average booking value', money(an.avgBookingValue), `${an.totalEver} bookings tracked`)}
         ${metricCard('Cancellation rate', `${Math.round(an.cancellationRate*100)}%`, `${an.cancelledCount} of ${an.totalEver} ever created`)}
         ${metricCard('Booking lead time', an.avgLeadTime != null ? `${Math.round(an.avgLeadTime)} days` : 'Not enough data', an.leadTimeSampleSize ? `avg over ${an.leadTimeSampleSize} bookings` : 'needs bookings made after this update')}
@@ -2200,42 +2495,8 @@ function renderAdmin(){
           </div>`).join('') : `<p style="font-size:0.85rem;color:#6b7280;">No bookings yet.</p>`}
       </div>`;
 
-    const LEAD_STATUS = { active: ['Active', 'var(--teal-dark)'], converted: ['Booked', 'var(--teal-dark)'], unsubscribed: ['Unsubscribed', '#8a8171'], expired: ['Expired', 'var(--red)'], superseded: ['Emails paused — signed up for a newer offer', '#8a8171'] };
-    const filteredLeads = allLeads.filter(l => leadMatchesSearch(l, leadsSearchQuery));
-    const leadsHtml = L.tableMissing ? '' : `
-      <div class="admin-card" style="margin-top:20px;">
-        <h3>Welcome-offer leads</h3>
-        <p style="font-size:0.85rem;color:#6b7280;margin-bottom:10px;">Visitors who signed up through the 15% welcome pop-up or a campaign offer page. Each gets a single-use code tied to their email and a short follow-up sequence until they book, unsubscribe, or the code expires.</p>
-        ${allLeads.length ? `<input type="text" id="leads-search" placeholder="Search by name, email, code, site, or status…" value="${(leadsSearchQuery || '').replace(/"/g, '&quot;')}" style="width:100%;max-width:440px;padding:9px 12px;border:1px solid var(--line);border-radius:4px;font-size:0.88rem;font-family:inherit;margin-bottom:14px;">` : ''}
-        ${!allLeads.length ? `<p style="font-size:0.85rem;color:#6b7280;">No signups yet — the pop-up appears to new visitors after about 8 seconds or once they've scrolled 40% of the homepage.</p>`
-          : !filteredLeads.length ? `<p style="font-size:0.85rem;color:#6b7280;">No leads match your search.</p>`
-          : filteredLeads.map(l => { const [label, color] = LEAD_STATUS[l.status] || [l.status, 'inherit']; return `
-          <div class="blk" style="margin-bottom:8px;">
-            <div>
-              <div class="bd">${l.name} <span style="font-weight:400;color:#6b7280;">· ${l.email}</span></div>
-              <div class="bn">${l.campaign ? `via ${l.campaign} offer page` : 'via welcome pop-up'} · ${l.site === 'florida' ? 'thefloridachiropractor.com' : 'coveragechiropractor.com'} · ${l.code || 'no code'}${l.expiresAt ? ' · expires ' + l.expiresAt : ''} · signed up ${new Date(l.createdAt).toLocaleDateString()}${l.status === 'active' ? ` · ${l.dripStep} of 4 follow-ups sent` : ''}${l.convertedAt ? ' · booked ' + new Date(l.convertedAt).toLocaleDateString() : ''}</div>
-              <div class="bn" style="color:${color};margin-top:3px;font-weight:600;">${label}</div>
-              <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
-                ${l.status === 'active' ? `<button class="btn ghost sm" data-lead-resend="${l.id}">Resend email</button>` : ''}
-                ${l.status === 'active' ? `<button class="btn ghost sm" data-lead-unsub="${l.id}">Unsubscribe</button>` : ''}
-                <button class="btn ghost sm" data-lead-delete="${l.id}" style="color:var(--red);border-color:var(--red);">Delete</button>
-              </div>
-            </div>
-          </div>`; }).join('')}
-      </div>`;
-    el.innerHTML = aiSummaryCard + diagnosticsHtml + cardsHtml + leadsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexLeadHtml;
+    el.innerHTML = aiSummaryCard + diagnosticsHtml + cardsHtml + geoHtml + seasonalHtml + serviceLineHtml + flexDiscountHtml + flexLeadHtml;
 
-    function wireLeadsSearch(){
-      const search = document.getElementById('leads-search');
-      if (search) search.addEventListener('input', () => {
-        leadsSearchQuery = search.value;
-        const pos = search.selectionStart;
-        renderAdmin();
-        const fresh = document.getElementById('leads-search');
-        if (fresh){ fresh.focus(); fresh.setSelectionRange(pos, pos); }
-      });
-    }
-    wireLeadsSearch();
     document.getElementById('an-ai-btn').addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       document.getElementById('an-ai-err').textContent = '';
@@ -2244,31 +2505,6 @@ function renderAdmin(){
       document.getElementById('an-ai-out').innerHTML = aiSummaryHtml();
       btn.textContent = 'Summarize again';
     });
-    document.querySelectorAll('[data-lead-resend]').forEach(btn => btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      try {
-        await apiFetch('/api/leads.php?action=admin_resend', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.leadResend) }) });
-        showToast('Email resent.');
-      } catch (e) { alert(e.message); }
-      btn.disabled = false;
-    }));
-    document.querySelectorAll('[data-lead-unsub]').forEach(btn => btn.addEventListener('click', async () => {
-      if (!confirm('Unsubscribe this lead from future welcome-offer emails? Their code keeps working if they book anyway.')) return;
-      try { await apiFetch('/api/leads.php?action=admin_unsubscribe', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.leadUnsub) }) }); }
-      catch (e) { alert(e.message); return; }
-      allLeads = (await apiFetch('/api/leads.php?action=admin_list')).leads || [];
-      renderAdmin();
-      showToast('Lead unsubscribed.');
-    }));
-    document.querySelectorAll('[data-lead-delete]').forEach(btn => btn.addEventListener('click', async () => {
-      if (!confirm('Delete this lead permanently and deactivate their promo code? This cannot be undone.')) return;
-      try { await apiFetch('/api/leads.php?action=admin_delete', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.leadDelete) }) }); }
-      catch (e) { alert(e.message); return; }
-      allLeads = (await apiFetch('/api/leads.php?action=admin_list')).leads || [];
-      renderAdmin();
-      showToast('Lead deleted.');
-    }));
-
     document.getElementById('diag-send-test').addEventListener('click', async () => {
       const btn = document.getElementById('diag-send-test');
       const out = document.getElementById('diag-test-result');
@@ -2437,6 +2673,7 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
   if (admView === 'promo'){
     try { promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || []; } catch (e) { promoCodes = []; }
   }
+  if (admView === 'leads') await loadLeadsTab();
   if (admView === 'inventory'){
     await loadAdminBookings();
     try { flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || []; } catch (e) { flexRateDates = []; }
@@ -2456,7 +2693,6 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
   }
   if (admView === 'analytics'){
     try { latestAnalytics = await apiFetch('/api/analytics.php?action=summary'); } catch (e) { latestAnalytics = null; }
-    try { allLeads = (await apiFetch('/api/leads.php?action=admin_list')).leads || []; } catch (e) { allLeads = []; }
     try { latestCronStatus = await apiFetch('/api/settings.php?action=cron_status'); } catch (e) { latestCronStatus = null; }
   }
   if (admView === 'messages'){

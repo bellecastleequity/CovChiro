@@ -187,10 +187,11 @@ function fill_drip_placeholders(string $text, array $lead, array $promo) {
     ]);
 }
 
-// Returns ['subject' => ..., 'html' => ...] with any campaign-specific copy applied.
-function lead_email_build(array $lead, array $promo, int $step) {
+// Returns ['subject' => ..., 'html' => ...] with any campaign-specific copy
+// applied — the saved copy, or $custom ({subject, intro}) when previewing edits.
+function lead_email_build(array $lead, array $promo, int $step, ?array $custom = null) {
     $c = lead_email_content($lead, $promo, $step);
-    $custom = lead_custom_copy($lead, $step);
+    $custom = $custom ?? lead_custom_copy($lead, $step);
     if ($custom) {
         if ($custom['subject'] !== '') $c['subject'] = fill_drip_placeholders($custom['subject'], $lead, $promo);
         if ($custom['intro'] !== '') {

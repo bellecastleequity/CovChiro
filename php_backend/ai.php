@@ -11,50 +11,98 @@ function ai_configured() {
     return defined('GEMINI_API_KEY') && GEMINI_API_KEY !== '' && strpos(GEMINI_API_KEY, 'your_') === false;
 }
 
-// Returns ['data' => decoded JSON object] or ['error' => message for the admin].
-function ai_generate_json(string $system, string $prompt) {
-    if (!ai_configured()) return ['error' => "AI isn't set up yet — add your Gemini key as GEMINI_API_KEY in php_backend/secrets.php."];
-    if (!function_exists('curl_init')) return ['error' => "This server's PHP doesn't have cURL enabled, which the AI features need."];
+// Models tried in order until one answers. Google's newest "latest" alias is
+// often overloaded (503) or has no free-tier allowance on a given key
+// ("limit: 0" 429s), so fall back through other Flash models; the last one
+// that worked is remembered and tried first next time.
+function ai_model_chain() {
+    $chain = [];
+    $last = @file_get_contents(__DIR__ . '/logs/ai_model.txt');
+    if (is_string($last) && preg_match('/^[a-z0-9.\-]+$/', trim($last))) $chain[] = trim($last);
+    if (defined('GEMINI_MODEL') && GEMINI_MODEL !== '') $chain[] = GEMINI_MODEL;
+    foreach (['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as $m) $chain[] = $m;
+    return array_values(array_unique($chain));
+}
 
-    $model = defined('GEMINI_MODEL') && GEMINI_MODEL !== '' ? GEMINI_MODEL : 'gemini-flash-latest';
+function gemini_request(string $model, array $payload, int $timeout) {
     $base = defined('GEMINI_API_BASE') ? GEMINI_API_BASE : 'https://generativelanguage.googleapis.com/v1beta';
-    $url = rtrim($base, '/') . '/models/' . rawurlencode($model) . ':generateContent';
-    $payload = [
-        'systemInstruction' => ['parts' => [['text' => $system]]],
-        'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
-        'generationConfig' => ['responseMimeType' => 'application/json'],
-    ];
-
-    @set_time_limit(90);
-    $ch = curl_init($url);
+    $ch = curl_init(rtrim($base, '/') . '/models/' . rawurlencode($model) . ':generateContent');
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => json_encode($payload),
         CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'x-goog-api-key: ' . GEMINI_API_KEY],
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_TIMEOUT => 60,
+        CURLOPT_TIMEOUT => $timeout,
     ]);
     $raw = curl_exec($ch);
     $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlErr = curl_error($ch);
     curl_close($ch);
+    return ['raw' => $raw, 'status' => $status, 'curlErr' => $curlErr, 'resp' => is_string($raw) ? json_decode($raw, true) : null];
+}
 
-    if ($raw === false) {
-        log_error('Gemini request failed', ['curl' => $curlErr]);
-        return ['error' => "Couldn't reach Google's AI service. Try again in a moment."];
+// Which quota a 429 hit: none at all for this model ("limit: 0"), per day, or per minute.
+function gemini_quota_kind(?array $resp) {
+    $msg = (string)($resp['error']['message'] ?? '');
+    $kind = preg_match('/limit:\s*0\b/', $msg) ? 'none' : null;
+    foreach (($resp['error']['details'] ?? []) as $d) {
+        foreach (($d['violations'] ?? []) as $v) {
+            $q = (string)($v['quotaId'] ?? '');
+            if ((string)($v['quotaValue'] ?? '') === '0') $kind = 'none';
+            elseif (!$kind && stripos($q, 'PerDay') !== false) $kind = 'day';
+            elseif (!$kind && stripos($q, 'PerMinute') !== false) $kind = 'minute';
+        }
     }
-    $resp = json_decode($raw, true);
-    if ($status !== 200) {
-        $msg = (string)($resp['error']['message'] ?? '');
-        log_error('Gemini API error', ['status' => $status, 'message' => mb_substr($msg !== '' ? $msg : (string)$raw, 0, 500), 'model' => $model]);
-        if ($status === 429) return ['error' => "The free AI limit is used up for now. Try again in a minute — or tomorrow, if today's daily limit was reached."];
-        if ($status === 404) return ['error' => "Google doesn't recognise the AI model \"{$model}\". Set GEMINI_MODEL in secrets.php to a current model name from Google AI Studio."];
-        if ($status === 401 || $status === 403 || stripos($msg, 'api key') !== false) return ['error' => 'Google rejected the API key. Check GEMINI_API_KEY in php_backend/secrets.php matches the key in Google AI Studio.'];
-        if ($status >= 500) return ['error' => "Google's AI service is having trouble right now. Try again in a minute."];
-        return ['error' => 'The AI request failed (' . $status . '). Details are in php_backend/logs/error.log.'];
+    return $kind ?? 'minute';
+}
+
+// Returns ['data' => decoded JSON object] or ['error' => message for the admin].
+function ai_generate_json(string $system, string $prompt) {
+    if (!ai_configured()) return ['error' => "AI isn't set up yet — add your Gemini key as GEMINI_API_KEY in php_backend/secrets.php."];
+    if (!function_exists('curl_init')) return ['error' => "This server's PHP doesn't have cURL enabled, which the AI features need."];
+
+    $payload = [
+        'systemInstruction' => ['parts' => [['text' => $system]]],
+        'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
+        'generationConfig' => ['responseMimeType' => 'application/json'],
+    ];
+    @set_time_limit(180);
+    $startedAt = time();
+    $failures = [];
+    $r = null;
+    $model = null;
+    foreach (ai_model_chain() as $model) {
+        if ($failures && time() - $startedAt > 60) break;
+        $r = gemini_request($model, $payload, 45);
+        if ($r['raw'] !== false && $r['status'] === 200) break;
+        $msg = (string)($r['resp']['error']['message'] ?? '');
+        $kind = $r['status'] === 429 ? gemini_quota_kind($r['resp']) : null;
+        $failures[] = ['model' => $model, 'status' => $r['status'], 'kind' => $kind];
+        log_error('Gemini API error', ['model' => $model, 'status' => $r['status'], 'quota' => $kind, 'curl' => $r['curlErr'] ?: null, 'message' => mb_substr($msg !== '' ? $msg : (string)$r['raw'], 0, 500)]);
+        // Key problems won't be fixed by another model; everything else might be.
+        if ($r['status'] === 400 || $r['status'] === 401 || $r['status'] === 403) {
+            if ($r['status'] !== 400 || stripos($msg, 'api key') !== false) return ['error' => 'Google rejected the API key. Check GEMINI_API_KEY in php_backend/secrets.php matches the key in Google AI Studio.'];
+            return ['error' => 'The AI request failed (400). Details are in php_backend/logs/error.log.'];
+        }
+        if ($r['raw'] === false && stripos($r['curlErr'], 'resolve') !== false) return ['error' => "This server couldn't reach Google's AI service. Try again in a moment."];
     }
 
+    if (!$r || $r['raw'] === false || $r['status'] !== 200) {
+        $kinds = array_column($failures, 'kind');
+        $statuses = array_column($failures, 'status');
+        if ($kinds && count(array_filter($kinds, fn($k) => $k === 'none')) === count($failures)) {
+            return ['error' => "Your Google key doesn't have any free AI allowance. In Google AI Studio, open the key's project and check it's on the free tier — or create a new key in a new project — then update GEMINI_API_KEY in secrets.php."];
+        }
+        if (in_array('day', $kinds, true)) return ['error' => "Today's free AI limit has been reached. It resets overnight (midnight Pacific time)."];
+        if (in_array('minute', $kinds, true)) return ['error' => 'Too many AI requests in the last minute. Wait a minute and try again.'];
+        if (count(array_filter($statuses, fn($s) => $s === 404)) === count($failures)) return ['error' => "Google didn't recognise any of the AI models tried. Set GEMINI_MODEL in secrets.php to a current model name from Google AI Studio."];
+        if (array_filter($statuses, fn($s) => $s >= 500) || in_array(0, $statuses, true)) return ['error' => "Google's AI service is busy right now (tried " . count($failures) . ' models). Try again in a few minutes.'];
+        return ['error' => 'The AI request failed. Details are in php_backend/logs/error.log.'];
+    }
+    if ($failures) @file_put_contents(__DIR__ . '/logs/ai_model.txt', $model);
+
+    $resp = $r['resp'];
     if (!empty($resp['promptFeedback']['blockReason'])) return ['error' => "Google's safety filter declined this request. Try rewording your note."];
     $text = '';
     foreach (($resp['candidates'][0]['content']['parts'] ?? []) as $part) {
@@ -62,7 +110,7 @@ function ai_generate_json(string $system, string $prompt) {
     }
     $data = ai_decode_json($text);
     if (!is_array($data)) {
-        log_error('Gemini returned unreadable output', ['finish' => $resp['candidates'][0]['finishReason'] ?? null, 'text' => mb_substr($text, 0, 500)]);
+        log_error('Gemini returned unreadable output', ['model' => $model, 'finish' => $resp['candidates'][0]['finishReason'] ?? null, 'text' => mb_substr($text, 0, 500)]);
         return ['error' => 'The AI returned something unreadable. Try again.'];
     }
     return ['data' => $data];

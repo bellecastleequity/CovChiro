@@ -11,6 +11,7 @@ switch ($action) {
     case 'admin_resend': handle_admin_resend($pdo); break;
     case 'admin_unsubscribe': handle_admin_unsubscribe($pdo); break;
     case 'admin_delete': handle_admin_delete($pdo); break;
+    case 'admin_email_preview': handle_admin_email_preview($pdo); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
@@ -155,10 +156,10 @@ function create_welcome_promo(PDO $pdo, string $email) {
 // only embeds the most recent 25 for the at-a-glance cards.
 function handle_admin_list(PDO $pdo) {
     require_admin();
-    $rows = $pdo->query("SELECT l.id, l.name, l.email, l.site, l.promo_code, l.campaign_code, l.status, l.created_at, l.converted_at, l.drip_step,
-        p.expires_at, p.value AS promo_value, p.used_count, p.max_uses
-        FROM leads l LEFT JOIN promo_codes p ON p.code = l.promo_code
-        ORDER BY l.created_at DESC LIMIT 500")->fetchAll();
+    $rows = $pdo->query("SELECT l.id, l.name, l.email, l.site, l.promo_code, l.campaign_code, l.status, l.created_at, l.converted_at, l.drip_step, l.last_drip_sent_at,
+        p.expires_at, p.value AS promo_value, p.used_count, p.max_uses, b.total AS booking_total, b.status AS booking_status
+        FROM leads l LEFT JOIN promo_codes p ON p.code = l.promo_code LEFT JOIN bookings b ON b.id = l.converted_booking_id
+        ORDER BY l.created_at DESC LIMIT 2000")->fetchAll();
     json_response(['leads' => array_map(fn($r) => [
         'id' => (int)$r['id'], 'name' => $r['name'], 'email' => $r['email'], 'site' => $r['site'], 'code' => $r['promo_code'],
         'campaign' => $r['campaign_code'] !== '' ? $r['campaign_code'] : null,
@@ -166,7 +167,53 @@ function handle_admin_list(PDO $pdo) {
         'dripStep' => (int)$r['drip_step'], 'expiresAt' => $r['expires_at'],
         'discountPct' => $r['promo_value'] !== null ? (float)$r['promo_value'] : null,
         'codeUsed' => $r['used_count'] !== null && $r['max_uses'] !== null && (int)$r['used_count'] >= (int)$r['max_uses'],
+        'lastEmailAt' => to_iso($r['last_drip_sent_at']),
+        'bookingTotal' => $r['booking_total'] !== null && $r['booking_status'] !== 'cancelled' ? round((float)$r['booking_total'], 2) : null,
     ], $rows)]);
+}
+
+// What a follow-up sequence's emails look like, using a sample person and a
+// sample code: the welcome pop-up sequence (campaign '') for either site, or a
+// campaign's, including its custom copy. Without `step` it returns each step's
+// subject (plus the standard subject) for listing; with `step` it returns that
+// email's full HTML, optionally with unsaved edits (`custom`) applied, and with
+// `send` it also emails it to the admin as a test.
+function handle_admin_email_preview(PDO $pdo) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'POST required'], 405);
+    require_admin();
+    $body = json_body();
+    $campaignCode = strtoupper(trim((string)($body['campaign'] ?? '')));
+    if ($campaignCode !== '') {
+        $campaign = promo_by_code($pdo, $campaignCode);
+        if (!$campaign || !empty($campaign['parent_code']) || !empty($campaign['is_welcome'])) json_response(['error' => 'Campaign not found.'], 404);
+        $site = ($campaign['landing_site'] ?? 'coverage') === 'florida' ? 'florida' : 'coverage';
+        $promo = ['code' => $campaign['code'] . '-7K2F', 'type' => $campaign['type'], 'value' => $campaign['value'], 'expires_at' => campaign_personal_expiry($campaign)];
+    } else {
+        $site = ($body['site'] ?? '') === 'florida' ? 'florida' : 'coverage';
+        $promo = ['code' => 'WELCOME-7K2F', 'type' => 'percent', 'value' => WELCOME_OFFER_PCT, 'expires_at' => date('Y-m-d', strtotime('+' . WELCOME_OFFER_DAYS . ' days'))];
+    }
+    $lead = ['name' => 'Alex Sample', 'email' => ADMIN_EMAIL, 'site' => $site, 'campaign_code' => $campaignCode, 'unsubscribe_token' => 'preview'];
+
+    if (!isset($body['step'])) {
+        $steps = [];
+        for ($i = 0; $i < 5; $i++) {
+            $steps[] = ['subject' => lead_email_build($lead, $promo, $i)['subject'], 'standardSubject' => lead_email_build($lead, $promo, $i, ['subject' => '', 'intro' => ''])['subject']];
+        }
+        json_response(['site' => $site, 'steps' => $steps]);
+    }
+    $step = (int)$body['step'];
+    if ($step < 0 || $step > 4) json_response(['error' => 'Invalid step.'], 400);
+    $custom = null;
+    if (is_array($body['custom'] ?? null) && $campaignCode !== '') {
+        $custom = ['subject' => trim(strip_tags((string)($body['custom']['subject'] ?? ''))), 'intro' => trim(strip_tags((string)($body['custom']['intro'] ?? '')))];
+    }
+    $email = lead_email_build($lead, $promo, $step, $custom);
+    if (!empty($body['send'])) {
+        $sent = send_email(ADMIN_EMAIL, '[TEST] ' . $email['subject'], $email['html'], null, $site);
+        if (!$sent) json_response(['error' => 'The test email failed to send — check the email diagnostics on the Analytics tab.'], 502);
+        json_response(['sent' => true, 'to' => ADMIN_EMAIL]);
+    }
+    json_response(['subject' => $email['subject'], 'html' => $email['html']]);
 }
 
 // "This lead says they never got the code" — resends whichever email they're
