@@ -1,3 +1,22 @@
+// A brief, non-blocking confirmation banner — for "this save worked" instead
+// of an alert() that forces a click to dismiss. type: 'success' | 'error'.
+function showToast(message, type = 'success'){
+  let host = document.getElementById('toast-host');
+  if (!host){
+    host = document.createElement('div');
+    host.id = 'toast-host';
+    document.body.appendChild(host);
+  }
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = message;
+  host.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, 3200);
+}
 const ORIGIN_ZIP = '32801';
 const ORIGIN = { lat: 28.5410, lng: -81.3790 };
 const MILE_TIERS = [ { max: 150, rate: 0.20 }, { max: 300, rate: 0.40 }, { max: Infinity, rate: 0.60 } ];

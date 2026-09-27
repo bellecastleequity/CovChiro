@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=7">
+<link rel="stylesheet" href="assets/style.css?v=8">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
 <body>
@@ -83,7 +83,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="assets/app-shared.js?v=7"></script>
+<script src="assets/app-shared.js?v=8"></script>
 <script>
 let adminBookings = [], videoRequests = [], promoCodes = [], admView = 'blocks', latestAnalytics = null, adminInvoices = [];
 let showCancelledBookings = false;
@@ -450,8 +450,9 @@ function renderAdmin(){
       </div>`).join('');
     el.querySelectorAll('[data-unblock]').forEach(btn => btn.addEventListener('click', async () => {
       try { await apiFetch('/api/booking.php?action=blackout_remove', { method: 'POST', body: JSON.stringify({ id: btn.dataset.unblock }) }); }
-      catch (e) { alert(e.message); }
+      catch (e) { alert(e.message); return; }
       await loadAvailability(); renderAdmin();
+      showToast('Blocked date removed.');
     }));
   } else if (admView === 'booked') {
     const phoneBookingCardHtml = `
@@ -676,6 +677,7 @@ function renderAdmin(){
       catch (e) { alert(e.message); return; }
       await loadAdminBookings();
       renderAdmin();
+      showToast('Marked complete — balance invoiced.');
     }));
 
     let billingTargetId = null;
@@ -774,6 +776,7 @@ function renderAdmin(){
       await loadAdminBookings();
       openBillingManage(billingTargetId);
       renderAdmin();
+      showToast(`${amount >= 0 ? 'Charge' : 'Credit'} of ${money(Math.abs(amount))} added.`);
     });
 
     $('bm-pay-submit').addEventListener('click', async () => {
@@ -788,6 +791,7 @@ function renderAdmin(){
       await loadAdminBookings();
       openBillingManage(billingTargetId);
       renderAdmin();
+      showToast(`Payment of ${money(amount)} recorded.`);
     });
 
     $('bm-refund-submit').addEventListener('click', async () => {
@@ -800,6 +804,7 @@ function renderAdmin(){
       await loadAdminBookings();
       openBillingManage(billingTargetId);
       renderAdmin();
+      showToast(`Refund of ${money(amount)} issued.`);
     });
 
     $('bm-resched-submit').addEventListener('click', async () => {
@@ -839,6 +844,7 @@ function renderAdmin(){
       } catch (e) { $('bm-err').textContent = e.message; return; }
       await loadAdminBookings();
       openBillingManage(billingTargetId);
+      showToast('Coverage details saved.');
     });
 
     $('bm-cancel-submit').addEventListener('click', async () => {
@@ -853,6 +859,7 @@ function renderAdmin(){
       await loadAdminBookings();
       $('billing-manage-card').classList.add('hidden');
       renderAdmin();
+      showToast('Booking cancelled.');
     });
 
     $('bm-delete-submit').addEventListener('click', async () => {
@@ -863,6 +870,7 @@ function renderAdmin(){
       await loadAdminBookings();
       $('billing-manage-card').classList.add('hidden');
       renderAdmin();
+      showToast('Booking deleted.');
     });
   } else if (admView === 'video'){
     if (!videoRequests.length){
@@ -896,6 +904,7 @@ function renderAdmin(){
       } catch (e) { alert(e.message); btn.disabled = false; return; }
       videoRequests = (await apiFetch('/api/video.php?action=list')).requests || [];
       renderAdmin();
+      showToast('Zoom link sent — marked scheduled.');
     }));
     el.querySelectorAll('[data-vid-done]').forEach(btn => btn.addEventListener('click', async () => {
       const id = btn.dataset.vidDone;
@@ -906,6 +915,7 @@ function renderAdmin(){
       } catch (e) { alert(e.message); btn.disabled = false; return; }
       videoRequests = (await apiFetch('/api/video.php?action=list')).requests || [];
       renderAdmin();
+      showToast('Marked complete.');
     }));
   } else if (admView === 'promo'){
     const today = new Date().toISOString().slice(0,10);
@@ -965,6 +975,7 @@ function renderAdmin(){
     $('lm-toggle').addEventListener('change', async (e) => {
       lastMinuteEnabled = e.target.checked;
       await apiFetch('/api/settings.php?action=set_last_minute', { method: 'POST', body: JSON.stringify({ enabled: lastMinuteEnabled }) });
+      showToast(`Last-minute discount ${lastMinuteEnabled ? 'enabled' : 'disabled'}.`);
     });
     $('pc-add').addEventListener('click', async () => {
       const code = $('pc-code').value.trim().toUpperCase();
@@ -981,11 +992,14 @@ function renderAdmin(){
       $('pc-err').textContent = '';
       promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
       renderAdmin();
+      showToast(`Promo code ${code} created.`);
     });
     el.querySelectorAll('[data-toggle-promo]').forEach(btn => btn.addEventListener('click', async () => {
-      await apiFetch('/api/promo.php?action=toggle', { method: 'POST', body: JSON.stringify({ code: btn.dataset.togglePromo }) });
+      try { await apiFetch('/api/promo.php?action=toggle', { method: 'POST', body: JSON.stringify({ code: btn.dataset.togglePromo }) }); }
+      catch (e) { alert(e.message); return; }
       promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || [];
       renderAdmin();
+      showToast(`Promo code ${btn.dataset.togglePromo} updated.`);
     }));
   } else if (admView === 'inventory'){
     const openDates = openDatesInWindow(14);
@@ -1195,6 +1209,7 @@ function renderAdmin(){
       }
       flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || [];
       renderAdmin();
+      showToast(`Published ${suggestedUrgent.length} date${suggestedUrgent.length !== 1 ? 's' : ''} at Flex Rate.`);
     });
     $('bulk-mode').addEventListener('change', () => {
       const isWeekday = $('bulk-mode').value === 'weekday';
@@ -1279,11 +1294,14 @@ function renderAdmin(){
       flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || [];
       $('flex-publish-card').classList.add('hidden');
       renderAdmin();
+      showToast(`Flex Rate published for ${date}.`);
     });
     el.querySelectorAll('[data-flex-unpublish]').forEach(btn => btn.addEventListener('click', async () => {
-      await apiFetch('/api/flexrate.php?action=unpublish', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.flexUnpublish) }) });
+      try { await apiFetch('/api/flexrate.php?action=unpublish', { method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.flexUnpublish) }) }); }
+      catch (e) { alert(e.message); return; }
       flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || [];
       renderAdmin();
+      showToast('Flex Rate listing removed.');
     }));
   } else if (admView === 'standing'){
     const pending = standingRequests.filter(r => r.status === 'pending');
@@ -1373,8 +1391,10 @@ function renderAdmin(){
       if (inp) inp.addEventListener('change', async () => {
         const customRate = inp.value !== '' ? parseFloat(inp.value) : null;
         r.customRate = customRate !== null ? customRate / 100 : null;
-        await apiFetch('/api/standing.php?action=set_custom_rate', { method: 'POST', body: JSON.stringify({ requestId: r.id, customRate }) });
+        try { await apiFetch('/api/standing.php?action=set_custom_rate', { method: 'POST', body: JSON.stringify({ requestId: r.id, customRate }) }); }
+        catch (e) { alert(e.message); return; }
         renderAdmin();
+        showToast('Custom rate saved.');
       });
     });
 
@@ -1405,18 +1425,23 @@ function renderAdmin(){
       standingAgreements = (await apiFetch('/api/standing.php?action=list_agreements')).agreements || [];
       await loadAvailability();
       renderAdmin();
+      showToast('Standing day request approved.');
     }));
     el.querySelectorAll('[data-decline]').forEach(btn => btn.addEventListener('click', async () => {
-      await apiFetch('/api/standing.php?action=decline', { method: 'POST', body: JSON.stringify({ id: btn.dataset.decline }) });
+      try { await apiFetch('/api/standing.php?action=decline', { method: 'POST', body: JSON.stringify({ id: btn.dataset.decline }) }); }
+      catch (e) { alert(e.message); return; }
       standingRequests = (await apiFetch('/api/standing.php?action=list_pending')).requests || [];
       renderAdmin();
+      showToast('Standing day request declined.');
     }));
     el.querySelectorAll('[data-cancel-agreement]').forEach(btn => btn.addEventListener('click', async () => {
       if (!confirm(`Cancel this standing agreement? Dates before ${cancelCutoff} (30 days out) still occur as scheduled. Dates after that are released.`)) return;
-      await apiFetch('/api/standing.php?action=cancel_agreement', { method: 'POST', body: JSON.stringify({ id: btn.dataset.cancelAgreement }) });
+      try { await apiFetch('/api/standing.php?action=cancel_agreement', { method: 'POST', body: JSON.stringify({ id: btn.dataset.cancelAgreement }) }); }
+      catch (e) { alert(e.message); return; }
       standingAgreements = (await apiFetch('/api/standing.php?action=list_agreements')).agreements || [];
       await loadAvailability();
       renderAdmin();
+      showToast('Standing agreement cancelled.');
     }));
   } else if (admView === 'invoices'){
     const createHtml = `
@@ -1458,12 +1483,15 @@ function renderAdmin(){
       $('inv-email').value = ''; $('inv-desc').value = ''; $('inv-amount').value = '';
       adminInvoices = (await apiFetch('/api/invoice.php?action=admin_list')).invoices || [];
       renderAdmin();
+      showToast('Invoice created and sent.');
     });
     el.querySelectorAll('[data-void-invoice]').forEach(btn => btn.addEventListener('click', async () => {
       if (!confirm('Void this invoice? This cannot be undone.')) return;
-      await apiFetch('/api/invoice.php?action=admin_void', { method: 'POST', body: JSON.stringify({ id: btn.dataset.voidInvoice }) });
+      try { await apiFetch('/api/invoice.php?action=admin_void', { method: 'POST', body: JSON.stringify({ id: btn.dataset.voidInvoice }) }); }
+      catch (e) { alert(e.message); return; }
       adminInvoices = (await apiFetch('/api/invoice.php?action=admin_list')).invoices || [];
       renderAdmin();
+      showToast('Invoice voided.');
     }));
   } else if (admView === 'earnings'){
     if (!latestEarnings){ el.innerHTML = `<div class="empty">Couldn't load earnings right now.</div>`; return; }
@@ -1759,6 +1787,7 @@ function renderDocumentsTab(el){
       if (!res.ok) throw new Error(data.error || 'Upload failed.');
       docStatus[key] = { available: true, url: data.url, uploadedAt: data.uploadedAt };
       renderDocumentsTab($('admin-list'));
+      showToast(`${DOC_LABELS[key]} uploaded.`);
     } catch (e) { errEl.textContent = e.message; btn.disabled = false; }
   }));
 }
@@ -1870,6 +1899,7 @@ $('bl-add').addEventListener('click', async () => {
   document.querySelectorAll('[data-adm]').forEach(x => x.classList.toggle('on', x.dataset.adm === 'blocks'));
   await loadAvailability();
   renderAdmin();
+  showToast('Blocked date added.');
 });
 
 

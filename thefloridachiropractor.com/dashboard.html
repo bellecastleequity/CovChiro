@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=7">
+<link rel="stylesheet" href="assets/style.css?v=8">
 </head>
 <body>
 
@@ -326,7 +326,7 @@
 </div>
 
 <script src="https://js.stripe.com/v3/"></script>
-<script src="assets/app-shared.js?v=7"></script>
+<script src="assets/app-shared.js?v=8"></script>
 <script>
 async function openStandingPaymentModal(agreementId, date, amountLabel, onSuccess){
   paymentContext = { kind: 'standing', agreementId, date };
@@ -585,9 +585,12 @@ function renderDashStanding(){
 
   el.querySelectorAll('[data-patient-volume]').forEach(inp => inp.addEventListener('change', async () => {
     const [aid, date] = inp.dataset.patientVolume.split('|');
-    await apiFetch('/api/standing.php?action=set_patient_volume', { method: 'POST', body: JSON.stringify({
-      agreementId: aid, date, patientVolume: inp.value ? parseInt(inp.value) : ''
-    })});
+    try {
+      await apiFetch('/api/standing.php?action=set_patient_volume', { method: 'POST', body: JSON.stringify({
+        agreementId: aid, date, patientVolume: inp.value ? parseInt(inp.value) : ''
+      })});
+    } catch (e) { alert(e.message); return; }
+    showToast('Patient volume saved.');
   }));
 
   el.querySelectorAll('[data-cancel-standing-date]').forEach(btn => btn.addEventListener('click', async () => {
@@ -599,14 +602,17 @@ function renderDashStanding(){
     catch (e) { alert(e.message); return; }
     await loadMyStanding(); await loadAvailability();
     renderDashStanding();
+    showToast('Date cancelled.');
   }));
 
   el.querySelectorAll('[data-cancel-standing-agreement]').forEach(btn => btn.addEventListener('click', async () => {
     const cutoff = localDateStr(new Date(Date.now() + 30*864e5));
     if (!confirm(`Cancel this entire standing agreement? Dates before ${cutoff} (30 days out) still occur as scheduled and billed normally. Dates after that are released.`)) return;
-    await apiFetch('/api/standing.php?action=cancel_agreement', { method: 'POST', body: JSON.stringify({ id: btn.dataset.cancelStandingAgreement }) });
+    try { await apiFetch('/api/standing.php?action=cancel_agreement', { method: 'POST', body: JSON.stringify({ id: btn.dataset.cancelStandingAgreement }) }); }
+    catch (e) { alert(e.message); return; }
     await loadMyStanding(); await loadAvailability();
     renderDashStanding();
+    showToast('Standing agreement cancelled.');
   }));
 }
 function renderDash(){
@@ -718,6 +724,7 @@ function renderDash(){
       })});
       await loadMyBookings();
       renderDash();
+      showToast('Patient volume saved.');
     } catch (e) { alert(e.message); }
   }));
   el.querySelectorAll('[data-video]').forEach(btn => btn.addEventListener('click', () => openVideoRequest(btn.dataset.video)));
@@ -755,6 +762,7 @@ $('review-submit').addEventListener('click', async () => {
   await loadMyBookings();
   $('review-modal').classList.remove('open');
   renderDash();
+  showToast('Thanks for your review!');
 });
 function feedbackEligible(b){
   return !!b.completedAt;
@@ -830,6 +838,7 @@ $('feedback-submit').addEventListener('click', async () => {
   await loadMyBookings();
   $('feedback-modal').classList.remove('open');
   renderDash();
+  showToast('Feedback submitted — thank you.');
   if (offerPublicReview && reviewEligible(bookings.find(b => b.id === submittedId) || {}) && confirm('Thanks for the feedback! Would you also like to leave a quick public review?')){
     openReview(submittedId);
   }
@@ -872,6 +881,7 @@ $('cancel-confirm').addEventListener('click', async () => {
   await loadMyBookings(); await loadAvailability();
   $('cancel-modal').classList.remove('open');
   renderDash();
+  showToast('Booking cancelled.');
 });
 $('ec-dress').addEventListener('change', () => {
   $('ec-dress-other').classList.toggle('hidden', $('ec-dress').value !== 'other');
@@ -921,6 +931,7 @@ $('ec-submit').addEventListener('click', async () => {
   await loadMyBookings();
   $('edit-coverage-modal').classList.remove('open');
   renderDash();
+  showToast('Coverage details saved.');
 });
 let editAddressTargetId = null;
 let editAddressPendingConfirm = null; // set once a preview shows a nonzero delta, awaiting explicit confirmation
@@ -975,6 +986,7 @@ async function commitAddressChange(address, confirmed){
   await loadMyBookings();
   $('edit-address-modal').classList.remove('open');
   renderDash();
+  showToast('Address updated.');
 }
 function isWeekday(dateStr){
   const day = new Date(dateStr + 'T12:00:00').getDay();
