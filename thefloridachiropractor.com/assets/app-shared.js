@@ -240,7 +240,21 @@ function renderChatMessages(messages){
   const body = $('chat-body');
   if (!body) return;
   if (!messages.length) return; // leave the default greeting in place
-  body.innerHTML = messages.map(m => `<div class="chat-msg ${m.sender === 'admin' ? 'chat-msg-admin' : 'chat-msg-me'}">${String(m.message).replace(/</g,'&lt;')}</div>`).join('');
+  body.innerHTML = messages.map(m => {
+    const isAdmin = m.sender === 'admin';
+    const initial = (m.name || '?').trim().charAt(0).toUpperCase() || '?';
+    const avatar = isAdmin
+      ? `<img class="chat-avatar" src="assets/headshot.jpg" alt="Dr. McPherson">`
+      : `<div class="chat-avatar-initial">${initial}</div>`;
+    const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+    return `<div class="chat-msg-row ${isAdmin ? 'chat-row-admin' : 'chat-row-me'}">
+      ${avatar}
+      <div class="chat-bubble-wrap">
+        <div class="chat-msg ${isAdmin ? 'chat-msg-admin' : 'chat-msg-me'}">${String(m.message).replace(/</g,'&lt;')}</div>
+        ${time ? `<div class="chat-msg-time">${time}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
   body.scrollTop = body.scrollHeight;
 }
 async function loadChatHistory(){

@@ -55,8 +55,14 @@ function handle_create(PDO $pdo) {
     $body = json_body();
 
     $date = $body['date'] ?? '';
+    $kind = ($body['kind'] ?? '') === 'event' ? 'event' : 'homevisit';
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) json_response(['error' => 'Pick a valid date.'], 400);
     if (strtotime($date) < strtotime('today')) json_response(['error' => 'Pick a date today or later.'], 400);
+    // Home visits are Monday-Friday only; event coverage (sporting events,
+    // corporate wellness days) commonly falls on weekends, so it's exempt.
+    if ($kind === 'homevisit' && in_array((int)date('w', strtotime($date)), [0, 6], true)) {
+        json_response(['error' => 'Home visits are available Monday through Friday only.'], 400);
+    }
 
     $signature = $body['signature'] ?? null;
     if (!$signature || empty($signature['name']) || empty($signature['agreementType'])) {
