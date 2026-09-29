@@ -16,3 +16,4 @@ export * as auth from "./auth";
 export * from "./onboarding";
 export * as admin from "./admin";
 export * as messaging from "./messaging";
+export * from "./favorites";

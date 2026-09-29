@@ -1,0 +1,229 @@
+import { notFound } from "next/navigation";
+import { Ban, Car, Heart, MessageSquare, Star } from "lucide-react";
+import { prisma } from "@cm/db";
+import { clinicView } from "@cm/core";
+import { getSettings, shiftCandidates } from "@cm/services";
+import { ActionForm, SubmitButton } from "@/components/ui/action-form";
+import { Badge, StatusBadge } from "@/components/ui/badge";
+import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { Field, PhiNotice, Select, Textarea } from "@/components/ui/form";
+import { Alert, Empty, PageHeader } from "@/components/ui/misc";
+import { dateLabel, money, pct, relative, timeRange } from "@/lib/format";
+import { requireActor } from "@/lib/session";
+import { blockAction, cancelShiftAction, disputeAction, favoriteAction, inviteAction, openThreadAction, postDraftAction, ratingAction, selectAction } from "../../actions";
+
+type Cand = Awaited<ReturnType<typeof shiftCandidates>>["applicants"][number];
+
+function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; applicant: boolean }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <div className="flex items-start gap-3">
+        {c.photoUrl ? <img src={`/api/files/${c.photoUrl}`} alt="" className="size-12 rounded-full object-cover" /> : <div className="grid size-12 place-items-center rounded-full bg-brand-50 font-semibold text-brand-700">{c.displayName.replace(/^Dr\.?\s*/, "").slice(0, 1)}</div>}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold">{c.displayName}, {c.credentialTitle}</span>
+            {c.badges.map((b) => <Badge key={b} tone={b === "Favorite" ? "brand" : b === "New to platform" ? "blue" : "green"}>{b}</Badge>)}
+          </div>
+          <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-slate-500">
+            <span>{c.city}, {c.state}</span>
+            {c.driveMinutes !== null ? <span className="flex items-center gap-1"><Car className="size-3" />{c.driveMinutes} min</span> : null}
+            <span className="flex items-center gap-1"><Star className="size-3 text-amber-500" />{c.ratingAvg ? `${c.ratingAvg.toFixed(1)} (${c.ratingCount})` : "No ratings yet"}</span>
+            <span>Reliability {pct(c.reliability)}</span>
+            <span>Match {Math.round(c.score * 100)}</span>
+          </div>
+          {c.skills.length ? <div className="mt-2 flex flex-wrap gap-1">{c.skills.slice(0, 8).map((s) => <Badge key={s}>{s}</Badge>)}</div> : null}
+          {c.note ? <p className="mt-2 rounded-lg bg-slate-50 p-2 text-sm text-slate-700">“{c.note}”</p> : null}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {applicant ? (
+          <ActionForm action={selectAction} confirm={`Confirm ${c.displayName} for this shift? The deposit is charged now.`}>
+            <input type="hidden" name="shiftId" value={shiftId} />
+            <input type="hidden" name="providerId" value={c.providerId} />
+            <SubmitButton size="sm">Select</SubmitButton>
+          </ActionForm>
+        ) : c.pendingOffer ? (
+          <Badge tone="amber">Invitation sent</Badge>
+        ) : (
+          <label className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-1.5 text-sm">
+            <input type="checkbox" name="providerId" value={c.providerId} form={`invite-${shiftId}`} className="size-4 text-brand-600" /> Invite
+          </label>
+        )}
+        <ActionForm action={openThreadAction} successMessage={false}>
+          <input type="hidden" name="shiftId" value={shiftId} />
+          <input type="hidden" name="providerId" value={c.providerId} />
+          <SubmitButton size="sm" variant="ghost"><MessageSquare className="size-4" />Message</SubmitButton>
+        </ActionForm>
+        <ActionForm action={blockAction} confirm={`Block ${c.displayName}? They won't be matched to your shifts.`}>
+          <input type="hidden" name="providerId" value={c.providerId} />
+          <SubmitButton size="sm" variant="ghost"><Ban className="size-4" />Block</SubmitButton>
+        </ActionForm>
+      </div>
+    </div>
+  );
+}
+
+export default async function ClinicShift({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ posted?: string; saved?: string }> }) {
+  const { actor } = await requireActor("clinic");
+  const { id } = await params;
+  const sp = await searchParams;
+  const shift = await prisma.shift.findFirst({
+    where: { id, location: { clinicOrgId: actor.clinicOrgId! } },
+    include: {
+      location: true,
+      promoCode: true,
+      assignments: { orderBy: { confirmedAt: "desc" }, include: { provider: true, payments: true, ratings: true, disputes: true } },
+    },
+  });
+  if (!shift) notFound();
+  const s = await getSettings();
+  const tz = shift.location.timeZone;
+  const live = shift.assignments.find((a) => ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"].includes(a.status));
+  const selectable = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"].includes(shift.status);
+  const cands = selectable ? await shiftCandidates(actor, id) : null;
+  const view = clinicView({
+    clinicPriceCents: live?.clinicPriceCents ?? shift.clinicPriceCents,
+    providerPayCents: 0,
+    promoDiscountCents: live?.promoDiscountCents ?? shift.promoDiscountCents,
+    mileageCents: live?.mileageCents ?? 0,
+    lodgingCents: live?.lodgingApprovedCents ?? 0,
+  });
+  const hoursToStart = (+shift.startsAt - Date.now()) / 3_600_000;
+  const fav = live ? await prisma.favorite.findFirst({ where: { fromType: "CLINIC", fromId: actor.clinicOrgId!, toType: "PROVIDER", toId: live.providerId } }) : null;
+  const myRating = live?.ratings.find((r) => r.raterType === "CLINIC");
+  const theirs = live?.ratings.find((r) => r.raterType === "PROVIDER" && r.revealedAt);
+  return (
+    <>
+      <PageHeader
+        eyebrow={`${shift.professionCode} · ${shift.location.name}`}
+        title={dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}
+        description={timeRange(shift.startsAt, shift.endsAt, tz)}
+        actions={<StatusBadge status={shift.status} />}
+      />
+      {sp.posted ? <Alert tone="success" className="mb-5" title="Shift posted">We're notifying eligible providers now. Applicants will appear below.</Alert> : null}
+      {sp.saved ? <Alert tone="info" className="mb-5">Draft saved.</Alert> : null}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          {shift.status === "DRAFT" ? (
+            <Card><CardBody>
+              <ActionForm action={postDraftAction}><input type="hidden" name="shiftId" value={shift.id} /><SubmitButton>Post this shift</SubmitButton></ActionForm>
+            </CardBody></Card>
+          ) : null}
+          {live ? (
+            <Card>
+              <CardHeader title="Your provider" action={<StatusBadge status={live.status} />} />
+              <CardBody className="space-y-3">
+                <div className="flex items-center gap-3">
+                  {live.provider.photoUrl ? <img src={`/api/files/${live.provider.photoUrl}`} alt="" className="size-12 rounded-full object-cover" /> : null}
+                  <div>
+                    <div className="font-semibold">{live.provider.displayName}</div>
+                    <div className="text-sm text-slate-500">{live.provider.homeCity}, {live.provider.homeState} · {live.driveMinutes} min drive</div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <ActionForm action={openThreadAction} successMessage={false}>
+                    <input type="hidden" name="shiftId" value={shift.id} />
+                    <input type="hidden" name="providerId" value={live.providerId} />
+                    <SubmitButton size="sm" variant="outline"><MessageSquare className="size-4" />Message</SubmitButton>
+                  </ActionForm>
+                  {live.status === "COMPLETED" ? (
+                    <ActionForm action={favoriteAction}>
+                      <input type="hidden" name="providerId" value={live.providerId} />
+                      <input type="hidden" name="on" value={fav ? "0" : "1"} />
+                      <SubmitButton size="sm" variant="outline"><Heart className={`size-4 ${fav ? "fill-red-500 text-red-500" : ""}`} />{fav ? "Favorited" : "Add to favorites"}</SubmitButton>
+                    </ActionForm>
+                  ) : null}
+                </div>
+                {live.payments.some((p) => p.status === "FAILED") ? <Alert tone="error" title="Deposit failed">Update your payment method in Billing to keep this booking.</Alert> : null}
+              </CardBody>
+            </Card>
+          ) : null}
+          {live?.status === "COMPLETED" ? (
+            <Card>
+              <CardHeader title="Rate your provider" description="Double-blind: revealed when both sides submit or after 14 days." />
+              <CardBody>
+                {myRating ? (
+                  <p className="text-sm text-slate-600">You rated {myRating.stars}★.{theirs ? ` They rated your clinic ${theirs.stars}★.` : ""}</p>
+                ) : (
+                  <ActionForm action={ratingAction} className="space-y-3">
+                    <input type="hidden" name="assignmentId" value={live.id} />
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {[["stars", "Overall"], ["punctuality", "Punctuality"], ["professionalism", "Professionalism"], ["clinicalSkill", "Clinical skill"], ["communication", "Communication"], ["patientFeedback", "Patient feedback"]].map(([n, l]) => (
+                        <Field key={n} label={l}><Select name={n} defaultValue="5">{[5, 4, 3, 2, 1].map((v) => <option key={v} value={v}>{v}★</option>)}</Select></Field>
+                      ))}
+                    </div>
+                    <Textarea name="comment" placeholder="Comments (optional)" maxLength={1000} />
+                    <PhiNotice />
+                    <SubmitButton>Submit rating</SubmitButton>
+                  </ActionForm>
+                )}
+              </CardBody>
+            </Card>
+          ) : null}
+          {cands ? (
+            <>
+              <Card>
+                <CardHeader title={`Applicants (${cands.applicants.length})`} description={shift.selectionDeadline ? `Choose by ${relative(shift.selectionDeadline)}.` : undefined} />
+                <CardBody className="space-y-3">
+                  {cands.applicants.length ? cands.applicants.map((c) => <CandidateCard key={c.providerId} c={c} shiftId={shift.id} applicant />) : <Empty title="No applicants yet">We've notified matching providers. You can also invite recommended providers below.</Empty>}
+                </CardBody>
+              </Card>
+              <Card>
+                <CardHeader title="Recommended" description="Eligible providers who haven't applied. Invite up to 3 — first to accept gets the shift." />
+                <CardBody className="space-y-3">
+                  {cands.recommended.length ? cands.recommended.map((c) => <CandidateCard key={c.providerId} c={c} shiftId={shift.id} applicant={false} />) : <p className="text-sm text-slate-500">No other eligible providers right now.</p>}
+                  {cands.recommended.length ? (
+                    <ActionForm action={inviteAction} id={`invite-${shift.id}`}>
+                      <input type="hidden" name="shiftId" value={shift.id} />
+                      <p className="mb-2 text-xs text-slate-500">Tick “Invite” on up to 3 providers, then:</p>
+                      <SubmitButton variant="secondary">Send invitations</SubmitButton>
+                    </ActionForm>
+                  ) : null}
+                </CardBody>
+              </Card>
+            </>
+          ) : null}
+        </div>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader title="Price" />
+            <CardBody className="space-y-2 text-sm">
+              <div className="flex justify-between"><span>Coverage</span><span className="tabular-nums">{money(view.coverageCents)}</span></div>
+              {view.discountCents ? <div className="flex justify-between text-emerald-700"><span>Promo {shift.promoCode?.code}</span><span>−{money(view.discountCents)}</span></div> : null}
+              <div className="flex justify-between"><span>Mileage</span><span className="tabular-nums">{live ? money(view.mileageCents) : "Set at confirmation"}</span></div>
+              {view.lodgingCents ? <div className="flex justify-between"><span>Lodging</span><span>{money(view.lodgingCents)}</span></div> : null}
+              <div className="flex justify-between border-t border-slate-100 pt-2 font-semibold"><span>Total</span><span className="tabular-nums">{money(view.totalCents)}</span></div>
+              {live?.payments.filter((p) => p.type !== "REFUND").map((p) => <div key={p.id} className="flex justify-between text-xs text-slate-500"><span>{p.type.toLowerCase()}</span><span>{money(p.amountCents, { exact: true })} · {p.status.toLowerCase()}</span></div>)}
+            </CardBody>
+          </Card>
+          {live?.status === "COMPLETED" && Date.now() - +live.endsAt < s["payments.disputeWindowHours"] * 3_600_000 && !live.disputes.length ? (
+            <Card>
+              <CardHeader title="Report a problem" description="Available for 48 hours after the shift. Holds the provider's payment until resolved." />
+              <CardBody>
+                <ActionForm action={disputeAction}>
+                  <input type="hidden" name="assignmentId" value={live.id} />
+                  <Textarea name="reason" required placeholder="What happened?" />
+                  <PhiNotice />
+                  <SubmitButton variant="outline" className="mt-3 w-full">Open a dispute</SubmitButton>
+                </ActionForm>
+              </CardBody>
+            </Card>
+          ) : null}
+          {["DRAFT", "OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING", "CONFIRMED"].includes(shift.status) ? (
+            <Card>
+              <CardHeader title="Cancel shift" />
+              <CardBody>
+                {live && hoursToStart < s["payments.clinicFreeCancelHours"] ? <Alert tone="warning" className="mb-3">Within {s["payments.clinicFreeCancelHours"]} hours of the start, the deposit is non-refundable and part of it compensates your provider.</Alert> : null}
+                <ActionForm action={cancelShiftAction} confirm="Cancel this shift?">
+                  <input type="hidden" name="shiftId" value={shift.id} />
+                  <Textarea name="reason" placeholder="Reason (optional)" />
+                  <SubmitButton variant="danger" className="mt-3 w-full">Cancel shift</SubmitButton>
+                </ActionForm>
+              </CardBody>
+            </Card>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
+}

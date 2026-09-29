@@ -25,3 +25,11 @@ This addendum overrides SPEC.md where they conflict.
 - Local dev: Postgres 16 + PostGIS + btree_gist. Every external service has a fake in packages/integrations used when its API key is unset.
 - Addendum 01 plan approved and implemented (docs/migrations/addendum-01-plan.md).
 - Eligibility lives in packages/services/src/eligibility.ts (DB loaders) + packages/core/src/eligibility.ts (pure rules). Tests: `pnpm test:core` and `pnpm test:invariants` (needs local Postgres + PostGIS; recreates the *_test database).
+
+## Addendum 02 — Smart Dispatch & On Call (SPEC_ADDENDUM_02_DISPATCH_ONCALL.md)
+Precedence: Addendum 02 > Addendum 01 > SPEC.md.
+- Never award a shift to whoever answered first. Awards follow rank-protected logic: an acceptor is confirmed only when no higher-match-score offer in the wave is still pending (or at window/hold end, best acceptor wins).
+- Match score decides who wins; dispatch score (match × responsiveness) decides who is asked first.
+- Every candidate list starts with getEligibleProviders. On Call rules, standby, revived offers, and broadcasts can never add a provider it excludes.
+- All confirmations go through the SPEC.md 7.8 transaction under a per-shift advisory lock.
+- All dispatch numbers are Settings. Use fake timers in dispatch tests.

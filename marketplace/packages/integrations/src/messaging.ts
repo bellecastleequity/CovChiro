@@ -51,7 +51,8 @@ class SendGridMailer implements Mailer {
           { type: "text/plain", value: m.text },
           { type: "text/html", value: m.html },
         ],
-        ...(m.unsubscribeUrl ? { headers: { "List-Unsubscribe": `<${m.unsubscribeUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } } : {}),
+        // One-click unsubscribe goes to the POST endpoint; the visible link goes to the confirm page.
+        ...(m.unsubscribeUrl ? { headers: { "List-Unsubscribe": `<${m.unsubscribeUrl.replace("/unsubscribe?", "/api/unsubscribe?")}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } } : {}),
       }),
     });
     return r.status >= 200 && r.status < 300;
