@@ -43,6 +43,14 @@ function engineReport(message) {
   if (dir) console.log("Engine files: " + (fs.readdirSync(dir).filter((f) => f.includes("query_engine")).join(", ") || "none"));
   console.log("Node: " + process.version + " " + process.arch);
   console.log("---------------------");
+  // CloudLinux hides /etc/os-release, so Prisma guesses the wrong engine; name it explicitly.
+  if (dir) {
+    let ssl = "";
+    try { ssl = execSync("openssl version 2>&1", { encoding: "utf8" }); } catch {}
+    const want = /OpenSSL 3\./.test(ssl) ? "rhel-openssl-3.0.x" : "rhel-openssl-1.1.x";
+    const file = path.join(dir, `libquery_engine-${want}.so.node`);
+    if (fs.existsSync(file)) console.log(`FIX: add the environment variable PRISMA_QUERY_ENGINE_LIBRARY = ${file}  then restart the app and run dbcheck again.`);
+  }
 }
 
 const raw = process.env.DATABASE_URL;

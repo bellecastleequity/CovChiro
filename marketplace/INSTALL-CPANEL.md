@@ -106,6 +106,7 @@ Scroll to **Environment variables** and add each line from `environment-variable
 
 - **Database:** set `DATABASE_URL` to the Neon string from Step 2. If it ends in `&channel_binding=require`, delete that part.
 - **Node options:** add `NODE_OPTIONS` = `--disable-wasm-trap-handler`. CloudLinux caps each process at 4 GB of virtual memory. Without this setting, Node's built-in web client (used for the database connection, email and maps) can't start its WebAssembly part and fails with "Out of memory".
+- **Database engine:** add `PRISMA_QUERY_ENGINE_LIBRARY` = `/home/YOUR_CPANEL_USERNAME/coverageoncall.com/node_modules/.prisma/client/libquery_engine-rhel-openssl-1.1.x.so.node`. CloudLinux hides the system details Prisma uses to pick its engine file, so this names the file directly. On CloudLinux 9, use the `rhel-openssl-3.0.x` file instead; if you're unsure, `dbcheck` prints the exact value to use.
 - **Database transport:** add `DATABASE_TRANSPORT` = `websocket`. Namecheap's firewall blocks the normal database port (5432), so the app connects to Neon over port 443 instead.
 - **Secrets:** use the three values from Step 4.
 - **Uploads:** set `UPLOAD_DIR` to `/home/YOUR_CPANEL_USERNAME/coverageoncall.com/uploads`. Your username is shown in cPanel's right-hand sidebar.
@@ -205,6 +206,7 @@ If coveragechiropractor.com is on the same cPanel:
 | Symptom | Fix |
 |---|---|
 | "Missing required production env vars: …" in the log | Add the named variables and restart. |
+| dbcheck says "ENGINE NOT FOUND" | Add the `PRISMA_QUERY_ENGINE_LIBRARY` line that dbcheck prints, and restart. |
 | "WebAssembly … Out of memory" in dbcheck or the log | Add `NODE_OPTIONS` = `--disable-wasm-trap-handler` and restart. |
 | Home page shows "This page couldn't load" but `/login` works | The app can't reach the database. In Setup Node.js App → Run JS script, run **dbcheck**. It explains the problem in plain English (blocked port, wrong password, wrong database). |
 | 503 / "Incomplete response received from application" | Open the log file shown in the Node.js App screen. Usually it's a wrong `DATABASE_URL`, or the Node.js version is below 20.9. |
