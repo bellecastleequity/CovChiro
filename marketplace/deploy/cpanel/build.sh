@@ -53,8 +53,10 @@ mkdir -p "$SITE/public" "$SITE/uploads"
 printf '<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n' > "$SITE/uploads/.htaccess"
 # cPanel's Node.js screen expects a package.json in the application root.
 cat > "$APP/package.json" <<'JSON'
-{ "name": "coverageoncall", "private": true, "scripts": { "start": "node apps/web/server.js" } }
+{ "name": "coverageoncall", "private": true, "scripts": { "start": "node apps/web/server.js", "dbcheck": "node dbcheck.js" } }
 JSON
+# Diagnostics: Setup Node.js App → "Run JS script" → dbcheck.
+cp deploy/cpanel/dbcheck.js "$APP/dbcheck.js"
 # Never ship local env files.
 find "$SITE" -maxdepth 4 -name ".env*" -delete
 if [[ -e "$APP/node_modules" ]]; then echo "app/ must not contain node_modules (CloudLinux)" >&2; exit 1; fi
