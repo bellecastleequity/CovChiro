@@ -7,7 +7,7 @@ import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Alert, Checklist, Empty, PageHeader, Stat } from "@/components/ui/misc";
 import { StatusBadge } from "@/components/ui/badge";
-import { dateLabel, money, relative, timeRange } from "@/lib/format";
+import { dateLabel, money, relative, timeRange, firstName } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { CanTake } from "./can-take";
 import { onCallToggleAction } from "./actions";
@@ -39,7 +39,7 @@ export default async function ProviderHome() {
   const remaining = items.filter((i) => !i.done).length;
   return (
     <>
-      <PageHeader eyebrow={`Hi, ${user.name.split(" ")[0]}`} title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
+      <PageHeader eyebrow={`Hi, ${firstName(user.name)}`} title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
       {provider.status !== "ACTIVE" || remaining ? (
         <Card className="mb-6">
           <CardHeader title="Finish setting up" description={`${remaining} step${remaining === 1 ? "" : "s"} left before you can apply to shifts.`} />
@@ -77,7 +77,7 @@ export default async function ProviderHome() {
       ) : null}
       {offers.length ? (
         <Card className="mt-6">
-          <CardHeader title={<span className="flex items-center gap-2"><Inbox className="size-4 text-brand-600" /> Invitations waiting on you</span>} />
+          <CardHeader title={<span className="flex items-center gap-2"><Inbox className="size-4 text-accent-600" /> Invitations waiting on you</span>} />
           <div className="divide-y divide-slate-100">
             {offers.map((o) => (
               <Link key={o.id} href="/provider/offers" className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50">
@@ -92,7 +92,7 @@ export default async function ProviderHome() {
         </Card>
       ) : null}
       <Card className="mt-6">
-        <CardHeader title={<span className="flex items-center gap-2"><CalendarDays className="size-4 text-brand-600" /> Upcoming</span>} action={<Link href="/provider/assignments" className="text-sm font-medium text-brand-700">All shifts</Link>} />
+        <CardHeader title={<span className="flex items-center gap-2"><CalendarDays className="size-4 text-accent-600" /> Upcoming</span>} action={<Link href="/provider/assignments" className="text-sm font-medium text-brand-700">All shifts</Link>} />
         {upcoming.length ? (
           <div className="divide-y divide-slate-100">
             {upcoming.map((a) => (
@@ -125,11 +125,11 @@ export default async function ProviderHome() {
       ) : null}
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         <Link href="/provider/credentials" className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 hover:border-brand-300">
-          <ShieldCheck className="size-5 text-brand-600" />
+          <ShieldCheck className="size-5 text-accent-600" />
           <div className="text-sm"><div className="font-medium">Credentials</div><div className="text-slate-500">Licenses, malpractice, skills</div></div>
         </Link>
         <Link href="/provider/earnings" className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 hover:border-brand-300">
-          <Wallet className="size-5 text-brand-600" />
+          <Wallet className="size-5 text-accent-600" />
           <div className="text-sm"><div className="font-medium">Earnings</div><div className="text-slate-500">Pay history and upcoming payments</div></div>
         </Link>
       </div>

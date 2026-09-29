@@ -88,7 +88,7 @@ export default async function OnCallPage() {
 
         <div className="space-y-6">
           <Card>
-            <CardHeader title={<span className="flex items-center gap-2"><PhoneCall className="size-4 text-brand-600" />Mobile & texts</span>} />
+            <CardHeader title={<span className="flex items-center gap-2"><PhoneCall className="size-4 text-accent-600" />Mobile & texts</span>} />
             <CardBody className="space-y-3">
               {user.phoneVerifiedAt ? <div className="text-sm">Verified: <strong>{user.phone}</strong> {p.smsConsentAt ? <Badge tone="green">Texts on</Badge> : <Badge tone="amber">Texts off</Badge>}</div> : null}
               <ActionForm action={phoneStartAction} className="flex gap-2">
@@ -120,7 +120,7 @@ export default async function OnCallPage() {
             </CardBody>
           </Card>
           <Card>
-            <CardHeader title={<span className="flex items-center gap-2"><Moon className="size-4 text-brand-600" />Quiet hours</span>} description="No offers during these hours." />
+            <CardHeader title={<span className="flex items-center gap-2"><Moon className="size-4 text-accent-600" />Quiet hours</span>} description="No offers during these hours." />
             <CardBody>
               <ActionForm action={quietHoursAction} className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">

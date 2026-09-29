@@ -121,7 +121,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
           <CardBody className="space-y-5 py-6">
             {step === 0 ? (
               <div className="space-y-3">
-                <h2 className="flex items-center gap-2 font-semibold"><MapPin className="size-4 text-brand-600" />Which location?</h2>
+                <h2 className="flex items-center gap-2 font-semibold"><MapPin className="size-4 text-accent-600" />Which location?</h2>
                 {locations.map((l) => (
                   <label key={l.id} className={cn("flex cursor-pointer items-center justify-between rounded-xl border p-4", l.id === locationId ? "border-brand-500 bg-brand-50" : "border-slate-200")}>
                     <span>
@@ -136,7 +136,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
 
             {step === 1 ? (
               <div className="space-y-4">
-                <h2 className="flex items-center gap-2 font-semibold"><Stethoscope className="size-4 text-brand-600" />What kind of coverage?</h2>
+                <h2 className="flex items-center gap-2 font-semibold"><Stethoscope className="size-4 text-accent-600" />What kind of coverage?</h2>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {loc.professions.map((p) => (
                     <button
@@ -172,7 +172,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
 
             {step === 2 ? (
               <div className="space-y-4">
-                <h2 className="flex items-center gap-2 font-semibold"><CalendarDays className="size-4 text-brand-600" />When?</h2>
+                <h2 className="flex items-center gap-2 font-semibold"><CalendarDays className="size-4 text-accent-600" />When?</h2>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <Field label="Date"><Input type="date" value={date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDate(e.target.value)} /></Field>
                   <Field label="Start"><Input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></Field>

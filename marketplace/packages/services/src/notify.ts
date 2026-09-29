@@ -27,12 +27,12 @@ export interface EmailContent {
 export function renderEmail(c: EmailContent): { html: string; text: string } {
   const b = brand();
   const cta = c.cta
-    ? `<tr><td style="padding:8px 0 24px"><a href="${esc(absoluteUrl(c.cta.url))}" style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px">${esc(c.cta.label)}</a></td></tr>`
+    ? `<tr><td style="padding:8px 0 24px"><a href="${esc(absoluteUrl(c.cta.url))}" style="display:inline-block;background:#282472;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px">${esc(c.cta.label)}</a></td></tr>`
     : "";
   const html = `<!doctype html><html><body style="margin:0;background:#f4f6f8;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;padding:28px">
-<tr><td style="font-weight:700;font-size:15px;color:#0f766e;padding-bottom:18px">${esc(b.name)}</td></tr>
+<tr><td style="padding-bottom:18px"><img src="${esc(absoluteUrl("/brand/mark-email.png"))}" width="28" height="28" alt="" style="vertical-align:middle;border:0"> <span style="vertical-align:middle;font-weight:700;font-size:17px;color:#282472">${esc(b.name)}</span></td></tr>
 <tr><td style="font-size:22px;font-weight:700;padding-bottom:12px">${esc(c.heading)}</td></tr>
 ${c.paragraphs.map((p) => `<tr><td style="font-size:15px;line-height:1.6;color:#334155;padding-bottom:12px">${esc(p)}</td></tr>`).join("")}
 ${cta}

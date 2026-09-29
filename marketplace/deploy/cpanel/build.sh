@@ -37,7 +37,7 @@ done
 if [[ -n "$(find "$APP" -type l -print -quit)" ]]; then echo "symlinks left in package" >&2; exit 1; fi
 mkdir -p "$APP/apps/web/.next"
 cp -r apps/web/.next/static "$APP/apps/web/.next/static"
-[[ -d apps/web/public ]] && cp -r apps/web/public "$APP/apps/web/public"
+[[ -d apps/web/public ]] && mkdir -p "$APP/apps/web/public" && cp -r apps/web/public/. "$APP/apps/web/public/"
 # cPanel's Node.js screen expects a package.json in the application root.
 cat > "$APP/package.json" <<'JSON'
 { "name": "coverageoncall", "private": true, "scripts": { "start": "node apps/web/server.js" } }

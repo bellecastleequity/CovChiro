@@ -25,7 +25,7 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
           ) : null}
           <ul className="space-y-2 text-sm text-slate-600">
             {["Takes about 5 minutes", "Paid about 48 hours after each completed shift", "Mileage and lodging reimbursements included"].map((t) => (
-              <li key={t} className="flex gap-2"><CheckCircle2 className="size-4 text-brand-600" />{t}</li>
+              <li key={t} className="flex gap-2"><CheckCircle2 className="size-4 text-accent-600" />{t}</li>
             ))}
           </ul>
           <ActionForm action={stripeAction} successMessage={false}>

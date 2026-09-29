@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { brand, env } from "@cm/config";
+import { Inter, Outfit } from "next/font/google";
 import { Analytics } from "@/components/site/analytics";
 import "./globals.css";
 
@@ -13,11 +14,15 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#0e7d73" };
+// Self-hosted at build time by next/font (no runtime requests to Google).
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+const outfit = Outfit({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-outfit", display: "swap" });
+
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#282472" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${inter.variable} ${outfit.variable}`}>
       <body className="min-h-dvh">
         {children}
         <Analytics />

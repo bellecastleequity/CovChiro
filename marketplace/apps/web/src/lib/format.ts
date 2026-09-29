@@ -76,3 +76,10 @@ export const STATUS_TONE: Record<string, "gray" | "green" | "amber" | "red" | "b
 export function humanize(s: string) {
   return s.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 }
+
+/** First name for greetings, skipping honorifics: "Dr. Jane Rivera" → "Jane". */
+export function firstName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  const rest = parts.filter((p) => !/^(dr|mr|mrs|ms|mx|prof)\.?$/i.test(p));
+  return rest[0] ?? parts[0] ?? "";
+}

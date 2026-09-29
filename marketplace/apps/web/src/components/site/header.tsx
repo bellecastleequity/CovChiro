@@ -2,6 +2,7 @@ import Link from "next/link";
 import { brand } from "@cm/config";
 import { LinkButton } from "@/components/ui/button";
 import { getSession, homeFor } from "@/lib/session";
+import { Logo } from "./logo";
 import { MobileMenu } from "./mobile-menu";
 
 const NAV = [
@@ -12,14 +13,7 @@ const NAV = [
   { href: "/faq", label: "FAQ" },
 ];
 
-export function Logo({ name }: { name: string }) {
-  return (
-    <span className="flex items-center gap-2 font-semibold text-slate-900">
-      <span className="grid size-8 place-items-center rounded-lg bg-brand-600 text-sm font-bold text-white">{name.slice(0, 1)}</span>
-      <span>{name}</span>
-    </span>
-  );
-}
+export { Logo } from "./logo";
 
 export async function SiteHeader() {
   const b = brand();

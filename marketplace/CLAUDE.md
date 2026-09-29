@@ -22,6 +22,7 @@ This addendum overrides SPEC.md where they conflict.
 
 ## Repo notes
 - Owner additions beyond SPEC: clinic promo codes (discount comes out of platform margin only, never provider pay or travel), lead management with follow-up emails, first-party analytics, and a provider pay ledger (Payout / PayoutTransfer) paid only via Stripe Connect transfers.
+- Brand colors are Tailwind tokens: brand-* = logo navy (#282472 = brand-600, primary actions), accent-* = logo teal (#22C4BE = accent-500; use accent-600/700 for text). Never raw hex in the app. Logo: components/site/logo.tsx; assets and rules in docs/brand/.
 - Local dev: Postgres 16 + PostGIS + btree_gist. Every external service has a fake in packages/integrations used when its API key is unset.
 - Addendum 01 plan approved and implemented (docs/migrations/addendum-01-plan.md).
 - Eligibility lives in packages/services/src/eligibility.ts (DB loaders) + packages/core/src/eligibility.ts (pure rules). Tests: `pnpm test:core` and `pnpm test:invariants` (needs local Postgres + PostGIS; recreates the *_test database).

@@ -12,10 +12,10 @@ export default async function OfferPage({ params, searchParams }: { params: Prom
   const c = await promo.campaignForLanding(code, preview === "1");
   if (!c) notFound();
   return (
-    <div className="bg-gradient-to-b from-brand-50 to-white">
+    <div className="bg-gradient-to-b from-accent-50 to-white">
       <div className="container-page grid gap-10 py-16 lg:grid-cols-2">
         <div>
-          <span className="inline-flex rounded-full bg-accent-400/20 px-3 py-1 text-sm font-semibold text-amber-800">{c.offer}</span>
+          <span className="inline-flex rounded-full bg-amber-400/20 px-3 py-1 text-sm font-semibold text-amber-800">{c.offer}</span>
           <h1 className="mt-4 text-4xl font-semibold">{c.headline ?? `${c.offer} your first coverage shift`}</h1>
           {c.description ? <p className="mt-4 whitespace-pre-line text-lg text-slate-600">{c.description}</p> : null}
           <p className="mt-6 text-sm text-slate-500">Personal codes are valid until {c.expiresAt.toLocaleDateString("en-US")}.</p>

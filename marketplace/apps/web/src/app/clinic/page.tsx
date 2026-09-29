@@ -6,7 +6,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Alert, Checklist, Empty, PageHeader, Stat } from "@/components/ui/misc";
-import { dateLabel, money, relative, timeRange } from "@/lib/format";
+import { dateLabel, money, relative, timeRange, firstName } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 
 export default async function ClinicHome({ searchParams }: { searchParams: Promise<{ code?: string; welcome?: string }> }) {
@@ -26,7 +26,7 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
   const needsSetup = !checklist.location || !checklist.paymentMethod || !checklist.agreement;
   return (
     <>
-      <PageHeader eyebrow={org.displayName} title={`Welcome${org.status === "ONBOARDING" ? "" : " back"}, ${user.name.split(" ")[0]}`} actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
+      <PageHeader eyebrow={org.displayName} title={`Welcome${org.status === "ONBOARDING" ? "" : " back"}, ${firstName(user.name)}`} actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
       {code ? <Alert tone="success" className="mb-6" title={`Your code ${code} is ready`}>Enter it on the pricing step when you post your first shift.</Alert> : null}
       {needsSetup ? (
         <Card className="mb-6">

@@ -37,7 +37,7 @@ export function SideNav({ items, root }: { items: NavItem[]; root: string }) {
         const active = isActive(path, i.href, root);
         return (
           <Link key={i.href} href={i.href} className={cn("flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium", active ? "bg-brand-50 text-brand-800" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900")}>
-            <Icon className={cn("size-4.5", active ? "text-brand-600" : "text-slate-400")} />
+            <Icon className={cn("size-4.5", active ? "text-accent-600" : "text-slate-400")} />
             <span className="flex-1">{i.label}</span>
             {i.badge ? <span className="rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">{i.badge}</span> : null}
           </Link>

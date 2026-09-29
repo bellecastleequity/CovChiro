@@ -16,7 +16,7 @@ export default async function Promo() {
   const { actor } = await requireActor("admin");
   const codes = await promo.listPromos(actor);
   const base = env().APP_BASE_URL.replace(/\/$/, "");
-  const qrs = Object.fromEntries(await Promise.all(codes.filter((c) => c.landingEnabled).map(async (c) => [c.code, await QRCode.toDataURL(`${base}/offer/${c.code}?utm_source=qr`, { margin: 1, width: 160 })])));
+  const qrs = Object.fromEntries(await Promise.all(codes.filter((c) => c.landingEnabled).map(async (c) => [c.code, await QRCode.toDataURL(`${base}/offer/${c.code}?utm_source=qr`, { margin: 1, width: 160, color: { dark: "#282472", light: "#ffffff" } })])));
   return (
     <>
       <PageHeader title="Promo codes" description="Discounts come out of the platform margin only — never provider pay or mileage. Personal codes (welcome offers and campaign sign-ups) are managed from Leads." />

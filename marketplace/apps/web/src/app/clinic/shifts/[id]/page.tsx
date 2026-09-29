@@ -129,7 +129,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                 <div className="flex items-center gap-3">
                   <span className="relative grid size-10 place-items-center rounded-full bg-brand-600 text-white">
                     <Radar className="size-5" />
-                    {track.status === "ACTIVE" ? <span className="absolute inset-0 animate-ping rounded-full bg-brand-400 opacity-40" /> : null}
+                    {track.status === "ACTIVE" ? <span className="absolute inset-0 animate-ping rounded-full bg-accent-400 opacity-40" /> : null}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold">

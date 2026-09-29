@@ -24,7 +24,7 @@ export default function ForProviders() {
           { Icon: ShieldCheck, t: "Verified once", d: "Upload your license and malpractice once — we handle re-verification reminders." },
         ].map(({ Icon, t, d }) => (
           <div key={t} className="rounded-2xl border border-slate-200 p-6">
-            <Icon className="size-6 text-brand-600" />
+            <Icon className="size-6 text-accent-600" />
             <div className="mt-3 font-semibold">{t}</div>
             <p className="mt-1.5 text-sm text-slate-600">{d}</p>
           </div>

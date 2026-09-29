@@ -18,14 +18,14 @@ export default async function Home() {
   const liveStates = [...new Set(enabledPairs.map((p) => p.state))];
   return (
     <>
-      <section className="relative overflow-hidden bg-gradient-to-b from-brand-50 via-white to-white">
+      <section className="relative overflow-hidden bg-gradient-to-b from-accent-50 via-white to-white">
         <div className="container-page grid items-center gap-12 py-16 sm:py-24 lg:grid-cols-2">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
               <MapPin className="size-3.5" /> Now live in {liveStates.join(", ") || "Florida"}
             </div>
             <h1 className="mt-5 text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
-              Licensed coverage for your clinic, <span className="text-brand-600">on call.</span>
+              Licensed coverage for your clinic, <span className="text-accent-600">on call.</span>
             </h1>
             <p className="mt-5 max-w-xl text-lg text-slate-600">
               Post the days you need covered. We match licensed, verified providers in your state, handle the paperwork, and run payment through the platform. No phone trees, no chasing invoices.
@@ -58,12 +58,12 @@ export default async function Home() {
                       <div className="text-sm font-medium">{c.n}</div>
                       <div className="truncate text-xs text-slate-500">{c.d}</div>
                     </div>
-                    {c.pick ? <BadgeCheck className="size-5 text-brand-600" /> : null}
+                    {c.pick ? <BadgeCheck className="size-5 text-accent-600" /> : null}
                   </div>
                 ))}
               </div>
               <div className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                <ShieldCheck className="size-4 text-brand-600" /> Every candidate holds a verified Florida chiropractic license valid through the shift.
+                <ShieldCheck className="size-4 text-accent-600" /> Every candidate holds a verified Florida chiropractic license valid through the shift.
               </div>
             </div>
           </div>
@@ -79,7 +79,7 @@ export default async function Home() {
             { Icon: CreditCard, t: "Payment handled", d: "Clear per-shift pricing with mileage passed through at cost. A small deposit at confirmation, the balance after the shift." },
           ].map(({ Icon, t, d }) => (
             <div key={t} className="rounded-2xl border border-slate-200 p-6">
-              <Icon className="size-6 text-brand-600" />
+              <Icon className="size-6 text-accent-600" />
               <h3 className="mt-4 font-semibold">{t}</h3>
               <p className="mt-2 text-sm text-slate-600">{d}</p>
             </div>
@@ -95,7 +95,7 @@ export default async function Home() {
             {professions.map((p) => (
               <Link key={p.code} href={`/${p.slug}`} className="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-brand-300 hover:shadow-card">
                 <div className="flex items-center justify-between">
-                  <Stethoscope className="size-5 text-brand-600" />
+                  <Stethoscope className="size-5 text-accent-600" />
                   {p.active ? (
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Live</span>
                   ) : (
@@ -111,17 +111,17 @@ export default async function Home() {
       </section>
 
       <section className="container-page py-16">
-        <div className="grid gap-6 rounded-3xl bg-slate-900 p-8 text-white sm:p-12 lg:grid-cols-2">
+        <div className="grid gap-6 rounded-3xl bg-brand-600 p-8 text-white sm:p-12 lg:grid-cols-2">
           <div>
-            <Users className="size-7 text-brand-300" />
+            <Users className="size-7 text-accent-400" />
             <h2 className="mt-4 text-3xl font-semibold">Clinic owners: take the day off.</h2>
-            <p className="mt-3 text-slate-300">Vacations, CE weekends, family time. Post a shift in two minutes and {s["promo.welcomeOfferPercent"]}% off your first one is on us.</p>
+            <p className="mt-3 text-brand-100">Vacations, CE weekends, family time. Post a shift in two minutes and {s["promo.welcomeOfferPercent"]}% off your first one is on us.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-            <LinkButton href="/signup?role=clinic" size="lg">
+            <LinkButton href="/signup?role=clinic" size="lg" className="bg-white text-brand-700 hover:bg-brand-50">
               Post your first shift
             </LinkButton>
-            <LinkButton href="/for-clinics" size="lg" variant="outline" className="border-slate-600 bg-transparent text-white hover:bg-slate-800">
+            <LinkButton href="/for-clinics" size="lg" variant="outline" className="border-brand-400 bg-transparent text-white hover:bg-brand-700">
               See pricing
             </LinkButton>
           </div>

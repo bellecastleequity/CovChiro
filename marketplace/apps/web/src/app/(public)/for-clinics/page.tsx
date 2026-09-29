@@ -52,7 +52,7 @@ export default async function ForClinics() {
               "One invoice trail — deposit at confirmation, balance after the shift",
             ].map((t) => (
               <li key={t} className="flex gap-2">
-                <Check className="mt-0.5 size-4 shrink-0 text-brand-600" /> {t}
+                <Check className="mt-0.5 size-4 shrink-0 text-accent-600" /> {t}
               </li>
             ))}
           </ul>
