@@ -40,8 +40,13 @@ find "$APP/apps/web/.next/node_modules" -type l 2>/dev/null | while read -r link
   real=$(readlink "$link"); real=${real##*/node_modules/}
   rm "$link" && mkdir -p "$link"
   # ESM re-export: resolves through the package's "import" condition, like the traced original.
+  # Re-export `default` only if the package has one (e.g. @neondatabase/serverless doesn't).
   printf '{ "name": "%s", "private": true, "type": "module", "main": "index.js" }\n' "$(basename "$link")" > "$link/package.json"
-  printf 'export * from "%s";\nexport { default } from "%s";\n' "$real" "$real" > "$link/index.js"
+  has_default=$(cd "$SITE" && node --input-type=module -e "import('$real').then(m => process.stdout.write('default' in m ? 'yes' : 'no'), e => { console.error(e.message); process.stdout.write('err'); })")
+  if [[ "$has_default" == "err" ]]; then echo "cannot load $real from the package" >&2; exit 1; fi
+  printf 'export * from "%s";\n' "$real" > "$link/index.js"
+  [[ "$has_default" == "yes" ]] && printf 'export { default } from "%s";\n' "$real" >> "$link/index.js"
+  echo "  stub $(basename "$link") -> $real (default export: $has_default)"
 done
 if [[ -n "$(find "$SITE" -type l -print -quit)" ]]; then echo "symlinks left in package" >&2; exit 1; fi
 mkdir -p "$APP/apps/web/.next"

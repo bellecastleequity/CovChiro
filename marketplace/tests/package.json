@@ -3,7 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "vitest run", "typecheck": "tsc -p ." },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
   "dependencies": {
     "@cm/config": "workspace:*",
     "@cm/core": "workspace:*",
@@ -11,5 +14,13 @@
     "@cm/integrations": "workspace:*",
     "@cm/services": "workspace:*"
   },
-  "devDependencies": { "@types/node": "^22", "fast-check": "^4.10.2", "typescript": "5.9.3", "vitest": "^5.0.2" }
+  "devDependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@prisma/adapter-neon": "6.19.3",
+    "@prisma/adapter-pg": "6.19.3",
+    "@types/node": "^22",
+    "fast-check": "^4.10.2",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.2"
+  }
 }

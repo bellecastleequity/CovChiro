@@ -14,7 +14,7 @@ const config: NextConfig = {
   // Monorepo: trace workspace packages from the repo root into the standalone bundle.
   outputFileTracingRoot: path.join(import.meta.dirname, "../.."),
   transpilePackages: ["@cm/config", "@cm/core", "@cm/db", "@cm/integrations", "@cm/services"],
-  serverExternalPackages: ["@prisma/client", "@node-rs/argon2", "stripe"],
+  serverExternalPackages: ["@prisma/client", "@prisma/adapter-neon", "@neondatabase/serverless", "@node-rs/argon2", "stripe"],
   poweredByHeader: false,
   experimental: { serverActions: { bodySizeLimit: "12mb" } },
   async headers() {
