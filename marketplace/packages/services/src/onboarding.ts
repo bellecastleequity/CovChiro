@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { DomainError, licensedPairs, normalizeLinkedIn, US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
-import { esignProvider, geoProvider, lookupNpi, paymentsProvider } from "@cm/integrations";
+import { esignProvider, geoProvider, lookupNpi, paymentsProvider, testSigningEnabled } from "@cm/integrations";
 import { audit, requireClinic, requireProvider, SYSTEM, type Actor } from "./context";
 import { absoluteUrl, sendEmail } from "./notify";
 import { activateClinicIfReady } from "./payments";
@@ -328,6 +328,9 @@ export async function requestAgreement(actor: Actor): Promise<string> {
   const kind = isProvider ? "PROVIDER" : "CLINIC";
   const user = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId! } });
   const version = AGREEMENT_VERSION[kind];
+  if (esignProvider().name === "dev" && !testSigningEnabled()) {
+    throw new DomainError("CONFLICT", "Agreement signing isn't available yet. Please check back soon or contact support.");
+  }
   const req = await esignProvider().send({ kind, signerEmail: user.email, signerName: user.name, partyId, version });
   await prisma.agreementSignature.create({
     data: { partyType: isProvider ? "PROVIDER" : "CLINIC", partyId, signerUserId: user.id, version, provider: esignProvider().name, envelopeId: req.envelopeId },

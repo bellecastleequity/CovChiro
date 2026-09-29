@@ -30,6 +30,10 @@ const EnvSchema = z.object({
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
   ESIGN_API_KEY: z.string().optional(),
+  /** "true" = allow the built-in click-to-sign test page in production while
+   *  Dropbox Sign isn't connected yet (build & test phase). Ignored once
+   *  ESIGN_API_KEY is set. */
+  ESIGN_TEST_MODE: z.string().optional(),
   ESIGN_CLINIC_TEMPLATE_ID: z.string().optional(),
   ESIGN_DOCTOR_TEMPLATE_ID: z.string().optional(),
   GCS_BUCKET: z.string().optional(),

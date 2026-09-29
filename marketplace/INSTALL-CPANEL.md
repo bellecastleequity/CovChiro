@@ -106,7 +106,8 @@ Scroll to **Environment variables** and add each line from `environment-variable
 - **Database:** set `DATABASE_URL` to the Neon string from Step 2.
 - **Secrets:** use the three values from Step 4.
 - **Uploads:** set `UPLOAD_DIR` to `/home/YOUR_CPANEL_USERNAME/coverageoncall.com/uploads`. Your username is shown in cPanel's right-hand sidebar.
-- **Service keys:** add your Stripe, SendGrid, Google Maps and Dropbox Sign keys.
+- **Service keys:** add your Stripe, SendGrid and Google Maps keys, plus your Dropbox Sign keys if you have them.
+- **No Dropbox Sign yet?** Add `ESIGN_TEST_MODE` = `true`. Providers and clinics can then click-sign a clearly labelled **test** agreement, so sign-up can be tested end to end. When you connect Dropbox Sign later, add the three `ESIGN_…` keys and delete `ESIGN_TEST_MODE`. When the attorney-reviewed agreement goes live as a new version, everyone is asked to sign it again.
 
 Click **Create**, then **Start App**.
 

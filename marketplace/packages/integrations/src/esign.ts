@@ -68,9 +68,20 @@ class DevESign implements ESignProvider {
     return { envelopeId, signUrl: `${this.baseUrl}/agreements/dev-sign?envelope=${encodeURIComponent(envelopeId)}` };
   }
   async parseCallback() {
-    if (env().NODE_ENV === "production") throw new Error("Dev e-sign is disabled in production");
+    // Test signing never arrives by webhook; the in-app page signs directly.
+    if (env().NODE_ENV === "production") throw new Error("Dev e-sign has no webhook");
     return null;
   }
+}
+
+/**
+ * The built-in click-to-sign page is available in development, and in
+ * production only while ESIGN_TEST_MODE=true AND no Dropbox Sign key is set.
+ */
+export function testSigningEnabled(): boolean {
+  const e = env();
+  if (esignProvider().name !== "dev") return false;
+  return e.NODE_ENV !== "production" || e.ESIGN_TEST_MODE === "true";
 }
 
 let esign: ESignProvider | null = null;
