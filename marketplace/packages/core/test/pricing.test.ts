@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  applicablePremiums, clinicTotalCents, clinicView, depositCents, doctorTotalCents, doctorView, durationTier, federalHolidays,
-  isFederalHoliday, mileageCents, platformMarginCents, quoteBase, travelEstimate, travelRange, formatCents,
+  applicablePremiums, clinicTotalCents, clinicView, depositCents, providerTotalCents, providerView, durationTier, federalHolidays,
+  isFederalHoliday, mileageCents, tierFor, platformMarginCents, quoteBase, travelEstimate, travelRange, formatCents,
 } from "../src";
 import { d, S } from "./fixtures";
 
-const FL_CENTRAL = { clinicPriceCents: 57500, doctorPayCents: 40000 };
-const HALF = { clinicPriceCents: 32500, doctorPayCents: 22000 };
+const FL_CENTRAL = { clinicPriceCents: 57500, providerPayCents: 40000 };
+const HALF = { clinicPriceCents: 32500, providerPayCents: 22000 };
 const TZ = "America/New_York";
 const weekday = { startsAt: d("2026-10-14T13:00:00Z"), endsAt: d("2026-10-14T21:00:00Z") }; // Wed 8h
 const early = d("2026-09-01T12:00:00Z");
@@ -23,19 +23,19 @@ describe("duration tiers", () => {
 
 describe("quoteBase", () => {
   it("weekday full day, no premiums", () => {
-    const q = quoteBase(weekday, FL_CENTRAL, { pricedAt: early, timeZone: TZ, boosted: false }, S);
-    expect(q).toMatchObject({ tier: "FULL_DAY", premiums: [], clinicPriceCents: 57500, doctorPayCents: 40000, marginCents: 17500 });
+    const q = quoteBase(weekday, "TIERED", FL_CENTRAL, { pricedAt: early, timeZone: TZ, boosted: false }, S);
+    expect(q).toMatchObject({ pricingModel: "TIERED", tier: "FULL_DAY", premiums: [], clinicPriceCents: 57500, providerPayCents: 40000, marginCents: 17500 });
   });
 
   it("overtime adds per-hour to both sides", () => {
-    const q = quoteBase({ startsAt: weekday.startsAt, endsAt: d("2026-10-14T23:00:00Z") }, FL_CENTRAL, { pricedAt: early, timeZone: TZ, boosted: false }, S);
+    const q = quoteBase({ startsAt: weekday.startsAt, endsAt: d("2026-10-14T23:00:00Z") }, "TIERED", FL_CENTRAL, { pricedAt: early, timeZone: TZ, boosted: false }, S);
     expect(q.overtimeHours).toBe(2);
     expect(q.clinicPriceCents).toBe(57500 + 2 * S["pricing.overtimeClinicCentsPerHour"]);
-    expect(q.doctorPayCents).toBe(40000 + 2 * S["pricing.overtimeDoctorCentsPerHour"]);
+    expect(q.providerPayCents).toBe(40000 + 2 * S["pricing.overtimeProviderCentsPerHour"]);
   });
 
   it("half day", () => {
-    const q = quoteBase({ startsAt: weekday.startsAt, endsAt: d("2026-10-14T16:00:00Z") }, HALF, { pricedAt: early, timeZone: TZ, boosted: false }, S);
+    const q = quoteBase({ startsAt: weekday.startsAt, endsAt: d("2026-10-14T16:00:00Z") }, "TIERED", HALF, { pricedAt: early, timeZone: TZ, boosted: false }, S);
     expect(q.tier).toBe("HALF_DAY");
     expect(q.clinicPriceCents).toBe(32500);
   });
@@ -52,14 +52,14 @@ describe("quoteBase", () => {
     for (const c of combos) {
       const startsAt = d(c.start);
       const endsAt = new Date(+startsAt + 8 * 3600000);
-      const q = quoteBase({ startsAt, endsAt }, FL_CENTRAL, { pricedAt: c.pricedAt, timeZone: TZ, boosted: c.boosted }, S);
+      const q = quoteBase({ startsAt, endsAt }, "TIERED", FL_CENTRAL, { pricedAt: c.pricedAt, timeZone: TZ, boosted: c.boosted }, S);
       expect(q.premiums.map((p) => p.kind), c.name).toEqual(c.kinds);
       const pct: Record<string, number> = {
         URGENT: S["pricing.premiumUrgentPercent"], WEEKEND: S["pricing.premiumWeekendPercent"], HOLIDAY: S["pricing.premiumHolidayPercent"], BOOST: S["pricing.boostPercent"],
       };
       const mult = c.kinds.reduce((m, k) => m * (1 + pct[k] / 100), 1);
       expect(q.clinicPriceCents, c.name).toBe(Math.round(57500 * mult));
-      expect(q.doctorPayCents, c.name).toBe(Math.round(40000 * mult));
+      expect(q.providerPayCents, c.name).toBe(Math.round(40000 * mult));
     }
   });
 
@@ -67,6 +67,28 @@ describe("quoteBase", () => {
     // Fri 2026-10-16 10pm Eastern = Sat 02:00Z
     const p = applicablePremiums({ startsAt: d("2026-10-17T02:00:00Z"), pricedAt: early, timeZone: TZ, boosted: false }, S);
     expect(p.map((x) => x.kind)).toEqual([]);
+  });
+});
+
+describe("hourly professions", () => {
+  const LMT = { clinicPriceCents: 9000, providerPayCents: 6000, minHours: 2 };
+  it("bills max(hours, minHours) × hourly rate on both sides", () => {
+    const q = quoteBase({ startsAt: weekday.startsAt, endsAt: d("2026-10-14T14:30:00Z") }, "HOURLY", LMT, { pricedAt: early, timeZone: TZ, boosted: false }, S);
+    expect(q).toMatchObject({ tier: "HOURLY", billableHours: 2, clinicPriceCents: 18000, providerPayCents: 12000, marginCents: 6000, overtimeHours: 0 });
+    const q2 = quoteBase(weekday, "HOURLY", LMT, { pricedAt: early, timeZone: TZ, boosted: false }, S);
+    expect(q2).toMatchObject({ billableHours: 8, clinicPriceCents: 72000, providerPayCents: 48000 });
+  });
+  it("falls back to the settings minimum and applies premiums", () => {
+    const q = quoteBase({ startsAt: d("2026-10-17T13:00:00Z"), endsAt: d("2026-10-17T14:00:00Z") }, "HOURLY", { clinicPriceCents: 9000, providerPayCents: 6000 }, { pricedAt: early, timeZone: TZ, boosted: false }, S);
+    expect(q.billableHours).toBe(S["pricing.hourlyMinHours"]);
+    expect(q.clinicPriceCents).toBe(Math.round(18000 * 1.1));
+    expect(tierFor("HOURLY", 3)).toBe("HOURLY");
+    expect(tierFor("TIERED", 3)).toBe("HALF_DAY");
+  });
+  it("per-profession premium overrides", () => {
+    const s2 = { ...S, "pricing.premiumOverridesByProfession": { LMT: { weekend: 5 } } };
+    const p = applicablePremiums({ startsAt: d("2026-10-17T13:00:00Z"), pricedAt: early, timeZone: TZ, boosted: false, professionCode: "LMT" }, s2);
+    expect(p).toEqual([{ kind: "WEEKEND", percent: 5 }]);
   });
 });
 
@@ -97,7 +119,7 @@ describe("travel", () => {
 });
 
 describe("display separation", () => {
-  const b = { clinicPriceCents: 57500, doctorPayCents: 40000, promoDiscountCents: 5000, mileageCents: 1200, lodgingCents: 0 };
+  const b = { clinicPriceCents: 57500, providerPayCents: 40000, promoDiscountCents: 5000, mileageCents: 1200, lodgingCents: 0 };
   it("clinic view never exposes doctor pay", () => {
     const v = clinicView(b);
     expect(JSON.stringify(v)).not.toContain("40000");
@@ -105,14 +127,14 @@ describe("display separation", () => {
     expect(v.totalCents).toBe(53700);
   });
   it("doctor view never exposes clinic price, discount or margin", () => {
-    const v = doctorView(b);
+    const v = providerView(b);
     expect(JSON.stringify(v)).not.toMatch(/57500|5000\b/);
     expect(Object.keys(v)).toEqual(["payCents", "mileageCents", "lodgingCents", "totalCents"]);
     expect(v.totalCents).toBe(41200);
   });
   it("totals, margin, deposit", () => {
     expect(clinicTotalCents(b)).toBe(53700);
-    expect(doctorTotalCents(b)).toBe(41200);
+    expect(providerTotalCents(b)).toBe(41200);
     expect(platformMarginCents(b)).toBe(12500);
     expect(depositCents(53700, 10)).toBe(5370);
     expect(formatCents(57500)).toBe("$575");

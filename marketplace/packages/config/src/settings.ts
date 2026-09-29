@@ -11,11 +11,11 @@ import { z } from "zod";
 const weightsSchema = z
   .object({
     drive: z.number().min(0).max(1),
-    technique: z.number().min(0).max(1),
+    skills: z.number().min(0).max(1),
     reliability: z.number().min(0).max(1),
     rating: z.number().min(0).max(1),
     relationship: z.number().min(0).max(1),
-    newDoctor: z.number().min(0).max(1),
+    newProvider: z.number().min(0).max(1),
   })
   .refine((w) => Math.abs(Object.values(w).reduce((a, b) => a + b, 0) - 1) < 1e-9, {
     message: "Weights must sum to 1.0",
@@ -53,7 +53,15 @@ export const SETTINGS = {
     label: "Score weights",
     help: "Must sum to 1.0.",
     schema: weightsSchema,
-    default: { drive: 0.25, technique: 0.2, reliability: 0.2, rating: 0.15, relationship: 0.15, newDoctor: 0.05 },
+    default: { drive: 0.25, skills: 0.2, reliability: 0.2, rating: 0.15, relationship: 0.15, newProvider: 0.05 },
+    flag: null,
+  }),
+  "matching.weightsByProfession": def({
+    group: "Matching",
+    label: "Per-profession score weights",
+    help: "Optional overrides keyed by profession code, e.g. {\"LMT\": {...}}. Each must sum to 1.0; missing professions use the default weights.",
+    schema: z.record(z.string(), weightsSchema),
+    default: {},
     flag: null,
   }),
   "matching.maxDriveMinutes": def({ group: "Matching", label: "Platform max one-way drive (minutes)", schema: z.number().int().positive(), default: 180, flag: null }),
@@ -77,9 +85,18 @@ export const SETTINGS = {
 
   // ---------- pricing (§8) ----------
   "pricing.overtimeClinicCentsPerHour": def({ group: "Pricing", label: "Overtime clinic price per hour beyond 8h", schema: cents, default: 10000, flag: null }),
-  "pricing.overtimeDoctorCentsPerHour": def({ group: "Pricing", label: "Overtime doctor pay per hour beyond 8h", schema: cents, default: 7000, flag: "OWNER_DECISION" }),
+  "pricing.overtimeProviderCentsPerHour": def({ group: "Pricing", label: "Overtime provider pay per hour beyond 8h", schema: cents, default: 7000, flag: "OWNER_DECISION" }),
   "pricing.mileageRateCentsPerMile": def({ group: "Pricing", label: "Mileage rate (cents per mile)", schema: cents, default: 20, flag: "OWNER_DECISION" }),
   "pricing.mileageRoundTrip": def({ group: "Pricing", label: "Mileage is round-trip (off = one-way)", schema: z.boolean(), default: false, flag: "OWNER_DECISION" }),
+  "pricing.hourlyMinHours": def({ group: "Pricing", label: "Minimum billable hours for hourly professions", schema: z.number().positive(), default: 2, flag: "OWNER_DECISION" }),
+  "pricing.premiumOverridesByProfession": def({
+    group: "Pricing",
+    label: "Per-profession premium % overrides",
+    help: "e.g. {\"LMT\": {\"weekend\": 5}}. Keys: urgent, weekend, holiday, boost.",
+    schema: z.record(z.string(), z.object({ urgent: percent.optional(), weekend: percent.optional(), holiday: percent.optional(), boost: percent.optional() })),
+    default: {},
+    flag: "OWNER_DECISION",
+  }),
   "pricing.lodgingTriggerMinutes": def({ group: "Pricing", label: "Lodging eligible above one-way drive (minutes)", schema: z.number().int().positive(), default: 120, flag: null }),
   "pricing.premiumUrgentPercent": def({ group: "Pricing", label: "Urgent premium (<48h at posting) %", schema: percent, default: 15, flag: "OWNER_DECISION" }),
   "pricing.premiumWeekendPercent": def({ group: "Pricing", label: "Weekend premium %", schema: percent, default: 10, flag: "OWNER_DECISION" }),
@@ -89,19 +106,15 @@ export const SETTINGS = {
   // ---------- payments (§9) ----------
   "payments.depositPercent": def({ group: "Payments", label: "Deposit charged at confirmation %", schema: percent, default: 10, flag: null }),
   "payments.autoCompleteHours": def({ group: "Payments", label: "Auto-complete after shift end (hours)", schema: z.number().min(0), default: 2, flag: null }),
-  "payments.payoutHoldHours": def({ group: "Payments", label: "Doctor payout hold after completion (hours)", schema: z.number().min(0), default: 48, flag: null }),
+  "payments.payoutHoldHours": def({ group: "Payments", label: "Provider payout hold after completion (hours)", schema: z.number().min(0), default: 48, flag: null }),
   "payments.clinicFreeCancelHours": def({ group: "Payments", label: "Clinic free-cancel cutoff before start (hours)", schema: z.number().min(0), default: 48, flag: null }),
-  "payments.lateCancelDoctorSharePercent": def({ group: "Payments", label: "Doctor share of forfeited late-cancel deposit %", schema: percent, default: 50, flag: "OWNER_DECISION" }),
-  "payments.doctorLateCancelHours": def({ group: "Payments", label: "Doctor cancel counts as late within (hours)", schema: z.number().min(0), default: 72, flag: null }),
+  "payments.lateCancelProviderSharePercent": def({ group: "Payments", label: "Provider share of forfeited late-cancel deposit %", schema: percent, default: 50, flag: "OWNER_DECISION" }),
+  "payments.providerLateCancelHours": def({ group: "Payments", label: "Provider cancel counts as late within (hours)", schema: z.number().min(0), default: 72, flag: null }),
   "payments.paymentFixWindowHours": def({ group: "Payments", label: "Time for clinic to fix a failed deposit (hours)", schema: z.number().positive(), default: 12, flag: null }),
   "payments.paymentFixWindowUrgentHours": def({ group: "Payments", label: "Failed deposit fix window, urgent shifts (hours)", schema: z.number().positive(), default: 1, flag: null }),
   "payments.disputeWindowHours": def({ group: "Payments", label: "Dispute window after shift end (hours)", schema: z.number().positive(), default: 48, flag: null }),
   "payments.conversionFeeCents": def({ group: "Payments", label: "Conversion fee", schema: cents, default: 0, flag: "ATTORNEY_REVIEW" }),
   "payments.conversionWindowMonths": def({ group: "Payments", label: "Conversion fee window (months)", schema: z.number().int().positive(), default: 12, flag: "ATTORNEY_REVIEW" }),
-
-  // ---------- credentials (§4) ----------
-  "credentials.minMalpracticePerOccurrenceCents": def({ group: "Credentials", label: "Minimum malpractice per-occurrence limit", schema: cents, default: 100_000_000, flag: "OWNER_DECISION" }),
-  "credentials.minMalpracticeAggregateCents": def({ group: "Credentials", label: "Minimum malpractice aggregate limit", schema: cents, default: 300_000_000, flag: "OWNER_DECISION" }),
 
   // ---------- states (§14) ----------
   "states.minVerifiedDoctorsWarning": def({ group: "States", label: "Warn when enabling a state with fewer verified doctors than", schema: z.number().int().min(0), default: 10, flag: null }),
@@ -140,6 +153,10 @@ export type SettingValue<K extends SettingKey> = z.infer<(typeof SETTINGS)[K]["s
 export type SettingsMap = { [K in SettingKey]: SettingValue<K> };
 export type MatchingWeights = SettingValue<"matching.weights">;
 export type DeadlineTier = SettingValue<"matching.deadlineTiers">[number];
+
+export function weightsFor(s: SettingsMap, professionCode: string): MatchingWeights {
+  return s["matching.weightsByProfession"][professionCode] ?? s["matching.weights"];
+}
 
 export function defaultSettings(): SettingsMap {
   const out = {} as Record<string, unknown>;

@@ -11,10 +11,16 @@ CREATE EXTENSION IF NOT EXISTS "citext";
 CREATE EXTENSION IF NOT EXISTS "postgis";
 
 -- CreateEnum
-CREATE TYPE "Role" AS ENUM ('CLINIC_OWNER', 'CLINIC_STAFF', 'DOCTOR', 'PLATFORM_ADMIN');
+CREATE TYPE "Role" AS ENUM ('CLINIC_OWNER', 'CLINIC_STAFF', 'PROVIDER', 'PLATFORM_ADMIN');
 
 -- CreateEnum
-CREATE TYPE "DoctorStatus" AS ENUM ('ONBOARDING', 'ACTIVE', 'PAUSED', 'SUSPENDED', 'DEACTIVATED');
+CREATE TYPE "PricingModel" AS ENUM ('TIERED', 'HOURLY');
+
+-- CreateEnum
+CREATE TYPE "ProviderProfessionStatus" AS ENUM ('ONBOARDING', 'ACTIVE', 'PAUSED');
+
+-- CreateEnum
+CREATE TYPE "ProviderStatus" AS ENUM ('ONBOARDING', 'ACTIVE', 'PAUSED', 'SUSPENDED', 'DEACTIVATED');
 
 -- CreateEnum
 CREATE TYPE "LicenseStatus" AS ENUM ('PENDING_VERIFICATION', 'VERIFIED', 'EXPIRED', 'SUSPENDED', 'REVOKED', 'REJECTED');
@@ -41,10 +47,10 @@ CREATE TYPE "AssignmentStatus" AS ENUM ('CONFIRMED', 'IN_PROGRESS', 'COMPLETED',
 CREATE TYPE "SelectionMethod" AS ENUM ('CLINIC_PICKED_APPLICANT', 'CLINIC_PICKED_OFFER', 'AUTO_APPLICANT', 'CASCADE_ACCEPT', 'INSTANT_BOOK', 'ADMIN');
 
 -- CreateEnum
-CREATE TYPE "CancelParty" AS ENUM ('CLINIC', 'DOCTOR', 'PLATFORM');
+CREATE TYPE "CancelParty" AS ENUM ('CLINIC', 'PROVIDER', 'PLATFORM');
 
 -- CreateEnum
-CREATE TYPE "PartyType" AS ENUM ('CLINIC', 'DOCTOR');
+CREATE TYPE "PartyType" AS ENUM ('CLINIC', 'PROVIDER');
 
 -- CreateEnum
 CREATE TYPE "PaymentType" AS ENUM ('DEPOSIT', 'BALANCE', 'LODGING', 'CANCELLATION_FEE', 'CONVERSION_FEE', 'REFUND', 'ADJUSTMENT');
@@ -62,7 +68,7 @@ CREATE TYPE "PayoutStatus" AS ENUM ('PENDING', 'SCHEDULED', 'ON_HOLD', 'PROCESSI
 CREATE TYPE "TransferStatus" AS ENUM ('PROCESSING', 'PAID', 'FAILED', 'REVERSED');
 
 -- CreateEnum
-CREATE TYPE "DurationTier" AS ENUM ('HALF_DAY', 'FULL_DAY');
+CREATE TYPE "DurationTier" AS ENUM ('HALF_DAY', 'FULL_DAY', 'HOURLY');
 
 -- CreateEnum
 CREATE TYPE "PromoKind" AS ENUM ('PERCENT', 'FIXED');
@@ -125,7 +131,62 @@ CREATE TABLE "RateLimit" (
 );
 
 -- CreateTable
-CREATE TABLE "Doctor" (
+CREATE TABLE "Profession" (
+    "code" TEXT NOT NULL,
+    "displayName" TEXT NOT NULL,
+    "slug" TEXT NOT NULL,
+    "credentialSuffix" TEXT NOT NULL,
+    "npiRequired" BOOLEAN NOT NULL,
+    "pricingModel" "PricingModel" NOT NULL,
+    "defaultMalpracticeMinOccurrenceCents" INTEGER NOT NULL,
+    "defaultMalpracticeMinAggregateCents" INTEGER NOT NULL,
+    "requiresSupervisionDefault" BOOLEAN NOT NULL DEFAULT false,
+    "defaultSupervisingProfessionCodes" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "active" BOOLEAN NOT NULL DEFAULT false,
+    "sortOrder" INTEGER NOT NULL,
+
+    CONSTRAINT "Profession_pkey" PRIMARY KEY ("code")
+);
+
+-- CreateTable
+CREATE TABLE "ProfessionStateConfig" (
+    "professionCode" TEXT NOT NULL,
+    "state" CHAR(2) NOT NULL,
+    "enabled" BOOLEAN NOT NULL DEFAULT false,
+    "legalReviewComplete" BOOLEAN NOT NULL DEFAULT false,
+    "legalReviewNotes" TEXT,
+    "licensedAtStateLevel" BOOLEAN NOT NULL DEFAULT true,
+    "alternativeCredentialAllowed" BOOLEAN NOT NULL DEFAULT false,
+    "alternativeCredentialPolicy" TEXT,
+    "credentialTitle" TEXT,
+    "boardLookupUrl" TEXT,
+    "supervisionRequired" BOOLEAN,
+    "supervisingProfessionCodes" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "supervisionNotes" TEXT,
+    "malpracticeMinOccurrenceCents" INTEGER,
+    "malpracticeMinAggregateCents" INTEGER,
+    "scopeNotes" TEXT,
+    "enabledAt" TIMESTAMPTZ(3),
+    "enabledById" TEXT,
+
+    CONSTRAINT "ProfessionStateConfig_pkey" PRIMARY KEY ("professionCode","state")
+);
+
+-- CreateTable
+CREATE TABLE "ProviderProfession" (
+    "providerId" TEXT NOT NULL,
+    "professionCode" TEXT NOT NULL,
+    "yearsInPractice" INTEGER,
+    "specialties" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "status" "ProviderProfessionStatus" NOT NULL DEFAULT 'ONBOARDING',
+    "addendumSignedAt" TIMESTAMPTZ(3),
+    "profileCompleteAt" TIMESTAMPTZ(3),
+
+    CONSTRAINT "ProviderProfession_pkey" PRIMARY KEY ("providerId","professionCode")
+);
+
+-- CreateTable
+CREATE TABLE "Provider" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "legalName" TEXT NOT NULL,
@@ -144,12 +205,10 @@ CREATE TABLE "Doctor" (
     "maxDriveMinutes" INTEGER NOT NULL DEFAULT 90,
     "willingOvernight" BOOLEAN NOT NULL DEFAULT false,
     "bio" TEXT,
-    "yearsInPractice" INTEGER,
     "school" TEXT,
     "graduationYear" INTEGER,
     "languages" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "ehrSystems" TEXT[] DEFAULT ARRAY[]::TEXT[],
-    "specialties" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "xrayComfort" BOOLEAN NOT NULL DEFAULT false,
     "maxPatientsPerDay" INTEGER,
     "stripeAccountId" TEXT,
@@ -157,20 +216,21 @@ CREATE TABLE "Doctor" (
     "agreementSignedAt" TIMESTAMPTZ(3),
     "agreementVersion" INTEGER,
     "profileCompleteAt" TIMESTAMPTZ(3),
-    "status" "DoctorStatus" NOT NULL DEFAULT 'ONBOARDING',
+    "status" "ProviderStatus" NOT NULL DEFAULT 'ONBOARDING',
     "adminNotes" TEXT,
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "Doctor_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Provider_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "License" (
     "id" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
+    "professionCode" TEXT NOT NULL,
     "state" CHAR(2) NOT NULL,
     "licenseNumber" TEXT NOT NULL,
-    "licenseType" TEXT NOT NULL DEFAULT 'DC',
+    "credentialTitle" TEXT,
     "issuedAt" TIMESTAMPTZ(3),
     "expiresAt" TIMESTAMPTZ(3) NOT NULL,
     "status" "LicenseStatus" NOT NULL DEFAULT 'PENDING_VERIFICATION',
@@ -189,11 +249,12 @@ CREATE TABLE "License" (
 -- CreateTable
 CREATE TABLE "MalpracticePolicy" (
     "id" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
     "carrier" TEXT NOT NULL,
     "policyNumber" TEXT NOT NULL,
-    "perOccurrenceDollars" INTEGER NOT NULL,
-    "aggregateDollars" INTEGER NOT NULL,
+    "perOccurrenceCents" INTEGER NOT NULL,
+    "aggregateCents" INTEGER NOT NULL,
+    "coveredProfessionCodes" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "expiresAt" TIMESTAMPTZ(3) NOT NULL,
     "documentUrl" TEXT NOT NULL,
     "status" "LicenseStatus" NOT NULL DEFAULT 'PENDING_VERIFICATION',
@@ -206,27 +267,46 @@ CREATE TABLE "MalpracticePolicy" (
 );
 
 -- CreateTable
-CREATE TABLE "Technique" (
+CREATE TABLE "Skill" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "professionCode" TEXT,
+    "scopeSensitive" BOOLEAN NOT NULL DEFAULT false,
+    "requiresCertification" BOOLEAN NOT NULL DEFAULT false,
     "active" BOOLEAN NOT NULL DEFAULT true,
 
-    CONSTRAINT "Technique_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Skill_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "DoctorTechnique" (
-    "doctorId" TEXT NOT NULL,
-    "techniqueId" TEXT NOT NULL,
+CREATE TABLE "ProviderSkill" (
+    "providerId" TEXT NOT NULL,
+    "skillId" TEXT NOT NULL,
     "proficiency" INTEGER NOT NULL DEFAULT 2,
+    "certificationUrl" TEXT,
+    "certificationStatus" "LicenseStatus",
+    "certificationExpiresAt" TIMESTAMPTZ(3),
+    "certificationVerifiedById" TEXT,
+    "certificationVerifiedAt" TIMESTAMPTZ(3),
 
-    CONSTRAINT "DoctorTechnique_pkey" PRIMARY KEY ("doctorId","techniqueId")
+    CONSTRAINT "ProviderSkill_pkey" PRIMARY KEY ("providerId","skillId")
+);
+
+-- CreateTable
+CREATE TABLE "SkillStateRule" (
+    "skillId" TEXT NOT NULL,
+    "professionCode" TEXT NOT NULL,
+    "state" CHAR(2) NOT NULL,
+    "allowed" BOOLEAN NOT NULL,
+    "notes" TEXT,
+
+    CONSTRAINT "SkillStateRule_pkey" PRIMARY KEY ("skillId","professionCode","state")
 );
 
 -- CreateTable
 CREATE TABLE "AvailabilityRule" (
     "id" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
     "weekday" INTEGER NOT NULL,
     "startMin" INTEGER NOT NULL,
     "endMin" INTEGER NOT NULL,
@@ -238,7 +318,7 @@ CREATE TABLE "AvailabilityRule" (
 -- CreateTable
 CREATE TABLE "AvailabilityBlackout" (
     "id" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
     "startsAt" TIMESTAMPTZ(3) NOT NULL,
     "endsAt" TIMESTAMPTZ(3) NOT NULL,
     "reason" TEXT,
@@ -249,7 +329,7 @@ CREATE TABLE "AvailabilityBlackout" (
 -- CreateTable
 CREATE TABLE "AvailabilityOpenDate" (
     "id" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
     "startsAt" TIMESTAMPTZ(3) NOT NULL,
     "endsAt" TIMESTAMPTZ(3) NOT NULL,
 
@@ -257,8 +337,8 @@ CREATE TABLE "AvailabilityOpenDate" (
 );
 
 -- CreateTable
-CREATE TABLE "DoctorStats" (
-    "doctorId" TEXT NOT NULL,
+CREATE TABLE "ProviderStats" (
+    "providerId" TEXT NOT NULL,
     "completedShifts" INTEGER NOT NULL DEFAULT 0,
     "lateCancels" INTEGER NOT NULL DEFAULT 0,
     "noShows" INTEGER NOT NULL DEFAULT 0,
@@ -266,9 +346,11 @@ CREATE TABLE "DoctorStats" (
     "ratingCount" INTEGER NOT NULL DEFAULT 0,
     "lastShiftAt" TIMESTAMPTZ(3),
     "shiftsThisMonth" INTEGER NOT NULL DEFAULT 0,
+    "ratingByProfession" JSONB NOT NULL DEFAULT '{}',
+    "completedByProfession" JSONB NOT NULL DEFAULT '{}',
     "updatedAt" TIMESTAMPTZ(3) NOT NULL,
 
-    CONSTRAINT "DoctorStats_pkey" PRIMARY KEY ("doctorId")
+    CONSTRAINT "ProviderStats_pkey" PRIMARY KEY ("providerId")
 );
 
 -- CreateTable
@@ -315,6 +397,7 @@ CREATE TABLE "ClinicLocation" (
     "lng" DOUBLE PRECISION NOT NULL,
     "geo" geography(Point, 4326),
     "timeZone" TEXT NOT NULL,
+    "professionCodes" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "geocodedAt" TIMESTAMPTZ(3) NOT NULL,
     "rateRegionId" TEXT,
     "phone" TEXT,
@@ -331,18 +414,18 @@ CREATE TABLE "ClinicLocation" (
 );
 
 -- CreateTable
-CREATE TABLE "LocationTechnique" (
+CREATE TABLE "LocationSkill" (
     "locationId" TEXT NOT NULL,
-    "techniqueId" TEXT NOT NULL,
+    "skillId" TEXT NOT NULL,
 
-    CONSTRAINT "LocationTechnique_pkey" PRIMARY KEY ("locationId","techniqueId")
+    CONSTRAINT "LocationSkill_pkey" PRIMARY KEY ("locationId","skillId")
 );
 
 -- CreateTable
 CREATE TABLE "ShiftGroup" (
     "id" TEXT NOT NULL,
     "locationId" TEXT NOT NULL,
-    "sameDoctorRequired" BOOLEAN NOT NULL DEFAULT false,
+    "sameProviderRequired" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "ShiftGroup_pkey" PRIMARY KEY ("id")
 );
@@ -353,11 +436,15 @@ CREATE TABLE "Shift" (
     "locationId" TEXT NOT NULL,
     "shiftGroupId" TEXT,
     "state" CHAR(2) NOT NULL,
+    "professionCode" TEXT NOT NULL,
+    "supervisionAttestation" JSONB,
+    "supervisionAttestedById" TEXT,
+    "supervisionAttestedAt" TIMESTAMPTZ(3),
     "startsAt" TIMESTAMPTZ(3) NOT NULL,
     "endsAt" TIMESTAMPTZ(3) NOT NULL,
     "status" "ShiftStatus" NOT NULL DEFAULT 'DRAFT',
-    "requiredTechniqueIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
-    "preferredTechniqueIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "requiredSkillIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "preferredSkillIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "expectedPatients" INTEGER,
     "notes" TEXT,
     "instantBook" BOOLEAN NOT NULL DEFAULT false,
@@ -367,7 +454,7 @@ CREATE TABLE "Shift" (
     "rateCardId" TEXT,
     "durationTier" "DurationTier",
     "clinicPriceCents" INTEGER NOT NULL,
-    "doctorPayCents" INTEGER NOT NULL,
+    "providerPayCents" INTEGER NOT NULL,
     "premiumsApplied" JSONB NOT NULL DEFAULT '[]',
     "boosted" BOOLEAN NOT NULL DEFAULT false,
     "promoCodeId" TEXT,
@@ -388,7 +475,7 @@ CREATE TABLE "Shift" (
 CREATE TABLE "Application" (
     "id" TEXT NOT NULL,
     "shiftId" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
     "note" TEXT,
     "status" "ApplicationStatus" NOT NULL DEFAULT 'ACTIVE',
     "scoreAtApply" DOUBLE PRECISION NOT NULL,
@@ -404,7 +491,7 @@ CREATE TABLE "Application" (
 CREATE TABLE "Offer" (
     "id" TEXT NOT NULL,
     "shiftId" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
     "source" "OfferSource" NOT NULL,
     "expiresAt" TIMESTAMPTZ(3) NOT NULL,
     "status" "OfferStatus" NOT NULL DEFAULT 'PENDING',
@@ -430,8 +517,9 @@ CREATE TABLE "MatchRun" (
 CREATE TABLE "Assignment" (
     "id" TEXT NOT NULL,
     "shiftId" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
     "state" CHAR(2) NOT NULL,
+    "professionCode" TEXT NOT NULL,
     "startsAt" TIMESTAMPTZ(3) NOT NULL,
     "endsAt" TIMESTAMPTZ(3) NOT NULL,
     "bufferMinutes" INTEGER NOT NULL,
@@ -441,13 +529,13 @@ CREATE TABLE "Assignment" (
     "driveMinutes" INTEGER NOT NULL,
     "driveMiles" DOUBLE PRECISION NOT NULL,
     "clinicPriceCents" INTEGER NOT NULL,
-    "doctorPayCents" INTEGER NOT NULL,
+    "providerPayCents" INTEGER NOT NULL,
     "promoDiscountCents" INTEGER NOT NULL DEFAULT 0,
     "mileageCents" INTEGER NOT NULL,
     "lodgingEstimateCents" INTEGER NOT NULL DEFAULT 0,
     "lodgingApprovedCents" INTEGER NOT NULL DEFAULT 0,
     "clinicTotalCents" INTEGER NOT NULL,
-    "doctorTotalCents" INTEGER NOT NULL,
+    "providerTotalCents" INTEGER NOT NULL,
     "depositCents" INTEGER NOT NULL DEFAULT 0,
     "flags" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "confirmedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -503,7 +591,7 @@ CREATE TABLE "Rating" (
 CREATE TABLE "MessageThread" (
     "id" TEXT NOT NULL,
     "clinicOrgId" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
     "shiftId" TEXT,
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "lastMessageAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -550,7 +638,7 @@ CREATE TABLE "Payment" (
 -- CreateTable
 CREATE TABLE "Payout" (
     "id" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
     "assignmentId" TEXT,
     "kind" "PayoutKind" NOT NULL,
     "description" TEXT NOT NULL,
@@ -571,7 +659,7 @@ CREATE TABLE "Payout" (
 -- CreateTable
 CREATE TABLE "PayoutTransfer" (
     "id" TEXT NOT NULL,
-    "doctorId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
     "amountCents" INTEGER NOT NULL,
     "stripeTransferId" TEXT,
     "idempotencyKey" TEXT NOT NULL,
@@ -665,9 +753,11 @@ CREATE TABLE "RateRegion" (
 CREATE TABLE "RateCard" (
     "id" TEXT NOT NULL,
     "rateRegionId" TEXT NOT NULL,
+    "professionCode" TEXT NOT NULL,
     "durationTier" "DurationTier" NOT NULL,
     "clinicPriceCents" INTEGER NOT NULL,
-    "doctorPayCents" INTEGER NOT NULL,
+    "providerPayCents" INTEGER NOT NULL,
+    "minHours" DOUBLE PRECISION,
     "effectiveFrom" TIMESTAMPTZ(3) NOT NULL,
     "effectiveTo" TIMESTAMPTZ(3),
 
@@ -720,6 +810,7 @@ CREATE TABLE "PromoRedemption" (
 CREATE TABLE "Lead" (
     "id" TEXT NOT NULL,
     "audience" "PartyType" NOT NULL DEFAULT 'CLINIC',
+    "professionCode" TEXT,
     "name" TEXT NOT NULL,
     "email" CITEXT NOT NULL,
     "phone" TEXT,
@@ -850,25 +941,28 @@ CREATE UNIQUE INDEX "AuthToken_tokenHash_key" ON "AuthToken"("tokenHash");
 CREATE INDEX "AuthToken_userId_purpose_idx" ON "AuthToken"("userId", "purpose");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Doctor_userId_key" ON "Doctor"("userId");
+CREATE UNIQUE INDEX "Profession_slug_key" ON "Profession"("slug");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Doctor_npi_key" ON "Doctor"("npi");
+CREATE UNIQUE INDEX "Provider_userId_key" ON "Provider"("userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Doctor_stripeAccountId_key" ON "Doctor"("stripeAccountId");
+CREATE UNIQUE INDEX "Provider_npi_key" ON "Provider"("npi");
 
 -- CreateIndex
-CREATE INDEX "License_state_status_expiresAt_idx" ON "License"("state", "status", "expiresAt");
+CREATE UNIQUE INDEX "Provider_stripeAccountId_key" ON "Provider"("stripeAccountId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "License_doctorId_state_licenseType_key" ON "License"("doctorId", "state", "licenseType");
+CREATE INDEX "License_professionCode_state_status_expiresAt_idx" ON "License"("professionCode", "state", "status", "expiresAt");
 
 -- CreateIndex
-CREATE INDEX "MalpracticePolicy_doctorId_status_expiresAt_idx" ON "MalpracticePolicy"("doctorId", "status", "expiresAt");
+CREATE UNIQUE INDEX "License_providerId_professionCode_state_key" ON "License"("providerId", "professionCode", "state");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Technique_name_key" ON "Technique"("name");
+CREATE INDEX "MalpracticePolicy_providerId_status_expiresAt_idx" ON "MalpracticePolicy"("providerId", "status", "expiresAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Skill_name_professionCode_key" ON "Skill"("name", "professionCode");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ClinicOrg_stripeCustomerId_key" ON "ClinicOrg"("stripeCustomerId");
@@ -877,19 +971,19 @@ CREATE UNIQUE INDEX "ClinicOrg_stripeCustomerId_key" ON "ClinicOrg"("stripeCusto
 CREATE UNIQUE INDEX "ClinicMember_clinicOrgId_userId_key" ON "ClinicMember"("clinicOrgId", "userId");
 
 -- CreateIndex
-CREATE INDEX "Shift_state_status_startsAt_idx" ON "Shift"("state", "status", "startsAt");
+CREATE INDEX "Shift_professionCode_state_status_startsAt_idx" ON "Shift"("professionCode", "state", "status", "startsAt");
 
 -- CreateIndex
 CREATE INDEX "Shift_locationId_startsAt_idx" ON "Shift"("locationId", "startsAt");
 
 -- CreateIndex
-CREATE INDEX "Application_doctorId_status_idx" ON "Application"("doctorId", "status");
+CREATE INDEX "Application_providerId_status_idx" ON "Application"("providerId", "status");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Application_shiftId_doctorId_key" ON "Application"("shiftId", "doctorId");
+CREATE UNIQUE INDEX "Application_shiftId_providerId_key" ON "Application"("shiftId", "providerId");
 
 -- CreateIndex
-CREATE INDEX "Offer_doctorId_status_idx" ON "Offer"("doctorId", "status");
+CREATE INDEX "Offer_providerId_status_idx" ON "Offer"("providerId", "status");
 
 -- CreateIndex
 CREATE INDEX "Offer_shiftId_status_idx" ON "Offer"("shiftId", "status");
@@ -898,7 +992,7 @@ CREATE INDEX "Offer_shiftId_status_idx" ON "Offer"("shiftId", "status");
 CREATE INDEX "MatchRun_shiftId_createdAt_idx" ON "MatchRun"("shiftId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "Assignment_doctorId_status_startsAt_idx" ON "Assignment"("doctorId", "status", "startsAt");
+CREATE INDEX "Assignment_providerId_status_startsAt_idx" ON "Assignment"("providerId", "status", "startsAt");
 
 -- CreateIndex
 CREATE INDEX "Assignment_shiftId_idx" ON "Assignment"("shiftId");
@@ -913,7 +1007,7 @@ CREATE UNIQUE INDEX "Block_fromType_fromId_toType_toId_key" ON "Block"("fromType
 CREATE UNIQUE INDEX "Rating_assignmentId_raterType_key" ON "Rating"("assignmentId", "raterType");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "MessageThread_clinicOrgId_doctorId_key" ON "MessageThread"("clinicOrgId", "doctorId");
+CREATE UNIQUE INDEX "MessageThread_clinicOrgId_providerId_key" ON "MessageThread"("clinicOrgId", "providerId");
 
 -- CreateIndex
 CREATE INDEX "Message_threadId_createdAt_idx" ON "Message"("threadId", "createdAt");
@@ -934,7 +1028,7 @@ CREATE INDEX "Payment_assignmentId_idx" ON "Payment"("assignmentId");
 CREATE INDEX "Payment_clinicOrgId_createdAt_idx" ON "Payment"("clinicOrgId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "Payout_doctorId_status_idx" ON "Payout"("doctorId", "status");
+CREATE INDEX "Payout_providerId_status_idx" ON "Payout"("providerId", "status");
 
 -- CreateIndex
 CREATE INDEX "Payout_status_releaseAt_idx" ON "Payout"("status", "releaseAt");
@@ -949,7 +1043,7 @@ CREATE UNIQUE INDEX "PayoutTransfer_stripeTransferId_key" ON "PayoutTransfer"("s
 CREATE UNIQUE INDEX "PayoutTransfer_idempotencyKey_key" ON "PayoutTransfer"("idempotencyKey");
 
 -- CreateIndex
-CREATE INDEX "PayoutTransfer_doctorId_createdAt_idx" ON "PayoutTransfer"("doctorId", "createdAt");
+CREATE INDEX "PayoutTransfer_providerId_createdAt_idx" ON "PayoutTransfer"("providerId", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "Dispute_assignmentId_status_idx" ON "Dispute"("assignmentId", "status");
@@ -964,7 +1058,7 @@ CREATE INDEX "AgreementSignature_partyType_partyId_idx" ON "AgreementSignature"(
 CREATE UNIQUE INDEX "RateRegion_name_key" ON "RateRegion"("name");
 
 -- CreateIndex
-CREATE INDEX "RateCard_rateRegionId_durationTier_effectiveFrom_idx" ON "RateCard"("rateRegionId", "durationTier", "effectiveFrom");
+CREATE INDEX "RateCard_professionCode_rateRegionId_durationTier_effective_idx" ON "RateCard"("professionCode", "rateRegionId", "durationTier", "effectiveFrom");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PromoCode_code_key" ON "PromoCode"("code");
@@ -1018,31 +1112,49 @@ CREATE INDEX "AdminTask_resolvedAt_createdAt_idx" ON "AdminTask"("resolvedAt", "
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Doctor" ADD CONSTRAINT "Doctor_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "ProfessionStateConfig" ADD CONSTRAINT "ProfessionStateConfig_professionCode_fkey" FOREIGN KEY ("professionCode") REFERENCES "Profession"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "License" ADD CONSTRAINT "License_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ProviderProfession" ADD CONSTRAINT "ProviderProfession_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "MalpracticePolicy" ADD CONSTRAINT "MalpracticePolicy_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ProviderProfession" ADD CONSTRAINT "ProviderProfession_professionCode_fkey" FOREIGN KEY ("professionCode") REFERENCES "Profession"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DoctorTechnique" ADD CONSTRAINT "DoctorTechnique_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Provider" ADD CONSTRAINT "Provider_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DoctorTechnique" ADD CONSTRAINT "DoctorTechnique_techniqueId_fkey" FOREIGN KEY ("techniqueId") REFERENCES "Technique"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "License" ADD CONSTRAINT "License_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "AvailabilityRule" ADD CONSTRAINT "AvailabilityRule_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "License" ADD CONSTRAINT "License_professionCode_fkey" FOREIGN KEY ("professionCode") REFERENCES "Profession"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "AvailabilityBlackout" ADD CONSTRAINT "AvailabilityBlackout_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "MalpracticePolicy" ADD CONSTRAINT "MalpracticePolicy_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "AvailabilityOpenDate" ADD CONSTRAINT "AvailabilityOpenDate_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Skill" ADD CONSTRAINT "Skill_professionCode_fkey" FOREIGN KEY ("professionCode") REFERENCES "Profession"("code") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DoctorStats" ADD CONSTRAINT "DoctorStats_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ProviderSkill" ADD CONSTRAINT "ProviderSkill_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProviderSkill" ADD CONSTRAINT "ProviderSkill_skillId_fkey" FOREIGN KEY ("skillId") REFERENCES "Skill"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SkillStateRule" ADD CONSTRAINT "SkillStateRule_skillId_fkey" FOREIGN KEY ("skillId") REFERENCES "Skill"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AvailabilityRule" ADD CONSTRAINT "AvailabilityRule_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AvailabilityBlackout" ADD CONSTRAINT "AvailabilityBlackout_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AvailabilityOpenDate" ADD CONSTRAINT "AvailabilityOpenDate_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProviderStats" ADD CONSTRAINT "ProviderStats_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ClinicMember" ADD CONSTRAINT "ClinicMember_clinicOrgId_fkey" FOREIGN KEY ("clinicOrgId") REFERENCES "ClinicOrg"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1057,10 +1169,10 @@ ALTER TABLE "ClinicLocation" ADD CONSTRAINT "ClinicLocation_clinicOrgId_fkey" FO
 ALTER TABLE "ClinicLocation" ADD CONSTRAINT "ClinicLocation_rateRegionId_fkey" FOREIGN KEY ("rateRegionId") REFERENCES "RateRegion"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "LocationTechnique" ADD CONSTRAINT "LocationTechnique_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "ClinicLocation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "LocationSkill" ADD CONSTRAINT "LocationSkill_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "ClinicLocation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "LocationTechnique" ADD CONSTRAINT "LocationTechnique_techniqueId_fkey" FOREIGN KEY ("techniqueId") REFERENCES "Technique"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "LocationSkill" ADD CONSTRAINT "LocationSkill_skillId_fkey" FOREIGN KEY ("skillId") REFERENCES "Skill"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ShiftGroup" ADD CONSTRAINT "ShiftGroup_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "ClinicLocation"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -1078,13 +1190,13 @@ ALTER TABLE "Shift" ADD CONSTRAINT "Shift_promoCodeId_fkey" FOREIGN KEY ("promoC
 ALTER TABLE "Application" ADD CONSTRAINT "Application_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "Shift"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Application" ADD CONSTRAINT "Application_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Application" ADD CONSTRAINT "Application_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Offer" ADD CONSTRAINT "Offer_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "Shift"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Offer" ADD CONSTRAINT "Offer_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Offer" ADD CONSTRAINT "Offer_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "MatchRun" ADD CONSTRAINT "MatchRun_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "Shift"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1093,7 +1205,7 @@ ALTER TABLE "MatchRun" ADD CONSTRAINT "MatchRun_shiftId_fkey" FOREIGN KEY ("shif
 ALTER TABLE "Assignment" ADD CONSTRAINT "Assignment_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "Shift"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Assignment" ADD CONSTRAINT "Assignment_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Assignment" ADD CONSTRAINT "Assignment_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Rating" ADD CONSTRAINT "Rating_assignmentId_fkey" FOREIGN KEY ("assignmentId") REFERENCES "Assignment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -1102,7 +1214,7 @@ ALTER TABLE "Rating" ADD CONSTRAINT "Rating_assignmentId_fkey" FOREIGN KEY ("ass
 ALTER TABLE "MessageThread" ADD CONSTRAINT "MessageThread_clinicOrgId_fkey" FOREIGN KEY ("clinicOrgId") REFERENCES "ClinicOrg"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "MessageThread" ADD CONSTRAINT "MessageThread_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "MessageThread" ADD CONSTRAINT "MessageThread_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "MessageThread" ADD CONSTRAINT "MessageThread_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "Shift"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1117,7 +1229,7 @@ ALTER TABLE "Payment" ADD CONSTRAINT "Payment_clinicOrgId_fkey" FOREIGN KEY ("cl
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_assignmentId_fkey" FOREIGN KEY ("assignmentId") REFERENCES "Assignment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Payout" ADD CONSTRAINT "Payout_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Payout" ADD CONSTRAINT "Payout_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Payout" ADD CONSTRAINT "Payout_assignmentId_fkey" FOREIGN KEY ("assignmentId") REFERENCES "Assignment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1126,7 +1238,7 @@ ALTER TABLE "Payout" ADD CONSTRAINT "Payout_assignmentId_fkey" FOREIGN KEY ("ass
 ALTER TABLE "Payout" ADD CONSTRAINT "Payout_transferId_fkey" FOREIGN KEY ("transferId") REFERENCES "PayoutTransfer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PayoutTransfer" ADD CONSTRAINT "PayoutTransfer_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "Doctor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PayoutTransfer" ADD CONSTRAINT "PayoutTransfer_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "LodgingReceipt" ADD CONSTRAINT "LodgingReceipt_assignmentId_fkey" FOREIGN KEY ("assignmentId") REFERENCES "Assignment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -1136,6 +1248,9 @@ ALTER TABLE "Dispute" ADD CONSTRAINT "Dispute_assignmentId_fkey" FOREIGN KEY ("a
 
 -- AddForeignKey
 ALTER TABLE "RateCard" ADD CONSTRAINT "RateCard_rateRegionId_fkey" FOREIGN KEY ("rateRegionId") REFERENCES "RateRegion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RateCard" ADD CONSTRAINT "RateCard_professionCode_fkey" FOREIGN KEY ("professionCode") REFERENCES "Profession"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "PromoCode" ADD CONSTRAINT "PromoCode_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "PromoCode"("id") ON DELETE SET NULL ON UPDATE CASCADE;

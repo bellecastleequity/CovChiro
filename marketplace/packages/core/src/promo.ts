@@ -3,9 +3,9 @@ import { DomainError } from "./errors";
 /**
  * Clinic promo codes. Carried over from the current site's promo system
  * (library codes, campaign landing pages with per-person codes, welcome
- * codes) and adapted to the marketplace rule that doctor pay is fixed:
+ * codes) and adapted to the marketplace rule that provider pay is fixed:
  * a discount only ever comes out of the platform margin (clinic price −
- * doctor pay), is capped at a settable share of it, and never touches
+ * provider pay), is capped at a settable share of it, and never touches
  * pass-through mileage or lodging.
  */
 
@@ -66,14 +66,14 @@ export function assertPromoUsable(p: PromoFacts, ctx: PromoContext): void {
 
 /**
  * Discount on the coverage price only. Capped at `maxShareOfMarginPercent`
- * of the margin so doctor pay is never subsidised by a promo.
+ * of the margin so provider pay is never subsidised by a promo.
  */
 export function promoDiscountCents(
   p: Pick<PromoFacts, "kind" | "value">,
-  quote: { clinicPriceCents: number; doctorPayCents: number },
+  quote: { clinicPriceCents: number; providerPayCents: number },
   maxShareOfMarginPercent: number,
 ): number {
-  const margin = Math.max(0, quote.clinicPriceCents - quote.doctorPayCents);
+  const margin = Math.max(0, quote.clinicPriceCents - quote.providerPayCents);
   const cap = Math.floor((margin * maxShareOfMarginPercent) / 100);
   const raw = p.kind === "PERCENT" ? Math.round((quote.clinicPriceCents * Math.min(100, Math.max(0, p.value))) / 100) : Math.max(0, Math.round(p.value));
   return Math.min(raw, cap);

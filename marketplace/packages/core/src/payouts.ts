@@ -2,10 +2,10 @@ import type { PayoutStatus } from "./stateMachines";
 import { HOUR } from "./time";
 
 /**
- * Doctor pay ledger. Every dollar owed to a doctor is a Payout row:
+ * Provider pay ledger. Every dollar owed to a provider is a Payout row:
  *   SHIFT         pay + mileage for a completed assignment
  *   LODGING       approved lodging receipt (100% pass-through)
- *   LATE_CANCEL   doctor's share of a clinic's forfeited deposit
+ *   LATE_CANCEL   provider's share of a clinic's forfeited deposit
  *   ADJUSTMENT    admin bonus (+) or correction (−), always audit-logged
  * A row becomes payable at releaseAt (completion + hold) unless a dispute or
  * admin hold is open, and is paid by a Stripe Connect transfer (INV-5).
@@ -66,7 +66,7 @@ export function summarizePayouts(rows: (PayoutFacts & { hasOpenDispute?: boolean
 }
 
 /**
- * Net amount for one transfer to one doctor: payable rows are netted so a
+ * Net amount for one transfer to one provider: payable rows are netted so a
  * negative adjustment is recovered from the next payment. Returns null when
  * the net is not positive (nothing to send yet).
  */

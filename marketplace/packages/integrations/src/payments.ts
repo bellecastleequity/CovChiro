@@ -1,0 +1,181 @@
+import Stripe from "stripe";
+import { env } from "@cm/config";
+
+/**
+ * Payments go only through Stripe Connect (INV-5). Providers get Express
+ * connected accounts (Stripe collects bank details, W-9, 1099s); clinics are
+ * Customers with a saved card/ACH from a hosted Checkout "setup" session.
+ * Every mutating call takes an idempotency key. Database payment state
+ * changes only from these server-side responses or verified webhooks.
+ */
+
+export interface ChargeResult {
+  id: string;
+  status: "succeeded" | "processing" | "requires_action" | "failed";
+  failureReason?: string;
+}
+
+export interface PaymentsProvider {
+  name: "stripe" | "fake";
+  createCustomer(input: { name: string; email: string; clinicOrgId: string }): Promise<string>;
+  /** Hosted page where the clinic saves a card or bank account. */
+  paymentMethodSetupUrl(input: { customerId: string; clinicOrgId: string; returnUrl: string }): Promise<string>;
+  createConnectedAccount(input: { email: string; providerId: string }): Promise<string>;
+  connectOnboardingUrl(input: { accountId: string; providerId: string; returnUrl: string; refreshUrl: string }): Promise<string>;
+  connectDashboardUrl(accountId: string): Promise<string | null>;
+  accountStatus(accountId: string): Promise<{ payoutsEnabled: boolean; detailsSubmitted: boolean }>;
+  chargeOffSession(input: { customerId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string> }): Promise<ChargeResult>;
+  refund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string }): Promise<{ id: string }>;
+  transfer(input: { accountId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string> }): Promise<{ id: string }>;
+  /** Throws if the signature is invalid. */
+  parseWebhook(rawBody: string, signature: string | null): Stripe.Event;
+}
+
+class StripePayments implements PaymentsProvider {
+  name = "stripe" as const;
+  private s: Stripe;
+  constructor(key: string, private webhookSecret: string | undefined) {
+    this.s = new Stripe(key);
+  }
+
+  async createCustomer(i: { name: string; email: string; clinicOrgId: string }) {
+    const c = await this.s.customers.create({ name: i.name, email: i.email, metadata: { clinicOrgId: i.clinicOrgId } }, { idempotencyKey: `cust-${i.clinicOrgId}` });
+    return c.id;
+  }
+  async paymentMethodSetupUrl(i: { customerId: string; clinicOrgId: string; returnUrl: string }) {
+    const session = await this.s.checkout.sessions.create({
+      mode: "setup",
+      customer: i.customerId,
+      currency: "usd",
+      payment_method_types: ["card", "us_bank_account"],
+      success_url: `${i.returnUrl}?setup=done`,
+      cancel_url: `${i.returnUrl}?setup=cancelled`,
+      metadata: { clinicOrgId: i.clinicOrgId },
+    });
+    return session.url!;
+  }
+  async createConnectedAccount(i: { email: string; providerId: string }) {
+    const a = await this.s.accounts.create(
+      { type: "express", country: "US", email: i.email, capabilities: { transfers: { requested: true } }, business_type: "individual", metadata: { providerId: i.providerId } },
+      { idempotencyKey: `acct-${i.providerId}` },
+    );
+    return a.id;
+  }
+  async connectOnboardingUrl(i: { accountId: string; returnUrl: string; refreshUrl: string }) {
+    const link = await this.s.accountLinks.create({ account: i.accountId, type: "account_onboarding", return_url: i.returnUrl, refresh_url: i.refreshUrl });
+    return link.url;
+  }
+  async connectDashboardUrl(accountId: string) {
+    try {
+      return (await this.s.accounts.createLoginLink(accountId)).url;
+    } catch {
+      return null;
+    }
+  }
+  async accountStatus(accountId: string) {
+    const a = await this.s.accounts.retrieve(accountId);
+    return { payoutsEnabled: !!a.payouts_enabled, detailsSubmitted: !!a.details_submitted };
+  }
+  async chargeOffSession(i: { customerId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string> }): Promise<ChargeResult> {
+    const customer = (await this.s.customers.retrieve(i.customerId)) as Stripe.Customer;
+    let pm = customer.invoice_settings?.default_payment_method as string | null;
+    if (!pm) {
+      const list = await this.s.paymentMethods.list({ customer: i.customerId, limit: 1 });
+      pm = list.data[0]?.id ?? null;
+    }
+    if (!pm) return { id: "", status: "failed", failureReason: "No saved payment method" };
+    try {
+      const pi = await this.s.paymentIntents.create(
+        {
+          amount: i.amountCents,
+          currency: "usd",
+          customer: i.customerId,
+          payment_method: pm,
+          off_session: true,
+          confirm: true,
+          description: i.description,
+          metadata: i.metadata,
+          transfer_group: i.metadata.assignmentId,
+        },
+        { idempotencyKey: i.idempotencyKey },
+      );
+      const status = pi.status === "succeeded" ? "succeeded" : pi.status === "processing" ? "processing" : pi.status === "requires_action" ? "requires_action" : "failed";
+      return { id: pi.id, status };
+    } catch (e) {
+      const err = e as Stripe.errors.StripeError;
+      return { id: (err.payment_intent as Stripe.PaymentIntent | undefined)?.id ?? "", status: "failed", failureReason: err.message };
+    }
+  }
+  async refund(i: { paymentIntentId: string; amountCents: number; idempotencyKey: string }) {
+    const r = await this.s.refunds.create({ payment_intent: i.paymentIntentId, amount: i.amountCents }, { idempotencyKey: i.idempotencyKey });
+    return { id: r.id };
+  }
+  async transfer(i: { accountId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string> }) {
+    const t = await this.s.transfers.create(
+      { amount: i.amountCents, currency: "usd", destination: i.accountId, description: i.description, metadata: i.metadata },
+      { idempotencyKey: i.idempotencyKey },
+    );
+    return { id: t.id };
+  }
+  parseWebhook(rawBody: string, signature: string | null) {
+    if (!this.webhookSecret || !signature) throw new Error("Webhook signature missing");
+    return this.s.webhooks.constructEvent(rawBody, signature, this.webhookSecret);
+  }
+}
+
+/**
+ * Local fake: no network, deterministic ids, always succeeds unless the
+ * amount ends in 13 cents (lets tests exercise the failure path).
+ */
+export class FakePayments implements PaymentsProvider {
+  name = "fake" as const;
+  private seq = 0;
+  constructor(private baseUrl: string) {}
+  private id(prefix: string, key?: string) {
+    return `${prefix}_fake_${key ? key.replace(/[^a-zA-Z0-9]/g, "").slice(-24) : Date.now().toString(36) + (this.seq++).toString(36)}`;
+  }
+  async createCustomer(i: { clinicOrgId: string }) {
+    return this.id("cus", i.clinicOrgId);
+  }
+  async paymentMethodSetupUrl(i: { clinicOrgId: string; returnUrl: string }) {
+    return `${this.baseUrl}/api/dev/fake-stripe?kind=setup&org=${encodeURIComponent(i.clinicOrgId)}&return=${encodeURIComponent(i.returnUrl)}`;
+  }
+  async createConnectedAccount(i: { providerId: string }) {
+    return this.id("acct", i.providerId);
+  }
+  async connectOnboardingUrl(i: { providerId: string; returnUrl: string }) {
+    return `${this.baseUrl}/api/dev/fake-stripe?kind=connect&provider=${encodeURIComponent(i.providerId)}&return=${encodeURIComponent(i.returnUrl)}`;
+  }
+  async connectDashboardUrl() {
+    return null;
+  }
+  async accountStatus() {
+    return { payoutsEnabled: true, detailsSubmitted: true };
+  }
+  async chargeOffSession(i: { amountCents: number; idempotencyKey: string }): Promise<ChargeResult> {
+    if (i.amountCents % 100 === 13) return { id: this.id("pi", i.idempotencyKey), status: "failed", failureReason: "Card declined (test)" };
+    return { id: this.id("pi", i.idempotencyKey), status: "succeeded" };
+  }
+  async refund(i: { idempotencyKey: string }) {
+    return { id: this.id("re", i.idempotencyKey) };
+  }
+  async transfer(i: { idempotencyKey: string }) {
+    return { id: this.id("tr", i.idempotencyKey) };
+  }
+  parseWebhook(rawBody: string): Stripe.Event {
+    if (env().NODE_ENV === "production") throw new Error("Fake payments cannot accept webhooks in production");
+    return JSON.parse(rawBody);
+  }
+}
+
+let payments: PaymentsProvider | null = null;
+export function paymentsProvider(): PaymentsProvider {
+  if (!payments) {
+    const e = env();
+    payments = e.STRIPE_SECRET_KEY ? new StripePayments(e.STRIPE_SECRET_KEY, e.STRIPE_WEBHOOK_SECRET) : new FakePayments(e.APP_BASE_URL);
+  }
+  return payments;
+}
+export function setPaymentsProvider(p: PaymentsProvider | null) {
+  payments = p;
+}

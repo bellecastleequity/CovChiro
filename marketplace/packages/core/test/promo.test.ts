@@ -31,8 +31,8 @@ describe("promo validation", () => {
   });
 });
 
-describe("promo discount never touches doctor pay", () => {
-  const q = { clinicPriceCents: 57500, doctorPayCents: 40000 };
+describe("promo discount never touches provider pay", () => {
+  const q = { clinicPriceCents: 57500, providerPayCents: 40000 };
   it("percent and fixed", () => {
     expect(promoDiscountCents({ kind: "PERCENT", value: 10 }, q, 100)).toBe(5750);
     expect(promoDiscountCents({ kind: "FIXED", value: 5000 }, q, 100)).toBe(5000);
@@ -40,7 +40,7 @@ describe("promo discount never touches doctor pay", () => {
   it("capped at the margin share", () => {
     expect(promoDiscountCents({ kind: "PERCENT", value: 50 }, q, 100)).toBe(17500);
     expect(promoDiscountCents({ kind: "FIXED", value: 100000 }, q, 50)).toBe(8750);
-    expect(promoDiscountCents({ kind: "FIXED", value: 100 }, { clinicPriceCents: 100, doctorPayCents: 200 }, 100)).toBe(0);
+    expect(promoDiscountCents({ kind: "FIXED", value: 100 }, { clinicPriceCents: 100, providerPayCents: 200 }, 100)).toBe(0);
   });
   it("labels and codes", () => {
     expect(promoLabel({ kind: "PERCENT", value: 15 })).toBe("15% off");

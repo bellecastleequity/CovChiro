@@ -1,0 +1,625 @@
+import { z } from "zod";
+import {
+  assertTransition,
+  cancellationOutcome,
+  DomainError,
+  evaluateEligibility,
+  favoritesWindowEnd,
+  looksLikePhi,
+  minPostingLeadOk,
+  parseAttestation,
+  providerView,
+  scanContactInfo,
+  selectionDeadline,
+  shiftIsCancellable,
+  skillScopeProblem,
+  supervisionProblem,
+} from "@cm/core";
+import { prisma, type Prisma } from "@cm/db";
+import { audit, getSettings, requireAdmin, requireClinic, requireProvider, tx, type Actor, type Db } from "./context";
+import { confirmProvider } from "./confirm";
+import { Effects } from "./effects";
+import { assertProviderEligibleForShift, eligibilityOptions, evaluateProviderForShift, getEligibleProviders, loadProviders, loadShift } from "./eligibility";
+import { logMatchRun, rankEvaluated } from "./matching";
+import { notify, notifyAdmins, notifyClinic } from "./notify";
+import { depositPaidCents, refundAssignment } from "./payments";
+import { quoteShift } from "./pricing";
+
+// ======================================================================
+// Posting (clinic)
+// ======================================================================
+
+export const ShiftInput = z.object({
+  locationId: z.string().min(1),
+  professionCode: z.string().min(1),
+  startsAt: z.coerce.date(),
+  endsAt: z.coerce.date(),
+  requiredSkillIds: z.array(z.string()).default([]),
+  preferredSkillIds: z.array(z.string()).default([]),
+  expectedPatients: z.coerce.number().int().min(0).max(500).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  instantBook: z.boolean().default(false),
+  maxTravelBudgetCents: z.coerce.number().int().min(0).nullable().optional(),
+  lodgingAllowed: z.boolean().default(false),
+  lodgingCapCentsPerNight: z.coerce.number().int().min(0).nullable().optional(),
+  promoCode: z.string().max(60).nullable().optional(),
+  supervisionAttestation: z
+    .object({
+      supervisorName: z.string(),
+      supervisorProfessionCode: z.string(),
+      supervisorLicenseNumber: z.string(),
+      onSiteEntireShift: z.boolean(),
+    })
+    .nullable()
+    .optional(),
+});
+export type ShiftInputT = z.input<typeof ShiftInput>;
+
+/** What the posting wizard needs for a location: professions (enabled or "not yet available"), skills, supervision. */
+export async function postingOptions(actor: Actor, locationId: string) {
+  const orgId = requireClinic(actor);
+  const loc = await prisma.clinicLocation.findFirst({ where: { id: locationId, clinicOrgId: orgId } });
+  if (!loc) throw new DomainError("NOT_FOUND", "Location not found");
+  const [professions, pscs, stateCfg] = await Promise.all([
+    prisma.profession.findMany({ where: { code: { in: loc.professionCodes } }, orderBy: { sortOrder: "asc" } }),
+    prisma.professionStateConfig.findMany({ where: { state: loc.state, professionCode: { in: loc.professionCodes } } }),
+    prisma.stateConfig.findUnique({ where: { state: loc.state } }),
+  ]);
+  const out = [];
+  for (const p of professions) {
+    const psc = pscs.find((x) => x.professionCode === p.code);
+    const enabled = !!stateCfg?.enabled && !!psc?.enabled;
+    const skills = await prisma.skill.findMany({
+      where: { active: true, OR: [{ professionCode: p.code }, { professionCode: null }] },
+      include: { stateRules: { where: { professionCode: p.code, state: loc.state } } },
+      orderBy: { name: "asc" },
+    });
+    out.push({
+      code: p.code,
+      displayName: p.displayName,
+      pricingModel: p.pricingModel,
+      enabled,
+      unavailableReason: enabled ? null : `Not yet available in ${loc.state}`,
+      supervisionRequired: psc?.supervisionRequired ?? p.requiresSupervisionDefault,
+      supervisingProfessionCodes: psc?.supervisingProfessionCodes?.length ? psc.supervisingProfessionCodes : p.defaultSupervisingProfessionCodes,
+      // Scope-sensitive skills appear only where a rule allows them.
+      skills: skills.filter((k) => !k.scopeSensitive || k.stateRules.some((r) => r.allowed)).map((k) => ({ id: k.id, name: k.name, crossProfession: k.professionCode === null })),
+    });
+  }
+  return { location: loc, professions: out };
+}
+
+async function validateShiftInput(db: Db, orgId: string, input: z.output<typeof ShiftInput>, forPosting: boolean) {
+  const loc = await db.clinicLocation.findFirst({ where: { id: input.locationId, clinicOrgId: orgId, active: true } });
+  if (!loc) throw new DomainError("NOT_FOUND", "Location not found");
+  if (!loc.professionCodes.includes(input.professionCode)) throw new DomainError("VALIDATION", "This location doesn't post shifts for that profession. Add it in Locations first.");
+  if (input.notes && looksLikePhi(input.notes)) throw new DomainError("VALIDATION", "Please remove patient information from the notes. Do not include patient information.");
+  if (input.notes && scanContactInfo(input.notes).found) throw new DomainError("VALIDATION", "Please don't include phone numbers, emails or links in shift notes — contact details are shared after confirmation.");
+  const skillIds = [...new Set([...input.requiredSkillIds, ...input.preferredSkillIds])];
+  const skills = await db.skill.findMany({
+    where: { id: { in: skillIds } },
+    include: { stateRules: { where: { professionCode: input.professionCode, state: loc.state } } },
+  });
+  if (skills.length !== skillIds.length || skills.some((k) => k.professionCode !== null && k.professionCode !== input.professionCode)) {
+    throw new DomainError("VALIDATION", "Choose skills for this profession only.");
+  }
+  const scope = skillScopeProblem(skills.map((k) => ({ id: k.id, requiresCertification: k.requiresCertification, scopeSensitive: k.scopeSensitive, allowedInScope: k.stateRules.some((r) => r.allowed) })));
+  if (scope) throw new DomainError("SKILL_NOT_IN_SCOPE", scope);
+
+  const [psc, stateCfg, profession] = await Promise.all([
+    db.professionStateConfig.findUnique({ where: { professionCode_state: { professionCode: input.professionCode, state: loc.state } } }),
+    db.stateConfig.findUnique({ where: { state: loc.state } }),
+    db.profession.findUniqueOrThrow({ where: { code: input.professionCode } }),
+  ]);
+  const supervisionRequired = psc?.supervisionRequired ?? profession.requiresSupervisionDefault;
+  if (forPosting) {
+    if (!stateCfg?.enabled) throw new DomainError("STATE_NOT_ENABLED", `We're not yet accepting shifts in ${loc.state}.`);
+    if (!psc?.enabled) throw new DomainError("PROFESSION_NOT_ENABLED", `${profession.displayName} shifts are not yet available in ${loc.state}.`);
+    if (!minPostingLeadOk(new Date(), input.startsAt)) throw new DomainError("VALIDATION", "Shifts must start at least 2 hours from now.");
+    if (supervisionRequired) {
+      const codes = psc.supervisingProfessionCodes.length ? psc.supervisingProfessionCodes : profession.defaultSupervisingProfessionCodes;
+      const why = supervisionProblem(parseAttestation(input.supervisionAttestation), codes);
+      if (why) throw new DomainError("SUPERVISION_NOT_ATTESTED", why);
+    }
+  }
+  if (input.lodgingAllowed && !input.lodgingCapCentsPerNight) throw new DomainError("VALIDATION", "Set a nightly lodging cap, or turn lodging off.");
+  return { loc, supervisionRequired };
+}
+
+export async function quoteForClinic(actor: Actor, raw: ShiftInputT) {
+  const orgId = requireClinic(actor);
+  const input = ShiftInput.parse(raw);
+  await validateShiftInput(prisma, orgId, input, false);
+  const q = await quoteShift(prisma, { ...input, promoCode: input.promoCode });
+  // Estimated travel range from currently eligible providers (clinic never sees provider pay).
+  let travel: { minCents: number; maxCents: number; candidates: number } | null = null;
+  return {
+    coverageCents: q.base.clinicPriceCents,
+    discountCents: q.promo?.discountCents ?? 0,
+    promoCode: q.promo?.code ?? null,
+    premiums: q.base.premiums,
+    tier: q.base.tier,
+    hours: q.base.hours,
+    billableHours: q.base.billableHours,
+    subtotalCents: q.base.clinicPriceCents - (q.promo?.discountCents ?? 0),
+    travel,
+  };
+}
+
+/** Create (and optionally post) a shift. Price comes only from the rate engine (INV-7). */
+export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: boolean }) {
+  const orgId = requireClinic(actor);
+  const input = ShiftInput.parse(raw);
+  const effects = new Effects();
+  const shiftId = await tx(async (db) => {
+    const org = await db.clinicOrg.findUniqueOrThrow({ where: { id: orgId } });
+    if (opts.post && (org.status !== "ACTIVE" || !org.hasPaymentMethod)) {
+      throw new DomainError("FORBIDDEN", "Finish setup (payment method and agreement) before posting shifts.");
+    }
+    const { supervisionRequired } = await validateShiftInput(db, orgId, input, opts.post);
+    const q = await quoteShift(db, input);
+    const shift = await db.shift.create({
+      data: {
+        locationId: input.locationId,
+        professionCode: input.professionCode,
+        state: "XX", // replaced by trigger from the location's geocoded state
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        requiredSkillIds: input.requiredSkillIds,
+        preferredSkillIds: input.preferredSkillIds,
+        expectedPatients: input.expectedPatients ?? null,
+        notes: input.notes?.trim() || null,
+        instantBook: input.instantBook,
+        maxTravelBudgetCents: input.maxTravelBudgetCents ?? null,
+        lodgingAllowed: input.lodgingAllowed,
+        lodgingCapCentsPerNight: input.lodgingAllowed ? (input.lodgingCapCentsPerNight ?? null) : null,
+        rateCardId: q.rateCardId,
+        durationTier: q.base.tier,
+        clinicPriceCents: q.base.clinicPriceCents,
+        providerPayCents: q.base.providerPayCents,
+        premiumsApplied: q.base.premiums as unknown as Prisma.InputJsonValue,
+        promoCodeId: q.promo?.id ?? null,
+        promoDiscountCents: q.promo?.discountCents ?? 0,
+        ...(supervisionRequired && input.supervisionAttestation
+          ? { supervisionAttestation: parseAttestation(input.supervisionAttestation) as unknown as Prisma.InputJsonValue, supervisionAttestedById: actor.userId, supervisionAttestedAt: new Date() }
+          : {}),
+        createdById: actor.userId!,
+      },
+    });
+    await audit(db, actor, "shift.created", "Shift", shift.id, null, { status: "DRAFT", clinicPriceCents: q.base.clinicPriceCents, providerPayCents: q.base.providerPayCents });
+    if (opts.post) await postInTx(db, actor, shift.id, effects);
+    return shift.id;
+  });
+  await effects.run();
+  return { shiftId };
+}
+
+export async function postShift(actor: Actor, shiftId: string) {
+  const orgId = requireClinic(actor);
+  const effects = new Effects();
+  await tx(async (db) => {
+    const shift = await db.shift.findFirst({ where: { id: shiftId, location: { clinicOrgId: orgId } } });
+    if (!shift) throw new DomainError("NOT_FOUND", "Shift not found");
+    const org = await db.clinicOrg.findUniqueOrThrow({ where: { id: orgId } });
+    if (org.status !== "ACTIVE" || !org.hasPaymentMethod) throw new DomainError("FORBIDDEN", "Finish setup before posting shifts.");
+    await validateShiftInput(
+      db,
+      orgId,
+      ShiftInput.parse({ ...shift, notes: shift.notes, supervisionAttestation: shift.supervisionAttestation ?? null, promoCode: null }),
+      true,
+    );
+    await postInTx(db, actor, shiftId, effects);
+  });
+  await effects.run();
+}
+
+async function postInTx(db: Db, actor: Actor, shiftId: string, effects: Effects) {
+  const s = await getSettings(db);
+  const now = new Date();
+  const shift = await db.shift.findUniqueOrThrow({ where: { id: shiftId }, include: { location: true } });
+  assertTransition("Shift", shift.status, "OPEN");
+  const loaded = await loadShift(db, shiftId);
+  // Favorites window only counts favorites who are actually eligible (INV-1 etc.).
+  const favs = await db.favorite.findMany({ where: { fromType: "CLINIC", fromId: shift.location.clinicOrgId, toType: "PROVIDER" } });
+  let eligibleFavorites = 0;
+  if (favs.length) {
+    const providers = await loadProviders(db, favs.map((f) => f.toId), shiftId);
+    for (const p of providers.values()) {
+      const r = evaluateEligibility(p.facts, { ...loaded.facts, config: { ...loaded.facts.config, enabled: true, stateEnabled: true } }, { driveMinutes: 0, travelEstimateCents: 0, blocked: false, previouslyDeclined: false }, {
+        ...eligibilityOptions(s),
+        credentialsOnly: true,
+      });
+      if (r.eligible) eligibleFavorites++;
+    }
+  }
+  const favEnd = favoritesWindowEnd(now, shift.startsAt, eligibleFavorites, s["matching.favoritesWindowHours"]);
+  const { deadline } = selectionDeadline(s["matching.deadlineTiers"], now, shift.startsAt);
+  const status = favEnd ? "FAVORITES_ONLY" : "OPEN";
+  await db.shift.update({ where: { id: shiftId }, data: { status, postedAt: now, favoritesWindowEndsAt: favEnd, selectionDeadline: deadline } });
+  await audit(db, actor, "shift.posted", "Shift", shiftId, { status: shift.status }, { status, selectionDeadline: deadline });
+  effects.add(() => notifyEligibleProvidersOfShift(shiftId, "posted"));
+}
+
+/** Notify eligible favorites + top-N scored candidates. Every recipient passes F0–F10 at send time. */
+export async function notifyEligibleProvidersOfShift(shiftId: string, reason: "posted" | "reopened") {
+  const s = await getSettings();
+  const loaded = await loadShift(prisma, shiftId);
+  const set = await getEligibleProviders(prisma, loaded);
+  const ranked = await rankEvaluated(prisma, loaded, set.eligible);
+  await logMatchRun(prisma, shiftId, reason, ranked, set.excluded, set.prefilteredOut);
+  const shift = await prisma.shift.findUniqueOrThrow({ where: { id: shiftId }, include: { location: true } });
+  const favoritesOnly = shift.status === "FAVORITES_ONLY";
+  const targets = ranked.filter((r, i) => (favoritesOnly ? r.favorite : r.favorite || r.input.providerFavoritedClinic || i < s["matching.notifyTopN"]));
+  const urgent = +shift.startsAt - Date.now() < 48 * 3_600_000;
+  const date = shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric" });
+  for (const t of targets) {
+    await notify(prisma, t.evaluated.provider.userId, {
+      template: "shift_available",
+      title: `${reason === "reopened" ? "Urgent: " : ""}Shift available ${date} in ${shift.location.city}, ${shift.state}`,
+      body: `A ${shift.professionCode} coverage shift matches your licenses and availability. Pay is shown on the shift page.`,
+      link: `/provider/shifts/${shiftId}`,
+      ctaLabel: "View shift",
+      sms: urgent || favoritesOnly,
+    });
+  }
+  return targets.length;
+}
+
+// ======================================================================
+// Provider: board, apply, withdraw
+// ======================================================================
+
+/** The provider's board: only shifts they're eligible for (INV-1 is enforced by the shared function). */
+export async function shiftBoard(actor: Actor, filters: { professionCode?: string; state?: string } = {}) {
+  const providerId = requireProvider(actor);
+  const s = await getSettings();
+  const me = await prisma.provider.findUniqueOrThrow({ where: { id: providerId }, include: { licenses: true } });
+  const pairs = me.licenses.filter((l) => l.status === "VERIFIED" && l.expiresAt > new Date());
+  if (!pairs.length) return [];
+  // Cheap SQL narrowing to the provider's verified profession+state pairs, then the shared evaluator decides.
+  const candidates = await prisma.shift.findMany({
+    where: {
+      status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] },
+      startsAt: { gt: new Date() },
+      OR: pairs.map((l) => ({ professionCode: l.professionCode, state: l.state, endsAt: { lt: l.expiresAt } })),
+      ...(filters.professionCode ? { professionCode: filters.professionCode } : {}),
+      ...(filters.state ? { state: filters.state } : {}),
+    },
+    include: { location: { include: { clinicOrg: true } }, applications: { where: { providerId } } },
+    orderBy: { startsAt: "asc" },
+    take: 200,
+  });
+  const favoritedBy = new Set(
+    (await prisma.favorite.findMany({ where: { fromType: "CLINIC", toType: "PROVIDER", toId: providerId } })).map((f) => f.fromId),
+  );
+  const out = [];
+  for (const sh of candidates) {
+    if (sh.status === "FAVORITES_ONLY" && !favoritedBy.has(sh.location.clinicOrgId)) continue;
+    const ev = await evaluateProviderForShift(prisma, providerId, sh.id);
+    if (!ev.result.eligible) continue;
+    const mileage = ev.drive ? Math.round((s["pricing.mileageRoundTrip"] ? 2 : 1) * ev.drive.miles * s["pricing.mileageRateCentsPerMile"]) : 0;
+    out.push({
+      id: sh.id,
+      professionCode: sh.professionCode,
+      startsAt: sh.startsAt,
+      endsAt: sh.endsAt,
+      timeZone: sh.location.timeZone,
+      city: sh.location.city,
+      state: sh.state,
+      clinicName: sh.location.clinicOrg.displayName,
+      clinicOrgId: sh.location.clinicOrgId,
+      driveMinutes: ev.drive?.minutes ?? null,
+      pay: providerView({ clinicPriceCents: 0, providerPayCents: sh.providerPayCents, promoDiscountCents: 0, mileageCents: mileage, lodgingCents: 0 }),
+      applied: sh.applications.some((a) => a.status === "ACTIVE"),
+      instantBook: sh.instantBook,
+      urgent: +sh.startsAt - Date.now() < 48 * 3_600_000,
+      expectedPatients: sh.expectedPatients,
+    });
+  }
+  return out;
+}
+
+export async function applyToShift(actor: Actor, shiftId: string, input: { note?: string | null; commit: boolean }) {
+  const providerId = requireProvider(actor);
+  if (!input.commit) throw new DomainError("VALIDATION", "Please confirm that you'll work this shift if selected.");
+  let note = input.note?.trim() || null;
+  if (note && note.length > 500) throw new DomainError("VALIDATION", "Keep your note under 500 characters.");
+  if (note && looksLikePhi(note)) throw new DomainError("VALIDATION", "Please remove patient information. Do not include patient information.");
+  if (note) note = scanContactInfo(note).redacted;
+
+  const ev = await assertProviderEligibleForShift(prisma, providerId, shiftId).catch(async (e) => {
+    if (e instanceof DomainError && /LICENSE_/.test(e.code)) {
+      // The shift should never have been visible: log a security warning.
+      await audit(prisma, actor, "security.ineligible_apply_attempt", "Shift", shiftId, null, { providerId, code: e.code });
+    }
+    throw e;
+  });
+  const shift = await prisma.shift.findUniqueOrThrow({ where: { id: shiftId }, include: { location: true } });
+  if (!["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"].includes(shift.status)) throw new DomainError("CONFLICT", "This shift is no longer accepting applications.");
+  const ranked = await rankEvaluated(prisma, ev.shift, [ev]);
+  const score = ranked[0]?.score ?? 0;
+  const existing = await prisma.application.findUnique({ where: { shiftId_providerId: { shiftId, providerId } } });
+  if (existing && existing.status === "ACTIVE") throw new DomainError("CONFLICT", "You've already applied.");
+  if (existing) throw new DomainError("CONFLICT", "You can't re-apply to this shift.");
+  const app = await prisma.application.create({
+    data: { shiftId, providerId, note, scoreAtApply: score, scoreBreakdown: (ranked[0]?.components ?? {}) as unknown as Prisma.InputJsonValue },
+  });
+  await audit(prisma, actor, "application.created", "Application", app.id, null, { shiftId, score });
+
+  const s = await getSettings();
+  if (shift.instantBook && score >= s["matching.instantBookMinScore"]) {
+    try {
+      await confirmProvider(actor, shiftId, providerId, "INSTANT_BOOK");
+      return { applicationId: app.id, confirmed: true };
+    } catch (e) {
+      if (!(e instanceof DomainError && e.code === "CONFLICT")) throw e;
+    }
+  }
+  await notifyClinic(prisma, shift.location.clinicOrgId, {
+    template: "new_application",
+    title: `New applicant for ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric" })}`,
+    body: `${ev.provider.displayName} applied to your ${shift.professionCode} shift at ${shift.location.name}.`,
+    link: `/clinic/shifts/${shiftId}`,
+    ctaLabel: "Review applicants",
+  });
+  return { applicationId: app.id, confirmed: false };
+}
+
+export async function withdrawApplication(actor: Actor, applicationId: string) {
+  const providerId = requireProvider(actor);
+  const app = await prisma.application.findFirst({ where: { id: applicationId, providerId } });
+  if (!app) throw new DomainError("NOT_FOUND", "Application not found");
+  assertTransition("Application", app.status, "WITHDRAWN");
+  await prisma.application.update({ where: { id: app.id }, data: { status: "WITHDRAWN", withdrawnAt: new Date() } });
+  await audit(prisma, actor, "application.withdrawn", "Application", app.id, { status: app.status }, { status: "WITHDRAWN" });
+}
+
+// ======================================================================
+// Clinic review: candidates, select, invite
+// ======================================================================
+
+async function clinicShift(actor: Actor, shiftId: string) {
+  if (actor.role === "PLATFORM_ADMIN") return prisma.shift.findUniqueOrThrow({ where: { id: shiftId }, include: { location: true } });
+  const orgId = requireClinic(actor);
+  const shift = await prisma.shift.findFirst({ where: { id: shiftId, location: { clinicOrgId: orgId } }, include: { location: true } });
+  if (!shift) throw new DomainError("NOT_FOUND", "Shift not found");
+  return shift;
+}
+
+/** Applicants + recommended, scored. Clinic-safe: no provider pay, no home address. */
+export async function shiftCandidates(actor: Actor, shiftId: string) {
+  await clinicShift(actor, shiftId);
+  const loaded = await loadShift(prisma, shiftId);
+  const set = await getEligibleProviders(prisma, loaded);
+  const ranked = await rankEvaluated(prisma, loaded, set.eligible);
+  const apps = await prisma.application.findMany({ where: { shiftId, status: "ACTIVE" } });
+  const appBy = new Map(apps.map((a) => [a.providerId, a]));
+  const ids = ranked.map((r) => r.providerId);
+  const [profiles, licenses, skills, offers] = await Promise.all([
+    prisma.provider.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, photoUrl: true, homeCity: true, homeState: true, bio: true } }),
+    prisma.license.findMany({ where: { providerId: { in: ids }, professionCode: loaded.facts.professionCode, state: loaded.facts.state, status: "VERIFIED" } }),
+    prisma.providerSkill.findMany({
+      where: { providerId: { in: ids }, skill: { OR: [{ professionCode: loaded.facts.professionCode }, { professionCode: null }] } },
+      include: { skill: true },
+    }),
+    prisma.offer.findMany({ where: { shiftId, status: "PENDING" } }),
+  ]);
+  const prof = new Map(profiles.map((p) => [p.id, p]));
+  const card = (r: (typeof ranked)[number]) => {
+    const p = prof.get(r.providerId)!;
+    const lic = licenses.find((l) => l.providerId === r.providerId);
+    return {
+      providerId: r.providerId,
+      displayName: p.displayName,
+      credentialTitle: lic?.credentialTitle ?? loaded.facts.professionCode,
+      photoUrl: p.photoUrl,
+      city: p.homeCity,
+      state: p.homeState,
+      bio: p.bio,
+      score: r.score,
+      components: r.components,
+      driveMinutes: r.input.driveMinutes,
+      ratingAvg: r.ratingAvg,
+      ratingCount: r.ratingCount,
+      reliability: r.reliability,
+      skills: skills.filter((k) => k.providerId === r.providerId).map((k) => k.skill.name),
+      badges: [r.favorite && "Favorite", r.workedHereBefore && "Worked here before", r.newToPlatform && "New to platform"].filter(Boolean) as string[],
+      note: appBy.get(r.providerId)?.note ?? null,
+      appliedAt: appBy.get(r.providerId)?.createdAt ?? null,
+      pendingOffer: offers.some((o) => o.providerId === r.providerId),
+    };
+  };
+  const applicants = ranked.filter((r) => appBy.has(r.providerId)).map(card);
+  const recommended = ranked.filter((r) => !appBy.has(r.providerId)).slice(0, 10).map(card);
+  return { applicants, recommended, ineligibleApplicants: apps.filter((a) => !ids.includes(a.providerId)).length };
+}
+
+export async function selectApplicant(actor: Actor, shiftId: string, providerId: string) {
+  await clinicShift(actor, shiftId);
+  const app = await prisma.application.findUnique({ where: { shiftId_providerId: { shiftId, providerId } } });
+  if (app?.status === "NOT_SELECTED" || app?.status === "SELECTED") throw new DomainError("CONFLICT", "This shift has already been filled.");
+  if (!app || app.status !== "ACTIVE") throw new DomainError("NOT_FOUND", "That provider hasn't applied (or withdrew).");
+  return confirmProvider(actor, shiftId, providerId, "CLINIC_PICKED_APPLICANT");
+}
+
+export async function inviteProviders(actor: Actor, shiftId: string, providerIds: string[]) {
+  const shift = await clinicShift(actor, shiftId);
+  if (!providerIds.length || providerIds.length > 3) throw new DomainError("VALIDATION", "Invite 1 to 3 providers at a time.");
+  const pending = await prisma.offer.count({ where: { shiftId, status: "PENDING" } });
+  if (pending + providerIds.length > 3) throw new DomainError("VALIDATION", "You can have up to 3 open invitations at once.");
+  const s = await getSettings();
+  const { tier } = selectionDeadline(s["matching.deadlineTiers"], shift.postedAt ?? new Date(), shift.startsAt);
+  const expiresAt = new Date(Math.min(Date.now() + tier.offerWindowMinutes * 60_000, +shift.startsAt - 2 * 3_600_000));
+  const created = [];
+  for (const providerId of providerIds) {
+    const ev = await assertProviderEligibleForShift(prisma, providerId, shiftId);
+    const offer = await prisma.offer.create({ data: { shiftId, providerId, source: actor.role === "PLATFORM_ADMIN" ? "ADMIN" : "CLINIC_PICK", expiresAt } });
+    created.push(offer.id);
+    await audit(prisma, actor, "offer.created", "Offer", offer.id, null, { shiftId, providerId, expiresAt });
+    await notify(prisma, ev.provider.userId, {
+      template: "offer_received",
+      title: `You're invited: ${shift.professionCode} shift ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric" })}`,
+      body: `${shift.location.city}, ${shift.state}. Respond by ${expiresAt.toLocaleString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.`,
+      link: `/provider/offers`,
+      ctaLabel: "Accept or decline",
+      sms: true,
+    });
+  }
+  return { offerIds: created };
+}
+
+export async function respondToOffer(actor: Actor, offerId: string, accept: boolean) {
+  const providerId = requireProvider(actor);
+  const offer = await prisma.offer.findFirst({ where: { id: offerId, providerId } });
+  if (!offer) throw new DomainError("NOT_FOUND", "Offer not found");
+  if (offer.status !== "PENDING") throw new DomainError("CONFLICT", `This offer is ${offer.status.toLowerCase()}.`);
+  if (offer.expiresAt <= new Date()) {
+    await prisma.offer.update({ where: { id: offerId }, data: { status: "EXPIRED" } });
+    throw new DomainError("CONFLICT", "This offer has expired.");
+  }
+  if (!accept) {
+    await prisma.offer.update({ where: { id: offerId }, data: { status: "DECLINED", respondedAt: new Date() } });
+    await audit(prisma, actor, "offer.declined", "Offer", offerId, { status: "PENDING" }, { status: "DECLINED" });
+    return { confirmed: false };
+  }
+  const method = offer.source === "ADMIN" ? "ADMIN" : offer.source === "CLINIC_PICK" ? "CLINIC_PICKED_OFFER" : "CASCADE_ACCEPT";
+  const r = await confirmProvider(actor, offer.shiftId, providerId, method, { acceptedOfferId: offerId });
+  return { confirmed: true, assignmentId: r.assignmentId };
+}
+
+/** Admin manual assign — still goes through the shared eligibility function + DB trigger. */
+export async function adminAssign(actor: Actor, shiftId: string, providerId: string) {
+  requireAdmin(actor);
+  return confirmProvider(actor, shiftId, providerId, "ADMIN");
+}
+
+// ======================================================================
+// Cancellations & backfill (SPEC §9.3, §7.9)
+// ======================================================================
+
+const LIVE = ["CONFIRMED", "IN_PROGRESS"] as const;
+
+export async function cancelShiftByClinic(actor: Actor, shiftId: string, reason: string) {
+  const shift = await clinicShift(actor, shiftId);
+  if (!shiftIsCancellable(shift.status)) throw new DomainError("INVALID_TRANSITION", "This shift can no longer be cancelled.");
+  const s = await getSettings();
+  const assignment = await prisma.assignment.findFirst({ where: { shiftId, status: { in: [...LIVE] } }, include: { provider: true } });
+  const now = new Date();
+  let outcome = null;
+  if (assignment) {
+    const deposit = await depositPaidCents(assignment.id);
+    outcome = cancellationOutcome({ by: actor.role === "PLATFORM_ADMIN" ? "PLATFORM" : "CLINIC", now, startsAt: shift.startsAt, depositPaidCents: deposit }, s);
+  }
+  await tx(async (db) => {
+    await db.shift.update({ where: { id: shiftId }, data: { status: "CANCELLED", cancelledAt: now, cancelReason: reason.slice(0, 500) } });
+    await db.application.updateMany({ where: { shiftId, status: "ACTIVE" }, data: { status: "NOT_SELECTED" } });
+    await db.offer.updateMany({ where: { shiftId, status: "PENDING" }, data: { status: "WITHDRAWN", respondedAt: now } });
+    await db.promoRedemption.updateMany({ where: { shiftId, voidedAt: null }, data: { voidedAt: now } });
+    if (assignment) {
+      assertTransition("Assignment", assignment.status, "CANCELLED");
+      await db.assignment.update({
+        where: { id: assignment.id },
+        data: { status: "CANCELLED", cancelledAt: now, cancelledBy: actor.role === "PLATFORM_ADMIN" ? "PLATFORM" : "CLINIC", cancelReason: reason.slice(0, 500) },
+      });
+      await db.payout.updateMany({ where: { assignmentId: assignment.id, status: { in: ["PENDING", "SCHEDULED", "ON_HOLD"] }, kind: "SHIFT" }, data: { status: "CANCELLED" } });
+      if (outcome && outcome.providerCompensationCents > 0) {
+        await db.payout.create({
+          data: {
+            providerId: assignment.providerId,
+            assignmentId: assignment.id,
+            kind: "LATE_CANCEL",
+            description: "Late-cancellation compensation",
+            amountCents: outcome.providerCompensationCents,
+            status: "SCHEDULED",
+            releaseAt: now,
+          },
+        });
+      }
+    }
+    await audit(db, actor, "shift.cancelled", "Shift", shiftId, { status: shift.status }, { status: "CANCELLED", reason, outcome });
+  });
+  if (assignment && outcome && outcome.refundDepositCents > 0) await refundAssignment(actor, assignment.id, outcome.refundDepositCents, "clinic cancellation ≥ free-cancel window");
+  if (assignment) {
+    await notify(prisma, assignment.provider.userId, {
+      template: "shift_cancelled_provider",
+      title: "A confirmed shift was cancelled",
+      body: `The clinic cancelled your ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric" })} shift at ${shift.location.name}.${outcome?.providerCompensationCents ? " You'll receive late-cancellation compensation." : ""}`,
+      link: "/provider/earnings",
+      sms: true,
+    });
+  }
+  return outcome;
+}
+
+/**
+ * Provider cancels (or platform removes them): full refund to the clinic,
+ * reliability impact if late, shift reopens with urgent handling (backfill).
+ */
+export async function cancelAssignment(actor: Actor, assignmentId: string, reason: string, opts: { by: "PROVIDER" | "PLATFORM"; lapse?: boolean; noShow?: boolean } = { by: "PROVIDER" }) {
+  const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId }, include: { shift: { include: { location: true } }, provider: true } });
+  if (opts.by === "PROVIDER") {
+    const pid = requireProvider(actor);
+    if (a.providerId !== pid) throw new DomainError("NOT_FOUND", "Assignment not found");
+  } else if (actor.role !== "SYSTEM") requireAdmin(actor);
+  const s = await getSettings();
+  const now = new Date();
+  const deposit = await depositPaidCents(a.id);
+  const outcome = cancellationOutcome({ by: opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", noShow: opts.noShow, now, startsAt: a.startsAt, depositPaidCents: deposit }, s);
+  const newStatus = opts.lapse ? "LICENSE_LAPSED" : opts.noShow ? "NO_SHOW" : "CANCELLED";
+  const reopen = a.startsAt > now && !opts.noShow;
+  await tx(async (db) => {
+    assertTransition("Assignment", a.status, newStatus);
+    await db.assignment.update({
+      where: { id: a.id },
+      data: { status: newStatus, cancelledAt: now, cancelledBy: opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", cancelReason: reason.slice(0, 500) },
+    });
+    await db.payout.updateMany({ where: { assignmentId: a.id, status: { in: ["PENDING", "SCHEDULED", "ON_HOLD"] } }, data: { status: "CANCELLED" } });
+    await db.promoRedemption.updateMany({ where: { shiftId: a.shiftId, voidedAt: null }, data: { voidedAt: now } });
+    if (a.shift.promoCodeId && a.shift.promoDiscountCents > 0) {
+      await db.promoCode.update({ where: { id: a.shift.promoCodeId }, data: { usedCount: { decrement: 1 } } });
+    }
+    if (outcome.countsAsLateCancel || outcome.countsAsNoShow) {
+      await db.providerStats.upsert({
+        where: { providerId: a.providerId },
+        create: { providerId: a.providerId, lateCancels: outcome.countsAsLateCancel ? 1 : 0, noShows: outcome.countsAsNoShow ? 1 : 0 },
+        update: outcome.countsAsLateCancel ? { lateCancels: { increment: 1 } } : { noShows: { increment: 1 } },
+      });
+    }
+    if (reopen) {
+      await db.shift.update({ where: { id: a.shiftId }, data: { status: "OPEN", postedAt: now, selectionDeadline: new Date(Math.min(+now + 3_600_000, +a.startsAt)) } });
+    } else if (opts.noShow) {
+      // Shift is over for billing purposes; nothing to backfill.
+    }
+    await audit(db, actor, `assignment.${newStatus.toLowerCase()}`, "Assignment", a.id, { status: a.status }, { status: newStatus, reason, outcome, reopened: reopen });
+  });
+  if (outcome.refundDepositCents > 0) await refundAssignment(actor, a.id, outcome.refundDepositCents, `${newStatus.toLowerCase()} — full refund`);
+  await notifyClinic(prisma, a.shift.location.clinicOrgId, {
+    template: "backfill",
+    title: reopen ? "We're finding a replacement" : "Your covering provider didn't show",
+    body: reopen
+      ? `${a.provider.displayName} is no longer able to cover ${a.startsAt.toLocaleDateString("en-US", { timeZone: a.shift.location.timeZone, month: "short", day: "numeric" })}. Your deposit is being refunded and we've reopened the shift to eligible providers.`
+      : "Your deposit is being refunded in full. Our team will follow up.",
+    link: `/clinic/shifts/${a.shiftId}`,
+    sms: true,
+  });
+  if (opts.by === "PLATFORM") {
+    await notify(prisma, a.provider.userId, {
+      template: opts.lapse ? "license_lapsed" : "assignment_removed",
+      title: opts.lapse ? "Action needed: a credential no longer qualifies" : "You were removed from a shift",
+      body: opts.lapse
+        ? "One of your licenses or your malpractice coverage no longer qualifies for an upcoming shift, so it has been released to another provider. Update your credentials to keep working."
+        : reason,
+      link: "/provider/credentials",
+      sms: true,
+    });
+  }
+  if (outcome.countsAsLateCancel || outcome.countsAsNoShow) {
+    const stats = await prisma.providerStats.findUnique({ where: { providerId: a.providerId } });
+    if ((stats?.lateCancels ?? 0) + (stats?.noShows ?? 0) >= 3) {
+      await prisma.adminTask.create({ data: { kind: "LATE_CANCELS", title: `${a.provider.displayName}: repeated late cancels / no-shows`, entityType: "Provider", entityId: a.providerId } });
+    }
+  }
+  if (reopen) await notifyEligibleProvidersOfShift(a.shiftId, "reopened").catch(() => 0);
+  await notifyAdmins(prisma, { template: "backfill_admin", title: `Backfill started (${newStatus})`, body: `Shift ${a.shiftId} reopened: ${reason}`, link: `/admin/shifts/${a.shiftId}`, email: false });
+  return outcome;
+}

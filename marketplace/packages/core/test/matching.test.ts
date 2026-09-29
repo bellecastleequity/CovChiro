@@ -1,63 +1,76 @@
 import { describe, expect, it } from "vitest";
-import { validateSetting } from "@cm/config";
+import { validateSetting, weightsFor } from "@cm/config";
 import {
-  driveComponent, rankCandidates, ratingComponent, reliabilityComponent, relationshipComponent, scoreCandidate, techniqueComponent,
+  driveComponent, rankCandidates, ratingComponent, reliabilityComponent, relationshipComponent, scoreCandidate, skillsComponent,
   selectionDeadline, favoritesWindowEnd, tierForLeadTime, minPostingLeadOk, type ScoreInput,
 } from "../src";
 import { d, S } from "./fixtures";
 
 const ctx = { weights: S["matching.weights"], platformMaxDriveMinutes: 180, platformMeanRating: 4.5 };
 const input = (over: Partial<ScoreInput> = {}): ScoreInput => ({
-  doctorId: "a", driveMinutes: 45, doctorMaxDriveMinutes: 90, overnightEligible: false, doctorTechniqueIds: ["t1", "t2"],
-  shiftPreferredTechniqueIds: [], locationTechniqueIds: ["t1"], completedShifts: 10, lateCancels: 0, noShows: 0, ratingSum: 45,
-  ratingCount: 10, clinicFavoritedDoctor: false, doctorFavoritedClinic: false, pastCompletedShiftsTogether: 0, appliedAt: null, shiftsThisMonth: 0, ...over,
+  providerId: "a", driveMinutes: 45, providerMaxDriveMinutes: 90, overnightEligible: false, providerSkillIds: ["t1", "t2"],
+  shiftPreferredSkillIds: [], locationSkillIds: ["t1"], completedShifts: 10, lateCancels: 0, noShows: 0, ratingSum: 45,
+  ratingCount: 10, professionRatingSum: 45, professionRatingCount: 10, completedShiftsInProfession: 10, clinicFavoritedProvider: false, providerFavoritedClinic: false, pastCompletedShiftsTogether: 0, appliedAt: null, shiftsThisMonth: 0, ...over,
 });
 
 describe("score components", () => {
   it("drive", () => {
-    expect(driveComponent({ driveMinutes: 45, doctorMaxDriveMinutes: 90, overnightEligible: false }, 180)).toBe(0.5);
-    expect(driveComponent({ driveMinutes: 200, doctorMaxDriveMinutes: 300, overnightEligible: true }, 180)).toBe(0.1);
-    expect(driveComponent({ driveMinutes: 0, doctorMaxDriveMinutes: 90, overnightEligible: false }, 180)).toBe(1);
+    expect(driveComponent({ driveMinutes: 45, providerMaxDriveMinutes: 90, overnightEligible: false }, 180)).toBe(0.5);
+    expect(driveComponent({ driveMinutes: 200, providerMaxDriveMinutes: 300, overnightEligible: true }, 180)).toBe(0.1);
+    expect(driveComponent({ driveMinutes: 0, providerMaxDriveMinutes: 90, overnightEligible: false }, 180)).toBe(1);
   });
-  it("technique", () => {
-    expect(techniqueComponent({ doctorTechniqueIds: ["a"], shiftPreferredTechniqueIds: ["a", "b"], locationTechniqueIds: [] })).toBe(0.5);
-    expect(techniqueComponent({ doctorTechniqueIds: ["a", "b", "c"], shiftPreferredTechniqueIds: [], locationTechniqueIds: ["a", "b", "c", "d"] })).toBe(1);
-    expect(techniqueComponent({ doctorTechniqueIds: [], shiftPreferredTechniqueIds: [], locationTechniqueIds: ["a"] })).toBe(0.5);
+  it("skills", () => {
+    expect(skillsComponent({ providerSkillIds: ["a"], shiftPreferredSkillIds: ["a", "b"], locationSkillIds: [] })).toBe(0.5);
+    expect(skillsComponent({ providerSkillIds: ["a", "b", "c"], shiftPreferredSkillIds: [], locationSkillIds: ["a", "b", "c", "d"] })).toBe(1);
+    expect(skillsComponent({ providerSkillIds: [], shiftPreferredSkillIds: [], locationSkillIds: ["a"] })).toBe(0.5);
   });
   it("reliability prior", () => {
     expect(reliabilityComponent({ completedShifts: 0, lateCancels: 0, noShows: 0 })).toBe(1);
     expect(reliabilityComponent({ completedShifts: 0, lateCancels: 1, noShows: 0 })).toBeCloseTo(5 / 7);
     expect(reliabilityComponent({ completedShifts: 5, lateCancels: 0, noShows: 1 })).toBeCloseTo(10 / 15);
   });
-  it("bayesian rating", () => {
-    expect(ratingComponent({ ratingSum: 0, ratingCount: 0 }, 4.5)).toBeCloseTo(0.875);
-    expect(ratingComponent({ ratingSum: 50, ratingCount: 10 }, 4.5)).toBeCloseTo(((5 * 4.5 + 50) / 15 - 1) / 4);
+  it("bayesian rating uses the profession's ratings when there are ≥3", () => {
+    expect(ratingComponent({ ratingSum: 0, ratingCount: 0, professionRatingSum: 0, professionRatingCount: 0 }, 4.5)).toBeCloseTo(0.875);
+    expect(ratingComponent({ ratingSum: 0, ratingCount: 0, professionRatingSum: 15, professionRatingCount: 3 }, 4.5)).toBeCloseTo(((5 * 4.5 + 15) / 8 - 1) / 4);
+  });
+  it("new to a profession: overall rating discounted 10% of its distance above the mean", () => {
+    const overall = (5 * 4.5 + 50) / 15; // 4.833
+    const discounted = overall - 0.1 * (overall - 4.5);
+    expect(ratingComponent({ ratingSum: 50, ratingCount: 10, professionRatingSum: 10, professionRatingCount: 2 }, 4.5)).toBeCloseTo((discounted - 1) / 4);
+    // below-mean ratings are not boosted
+    const low = (5 * 4.5 + 20) / 15;
+    expect(ratingComponent({ ratingSum: 20, ratingCount: 10, professionRatingSum: 0, professionRatingCount: 0 }, 4.5)).toBeCloseTo((low - 1) / 4);
   });
   it("relationship clamps", () => {
-    expect(relationshipComponent({ clinicFavoritedDoctor: true, doctorFavoritedClinic: true, pastCompletedShiftsTogether: 10 })).toBe(1);
-    expect(relationshipComponent({ clinicFavoritedDoctor: false, doctorFavoritedClinic: true, pastCompletedShiftsTogether: 2 })).toBeCloseTo(0.3);
+    expect(relationshipComponent({ clinicFavoritedProvider: true, providerFavoritedClinic: true, pastCompletedShiftsTogether: 10 })).toBe(1);
+    expect(relationshipComponent({ clinicFavoritedProvider: false, providerFavoritedClinic: true, pastCompletedShiftsTogether: 2 })).toBeCloseTo(0.3);
   });
-  it("score in [0,1] and new-doctor bonus", () => {
-    const s = scoreCandidate(input({ completedShifts: 1 }), ctx);
-    expect(s.components.newDoctor).toBe(1);
+  it("score in [0,1]; new-provider boost is per profession", () => {
+    const s = scoreCandidate(input({ completedShifts: 40, completedShiftsInProfession: 1 }), ctx);
+    expect(s.components.newProvider).toBe(1);
+    expect(scoreCandidate(input(), ctx).components.newProvider).toBe(0);
     expect(s.score).toBeGreaterThan(0);
     expect(s.score).toBeLessThanOrEqual(1);
   });
   it("weights must sum to 1", () => {
     expect(validateSetting("matching.weights", { ...S["matching.weights"], drive: 0.5 }).ok).toBe(false);
     expect(validateSetting("matching.weights", S["matching.weights"]).ok).toBe(true);
+    expect(validateSetting("matching.weightsByProfession", { LMT: { ...S["matching.weights"], drive: 0.9 } }).ok).toBe(false);
+    const s2 = { ...S, "matching.weightsByProfession": { LMT: { drive: 0.5, skills: 0.1, reliability: 0.1, rating: 0.1, relationship: 0.1, newProvider: 0.1 } } };
+    expect(weightsFor(s2, "LMT").drive).toBe(0.5);
+    expect(weightsFor(s2, "DC")).toEqual(S["matching.weights"]);
   });
 });
 
 describe("tie-breakers", () => {
   it("score → application time → shiftsThisMonth → drive → seeded random", () => {
     const same = { driveMinutes: 45 };
-    const r1 = rankCandidates([input({ doctorId: "late", appliedAt: d("2026-10-02"), ...same }), input({ doctorId: "early", appliedAt: d("2026-10-01"), ...same })], ctx, "s");
-    expect(r1.map((x) => x.doctorId)).toEqual(["early", "late"]);
-    const r2 = rankCandidates([input({ doctorId: "busy", shiftsThisMonth: 5 }), input({ doctorId: "free", shiftsThisMonth: 1 })], ctx, "s");
-    expect(r2[0].doctorId).toBe("free");
-    const a = rankCandidates([input({ doctorId: "x" }), input({ doctorId: "y" })], ctx, "shiftA").map((x) => x.doctorId);
-    const b = rankCandidates([input({ doctorId: "y" }), input({ doctorId: "x" })], ctx, "shiftA").map((x) => x.doctorId);
+    const r1 = rankCandidates([input({ providerId: "late", appliedAt: d("2026-10-02"), ...same }), input({ providerId: "early", appliedAt: d("2026-10-01"), ...same })], ctx, "s");
+    expect(r1.map((x) => x.providerId)).toEqual(["early", "late"]);
+    const r2 = rankCandidates([input({ providerId: "busy", shiftsThisMonth: 5 }), input({ providerId: "free", shiftsThisMonth: 1 })], ctx, "s");
+    expect(r2[0].providerId).toBe("free");
+    const a = rankCandidates([input({ providerId: "x" }), input({ providerId: "y" })], ctx, "shiftA").map((x) => x.providerId);
+    const b = rankCandidates([input({ providerId: "y" }), input({ providerId: "x" })], ctx, "shiftA").map((x) => x.providerId);
     expect(a).toEqual(b); // deterministic regardless of input order
   });
 });

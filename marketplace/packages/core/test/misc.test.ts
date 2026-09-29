@@ -20,15 +20,15 @@ describe("state machines", () => {
 describe("cancellation matrix", () => {
   const start = d("2026-10-14T13:00:00Z");
   it("clinic ≥48h → refund; <48h → forfeit + doctor share", () => {
-    expect(cancellationOutcome({ by: "CLINIC", now: d("2026-10-10T13:00:00Z"), startsAt: start, depositPaidCents: 5000 }, S)).toMatchObject({ refundDepositCents: 5000, doctorCompensationCents: 0 });
+    expect(cancellationOutcome({ by: "CLINIC", now: d("2026-10-10T13:00:00Z"), startsAt: start, depositPaidCents: 5000 }, S)).toMatchObject({ refundDepositCents: 5000, providerCompensationCents: 0 });
     expect(cancellationOutcome({ by: "CLINIC", now: d("2026-10-13T13:00:00Z"), startsAt: start, depositPaidCents: 5000 }, S)).toMatchObject({
-      refundDepositCents: 0, forfeitedDepositCents: 5000, doctorCompensationCents: 2500,
+      refundDepositCents: 0, forfeitedDepositCents: 5000, providerCompensationCents: 2500,
     });
   });
-  it("doctor late cancel / no-show / platform", () => {
-    expect(cancellationOutcome({ by: "DOCTOR", now: d("2026-10-12T13:00:00Z"), startsAt: start, depositPaidCents: 5000 }, S)).toMatchObject({ refundDepositCents: 5000, countsAsLateCancel: true, backfill: true });
-    expect(cancellationOutcome({ by: "DOCTOR", now: d("2026-10-01T13:00:00Z"), startsAt: start, depositPaidCents: 5000 }, S).countsAsLateCancel).toBe(false);
-    expect(cancellationOutcome({ by: "DOCTOR", noShow: true, now: start, startsAt: start, depositPaidCents: 5000 }, S).countsAsNoShow).toBe(true);
+  it("provider late cancel / no-show / platform", () => {
+    expect(cancellationOutcome({ by: "PROVIDER", now: d("2026-10-12T13:00:00Z"), startsAt: start, depositPaidCents: 5000 }, S)).toMatchObject({ refundDepositCents: 5000, countsAsLateCancel: true, backfill: true });
+    expect(cancellationOutcome({ by: "PROVIDER", now: d("2026-10-01T13:00:00Z"), startsAt: start, depositPaidCents: 5000 }, S).countsAsLateCancel).toBe(false);
+    expect(cancellationOutcome({ by: "PROVIDER", noShow: true, now: start, startsAt: start, depositPaidCents: 5000 }, S).countsAsNoShow).toBe(true);
     expect(cancellationOutcome({ by: "PLATFORM", now: start, startsAt: start, depositPaidCents: 5000 }, S)).toMatchObject({ refundDepositCents: 5000, countsAsLateCancel: false });
   });
 });

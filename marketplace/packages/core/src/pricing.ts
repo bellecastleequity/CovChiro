@@ -3,16 +3,20 @@ import { isFederalHoliday } from "./holidays";
 import { hoursBetween, localParts } from "./time";
 
 /**
- * Rate engine (SPEC §8, INV-7). Clinics and doctors never set prices; every
- * number shown or charged comes out of these functions.
+ * Rate engine (SPEC §8 as revised by Addendum 01 §8, INV-7). Clinics and
+ * providers never set prices; every number shown or charged comes out of
+ * these functions. Rate cards are keyed on profession × region × tier.
  */
 
-export type DurationTier = "HALF_DAY" | "FULL_DAY";
+export type PricingModel = "TIERED" | "HOURLY";
+export type DurationTier = "HALF_DAY" | "FULL_DAY" | "HOURLY";
 export type PremiumKind = "URGENT" | "WEEKEND" | "HOLIDAY" | "BOOST";
 
+/** TIERED: flat price per tier. HOURLY: per-hour rates with a billable minimum. */
 export interface RateCardFacts {
   clinicPriceCents: number;
-  doctorPayCents: number;
+  providerPayCents: number;
+  minHours?: number | null;
 }
 
 export interface AppliedPremium {
@@ -21,19 +25,28 @@ export interface AppliedPremium {
 }
 
 export interface BaseQuote {
+  pricingModel: PricingModel;
   tier: DurationTier;
   hours: number;
+  /** TIERED: hours beyond 8. HOURLY: always 0. */
   overtimeHours: number;
+  /** HOURLY: max(hours, minHours). TIERED: equals hours. */
+  billableHours: number;
   premiums: AppliedPremium[];
   clinicPriceCents: number;
-  doctorPayCents: number;
+  providerPayCents: number;
   marginCents: number;
 }
 
-export function durationTier(hours: number): { tier: DurationTier; overtimeHours: number } {
+export function durationTier(hours: number): { tier: Exclude<DurationTier, "HOURLY">; overtimeHours: number } {
   if (hours <= 0) throw new Error("Shift must have positive length");
   if (hours < 4) return { tier: "HALF_DAY", overtimeHours: 0 };
   return { tier: "FULL_DAY", overtimeHours: Math.max(0, round2(hours - 8)) };
+}
+
+/** Which rate card tier a shift needs under a pricing model. */
+export function tierFor(model: PricingModel, hours: number): DurationTier {
+  return model === "HOURLY" ? "HOURLY" : durationTier(hours).tier;
 }
 
 export interface PremiumInput {
@@ -42,25 +55,29 @@ export interface PremiumInput {
   pricedAt: Date;
   timeZone: string;
   boosted: boolean;
+  professionCode?: string;
 }
 
 type PricingSettings = Pick<
   SettingsMap,
   | "pricing.overtimeClinicCentsPerHour"
-  | "pricing.overtimeDoctorCentsPerHour"
+  | "pricing.overtimeProviderCentsPerHour"
   | "pricing.premiumUrgentPercent"
   | "pricing.premiumWeekendPercent"
   | "pricing.premiumHolidayPercent"
   | "pricing.boostPercent"
+  | "pricing.hourlyMinHours"
+  | "pricing.premiumOverridesByProfession"
 >;
 
 export function applicablePremiums(input: PremiumInput, s: PricingSettings): AppliedPremium[] {
+  const o = (input.professionCode && s["pricing.premiumOverridesByProfession"][input.professionCode]) || {};
   const out: AppliedPremium[] = [];
-  if (hoursBetween(input.pricedAt, input.startsAt) < 48) out.push({ kind: "URGENT", percent: s["pricing.premiumUrgentPercent"] });
+  if (hoursBetween(input.pricedAt, input.startsAt) < 48) out.push({ kind: "URGENT", percent: o.urgent ?? s["pricing.premiumUrgentPercent"] });
   const local = localParts(input.startsAt, input.timeZone);
-  if (local.weekday === 0 || local.weekday === 6) out.push({ kind: "WEEKEND", percent: s["pricing.premiumWeekendPercent"] });
-  if (isFederalHoliday(local.isoDate)) out.push({ kind: "HOLIDAY", percent: s["pricing.premiumHolidayPercent"] });
-  if (input.boosted) out.push({ kind: "BOOST", percent: s["pricing.boostPercent"] });
+  if (local.weekday === 0 || local.weekday === 6) out.push({ kind: "WEEKEND", percent: o.weekend ?? s["pricing.premiumWeekendPercent"] });
+  if (isFederalHoliday(local.isoDate)) out.push({ kind: "HOLIDAY", percent: o.holiday ?? s["pricing.premiumHolidayPercent"] });
+  if (input.boosted) out.push({ kind: "BOOST", percent: o.boost ?? s["pricing.boostPercent"] });
   return out.filter((p) => p.percent > 0);
 }
 
@@ -70,19 +87,33 @@ export function premiumMultiplier(premiums: AppliedPremium[]): number {
 
 export function quoteBase(
   shift: { startsAt: Date; endsAt: Date },
+  pricingModel: PricingModel,
   card: RateCardFacts,
   premiumInput: Omit<PremiumInput, "startsAt">,
   s: PricingSettings,
 ): BaseQuote {
   const hours = round2(hoursBetween(shift.startsAt, shift.endsAt));
-  const { tier, overtimeHours } = durationTier(hours);
-  const baseClinic = card.clinicPriceCents + Math.round(overtimeHours * s["pricing.overtimeClinicCentsPerHour"]);
-  const baseDoctor = card.doctorPayCents + Math.round(overtimeHours * s["pricing.overtimeDoctorCentsPerHour"]);
+  let tier: DurationTier;
+  let overtimeHours = 0;
+  let billableHours = hours;
+  let baseClinic: number;
+  let baseProvider: number;
+  if (pricingModel === "HOURLY") {
+    if (hours <= 0) throw new Error("Shift must have positive length");
+    tier = "HOURLY";
+    billableHours = Math.max(hours, card.minHours ?? s["pricing.hourlyMinHours"]);
+    baseClinic = Math.round(billableHours * card.clinicPriceCents);
+    baseProvider = Math.round(billableHours * card.providerPayCents);
+  } else {
+    ({ tier, overtimeHours } = durationTier(hours));
+    baseClinic = card.clinicPriceCents + Math.round(overtimeHours * s["pricing.overtimeClinicCentsPerHour"]);
+    baseProvider = card.providerPayCents + Math.round(overtimeHours * s["pricing.overtimeProviderCentsPerHour"]);
+  }
   const premiums = applicablePremiums({ ...premiumInput, startsAt: shift.startsAt }, s);
   const mult = premiumMultiplier(premiums);
   const clinicPriceCents = Math.round(baseClinic * mult);
-  const doctorPayCents = Math.round(baseDoctor * mult);
-  return { tier, hours, overtimeHours, premiums, clinicPriceCents, doctorPayCents, marginCents: clinicPriceCents - doctorPayCents };
+  const providerPayCents = Math.round(baseProvider * mult);
+  return { pricingModel, tier, hours, overtimeHours, billableHours, premiums, clinicPriceCents, providerPayCents, marginCents: clinicPriceCents - providerPayCents };
 }
 
 // ---------- travel (§8.5): 100% pass-through, no margin ----------
@@ -127,7 +158,7 @@ export function travelRange(estimates: number[]): { minCents: number; maxCents: 
 
 export interface PriceBreakdown {
   clinicPriceCents: number;
-  doctorPayCents: number;
+  providerPayCents: number;
   promoDiscountCents: number;
   mileageCents: number;
   lodgingCents: number;
@@ -137,15 +168,15 @@ export function clinicTotalCents(b: PriceBreakdown): number {
   return b.clinicPriceCents - b.promoDiscountCents + b.mileageCents + b.lodgingCents;
 }
 
-export function doctorTotalCents(b: PriceBreakdown): number {
-  return b.doctorPayCents + b.mileageCents + b.lodgingCents;
+export function providerTotalCents(b: PriceBreakdown): number {
+  return b.providerPayCents + b.mileageCents + b.lodgingCents;
 }
 
 export function platformMarginCents(b: PriceBreakdown): number {
-  return b.clinicPriceCents - b.promoDiscountCents - b.doctorPayCents;
+  return b.clinicPriceCents - b.promoDiscountCents - b.providerPayCents;
 }
 
-/** What a clinic may see: never doctor pay. */
+/** What a clinic may see: never provider pay. */
 export function clinicView(b: PriceBreakdown) {
   return {
     coverageCents: b.clinicPriceCents,
@@ -156,13 +187,13 @@ export function clinicView(b: PriceBreakdown) {
   };
 }
 
-/** What a doctor may see: never the clinic price, discount or margin. */
-export function doctorView(b: PriceBreakdown) {
+/** What a provider may see: never the clinic price, discount or margin. */
+export function providerView(b: PriceBreakdown) {
   return {
-    payCents: b.doctorPayCents,
+    payCents: b.providerPayCents,
     mileageCents: b.mileageCents,
     lodgingCents: b.lodgingCents,
-    totalCents: doctorTotalCents(b),
+    totalCents: providerTotalCents(b),
   };
 }
 

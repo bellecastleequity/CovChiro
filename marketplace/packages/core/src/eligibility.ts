@@ -1,21 +1,25 @@
 import type { ErrorCode } from "./errors";
 import { DomainError } from "./errors";
+import { supervisionProblem, type SupervisionAttestation } from "./supervision";
 import { containedInUnion, expandWeeklyRules, iv, MINUTE, overlaps, type Interval, type WeeklyRule } from "./time";
 
 /**
- * INV-1 / INV-3 and the other hard filters (SPEC §7.1), as one pure function.
+ * INV-1 (profession + state), INV-3, INV-8 and the other hard filters
+ * (SPEC §7.1 as revised by Addendum 01 §7.1), as one pure function.
  *
- * Every eligibility decision in the system goes through `evaluateEligibility`:
- * the single-doctor check (`assertDoctorEligibleForShift` in the web/worker
- * service layer) loads facts for one doctor, and the set-based query
- * (`getEligibleDoctors`) prefilters in SQL and then runs this same function on
- * the survivors. A property test asserts the two always agree.
+ * Every eligibility decision goes through `evaluateEligibility`: the single
+ * check (`assertProviderEligibleForShift` in @cm/services) loads facts for one
+ * provider, and the set-based query (`getEligibleProviders`) prefilters in SQL
+ * and then runs this same function on the survivors. A property test asserts
+ * the two always agree.
  */
 
 export type CredentialStatus = "PENDING_VERIFICATION" | "VERIFIED" | "EXPIRED" | "SUSPENDED" | "REVOKED" | "REJECTED";
-export type DoctorStatus = "ONBOARDING" | "ACTIVE" | "PAUSED" | "SUSPENDED" | "DEACTIVATED";
+export type ProviderStatus = "ONBOARDING" | "ACTIVE" | "PAUSED" | "SUSPENDED" | "DEACTIVATED";
+export type ProviderProfessionStatus = "ONBOARDING" | "ACTIVE" | "PAUSED";
 
 export interface LicenseFact {
+  professionCode: string;
   state: string;
   status: CredentialStatus;
   expiresAt: Date;
@@ -26,56 +30,86 @@ export interface MalpracticeFact {
   expiresAt: Date;
   perOccurrenceCents: number;
   aggregateCents: number;
+  coveredProfessionCodes: string[];
 }
 
-export interface DoctorFacts {
+export interface ProviderSkillFact {
+  skillId: string;
+  /** Only meaningful when the skill requires certification. */
+  certificationStatus: CredentialStatus | null;
+  certificationExpiresAt: Date | null;
+}
+
+export interface ProviderFacts {
   id: string;
-  status: DoctorStatus;
-  profileComplete: boolean;
+  status: ProviderStatus;
+  /** Per-profession activation; F3 checks the shift's profession. */
+  professions: { professionCode: string; status: ProviderProfessionStatus }[];
   payoutsEnabled: boolean;
   licenses: LicenseFact[];
   malpractice: MalpracticeFact[];
-  techniqueIds: string[];
+  skills: ProviderSkillFact[];
   maxDriveMinutes: number;
   willingOvernight: boolean;
   availabilityRules: WeeklyRule[];
   openDates: Interval[];
   blackouts: Interval[];
-  /** Buffered ranges of this doctor's CONFIRMED / IN_PROGRESS assignments (other shifts). */
+  /** Buffered ranges of this provider's CONFIRMED / IN_PROGRESS assignments on other shifts, any profession (INV-2). */
   busy: Interval[];
+}
+
+/** ProfessionStateConfig for the shift's (profession, state), with profession defaults already resolved. */
+export interface ProfessionStateFacts {
+  enabled: boolean;
+  stateEnabled: boolean;
+  supervisionRequired: boolean;
+  supervisingProfessionCodes: string[];
+  malpracticeMinOccurrenceCents: number;
+  malpracticeMinAggregateCents: number;
+}
+
+export interface SkillFact {
+  id: string;
+  requiresCertification: boolean;
+  scopeSensitive: boolean;
+  /** SkillStateRule(skill, shift profession, shift state).allowed; missing rule = false. */
+  allowedInScope: boolean;
 }
 
 export interface ShiftFacts {
   id: string;
+  professionCode: string;
   /** From the geocoded ClinicLocation — never user free text. */
   state: string;
   startsAt: Date;
   endsAt: Date;
-  requiredTechniqueIds: string[];
+  requiredSkillIds: string[];
   lodgingAllowed: boolean;
   maxTravelBudgetCents: number | null;
+  supervisionAttestation: SupervisionAttestation | null;
+  config: ProfessionStateFacts;
+  /** Catalog facts for every skill the shift requires. */
+  skills: SkillFact[];
 }
 
-/** Facts about this particular doctor/shift pair. */
+/** Facts about this particular provider/shift pair. */
 export interface PairFacts {
   driveMinutes: number | null;
-  /** Estimated mileage + lodging for this doctor, from pricing.travelEstimate. */
+  /** Estimated mileage + lodging for this provider, from pricing.travelEstimate. */
   travelEstimateCents: number;
   blocked: boolean;
   previouslyDeclined: boolean;
 }
 
 export interface EligibilityOptions {
-  minMalpracticePerOccurrenceCents: number;
-  minMalpracticeAggregateCents: number;
   travelBufferExtraMinutes: number;
-  /** Cascade boost widens distance for overnight-willing doctors (§7.7). Never touches F1. */
+  /** Cascade boost widens distance for overnight-willing providers (§7.7). Never touches F0–F2. */
   distanceMultiplier?: number;
-  /** Credential-only checks (nightly sweep, pre-shift check): skip F3–F10. */
+  /** Credential-only checks (nightly sweep, pre-shift check): F0, F1, F1b, F2 only. */
   credentialsOnly?: boolean;
 }
 
-export type FilterId = "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10";
+export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10";
 
 export interface EligibilityFailure {
   filter: FilterId;
@@ -88,28 +122,37 @@ export interface EligibilityResult {
   failures: EligibilityFailure[];
 }
 
-/** A license counts only if VERIFIED, in the shift's state, and valid past the shift end. */
-export function hasQualifyingLicense(licenses: LicenseFact[], state: string, endsAt: Date): boolean {
-  return licenses.some((l) => l.state === state && l.status === "VERIFIED" && l.expiresAt.getTime() > endsAt.getTime());
+/** A license counts only if VERIFIED, for the shift's profession, in the shift's state, valid past the shift end. */
+export function hasQualifyingLicense(licenses: LicenseFact[], professionCode: string, state: string, endsAt: Date): boolean {
+  return licenses.some(
+    (l) => l.professionCode === professionCode && l.state === state && l.status === "VERIFIED" && l.expiresAt.getTime() > endsAt.getTime(),
+  );
 }
 
 export function hasQualifyingMalpractice(
   policies: MalpracticeFact[],
+  professionCode: string,
   endsAt: Date,
-  opts: Pick<EligibilityOptions, "minMalpracticePerOccurrenceCents" | "minMalpracticeAggregateCents">,
+  mins: Pick<ProfessionStateFacts, "malpracticeMinOccurrenceCents" | "malpracticeMinAggregateCents">,
 ): boolean {
   return policies.some(
     (p) =>
       p.status === "VERIFIED" &&
+      p.coveredProfessionCodes.includes(professionCode) &&
       p.expiresAt.getTime() > endsAt.getTime() &&
-      p.perOccurrenceCents >= opts.minMalpracticePerOccurrenceCents &&
-      p.aggregateCents >= opts.minMalpracticeAggregateCents,
+      p.perOccurrenceCents >= mins.malpracticeMinOccurrenceCents &&
+      p.aggregateCents >= mins.malpracticeMinAggregateCents,
   );
 }
 
-/** States a doctor can currently take shifts in ("You can take shifts in: FL, GA"). */
-export function licensedStates(licenses: LicenseFact[], at: Date = new Date()): string[] {
-  return [...new Set(licenses.filter((l) => l.status === "VERIFIED" && l.expiresAt > at).map((l) => l.state))].sort();
+/** What a provider can take: { DC: ["FL","GA"], LMT: ["FL"] } ("You can take: Chiropractic shifts in FL, GA · …"). */
+export function licensedPairs(licenses: LicenseFact[], at: Date = new Date()): Record<string, string[]> {
+  const out: Record<string, Set<string>> = {};
+  for (const l of licenses) {
+    if (l.status !== "VERIFIED" || l.expiresAt <= at) continue;
+    (out[l.professionCode] ??= new Set()).add(l.state);
+  }
+  return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v].sort()]));
 }
 
 export function bufferedRange(startsAt: Date, endsAt: Date, bufferMinutes: number): Interval {
@@ -120,64 +163,91 @@ export function travelBufferMinutes(driveMinutes: number | null, extra: number):
   return Math.max(0, Math.round(driveMinutes ?? 0)) + extra;
 }
 
-export function evaluateEligibility(
-  doctor: DoctorFacts,
-  shift: ShiftFacts,
-  pair: PairFacts,
-  opts: EligibilityOptions,
-): EligibilityResult {
+/** Skills a shift may require/prefer in its profession-state (scope-sensitive needs an allowing rule). */
+export function skillScopeProblem(skills: SkillFact[]): string | null {
+  const bad = skills.filter((s) => s.scopeSensitive && !s.allowedInScope);
+  return bad.length ? `${bad.length} selected skill(s) are outside the scope of practice for this profession in this state` : null;
+}
+
+export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, pair: PairFacts, opts: EligibilityOptions): EligibilityResult {
   const failures: EligibilityFailure[] = [];
   const fail = (filter: FilterId, code: ErrorCode, message: string) => failures.push({ filter, code, message });
+  const cfg = shift.config;
 
-  // F1 — state licensure (INV-1). Home state / proximity are irrelevant.
-  if (!hasQualifyingLicense(doctor.licenses, shift.state, shift.endsAt)) {
-    const inState = doctor.licenses.filter((l) => l.state === shift.state && l.status === "VERIFIED");
-    if (inState.length > 0) {
-      fail("F1", "LICENSE_EXPIRES_BEFORE_SHIFT", `License in ${shift.state} expires before the shift ends`);
+  // F0 — state AND profession-state enabled.
+  if (!cfg.stateEnabled || !cfg.enabled) {
+    fail("F0", "PROFESSION_NOT_ENABLED", `${shift.professionCode} shifts are not enabled in ${shift.state}`);
+  }
+
+  // F1 — licensure by profession + state (INV-1). Home state / proximity / other professions are irrelevant.
+  if (!hasQualifyingLicense(provider.licenses, shift.professionCode, shift.state, shift.endsAt)) {
+    const verified = provider.licenses.filter((l) => l.status === "VERIFIED");
+    const samePair = verified.filter((l) => l.professionCode === shift.professionCode && l.state === shift.state);
+    if (samePair.length) {
+      fail("F1", "LICENSE_EXPIRES_BEFORE_SHIFT", `${shift.professionCode} license in ${shift.state} expires before the shift ends`);
+    } else if (verified.some((l) => l.state === shift.state)) {
+      fail("F1", "LICENSE_PROFESSION_MISMATCH", `No verified ${shift.professionCode} license in ${shift.state}`);
     } else {
-      fail("F1", "LICENSE_STATE_MISMATCH", `No verified license in ${shift.state}`);
+      fail("F1", "LICENSE_STATE_MISMATCH", `No verified ${shift.professionCode} license in ${shift.state}`);
     }
   }
 
-  // F2 — malpractice (INV-3).
-  if (!hasQualifyingMalpractice(doctor.malpractice, shift.endsAt, opts)) {
-    fail("F2", "MALPRACTICE_INVALID", "No verified malpractice policy meeting the minimum limits through the shift end");
+  // F1b — supervision attestation (INV-8).
+  if (cfg.supervisionRequired) {
+    const why = supervisionProblem(shift.supervisionAttestation, cfg.supervisingProfessionCodes);
+    if (why) fail("F1b", "SUPERVISION_NOT_ATTESTED", why);
+  }
+
+  // F2 — malpractice covering the profession and meeting the profession-state minimum (INV-3).
+  if (!hasQualifyingMalpractice(provider.malpractice, shift.professionCode, shift.endsAt, cfg)) {
+    fail("F2", "MALPRACTICE_INVALID", `No verified malpractice policy covering ${shift.professionCode} at the required limits through the shift end`);
   }
 
   if (opts.credentialsOnly) return { eligible: failures.length === 0, failures };
 
-  // F3 — account status.
-  if (doctor.status !== "ACTIVE" || !doctor.profileComplete || !doctor.payoutsEnabled) {
-    fail("F3", "DOCTOR_NOT_ACTIVE", "Doctor account is not active, profile incomplete, or payouts not enabled");
+  // F3 — account + profession status.
+  const prof = provider.professions.find((p) => p.professionCode === shift.professionCode);
+  if (provider.status !== "ACTIVE" || prof?.status !== "ACTIVE" || !provider.payoutsEnabled) {
+    fail("F3", "PROVIDER_NOT_ACTIVE", `Provider is not active for ${shift.professionCode} shifts, or payouts are not enabled`);
   }
 
   // F9 — blocks, either direction.
   if (pair.blocked) fail("F9", "BLOCKED", "Blocked");
 
-  // F6 — required techniques.
-  const have = new Set(doctor.techniqueIds);
-  const missing = shift.requiredTechniqueIds.filter((t) => !have.has(t));
-  if (missing.length) fail("F6", "MISSING_REQUIRED_TECHNIQUE", `Missing ${missing.length} required technique(s)`);
+  // F6 — required skills: held, certification verified where needed, and in scope for the state.
+  const held = new Map(provider.skills.map((s) => [s.skillId, s]));
+  const catalog = new Map(shift.skills.map((s) => [s.id, s]));
+  let missing = 0;
+  for (const id of shift.requiredSkillIds) {
+    const have = held.get(id);
+    const meta = catalog.get(id);
+    const certOk =
+      !meta?.requiresCertification ||
+      (have?.certificationStatus === "VERIFIED" && have.certificationExpiresAt !== null && have.certificationExpiresAt > shift.endsAt);
+    const scopeOk = !meta?.scopeSensitive || meta.allowedInScope;
+    if (!have || !certOk || !scopeOk) missing++;
+  }
+  if (missing) fail("F6", "MISSING_REQUIRED_SKILL", `Missing ${missing} required skill(s) or certification(s)`);
 
   const buffer = travelBufferMinutes(pair.driveMinutes, opts.travelBufferExtraMinutes);
   const range = bufferedRange(shift.startsAt, shift.endsAt, buffer);
 
-  // F5 — no overlapping active assignment (INV-2 is also a DB constraint).
-  if (doctor.busy.some((b) => overlaps(b, range))) fail("F5", "SCHEDULE_CONFLICT", "Overlaps another confirmed shift");
+  // F5 — no overlapping active assignment in any profession (INV-2 is also a DB constraint).
+  if (provider.busy.some((b) => overlaps(b, range))) fail("F5", "SCHEDULE_CONFLICT", "Overlaps another confirmed shift");
 
-  // F4 — availability: the buffered shift window must sit inside availability and outside blackouts.
-  const available = [...expandWeeklyRules(doctor.availabilityRules, range), ...doctor.openDates];
-  if (!containedInUnion(range, available) || doctor.blackouts.some((b) => overlaps(b, range))) {
-    fail("F4", "OUTSIDE_AVAILABILITY", "Outside the doctor's availability");
+  // F4 — the buffered shift window sits inside availability and outside blackouts.
+  const available = [...expandWeeklyRules(provider.availabilityRules, range), ...provider.openDates];
+  if (!containedInUnion(range, available) || provider.blackouts.some((b) => overlaps(b, range))) {
+    fail("F4", "OUTSIDE_AVAILABILITY", "Outside the provider's availability");
   }
 
   // F7 — distance.
-  const overnightOk = doctor.willingOvernight && shift.lodgingAllowed;
-  const limit = doctor.maxDriveMinutes * (doctor.willingOvernight ? (opts.distanceMultiplier ?? 1) : 1);
+  const overnightOk = provider.willingOvernight && shift.lodgingAllowed;
+  const limit = provider.maxDriveMinutes * (provider.willingOvernight ? (opts.distanceMultiplier ?? 1) : 1);
   if (!overnightOk) {
     if (pair.driveMinutes === null) fail("F7", "TOO_FAR", "Drive time unavailable");
     else if (pair.driveMinutes > limit) {
-      fail("F7", "TOO_FAR", `Drive of ${Math.round(pair.driveMinutes)} min exceeds the doctor's max of ${Math.round(limit)}`);
+      fail("F7", "TOO_FAR", `Drive of ${Math.round(pair.driveMinutes)} min exceeds the provider's max of ${Math.round(limit)}`);
     }
   }
 
@@ -192,24 +262,21 @@ export function evaluateEligibility(
   return { eligible: failures.length === 0, failures };
 }
 
-/** Throws the first failure as a DomainError. F1 failures always surface as LICENSE_STATE_MISMATCH-family codes. */
+/** Throws the first failure as a DomainError (F0/F1 failures come first). */
 export function assertEligible(result: EligibilityResult): void {
   if (result.eligible) return;
   const first = result.failures[0];
   throw new DomainError(first.code, first.message, { failures: result.failures });
 }
 
-/** Multi-day groups with sameDoctorRequired: every day must pass (license must outlast the last day). */
+/** Multi-day groups with sameProviderRequired: every day must pass (license must outlast the last day). */
 export function evaluateGroupEligibility(
-  doctor: DoctorFacts,
+  provider: ProviderFacts,
   shifts: ShiftFacts[],
   pairFor: (shift: ShiftFacts) => PairFacts,
   opts: EligibilityOptions,
 ): EligibilityResult {
   const failures: EligibilityFailure[] = [];
-  for (const s of shifts) {
-    const r = evaluateEligibility(doctor, s, pairFor(s), opts);
-    failures.push(...r.failures);
-  }
+  for (const s of shifts) failures.push(...evaluateEligibility(provider, s, pairFor(s), opts).failures);
   return { eligible: failures.length === 0, failures };
 }

@@ -11,3 +11,4 @@ export * from "./cancellation";
 export * from "./screening";
 export * from "./payouts";
 export * from "./credentials";
+export * from "./supervision";

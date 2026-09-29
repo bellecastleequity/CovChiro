@@ -31,7 +31,7 @@ export const SHIFT_TRANSITIONS: Record<ShiftStatus, ShiftStatus[]> = {
   OPEN: ["SELECTING", "CASCADING", "CONFIRMED", "UNFILLED", "CANCELLED"],
   SELECTING: ["CONFIRMED", "CASCADING", "UNFILLED", "CANCELLED"],
   CASCADING: ["CONFIRMED", "UNFILLED", "CANCELLED", "CASCADING"],
-  // Backfill: a doctor cancellation or license lapse sends the shift back to OPEN (§7.9).
+  // Backfill: a provider cancellation or license lapse sends the shift back to OPEN (§7.9).
   CONFIRMED: ["IN_PROGRESS", "OPEN", "CANCELLED"],
   IN_PROGRESS: ["COMPLETED"],
   COMPLETED: [],
@@ -99,6 +99,6 @@ export function shiftIsCancellable(status: ShiftStatus): boolean {
   return PRE_START.includes(status);
 }
 
-/** Shift statuses where a doctor could still be selected. */
+/** Shift statuses where a provider could still be selected. */
 export const SELECTABLE_SHIFT_STATUSES: ShiftStatus[] = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"];
 export const ACTIVE_ASSIGNMENT_STATUSES: AssignmentStatus[] = ["CONFIRMED", "IN_PROGRESS"];

@@ -1,6 +1,6 @@
 # Addendum 01 (multi-profession) — audit and migration plan
 
-Status: **awaiting owner approval** (per addendum §0.3).
+Status: **approved by the owner and implemented**.
 Resolved decision: **A1 — `BRAND_DOMAIN=coverageoncall.com`**. `BRAND_NAME` stays at the working value `CoverageOnCall` unless the owner says otherwise.
 
 ## 1. What exists today

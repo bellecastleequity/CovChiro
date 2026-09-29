@@ -1,4 +1,4 @@
-// CoverageChiropractor.com marketplace — data model (SPEC §5).
+// Coverage marketplace — data model (SPEC §5 as revised by Addendum 01 §6).
 // Raw SQL for PostGIS columns, triggers and the exclusion constraint lives in
 // migrations/0002_invariants. Money is integer cents throughout.
 
@@ -18,7 +18,7 @@ datasource db {
 enum Role {
   CLINIC_OWNER
   CLINIC_STAFF
-  DOCTOR
+  PROVIDER
   PLATFORM_ADMIN
 }
 
@@ -37,7 +37,7 @@ model User {
   createdAt       DateTime  @default(now()) @db.Timestamptz(3)
   lastLoginAt     DateTime? @db.Timestamptz(3)
 
-  doctor        Doctor?
+  provider      Provider?
   clinicMembers ClinicMember[]
   sessions      Session[]
   notifications Notification[]
@@ -75,9 +75,86 @@ model RateLimit {
   windowEnd DateTime @db.Timestamptz(3)
 }
 
-// ============================ doctors ============================
+// ============================ professions (Addendum 01 §3) ============================
 
-enum DoctorStatus {
+enum PricingModel {
+  TIERED
+  HOURLY
+}
+
+model Profession {
+  code                                 String       @id
+  displayName                          String
+  /// URL slug for the public landing page, e.g. "massage-therapy".
+  slug                                 String       @unique
+  credentialSuffix                     String
+  npiRequired                          Boolean
+  pricingModel                         PricingModel
+  defaultMalpracticeMinOccurrenceCents Int
+  defaultMalpracticeMinAggregateCents  Int
+  requiresSupervisionDefault           Boolean      @default(false)
+  defaultSupervisingProfessionCodes    String[]     @default([])
+  active                               Boolean      @default(false)
+  sortOrder                            Int
+
+  stateConfigs ProfessionStateConfig[]
+  providers    ProviderProfession[]
+  licenses     License[]
+  skills       Skill[]
+  rateCards    RateCard[]
+}
+
+model ProfessionStateConfig {
+  professionCode                String
+  profession                    Profession @relation(fields: [professionCode], references: [code])
+  state                         String     @db.Char(2)
+  enabled                       Boolean    @default(false)
+  legalReviewComplete           Boolean    @default(false)
+  legalReviewNotes              String?
+  licensedAtStateLevel          Boolean    @default(true)
+  /// Owner-approved alternative credential policy where not state-licensed (§3.3). Ships disabled.
+  alternativeCredentialAllowed  Boolean    @default(false)
+  alternativeCredentialPolicy   String?
+  credentialTitle               String?
+  boardLookupUrl                String?
+  /// null = not yet filled in (blocks enabling).
+  supervisionRequired           Boolean?
+  supervisingProfessionCodes    String[]   @default([])
+  supervisionNotes              String?
+  /// Resolved minimums (profession default unless overridden), cents — the trigger reads these.
+  malpracticeMinOccurrenceCents Int?
+  malpracticeMinAggregateCents  Int?
+  scopeNotes                    String?
+  enabledAt                     DateTime?  @db.Timestamptz(3)
+  enabledById                   String?
+
+  @@id([professionCode, state])
+}
+
+enum ProviderProfessionStatus {
+  ONBOARDING
+  ACTIVE
+  PAUSED
+}
+
+model ProviderProfession {
+  providerId        String
+  professionCode    String
+  yearsInPractice   Int?
+  specialties       String[]                 @default([])
+  status            ProviderProfessionStatus @default(ONBOARDING)
+  /// Profession addendum signature (ATTORNEY REVIEW; gated by feature flag).
+  addendumSignedAt  DateTime?                @db.Timestamptz(3)
+  profileCompleteAt DateTime?                @db.Timestamptz(3)
+  provider          Provider                 @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  profession        Profession               @relation(fields: [professionCode], references: [code])
+
+  @@id([providerId, professionCode])
+}
+
+// ============================ providers ============================
+
+enum ProviderStatus {
   ONBOARDING
   ACTIVE
   PAUSED
@@ -85,7 +162,7 @@ enum DoctorStatus {
   DEACTIVATED
 }
 
-model Doctor {
+model Provider {
   id                   String                                 @id @default(cuid())
   userId               String                                 @unique
   user                 User                                   @relation(fields: [userId], references: [id])
@@ -106,12 +183,10 @@ model Doctor {
   maxDriveMinutes      Int                                    @default(90)
   willingOvernight     Boolean                                @default(false)
   bio                  String?
-  yearsInPractice      Int?
   school               String?
   graduationYear       Int?
   languages            String[]                               @default([])
   ehrSystems           String[]                               @default([])
-  specialties          String[]                               @default([])
   xrayComfort          Boolean                                @default(false)
   maxPatientsPerDay    Int?
   stripeAccountId      String?                                @unique
@@ -119,20 +194,21 @@ model Doctor {
   agreementSignedAt    DateTime?                              @db.Timestamptz(3)
   agreementVersion     Int?
   profileCompleteAt    DateTime?                              @db.Timestamptz(3)
-  status               DoctorStatus                           @default(ONBOARDING)
+  status               ProviderStatus                         @default(ONBOARDING)
   adminNotes           String?
   createdAt            DateTime                               @default(now()) @db.Timestamptz(3)
 
+  professions  ProviderProfession[]
   licenses     License[]
   malpractice  MalpracticePolicy[]
-  techniques   DoctorTechnique[]
+  skills       ProviderSkill[]
   availability AvailabilityRule[]
   blackouts    AvailabilityBlackout[]
   openDates    AvailabilityOpenDate[]
   applications Application[]
   offers       Offer[]
   assignments  Assignment[]
-  stats        DoctorStats?
+  stats        ProviderStats?
   payouts      Payout[]
   transfers    PayoutTransfer[]
   threads      MessageThread[]
@@ -149,11 +225,14 @@ enum LicenseStatus {
 
 model License {
   id                      String        @id @default(cuid())
-  doctorId                String
-  doctor                  Doctor        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  providerId              String
+  provider                Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  professionCode          String
+  profession              Profession    @relation(fields: [professionCode], references: [code])
   state                   String        @db.Char(2)
   licenseNumber           String
-  licenseType             String        @default("DC")
+  /// Title as issued in that state (e.g. LMT vs LMBT, L.Ac. vs A.P.).
+  credentialTitle         String?
   issuedAt                DateTime?     @db.Timestamptz(3)
   expiresAt               DateTime      @db.Timestamptz(3)
   status                  LicenseStatus @default(PENDING_VERIFICATION)
@@ -166,86 +245,117 @@ model License {
   nextReverifyAt          DateTime?     @db.Timestamptz(3)
   createdAt               DateTime      @default(now()) @db.Timestamptz(3)
 
-  @@unique([doctorId, state, licenseType])
-  @@index([state, status, expiresAt])
+  @@unique([providerId, professionCode, state])
+  @@index([professionCode, state, status, expiresAt])
 }
 
 model MalpracticePolicy {
-  id                   String        @id @default(cuid())
-  doctorId             String
-  doctor               Doctor        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  carrier              String
-  policyNumber         String
-  /// Whole dollars (limits can exceed Int cents).
-  perOccurrenceDollars Int
-  aggregateDollars     Int
-  expiresAt            DateTime      @db.Timestamptz(3)
-  documentUrl          String
-  status               LicenseStatus @default(PENDING_VERIFICATION)
-  verifiedById         String?
-  verifiedAt           DateTime?     @db.Timestamptz(3)
-  rejectionReason      String?
-  createdAt            DateTime      @default(now()) @db.Timestamptz(3)
+  id                     String        @id @default(cuid())
+  providerId             String
+  provider               Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  carrier                String
+  policyNumber           String
+  /// Cents (Addendum 01 §6); Int caps a single limit at ~$21.4M.
+  perOccurrenceCents     Int
+  aggregateCents         Int
+  /// Professions this policy covers; must include the shift's profession (INV-3).
+  coveredProfessionCodes String[]      @default([])
+  expiresAt              DateTime      @db.Timestamptz(3)
+  documentUrl            String
+  status                 LicenseStatus @default(PENDING_VERIFICATION)
+  verifiedById           String?
+  verifiedAt             DateTime?     @db.Timestamptz(3)
+  rejectionReason        String?
+  createdAt              DateTime      @default(now()) @db.Timestamptz(3)
 
-  @@index([doctorId, status, expiresAt])
+  @@index([providerId, status, expiresAt])
 }
 
-model Technique {
-  id        String              @id @default(cuid())
-  name      String              @unique
-  active    Boolean             @default(true)
-  doctors   DoctorTechnique[]
-  locations LocationTechnique[]
+/// Profession-scoped skill (was Technique). professionCode null = cross-profession.
+model Skill {
+  id                    String           @id @default(cuid())
+  name                  String
+  professionCode        String?
+  profession            Profession?      @relation(fields: [professionCode], references: [code])
+  scopeSensitive        Boolean          @default(false)
+  requiresCertification Boolean          @default(false)
+  active                Boolean          @default(true)
+  providers             ProviderSkill[]
+  locations             LocationSkill[]
+  stateRules            SkillStateRule[]
+
+  @@unique([name, professionCode])
 }
 
-model DoctorTechnique {
-  doctorId    String
-  techniqueId String
-  proficiency Int       @default(2)
-  doctor      Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  technique   Technique @relation(fields: [techniqueId], references: [id])
+model ProviderSkill {
+  providerId                String
+  skillId                   String
+  proficiency               Int            @default(2)
+  certificationUrl          String?
+  certificationStatus       LicenseStatus?
+  certificationExpiresAt    DateTime?      @db.Timestamptz(3)
+  certificationVerifiedById String?
+  certificationVerifiedAt   DateTime?      @db.Timestamptz(3)
+  provider                  Provider       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  skill                     Skill          @relation(fields: [skillId], references: [id])
 
-  @@id([doctorId, techniqueId])
+  @@id([providerId, skillId])
+}
+
+/// Scope-of-practice rule for a scope-sensitive skill. A missing rule means "not allowed".
+model SkillStateRule {
+  skillId        String
+  professionCode String
+  state          String  @db.Char(2)
+  allowed        Boolean
+  notes          String?
+  skill          Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([skillId, professionCode, state])
 }
 
 model AvailabilityRule {
-  id       String @id @default(cuid())
-  doctorId String
-  doctor   Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  weekday  Int
-  startMin Int
-  endMin   Int
-  timeZone String
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  weekday    Int
+  startMin   Int
+  endMin     Int
+  timeZone   String
 }
 
 model AvailabilityBlackout {
-  id       String   @id @default(cuid())
-  doctorId String
-  doctor   Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  startsAt DateTime @db.Timestamptz(3)
-  endsAt   DateTime @db.Timestamptz(3)
-  reason   String?
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  startsAt   DateTime @db.Timestamptz(3)
+  endsAt     DateTime @db.Timestamptz(3)
+  reason     String?
 }
 
 model AvailabilityOpenDate {
-  id       String   @id @default(cuid())
-  doctorId String
-  doctor   Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  startsAt DateTime @db.Timestamptz(3)
-  endsAt   DateTime @db.Timestamptz(3)
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  startsAt   DateTime @db.Timestamptz(3)
+  endsAt     DateTime @db.Timestamptz(3)
 }
 
-model DoctorStats {
-  doctorId        String    @id
-  doctor          Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  completedShifts Int       @default(0)
-  lateCancels     Int       @default(0)
-  noShows         Int       @default(0)
-  ratingSum       Int       @default(0)
-  ratingCount     Int       @default(0)
-  lastShiftAt     DateTime? @db.Timestamptz(3)
-  shiftsThisMonth Int       @default(0)
-  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+model ProviderStats {
+  providerId            String    @id
+  provider              Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  completedShifts       Int       @default(0)
+  lateCancels           Int       @default(0)
+  noShows               Int       @default(0)
+  ratingSum             Int       @default(0)
+  ratingCount           Int       @default(0)
+  lastShiftAt           DateTime? @db.Timestamptz(3)
+  shiftsThisMonth       Int       @default(0)
+  /// { "DC": { "sum": 45, "count": 10 } }
+  ratingByProfession    Json      @default("{}")
+  /// { "DC": 12 } — drives the per-profession new-provider boost.
+  completedByProfession Json      @default("{}")
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
 }
 
 // ============================ clinics ============================
@@ -306,6 +416,8 @@ model ClinicLocation {
   lng               Float
   geo               Unsupported("geography(Point, 4326)")?
   timeZone          String
+  /// Professions this location posts shifts for.
+  professionCodes   String[]                               @default([])
   geocodedAt        DateTime                               @db.Timestamptz(3)
   rateRegionId      String?
   rateRegion        RateRegion?                            @relation(fields: [rateRegionId], references: [id])
@@ -315,32 +427,32 @@ model ClinicLocation {
   ehr               String?
   equipment         String[]                               @default([])
   dressCode         String?
-  /// Visible to the confirmed doctor only.
+  /// Visible to the confirmed provider only.
   arrivalNotes      String?
   active            Boolean                                @default(true)
   createdAt         DateTime                               @default(now()) @db.Timestamptz(3)
-  techniques        LocationTechnique[]
+  skills            LocationSkill[]
   shifts            Shift[]
   shiftGroups       ShiftGroup[]
 }
 
-model LocationTechnique {
-  locationId  String
-  techniqueId String
-  location    ClinicLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  technique   Technique      @relation(fields: [techniqueId], references: [id])
+model LocationSkill {
+  locationId String
+  skillId    String
+  location   ClinicLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  skill      Skill          @relation(fields: [skillId], references: [id])
 
-  @@id([locationId, techniqueId])
+  @@id([locationId, skillId])
 }
 
 // ============================ shifts & matching ============================
 
 model ShiftGroup {
-  id                 String         @id @default(cuid())
-  locationId         String
-  location           ClinicLocation @relation(fields: [locationId], references: [id])
-  sameDoctorRequired Boolean        @default(false)
-  shifts             Shift[]
+  id                   String         @id @default(cuid())
+  locationId           String
+  location             ClinicLocation @relation(fields: [locationId], references: [id])
+  sameProviderRequired Boolean        @default(false)
+  shifts               Shift[]
 }
 
 enum ShiftStatus {
@@ -364,11 +476,16 @@ model Shift {
   shiftGroup              ShiftGroup?    @relation(fields: [shiftGroupId], references: [id])
   /// Copy of location.state, set and kept in sync by trigger.
   state                   String         @db.Char(2)
+  professionCode          String
+  /// INV-8 attestation: { supervisorName, supervisorProfessionCode, supervisorLicenseNumber, onSiteEntireShift }.
+  supervisionAttestation  Json?
+  supervisionAttestedById String?
+  supervisionAttestedAt   DateTime?      @db.Timestamptz(3)
   startsAt                DateTime       @db.Timestamptz(3)
   endsAt                  DateTime       @db.Timestamptz(3)
   status                  ShiftStatus    @default(DRAFT)
-  requiredTechniqueIds    String[]       @default([])
-  preferredTechniqueIds   String[]       @default([])
+  requiredSkillIds        String[]       @default([])
+  preferredSkillIds       String[]       @default([])
   expectedPatients        Int?
   notes                   String?
   instantBook             Boolean        @default(false)
@@ -379,7 +496,7 @@ model Shift {
   rateCardId              String?
   durationTier            DurationTier?
   clinicPriceCents        Int
-  doctorPayCents          Int
+  providerPayCents        Int
   premiumsApplied         Json           @default("[]")
   boosted                 Boolean        @default(false)
   promoCodeId             String?
@@ -402,7 +519,7 @@ model Shift {
   matchRuns    MatchRun[]
   threads      MessageThread[]
 
-  @@index([state, status, startsAt])
+  @@index([professionCode, state, status, startsAt])
   @@index([locationId, startsAt])
 }
 
@@ -419,8 +536,8 @@ model Application {
   id                 String            @id @default(cuid())
   shiftId            String
   shift              Shift             @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  doctorId           String
-  doctor             Doctor            @relation(fields: [doctorId], references: [id])
+  providerId         String
+  provider           Provider          @relation(fields: [providerId], references: [id])
   note               String?
   status             ApplicationStatus @default(ACTIVE)
   scoreAtApply       Float
@@ -429,8 +546,8 @@ model Application {
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   withdrawnAt        DateTime?         @db.Timestamptz(3)
 
-  @@unique([shiftId, doctorId])
-  @@index([doctorId, status])
+  @@unique([shiftId, providerId])
+  @@index([providerId, status])
 }
 
 enum OfferSource {
@@ -452,8 +569,8 @@ model Offer {
   id          String      @id @default(cuid())
   shiftId     String
   shift       Shift       @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  doctorId    String
-  doctor      Doctor      @relation(fields: [doctorId], references: [id])
+  providerId  String
+  provider    Provider    @relation(fields: [providerId], references: [id])
   source      OfferSource
   expiresAt   DateTime    @db.Timestamptz(3)
   status      OfferStatus @default(PENDING)
@@ -461,7 +578,7 @@ model Offer {
   rank        Int?
   createdAt   DateTime    @default(now()) @db.Timestamptz(3)
 
-  @@index([doctorId, status])
+  @@index([providerId, status])
   @@index([shiftId, status])
 }
 
@@ -498,7 +615,7 @@ enum SelectionMethod {
 
 enum CancelParty {
   CLINIC
-  DOCTOR
+  PROVIDER
   PLATFORM
 }
 
@@ -507,10 +624,12 @@ model Assignment {
   /// Not unique: a cancelled/lapsed assignment stays for history when the shift is backfilled.
   shiftId              String
   shift                Shift                     @relation(fields: [shiftId], references: [id])
-  doctorId             String
-  doctor               Doctor                    @relation(fields: [doctorId], references: [id])
+  providerId           String
+  provider             Provider                  @relation(fields: [providerId], references: [id])
   /// Copy of shift.state; checked by trigger (INV-1).
   state                String                    @db.Char(2)
+  /// Copy of shift.professionCode; checked by trigger (INV-1).
+  professionCode       String
   startsAt             DateTime                  @db.Timestamptz(3)
   endsAt               DateTime                  @db.Timestamptz(3)
   bufferMinutes        Int
@@ -521,13 +640,13 @@ model Assignment {
   driveMinutes         Int
   driveMiles           Float
   clinicPriceCents     Int
-  doctorPayCents       Int
+  providerPayCents     Int
   promoDiscountCents   Int                       @default(0)
   mileageCents         Int
   lodgingEstimateCents Int                       @default(0)
   lodgingApprovedCents Int                       @default(0)
   clinicTotalCents     Int
-  doctorTotalCents     Int
+  providerTotalCents   Int
   depositCents         Int                       @default(0)
   flags                String[]                  @default([])
   confirmedAt          DateTime                  @default(now()) @db.Timestamptz(3)
@@ -543,7 +662,7 @@ model Assignment {
   lodgingReceipts LodgingReceipt[]
   disputes        Dispute[]
 
-  @@index([doctorId, status, startsAt])
+  @@index([providerId, status, startsAt])
   @@index([shiftId])
 }
 
@@ -551,7 +670,7 @@ model Assignment {
 
 enum PartyType {
   CLINIC
-  DOCTOR
+  PROVIDER
 }
 
 model Favorite {
@@ -597,15 +716,15 @@ model MessageThread {
   id            String    @id @default(cuid())
   clinicOrgId   String
   clinicOrg     ClinicOrg @relation(fields: [clinicOrgId], references: [id])
-  doctorId      String
-  doctor        Doctor    @relation(fields: [doctorId], references: [id])
+  providerId    String
+  provider      Provider  @relation(fields: [providerId], references: [id])
   shiftId       String?
   shift         Shift?    @relation(fields: [shiftId], references: [id])
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
   lastMessageAt DateTime  @default(now()) @db.Timestamptz(3)
   messages      Message[]
 
-  @@unique([clinicOrgId, doctorId])
+  @@unique([clinicOrgId, providerId])
 }
 
 model Message {
@@ -684,16 +803,16 @@ enum PayoutStatus {
   CANCELLED
 }
 
-/// Doctor pay ledger — one row per amount owed (see packages/core/src/payouts.ts).
+/// Provider pay ledger — one row per amount owed (see packages/core/src/payouts.ts).
 model Payout {
   id           String          @id @default(cuid())
-  doctorId     String
-  doctor       Doctor          @relation(fields: [doctorId], references: [id])
+  providerId   String
+  provider     Provider        @relation(fields: [providerId], references: [id])
   assignmentId String?
   assignment   Assignment?     @relation(fields: [assignmentId], references: [id])
   kind         PayoutKind
   description  String
-  /// Doctor pay + mileage (SHIFT), receipt (LODGING), share (LATE_CANCEL), ± (ADJUSTMENT).
+  /// Provider pay + mileage (SHIFT), receipt (LODGING), share (LATE_CANCEL), ± (ADJUSTMENT).
   amountCents  Int
   status       PayoutStatus    @default(PENDING)
   onHold       Boolean         @default(false)
@@ -707,7 +826,7 @@ model Payout {
   updatedAt    DateTime        @updatedAt @db.Timestamptz(3)
 
   @@unique([assignmentId, kind])
-  @@index([doctorId, status])
+  @@index([providerId, status])
   @@index([status, releaseAt])
 }
 
@@ -718,11 +837,11 @@ enum TransferStatus {
   REVERSED
 }
 
-/// One Stripe Connect transfer, covering one or more ledger rows for a doctor.
+/// One Stripe Connect transfer, covering one or more ledger rows for a provider.
 model PayoutTransfer {
   id               String         @id @default(cuid())
-  doctorId         String
-  doctor           Doctor         @relation(fields: [doctorId], references: [id])
+  providerId       String
+  provider         Provider       @relation(fields: [providerId], references: [id])
   amountCents      Int
   stripeTransferId String?        @unique
   idempotencyKey   String         @unique
@@ -735,7 +854,7 @@ model PayoutTransfer {
   paidAt           DateTime?      @db.Timestamptz(3)
   payouts          Payout[]
 
-  @@index([doctorId, createdAt])
+  @@index([providerId, createdAt])
 }
 
 model LodgingReceipt {
@@ -814,19 +933,25 @@ model RateRegion {
 enum DurationTier {
   HALF_DAY
   FULL_DAY
+  HOURLY
 }
 
 model RateCard {
   id               String       @id @default(cuid())
   rateRegionId     String
   rateRegion       RateRegion   @relation(fields: [rateRegionId], references: [id])
+  professionCode   String
+  profession       Profession   @relation(fields: [professionCode], references: [code])
   durationTier     DurationTier
+  /// TIERED: flat price for the tier. HOURLY: per-hour rate.
   clinicPriceCents Int
-  doctorPayCents   Int
+  providerPayCents Int
+  /// HOURLY only: minimum billable hours (falls back to pricing.hourlyMinHours).
+  minHours         Float?
   effectiveFrom    DateTime     @db.Timestamptz(3)
   effectiveTo      DateTime?    @db.Timestamptz(3)
 
-  @@index([rateRegionId, durationTier, effectiveFrom])
+  @@index([professionCode, rateRegionId, durationTier, effectiveFrom])
 }
 
 // ============================ promo codes ============================
@@ -905,13 +1030,15 @@ enum LeadStatus {
 model Lead {
   id               String         @id @default(cuid())
   audience         PartyType      @default(CLINIC)
+  /// Provider leads / waitlist signups: which profession they're interested in.
+  professionCode   String?
   name             String
   email            String         @db.Citext
   phone            String?
   organization     String?
   state            String?        @db.Char(2)
   message          String?
-  /// popup | landing | contact | manual | signup-abandon
+  /// popup | landing | contact | waitlist | manual
   source           String
   campaignCode     String         @default("")
   promoCode        String?
