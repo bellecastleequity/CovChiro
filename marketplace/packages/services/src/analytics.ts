@@ -85,6 +85,43 @@ export async function analyticsSummary(actor: Actor, range: { from: Date; to: Da
     prisma.provider.count({ where: { status: "ACTIVE" } }),
     prisma.clinicOrg.count({ where: { status: "ACTIVE" } }),
   ]);
+  // Smart Dispatch (Addendum 02 §12).
+  const dispatches = await prisma.dispatch.findMany({
+    where: { startedAt: inRange },
+    select: { id: true, status: true, tierAtStart: true, startedAt: true, endedAt: true, filledVia: true, filledOfferId: true, bestMatchAtStart: true, _count: { select: { offers: true } } },
+  });
+  const filledDispatches = dispatches.filter((d) => d.status === "FILLED");
+  const filledOffers = await prisma.offer.findMany({ where: { id: { in: filledDispatches.map((d) => d.filledOfferId).filter((x): x is string => !!x) } }, select: { id: true, matchScore: true } });
+  const offerScore = new Map(filledOffers.map((o) => [o.id, o.matchScore]));
+  const median = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : null);
+  const tiers = ["SAME_DAY", "SHORT", "NEAR", "PLANNED"] as const;
+  const quality = filledDispatches
+    .map((d) => (d.filledOfferId && d.bestMatchAtStart ? (offerScore.get(d.filledOfferId) ?? 0) / d.bestMatchAtStart : null))
+    .filter((x): x is number => x != null);
+  const onCallProviders = await prisma.onCallRule.findMany({ where: { active: true, OR: [{ pausedUntil: null }, { pausedUntil: { lte: new Date() } }], provider: { status: "ACTIVE" } }, distinct: ["providerId"], select: { providerId: true } });
+  const dispatchStats = {
+    started: dispatches.length,
+    filled: filledDispatches.length,
+    exhausted: dispatches.filter((d) => d.status === "EXHAUSTED").length,
+    fillRate: dispatches.length ? filledDispatches.length / dispatches.length : null,
+    byTier: tiers.map((tier) => {
+      const ds = dispatches.filter((d) => d.tierAtStart === tier);
+      const f = ds.filter((d) => d.status === "FILLED" && d.endedAt);
+      return { tier, started: ds.length, filled: f.length, medianMinutesToFill: median(f.map((d) => (+d.endedAt! - +d.startedAt) / 60_000)) };
+    }),
+    byPath: Object.entries(
+      filledDispatches.reduce<Record<string, number>>((acc, d) => {
+        const k = d.filledVia ?? "UNKNOWN";
+        acc[k] = (acc[k] ?? 0) + 1;
+        return acc;
+      }, {}),
+    ).map(([path, count]) => ({ path, count, share: count / Math.max(1, filledDispatches.length) })),
+    medianMatchQuality: median(quality),
+    offersPerFill: filledDispatches.length ? dispatches.reduce((x, d) => x + d._count.offers, 0) / filledDispatches.length : null,
+    onCallProviders: onCallProviders.length,
+    onCallFillShare: filledDispatches.length ? filledDispatches.filter((d) => d.filledVia === "ON_CALL_AUTO").length / filledDispatches.length : null,
+  };
+
   const leadsTotal = leadsByStatus.reduce((x, l) => x + l._count, 0);
   const leadsConverted = leadsByStatus.find((l) => l.status === "CONVERTED")?._count ?? 0;
 
@@ -133,6 +170,7 @@ export async function analyticsSummary(actor: Actor, range: { from: Date; to: Da
         marginCents: (p._sum.clinicPriceCents ?? 0) - (p._sum.promoDiscountCents ?? 0) - (p._sum.providerPayCents ?? 0),
       })),
     },
+    dispatch: dispatchStats,
     leads: {
       total: leadsTotal,
       converted: leadsConverted,

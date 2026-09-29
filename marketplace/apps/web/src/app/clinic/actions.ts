@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { DateTime } from "luxon";
 import { prisma } from "@cm/db";
 import {
+  dispatch,
   archiveLocation, auth, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic,
   requestAgreement, saveLocation, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
@@ -182,4 +183,33 @@ export const passwordAction = formAction(async (fd) => {
   const { actor } = await me();
   await auth.changePassword(actor, str(fd, "current"), str(fd, "next"));
   return "Password changed.";
+});
+
+// ---------- Smart Dispatch (Addendum 02 §5.8, §9) ----------
+export const findSomeoneNowAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await dispatch.findSomeoneNow(actor, str(fd, "shiftId"));
+  revalidatePath(`/clinic/shifts/${str(fd, "shiftId")}`);
+  return r.state === "FILLED" ? "Confirmed!" : "We're reaching out to the best-matched providers now.";
+});
+
+export const cancelDispatchAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await dispatch.cancelDispatch(actor, str(fd, "shiftId"));
+  revalidatePath(`/clinic/shifts/${str(fd, "shiftId")}`);
+  return "Search stopped. Your shift stays posted for applications.";
+});
+
+export const boostAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await dispatch.boostAndRedispatch(actor, str(fd, "shiftId"));
+  revalidatePath(`/clinic/shifts/${str(fd, "shiftId")}`);
+  return "Rate boosted — searching again with a wider radius.";
+});
+
+export const instantConfirmAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await dispatch.clinicInstantConfirm(actor, str(fd, "shiftId"), str(fd, "providerId"));
+  revalidatePath(`/clinic/shifts/${str(fd, "shiftId")}`);
+  return "Confirmed instantly — this provider is On Call for shifts like yours.";
 });

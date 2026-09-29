@@ -1,8 +1,11 @@
 import { notFound } from "next/navigation";
-import { Ban, Car, Heart, MessageSquare, Star } from "lucide-react";
+import Link from "next/link";
+import { Ban, Car, Heart, MessageSquare, Radar, Star, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
 import { clinicView } from "@cm/core";
-import { getSettings, shiftCandidates } from "@cm/services";
+import { dispatch, getSettings, shiftCandidates } from "@cm/services";
+import { AutoRefresh, Countdown } from "@/components/countdown";
+import { BadgeList } from "@/components/provider-profile";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -10,7 +13,10 @@ import { Field, PhiNotice, Select, Textarea } from "@/components/ui/form";
 import { Alert, Empty, PageHeader } from "@/components/ui/misc";
 import { dateLabel, money, pct, relative, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { blockAction, cancelShiftAction, disputeAction, favoriteAction, inviteAction, openThreadAction, postDraftAction, ratingAction, selectAction } from "../../actions";
+import {
+  blockAction, boostAction, cancelDispatchAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
+  postDraftAction, ratingAction, selectAction,
+} from "../../actions";
 
 type Cand = Awaited<ReturnType<typeof shiftCandidates>>["applicants"][number];
 
@@ -21,8 +27,10 @@ function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; ap
         {c.photoUrl ? <img src={`/api/files/${c.photoUrl}`} alt="" className="size-12 rounded-full object-cover" /> : <div className="grid size-12 place-items-center rounded-full bg-brand-50 font-semibold text-brand-700">{c.displayName.replace(/^Dr\.?\s*/, "").slice(0, 1)}</div>}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold">{c.displayName}, {c.credentialTitle}</span>
+            <Link href={`/clinic/providers/${c.providerId}`} className="font-semibold hover:text-brand-700">{c.displayName}, {c.credentialTitle}</Link>
             {c.badges.map((b) => <Badge key={b} tone={b === "Favorite" ? "brand" : b === "New to platform" ? "blue" : "green"}>{b}</Badge>)}
+            {c.instantConfirm ? <Badge tone="brand"><Zap className="size-3" />Instant confirm available</Badge> : null}
+            {c.acceptedPending ? <Badge tone="green">Accepted — waiting</Badge> : null}
           </div>
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-slate-500">
             <span>{c.city}, {c.state}</span>
@@ -32,11 +40,19 @@ function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; ap
             <span>Match {Math.round(c.score * 100)}</span>
           </div>
           {c.skills.length ? <div className="mt-2 flex flex-wrap gap-1">{c.skills.slice(0, 8).map((s) => <Badge key={s}>{s}</Badge>)}</div> : null}
+          {c.earnedBadges.length ? <div className="mt-2"><BadgeList badges={c.earnedBadges} compact /></div> : null}
           {c.note ? <p className="mt-2 rounded-lg bg-slate-50 p-2 text-sm text-slate-700">“{c.note}”</p> : null}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        {applicant ? (
+        {c.instantConfirm && !applicant && !c.acceptedPending ? (
+          <ActionForm action={instantConfirmAction} confirm={`Confirm ${c.displayName} now? They're On Call for shifts like this. The deposit is charged now.`}>
+            <input type="hidden" name="shiftId" value={shiftId} />
+            <input type="hidden" name="providerId" value={c.providerId} />
+            <SubmitButton size="sm"><Zap className="size-4" />Confirm instantly</SubmitButton>
+          </ActionForm>
+        ) : null}
+        {applicant || c.acceptedPending ? (
           <ActionForm action={selectAction} confirm={`Confirm ${c.displayName} for this shift? The deposit is charged now.`}>
             <input type="hidden" name="shiftId" value={shiftId} />
             <input type="hidden" name="providerId" value={c.providerId} />
@@ -81,6 +97,8 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
   const live = shift.assignments.find((a) => ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"].includes(a.status));
   const selectable = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"].includes(shift.status);
   const cands = selectable ? await shiftCandidates(actor, id) : null;
+  const track = await dispatch.dispatchStatus(id);
+  const acceptedIds = new Set(track?.acceptedPending.map((a) => a.providerId) ?? []);
   const view = clinicView({
     clinicPriceCents: live?.clinicPriceCents ?? shift.clinicPriceCents,
     providerPayCents: 0,
@@ -104,6 +122,56 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
       {sp.saved ? <Alert tone="info" className="mb-5">Draft saved.</Alert> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          {track && (track.status === "ACTIVE" || (track.status === "EXHAUSTED" && selectable)) ? (
+            <Card className={track.status === "ACTIVE" ? "border-brand-300 ring-2 ring-brand-100" : "border-amber-300"}>
+              <CardBody className="space-y-3 py-5">
+                {track.status === "ACTIVE" ? <AutoRefresh seconds={8} /> : null}
+                <div className="flex items-center gap-3">
+                  <span className="relative grid size-10 place-items-center rounded-full bg-brand-600 text-white">
+                    <Radar className="size-5" />
+                    {track.status === "ACTIVE" ? <span className="absolute inset-0 animate-ping rounded-full bg-brand-400 opacity-40" /> : null}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold">
+                      {track.status === "EXHAUSTED"
+                        ? "We haven't found coverage yet"
+                        : track.stage === "ON_CALL_CHECK"
+                          ? "Checking On Call providers…"
+                          : track.stage === "STANDBY"
+                            ? "Offering to standby providers first…"
+                            : track.wave?.isBroadcast
+                              ? "Offer sent to all remaining eligible providers"
+                              : `Offer sent to ${track.wave?.size ?? 0} providers (wave ${track.wave?.number ?? 1})`}
+                    </div>
+                    <div className="text-sm text-slate-500">
+                      {track.offersSent} asked · {track.accepted} accepted · {track.declined} declined
+                      {track.status === "ACTIVE" && track.wave ? <> · <Countdown to={(track.wave.holdEndsAt ?? track.wave.windowEndsAt).toISOString()} prefix={track.accepted ? "confirming in" : "next step in"} /></> : null}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">The best-matched provider who accepts gets the shift — not whoever answers first. You can still pick an applicant or an accepted provider below at any time.</p>
+                <div className="flex flex-wrap gap-2">
+                  {track.status === "EXHAUSTED" && !shift.boosted ? (
+                    <ActionForm action={boostAction} confirm={`Boost the rate by the urgent-boost percentage and search again with a wider radius?`}>
+                      <input type="hidden" name="shiftId" value={shift.id} /><SubmitButton size="sm">Boost rate & search again</SubmitButton>
+                    </ActionForm>
+                  ) : null}
+                  {track.status === "ACTIVE" ? (
+                    <ActionForm action={cancelDispatchAction} confirm="Stop searching? The shift stays posted for applications.">
+                      <input type="hidden" name="shiftId" value={shift.id} /><SubmitButton size="sm" variant="ghost">Stop searching</SubmitButton>
+                    </ActionForm>
+                  ) : null}
+                </div>
+              </CardBody>
+            </Card>
+          ) : selectable && shift.status !== "DRAFT" ? (
+            <Card>
+              <CardBody className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-slate-600">Need someone fast? We'll check On Call providers, then offer the shift to the best-matched providers in small waves.</div>
+                <ActionForm action={findSomeoneNowAction}><input type="hidden" name="shiftId" value={shift.id} /><SubmitButton><Radar className="size-4" />Find someone now</SubmitButton></ActionForm>
+              </CardBody>
+            </Card>
+          ) : null}
           {shift.status === "DRAFT" ? (
             <Card><CardBody>
               <ActionForm action={postDraftAction}><input type="hidden" name="shiftId" value={shift.id} /><SubmitButton>Post this shift</SubmitButton></ActionForm>
@@ -166,12 +234,13 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                 <CardHeader title={`Applicants (${cands.applicants.length})`} description={shift.selectionDeadline ? `Choose by ${relative(shift.selectionDeadline)}.` : undefined} />
                 <CardBody className="space-y-3">
                   {cands.applicants.length ? cands.applicants.map((c) => <CandidateCard key={c.providerId} c={c} shiftId={shift.id} applicant />) : <Empty title="No applicants yet">We've notified matching providers. You can also invite recommended providers below.</Empty>}
+                  {cands.recommended.filter((c) => acceptedIds.has(c.providerId)).map((c) => <CandidateCard key={c.providerId} c={{ ...c, acceptedPending: true }} shiftId={shift.id} applicant={false} />)}
                 </CardBody>
               </Card>
               <Card>
-                <CardHeader title="Recommended" description="Eligible providers who haven't applied. Invite up to 3 — first to accept gets the shift." />
+                <CardHeader title="Recommended" description="Eligible providers who haven't applied. Invite up to 3. If several accept, the best match gets the shift — not whoever answers first." />
                 <CardBody className="space-y-3">
-                  {cands.recommended.length ? cands.recommended.map((c) => <CandidateCard key={c.providerId} c={c} shiftId={shift.id} applicant={false} />) : <p className="text-sm text-slate-500">No other eligible providers right now.</p>}
+                  {cands.recommended.length ? cands.recommended.filter((c) => !acceptedIds.has(c.providerId)).map((c) => <CandidateCard key={c.providerId} c={c} shiftId={shift.id} applicant={false} />) : <p className="text-sm text-slate-500">No other eligible providers right now.</p>}
                   {cands.recommended.length ? (
                     <ActionForm action={inviteAction} id={`invite-${shift.id}`}>
                       <input type="hidden" name="shiftId" value={shift.id} />

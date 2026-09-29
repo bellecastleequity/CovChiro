@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { DateTime } from "luxon";
 import { prisma } from "@cm/db";
 import {
+  dispatch,
+  oncall,
   addBlackout, addMalpractice, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
   removeAvailabilityException, requestAgreement, respondToOffer, setAvailability, setProviderPhoto, setSkills, submitLodgingReceipt, submitRating,
   updateProviderProfile, upsertLicense, withdrawApplication,
@@ -34,8 +36,98 @@ export const respondOfferAction = formAction(async (fd) => {
   const accept = str(fd, "decision") === "accept";
   const r = await respondToOffer(actor, str(fd, "offerId"), accept);
   revalidatePath("/provider", "layout");
-  if (r.confirmed) redirect(`/provider/assignments/${r.assignmentId}`);
-  return "Declined.";
+  if (r.confirmed && r.assignmentId) redirect(`/provider/assignments/${r.assignmentId}`);
+  if ("message" in r && r.message) return r.message;
+  return accept ? "Accepted." : "Declined — thanks for letting us know quickly.";
+});
+
+// ---------- On Call & offer preferences (Addendum 02) ----------
+const toMin = (t: string) => {
+  const [h, m] = t.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+};
+
+export const onCallRuleAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const windows = [];
+  for (let d = 0; d < 7; d++) if (bool(fd, `day-${d}`)) windows.push({ weekday: d, startMin: toMin(str(fd, "start") || "07:00"), endMin: toMin(str(fd, "end") || "19:00") || 1440 });
+  const { homeTimeZone: zone } = await prisma.provider.findUniqueOrThrow({ where: { id: actor.providerId! }, select: { homeTimeZone: true } });
+  const dates = str(fd, "dateFrom")
+    ? [{ startsAt: DateTime.fromISO(str(fd, "dateFrom"), { zone }).startOf("day").toJSDate(), endsAt: DateTime.fromISO(str(fd, "dateTo") || str(fd, "dateFrom"), { zone }).endOf("day").toJSDate() }]
+    : [];
+  await oncall.saveOnCallRule(
+    actor,
+    {
+      professionCodes: fd.getAll("professions").map(String),
+      recurringWindows: windows,
+      dateWindows: dates,
+      maxDriveMinutes: Number(str(fd, "maxDriveMinutes") || 45),
+      minPayHalfDayCents: dollarsToCents(str(fd, "minHalf")),
+      minPayFullDayCents: dollarsToCents(str(fd, "minFull")),
+      minPayHourlyCents: dollarsToCents(str(fd, "minHourly")),
+      minNoticeMinutes: Number(str(fd, "minNotice") || 90),
+      maxPerDay: Number(str(fd, "maxPerDay") || 1),
+      maxPerWeek: Number(str(fd, "maxPerWeek") || 5),
+      favoritesOnly: bool(fd, "favoritesOnly"),
+      minClinicRating: optStr(fd, "minClinicRating") ? Number(str(fd, "minClinicRating")) : null,
+      allowOvernight: bool(fd, "allowOvernight"),
+      active: true,
+    },
+    optStr(fd, "ruleId") ?? undefined,
+  );
+  revalidatePath("/provider", "layout");
+  return "On Call rules saved.";
+});
+
+export const onCallToggleAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const mode = str(fd, "mode");
+  const { homeTimeZone: zone } = await prisma.provider.findUniqueOrThrow({ where: { id: actor.providerId! }, select: { homeTimeZone: true } });
+  if (mode === "on") await oncall.setOnCall(actor, true);
+  else if (mode === "pause-today") await oncall.setOnCall(actor, false, DateTime.now().setZone(zone).endOf("day").toJSDate());
+  else if (mode === "pause-until") await oncall.setOnCall(actor, false, DateTime.fromISO(str(fd, "until"), { zone }).endOf("day").toJSDate());
+  else await oncall.setOnCall(actor, false);
+  revalidatePath("/provider", "layout");
+  return mode === "on" ? "You're On Call." : "On Call paused.";
+});
+
+export const snoozeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const { homeTimeZone: zone } = await prisma.provider.findUniqueOrThrow({ where: { id: actor.providerId! }, select: { homeTimeZone: true } });
+  const mode = str(fd, "mode");
+  const until =
+    mode === "today" ? DateTime.now().setZone(zone).endOf("day").toJSDate() : mode === "week" ? DateTime.now().setZone(zone).endOf("week").toJSDate() : mode === "until" ? DateTime.fromISO(str(fd, "until"), { zone }).endOf("day").toJSDate() : null;
+  await dispatch.setSnooze(actor, until);
+  revalidatePath("/provider", "layout");
+  return until ? "Offers snoozed." : "Offers resumed.";
+});
+
+export const quietHoursAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await dispatch.setQuietHours(actor, { startMin: toMin(str(fd, "start")), endMin: toMin(str(fd, "end")), urgentDuringQuietHours: bool(fd, "urgent") });
+  revalidatePath("/provider/oncall");
+  return "Quiet hours saved.";
+});
+
+export const phoneStartAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const phone = await auth.startPhoneVerification(actor, str(fd, "phone"));
+  revalidatePath("/provider", "layout");
+  return `We texted a code to ${phone}.`;
+});
+
+export const phoneConfirmAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await auth.confirmPhone(actor, str(fd, "code"), bool(fd, "consent"));
+  revalidatePath("/provider", "layout");
+  return "Phone verified.";
+});
+
+export const graceCancelAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await dispatch.onCallGraceCancel(actor, str(fd, "assignmentId"));
+  revalidatePath("/provider", "layout");
+  redirect("/provider?grace=1");
 });
 
 export const cancelAssignmentAction = formAction(async (fd) => {
@@ -62,6 +154,9 @@ export const profileAction = formAction(async (fd) => {
     xrayComfort: bool(fd, "xrayComfort"),
     maxPatientsPerDay: str(fd, "maxPatientsPerDay") ? Number(str(fd, "maxPatientsPerDay")) : null,
     npi: optStr(fd, "npi"),
+    headline: optStr(fd, "headline"),
+    linkedinUrl: optStr(fd, "linkedinUrl"),
+    yearsInPractice: Object.fromEntries([...fd.keys()].filter((k) => k.startsWith("years-") && str(fd, k)).map((k) => [k.slice(6), Number(str(fd, k))])),
   });
   const photo = await saveUpload(fd.get("photo"), `photos/${actor.providerId}`, { images: true });
   if (photo) await setProviderPhoto(actor, photo);

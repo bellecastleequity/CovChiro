@@ -33,3 +33,5 @@ Precedence: Addendum 02 > Addendum 01 > SPEC.md.
 - Every candidate list starts with getEligibleProviders. On Call rules, standby, revived offers, and broadcasts can never add a provider it excludes.
 - All confirmations go through the SPEC.md 7.8 transaction under a per-shift advisory lock.
 - All dispatch numbers are Settings. Use fake timers in dispatch tests.
+- Clinic/admin invitations (non-dispatch offers) are rank-protected as well: accept → ACCEPTED_PENDING, confirmed by settleInvites once no higher-match invitation is still open.
+- Background work lives in apps/worker/src/jobs.ts as idempotent sweeps (BullMQ schedulers; in-process timers when REDIS_URL is unset).

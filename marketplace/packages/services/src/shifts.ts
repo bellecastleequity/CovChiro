@@ -15,9 +15,9 @@ import {
   skillScopeProblem,
   supervisionProblem,
 } from "@cm/core";
-import { prisma, type Prisma } from "@cm/db";
-import { audit, getSettings, requireAdmin, requireClinic, requireProvider, tx, type Actor, type Db } from "./context";
-import { confirmProvider } from "./confirm";
+import { isInvariantViolation, prisma, type Prisma } from "@cm/db";
+import { audit, clock, getSettings, lockShift, SYSTEM, requireAdmin, requireClinic, requireProvider, tx, type Actor, type Db } from "./context";
+import { confirmInTx, confirmProvider } from "./confirm";
 import { Effects } from "./effects";
 import { assertProviderEligibleForShift, eligibilityOptions, evaluateProviderForShift, getEligibleProviders, loadProviders, loadShift } from "./eligibility";
 import { logMatchRun, rankEvaluated } from "./matching";
@@ -421,9 +421,13 @@ export async function shiftCandidates(actor: Actor, shiftId: string) {
       where: { providerId: { in: ids }, skill: { OR: [{ professionCode: loaded.facts.professionCode }, { professionCode: null }] } },
       include: { skill: true },
     }),
-    prisma.offer.findMany({ where: { shiftId, status: "PENDING" } }),
+    prisma.offer.findMany({ where: { shiftId, status: { in: ["PENDING", "ACCEPTED_PENDING"] } } }),
   ]);
   const prof = new Map(profiles.map((p) => [p.id, p]));
+  const { badgesFor } = await import("./profiles");
+  const { onCallMatches } = await import("./dispatch");
+  const [badges, onCall] = await Promise.all([badgesFor(ids), onCallMatches(prisma, shiftId).catch(() => [])]);
+  const instant = new Set(onCall.map((m) => m.providerId));
   const card = (r: (typeof ranked)[number]) => {
     const p = prof.get(r.providerId)!;
     const lic = licenses.find((l) => l.providerId === r.providerId);
@@ -446,6 +450,9 @@ export async function shiftCandidates(actor: Actor, shiftId: string) {
       note: appBy.get(r.providerId)?.note ?? null,
       appliedAt: appBy.get(r.providerId)?.createdAt ?? null,
       pendingOffer: offers.some((o) => o.providerId === r.providerId),
+      acceptedPending: offers.some((o) => o.providerId === r.providerId && o.status === "ACCEPTED_PENDING"),
+      earnedBadges: (badges.get(r.providerId) ?? []).filter((b) => b.kind === "earned" || b.key === "oncall"),
+      instantConfirm: instant.has(r.providerId),
     };
   };
   const applicants = ranked.filter((r) => appBy.has(r.providerId)).map(card);
@@ -457,6 +464,9 @@ export async function selectApplicant(actor: Actor, shiftId: string, providerId:
   await clinicShift(actor, shiftId);
   const app = await prisma.application.findUnique({ where: { shiftId_providerId: { shiftId, providerId } } });
   if (app?.status === "NOT_SELECTED" || app?.status === "SELECTED") throw new DomainError("CONFLICT", "This shift has already been filled.");
+  // A provider who accepted a dispatch offer can be picked directly too (Addendum 02 §5.8).
+  const acceptor = await prisma.offer.findFirst({ where: { shiftId, providerId, status: "ACCEPTED_PENDING" } });
+  if (acceptor) return confirmProvider(actor, shiftId, providerId, "CLINIC_PICKED_OFFER", { acceptedOfferId: acceptor.id });
   if (!app || app.status !== "ACTIVE") throw new DomainError("NOT_FOUND", "That provider hasn't applied (or withdrew).");
   return confirmProvider(actor, shiftId, providerId, "CLINIC_PICKED_APPLICANT");
 }
@@ -464,15 +474,18 @@ export async function selectApplicant(actor: Actor, shiftId: string, providerId:
 export async function inviteProviders(actor: Actor, shiftId: string, providerIds: string[]) {
   const shift = await clinicShift(actor, shiftId);
   if (!providerIds.length || providerIds.length > 3) throw new DomainError("VALIDATION", "Invite 1 to 3 providers at a time.");
-  const pending = await prisma.offer.count({ where: { shiftId, status: "PENDING" } });
+  const pending = await prisma.offer.count({ where: { shiftId, dispatchId: null, status: { in: ["PENDING", "ACCEPTED_PENDING"] } } });
   if (pending + providerIds.length > 3) throw new DomainError("VALIDATION", "You can have up to 3 open invitations at once.");
   const s = await getSettings();
-  const { tier } = selectionDeadline(s["matching.deadlineTiers"], shift.postedAt ?? new Date(), shift.startsAt);
-  const expiresAt = new Date(Math.min(Date.now() + tier.offerWindowMinutes * 60_000, +shift.startsAt - 2 * 3_600_000));
+  const now = clock.now();
+  const { tier } = selectionDeadline(s["matching.deadlineTiers"], shift.postedAt ?? now, shift.startsAt);
+  const expiresAt = new Date(Math.min(+now + tier.offerWindowMinutes * 60_000, +shift.startsAt - 2 * 3_600_000));
   const created = [];
   for (const providerId of providerIds) {
     const ev = await assertProviderEligibleForShift(prisma, providerId, shiftId);
-    const offer = await prisma.offer.create({ data: { shiftId, providerId, source: actor.role === "PLATFORM_ADMIN" ? "ADMIN" : "CLINIC_PICK", expiresAt } });
+    // The match score decides between invitees who accept (rank-protected, Addendum 02 §5.4).
+    const [ranked] = await rankEvaluated(prisma, ev.shift, [ev]);
+    const offer = await prisma.offer.create({ data: { shiftId, providerId, source: actor.role === "PLATFORM_ADMIN" ? "ADMIN" : "CLINIC_PICK", expiresAt, matchScore: ranked?.score ?? 0 } });
     created.push(offer.id);
     await audit(prisma, actor, "offer.created", "Offer", offer.id, null, { shiftId, providerId, expiresAt });
     await notify(prisma, ev.provider.userId, {
@@ -494,7 +507,7 @@ export async function respondToOffer(actor: Actor, offerId: string, accept: bool
   if (offer.dispatchId) {
     // Pending, or expired-but-revivable while the dispatch is still active (§5.6) — the engine decides.
   } else if (offer.status !== "PENDING") throw new DomainError("CONFLICT", `This offer is ${offer.status.toLowerCase()}.`);
-  else if (offer.expiresAt <= new Date()) {
+  else if (offer.expiresAt <= clock.now()) {
     await prisma.offer.update({ where: { id: offerId }, data: { status: "EXPIRED" } });
     throw new DomainError("CONFLICT", "This offer has expired.");
   }
@@ -506,6 +519,8 @@ export async function respondToOffer(actor: Actor, offerId: string, accept: bool
   if (!accept) {
     await prisma.offer.update({ where: { id: offerId }, data: { status: "DECLINED", respondedAt: new Date() } });
     await audit(prisma, actor, "offer.declined", "Offer", offerId, { status: "PENDING" }, { status: "DECLINED" });
+    // A higher-ranked invitee stepping aside may free a waiting acceptor.
+    await settleInvites(offer.shiftId);
     return { confirmed: false };
   }
   // Dispatch offers follow rank-protected award logic (Addendum 02 §5.4); never "first to answer wins".
@@ -514,9 +529,65 @@ export async function respondToOffer(actor: Actor, offerId: string, accept: bool
     const r = await respondToDispatchOffer(offer.id, true, "APP");
     return { confirmed: r.state === "CONFIRMED", assignmentId: r.assignmentId, state: r.state, message: r.message };
   }
-  const method = offer.source === "ADMIN" ? "ADMIN" : "CLINIC_PICKED_OFFER";
-  const r = await confirmProvider(actor, offer.shiftId, providerId, method, { acceptedOfferId: offerId });
-  return { confirmed: true, assignmentId: r.assignmentId };
+  // Clinic/admin invitations are rank-protected too: never "first to answer wins".
+  await assertProviderEligibleForShift(prisma, providerId, offer.shiftId, { credentialsOnly: true });
+  await prisma.offer.update({ where: { id: offerId }, data: { status: "ACCEPTED_PENDING", respondedAt: clock.now() } });
+  await audit(prisma, actor, "offer.accepted", "Offer", offerId, { status: "PENDING" }, { status: "ACCEPTED_PENDING" });
+  const r = await settleInvites(offer.shiftId);
+  if (r?.providerId === providerId) return { confirmed: true, assignmentId: r.assignmentId };
+  return {
+    confirmed: false,
+    state: "ACCEPTED_PENDING",
+    message: "Thanks — you're in. The clinic invited a few providers; the best match among those who accept gets the shift. We'll confirm shortly.",
+  };
+}
+
+/**
+ * Settle clinic/admin invitations (non-dispatch offers) on one shift:
+ * expire lapsed invitations, then confirm the best-matched acceptor once no
+ * higher-ranked invitation is still open. Idempotent; run on every response
+ * and by the worker sweep.
+ */
+export async function settleInvites(shiftId: string, now = clock.now()): Promise<{ providerId: string; assignmentId: string } | null> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const effects = new Effects();
+    let tried: string | null = null;
+    let result: { providerId: string; assignmentId: string } | null = null;
+    try {
+      await tx(async (db) => {
+        await lockShift(db, shiftId);
+        await db.offer.updateMany({ where: { shiftId, dispatchId: null, status: "PENDING", expiresAt: { lte: now } }, data: { status: "EXPIRED" } });
+        const best = await db.offer.findFirst({ where: { shiftId, dispatchId: null, status: "ACCEPTED_PENDING" }, orderBy: [{ matchScore: "desc" }, { respondedAt: "asc" }] });
+        if (!best) return;
+        const higherOpen = await db.offer.count({ where: { shiftId, dispatchId: null, status: "PENDING", expiresAt: { gt: now }, matchScore: { gt: best.matchScore } } });
+        if (higherOpen) return;
+        const shift = await db.shift.findUniqueOrThrow({ where: { id: shiftId }, select: { status: true } });
+        if (!["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"].includes(shift.status)) return;
+        tried = best.id;
+        const method = best.source === "ADMIN" ? "ADMIN" : "CLINIC_PICKED_OFFER";
+        const assignmentId = await confirmInTx(db, SYSTEM, shiftId, best.providerId, method, effects, { acceptedOfferId: best.id });
+        result = { providerId: best.providerId, assignmentId };
+      });
+    } catch (e) {
+      // The top acceptor can't be confirmed (lapsed credential, now double-booked…): drop them and try the next.
+      if (tried && (e instanceof DomainError || isInvariantViolation(e))) {
+        await prisma.offer.update({ where: { id: tried }, data: { status: "INELIGIBLE", respondedAt: now } });
+        continue;
+      }
+      throw e;
+    }
+    await effects.run();
+    return result;
+  }
+  return null;
+}
+
+/** Worker sweep: shifts with invitees waiting on a higher-ranked invitation that may have lapsed. */
+export async function settleDueInvites(now = clock.now()) {
+  const rows = await prisma.offer.findMany({ where: { dispatchId: null, status: "ACCEPTED_PENDING" }, distinct: ["shiftId"], select: { shiftId: true } });
+  let confirmed = 0;
+  for (const { shiftId } of rows) if (await settleInvites(shiftId, now)) confirmed++;
+  return { shifts: rows.length, confirmed };
 }
 
 /** Admin manual assign — still goes through the shared eligibility function + DB trigger. */

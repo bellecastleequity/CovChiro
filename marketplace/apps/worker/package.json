@@ -1,0 +1,24 @@
+{
+  "name": "@cm/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "once": "tsx src/once.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@cm/config": "workspace:*",
+    "@cm/db": "workspace:*",
+    "@cm/services": "workspace:*",
+    "bullmq": "^6.3.10",
+    "ioredis": "^6.0.0",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "5.9.3"
+  }
+}

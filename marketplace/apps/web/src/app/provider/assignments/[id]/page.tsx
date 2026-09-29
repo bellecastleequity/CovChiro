@@ -9,7 +9,7 @@ import { Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form"
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel, money, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { cancelAssignmentAction, disputeAction, lodgingAction, openThreadAction, ratingAction } from "../../actions";
+import { cancelAssignmentAction, disputeAction, graceCancelAction, lodgingAction, openThreadAction, ratingAction } from "../../actions";
 
 export default async function Assignment({ params }: { params: Promise<{ id: string }> }) {
   const { actor } = await requireActor("provider");
@@ -100,6 +100,17 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
               {a.payouts.map((p) => <div key={p.id} className="flex justify-between text-xs text-slate-500"><span>{p.description}</span><StatusBadge status={p.onHold ? "ON_HOLD" : p.status} /></div>)}
             </CardBody>
           </Card>
+          {a.status === "CONFIRMED" && a.graceEndsAt && a.graceEndsAt > new Date() ? (
+            <Card className="border-brand-300">
+              <CardHeader title="Booked by On Call" description="Conflict? Cancel now with no penalty — we'll find someone else right away." />
+              <CardBody>
+                <ActionForm action={graceCancelAction} confirm="Release this On Call booking with no penalty?">
+                  <input type="hidden" name="assignmentId" value={a.id} />
+                  <SubmitButton variant="outline" className="w-full">Cancel (no penalty) — until {a.graceEndsAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</SubmitButton>
+                </ActionForm>
+              </CardBody>
+            </Card>
+          ) : null}
           {a.status === "CONFIRMED" ? (
             <Card>
               <CardHeader title="Can't make it?" />

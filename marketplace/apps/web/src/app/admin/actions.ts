@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  addAdjustment, admin, adminAssign, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
+  addAdjustment, admin, adminAssign, dispatch, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
   reviewLodgingReceipt, setHold,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction, optStr, str } from "@/lib/action";
@@ -62,6 +62,18 @@ export const adminCancelShiftAction = formAction(async (fd) => {
   await cancelShiftByClinic(actor, str(fd, "shiftId"), str(fd, "reason") || "Cancelled by platform");
   rv("/admin/shifts");
   return "Shift cancelled (platform — full refund).";
+});
+export const adminDispatchAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await dispatch.findSomeoneNow(actor, str(fd, "shiftId"));
+  rv("/admin/shifts");
+  return "Dispatch started.";
+});
+export const adminStopDispatchAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await dispatch.cancelDispatch(actor, str(fd, "shiftId"));
+  rv("/admin/shifts");
+  return "Dispatch stopped.";
 });
 export const removeProviderAction = formAction(async (fd) => {
   const { actor } = await me();

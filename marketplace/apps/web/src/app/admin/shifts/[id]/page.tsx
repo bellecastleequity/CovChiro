@@ -8,7 +8,7 @@ import { Checkbox, Field, Input, Textarea } from "@/components/ui/form";
 import { PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateLabel, dateTimeLabel, money, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { adminAssignAction, adminCancelShiftAction, adminInviteAction, removeProviderAction, repriceAction } from "../../actions";
+import { adminAssignAction, adminCancelShiftAction, adminDispatchAction, adminStopDispatchAction, adminInviteAction, removeProviderAction, repriceAction } from "../../actions";
 
 export default async function AdminShift({ params }: { params: Promise<{ id: string }> }) {
   await requireActor("admin");
@@ -22,6 +22,11 @@ export default async function AdminShift({ params }: { params: Promise<{ id: str
       offers: { include: { provider: true }, orderBy: { createdAt: "desc" } },
       matchRuns: { orderBy: { createdAt: "desc" }, take: 3 },
       promoCode: true,
+      dispatches: {
+        orderBy: { startedAt: "desc" },
+        take: 5,
+        include: { waves: { orderBy: { number: "asc" }, include: { offers: { include: { provider: { select: { displayName: true } } }, orderBy: { dispatchScore: "desc" } } } } },
+      },
     },
   });
   if (!shift) notFound();
@@ -30,6 +35,7 @@ export default async function AdminShift({ params }: { params: Promise<{ id: str
   const loaded = await loadShift(prisma, id);
   const set = selectable ? await getEligibleProviders(prisma, loaded) : null;
   const ranked = set ? await rankEvaluated(prisma, loaded, set.eligible) : [];
+  const activeDispatch = shift.dispatches.find((d) => d.status === "ACTIVE");
   const live = shift.assignments.find((a) => ["CONFIRMED", "IN_PROGRESS"].includes(a.status));
   const names = new Map((await prisma.provider.findMany({ where: { id: { in: [...(set?.excluded.map((e) => e.providerId) ?? []), ...ranked.map((r) => r.providerId)] } }, select: { id: true, displayName: true } })).map((p) => [p.id, p.displayName]));
   return (
@@ -93,6 +99,39 @@ export default async function AdminShift({ params }: { params: Promise<{ id: str
               {!shift.applications.length && !shift.offers.length ? <p className="text-slate-500">None.</p> : null}
             </CardBody>
           </Card>
+          {shift.dispatches.length ? (
+            <Card>
+              <CardHeader title="Dispatch log" description="Waves in send order. Match score decides who wins; dispatch score decides who is asked first." />
+              <CardBody className="space-y-4 text-sm">
+                {shift.dispatches.map((d) => (
+                  <div key={d.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium">{d.trigger.replaceAll("_", " ").toLowerCase()} · tier {d.tierAtStart.replaceAll("_", " ").toLowerCase()}</span>
+                      <StatusBadge status={d.status === "ACTIVE" ? "PENDING" : d.status} label={`${d.status.toLowerCase()} · ${d.stage.replaceAll("_", " ").toLowerCase()}`} />
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Started {dateTimeLabel(d.startedAt, tz)}{d.endedAt ? ` · ended ${dateTimeLabel(d.endedAt, tz)}` : ""} · best match at start {d.bestMatchAtStart?.toFixed(3) ?? "—"}{d.filledVia ? ` · filled via ${d.filledVia.toLowerCase()}` : ""}
+                    </div>
+                    {d.waves.map((w) => (
+                      <details key={w.id} className="mt-2 text-xs">
+                        <summary className="cursor-pointer">
+                          Wave {w.number}{w.isBroadcast ? " (broadcast)" : ""}{w.isStandby ? " (standby)" : ""} · {w.offers.length} offers · sent {dateTimeLabel(w.sentAt, tz)} · window to {dateTimeLabel(w.windowEndsAt, tz)}{w.closedAt ? " · closed" : ""}
+                        </summary>
+                        <ul className="mt-1 space-y-0.5 pl-4">
+                          {w.offers.map((o) => (
+                            <li key={o.id} className="flex justify-between gap-2">
+                              <span>{o.provider.displayName} · match {o.matchScore.toFixed(3)} · dispatch {o.dispatchScore.toFixed(3)}{o.replyCode ? ` · code ${o.replyCode}` : ""}</span>
+                              <span>{o.status.replaceAll("_", " ").toLowerCase()}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ))}
+                  </div>
+                ))}
+              </CardBody>
+            </Card>
+          ) : null}
           {shift.matchRuns.length ? (
             <Card>
               <CardHeader title="Match-run log" />
@@ -113,6 +152,24 @@ export default async function AdminShift({ params }: { params: Promise<{ id: str
               <div className="text-xs text-slate-500">{(shift.premiumsApplied as { kind: string; percent: number }[]).map((p) => `${p.kind} +${p.percent}%`).join(", ") || "No premiums"}</div>
             </CardBody>
           </Card>
+          {selectable ? (
+            <Card>
+              <CardHeader title="Smart Dispatch" description={activeDispatch ? "A dispatch is running." : "Send ranked waves now, regardless of urgency tier."} />
+              <CardBody>
+                {activeDispatch ? (
+                  <ActionForm action={adminStopDispatchAction} confirm="Stop the running dispatch? Pending offers are withdrawn.">
+                    <input type="hidden" name="shiftId" value={id} />
+                    <SubmitButton size="sm" variant="outline">Stop dispatch</SubmitButton>
+                  </ActionForm>
+                ) : (
+                  <ActionForm action={adminDispatchAction}>
+                    <input type="hidden" name="shiftId" value={id} />
+                    <SubmitButton size="sm">Dispatch now</SubmitButton>
+                  </ActionForm>
+                )}
+              </CardBody>
+            </Card>
+          ) : null}
           {selectable || shift.status === "DRAFT" ? (
             <Card>
               <CardHeader title="Reprice (override)" description="Logged in the audit trail." />

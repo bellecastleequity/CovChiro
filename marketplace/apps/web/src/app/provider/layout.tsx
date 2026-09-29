@@ -6,7 +6,7 @@ import { requireActor } from "@/lib/session";
 export default async function ProviderLayout({ children }: { children: React.ReactNode }) {
   const { actor, user } = await requireActor("provider");
   const [offers, unreadMsgs] = await Promise.all([
-    prisma.offer.count({ where: { providerId: actor.providerId!, status: "PENDING", expiresAt: { gt: new Date() } } }),
+    prisma.offer.count({ where: { providerId: actor.providerId!, status: { in: ["PENDING", "ACCEPTED_PENDING"] }, expiresAt: { gt: new Date() } } }),
     prisma.message.count({ where: { readAt: null, senderType: "CLINIC", thread: { providerId: actor.providerId! } } }),
   ]);
   const items: NavItem[] = [
@@ -15,6 +15,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     { href: "/provider/offers", label: "Offers", icon: "offers", badge: offers, mobile: true },
     { href: "/provider/assignments", label: "My shifts", icon: "shifts", mobile: true },
     { href: "/provider/messages", label: "Messages", icon: "messages", badge: unreadMsgs, mobile: true },
+    { href: "/provider/oncall", label: "On Call", icon: "notifications" },
     { href: "/provider/earnings", label: "Earnings", icon: "earnings" },
     { href: "/provider/credentials", label: "Credentials", icon: "credentials" },
     { href: "/provider/availability", label: "Availability", icon: "availability" },

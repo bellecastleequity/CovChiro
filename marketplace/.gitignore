@@ -6,4 +6,5 @@ dist/
 *.tsbuildinfo
 coverage/
 .uploads/
+.uploads-test/
 next-env.d.ts

@@ -83,6 +83,33 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
           </CardBody>
         </Card>
         <Card className="lg:col-span-3">
+          <CardHeader title="Smart Dispatch" description="Match quality = filled provider's match score ÷ best eligible match when the dispatch started." />
+          <CardBody className="space-y-4 text-sm">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {([
+                ["Dispatches", `${a.dispatch.filled}/${a.dispatch.started} filled`],
+                ["Exhausted", String(a.dispatch.exhausted)],
+                ["Median match quality", pct(a.dispatch.medianMatchQuality)],
+                ["Offers per fill", a.dispatch.offersPerFill?.toFixed(1) ?? "—"],
+                ["On Call providers", `${a.dispatch.onCallProviders} · ${pct(a.dispatch.onCallFillShare)} of fills`],
+              ] as const).map(([l, v]) => <div key={l}><div className="text-xs text-slate-500">{l}</div><div className="text-lg font-semibold">{v}</div></div>)}
+            </div>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <Table>
+                <thead><tr><Th>Tier</Th><Th className="text-right">Filled</Th><Th className="text-right">Median time to fill</Th></tr></thead>
+                <tbody>{a.dispatch.byTier.map((t) => <tr key={t.tier}><Td>{humanize(t.tier)}</Td><Td className="text-right">{t.filled}/{t.started}</Td><Td className="text-right">{t.medianMinutesToFill == null ? "—" : `${Math.round(t.medianMinutesToFill)} min`}</Td></tr>)}</tbody>
+              </Table>
+              <Table>
+                <thead><tr><Th>Filled via</Th><Th className="text-right">Count</Th><Th className="text-right">Share</Th></tr></thead>
+                <tbody>
+                  {a.dispatch.byPath.map((p) => <tr key={p.path}><Td>{humanize(p.path)}</Td><Td className="text-right">{p.count}</Td><Td className="text-right">{pct(p.share)}</Td></tr>)}
+                  {!a.dispatch.byPath.length ? <tr><Td className="text-slate-500">No fills yet</Td><Td /><Td /></tr> : null}
+                </tbody>
+              </Table>
+            </div>
+          </CardBody>
+        </Card>
+        <Card className="lg:col-span-3">
           <CardHeader title="Money" />
           <CardBody className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
             {[["Clinic revenue", m.revenueCents], ["Provider pay", m.providerPayCents], ["Margin", m.marginCents], ["Promo discounts", m.discountsCents], ["Pass-through travel", m.passThroughCents]].map(([l, v]) => <div key={l as string}><div className="text-xs text-slate-500">{l}</div><div className="text-lg font-semibold">{money(v as number)}</div></div>)}

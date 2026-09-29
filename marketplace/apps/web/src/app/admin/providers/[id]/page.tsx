@@ -55,6 +55,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
             </ActionForm>
             {p.adminNotes ? <pre className="mt-3 whitespace-pre-wrap text-xs text-slate-500">{p.adminNotes}</pre> : null}
             <Link href={`/admin/payouts?provider=${p.id}`} className="mt-4 block text-sm font-medium text-brand-700">Pay ledger →</Link>
+            <Link href={`/admin/providers/${p.id}/profile`} className="mt-2 block text-sm font-medium text-brand-700">Public profile & badges →</Link>
           </CardBody>
         </Card>
       </div>

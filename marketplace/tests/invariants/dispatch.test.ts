@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@cm/db";
-import { dispatch, invalidateSettings, selectApplicant, setClock, applyToShift, admin, oncall } from "@cm/services";
+import { dispatch, invalidateSettings, inviteProviders, respondToOffer, selectApplicant, settleDueInvites, setClock, applyToShift, admin, oncall } from "@cm/services";
 import { insertAssignment, makeClinic, makeProvider, makeShift } from "../factories";
 
 /**
@@ -408,5 +408,42 @@ describe("responsiveness & badges", () => {
     expect(r.hits).toBe(1);
     expect(r.pRespond).toBeGreaterThan(0.5);
     void admin;
+  });
+});
+
+describe("Clinic invitations are rank-protected too", () => {
+  it("lower-ranked invitee accepts first → waits; higher accepts → higher confirmed, lower not selected", async () => {
+    const { clinic, shift, providers } = await scenario(3, { hoursBefore: 24 * 10 });
+    const [hi, mid] = providers;
+    await inviteProviders(clinic.actor, shift.id, [hi.id, mid.id]);
+    const offer = (pid: string) => prisma.offer.findFirstOrThrow({ where: { shiftId: shift.id, providerId: pid } });
+    expect((await offer(hi.id)).matchScore).toBeGreaterThan((await offer(mid.id)).matchScore);
+    const r1 = await respondToOffer(mid.actor, (await offer(mid.id)).id, true);
+    expect(r1.confirmed).toBe(false);
+    expect((await offer(mid.id)).status).toBe("ACCEPTED_PENDING");
+    expect(await assignmentFor(shift.id)).toBeNull();
+    const r2 = await respondToOffer(hi.actor, (await offer(hi.id)).id, true);
+    expect(r2.confirmed).toBe(true);
+    expect((await assignmentFor(shift.id))?.providerId).toBe(hi.id);
+    expect((await offer(mid.id)).status).toBe("NOT_SELECTED");
+  });
+
+  it("higher-ranked invitee declines or lets it lapse → waiting acceptor is confirmed", async () => {
+    const a = await scenario(2, { hoursBefore: 24 * 10 });
+    await inviteProviders(a.clinic.actor, a.shift.id, a.providers.map((p) => p.id));
+    const offers = await prisma.offer.findMany({ where: { shiftId: a.shift.id }, orderBy: { matchScore: "desc" } });
+    await respondToOffer(a.providers[1].actor, offers[1].id, true);
+    await respondToOffer(a.providers[0].actor, offers[0].id, false);
+    expect((await assignmentFor(a.shift.id))?.providerId).toBe(a.providers[1].id);
+
+    const b = await scenario(2, { hoursBefore: 24 * 10 });
+    await inviteProviders(b.clinic.actor, b.shift.id, b.providers.map((p) => p.id));
+    const bo = await prisma.offer.findMany({ where: { shiftId: b.shift.id }, orderBy: { matchScore: "desc" } });
+    await respondToOffer(b.providers[1].actor, bo[1].id, true);
+    expect(await assignmentFor(b.shift.id)).toBeNull();
+    advance(24 * 60);
+    await settleDueInvites();
+    expect((await assignmentFor(b.shift.id))?.providerId).toBe(b.providers[1].id);
+    expect((await prisma.offer.findUniqueOrThrow({ where: { id: bo[0].id } })).status).toBe("NOT_SELECTED");
   });
 });
