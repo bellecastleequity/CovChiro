@@ -18,6 +18,33 @@ for (const ev of ["uncaughtException", "unhandledRejection"]) {
   });
 }
 
+/** Details needed to pick the right Prisma engine for this server. */
+function engineReport(message) {
+  const fs = require("fs");
+  const path = require("path");
+  const { execSync } = require("child_process");
+  const lines = message.split("\n").map((l) => l.trim()).filter(Boolean);
+  console.log("\n--- engine report ---");
+  console.log("Error: " + lines.filter((l) => /runtime|engine|require|GLIBC|libssl|cannot open/i.test(l)).slice(0, 4).join(" | "));
+  try {
+    const os = fs.readFileSync("/etc/os-release", "utf8");
+    console.log("OS: " + (os.match(/^PRETTY_NAME="?([^"\n]*)/m) || [])[1] + " (ID_LIKE=" + ((os.match(/^ID_LIKE="?([^"\n]*)/m) || [])[1] || "-") + ")");
+  } catch { console.log("OS: /etc/os-release not readable"); }
+  for (const cmd of ["openssl version", "ldd --version"]) {
+    try { console.log(cmd + ": " + execSync(cmd + " 2>&1", { encoding: "utf8" }).split("\n")[0]); } catch (x) { console.log(cmd + ": not available"); }
+  }
+  try {
+    const libs = fs.readdirSync("/usr/lib64").concat(fs.existsSync("/lib64") ? fs.readdirSync("/lib64") : []).filter((f) => /^libssl\.so/.test(f));
+    console.log("libssl files: " + ([...new Set(libs)].join(", ") || "none found"));
+  } catch { console.log("libssl files: not readable"); }
+  let dir;
+  try { dir = path.dirname(require.resolve(".prisma/client/default")); } catch { dir = null; }
+  console.log("Engine folder: " + (dir || "NOT FOUND (node_modules/.prisma is missing — re-extract part 3)"));
+  if (dir) console.log("Engine files: " + (fs.readdirSync(dir).filter((f) => f.includes("query_engine")).join(", ") || "none"));
+  console.log("Node: " + process.version + " " + process.arch);
+  console.log("---------------------");
+}
+
 const raw = process.env.DATABASE_URL;
 if (!raw) done("DATABASE_URL is not set in this app's environment variables.");
 let url;
@@ -70,7 +97,12 @@ sock.on("connect", async () => {
     if (n < 4) done(`CONNECTED, but the app's tables are missing in "${current_database}". Either DATABASE_URL points at the wrong database (it must be the one where database-setup.sql was run), or the setup script hasn't been run there.`);
     done(`ALL GOOD: database "${current_database}" is reachable and set up. If the site still errors, restart the app and check again.`);
   } catch (e) {
-    const m = String(e && e.message ? e.message : e).split("\n").filter(Boolean).slice(-3).join(" ");
+    const full = String(e && e.message ? e.message : e);
+    if (/could not locate the Query Engine|Unable to require|libquery_engine|Query engine library/i.test(full)) {
+      engineReport(full);
+      done("ENGINE NOT FOUND: the database engine file for this server's system is missing. Send the lines above to your developer.");
+    }
+    const m = full.split("\n").filter(Boolean).slice(-3).join(" ");
     if (/password authentication failed|authentication/i.test(m)) done(`LOGIN FAILED: wrong user or password in DATABASE_URL. Copy it again from Neon (Connect → pooling off → Show password).`);
     if (/does not exist/i.test(m)) done(`DATABASE NOT FOUND: "${db}" doesn't exist. Use the database name shown in Neon where you ran the setup script.`);
     done(`CONNECTION FAILED: ${m}`);
