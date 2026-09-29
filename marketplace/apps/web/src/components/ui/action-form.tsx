@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { createContext, startTransition, useActionState, useContext, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -9,7 +9,14 @@ import { buttonClass } from "./button";
 export type ActionState = { ok?: string; error?: string; data?: unknown; at?: number } | null;
 type ServerAction = (prev: ActionState, fd: FormData) => Promise<ActionState>;
 
-/** Form bound to a server action; shows the returned error/success inline. */
+const PendingContext = createContext(false);
+
+/**
+ * Form bound to a server action; shows the returned error/success inline.
+ * Submits via onSubmit + startTransition rather than <form action>, because
+ * React 19 clears every field after an action-attribute submit — a typo in a
+ * password would otherwise wipe the whole form.
+ */
 export function ActionForm({
   action,
   children,
@@ -29,7 +36,7 @@ export function ActionForm({
   confirm?: string;
   onDone?: (s: ActionState) => void;
 }) {
-  const [state, run] = useActionState(action, null);
+  const [state, run, pending] = useActionState(action, null);
   const ref = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state?.ok && resetOnSuccess) ref.current?.reset();
@@ -39,13 +46,15 @@ export function ActionForm({
     <form
       ref={ref}
       id={id}
-      action={run}
       className={className}
       onSubmit={(e) => {
-        if (confirm && !window.confirm(confirm)) e.preventDefault();
+        e.preventDefault();
+        if (pending || (confirm && !window.confirm(confirm))) return;
+        const fd = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
+        startTransition(() => run(fd));
       }}
     >
-      {children}
+      <PendingContext.Provider value={pending}>{children}</PendingContext.Provider>
       {state?.error ? (
         <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
           {state.error}
@@ -61,7 +70,8 @@ export function ActionForm({
 }
 
 export function SubmitButton({ children, variant = "primary", size = "md", className, pendingText, disabled }: { children: React.ReactNode; disabled?: boolean; variant?: "primary" | "secondary" | "outline" | "ghost" | "danger"; size?: "sm" | "md" | "lg"; className?: string; pendingText?: string }) {
-  const { pending } = useFormStatus();
+  const { pending: formPending } = useFormStatus();
+  const pending = useContext(PendingContext) || formPending;
   return (
     <button type="submit" disabled={pending || disabled} className={buttonClass(variant, size, cn(className))}>
       {pending ? <Loader2 className="size-4 animate-spin" /> : null}

@@ -34,4 +34,4 @@ Precedence: Addendum 02 > Addendum 01 > SPEC.md.
 - All confirmations go through the SPEC.md 7.8 transaction under a per-shift advisory lock.
 - All dispatch numbers are Settings. Use fake timers in dispatch tests.
 - Clinic/admin invitations (non-dispatch offers) are rank-protected as well: accept → ACCEPTED_PENDING, confirmed by settleInvites once no higher-match invitation is still open.
-- Background work lives in apps/worker/src/jobs.ts as idempotent sweeps (BullMQ schedulers; in-process timers when REDIS_URL is unset).
+- Background work lives in packages/services/src/jobs.ts as idempotent sweeps, driven by apps/worker (BullMQ, or in-process timers without REDIS_URL) or by an external once-a-minute tick to /api/cron (cPanel hosting; see INSTALL-CPANEL.md).

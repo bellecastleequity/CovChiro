@@ -1,0 +1,17 @@
+# Builds both images in Google Cloud (no local Docker needed).
+#   gcloud builds submit --config deploy/cloudbuild.yaml \
+#     --substitutions=_REGION=us-east1,_REPO=cm .
+substitutions:
+  _REGION: us-east1
+  _REPO: cm
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "deploy/Dockerfile.web", "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/web:latest", "."]
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "deploy/Dockerfile.worker", "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/worker:latest", "."]
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/web:latest
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/worker:latest
+options:
+  machineType: E2_HIGHCPU_8
+timeout: 1800s

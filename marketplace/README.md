@@ -59,7 +59,7 @@ Run the licensure invariant suite before every commit.
 
 ## Background jobs
 
-`apps/worker/src/jobs.ts` defines every job as an idempotent sweep over rows that are due. A retried, overlapping or missed tick is harmless because the next tick catches up. Each sweep that touches a shift takes that shift's advisory lock.
+`packages/services/src/jobs.ts` defines every job as an idempotent sweep over rows that are due. A retried, overlapping or missed tick is harmless because the next tick catches up. Each sweep that touches a shift takes that shift's advisory lock.
 
 | Job | Every | What it does |
 |---|---|---|
@@ -81,7 +81,14 @@ pnpm --filter @cm/worker once
 pnpm --filter @cm/worker once dispatchTick
 ```
 
-## Deployment (Google Cloud)
+## Deployment
+
+Step-by-step guides:
+
+- `INSTALL.md` covers running locally and Google Cloud.
+- `INSTALL-CPANEL.md` covers Namecheap cPanel. For cPanel, `deploy/cpanel/build.sh` builds the upload zip, and the background jobs are driven by cron through `GET /api/cron`, which needs `CRON_SECRET` sent as a bearer token.
+
+### Google Cloud
 
 Target: Cloud Run (web + worker), Cloud SQL Postgres 16 with PostGIS, Memorystore Redis, GCS for uploads, and Secret Manager for keys.
 

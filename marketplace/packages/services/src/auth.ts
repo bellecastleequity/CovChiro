@@ -1,10 +1,10 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
 import { authenticator } from "otplib";
 import { z } from "zod";
-import { brand } from "@cm/config";
+import { brand, env } from "@cm/config";
 import { DomainError } from "@cm/core";
-import { prisma, type User } from "@cm/db";
+import { prisma, seedBase, type User } from "@cm/db";
 import { audit, SYSTEM, type Actor } from "./context";
 import { sendEmail } from "./notify";
 import { onUserSignup } from "./leads";
@@ -240,4 +240,39 @@ export async function confirmPhone(actor: Actor, code: string, smsConsent: boole
   await prisma.user.update({ where: { id: actor.userId }, data: { phoneVerifiedAt: new Date() } });
   if (actor.providerId) await prisma.provider.update({ where: { id: actor.providerId }, data: { smsConsentAt: smsConsent ? new Date() : null } });
   await audit(prisma, actor, "user.phone_verified", "User", actor.userId, null, { smsConsent });
+}
+
+// ----------------------------------------------------------------------
+// First-run setup (hosts without a shell, e.g. cPanel): load the base
+// configuration and create the first admin. Works only while SETUP_TOKEN is
+// set AND no admin exists yet; afterwards the page and action are inert.
+// ----------------------------------------------------------------------
+
+export async function setupAvailable() {
+  const t = env().SETUP_TOKEN;
+  if (!t || t.length < 16) return false;
+  return (await prisma.user.count({ where: { role: "PLATFORM_ADMIN" } })) === 0;
+}
+
+const SetupInput = z.object({
+  token: z.string(),
+  name: z.string().trim().min(2).max(100),
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(12, "Use at least 12 characters.").max(200),
+});
+
+export async function createFirstAdmin(raw: z.input<typeof SetupInput>, ip?: string) {
+  if (ip) await checkRateLimit(`setup:${ip}`, 10, 3600);
+  const input = SetupInput.parse(raw);
+  const expected = Buffer.from(env().SETUP_TOKEN ?? "");
+  const given = Buffer.from(input.token);
+  if (!(await setupAvailable()) || expected.length !== given.length || !timingSafeEqual(expected, given)) {
+    throw new DomainError("FORBIDDEN", "Setup isn't available. Check the setup token, or sign in if an admin already exists.");
+  }
+  await seedBase(prisma);
+  const user = await prisma.user.create({
+    data: { email: input.email, name: input.name, role: "PLATFORM_ADMIN", passwordHash: await hashPassword(input.password), emailVerifiedAt: new Date() },
+  });
+  await audit(prisma, SYSTEM, "setup.first_admin", "User", user.id, null, { email: user.email });
+  return { email: user.email };
 }

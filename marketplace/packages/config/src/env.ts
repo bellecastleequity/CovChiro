@@ -9,6 +9,10 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().optional(),
   SESSION_SECRET: z.string().optional(),
+  /** Bearer secret for /api/cron (external once-a-minute tick, e.g. cPanel cron). Unset = endpoint disabled. */
+  CRON_SECRET: z.string().optional(),
+  /** One-time token for /setup (create the first admin). Unset = page disabled. */
+  SETUP_TOKEN: z.string().optional(),
   APP_BASE_URL: z.string().default("http://localhost:3000"),
   // Branding (addendum §12) — never hard-code the brand in UI, email or SMS.
   BRAND_NAME: z.string().default("CoverageOnCall"),
@@ -60,9 +64,11 @@ export function brand(e: Env = env()): Brand {
   };
 }
 
-export function assertProductionEnv(e: Env = env()) {
+export function assertProductionEnv(e: Env = env(), opts: { worker?: boolean } = {}) {
   if (e.NODE_ENV !== "production") return;
-  const required: (keyof Env)[] = ["SESSION_SECRET", "REDIS_URL", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "SENDGRID_API_KEY", "GOOGLE_MAPS_API_KEY"];
+  const required: (keyof Env)[] = ["SESSION_SECRET", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "SENDGRID_API_KEY", "GOOGLE_MAPS_API_KEY"];
+  // The BullMQ worker needs Redis; the web app (and cron-driven hosting) does not.
+  if (opts.worker) required.push("REDIS_URL");
   const missing = required.filter((k) => !e[k]);
   if (missing.length) throw new Error(`Missing required production env vars: ${missing.join(", ")}`);
 }

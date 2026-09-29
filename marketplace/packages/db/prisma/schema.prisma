@@ -5,6 +5,8 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
+  // native = this machine; rhel-* = CloudLinux/AlmaLinux cPanel hosts; debian = Docker images.
+  binaryTargets   = ["native", "rhel-openssl-1.1.x", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {

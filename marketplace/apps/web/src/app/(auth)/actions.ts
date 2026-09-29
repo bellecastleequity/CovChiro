@@ -57,3 +57,8 @@ export const resetAction = formAction(async (fd) => {
   await auth.resetPassword(str(fd, "token"), str(fd, "password"));
   redirect("/login?reset=1");
 });
+
+export const setupAction = formAction(async (fd) => {
+  await auth.createFirstAdmin({ token: str(fd, "token"), name: str(fd, "name"), email: str(fd, "email"), password: str(fd, "password") }, await ip());
+  redirect("/login?setup=1");
+});

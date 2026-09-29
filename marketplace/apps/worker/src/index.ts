@@ -72,8 +72,8 @@ function withTimers() {
 }
 
 async function main() {
-  assertProductionEnv();
   const e = env();
+  assertProductionEnv(e, { worker: true });
   const stop = e.REDIS_URL ? await withRedis(e.REDIS_URL) : withTimers();
   const server = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "text/plain" });

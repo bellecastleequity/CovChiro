@@ -20,3 +20,4 @@ export function isInvariantViolation(e: unknown): { message: string } | null {
   }
   return null;
 }
+export { seedBase } from "../prisma/seedData";
