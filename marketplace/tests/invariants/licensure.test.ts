@@ -98,7 +98,9 @@ describe("SPEC §20.1 licensure invariant suite", () => {
     const r = await nightlyCredentialSweep();
     expect(r.lapsed).toBeGreaterThanOrEqual(1);
     expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).toBe("LICENSE_LAPSED");
-    expect((await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } })).status).toBe("OPEN"); // backfill
+    // Backfill: a Smart Dispatch starts immediately (Addendum 02 §3).
+    expect(["OPEN", "CASCADING"]).toContain((await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } })).status);
+    expect(await prisma.dispatch.count({ where: { shiftId: shift.id, trigger: "BACKFILL" } })).toBe(1);
     expect(await prisma.adminTask.count({ where: { kind: "LICENSE_LAPSED", entityId: assignmentId } })).toBe(1);
 
     // 24h pre-check path: a second provider whose license expires the night before.

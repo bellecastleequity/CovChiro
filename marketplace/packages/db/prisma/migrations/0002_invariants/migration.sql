@@ -204,11 +204,14 @@ END $$ LANGUAGE plpgsql;
 CREATE TRIGGER application_eligibility BEFORE INSERT ON "Application"
 FOR EACH ROW EXECUTE FUNCTION enforce_application_eligibility();
 
+-- Offers (including dispatch waves, broadcasts, standby, revived offers and
+-- acceptances) are re-checked whenever they become PENDING or ACCEPTED_PENDING.
 CREATE OR REPLACE FUNCTION enforce_offer_eligibility() RETURNS trigger AS $$
 DECLARE
   err text;
 BEGIN
-  IF NEW.status = 'PENDING' THEN
+  IF NEW.status IN ('PENDING', 'ACCEPTED_PENDING')
+     AND (TG_OP = 'INSERT' OR NEW.status IS DISTINCT FROM OLD.status) THEN
     err := provider_shift_problem(NEW."providerId", NEW."shiftId", (SELECT "endsAt" FROM "Shift" WHERE id = NEW."shiftId"));
     IF err IS NOT NULL THEN
       RAISE EXCEPTION '%', err USING ERRCODE = 'check_violation';
@@ -217,7 +220,7 @@ BEGIN
   RETURN NEW;
 END $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER offer_eligibility BEFORE INSERT ON "Offer"
+CREATE TRIGGER offer_eligibility BEFORE INSERT OR UPDATE OF status ON "Offer"
 FOR EACH ROW EXECUTE FUNCTION enforce_offer_eligibility();
 
 -- ============================================================
@@ -320,3 +323,21 @@ END $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER audit_log_immutable BEFORE UPDATE OR DELETE ON "AuditLog"
 FOR EACH ROW EXECUTE FUNCTION audit_log_append_only();
+
+-- Standby entries (Addendum 02 §7) must also be licensed for the shift.
+CREATE OR REPLACE FUNCTION enforce_standby_eligibility() RETURNS trigger AS $$
+DECLARE
+  err text;
+BEGIN
+  err := provider_shift_problem(NEW."providerId", NEW."shiftId", (SELECT "endsAt" FROM "Shift" WHERE id = NEW."shiftId"));
+  IF err IS NOT NULL THEN
+    RAISE EXCEPTION '%', err USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER standby_eligibility BEFORE INSERT ON "StandbyEntry"
+FOR EACH ROW EXECUTE FUNCTION enforce_standby_eligibility();
+
+-- At most one ACTIVE dispatch per shift (Addendum 02 §3).
+CREATE UNIQUE INDEX one_active_dispatch_per_shift ON "Dispatch" ("shiftId") WHERE status = 'ACTIVE';

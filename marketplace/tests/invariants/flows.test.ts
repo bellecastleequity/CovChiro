@@ -230,7 +230,8 @@ describe("cancellation matrix (SPEC §9.3)", () => {
     const out = await cancelAssignment(provider.actor, assignmentId, "Sick", { by: "PROVIDER" });
     expect(out.countsAsLateCancel).toBe(true);
     expect((await prisma.providerStats.findUniqueOrThrow({ where: { providerId: provider.id } })).lateCancels).toBe(1);
-    expect((await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } })).status).toBe("OPEN");
+    expect(["OPEN", "CASCADING"]).toContain((await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } })).status);
+    expect(await prisma.dispatch.count({ where: { shiftId: shift.id, trigger: "BACKFILL" } })).toBe(1);
     expect(await prisma.payment.count({ where: { assignmentId, type: "REFUND" } })).toBe(1);
   });
 });

@@ -35,16 +35,16 @@ CREATE TYPE "ShiftStatus" AS ENUM ('DRAFT', 'OPEN', 'FAVORITES_ONLY', 'SELECTING
 CREATE TYPE "ApplicationStatus" AS ENUM ('ACTIVE', 'WITHDRAWN', 'SELECTED', 'NOT_SELECTED', 'AUTO_WITHDRAWN_CONFLICT', 'INELIGIBLE');
 
 -- CreateEnum
-CREATE TYPE "OfferSource" AS ENUM ('CLINIC_PICK', 'CASCADE', 'URGENT_PARALLEL', 'ADMIN');
+CREATE TYPE "OfferSource" AS ENUM ('CLINIC_PICK', 'DISPATCH', 'BROADCAST', 'STANDBY', 'ADMIN');
 
 -- CreateEnum
-CREATE TYPE "OfferStatus" AS ENUM ('PENDING', 'ACCEPTED', 'DECLINED', 'EXPIRED', 'WITHDRAWN');
+CREATE TYPE "OfferStatus" AS ENUM ('PENDING', 'ACCEPTED_PENDING', 'ACCEPTED', 'DECLINED', 'EXPIRED', 'NOT_SELECTED', 'WITHDRAWN', 'INELIGIBLE');
 
 -- CreateEnum
 CREATE TYPE "AssignmentStatus" AS ENUM ('CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'LICENSE_LAPSED', 'DISPUTED', 'NO_SHOW');
 
 -- CreateEnum
-CREATE TYPE "SelectionMethod" AS ENUM ('CLINIC_PICKED_APPLICANT', 'CLINIC_PICKED_OFFER', 'AUTO_APPLICANT', 'CASCADE_ACCEPT', 'INSTANT_BOOK', 'ADMIN');
+CREATE TYPE "SelectionMethod" AS ENUM ('CLINIC_PICKED_APPLICANT', 'CLINIC_PICKED_OFFER', 'AUTO_APPLICANT', 'INSTANT_BOOK', 'ADMIN', 'ON_CALL_AUTO', 'DISPATCH_WAVE', 'DISPATCH_BROADCAST', 'STANDBY');
 
 -- CreateEnum
 CREATE TYPE "CancelParty" AS ENUM ('CLINIC', 'PROVIDER', 'PLATFORM');
@@ -75,6 +75,18 @@ CREATE TYPE "PromoKind" AS ENUM ('PERCENT', 'FIXED');
 
 -- CreateEnum
 CREATE TYPE "LeadStatus" AS ENUM ('NEW', 'NURTURING', 'CONTACTED', 'CONVERTED', 'UNSUBSCRIBED', 'EXPIRED', 'SUPERSEDED', 'LOST');
+
+-- CreateEnum
+CREATE TYPE "UrgencyTier" AS ENUM ('SAME_DAY', 'SHORT', 'NEAR', 'PLANNED');
+
+-- CreateEnum
+CREATE TYPE "DispatchTrigger" AS ENUM ('URGENT_POST', 'SELECTION_DEADLINE', 'BACKFILL', 'CLINIC_REQUEST', 'ADMIN', 'RATE_BOOST');
+
+-- CreateEnum
+CREATE TYPE "DispatchStatus" AS ENUM ('ACTIVE', 'FILLED', 'EXHAUSTED', 'CANCELLED');
+
+-- CreateEnum
+CREATE TYPE "DispatchStage" AS ENUM ('STANDBY', 'ON_CALL_CHECK', 'WAVES', 'BROADCAST', 'DONE');
 
 -- CreateTable
 CREATE TABLE "User" (
@@ -219,6 +231,15 @@ CREATE TABLE "Provider" (
     "status" "ProviderStatus" NOT NULL DEFAULT 'ONBOARDING',
     "adminNotes" TEXT,
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "headline" TEXT,
+    "linkedinUrl" TEXT,
+    "quietHoursStart" INTEGER NOT NULL DEFAULT 1260,
+    "quietHoursEnd" INTEGER NOT NULL DEFAULT 360,
+    "urgentDuringQuietHours" BOOLEAN NOT NULL DEFAULT false,
+    "snoozedUntil" TIMESTAMPTZ(3),
+    "consecutiveIgnoredOffers" INTEGER NOT NULL DEFAULT 0,
+    "oncallPausedReason" TEXT,
+    "smsConsentAt" TIMESTAMPTZ(3),
 
     CONSTRAINT "Provider_pkey" PRIMARY KEY ("id")
 );
@@ -497,6 +518,21 @@ CREATE TABLE "Offer" (
     "status" "OfferStatus" NOT NULL DEFAULT 'PENDING',
     "respondedAt" TIMESTAMPTZ(3),
     "rank" INTEGER,
+    "dispatchId" TEXT,
+    "waveId" TEXT,
+    "tier" "UrgencyTier",
+    "windowMinutes" INTEGER,
+    "matchScore" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "dispatchScore" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "pRespondAtSend" DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+    "replyCode" TEXT,
+    "linkTokenHash" TEXT,
+    "channelsSent" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "deliveredAt" TIMESTAMPTZ(3),
+    "openedAt" TIMESTAMPTZ(3),
+    "acceptedAt" TIMESTAMPTZ(3),
+    "revived" BOOLEAN NOT NULL DEFAULT false,
+    "applicationId" TEXT,
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Offer_pkey" PRIMARY KEY ("id")
@@ -538,6 +574,7 @@ CREATE TABLE "Assignment" (
     "providerTotalCents" INTEGER NOT NULL,
     "depositCents" INTEGER NOT NULL DEFAULT 0,
     "flags" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "graceEndsAt" TIMESTAMPTZ(3),
     "confirmedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "startedAt" TIMESTAMPTZ(3),
     "completedAt" TIMESTAMPTZ(3),
@@ -925,6 +962,92 @@ CREATE TABLE "AdminTask" (
     CONSTRAINT "AdminTask_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "Dispatch" (
+    "id" TEXT NOT NULL,
+    "shiftId" TEXT NOT NULL,
+    "trigger" "DispatchTrigger" NOT NULL,
+    "status" "DispatchStatus" NOT NULL DEFAULT 'ACTIVE',
+    "tierAtStart" "UrgencyTier" NOT NULL,
+    "currentWave" INTEGER NOT NULL DEFAULT 0,
+    "stage" "DispatchStage" NOT NULL DEFAULT 'ON_CALL_CHECK',
+    "stageEndsAt" TIMESTAMPTZ(3),
+    "bestMatchAtStart" DOUBLE PRECISION,
+    "startedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "endedAt" TIMESTAMPTZ(3),
+    "filledOfferId" TEXT,
+    "filledVia" "SelectionMethod",
+    "filledProviderId" TEXT,
+
+    CONSTRAINT "Dispatch_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Wave" (
+    "id" TEXT NOT NULL,
+    "dispatchId" TEXT NOT NULL,
+    "number" INTEGER NOT NULL,
+    "isBroadcast" BOOLEAN NOT NULL DEFAULT false,
+    "isStandby" BOOLEAN NOT NULL DEFAULT false,
+    "tier" "UrgencyTier" NOT NULL,
+    "sentAt" TIMESTAMPTZ(3) NOT NULL,
+    "windowEndsAt" TIMESTAMPTZ(3) NOT NULL,
+    "holdEndsAt" TIMESTAMPTZ(3),
+    "closedAt" TIMESTAMPTZ(3),
+
+    CONSTRAINT "Wave_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "OnCallRule" (
+    "id" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "professionCodes" TEXT[],
+    "recurringWindows" JSONB NOT NULL DEFAULT '[]',
+    "dateWindows" JSONB NOT NULL DEFAULT '[]',
+    "timeZone" TEXT NOT NULL,
+    "maxDriveMinutes" INTEGER NOT NULL,
+    "minPayHalfDayCents" INTEGER,
+    "minPayFullDayCents" INTEGER,
+    "minPayHourlyCents" INTEGER,
+    "minNoticeMinutes" INTEGER NOT NULL DEFAULT 90,
+    "maxPerDay" INTEGER NOT NULL DEFAULT 1,
+    "maxPerWeek" INTEGER NOT NULL DEFAULT 5,
+    "favoritesOnly" BOOLEAN NOT NULL DEFAULT false,
+    "minClinicRating" DOUBLE PRECISION,
+    "excludedClinicIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "allowOvernight" BOOLEAN NOT NULL DEFAULT false,
+    "pausedUntil" TIMESTAMPTZ(3),
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(3) NOT NULL,
+
+    CONSTRAINT "OnCallRule_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ProviderResponsiveness" (
+    "providerId" TEXT NOT NULL,
+    "tier" "UrgencyTier" NOT NULL,
+    "offers" DOUBLE PRECISION NOT NULL,
+    "hits" DOUBLE PRECISION NOT NULL,
+    "pRespond" DOUBLE PRECISION NOT NULL,
+    "medianResponseSeconds" INTEGER,
+    "updatedAt" TIMESTAMPTZ(3) NOT NULL,
+
+    CONSTRAINT "ProviderResponsiveness_pkey" PRIMARY KEY ("providerId","tier")
+);
+
+-- CreateTable
+CREATE TABLE "StandbyEntry" (
+    "shiftId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
+    "matchScore" DOUBLE PRECISION NOT NULL,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "StandbyEntry_pkey" PRIMARY KEY ("shiftId","providerId")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -981,6 +1104,9 @@ CREATE INDEX "Application_providerId_status_idx" ON "Application"("providerId", 
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Application_shiftId_providerId_key" ON "Application"("shiftId", "providerId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Offer_linkTokenHash_key" ON "Offer"("linkTokenHash");
 
 -- CreateIndex
 CREATE INDEX "Offer_providerId_status_idx" ON "Offer"("providerId", "status");
@@ -1108,6 +1234,21 @@ CREATE INDEX "Notification_userId_readAt_idx" ON "Notification"("userId", "readA
 -- CreateIndex
 CREATE INDEX "AdminTask_resolvedAt_createdAt_idx" ON "AdminTask"("resolvedAt", "createdAt");
 
+-- CreateIndex
+CREATE INDEX "Dispatch_shiftId_status_idx" ON "Dispatch"("shiftId", "status");
+
+-- CreateIndex
+CREATE INDEX "Dispatch_status_stage_idx" ON "Dispatch"("status", "stage");
+
+-- CreateIndex
+CREATE INDEX "Wave_closedAt_windowEndsAt_idx" ON "Wave"("closedAt", "windowEndsAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Wave_dispatchId_number_key" ON "Wave"("dispatchId", "number");
+
+-- CreateIndex
+CREATE INDEX "OnCallRule_providerId_active_idx" ON "OnCallRule"("providerId", "active");
+
 -- AddForeignKey
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -1199,6 +1340,12 @@ ALTER TABLE "Offer" ADD CONSTRAINT "Offer_shiftId_fkey" FOREIGN KEY ("shiftId") 
 ALTER TABLE "Offer" ADD CONSTRAINT "Offer_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Offer" ADD CONSTRAINT "Offer_dispatchId_fkey" FOREIGN KEY ("dispatchId") REFERENCES "Dispatch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Offer" ADD CONSTRAINT "Offer_waveId_fkey" FOREIGN KEY ("waveId") REFERENCES "Wave"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "MatchRun" ADD CONSTRAINT "MatchRun_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "Shift"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -1266,4 +1413,22 @@ ALTER TABLE "LeadActivity" ADD CONSTRAINT "LeadActivity_leadId_fkey" FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE "Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Dispatch" ADD CONSTRAINT "Dispatch_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "Shift"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Wave" ADD CONSTRAINT "Wave_dispatchId_fkey" FOREIGN KEY ("dispatchId") REFERENCES "Dispatch"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "OnCallRule" ADD CONSTRAINT "OnCallRule_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProviderResponsiveness" ADD CONSTRAINT "ProviderResponsiveness_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StandbyEntry" ADD CONSTRAINT "StandbyEntry_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "Shift"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StandbyEntry" ADD CONSTRAINT "StandbyEntry_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

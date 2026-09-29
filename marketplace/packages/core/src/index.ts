@@ -12,3 +12,5 @@ export * from "./screening";
 export * from "./payouts";
 export * from "./credentials";
 export * from "./supervision";
+export * from "./badges";
+export * from "./dispatch";

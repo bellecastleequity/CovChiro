@@ -19,7 +19,7 @@ export type ShiftStatus =
   | "CANCELLED";
 
 export type ApplicationStatus = "ACTIVE" | "WITHDRAWN" | "SELECTED" | "NOT_SELECTED" | "AUTO_WITHDRAWN_CONFLICT" | "INELIGIBLE";
-export type OfferStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED" | "WITHDRAWN";
+export type OfferStatus = "PENDING" | "ACCEPTED_PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED" | "NOT_SELECTED" | "WITHDRAWN" | "INELIGIBLE";
 export type AssignmentStatus = "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "LICENSE_LAPSED" | "DISPUTED" | "NO_SHOW";
 export type PayoutStatus = "PENDING" | "SCHEDULED" | "ON_HOLD" | "PROCESSING" | "PAID" | "FAILED" | "CANCELLED";
 
@@ -27,10 +27,11 @@ const PRE_START: ShiftStatus[] = ["DRAFT", "OPEN", "FAVORITES_ONLY", "SELECTING"
 
 export const SHIFT_TRANSITIONS: Record<ShiftStatus, ShiftStatus[]> = {
   DRAFT: ["FAVORITES_ONLY", "OPEN", "CANCELLED"],
-  FAVORITES_ONLY: ["OPEN", "CONFIRMED", "CANCELLED"],
+  FAVORITES_ONLY: ["OPEN", "CASCADING", "CONFIRMED", "CANCELLED"],
   OPEN: ["SELECTING", "CASCADING", "CONFIRMED", "UNFILLED", "CANCELLED"],
   SELECTING: ["CONFIRMED", "CASCADING", "UNFILLED", "CANCELLED"],
-  CASCADING: ["CONFIRMED", "UNFILLED", "CANCELLED", "CASCADING"],
+  // CASCADING = a Smart Dispatch is running (Addendum 02). Exhaustion returns the shift to OPEN.
+  CASCADING: ["CONFIRMED", "OPEN", "UNFILLED", "CANCELLED", "CASCADING"],
   // Backfill: a provider cancellation or license lapse sends the shift back to OPEN (§7.9).
   CONFIRMED: ["IN_PROGRESS", "OPEN", "CANCELLED"],
   IN_PROGRESS: ["COMPLETED"],
@@ -49,11 +50,15 @@ export const APPLICATION_TRANSITIONS: Record<ApplicationStatus, ApplicationStatu
 };
 
 export const OFFER_TRANSITIONS: Record<OfferStatus, OfferStatus[]> = {
-  PENDING: ["ACCEPTED", "DECLINED", "EXPIRED", "WITHDRAWN"],
+  PENDING: ["ACCEPTED_PENDING", "ACCEPTED", "DECLINED", "EXPIRED", "NOT_SELECTED", "WITHDRAWN", "INELIGIBLE"],
+  ACCEPTED_PENDING: ["ACCEPTED", "NOT_SELECTED", "INELIGIBLE", "WITHDRAWN"],
+  // Expired dispatch offers stay revivable while the dispatch is active (Addendum 02 §5.6).
+  EXPIRED: ["ACCEPTED_PENDING", "DECLINED", "NOT_SELECTED", "WITHDRAWN"],
   ACCEPTED: [],
   DECLINED: [],
-  EXPIRED: [],
+  NOT_SELECTED: [],
   WITHDRAWN: [],
+  INELIGIBLE: [],
 };
 
 export const ASSIGNMENT_TRANSITIONS: Record<AssignmentStatus, AssignmentStatus[]> = {

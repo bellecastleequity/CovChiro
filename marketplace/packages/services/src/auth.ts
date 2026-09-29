@@ -215,3 +215,29 @@ export async function changePassword(actor: Actor, current: string, next: string
 }
 
 export { SYSTEM };
+
+// ---------------- phone verification (SMS) ----------------
+
+/** Sends a 6-digit code by SMS. SMS consent is recorded when the code is confirmed (Addendum 02 §8.4). */
+export async function startPhoneVerification(actor: Actor, phoneRaw: string) {
+  if (!actor.userId) throw new DomainError("UNAUTHENTICATED", "Sign in first.");
+  const digits = phoneRaw.replace(/\D/g, "");
+  const phone = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : null;
+  if (!phone) throw new DomainError("VALIDATION", "Enter a 10-digit US mobile number.");
+  await checkRateLimit(`phone:${actor.userId}`, 5, 3600);
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  await prisma.user.update({ where: { id: actor.userId }, data: { phone, phoneVerifiedAt: null } });
+  await prisma.authToken.create({ data: { userId: actor.userId, purpose: "PHONE_VERIFY", tokenHash: sha256(`${actor.userId}:${code}`), expiresAt: new Date(Date.now() + 10 * 60_000) } });
+  const { smsProvider } = await import("@cm/integrations");
+  await smsProvider().send(phone, `${brand().name}: your verification code is ${code}. Msg & data rates may apply. Reply STOP to opt out.`);
+  return phone;
+}
+
+export async function confirmPhone(actor: Actor, code: string, smsConsent: boolean) {
+  if (!actor.userId) throw new DomainError("UNAUTHENTICATED", "Sign in first.");
+  await checkRateLimit(`phone-confirm:${actor.userId}`, 8, 900);
+  await consumeToken(`${actor.userId}:${code.trim()}`, "PHONE_VERIFY");
+  await prisma.user.update({ where: { id: actor.userId }, data: { phoneVerifiedAt: new Date() } });
+  if (actor.providerId) await prisma.provider.update({ where: { id: actor.providerId }, data: { smsConsentAt: smsConsent ? new Date() : null } });
+  await audit(prisma, actor, "user.phone_verified", "User", actor.userId, null, { smsConsent });
+}

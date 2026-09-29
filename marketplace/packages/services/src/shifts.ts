@@ -237,7 +237,18 @@ async function postInTx(db: Db, actor: Actor, shiftId: string, effects: Effects)
   const status = favEnd ? "FAVORITES_ONLY" : "OPEN";
   await db.shift.update({ where: { id: shiftId }, data: { status, postedAt: now, favoritesWindowEndsAt: favEnd, selectionDeadline: deadline } });
   await audit(db, actor, "shift.posted", "Shift", shiftId, { status: shift.status }, { status, selectionDeadline: deadline });
-  effects.add(() => notifyEligibleProvidersOfShift(shiftId, "posted"));
+  // Same-day / short-notice shifts start Smart Dispatch right away (On Call check, then waves);
+  // planned shifts go through the normal application + selection window (Addendum 02 §3).
+  const { urgencyTier } = await import("@cm/core");
+  const tier = urgencyTier(now, shift.startsAt);
+  if (tier === "SAME_DAY" || tier === "SHORT") {
+    effects.add(async () => {
+      const { startDispatch } = await import("./dispatch");
+      await startDispatch(shiftId, "URGENT_POST", actor);
+    });
+  } else {
+    effects.add(() => notifyEligibleProvidersOfShift(shiftId, "posted"));
+  }
 }
 
 /** Notify eligible favorites + top-N scored candidates. Every recipient passes F0–F10 at send time. */
@@ -345,6 +356,14 @@ export async function applyToShift(actor: Actor, shiftId: string, input: { note?
     data: { shiftId, providerId, note, scoreAtApply: score, scoreBreakdown: (ranked[0]?.components ?? {}) as unknown as Prisma.InputJsonValue },
   });
   await audit(prisma, actor, "application.created", "Application", app.id, null, { shiftId, score });
+
+  // During an active dispatch an application counts as an acceptance in the current wave (Addendum 02 §5.6).
+  const { applicationAsAcceptance } = await import("./dispatch");
+  if (await prisma.dispatch.findFirst({ where: { shiftId, status: "ACTIVE" } })) {
+    await applicationAsAcceptance(shiftId, providerId, app.id);
+    const confirmed = await prisma.assignment.findFirst({ where: { shiftId, providerId, status: "CONFIRMED" } });
+    return { applicationId: app.id, confirmed: !!confirmed };
+  }
 
   const s = await getSettings();
   if (shift.instantBook && score >= s["matching.instantBookMinScore"]) {
@@ -472,17 +491,30 @@ export async function respondToOffer(actor: Actor, offerId: string, accept: bool
   const providerId = requireProvider(actor);
   const offer = await prisma.offer.findFirst({ where: { id: offerId, providerId } });
   if (!offer) throw new DomainError("NOT_FOUND", "Offer not found");
-  if (offer.status !== "PENDING") throw new DomainError("CONFLICT", `This offer is ${offer.status.toLowerCase()}.`);
-  if (offer.expiresAt <= new Date()) {
+  if (offer.dispatchId) {
+    // Pending, or expired-but-revivable while the dispatch is still active (§5.6) — the engine decides.
+  } else if (offer.status !== "PENDING") throw new DomainError("CONFLICT", `This offer is ${offer.status.toLowerCase()}.`);
+  else if (offer.expiresAt <= new Date()) {
     await prisma.offer.update({ where: { id: offerId }, data: { status: "EXPIRED" } });
     throw new DomainError("CONFLICT", "This offer has expired.");
+  }
+  if (!accept && offer.dispatchId) {
+    const { respondToDispatchOffer } = await import("./dispatch");
+    await respondToDispatchOffer(offer.id, false, "APP");
+    return { confirmed: false };
   }
   if (!accept) {
     await prisma.offer.update({ where: { id: offerId }, data: { status: "DECLINED", respondedAt: new Date() } });
     await audit(prisma, actor, "offer.declined", "Offer", offerId, { status: "PENDING" }, { status: "DECLINED" });
     return { confirmed: false };
   }
-  const method = offer.source === "ADMIN" ? "ADMIN" : offer.source === "CLINIC_PICK" ? "CLINIC_PICKED_OFFER" : "CASCADE_ACCEPT";
+  // Dispatch offers follow rank-protected award logic (Addendum 02 §5.4); never "first to answer wins".
+  if (offer.dispatchId) {
+    const { respondToDispatchOffer } = await import("./dispatch");
+    const r = await respondToDispatchOffer(offer.id, true, "APP");
+    return { confirmed: r.state === "CONFIRMED", assignmentId: r.assignmentId, state: r.state, message: r.message };
+  }
+  const method = offer.source === "ADMIN" ? "ADMIN" : "CLINIC_PICKED_OFFER";
   const r = await confirmProvider(actor, offer.shiftId, providerId, method, { acceptedOfferId: offerId });
   return { confirmed: true, assignmentId: r.assignmentId };
 }
@@ -619,7 +651,11 @@ export async function cancelAssignment(actor: Actor, assignmentId: string, reaso
       await prisma.adminTask.create({ data: { kind: "LATE_CANCELS", title: `${a.provider.displayName}: repeated late cancels / no-shows`, entityType: "Provider", entityId: a.providerId } });
     }
   }
-  if (reopen) await notifyEligibleProvidersOfShift(a.shiftId, "reopened").catch(() => 0);
+  if (reopen) {
+    // Backfill: standby first, then On Call check, then waves (Addendum 02 §3, §7).
+    const { startDispatch } = await import("./dispatch");
+    await startDispatch(a.shiftId, "BACKFILL").catch((e) => console.error("backfill dispatch failed", e));
+  }
   await notifyAdmins(prisma, { template: "backfill_admin", title: `Backfill started (${newStatus})`, body: `Shift ${a.shiftId} reopened: ${reason}`, link: `/admin/shifts/${a.shiftId}`, email: false });
   return outcome;
 }

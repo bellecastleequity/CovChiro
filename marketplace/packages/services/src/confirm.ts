@@ -1,6 +1,6 @@
 import { assertTransition, clinicTotalCents, depositCents, DomainError, providerTotalCents, SELECTABLE_SHIFT_STATUSES, travelEstimate, travelBufferMinutes } from "@cm/core";
 import { Prisma, isInvariantViolation, type SelectionMethod } from "@cm/db";
-import { audit, getSettings, tx, type Actor, type Db } from "./context";
+import { audit, clock, getSettings, lockShift, tx, type Actor, type Db } from "./context";
 import { Effects } from "./effects";
 import { assertProviderEligibleForShift } from "./eligibility";
 import { notify, notifyClinic } from "./notify";
@@ -19,7 +19,7 @@ export async function confirmProvider(
   shiftId: string,
   providerId: string,
   method: SelectionMethod,
-  opts: { acceptedOfferId?: string } = {},
+  opts: { acceptedOfferId?: string; graceMinutes?: number } = {},
 ): Promise<{ assignmentId: string }> {
   const effects = new Effects();
   let assignmentId = "";
@@ -52,15 +52,17 @@ export async function confirmInTx(
   providerId: string,
   method: SelectionMethod,
   effects: Effects,
-  opts: { acceptedOfferId?: string } = {},
+  opts: { acceptedOfferId?: string; graceMinutes?: number } = {},
 ): Promise<string> {
   const s = await getSettings(db);
+  const now = clock.now();
+  await lockShift(db, shiftId);
   await db.$queryRaw(Prisma.sql`SELECT id FROM "Shift" WHERE id = ${shiftId} FOR UPDATE`);
   const shift = await db.shift.findUniqueOrThrow({ where: { id: shiftId }, include: { location: true } });
   if (!SELECTABLE_SHIFT_STATUSES.includes(shift.status)) {
     throw new DomainError("CONFLICT", shift.status === "CONFIRMED" ? "This shift has already been filled." : `This shift can't be filled (${shift.status.toLowerCase()}).`);
   }
-  if (shift.startsAt <= new Date()) throw new DomainError("CONFLICT", "This shift has already started.");
+  if (shift.startsAt <= now) throw new DomainError("CONFLICT", "This shift has already started.");
 
   const ev = await assertProviderEligibleForShift(db, providerId, shiftId);
   const drive = ev.drive ?? { minutes: 0, miles: 0 };
@@ -113,6 +115,8 @@ export async function confirmInTx(
       clinicTotalCents: clinicTotal,
       providerTotalCents: providerTotal,
       depositCents: depositCents(clinicTotal, s["payments.depositPercent"]),
+      confirmedAt: now,
+      graceEndsAt: opts.graceMinutes ? new Date(+now + opts.graceMinutes * 60_000) : null,
     },
   });
 
@@ -121,9 +125,12 @@ export async function confirmInTx(
   await db.application.updateMany({ where: { shiftId, providerId, status: "ACTIVE" }, data: { status: "SELECTED" } });
   await db.application.updateMany({ where: { shiftId, providerId: { not: providerId }, status: "ACTIVE" }, data: { status: "NOT_SELECTED" } });
   if (opts.acceptedOfferId) {
-    await db.offer.update({ where: { id: opts.acceptedOfferId }, data: { status: "ACCEPTED", respondedAt: new Date() } });
+    await db.offer.update({ where: { id: opts.acceptedOfferId }, data: { status: "ACCEPTED", respondedAt: now } });
   }
-  await db.offer.updateMany({ where: { shiftId, status: "PENDING" }, data: { status: "WITHDRAWN", respondedAt: new Date() } });
+  // Close any active dispatch: other offers are NOT_SELECTED; other acceptors go to standby (Addendum 02 §5.4, §7).
+  const { settleDispatchOnFill } = await import("./dispatch");
+  await settleDispatchOnFill(db, shiftId, providerId, method, opts.acceptedOfferId ?? null, effects);
+  await db.offer.updateMany({ where: { shiftId, status: "PENDING" }, data: { status: "WITHDRAWN", respondedAt: now } });
 
   // Auto-withdraw this provider's overlapping applications and offers elsewhere.
   const buffer = assignment.bufferMinutes * 60_000;

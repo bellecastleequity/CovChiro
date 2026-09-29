@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { DomainError, licensedPairs, US_STATES } from "@cm/core";
+import { DomainError, licensedPairs, normalizeLinkedIn, US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
 import { esignProvider, geoProvider, lookupNpi, paymentsProvider } from "@cm/integrations";
 import { audit, requireClinic, requireProvider, SYSTEM, type Actor } from "./context";
@@ -42,7 +42,7 @@ export async function providerChecklist(providerId: string) {
   });
   const now = new Date();
   const common = {
-    profile: !!(p.legalName && p.displayName && p.user.phone && p.bio !== undefined),
+    profile: !!(p.legalName && p.displayName && p.user.phone && p.bio),
     photo: !!p.photoUrl,
     homeBase: p.homeLat !== null,
     emailVerified: !!p.user.emailVerifiedAt,
@@ -97,12 +97,17 @@ export const ProviderProfileInput = z.object({
   xrayComfort: z.boolean().default(false),
   maxPatientsPerDay: z.coerce.number().int().min(1).max(300).optional().nullable(),
   npi: z.string().trim().regex(/^\d{10}$/, "NPI is 10 digits").optional().nullable().or(z.literal("")),
+  headline: z.string().trim().max(120).optional().nullable(),
+  linkedinUrl: z.string().trim().max(200).optional().nullable(),
+  yearsInPractice: z.record(z.string(), z.coerce.number().int().min(0).max(70)).optional(),
 });
 
 export async function updateProviderProfile(actor: Actor, raw: z.input<typeof ProviderProfileInput>) {
   const providerId = requireProvider(actor);
   const input = ProviderProfileInput.parse(raw);
   const current = await prisma.provider.findUniqueOrThrow({ where: { id: providerId } });
+  const linkedin = input.linkedinUrl ? normalizeLinkedIn(input.linkedinUrl) : null;
+  if (input.linkedinUrl && !linkedin) throw new DomainError("VALIDATION", "Enter your LinkedIn profile URL, like linkedin.com/in/your-name.");
   let geo = {};
   if (input.homeAddress !== current.homeAddress) {
     const g = await geoProvider().geocode(input.homeAddress);
@@ -133,12 +138,20 @@ export async function updateProviderProfile(actor: Actor, raw: z.input<typeof Pr
         ehrSystems: input.ehrSystems,
         xrayComfort: input.xrayComfort,
         maxPatientsPerDay: input.maxPatientsPerDay ?? null,
+        headline: input.headline || null,
+        linkedinUrl: linkedin,
         ...geo,
         ...npiData,
       },
     }),
-    prisma.user.update({ where: { id: actor.userId! }, data: { phone: input.phone, name: input.displayName } }),
+    prisma.user.update({ where: { id: actor.userId! }, data: { name: input.displayName } }),
+    ...Object.entries(input.yearsInPractice ?? {}).map(([professionCode, years]) =>
+      prisma.providerProfession.updateMany({ where: { providerId, professionCode }, data: { yearsInPractice: years } }),
+    ),
   ]);
+  // Phone changes go through SMS verification (auth.startPhoneVerification).
+  const u = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId! } });
+  if (!u.phone && input.phone) await prisma.user.update({ where: { id: u.id }, data: { phone: input.phone } });
   await recomputeProviderStatus(providerId);
 }
 

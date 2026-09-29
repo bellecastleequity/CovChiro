@@ -10,6 +10,13 @@ export class Effects {
   add(fn: Effect) {
     this.list.push(fn);
   }
+  /** Snapshot/rollback so a failed award attempt (savepoint) doesn't leave stray notifications. */
+  mark() {
+    return this.list.length;
+  }
+  rollback(to: number) {
+    this.list.length = to;
+  }
   async run() {
     for (const fn of this.list) {
       try {

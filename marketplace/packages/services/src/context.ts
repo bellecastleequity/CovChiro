@@ -14,6 +14,18 @@ export interface Actor {
 
 export const SYSTEM: Actor = { userId: null, role: "SYSTEM" };
 
+/** Injectable clock — dispatch tests run on fake time (Addendum 02 §15). */
+let clockFn: () => Date = () => new Date();
+export const clock = { now: () => clockFn() };
+export function setClock(fn: (() => Date) | null) {
+  clockFn = fn ?? (() => new Date());
+}
+
+/** Per-shift advisory lock for the current transaction (Addendum 02 §12). Re-entrant within a transaction. */
+export async function lockShift(db: Db, shiftId: string) {
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${shiftId}))`;
+}
+
 let cache: { at: number; value: SettingsMap } | null = null;
 
 /** Settings merged over defaults. Cached for 10s per process; `fresh` bypasses the cache. */

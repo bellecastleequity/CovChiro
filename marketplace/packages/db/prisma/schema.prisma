@@ -198,20 +198,34 @@ model Provider {
   adminNotes           String?
   createdAt            DateTime                               @default(now()) @db.Timestamptz(3)
 
-  professions  ProviderProfession[]
-  licenses     License[]
-  malpractice  MalpracticePolicy[]
-  skills       ProviderSkill[]
-  availability AvailabilityRule[]
-  blackouts    AvailabilityBlackout[]
-  openDates    AvailabilityOpenDate[]
-  applications Application[]
-  offers       Offer[]
-  assignments  Assignment[]
-  stats        ProviderStats?
-  payouts      Payout[]
-  transfers    PayoutTransfer[]
-  threads      MessageThread[]
+  /// Public profile (About me = bio).
+  headline                 String?
+  linkedinUrl              String?
+  /// Offers & On Call (Addendum 02). Quiet hours are minutes from local midnight in homeTimeZone.
+  quietHoursStart          Int                      @default(1260)
+  quietHoursEnd            Int                      @default(360)
+  urgentDuringQuietHours   Boolean                  @default(false)
+  snoozedUntil             DateTime?                @db.Timestamptz(3)
+  consecutiveIgnoredOffers Int                      @default(0)
+  oncallPausedReason       String?
+  smsConsentAt             DateTime?                @db.Timestamptz(3)
+  onCallRules              OnCallRule[]
+  responsiveness           ProviderResponsiveness[]
+  standby                  StandbyEntry[]
+  professions              ProviderProfession[]
+  licenses                 License[]
+  malpractice              MalpracticePolicy[]
+  skills                   ProviderSkill[]
+  availability             AvailabilityRule[]
+  blackouts                AvailabilityBlackout[]
+  openDates                AvailabilityOpenDate[]
+  applications             Application[]
+  offers                   Offer[]
+  assignments              Assignment[]
+  stats                    ProviderStats?
+  payouts                  Payout[]
+  transfers                PayoutTransfer[]
+  threads                  MessageThread[]
 }
 
 enum LicenseStatus {
@@ -516,6 +530,8 @@ model Shift {
   offers       Offer[]
   /// At most one active assignment (partial unique index); cancelled ones stay for history.
   assignments  Assignment[]
+  dispatches   Dispatch[]
+  standby      StandbyEntry[]
   matchRuns    MatchRun[]
   threads      MessageThread[]
 
@@ -552,31 +568,54 @@ model Application {
 
 enum OfferSource {
   CLINIC_PICK
-  CASCADE
-  URGENT_PARALLEL
+  DISPATCH
+  BROADCAST
+  STANDBY
   ADMIN
 }
 
 enum OfferStatus {
   PENDING
+  ACCEPTED_PENDING
   ACCEPTED
   DECLINED
   EXPIRED
+  NOT_SELECTED
   WITHDRAWN
+  INELIGIBLE
 }
 
 model Offer {
-  id          String      @id @default(cuid())
-  shiftId     String
-  shift       Shift       @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  providerId  String
-  provider    Provider    @relation(fields: [providerId], references: [id])
-  source      OfferSource
-  expiresAt   DateTime    @db.Timestamptz(3)
-  status      OfferStatus @default(PENDING)
-  respondedAt DateTime?   @db.Timestamptz(3)
-  rank        Int?
-  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+  id             String       @id @default(cuid())
+  shiftId        String
+  shift          Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  providerId     String
+  provider       Provider     @relation(fields: [providerId], references: [id])
+  source         OfferSource
+  expiresAt      DateTime     @db.Timestamptz(3)
+  status         OfferStatus  @default(PENDING)
+  respondedAt    DateTime?    @db.Timestamptz(3)
+  rank           Int?
+  // Smart Dispatch (Addendum 02 §10)
+  dispatchId     String?
+  dispatch       Dispatch?    @relation(fields: [dispatchId], references: [id])
+  waveId         String?
+  wave           Wave?        @relation(fields: [waveId], references: [id])
+  tier           UrgencyTier?
+  windowMinutes  Int?
+  matchScore     Float        @default(0)
+  dispatchScore  Float        @default(0)
+  pRespondAtSend Float        @default(0.5)
+  replyCode      String?
+  linkTokenHash  String?      @unique
+  channelsSent   String[]     @default([])
+  deliveredAt    DateTime?    @db.Timestamptz(3)
+  openedAt       DateTime?    @db.Timestamptz(3)
+  acceptedAt     DateTime?    @db.Timestamptz(3)
+  revived        Boolean      @default(false)
+  /// Set when an application stands in for an acceptance (§5.6).
+  applicationId  String?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
 
   @@index([providerId, status])
   @@index([shiftId, status])
@@ -608,9 +647,12 @@ enum SelectionMethod {
   CLINIC_PICKED_APPLICANT
   CLINIC_PICKED_OFFER
   AUTO_APPLICANT
-  CASCADE_ACCEPT
   INSTANT_BOOK
   ADMIN
+  ON_CALL_AUTO
+  DISPATCH_WAVE
+  DISPATCH_BROADCAST
+  STANDBY
 }
 
 enum CancelParty {
@@ -649,6 +691,8 @@ model Assignment {
   providerTotalCents   Int
   depositCents         Int                       @default(0)
   flags                String[]                  @default([])
+  /// On Call auto-accepts: no-penalty cancel allowed until this time (Addendum 02 §4.5).
+  graceEndsAt          DateTime?                 @db.Timestamptz(3)
   confirmedAt          DateTime                  @default(now()) @db.Timestamptz(3)
   startedAt            DateTime?                 @db.Timestamptz(3)
   completedAt          DateTime?                 @db.Timestamptz(3)
@@ -1152,4 +1196,132 @@ model AdminTask {
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([resolvedAt, createdAt])
+}
+
+// ============================ Smart Dispatch & On Call (Addendum 02) ============================
+
+enum UrgencyTier {
+  SAME_DAY
+  SHORT
+  NEAR
+  PLANNED
+}
+
+enum DispatchTrigger {
+  URGENT_POST
+  SELECTION_DEADLINE
+  BACKFILL
+  CLINIC_REQUEST
+  ADMIN
+  RATE_BOOST
+}
+
+enum DispatchStatus {
+  ACTIVE
+  FILLED
+  EXHAUSTED
+  CANCELLED
+}
+
+enum DispatchStage {
+  STANDBY
+  ON_CALL_CHECK
+  WAVES
+  BROADCAST
+  DONE
+}
+
+model Dispatch {
+  id               String           @id @default(cuid())
+  shiftId          String
+  shift            Shift            @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  trigger          DispatchTrigger
+  status           DispatchStatus   @default(ACTIVE)
+  tierAtStart      UrgencyTier
+  currentWave      Int              @default(0)
+  stage            DispatchStage    @default(ON_CALL_CHECK)
+  /// Standby window (backfill) end, when stage = STANDBY.
+  stageEndsAt      DateTime?        @db.Timestamptz(3)
+  bestMatchAtStart Float?
+  startedAt        DateTime         @default(now()) @db.Timestamptz(3)
+  endedAt          DateTime?        @db.Timestamptz(3)
+  filledOfferId    String?
+  filledVia        SelectionMethod?
+  filledProviderId String?
+  waves            Wave[]
+  offers           Offer[]
+
+  @@index([shiftId, status])
+  @@index([status, stage])
+}
+
+model Wave {
+  id           String      @id @default(cuid())
+  dispatchId   String
+  dispatch     Dispatch    @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  number       Int
+  isBroadcast  Boolean     @default(false)
+  isStandby    Boolean     @default(false)
+  tier         UrgencyTier
+  sentAt       DateTime    @db.Timestamptz(3)
+  windowEndsAt DateTime    @db.Timestamptz(3)
+  holdEndsAt   DateTime?   @db.Timestamptz(3)
+  closedAt     DateTime?   @db.Timestamptz(3)
+  offers       Offer[]
+
+  @@unique([dispatchId, number])
+  @@index([closedAt, windowEndsAt])
+}
+
+model OnCallRule {
+  id                 String    @id @default(cuid())
+  providerId         String
+  provider           Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  active             Boolean   @default(true)
+  professionCodes    String[]
+  /// [{ weekday, startMin, endMin }]
+  recurringWindows   Json      @default("[]")
+  /// [{ startsAt, endsAt }]
+  dateWindows        Json      @default("[]")
+  timeZone           String
+  maxDriveMinutes    Int
+  minPayHalfDayCents Int?
+  minPayFullDayCents Int?
+  minPayHourlyCents  Int?
+  minNoticeMinutes   Int       @default(90)
+  maxPerDay          Int       @default(1)
+  maxPerWeek         Int       @default(5)
+  favoritesOnly      Boolean   @default(false)
+  minClinicRating    Float?
+  excludedClinicIds  String[]  @default([])
+  allowOvernight     Boolean   @default(false)
+  pausedUntil        DateTime? @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([providerId, active])
+}
+
+model ProviderResponsiveness {
+  providerId            String
+  provider              Provider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  tier                  UrgencyTier
+  offers                Float
+  hits                  Float
+  pRespond              Float
+  medianResponseSeconds Int?
+  updatedAt             DateTime    @updatedAt @db.Timestamptz(3)
+
+  @@id([providerId, tier])
+}
+
+model StandbyEntry {
+  shiftId    String
+  shift      Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  matchScore Float
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@id([shiftId, providerId])
 }

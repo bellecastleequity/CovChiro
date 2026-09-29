@@ -28,6 +28,18 @@ const deadlineTierSchema = z.object({
   parallelOffers: z.number().int().min(1),
 });
 
+const tierConfigSchema = z.object({
+  wave1: z.number().int().min(1),
+  growth: z.number().int().min(0),
+  max: z.number().int().min(1),
+  windowMin: z.number().positive(),
+  wavesBeforeBroadcast: z.number().int().min(1),
+  broadcastWindowMin: z.number().positive(),
+  broadcastHoldMin: z.number().positive(),
+  beta: z.number().min(0).max(1),
+});
+export type TierConfig = z.infer<typeof tierConfigSchema>;
+
 const cents = z.number().int().min(0);
 const percent = z.number().min(0).max(100);
 
@@ -141,10 +153,49 @@ export const SETTINGS = {
     flag: null,
   }),
 
+  // ---------- Smart Dispatch (Addendum 02 §11) ----------
+  "dispatch.tiers.SAME_DAY": def({ group: "Dispatch", label: "Same-day (<12h) waves", schema: tierConfigSchema, default: { wave1: 5, growth: 3, max: 15, windowMin: 5, wavesBeforeBroadcast: 3, broadcastWindowMin: 15, broadcastHoldMin: 3, beta: 0.6 }, flag: "OWNER_DECISION" }),
+  "dispatch.tiers.SHORT": def({ group: "Dispatch", label: "Short notice (12–48h) waves", schema: tierConfigSchema, default: { wave1: 3, growth: 2, max: 10, windowMin: 15, wavesBeforeBroadcast: 3, broadcastWindowMin: 30, broadcastHoldMin: 10, beta: 0.4 }, flag: null }),
+  "dispatch.tiers.NEAR": def({ group: "Dispatch", label: "Near (2–7 days) waves", schema: tierConfigSchema, default: { wave1: 3, growth: 2, max: 8, windowMin: 90, wavesBeforeBroadcast: 4, broadcastWindowMin: 240, broadcastHoldMin: 30, beta: 0.2 }, flag: null }),
+  "dispatch.tiers.PLANNED": def({ group: "Dispatch", label: "Planned (7+ days) waves", schema: tierConfigSchema, default: { wave1: 3, growth: 2, max: 8, windowMin: 120, wavesBeforeBroadcast: 4, broadcastWindowMin: 360, broadcastHoldMin: 60, beta: 0.2 }, flag: null }),
+  "dispatch.tierOverridesByProfession": def({
+    group: "Dispatch",
+    label: "Per-profession wave overrides",
+    help: 'e.g. {"LMT": {"SAME_DAY": {"windowMin": 10}}}',
+    schema: z.record(z.string(), z.record(z.string(), tierConfigSchema.partial())),
+    default: {},
+    flag: null,
+  }),
+  "dispatch.arrivalBufferMinutes": def({ group: "Dispatch", label: "Arrival buffer before shift start (minutes)", schema: z.number().int().min(0), default: 15, flag: null }),
+  "dispatch.minWindowMinutes": def({ group: "Dispatch", label: "Shortest allowed accept window (minutes)", schema: z.number().positive(), default: 3, flag: null }),
+  "dispatch.maxOffersPerProviderPerDay": def({ group: "Dispatch", label: "Max offers per provider per day", schema: z.number().int().min(1), default: 8, flag: "OWNER_DECISION" }),
+  "dispatch.maxConcurrentPendingOffers": def({ group: "Dispatch", label: "Max concurrent pending offers per provider", schema: z.number().int().min(1), default: 3, flag: null }),
+  "dispatch.autoSnoozeAfterIgnored": def({ group: "Dispatch", label: "Auto-snooze after this many ignored offers in a row", schema: z.number().int().min(1), default: 5, flag: null }),
+  "dispatch.standbyCourtesyBoost": def({ group: "Dispatch", label: "Standby courtesy boost to dispatch score", schema: z.number().min(0).max(0.5), default: 0.02, flag: "OWNER_DECISION" }),
+  "dispatch.standbyCourtesyDays": def({ group: "Dispatch", label: "Standby courtesy boost lasts (days)", schema: z.number().int().min(0), default: 7, flag: null }),
+  "dispatch.standbyWindowMin": def({ group: "Dispatch", label: "Standby offer window (minutes)", schema: z.object({ SAME_DAY: z.number().positive(), other: z.number().positive() }), default: { SAME_DAY: 5, other: 15 }, flag: null }),
+  "oncall.graceMinutes": def({ group: "On Call", label: "No-penalty cancel grace after auto-accept (minutes)", schema: z.number().int().min(0), default: 10, flag: "OWNER_DECISION" }),
+  "oncall.maxGraceCancels30d": def({ group: "On Call", label: "Grace cancels in 30 days before On Call auto-pauses", schema: z.number().int().min(0), default: 2, flag: null }),
+  "oncall.minReliability": def({ group: "On Call", label: "Minimum reliability to use On Call", schema: z.number().min(0).max(1), default: 0.85, flag: null }),
+  "oncall.minCompletedShifts": def({ group: "On Call", label: "Minimum completed shifts to use On Call", schema: z.number().int().min(0), default: 1, flag: "OWNER_DECISION" }),
+  "responsiveness.lookbackDays": def({ group: "Dispatch", label: "Responsiveness lookback (days)", schema: z.number().int().positive(), default: 90, flag: null }),
+  "responsiveness.prior": def({ group: "Dispatch", label: "Responsiveness Beta prior", schema: z.object({ a: z.number().positive(), b: z.number().positive() }), default: { a: 2, b: 2 }, flag: null }),
+
+  // ---------- profiles ----------
+  "profiles.linkedinVisibility": def({
+    group: "Profiles",
+    label: "When clinics can see a provider's LinkedIn link",
+    help: "after_confirmation keeps profiles anonymized to name + city/state until a shift is confirmed (SPEC §10.1); always shows it on every profile.",
+    schema: z.enum(["after_confirmation", "always"]),
+    default: "after_confirmation",
+    flag: "OWNER_DECISION",
+  }),
+
   // ---------- ratings (§12) ----------
   "ratings.windowDays": def({ group: "Ratings", label: "Rating window (days)", schema: z.number().int().positive(), default: 14, flag: null }),
 
   // ---------- feature flags (ATTORNEY REVIEW items ship OFF) ----------
+  "features.onCallEnabled": def({ group: "Features", label: "On Call auto-accept (requires On Call Terms in the Provider Agreement)", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
   "features.conversionFeeEnabled": def({ group: "Features", label: "Allow charging conversion fees", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
 } as const;
 
@@ -156,6 +207,15 @@ export type DeadlineTier = SettingValue<"matching.deadlineTiers">[number];
 
 export function weightsFor(s: SettingsMap, professionCode: string): MatchingWeights {
   return s["matching.weightsByProfession"][professionCode] ?? s["matching.weights"];
+}
+
+export type UrgencyTierKey = "SAME_DAY" | "SHORT" | "NEAR" | "PLANNED";
+
+/** Tier config with any per-profession override applied (Addendum 02 §11). */
+export function tierConfigFor(s: SettingsMap, tier: UrgencyTierKey, professionCode?: string): TierConfig {
+  const base = s[`dispatch.tiers.${tier}` as const];
+  const o = professionCode ? s["dispatch.tierOverridesByProfession"][professionCode]?.[tier] : undefined;
+  return { ...base, ...(o ?? {}) };
 }
 
 export function defaultSettings(): SettingsMap {
