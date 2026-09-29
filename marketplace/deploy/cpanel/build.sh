@@ -68,4 +68,10 @@ cp INSTALL-CPANEL.md "$OUT/INSTALL-CPANEL.md"
 cp deploy/cpanel/env.template "$OUT/environment-variables.txt"
 
 (cd "$OUT" && rm -f ../coverageoncall-cpanel.zip && zip -qr ../coverageoncall-cpanel.zip .)
+# Same content in three parts under 30 MB each (for size-limited transfers).
+# Each extracts into the same folder; extracting all three = the full package.
+(cd "$OUT" && rm -f ../coverageoncall-cpanel-part*.zip \
+  && zip -qr -9 ../coverageoncall-cpanel-part1.zip . -x "coverageoncall/node_modules/@prisma/*" "coverageoncall/node_modules/.prisma/*" \
+  && zip -qr -9 ../coverageoncall-cpanel-part2.zip coverageoncall/node_modules/@prisma \
+  && zip -qr -9 ../coverageoncall-cpanel-part3.zip coverageoncall/node_modules/.prisma)
 echo "Built dist/coverageoncall-cpanel.zip ($(du -h dist/coverageoncall-cpanel.zip | cut -f1), $(find "$APP" -type f | wc -l) files)"

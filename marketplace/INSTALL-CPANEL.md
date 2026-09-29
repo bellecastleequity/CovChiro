@@ -45,6 +45,8 @@ environment-variables.txt    ← the settings to enter in cPanel
 INSTALL-CPANEL.md            ← this guide
 ```
 
+If you received it as **three parts** (`coverageoncall-cpanel-part1.zip`, `-part2.zip` and `-part3.zip`), treat them as one package. In Step 3, upload all three to the same folder and **Extract each one there**. They fill in the same `coverageoncall` folder, and the site needs all three.
+
 To build the zip yourself, run `bash deploy/cpanel/build.sh` from the `marketplace` folder on a Linux x86-64 machine (or WSL on Windows). The output is `dist/coverageoncall-cpanel.zip`. It must be built on Linux x86-64 so the compiled parts match Namecheap's servers.
 
 ## Step 2 — Create the database on Neon
