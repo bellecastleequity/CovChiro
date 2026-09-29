@@ -1,0 +1,24 @@
+import { DAY } from "./time";
+
+/** nextReverifyAt = earlier of (expiration − 30 days) or (verification + 90 days). SPEC §4.3. */
+export function nextReverifyAt(verifiedAt: Date, expiresAt: Date): Date {
+  return new Date(Math.min(+expiresAt - 30 * DAY, +verifiedAt + 90 * DAY));
+}
+
+/** Days until expiry, for 60/30/7-day reminders. */
+export function expiryReminderDue(expiresAt: Date, now: Date): 60 | 30 | 7 | null {
+  const days = Math.ceil((+expiresAt - +now) / DAY);
+  if (days === 60 || days === 30 || days === 7) return days;
+  return null;
+}
+
+export const US_STATES: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
+  DE: "Delaware", DC: "District of Columbia", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois",
+  IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana",
+  NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico", NY: "New York",
+  NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah",
+  VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+};

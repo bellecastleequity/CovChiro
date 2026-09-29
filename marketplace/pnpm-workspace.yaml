@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+  - tests
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - prisma
+  - esbuild
+  - sharp
+  - msgpackr-extract

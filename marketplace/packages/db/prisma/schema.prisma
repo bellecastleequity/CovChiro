@@ -1,0 +1,1028 @@
+// CoverageChiropractor.com marketplace — data model (SPEC §5).
+// Raw SQL for PostGIS columns, triggers and the exclusion constraint lives in
+// migrations/0002_invariants. Money is integer cents throughout.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, btree_gist, citext]
+}
+
+// ============================ identity ============================
+
+enum Role {
+  CLINIC_OWNER
+  CLINIC_STAFF
+  DOCTOR
+  PLATFORM_ADMIN
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique @db.Citext
+  name            String
+  phone           String?
+  passwordHash    String?
+  emailVerifiedAt DateTime? @db.Timestamptz(3)
+  phoneVerifiedAt DateTime? @db.Timestamptz(3)
+  mfaEnabled      Boolean   @default(false)
+  totpSecret      String?
+  role            Role
+  disabledAt      DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  lastLoginAt     DateTime? @db.Timestamptz(3)
+
+  doctor        Doctor?
+  clinicMembers ClinicMember[]
+  sessions      Session[]
+  notifications Notification[]
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// sha256 of the cookie token — the raw token is never stored.
+  tokenHash   String   @unique
+  mfaVerified Boolean  @default(false)
+  expiresAt   DateTime @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  userAgent   String?
+
+  @@index([userId])
+}
+
+model AuthToken {
+  id        String    @id @default(cuid())
+  userId    String
+  purpose   String // EMAIL_VERIFY | PASSWORD_RESET | PHONE_VERIFY
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, purpose])
+}
+
+model RateLimit {
+  key       String   @id
+  count     Int
+  windowEnd DateTime @db.Timestamptz(3)
+}
+
+// ============================ doctors ============================
+
+enum DoctorStatus {
+  ONBOARDING
+  ACTIVE
+  PAUSED
+  SUSPENDED
+  DEACTIVATED
+}
+
+model Doctor {
+  id                   String                                 @id @default(cuid())
+  userId               String                                 @unique
+  user                 User                                   @relation(fields: [userId], references: [id])
+  legalName            String
+  displayName          String
+  photoUrl             String?
+  npi                  String?                                @unique
+  npiVerifiedAt        DateTime?                              @db.Timestamptz(3)
+  npiMismatch          Boolean                                @default(false)
+  homeAddress          String?
+  homeLat              Float?
+  homeLng              Float?
+  homeCity             String?
+  /// Display only — NEVER used for eligibility (INV-1).
+  homeState            String?
+  homeTimeZone         String                                 @default("America/New_York")
+  homeGeo              Unsupported("geography(Point, 4326)")?
+  maxDriveMinutes      Int                                    @default(90)
+  willingOvernight     Boolean                                @default(false)
+  bio                  String?
+  yearsInPractice      Int?
+  school               String?
+  graduationYear       Int?
+  languages            String[]                               @default([])
+  ehrSystems           String[]                               @default([])
+  specialties          String[]                               @default([])
+  xrayComfort          Boolean                                @default(false)
+  maxPatientsPerDay    Int?
+  stripeAccountId      String?                                @unique
+  stripePayoutsEnabled Boolean                                @default(false)
+  agreementSignedAt    DateTime?                              @db.Timestamptz(3)
+  agreementVersion     Int?
+  profileCompleteAt    DateTime?                              @db.Timestamptz(3)
+  status               DoctorStatus                           @default(ONBOARDING)
+  adminNotes           String?
+  createdAt            DateTime                               @default(now()) @db.Timestamptz(3)
+
+  licenses     License[]
+  malpractice  MalpracticePolicy[]
+  techniques   DoctorTechnique[]
+  availability AvailabilityRule[]
+  blackouts    AvailabilityBlackout[]
+  openDates    AvailabilityOpenDate[]
+  applications Application[]
+  offers       Offer[]
+  assignments  Assignment[]
+  stats        DoctorStats?
+  payouts      Payout[]
+  transfers    PayoutTransfer[]
+  threads      MessageThread[]
+}
+
+enum LicenseStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  EXPIRED
+  SUSPENDED
+  REVOKED
+  REJECTED
+}
+
+model License {
+  id                      String        @id @default(cuid())
+  doctorId                String
+  doctor                  Doctor        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  state                   String        @db.Char(2)
+  licenseNumber           String
+  licenseType             String        @default("DC")
+  issuedAt                DateTime?     @db.Timestamptz(3)
+  expiresAt               DateTime      @db.Timestamptz(3)
+  status                  LicenseStatus @default(PENDING_VERIFICATION)
+  verifiedById            String?
+  verifiedAt              DateTime?     @db.Timestamptz(3)
+  verificationMethod      String?
+  verificationEvidenceUrl String?
+  documentUrl             String?
+  rejectionReason         String?
+  nextReverifyAt          DateTime?     @db.Timestamptz(3)
+  createdAt               DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@unique([doctorId, state, licenseType])
+  @@index([state, status, expiresAt])
+}
+
+model MalpracticePolicy {
+  id                   String        @id @default(cuid())
+  doctorId             String
+  doctor               Doctor        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  carrier              String
+  policyNumber         String
+  /// Whole dollars (limits can exceed Int cents).
+  perOccurrenceDollars Int
+  aggregateDollars     Int
+  expiresAt            DateTime      @db.Timestamptz(3)
+  documentUrl          String
+  status               LicenseStatus @default(PENDING_VERIFICATION)
+  verifiedById         String?
+  verifiedAt           DateTime?     @db.Timestamptz(3)
+  rejectionReason      String?
+  createdAt            DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([doctorId, status, expiresAt])
+}
+
+model Technique {
+  id        String              @id @default(cuid())
+  name      String              @unique
+  active    Boolean             @default(true)
+  doctors   DoctorTechnique[]
+  locations LocationTechnique[]
+}
+
+model DoctorTechnique {
+  doctorId    String
+  techniqueId String
+  proficiency Int       @default(2)
+  doctor      Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  technique   Technique @relation(fields: [techniqueId], references: [id])
+
+  @@id([doctorId, techniqueId])
+}
+
+model AvailabilityRule {
+  id       String @id @default(cuid())
+  doctorId String
+  doctor   Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  weekday  Int
+  startMin Int
+  endMin   Int
+  timeZone String
+}
+
+model AvailabilityBlackout {
+  id       String   @id @default(cuid())
+  doctorId String
+  doctor   Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  startsAt DateTime @db.Timestamptz(3)
+  endsAt   DateTime @db.Timestamptz(3)
+  reason   String?
+}
+
+model AvailabilityOpenDate {
+  id       String   @id @default(cuid())
+  doctorId String
+  doctor   Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  startsAt DateTime @db.Timestamptz(3)
+  endsAt   DateTime @db.Timestamptz(3)
+}
+
+model DoctorStats {
+  doctorId        String    @id
+  doctor          Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  completedShifts Int       @default(0)
+  lateCancels     Int       @default(0)
+  noShows         Int       @default(0)
+  ratingSum       Int       @default(0)
+  ratingCount     Int       @default(0)
+  lastShiftAt     DateTime? @db.Timestamptz(3)
+  shiftsThisMonth Int       @default(0)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+}
+
+// ============================ clinics ============================
+
+enum ClinicStatus {
+  ONBOARDING
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+model ClinicOrg {
+  id                 String       @id @default(cuid())
+  legalName          String
+  displayName        String
+  logoUrl            String?
+  phone              String?
+  billingEmail       String?
+  stripeCustomerId   String?      @unique
+  hasPaymentMethod   Boolean      @default(false)
+  paymentMethodLabel String?
+  agreementSignedAt  DateTime?    @db.Timestamptz(3)
+  agreementVersion   Int?
+  status             ClinicStatus @default(ONBOARDING)
+  adminNotes         String?
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+
+  members          ClinicMember[]
+  locations        ClinicLocation[]
+  threads          MessageThread[]
+  promoRedemptions PromoRedemption[]
+  payments         Payment[]
+}
+
+model ClinicMember {
+  id          String    @id @default(cuid())
+  clinicOrgId String
+  clinicOrg   ClinicOrg @relation(fields: [clinicOrgId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        Role
+
+  @@unique([clinicOrgId, userId])
+}
+
+model ClinicLocation {
+  id                String                                 @id @default(cuid())
+  clinicOrgId       String
+  clinicOrg         ClinicOrg                              @relation(fields: [clinicOrgId], references: [id], onDelete: Cascade)
+  name              String
+  addressLine1      String
+  addressLine2      String?
+  city              String
+  /// FROM GEOCODE ONLY. Changing requires re-geocode (geocodedAt) — enforced by trigger.
+  state             String                                 @db.Char(2)
+  zip               String
+  lat               Float
+  lng               Float
+  geo               Unsupported("geography(Point, 4326)")?
+  timeZone          String
+  geocodedAt        DateTime                               @db.Timestamptz(3)
+  rateRegionId      String?
+  rateRegion        RateRegion?                            @relation(fields: [rateRegionId], references: [id])
+  phone             String?
+  onSiteContactName String?
+  patientsPerDay    Int?
+  ehr               String?
+  equipment         String[]                               @default([])
+  dressCode         String?
+  /// Visible to the confirmed doctor only.
+  arrivalNotes      String?
+  active            Boolean                                @default(true)
+  createdAt         DateTime                               @default(now()) @db.Timestamptz(3)
+  techniques        LocationTechnique[]
+  shifts            Shift[]
+  shiftGroups       ShiftGroup[]
+}
+
+model LocationTechnique {
+  locationId  String
+  techniqueId String
+  location    ClinicLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  technique   Technique      @relation(fields: [techniqueId], references: [id])
+
+  @@id([locationId, techniqueId])
+}
+
+// ============================ shifts & matching ============================
+
+model ShiftGroup {
+  id                 String         @id @default(cuid())
+  locationId         String
+  location           ClinicLocation @relation(fields: [locationId], references: [id])
+  sameDoctorRequired Boolean        @default(false)
+  shifts             Shift[]
+}
+
+enum ShiftStatus {
+  DRAFT
+  OPEN
+  FAVORITES_ONLY
+  SELECTING
+  CASCADING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  UNFILLED
+  CANCELLED
+}
+
+model Shift {
+  id                      String         @id @default(cuid())
+  locationId              String
+  location                ClinicLocation @relation(fields: [locationId], references: [id])
+  shiftGroupId            String?
+  shiftGroup              ShiftGroup?    @relation(fields: [shiftGroupId], references: [id])
+  /// Copy of location.state, set and kept in sync by trigger.
+  state                   String         @db.Char(2)
+  startsAt                DateTime       @db.Timestamptz(3)
+  endsAt                  DateTime       @db.Timestamptz(3)
+  status                  ShiftStatus    @default(DRAFT)
+  requiredTechniqueIds    String[]       @default([])
+  preferredTechniqueIds   String[]       @default([])
+  expectedPatients        Int?
+  notes                   String?
+  instantBook             Boolean        @default(false)
+  maxTravelBudgetCents    Int?
+  lodgingAllowed          Boolean        @default(false)
+  lodgingCapCentsPerNight Int?
+  // Pricing snapshot from the rate engine (INV-7)
+  rateCardId              String?
+  durationTier            DurationTier?
+  clinicPriceCents        Int
+  doctorPayCents          Int
+  premiumsApplied         Json           @default("[]")
+  boosted                 Boolean        @default(false)
+  promoCodeId             String?
+  promoCode               PromoCode?     @relation(fields: [promoCodeId], references: [id])
+  promoDiscountCents      Int            @default(0)
+  // Matching timeline
+  postedAt                DateTime?      @db.Timestamptz(3)
+  favoritesWindowEndsAt   DateTime?      @db.Timestamptz(3)
+  selectionDeadline       DateTime?      @db.Timestamptz(3)
+  cascadeStartedAt        DateTime?      @db.Timestamptz(3)
+  cancelledAt             DateTime?      @db.Timestamptz(3)
+  cancelReason            String?
+  createdById             String
+  createdAt               DateTime       @default(now()) @db.Timestamptz(3)
+
+  applications Application[]
+  offers       Offer[]
+  /// At most one active assignment (partial unique index); cancelled ones stay for history.
+  assignments  Assignment[]
+  matchRuns    MatchRun[]
+  threads      MessageThread[]
+
+  @@index([state, status, startsAt])
+  @@index([locationId, startsAt])
+}
+
+enum ApplicationStatus {
+  ACTIVE
+  WITHDRAWN
+  SELECTED
+  NOT_SELECTED
+  AUTO_WITHDRAWN_CONFLICT
+  INELIGIBLE
+}
+
+model Application {
+  id                 String            @id @default(cuid())
+  shiftId            String
+  shift              Shift             @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  doctorId           String
+  doctor             Doctor            @relation(fields: [doctorId], references: [id])
+  note               String?
+  status             ApplicationStatus @default(ACTIVE)
+  scoreAtApply       Float
+  scoreBreakdown     Json?
+  clinicMarkedNotFit Boolean           @default(false)
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  withdrawnAt        DateTime?         @db.Timestamptz(3)
+
+  @@unique([shiftId, doctorId])
+  @@index([doctorId, status])
+}
+
+enum OfferSource {
+  CLINIC_PICK
+  CASCADE
+  URGENT_PARALLEL
+  ADMIN
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  WITHDRAWN
+}
+
+model Offer {
+  id          String      @id @default(cuid())
+  shiftId     String
+  shift       Shift       @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  doctorId    String
+  doctor      Doctor      @relation(fields: [doctorId], references: [id])
+  source      OfferSource
+  expiresAt   DateTime    @db.Timestamptz(3)
+  status      OfferStatus @default(PENDING)
+  respondedAt DateTime?   @db.Timestamptz(3)
+  rank        Int?
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+
+  @@index([doctorId, status])
+  @@index([shiftId, status])
+}
+
+model MatchRun {
+  id        String   @id @default(cuid())
+  shiftId   String
+  shift     Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  reason    String
+  /// Every candidate considered: score breakdown or the filters that excluded them.
+  results   Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([shiftId, createdAt])
+}
+
+enum AssignmentStatus {
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  LICENSE_LAPSED
+  DISPUTED
+  NO_SHOW
+}
+
+enum SelectionMethod {
+  CLINIC_PICKED_APPLICANT
+  CLINIC_PICKED_OFFER
+  AUTO_APPLICANT
+  CASCADE_ACCEPT
+  INSTANT_BOOK
+  ADMIN
+}
+
+enum CancelParty {
+  CLINIC
+  DOCTOR
+  PLATFORM
+}
+
+model Assignment {
+  id                   String                    @id @default(cuid())
+  /// Not unique: a cancelled/lapsed assignment stays for history when the shift is backfilled.
+  shiftId              String
+  shift                Shift                     @relation(fields: [shiftId], references: [id])
+  doctorId             String
+  doctor               Doctor                    @relation(fields: [doctorId], references: [id])
+  /// Copy of shift.state; checked by trigger (INV-1).
+  state                String                    @db.Char(2)
+  startsAt             DateTime                  @db.Timestamptz(3)
+  endsAt               DateTime                  @db.Timestamptz(3)
+  bufferMinutes        Int
+  /// [startsAt − buffer, endsAt + buffer), maintained by trigger; INV-2 exclusion constraint.
+  bufferedRange        Unsupported("tstzrange")?
+  status               AssignmentStatus          @default(CONFIRMED)
+  selectionMethod      SelectionMethod
+  driveMinutes         Int
+  driveMiles           Float
+  clinicPriceCents     Int
+  doctorPayCents       Int
+  promoDiscountCents   Int                       @default(0)
+  mileageCents         Int
+  lodgingEstimateCents Int                       @default(0)
+  lodgingApprovedCents Int                       @default(0)
+  clinicTotalCents     Int
+  doctorTotalCents     Int
+  depositCents         Int                       @default(0)
+  flags                String[]                  @default([])
+  confirmedAt          DateTime                  @default(now()) @db.Timestamptz(3)
+  startedAt            DateTime?                 @db.Timestamptz(3)
+  completedAt          DateTime?                 @db.Timestamptz(3)
+  cancelledAt          DateTime?                 @db.Timestamptz(3)
+  cancelledBy          CancelParty?
+  cancelReason         String?
+
+  payments        Payment[]
+  payouts         Payout[]
+  ratings         Rating[]
+  lodgingReceipts LodgingReceipt[]
+  disputes        Dispute[]
+
+  @@index([doctorId, status, startsAt])
+  @@index([shiftId])
+}
+
+// ============================ relationships & reputation ============================
+
+enum PartyType {
+  CLINIC
+  DOCTOR
+}
+
+model Favorite {
+  id        String    @id @default(cuid())
+  fromType  PartyType
+  fromId    String
+  toType    PartyType
+  toId      String
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@unique([fromType, fromId, toType, toId])
+}
+
+model Block {
+  id        String    @id @default(cuid())
+  fromType  PartyType
+  fromId    String
+  toType    PartyType
+  toId      String
+  reason    String?
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@unique([fromType, fromId, toType, toId])
+}
+
+model Rating {
+  id           String     @id @default(cuid())
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  raterType    PartyType
+  stars        Int
+  categories   Json
+  comment      String?
+  submittedAt  DateTime   @default(now()) @db.Timestamptz(3)
+  revealedAt   DateTime?  @db.Timestamptz(3)
+
+  @@unique([assignmentId, raterType])
+}
+
+// ============================ messaging ============================
+
+model MessageThread {
+  id            String    @id @default(cuid())
+  clinicOrgId   String
+  clinicOrg     ClinicOrg @relation(fields: [clinicOrgId], references: [id])
+  doctorId      String
+  doctor        Doctor    @relation(fields: [doctorId], references: [id])
+  shiftId       String?
+  shift         Shift?    @relation(fields: [shiftId], references: [id])
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  lastMessageAt DateTime  @default(now()) @db.Timestamptz(3)
+  messages      Message[]
+
+  @@unique([clinicOrgId, doctorId])
+}
+
+model Message {
+  id               String        @id @default(cuid())
+  threadId         String
+  thread           MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderUserId     String
+  senderType       PartyType
+  body             String
+  redacted         Boolean       @default(false)
+  flagged          Boolean       @default(false)
+  containedContact Boolean       @default(false)
+  readAt           DateTime?     @db.Timestamptz(3)
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([threadId, createdAt])
+}
+
+// ============================ money ============================
+
+enum PaymentType {
+  DEPOSIT
+  BALANCE
+  LODGING
+  CANCELLATION_FEE
+  CONVERSION_FEE
+  REFUND
+  ADJUSTMENT
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+model Payment {
+  id                    String        @id @default(cuid())
+  clinicOrgId           String
+  clinicOrg             ClinicOrg     @relation(fields: [clinicOrgId], references: [id])
+  assignmentId          String?
+  assignment            Assignment?   @relation(fields: [assignmentId], references: [id])
+  type                  PaymentType
+  amountCents           Int
+  stripePaymentIntentId String?       @unique
+  stripeRefundId        String?       @unique
+  idempotencyKey        String        @unique
+  status                PaymentStatus @default(PENDING)
+  failureReason         String?
+  description           String?
+  createdById           String?
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@index([assignmentId])
+  @@index([clinicOrgId, createdAt])
+}
+
+enum PayoutKind {
+  SHIFT
+  LODGING
+  LATE_CANCEL
+  ADJUSTMENT
+}
+
+enum PayoutStatus {
+  PENDING
+  SCHEDULED
+  ON_HOLD
+  PROCESSING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+/// Doctor pay ledger — one row per amount owed (see packages/core/src/payouts.ts).
+model Payout {
+  id           String          @id @default(cuid())
+  doctorId     String
+  doctor       Doctor          @relation(fields: [doctorId], references: [id])
+  assignmentId String?
+  assignment   Assignment?     @relation(fields: [assignmentId], references: [id])
+  kind         PayoutKind
+  description  String
+  /// Doctor pay + mileage (SHIFT), receipt (LODGING), share (LATE_CANCEL), ± (ADJUSTMENT).
+  amountCents  Int
+  status       PayoutStatus    @default(PENDING)
+  onHold       Boolean         @default(false)
+  holdReason   String?
+  releaseAt    DateTime?       @db.Timestamptz(3)
+  transferId   String?
+  transfer     PayoutTransfer? @relation(fields: [transferId], references: [id])
+  paidAt       DateTime?       @db.Timestamptz(3)
+  createdById  String?
+  createdAt    DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime        @updatedAt @db.Timestamptz(3)
+
+  @@unique([assignmentId, kind])
+  @@index([doctorId, status])
+  @@index([status, releaseAt])
+}
+
+enum TransferStatus {
+  PROCESSING
+  PAID
+  FAILED
+  REVERSED
+}
+
+/// One Stripe Connect transfer, covering one or more ledger rows for a doctor.
+model PayoutTransfer {
+  id               String         @id @default(cuid())
+  doctorId         String
+  doctor           Doctor         @relation(fields: [doctorId], references: [id])
+  amountCents      Int
+  stripeTransferId String?        @unique
+  idempotencyKey   String         @unique
+  status           TransferStatus @default(PROCESSING)
+  failureReason    String?
+  /// null = released automatically by the payoutRelease job.
+  initiatedById    String?
+  note             String?
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+  paidAt           DateTime?      @db.Timestamptz(3)
+  payouts          Payout[]
+
+  @@index([doctorId, createdAt])
+}
+
+model LodgingReceipt {
+  id            String     @id @default(cuid())
+  assignmentId  String
+  assignment    Assignment @relation(fields: [assignmentId], references: [id])
+  nights        Int        @default(1)
+  amountCents   Int
+  fileUrl       String
+  status        String     @default("SUBMITTED") // SUBMITTED | APPROVED | REJECTED
+  approvedCents Int?
+  reviewedById  String?
+  reviewedAt    DateTime?  @db.Timestamptz(3)
+  createdAt     DateTime   @default(now()) @db.Timestamptz(3)
+}
+
+model Dispute {
+  id           String     @id @default(cuid())
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  openedByType PartyType
+  openedById   String
+  reason       String
+  status       String     @default("OPEN") // OPEN | RESOLVED
+  resolution   String?
+  resolvedById String?
+  resolvedAt   DateTime?  @db.Timestamptz(3)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+
+  @@index([assignmentId, status])
+}
+
+// ============================ agreements ============================
+
+model AgreementSignature {
+  id           String    @id @default(cuid())
+  partyType    PartyType
+  partyId      String
+  signerUserId String
+  version      Int
+  provider     String // "dropbox-sign" | "dev"
+  envelopeId   String?   @unique
+  status       String    @default("SENT") // SENT | SIGNED | DECLINED
+  signedAt     DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([partyType, partyId])
+}
+
+// ============================ states & rates ============================
+
+model StateConfig {
+  state                        String    @id @db.Char(2)
+  enabled                      Boolean   @default(false)
+  legalReviewComplete          Boolean   @default(false)
+  legalReviewNotes             String?
+  contractorModelNotes         String?
+  staffingRegistrationRequired Boolean   @default(false)
+  salesTaxOnStaffing           Boolean   @default(false)
+  boardLookupUrl               String?
+  defaultRateRegionId          String?
+  enabledAt                    DateTime? @db.Timestamptz(3)
+  enabledById                  String?
+}
+
+model RateRegion {
+  id        String           @id @default(cuid())
+  state     String           @db.Char(2)
+  name      String           @unique
+  zip3List  String[]         @default([])
+  tier      Int
+  rateCards RateCard[]
+  locations ClinicLocation[]
+}
+
+enum DurationTier {
+  HALF_DAY
+  FULL_DAY
+}
+
+model RateCard {
+  id               String       @id @default(cuid())
+  rateRegionId     String
+  rateRegion       RateRegion   @relation(fields: [rateRegionId], references: [id])
+  durationTier     DurationTier
+  clinicPriceCents Int
+  doctorPayCents   Int
+  effectiveFrom    DateTime     @db.Timestamptz(3)
+  effectiveTo      DateTime?    @db.Timestamptz(3)
+
+  @@index([rateRegionId, durationTier, effectiveFrom])
+}
+
+// ============================ promo codes ============================
+
+enum PromoKind {
+  PERCENT
+  FIXED
+}
+
+model PromoCode {
+  id                 String      @id @default(cuid())
+  code               String      @unique
+  kind               PromoKind
+  /// Percent (0–100) for PERCENT, cents for FIXED.
+  value              Int
+  description        String?
+  active             Boolean     @default(true)
+  startsAt           DateTime?   @db.Timestamptz(3)
+  expiresAt          DateTime?   @db.Timestamptz(3)
+  maxUses            Int?
+  usedCount          Int         @default(0)
+  maxUsesPerClinic   Int?        @default(1)
+  firstShiftOnly     Boolean     @default(false)
+  assignedEmail      String?     @db.Citext
+  isWelcome          Boolean     @default(false)
+  /// Personal copies of a campaign code point at their library code.
+  parentId           String?
+  parent             PromoCode?  @relation("PromoCopies", fields: [parentId], references: [id])
+  copies             PromoCode[] @relation("PromoCopies")
+  // Campaign landing page (/offer/CODE)
+  landingEnabled     Boolean     @default(false)
+  landingAudience    PartyType   @default(CLINIC)
+  landingHeadline    String?
+  landingDescription String?
+  landingVisits      Int         @default(0)
+  /// [{subject, intro}] per follow-up email; blanks fall back to the standard copy.
+  dripCustom         Json?
+  createdById        String?
+  createdAt          DateTime    @default(now()) @db.Timestamptz(3)
+
+  shifts      Shift[]
+  redemptions PromoRedemption[]
+
+  @@index([parentId])
+}
+
+model PromoRedemption {
+  id            String    @id @default(cuid())
+  promoCodeId   String
+  promoCode     PromoCode @relation(fields: [promoCodeId], references: [id])
+  clinicOrgId   String
+  clinicOrg     ClinicOrg @relation(fields: [clinicOrgId], references: [id])
+  shiftId       String    @unique
+  discountCents Int
+  /// Cleared if the shift is cancelled/refunded before completion.
+  voidedAt      DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([promoCodeId])
+  @@index([clinicOrgId])
+}
+
+// ============================ leads & analytics ============================
+
+enum LeadStatus {
+  NEW
+  NURTURING
+  CONTACTED
+  CONVERTED
+  UNSUBSCRIBED
+  EXPIRED
+  SUPERSEDED
+  LOST
+}
+
+model Lead {
+  id               String         @id @default(cuid())
+  audience         PartyType      @default(CLINIC)
+  name             String
+  email            String         @db.Citext
+  phone            String?
+  organization     String?
+  state            String?        @db.Char(2)
+  message          String?
+  /// popup | landing | contact | manual | signup-abandon
+  source           String
+  campaignCode     String         @default("")
+  promoCode        String?
+  status           LeadStatus     @default(NEW)
+  dripStep         Int            @default(0)
+  lastDripSentAt   DateTime?      @db.Timestamptz(3)
+  nextDripAt       DateTime?      @db.Timestamptz(3)
+  unsubscribeToken String         @unique
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  landingPath      String?
+  convertedAt      DateTime?      @db.Timestamptz(3)
+  convertedUserId  String?
+  /// First confirmed shift after converting (clinic leads), for campaign revenue.
+  convertedShiftId String?
+  ownerId          String?
+  followUpAt       DateTime?      @db.Timestamptz(3)
+  unsubscribedAt   DateTime?      @db.Timestamptz(3)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(3)
+  activities       LeadActivity[]
+
+  @@unique([email, campaignCode])
+  @@index([status, nextDripAt])
+  @@index([createdAt])
+}
+
+model LeadActivity {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  /// NOTE | EMAIL_SENT | STATUS | CALL | SIGNUP | CONVERTED
+  kind      String
+  body      String
+  actorId   String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([leadId, createdAt])
+}
+
+/// First-party, cookieless-ish analytics: an anonymous visitor id in a
+/// first-party cookie, no IP address stored.
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  /// PAGE_VIEW | CTA_CLICK | LEAD_CAPTURED | SIGNUP | SHIFT_POSTED | ...
+  type        String
+  path        String?
+  referrer    String?
+  visitorId   String?
+  userId      String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  props       Json?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([type, createdAt])
+  @@index([createdAt])
+}
+
+// ============================ platform ============================
+
+model Setting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   String
+  template  String
+  title     String
+  body      String?
+  link      String?
+  payload   Json      @default("{}")
+  sentAt    DateTime? @db.Timestamptz(3)
+  readAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, readAt])
+}
+
+model AdminTask {
+  id           String    @id @default(cuid())
+  /// UNMAPPED_ZIP3 | LOW_RATING | LICENSE_LAPSED | REVERIFY | DISPUTE | FLAGGED_MESSAGES | LATE_CANCELS
+  kind         String
+  title        String
+  entityType   String?
+  entityId     String?
+  resolvedAt   DateTime? @db.Timestamptz(3)
+  resolvedById String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([resolvedAt, createdAt])
+}
