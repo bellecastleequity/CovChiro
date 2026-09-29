@@ -6,7 +6,11 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 ROOT=$(pwd)
 OUT=$ROOT/dist/cpanel
-APP=$OUT/coverageoncall
+# Named like the domain, matching the usual cPanel convention. The domain's
+# document root is pointed at $APP/public (empty), so the app's own files are
+# never served as downloads; uploads live in $APP/uploads, also not public.
+APP_DIR=${APP_DIR:-coverageoncall.com}
+APP=$OUT/$APP_DIR
 
 if [[ "$(uname -sm)" != "Linux x86_64" ]]; then
   echo "Build on Linux x86_64 so native modules match the cPanel server (use WSL, a Linux VM, or CI)." >&2
@@ -38,6 +42,10 @@ if [[ -n "$(find "$APP" -type l -print -quit)" ]]; then echo "symlinks left in p
 mkdir -p "$APP/apps/web/.next"
 cp -r apps/web/.next/static "$APP/apps/web/.next/static"
 [[ -d apps/web/public ]] && mkdir -p "$APP/apps/web/public" && cp -r apps/web/public/. "$APP/apps/web/public/"
+mkdir -p "$APP/public" "$APP/uploads"
+# Belt and braces: even if uploads/ ever ends up web-reachable, deny it.
+# (Both syntaxes: Namecheap runs LiteSpeed, which honours either form.)
+printf '<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n' > "$APP/uploads/.htaccess"
 # cPanel's Node.js screen expects a package.json in the application root.
 cat > "$APP/package.json" <<'JSON'
 { "name": "coverageoncall", "private": true, "scripts": { "start": "node apps/web/server.js" } }
@@ -71,7 +79,7 @@ cp deploy/cpanel/env.template "$OUT/environment-variables.txt"
 # Same content in three parts under 30 MB each (for size-limited transfers).
 # Each extracts into the same folder; extracting all three = the full package.
 (cd "$OUT" && rm -f ../coverageoncall-cpanel-part*.zip \
-  && zip -qr -9 ../coverageoncall-cpanel-part1.zip . -x "coverageoncall/node_modules/@prisma/*" "coverageoncall/node_modules/.prisma/*" \
-  && zip -qr -9 ../coverageoncall-cpanel-part2.zip coverageoncall/node_modules/@prisma \
-  && zip -qr -9 ../coverageoncall-cpanel-part3.zip coverageoncall/node_modules/.prisma)
+  && zip -qr -9 ../coverageoncall-cpanel-part1.zip . -x "$APP_DIR/node_modules/@prisma/*" "$APP_DIR/node_modules/.prisma/*" \
+  && zip -qr -9 ../coverageoncall-cpanel-part2.zip "$APP_DIR/node_modules/@prisma" \
+  && zip -qr -9 ../coverageoncall-cpanel-part3.zip "$APP_DIR/node_modules/.prisma")
 echo "Built dist/coverageoncall-cpanel.zip ($(du -h dist/coverageoncall-cpanel.zip | cut -f1), $(find "$APP" -type f | wc -l) files)"

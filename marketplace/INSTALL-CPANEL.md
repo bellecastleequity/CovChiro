@@ -9,7 +9,7 @@ This guide installs CoverageOnCall on a Namecheap shared hosting plan through cP
 | Website | cPanel → **Setup Node.js App** | Namecheap's cPanel runs Node.js apps. |
 | Database | **Neon** (hosted Postgres) | See below. |
 | Background jobs | cPanel → **Cron Jobs**, once a minute | See below. |
-| Uploaded files | Your cPanel home folder | Licences, insurance certificates and photos stay on your hosting account. |
+| Uploaded files | `coverageoncall.com/uploads` on your hosting | Licences, insurance certificates and photos stay on your hosting account, in a folder the web can't reach. |
 | Domain and SSL | Namecheap DNS + cPanel AutoSSL | As usual. |
 
 **Why the database isn't on cPanel.** The app needs Postgres 16 with the **PostGIS**, **btree_gist** and **citext** extensions:
@@ -39,13 +39,16 @@ Namecheap's shared Postgres can't enable these, so the database goes on Neon (ht
 You need `coverageoncall-cpanel.zip`. It contains:
 
 ```
-coverageoncall/              ← the app (upload this to cPanel)
-database-setup.sql           ← paste into Neon once
+coverageoncall.com/          ← the app (goes in your home folder, like your other sites)
+  apps/  node_modules/  package.json
+  public/                    ← empty; becomes the domain's web folder (Step 3)
+  uploads/                   ← uploaded documents; never web-reachable
+database-setup.sql           ← paste into Neon once, then delete
 environment-variables.txt    ← the settings to enter in cPanel
 INSTALL-CPANEL.md            ← this guide
 ```
 
-If you received it as **three parts** (`coverageoncall-cpanel-part1.zip`, `-part2.zip` and `-part3.zip`), treat them as one package. In Step 3, upload all three to the same folder and **Extract each one there**. They fill in the same `coverageoncall` folder, and the site needs all three.
+If you received it as **three parts** (`coverageoncall-cpanel-part1.zip`, `-part2.zip` and `-part3.zip`), treat them as one package. In Step 3, upload all three to the same folder and **Extract each one there**. They fill in the same `coverageoncall.com` folder, and the site needs all three.
 
 To build the zip yourself, run `bash deploy/cpanel/build.sh` from the `marketplace` folder on a Linux x86-64 machine (or WSL on Windows). The output is `dist/coverageoncall-cpanel.zip`. It must be built on Linux x86-64 so the compiled parts match Namecheap's servers.
 
@@ -65,11 +68,17 @@ To build the zip yourself, run `bash deploy/cpanel/build.sh` from the `marketpla
 
 **Neon cost:** the cron job wakes the database every minute, so it effectively runs 24/7. That may exceed Neon's free allowance. Budget for its entry paid plan and check current prices at https://neon.tech/pricing.
 
-## Step 3 — Upload the app
+## Step 3 — Upload the app and point the domain at its `public` folder
 
-1. cPanel → **File Manager**. Go to your **home folder**, the one that *contains* `public_html`, not `public_html` itself.
-2. **Upload** `coverageoncall-cpanel.zip`, right-click it, and choose **Extract**. You'll now have a `coverageoncall` folder in your home folder.
-3. Create an empty folder called `coverageoncall-uploads` in the same place. Uploaded documents go here, outside the public web folder.
+On cPanel, the folder a domain points at (its **document root**) is public: anything in it can be downloaded by URL. That's how PHP sites work, but this app's program files must not be downloadable. So the app lives in `coverageoncall.com/`, and the domain points only at the empty `coverageoncall.com/public/` inside it. The app answers every web request itself.
+
+1. **Upload:** cPanel → **File Manager** → your **home folder** (the one that *contains* `public_html`). Upload the zip file(s) there, then right-click each one and choose **Extract**.
+2. **Check the layout:** you should now have `coverageoncall.com/` containing `apps`, `node_modules`, `package.json`, `public` and `uploads`.
+   - If you'd already extracted into `coverageoncall.com` by hand, make sure those items sit **directly** inside it, not in a nested `coverageoncall/` or `coverageoncall.com/coverageoncall.com/` folder.
+   - `database-setup.sql`, `environment-variables.txt` and `INSTALL-CPANEL.md` should be **outside** the `coverageoncall.com` folder. If they ended up inside it, move them out or delete them once you've used them.
+3. **Point the domain at `public`:** cPanel → **Domains** → next to `coverageoncall.com`, click **Manage**. Set **Document Root** to `coverageoncall.com/public` and save.
+   - If `coverageoncall.com` isn't added yet, click **Create A New Domain**, enter `coverageoncall.com`, untick "Share document root", and enter `coverageoncall.com/public` as the document root.
+   - If your cPanel won't let you change the document root, ask Namecheap support to set it, or use a folder name that isn't the domain's web folder (for example `coverageoncall-app`) as the application root in Step 5.
 
 ## Step 4 — Make three random secrets
 
@@ -88,7 +97,7 @@ cPanel → **Setup Node.js App** → **Create Application**:
 |---|---|
 | Node.js version | **22.x** (or the highest version ≥ 20.9) |
 | Application mode | **Production** |
-| Application root | `coverageoncall` |
+| Application root | `coverageoncall.com` (the app folder, not `coverageoncall.com/public`) |
 | Application URL | `coverageoncall.com`. The domain must already be added in cPanel, as an addon domain or the main domain. |
 | Application startup file | `apps/web/server.js` |
 
@@ -96,10 +105,12 @@ Scroll to **Environment variables** and add each line from `environment-variable
 
 - **Database:** set `DATABASE_URL` to the Neon string from Step 2.
 - **Secrets:** use the three values from Step 4.
-- **Uploads:** set `UPLOAD_DIR` to `/home/YOUR_CPANEL_USERNAME/coverageoncall-uploads`. Your username is shown in cPanel's right-hand sidebar.
+- **Uploads:** set `UPLOAD_DIR` to `/home/YOUR_CPANEL_USERNAME/coverageoncall.com/uploads`. Your username is shown in cPanel's right-hand sidebar.
 - **Service keys:** add your Stripe, SendGrid, Google Maps and Dropbox Sign keys.
 
 Click **Create**, then **Start App**.
+
+- **Check the document root is private:** visit `https://coverageoncall.com/package.json`. You should get the site's "page not found" page, not a file download. If the file downloads, the document root is still pointing at the app folder; go back to Step 3.3.
 
 - **You don't need "Run NPM Install".** The package already contains everything.
 - **If the app won't start:** the site refuses to start when a required key is missing, and the log names the missing one. Open the app's log file, whose path is shown in the Node.js App screen (look for `stderr.log` or the "Passenger log file" field), add the missing variable, and click **Restart**.
@@ -176,10 +187,10 @@ If coveragechiropractor.com is on the same cPanel:
 ## Updating to a new version
 
 1. **Stop the app:** Setup Node.js App → **Stop App**.
-2. **Upload the new code:** in File Manager, rename `coverageoncall` to `coverageoncall-old`. Upload and extract the new zip.
+2. **Upload the new code:** in File Manager, move `coverageoncall.com/uploads` somewhere safe (for example to your home folder as `uploads-keep`), then rename `coverageoncall.com` to `coverageoncall.com-old`. Upload and extract the new zip in your home folder, delete the new, empty `coverageoncall.com/uploads`, and move `uploads-keep` back in its place as `coverageoncall.com/uploads`. The document root setting stays as it is.
 3. **Update the database, if needed:** if the release includes an `update-*.sql` file, run it in Neon's SQL Editor.
 4. **Start the app:** **Start App**, then check the site. Your environment variables are kept, because they're stored with the app settings, not in the folder.
-5. **Clean up:** once the site is working, delete `coverageoncall-old`.
+5. **Clean up:** once the site is working, delete `coverageoncall.com-old`.
 
 ## Troubleshooting
 
