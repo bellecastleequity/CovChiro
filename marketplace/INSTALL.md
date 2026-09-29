@@ -248,15 +248,17 @@ Add the DNS records it prints at your domain registrar. The HTTPS certificate is
 
 ### B10. Point the outside services at the site
 
-- **Stripe:** Developers → Webhooks → add `https://coverageoncall.com/api/webhooks/stripe`. Select these events:
-  - `payment_intent.*`
-  - `charge.refunded`
-  - `charge.dispute.*`
-  - `account.updated`
-  - `transfer.*`
-  - `setup_intent.succeeded`
+- **Stripe:**
+  Create **two destinations** in Stripe → Developers → Webhooks → **Add destination**, both pointing at the same URL, `https://coverageoncall.com/api/webhooks/stripe`:
 
-  Copy the signing secret into the `cm-STRIPE_WEBHOOK_SECRET` secret, then redeploy `cm-web`.
+  | Destination | Event destination scope | Events to select |
+  |---|---|---|
+  | 1 | **Your account** | `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.processing`, `checkout.session.completed`, `transfer.reversed` |
+  | 2 | **Connected accounts** | `account.updated` (providers' payout accounts becoming ready, or being restricted, after Stripe verifies them) |
+
+  For each one: keep the default API version, click **Continue**, choose **Webhook endpoint**, and paste the URL. Then open the destination and reveal its **Signing secret** (`whsec_…`).
+  - Put **both** secrets into `STRIPE_WEBHOOK_SECRET`, separated by a comma: `whsec_AAA,whsec_BBB`.
+  - Store that comma-separated value in the `cm-STRIPE_WEBHOOK_SECRET` secret, then redeploy `cm-web`.
 - **Twilio:** Messaging Service → Integration → incoming messages webhook: `https://coverageoncall.com/api/webhooks/twilio`.
 - **Dropbox Sign:** API → callback URL: `https://coverageoncall.com/api/webhooks/esign`.
 

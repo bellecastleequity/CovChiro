@@ -117,9 +117,24 @@ class StripePayments implements PaymentsProvider {
     );
     return { id: t.id };
   }
+  /**
+   * STRIPE_WEBHOOK_SECRET may hold several comma-separated signing secrets:
+   * Stripe gives the "Your account" destination (payments, checkout,
+   * transfers) and the "Connected accounts" destination (providers'
+   * account.updated) separate secrets, both pointed at the same URL.
+   */
   parseWebhook(rawBody: string, signature: string | null) {
-    if (!this.webhookSecret || !signature) throw new Error("Webhook signature missing");
-    return this.s.webhooks.constructEvent(rawBody, signature, this.webhookSecret);
+    const secrets = (this.webhookSecret ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (!secrets.length || !signature) throw new Error("Webhook signature missing");
+    let lastError: unknown;
+    for (const secret of secrets) {
+      try {
+        return this.s.webhooks.constructEvent(rawBody, signature, secret);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError;
   }
 }
 

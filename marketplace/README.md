@@ -102,7 +102,7 @@ Target: Cloud Run (web + worker), Cloud SQL Postgres 16 with PostGIS, Memorystor
 4. **Web service.** Port 8080, min instances 1. Add the Cloud SQL connector and the VPC connector for Redis. Set every variable in `.env.example`, with `NODE_ENV=production` and `APP_BASE_URL=https://coverageoncall.com`.
 5. **Worker service.** Same environment. Set min instances to 1, max instances to 1 or more (BullMQ runs each tick once across replicas), and **CPU always allocated**. The service answers health checks on `$PORT`.
 6. **Webhooks.**
-   - Stripe: `https://<domain>/api/webhooks/stripe`, subscribed to payment_intent.*, charge.refunded, charge.dispute.*, account.updated, transfer.* and setup_intent.succeeded.
+   - Stripe: two destinations at `https://<domain>/api/webhooks/stripe`. The "Your account" destination takes `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.processing`, `checkout.session.completed` and `transfer.reversed`. The "Connected accounts" destination takes `account.updated`. Set `STRIPE_WEBHOOK_SECRET` to both signing secrets, comma-separated.
    - Dropbox Sign: `/api/webhooks/esign`.
    - Twilio inbound SMS: `/api/webhooks/twilio`. The signature is verified, and this route handles dispatch reply codes and STOP.
 7. **Domain.** Map `coverageoncall.com` and `www` to the web service.
