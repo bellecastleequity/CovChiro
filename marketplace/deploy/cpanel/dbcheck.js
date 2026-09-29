@@ -7,6 +7,17 @@ function done(msg) {
   process.exit(0);
 }
 
+// CloudLinux caps each process at 4 GB of address space; Node's built-in
+// fetch/WebSocket (undici) reserves more than that for WebAssembly unless
+// started with --disable-wasm-trap-handler.
+for (const ev of ["uncaughtException", "unhandledRejection"]) {
+  process.on(ev, (e) => {
+    const m = String(e && e.message ? e.message : e);
+    if (/Wasm memory|WebAssembly/i.test(m)) done("MEMORY LIMIT: add the environment variable NODE_OPTIONS = --disable-wasm-trap-handler, restart the app, and run dbcheck again.");
+    done(`UNEXPECTED ERROR: ${m.split("\n")[0]}`);
+  });
+}
+
 const raw = process.env.DATABASE_URL;
 if (!raw) done("DATABASE_URL is not set in this app's environment variables.");
 let url;
