@@ -53,6 +53,10 @@ function engineReport(message) {
   }
 }
 
+// glibc gives each thread its own 64 MB malloc arena reservation; on many-core
+// servers the database engine's threads alone exceed CloudLinux's 4 GB cap.
+if (!process.env.MALLOC_ARENA_MAX) console.log("Note: MALLOC_ARENA_MAX is not set. On CloudLinux add the environment variable MALLOC_ARENA_MAX = 2, or the database engine can run out of memory.");
+
 const raw = process.env.DATABASE_URL;
 if (!raw) done("DATABASE_URL is not set in this app's environment variables.");
 let url;
