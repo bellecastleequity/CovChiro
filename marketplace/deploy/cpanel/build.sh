@@ -7,10 +7,15 @@ cd "$(dirname "$0")/../.."
 ROOT=$(pwd)
 OUT=$ROOT/dist/cpanel
 # Named like the domain, matching the usual cPanel convention. The domain's
-# document root is pointed at $APP/public (empty), so the app's own files are
-# never served as downloads; uploads live in $APP/uploads, also not public.
+# document root is pointed at $SITE/public (empty), so the app's own files are
+# never served as downloads; uploads live in $SITE/uploads, also not public.
 APP_DIR=${APP_DIR:-coverageoncall.com}
-APP=$OUT/$APP_DIR
+SITE=$OUT/$APP_DIR
+# CloudLinux's Node.js Selector forbids a node_modules folder inside the
+# application root (it reserves that name for its own symlink). So the code
+# lives in $SITE/app (the application root) and the dependencies one level up
+# in $SITE/node_modules, which Node's module resolution finds by walking up.
+APP=$SITE/app
 
 if [[ "$(uname -sm)" != "Linux x86_64" ]]; then
   echo "Build on Linux x86_64 so native modules match the cPanel server (use WSL, a Linux VM, or CI)." >&2
@@ -26,9 +31,9 @@ rm -rf "$OUT" && mkdir -p "$APP"
 # layout into one flat, real node_modules (no package exists in two versions).
 cp -r apps/web/.next/standalone/apps "$APP/apps"
 rm -rf "$APP/apps/web/node_modules"
-python3 deploy/cpanel/flatten.py apps/web/.next/standalone/node_modules/.pnpm "$APP/node_modules"
+python3 deploy/cpanel/flatten.py apps/web/.next/standalone/node_modules/.pnpm "$SITE/node_modules"
 # Not needed: image optimizer (unused) and musl builds (cPanel hosts are glibc).
-rm -rf "$APP/node_modules/sharp" "$APP/node_modules/@img" "$APP"/node_modules/@node-rs/argon2-linux-x64-musl
+rm -rf "$SITE/node_modules/sharp" "$SITE/node_modules/@img" "$SITE"/node_modules/@node-rs/argon2-linux-x64-musl
 # Turbopack loads server externals through hashed alias symlinks in
 # .next/node_modules; replace each with a stub that re-exports the real package.
 find "$APP/apps/web/.next/node_modules" -type l 2>/dev/null | while read -r link; do
@@ -38,20 +43,21 @@ find "$APP/apps/web/.next/node_modules" -type l 2>/dev/null | while read -r link
   printf '{ "name": "%s", "private": true, "type": "module", "main": "index.js" }\n' "$(basename "$link")" > "$link/package.json"
   printf 'export * from "%s";\nexport { default } from "%s";\n' "$real" "$real" > "$link/index.js"
 done
-if [[ -n "$(find "$APP" -type l -print -quit)" ]]; then echo "symlinks left in package" >&2; exit 1; fi
+if [[ -n "$(find "$SITE" -type l -print -quit)" ]]; then echo "symlinks left in package" >&2; exit 1; fi
 mkdir -p "$APP/apps/web/.next"
 cp -r apps/web/.next/static "$APP/apps/web/.next/static"
 [[ -d apps/web/public ]] && mkdir -p "$APP/apps/web/public" && cp -r apps/web/public/. "$APP/apps/web/public/"
-mkdir -p "$APP/public" "$APP/uploads"
+mkdir -p "$SITE/public" "$SITE/uploads"
 # Belt and braces: even if uploads/ ever ends up web-reachable, deny it.
 # (Both syntaxes: Namecheap runs LiteSpeed, which honours either form.)
-printf '<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n' > "$APP/uploads/.htaccess"
+printf '<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n' > "$SITE/uploads/.htaccess"
 # cPanel's Node.js screen expects a package.json in the application root.
 cat > "$APP/package.json" <<'JSON'
 { "name": "coverageoncall", "private": true, "scripts": { "start": "node apps/web/server.js" } }
 JSON
 # Never ship local env files.
-find "$APP" -maxdepth 3 -name ".env*" -delete
+find "$SITE" -maxdepth 4 -name ".env*" -delete
+if [[ -e "$APP/node_modules" ]]; then echo "app/ must not contain node_modules (CloudLinux)" >&2; exit 1; fi
 
 # One-shot database setup: both migrations + Prisma's migration history (so
 # future `prisma migrate deploy` runs see them as applied), in one transaction.
@@ -82,4 +88,4 @@ cp deploy/cpanel/env.template "$OUT/environment-variables.txt"
   && zip -qr -9 ../coverageoncall-cpanel-part1.zip . -x "$APP_DIR/node_modules/@prisma/*" "$APP_DIR/node_modules/.prisma/*" \
   && zip -qr -9 ../coverageoncall-cpanel-part2.zip "$APP_DIR/node_modules/@prisma" \
   && zip -qr -9 ../coverageoncall-cpanel-part3.zip "$APP_DIR/node_modules/.prisma")
-echo "Built dist/coverageoncall-cpanel.zip ($(du -h dist/coverageoncall-cpanel.zip | cut -f1), $(find "$APP" -type f | wc -l) files)"
+echo "Built dist/coverageoncall-cpanel.zip ($(du -h dist/coverageoncall-cpanel.zip | cut -f1), $(find "$SITE" -type f | wc -l) files)"

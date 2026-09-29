@@ -39,8 +39,9 @@ Namecheap's shared Postgres can't enable these, so the database goes on Neon (ht
 You need `coverageoncall-cpanel.zip`. It contains:
 
 ```
-coverageoncall.com/          ← the app (goes in your home folder, like your other sites)
-  apps/  node_modules/  package.json
+coverageoncall.com/          ← goes in your home folder, like your other sites
+  app/                       ← the application root (apps/, package.json)
+  node_modules/              ← the app's libraries (must stay OUTSIDE app/, see Step 5)
   public/                    ← empty; becomes the domain's web folder (Step 3)
   uploads/                   ← uploaded documents; never web-reachable
 database-setup.sql           ← paste into Neon once, then delete
@@ -73,7 +74,7 @@ To build the zip yourself, run `bash deploy/cpanel/build.sh` from the `marketpla
 On cPanel, the folder a domain points at (its **document root**) is public: anything in it can be downloaded by URL. That's how PHP sites work, but this app's program files must not be downloadable. So the app lives in `coverageoncall.com/`, and the domain points only at the empty `coverageoncall.com/public/` inside it. The app answers every web request itself.
 
 1. **Upload:** cPanel → **File Manager** → your **home folder** (the one that *contains* `public_html`). Upload the zip file(s) there, then right-click each one and choose **Extract**.
-2. **Check the layout:** you should now have `coverageoncall.com/` containing `apps`, `node_modules`, `package.json`, `public` and `uploads`.
+2. **Check the layout:** you should now have `coverageoncall.com/` containing `app`, `node_modules`, `public` and `uploads`.
    - If you'd already extracted into `coverageoncall.com` by hand, make sure those items sit **directly** inside it, not in a nested `coverageoncall/` or `coverageoncall.com/coverageoncall.com/` folder.
    - `database-setup.sql`, `environment-variables.txt` and `INSTALL-CPANEL.md` should be **outside** the `coverageoncall.com` folder. If they ended up inside it, move them out or delete them once you've used them.
 3. **Point the domain at `public`:** cPanel → **Domains** → next to `coverageoncall.com`, click **Manage**. Set **Document Root** to `coverageoncall.com/public` and save.
@@ -97,7 +98,7 @@ cPanel → **Setup Node.js App** → **Create Application**:
 |---|---|
 | Node.js version | **22.x** (or the highest version ≥ 20.9) |
 | Application mode | **Production** |
-| Application root | `coverageoncall.com` (the app folder, not `coverageoncall.com/public`) |
+| Application root | `coverageoncall.com/app` |
 | Application URL | `coverageoncall.com`. The domain must already be added in cPanel, as an addon domain or the main domain. |
 | Application startup file | `apps/web/server.js` |
 
@@ -111,9 +112,11 @@ Scroll to **Environment variables** and add each line from `environment-variable
 
 Click **Create**, then **Start App**.
 
+- **Why `app` and not `coverageoncall.com`:** CloudLinux doesn't allow a `node_modules` folder inside the application root, because it reserves that name for its own link. The app's libraries sit one level up, in `coverageoncall.com/node_modules`, where Node.js still finds them. Never click **Run NPM Install**.
+
 - **Check the document root is private:** visit `https://coverageoncall.com/package.json`. You should get the site's "page not found" page, not a file download. If the file downloads, the document root is still pointing at the app folder; go back to Step 3.3.
 
-- **You don't need "Run NPM Install".** The package already contains everything.
+- **Don't click "Run NPM Install".** The package already contains everything.
 - **If the app won't start:** the site refuses to start when a required key is missing, and the log names the missing one. Open the app's log file, whose path is shown in the Node.js App screen (look for `stderr.log` or the "Passenger log file" field), add the missing variable, and click **Restart**.
 
 ## Step 6 — Turn on HTTPS
