@@ -31,6 +31,16 @@ export interface PaymentsProvider {
   parseWebhook(rawBody: string, signature: string | null): Stripe.Event;
 }
 
+/**
+ * Idempotency key for "create once" calls. Stripe replays a key's first
+ * response for 24h — errors included — so a fixed key would keep returning a
+ * setup error even after the owner fixes the Stripe setting. A 5-minute
+ * window still absorbs double clicks and retries.
+ */
+function onceKey(prefix: string, id: string) {
+  return `${prefix}-${id}-${Math.floor(Date.now() / 300_000)}`;
+}
+
 class StripePayments implements PaymentsProvider {
   name = "stripe" as const;
   private s: Stripe;
@@ -39,7 +49,7 @@ class StripePayments implements PaymentsProvider {
   }
 
   async createCustomer(i: { name: string; email: string; clinicOrgId: string }) {
-    const c = await this.s.customers.create({ name: i.name, email: i.email, metadata: { clinicOrgId: i.clinicOrgId } }, { idempotencyKey: `cust-${i.clinicOrgId}` });
+    const c = await this.s.customers.create({ name: i.name, email: i.email, metadata: { clinicOrgId: i.clinicOrgId } }, { idempotencyKey: onceKey("cust", i.clinicOrgId) });
     return c.id;
   }
   async paymentMethodSetupUrl(i: { customerId: string; clinicOrgId: string; returnUrl: string }) {
@@ -57,7 +67,7 @@ class StripePayments implements PaymentsProvider {
   async createConnectedAccount(i: { email: string; providerId: string }) {
     const a = await this.s.accounts.create(
       { type: "express", country: "US", email: i.email, capabilities: { transfers: { requested: true } }, business_type: "individual", metadata: { providerId: i.providerId } },
-      { idempotencyKey: `acct-${i.providerId}` },
+      { idempotencyKey: onceKey("acct", i.providerId) },
     );
     return a.id;
   }
