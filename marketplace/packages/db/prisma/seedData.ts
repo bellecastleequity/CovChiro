@@ -20,6 +20,8 @@ export const PROFESSIONS = [
   { code: "LMT", displayName: "Massage Therapist", slug: "massage-therapy", credentialSuffix: "LMT", npiRequired: false, pricingModel: "HOURLY", supervision: false, supervising: [], active: false, sortOrder: 6 },
   { code: "LAC", displayName: "Acupuncturist", slug: "acupuncture", credentialSuffix: "L.Ac.", npiRequired: true, pricingModel: "TIERED", supervision: false, supervising: [], active: false, sortOrder: 7 },
   { code: "ATC", displayName: "Athletic Trainer", slug: "athletic-training", credentialSuffix: "ATC", npiRequired: true, pricingModel: "HOURLY", supervision: false, supervising: [], active: false, sortOrder: 8 },
+  // Only NH, NM, ND and OR license sonographers; elsewhere the credential is a national registry (ARDMS/CCI/ARRT).
+  { code: "SONO", displayName: "Ultrasound Sonographer", slug: "ultrasound-sonography", credentialSuffix: "Sonographer", npiRequired: false, pricingModel: "HOURLY", supervision: false, supervising: [], active: false, sortOrder: 9 },
 ] as const;
 
 const SKILLS: Record<string, string[]> = {
@@ -31,6 +33,25 @@ const SKILLS: Record<string, string[]> = {
   LMT: ["Swedish", "Deep Tissue", "Sports Massage", "Myofascial Release", "Neuromuscular", "Prenatal", "Lymphatic Drainage", "Trigger Point"],
   LAC: ["TCM Acupuncture", "Japanese Style", "Auricular", "Cupping", "Gua Sha", "Electro-Acupuncture", "Herbal Consultation"],
   ATC: ["Event Coverage", "Taping/Bracing", "Injury Evaluation", "Return-to-Play"],
+};
+/**
+ * Sonography specialties, each backed by a registry credential, so a provider
+ * uploads the certificate and an admin verifies it before the skill counts.
+ */
+const CERTIFIED_SKILLS: Record<string, string[]> = {
+  SONO: [
+    "Abdomen", // ARDMS RDMS (AB)
+    "OB/GYN", // ARDMS RDMS (OB/GYN)
+    "Breast", // ARDMS RDMS (BR), ARRT (BS)
+    "Pediatric Sonography", // ARDMS RDMS (PS)
+    "Fetal Echocardiography", // ARDMS RDMS/RDCS (FE)
+    "Adult Echocardiography", // ARDMS RDCS (AE), CCI RCS
+    "Pediatric Echocardiography", // ARDMS RDCS (PE)
+    "Congenital Cardiac", // CCI RCCS
+    "Vascular", // ARDMS RVT, CCI RVS, ARRT (VS)
+    "Musculoskeletal", // ARDMS RMSKS
+    "Phlebology/Venous", // CCI RPhS
+  ],
 };
 const CROSS_SKILLS = ["Kinesio Taping", "IASTM/Graston", "Active Release Technique", "Corrective Exercise"];
 /** Scope-sensitive + certification-required. No SkillStateRule is seeded, so they are not allowed anywhere until an admin adds one. */
@@ -67,6 +88,11 @@ export async function seedBase(prisma: PrismaClient) {
   for (const [prof, names] of Object.entries(SKILLS)) {
     for (const name of names) {
       await prisma.skill.upsert({ where: { name_professionCode: { name, professionCode: prof } }, create: { name, professionCode: prof }, update: {} });
+    }
+  }
+  for (const [prof, names] of Object.entries(CERTIFIED_SKILLS)) {
+    for (const name of names) {
+      await prisma.skill.upsert({ where: { name_professionCode: { name, professionCode: prof } }, create: { name, professionCode: prof, requiresCertification: true }, update: {} });
     }
   }
   for (const name of CROSS_SKILLS) {
@@ -129,6 +155,8 @@ export async function seedBase(prisma: PrismaClient) {
         supervisionRequired: isDC ? false : null,
         supervisingProfessionCodes: isDC ? [] : [...p.supervising],
         credentialTitle: p.code === "LAC" ? "A.P." : p.code === "LMT" ? "LMT" : p.credentialSuffix,
+        // Florida has no sonographer license; enabling it waits on the registry-credential decision (A5).
+        ...(p.code === "SONO" ? { licensedAtStateLevel: false, scopeNotes: "Florida does not license sonographers. Registry credentials (ARDMS/CCI/ARRT) are the norm; not enabled until national credentials are accepted." } : {}),
         malpracticeMinOccurrenceCents: M1,
         malpracticeMinAggregateCents: M3,
         ...(isDC

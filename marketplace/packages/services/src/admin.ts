@@ -197,11 +197,16 @@ export async function updateProfessionState(
     if (missing.length) throw new DomainError("VALIDATION", `Checklist incomplete: ${missing.join(", ")}`, { missing });
   }
   const data = { ...patch, ...resolved, ...(patch.enabled === true && !before?.enabled ? { enabledAt: new Date(), enabledById: actor.userId } : {}) };
-  const updated = await prisma.professionStateConfig.upsert({
-    where: { professionCode_state: { professionCode, state } },
-    create: { professionCode, state, ...data },
-    update: data,
-  });
+  // Not an upsert: Postgres checks psc_enable_checklist against the proposed
+  // insert row (all defaults) before it detects the conflict.
+  const updated = before
+    ? await prisma.professionStateConfig.update({ where: { professionCode_state: { professionCode, state } }, data })
+    : await prisma.professionStateConfig.create({ data: { professionCode, state, ...data } });
+  // A profession is "live" (public pages, signup) while any state has it enabled.
+  if (patch.enabled !== undefined && patch.enabled !== before?.enabled) {
+    const live = patch.enabled || (await prisma.professionStateConfig.count({ where: { professionCode, enabled: true } })) > 0;
+    if (live !== profession.active) await prisma.profession.update({ where: { code: professionCode }, data: { active: live } });
+  }
   await audit(prisma, actor, patch.enabled !== undefined && patch.enabled !== before?.enabled ? (patch.enabled ? "profession_state.enabled" : "profession_state.disabled") : "profession_state.updated", "ProfessionStateConfig", `${professionCode}:${state}`, before, updated);
   return updated;
 }

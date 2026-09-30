@@ -87,6 +87,8 @@ SQL=$OUT/database-setup.sql
 
 cp INSTALL-CPANEL.md "$OUT/INSTALL-CPANEL.md"
 cp deploy/cpanel/env.template "$OUT/environment-variables.txt"
+# Data updates for databases set up by an earlier release (each safe to re-run).
+cp deploy/cpanel/updates/update-*.sql "$OUT/"
 
 (cd "$OUT" && rm -f ../coverageoncall-cpanel.zip && zip -qr ../coverageoncall-cpanel.zip .)
 # Same content in three parts under 30 MB each (for size-limited transfers).

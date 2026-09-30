@@ -204,7 +204,7 @@ If coveragechiropractor.com is on the same cPanel:
 
 1. **Stop the app:** Setup Node.js App → **Stop App**.
 2. **Upload the new code:** in File Manager, move `coverageoncall.com/uploads` somewhere safe (for example to your home folder as `uploads-keep`), then rename `coverageoncall.com` to `coverageoncall.com-old`. Upload and extract the new zip in your home folder, delete the new, empty `coverageoncall.com/uploads`, and move `uploads-keep` back in its place as `coverageoncall.com/uploads`. The document root setting stays as it is.
-3. **Update the database, if needed:** if the release includes an `update-*.sql` file, run it in Neon's SQL Editor.
+3. **Update the database, if needed:** run each `update-*.sql` file you haven't run yet, in number order, in Neon's SQL Editor. They're safe to run again if you aren't sure. A brand-new install doesn't need them: `/setup` adds the same data.
 4. **Start the app:** **Start App**, then check the site. Your environment variables are kept, because they're stored with the app settings, not in the folder.
 5. **Clean up:** once the site is working, delete `coverageoncall.com-old`.
 

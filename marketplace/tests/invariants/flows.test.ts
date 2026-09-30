@@ -3,6 +3,7 @@ import { prisma } from "@cm/db";
 import { devOutbox } from "@cm/integrations";
 import {
   addAdjustment,
+  admin as adminSvc,
   applyToShift,
   autoCompleteDue,
   cancelAssignment,
@@ -259,5 +260,17 @@ describe("leads", () => {
     expect(r.code).toBeNull();
     const lead = await prisma.lead.findUniqueOrThrow({ where: { id: r.leadId } });
     expect(lead).toMatchObject({ professionCode: "LMT", state: "FL", status: "NURTURING", audience: "PROVIDER" });
+  });
+
+  it("a profession is live exactly while some state has it enabled", async () => {
+    const live = async () => (await prisma.profession.findUniqueOrThrow({ where: { code: "DC" } })).active;
+    expect(await live()).toBe(true);
+    await adminSvc.updateProfessionState(admin, "DC", "FL", { enabled: false });
+    expect(await live()).toBe(false);
+    await adminSvc.updateProfessionState(admin, "DC", "FL", { enabled: true });
+    expect(await live()).toBe(true);
+    const sono = await prisma.professionStateConfig.findUniqueOrThrow({ where: { professionCode_state: { professionCode: "SONO", state: "FL" } } });
+    expect(sono).toMatchObject({ enabled: false, licensedAtStateLevel: false });
+    expect(await prisma.skill.count({ where: { professionCode: "SONO", requiresCertification: true } })).toBe(11);
   });
 });
