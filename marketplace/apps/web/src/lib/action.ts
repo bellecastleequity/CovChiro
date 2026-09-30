@@ -22,6 +22,12 @@ export function formAction(fn: (fd: FormData) => Promise<string | void | { ok?: 
 export function errorMessage(e: unknown): string {
   if (e instanceof DomainError) return e.message;
   if (e instanceof ZodError) return e.issues[0]?.message ?? "Please check the form.";
+  // Stripe setup problems (e.g. Connect settings not finished) are only fixable by the owner, so say what Stripe said.
+  const se = e as { type?: unknown; message?: unknown };
+  if (typeof se?.type === "string" && se.type.startsWith("Stripe") && typeof se.message === "string") {
+    console.error(e);
+    return `Stripe said: ${se.message}`;
+  }
   console.error(e);
   return "Something went wrong. Please try again.";
 }

@@ -9,7 +9,7 @@ import { Input, Select } from "@/components/ui/form";
 import { PageHeader, Stat } from "@/components/ui/misc";
 import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { providerStatusAction } from "../../actions";
+import { approveProviderAction, providerStatusAction } from "../../actions";
 
 export default async function AdminProvider({ params }: { params: Promise<{ id: string }> }) {
   await requireActor("admin");
@@ -17,6 +17,20 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
   const p = await prisma.provider.findUnique({ where: { id }, include: { user: true, licenses: true, malpractice: true, professions: true, stats: true, assignments: { include: { shift: { include: { location: { include: { clinicOrg: true } } } } }, orderBy: { startsAt: "desc" }, take: 20 } } });
   if (!p) notFound();
   const [e, checklist] = await Promise.all([earningsFor(id), providerChecklist(id)]);
+  const c = checklist.common;
+  // [label, done, still required for matching even after approval]
+  const steps: [string, boolean, boolean][] = [
+    ["Email confirmed", c.emailVerified, false],
+    ["Profile, phone & home base", c.profile && c.homeBase, false],
+    ["Profile photo", c.photo, false],
+    ["NPI", c.npi, false],
+    ["Provider Agreement signed", c.agreement, false],
+    ...checklist.perProfession.flatMap((x): [string, boolean, boolean][] => [
+      [`${x.displayName}: verified license`, x.license, true],
+      [`${x.displayName}: verified malpractice`, x.malpractice, true],
+    ]),
+    ["Stripe payouts", c.payouts, true],
+  ];
   return (
     <>
       <PageHeader title={p.displayName} description={`${p.legalName} · ${p.user.email} · ${p.user.phone ?? "no phone"} · home ${p.homeCity ?? "?"}, ${p.homeState ?? "?"}`} actions={<StatusBadge status={p.status} />} />
@@ -44,6 +58,32 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
             </CardBody>
           </Card>
         </div>
+        <div className="space-y-6">
+        <Card>
+          <CardHeader title="Onboarding" description={p.adminApprovedAt ? `Approved by admin ${dateLabel(p.adminApprovedAt)}` : "Approve to skip the remaining profile steps."} />
+          <CardBody className="space-y-3 text-sm">
+            <ul className="space-y-1">
+              {steps.map(([label, done, hard]) => (
+                <li key={label} className={done ? "text-slate-400 line-through" : hard ? "font-medium text-amber-800" : "text-slate-700"}>
+                  {done ? "✓" : "○"} {label}{!done && hard ? " (still required for shifts)" : ""}
+                </li>
+              ))}
+            </ul>
+            {p.adminApprovedAt ? (
+              <ActionForm action={approveProviderAction} confirm="Remove the admin approval?">
+                <input type="hidden" name="providerId" value={p.id} />
+                <input type="hidden" name="approve" value="no" />
+                <SubmitButton size="sm" variant="outline">Remove approval</SubmitButton>
+              </ActionForm>
+            ) : (
+              <ActionForm action={approveProviderAction} confirm="Approve this provider now? Their dashboard will still show unfinished steps.">
+                <input type="hidden" name="providerId" value={p.id} />
+                <SubmitButton size="sm">Approve now</SubmitButton>
+              </ActionForm>
+            )}
+            <p className="text-xs text-slate-500">Approval skips profile, photo, email, NPI and agreement steps. A verified license and malpractice (licensing rules) and Stripe payouts are still needed before they're matched to shifts.</p>
+          </CardBody>
+        </Card>
         <Card>
           <CardHeader title="Account status" />
           <CardBody>
@@ -58,6 +98,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
             <Link href={`/admin/providers/${p.id}/profile`} className="mt-2 block text-sm font-medium text-brand-700">Public profile & badges →</Link>
           </CardBody>
         </Card>
+        </div>
       </div>
     </>
   );

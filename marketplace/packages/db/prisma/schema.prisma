@@ -192,6 +192,11 @@ model Provider {
   xrayComfort          Boolean                                @default(false)
   /// Has treated personal-injury (auto accident / PI) patients. null = not answered yet.
   personalInjuryExperience Boolean?
+  /// Admin pushed this provider through onboarding: the profile, photo, email,
+  /// NPI and agreement steps no longer block activation. Credentials (INV-1/3)
+  /// and payouts are still required by matching.
+  adminApprovedAt          DateTime?                @db.Timestamptz(3)
+  adminApprovedById        String?
   maxPatientsPerDay    Int?
   stripeAccountId      String?                                @unique
   stripePayoutsEnabled Boolean                                @default(false)
@@ -406,6 +411,9 @@ model ClinicOrg {
   threads          MessageThread[]
   promoRedemptions PromoRedemption[]
   payments         Payment[]
+  /// Admin pushed this clinic through onboarding (location / agreement steps waived; a payment method is still needed to post).
+  adminApprovedAt    DateTime? @db.Timestamptz(3)
+  adminApprovedById  String?
 }
 
 model ClinicMember {

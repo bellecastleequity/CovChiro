@@ -8,13 +8,21 @@ import { Input, Select } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/misc";
 import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { clinicStatusAction } from "../../actions";
+import { approveClinicAction, clinicStatusAction } from "../../actions";
 
 export default async function AdminClinic({ params }: { params: Promise<{ id: string }> }) {
   await requireActor("admin");
   const { id } = await params;
   const c = await prisma.clinicOrg.findUnique({ where: { id }, include: { locations: true, members: { include: { user: true } }, payments: { orderBy: { createdAt: "desc" }, take: 20 } } });
   if (!c) notFound();
+  const owner = c.members.find((m) => m.role === "CLINIC_OWNER")?.user;
+  // [label, done, still required to post even after approval]
+  const steps: [string, boolean, boolean][] = [
+    ["Owner email confirmed", !!owner?.emailVerifiedAt, false],
+    ["Clinic location added", c.locations.some((l) => l.active), false],
+    ["Clinic Agreement signed", !!c.agreementSignedAt, false],
+    ["Payment method on file", c.hasPaymentMethod, true],
+  ];
   const shifts = await prisma.shift.findMany({ where: { location: { clinicOrgId: id } }, orderBy: { startsAt: "desc" }, take: 20 });
   return (
     <>
@@ -27,6 +35,25 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
         </div>
         <div className="space-y-6">
           <Card><CardHeader title="Team" /><CardBody className="space-y-1 text-sm">{c.members.map((m) => <div key={m.id}>{m.user.name} · {m.user.email} · {m.role === "CLINIC_OWNER" ? "owner" : "staff"}</div>)}</CardBody></Card>
+          <Card>
+            <CardHeader title="Onboarding" description={c.adminApprovedAt ? `Approved by admin ${dateLabel(c.adminApprovedAt)}` : "Approve to skip the remaining setup steps."} />
+            <CardBody className="space-y-3 text-sm">
+              <ul className="space-y-1">
+                {steps.map(([label, done, hard]) => (
+                  <li key={label} className={done ? "text-slate-400 line-through" : hard ? "font-medium text-amber-800" : "text-slate-700"}>
+                    {done ? "✓" : "○"} {label}{!done && hard ? " (still required to post)" : ""}
+                  </li>
+                ))}
+              </ul>
+              {c.adminApprovedAt ? null : (
+                <ActionForm action={approveClinicAction} confirm="Approve this clinic now? Their dashboard will still show unfinished steps.">
+                  <input type="hidden" name="clinicOrgId" value={c.id} />
+                  <SubmitButton size="sm">Approve now</SubmitButton>
+                </ActionForm>
+              )}
+              <p className="text-xs text-slate-500">Approval activates the clinic and skips the email, location and agreement steps. A payment method is still needed to post, because posting takes a deposit — and each shift needs a location.</p>
+            </CardBody>
+          </Card>
           <Card>
             <CardHeader title="Status" />
             <CardBody>

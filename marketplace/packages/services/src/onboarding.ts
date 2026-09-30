@@ -4,7 +4,7 @@ import { DomainError, licensedPairs, NATIONAL_CREDENTIAL, normalizeLinkedIn, US_
 import { prisma } from "@cm/db";
 import { esignProvider, GeoServiceError, geoProvider, lookupNpi, paymentsProvider, testSigningEnabled } from "@cm/integrations";
 import { audit, requireClinic, requireProvider, SYSTEM, type Actor } from "./context";
-import { absoluteUrl, sendEmail } from "./notify";
+import { absoluteUrl, notify, sendEmail } from "./notify";
 import { activateClinicIfReady } from "./payments";
 import { resolveRateRegion } from "./pricing";
 import { hashPassword } from "./auth";
@@ -64,23 +64,46 @@ export async function providerChecklist(providerId: string) {
   return { common, perProfession };
 }
 
-/** "Profile complete" is evaluated per profession (Addendum 01 §4). */
+/**
+ * "Profile complete" is evaluated per profession (Addendum 01 §4). An admin
+ * approval waives the profile-type steps; it never waives credentials —
+ * matching still requires a verified license and malpractice (INV-1, INV-3)
+ * and Stripe payouts (F3), which is also when the "ready" email goes out.
+ */
 export async function recomputeProviderStatus(providerId: string) {
   const { common, perProfession } = await providerChecklist(providerId);
-  const base = common.profile && common.photo && common.homeBase && common.emailVerified && common.payouts && common.agreement;
-  const provider = await prisma.provider.findUniqueOrThrow({ where: { id: providerId } });
+  const provider = await prisma.provider.findUniqueOrThrow({ where: { id: providerId }, include: { user: true } });
+  const approved = !!provider.adminApprovedAt;
+  const base = approved || (common.profile && common.photo && common.homeBase && common.emailVerified && common.payouts && common.agreement);
   let anyActive = false;
   for (const pp of perProfession) {
-    const ready = base && pp.license && pp.malpractice && pp.npi;
+    const ready = approved || (base && pp.license && pp.malpractice && pp.npi);
     if (ready) anyActive = true;
     if (ready && pp.status === "ONBOARDING") {
       await prisma.providerProfession.update({ where: { providerId_professionCode: { providerId, professionCode: pp.professionCode } }, data: { status: "ACTIVE", profileCompleteAt: new Date() } });
+      pp.status = "ACTIVE";
     }
   }
+  let status = provider.status;
   if (anyActive && provider.status === "ONBOARDING") {
     await prisma.provider.update({ where: { id: providerId }, data: { status: "ACTIVE", profileCompleteAt: new Date() } });
     await audit(prisma, SYSTEM, "provider.activated", "Provider", providerId, { status: "ONBOARDING" }, { status: "ACTIVE" });
     await onLeadConverted([provider.userId], null);
+    status = "ACTIVE";
+  }
+  // "You can start taking shifts": once per profession, only when matching would actually accept them.
+  if (status !== "ACTIVE" || !common.payouts) return;
+  for (const pp of perProfession) {
+    if (pp.status !== "ACTIVE" || !pp.license || !pp.malpractice) continue;
+    const claimed = await prisma.digestSend.createMany({ data: [{ key: `ready:${providerId}:${pp.professionCode}`, userId: provider.userId }], skipDuplicates: true });
+    if (!claimed.count) continue;
+    await notify(prisma, provider.userId, {
+      template: "provider_ready",
+      title: `You're all set to take ${pp.displayName} shifts`,
+      body: `Your onboarding is complete. You'll now see ${pp.displayName.toLowerCase()} shifts you qualify for and can receive offers.`,
+      link: "/provider/shifts",
+      ctaLabel: "Find shifts",
+    });
   }
 }
 

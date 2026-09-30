@@ -116,6 +116,9 @@ export async function resendVerificationEmail(userId: string) {
 export async function verifyEmail(token: string) {
   const userId = await consumeToken(token, "EMAIL_VERIFY");
   await prisma.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date() } });
+  // Email may have been a provider's last onboarding step.
+  const provider = await prisma.provider.findUnique({ where: { userId }, select: { id: true } });
+  if (provider) await (await import("./onboarding")).recomputeProviderStatus(provider.id);
   return userId;
 }
 

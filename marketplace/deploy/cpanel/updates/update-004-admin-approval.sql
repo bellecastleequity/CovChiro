@@ -1,0 +1,4 @@
+-- Lets an admin approve a provider or clinic at any stage of onboarding.
+-- Run AFTER update-003. Safe to run more than once.
+-- Run in Neon: SQL Editor → paste → Run.
+-- @migration 0005_admin_approval

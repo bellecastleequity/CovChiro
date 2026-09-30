@@ -39,13 +39,17 @@ export async function reviewLicense(actor: Actor, licenseId: string, input: { ap
   await audit(prisma, actor, input.approve ? "license.verified" : "license.rejected", "License", licenseId, { status: l.status }, { status: updated.status, expiresAt, reason: input.reason });
   await prisma.adminTask.updateMany({ where: { kind: "REVERIFY", entityId: licenseId, resolvedAt: null }, data: { resolvedAt: now, resolvedById: actor.userId } });
   await recomputeProviderStatus(l.providerId);
+  const profession = await prisma.profession.findUnique({ where: { code: l.professionCode } });
+  const credName =
+    l.state === NATIONAL_CREDENTIAL
+      ? `${profession?.displayName ?? l.professionCode} national registry credential`
+      : `${US_STATES[l.state] ?? l.state} ${(profession?.displayName ?? l.professionCode).toLowerCase()} license`;
+  const providerReady = (await prisma.digestSend.count({ where: { key: { startsWith: `ready:${l.providerId}:` } } })) > 0;
   await notify(prisma, l.provider.userId, {
     template: input.approve ? "license_verified" : "license_rejected",
-    title: input.approve ? `Your ${l.professionCode} license in ${l.state} is verified` : `We couldn't verify your ${l.professionCode} license in ${l.state}`,
+    title: input.approve ? `Your ${credName} is verified` : `We couldn't verify your ${credName}`,
     body: input.approve
-      ? l.state === NATIONAL_CREDENTIAL
-        ? `Your national registry credential is verified. You can take ${l.professionCode} shifts in states that accept it instead of a state license.`
-        : `You can now take ${l.professionCode} shifts in ${US_STATES[l.state] ?? l.state}.`
+      ? `We've confirmed it's active and marked it verified on your profile.${providerReady ? "" : " Finish the remaining setup steps on your dashboard and we'll let you know when you can start taking shifts."}`
       : (input.reason ?? "Please check the details and resubmit."),
     link: "/provider/credentials",
   });
@@ -63,7 +67,7 @@ export async function reviewMalpractice(actor: Actor, id: string, input: { appro
   await notify(prisma, m.provider.userId, {
     template: "malpractice_reviewed",
     title: input.approve ? "Your malpractice policy is verified" : "We couldn't verify your malpractice policy",
-    body: input.approve ? "Thanks — you're covered for the professions listed on the policy." : (input.reason ?? "Please upload a current certificate of insurance."),
+    body: input.approve ? "We've marked it verified on your profile for the professions listed on the policy." : (input.reason ?? "Please upload a current certificate of insurance."),
     link: "/provider/credentials",
   });
 }
@@ -333,6 +337,28 @@ export async function setProviderStatus(actor: Actor, providerId: string, status
   const p = await prisma.provider.findUniqueOrThrow({ where: { id: providerId } });
   await prisma.provider.update({ where: { id: providerId }, data: { status, ...(note ? { adminNotes: [p.adminNotes, `${new Date().toISOString().slice(0, 10)}: ${note}`].filter(Boolean).join("\n") } : {}) } });
   await audit(prisma, actor, "provider.status", "Provider", providerId, { status: p.status }, { status, note });
+}
+
+/**
+ * Push a provider through onboarding now. Their dashboard still lists any
+ * unfinished steps; matching still requires verified credentials and payouts.
+ */
+export async function approveProvider(actor: Actor, providerId: string, approve = true) {
+  requireAdmin(actor);
+  const p = await prisma.provider.findUniqueOrThrow({ where: { id: providerId } });
+  await prisma.provider.update({ where: { id: providerId }, data: approve ? { adminApprovedAt: new Date(), adminApprovedById: actor.userId } : { adminApprovedAt: null, adminApprovedById: null } });
+  await audit(prisma, actor, approve ? "provider.admin_approved" : "provider.admin_approval_removed", "Provider", providerId, { adminApprovedAt: p.adminApprovedAt }, { approve });
+  if (approve) await recomputeProviderStatus(providerId);
+  return approve ? "Approved. Remaining steps stay on their dashboard; credentials and payouts are still needed before they're matched to shifts." : "Approval removed (their current status is unchanged).";
+}
+
+/** Push a clinic through onboarding now (a payment method is still needed to post, since posting takes a deposit). */
+export async function approveClinic(actor: Actor, clinicOrgId: string) {
+  requireAdmin(actor);
+  const c = await prisma.clinicOrg.findUniqueOrThrow({ where: { id: clinicOrgId } });
+  await prisma.clinicOrg.update({ where: { id: clinicOrgId }, data: { adminApprovedAt: new Date(), adminApprovedById: actor.userId, ...(c.status === "ONBOARDING" ? { status: "ACTIVE" } : {}) } });
+  await audit(prisma, actor, "clinic.admin_approved", "ClinicOrg", clinicOrgId, { status: c.status }, { status: c.status === "ONBOARDING" ? "ACTIVE" : c.status });
+  return c.hasPaymentMethod ? "Approved — they can post shifts now." : "Approved. They still need to add a payment method before posting (posting takes a deposit).";
 }
 
 export async function setClinicStatus(actor: Actor, clinicOrgId: string, status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED", note?: string) {

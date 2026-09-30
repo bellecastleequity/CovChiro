@@ -89,6 +89,18 @@ export const removeProviderAction = formAction(async (fd) => {
 });
 
 // ---------- people ----------
+export const approveProviderAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await admin.approveProvider(actor, str(fd, "providerId"), str(fd, "approve") !== "no");
+  rv("/admin");
+  return r;
+});
+export const approveClinicAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await admin.approveClinic(actor, str(fd, "clinicOrgId"));
+  rv("/admin");
+  return r;
+});
 export const providerStatusAction = formAction(async (fd) => {
   const { actor } = await me();
   await admin.setProviderStatus(actor, str(fd, "providerId"), str(fd, "status") as "ACTIVE", optStr(fd, "note") ?? undefined);
