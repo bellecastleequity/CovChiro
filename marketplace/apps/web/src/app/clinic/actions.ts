@@ -6,9 +6,11 @@ import { DateTime } from "luxon";
 import { prisma } from "@cm/db";
 import {
   dispatch,
+  bookings,
   emergency,
+  feedback,
   archiveLocation, auth, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic,
-  requestAgreement, saveLocation, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
+  requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
 import { formAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -16,8 +18,19 @@ import { requireActor } from "@/lib/session";
 const me = () => requireActor("clinic");
 
 /** Wizard payload arrives as JSON; times are local to the location and converted to UTC here. */
-async function shiftPayload(fd: FormData) {
+/** Every day in the wizard's payload (one for a single shift). */
+async function shiftPayloads(fd: FormData) {
   const raw = JSON.parse(str(fd, "payload") || "{}");
+  const days: { date: string; start: string; end: string }[] = Array.isArray(raw.days) && raw.days.length ? raw.days : [{ date: raw.date, start: raw.start, end: raw.end }];
+  return Promise.all(days.map((d) => shiftPayloadFrom({ ...raw, ...d })));
+}
+
+async function shiftPayload(fd: FormData) {
+  return shiftPayloadFrom(JSON.parse(str(fd, "payload") || "{}"));
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function shiftPayloadFrom(raw: any) {
   const loc = await prisma.clinicLocation.findUnique({ where: { id: String(raw.locationId ?? "") }, select: { timeZone: true } });
   const zone = loc?.timeZone ?? "America/New_York";
   const start = DateTime.fromISO(`${raw.date}T${raw.start}`, { zone });
@@ -43,16 +56,29 @@ async function shiftPayload(fd: FormData) {
 
 export const quoteAction = formAction(async (fd) => {
   const { actor } = await me();
-  const q = await quoteForClinic(actor, await shiftPayload(fd));
-  return { ok: "quote", data: q };
+  const inputs = await shiftPayloads(fd);
+  const quotes = [];
+  // Promo code: first day only (same rule as posting).
+  for (const [i, input] of inputs.entries()) quotes.push(await quoteForClinic(actor, { ...input, promoCode: i === 0 ? input.promoCode : null }));
+  const raw = JSON.parse(str(fd, "payload") || "{}");
+  const dates: string[] = Array.isArray(raw.days) && raw.days.length ? raw.days.map((d: { date: string }) => d.date) : [raw.date];
+  return {
+    ok: "quote",
+    data: {
+      ...quotes[0],
+      days: quotes.map((q, i) => ({ date: dates[i], subtotalCents: q.subtotalCents, premiums: q.premiums })),
+      totalCents: quotes.reduce((t, q) => t + q.subtotalCents, 0),
+    },
+  };
 });
 
 export const createShiftAction = formAction(async (fd) => {
   const { actor } = await me();
   const post = str(fd, "mode") !== "draft";
-  const { shiftId } = await createShift(actor, await shiftPayload(fd), { post });
+  const inputs = await shiftPayloads(fd);
+  const { shiftIds } = await bookings.createMultiDay(actor, inputs, { post });
   revalidatePath("/clinic", "layout");
-  redirect(`/clinic/shifts/${shiftId}?${post ? "posted" : "saved"}=1`);
+  redirect(`/clinic/shifts/${shiftIds[0]}?${post ? "posted" : "saved"}=1`);
 });
 
 export const postDraftAction = formAction(async (fd) => {
@@ -67,6 +93,13 @@ export const selectAction = formAction(async (fd) => {
   await selectApplicant(actor, str(fd, "shiftId"), str(fd, "providerId"));
   revalidatePath(`/clinic/shifts/${str(fd, "shiftId")}`);
   return "Confirmed! Your provider has been notified and the deposit charged.";
+});
+
+export const confirmAllDaysAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await bookings.confirmForAllDays(actor, str(fd, "shiftId"), str(fd, "providerId"));
+  revalidatePath("/clinic", "layout");
+  return `Confirmed for ${r.confirmed} day${r.confirmed === 1 ? "" : "s"}${r.failed ? ` (${r.failed} couldn't be confirmed — see each day)` : ""}. Your provider has been notified.`;
 });
 
 export const inviteAction = formAction(async (fd) => {
@@ -95,7 +128,17 @@ export const blockAction = formAction(async (fd) => {
   const { actor } = await me();
   await setBlock(actor, str(fd, "providerId"), true, optStr(fd, "reason") ?? undefined);
   revalidatePath("/clinic", "layout");
-  return "Blocked. This provider won't be matched to your shifts.";
+  const upcoming = await upcomingWith(actor, str(fd, "providerId"));
+  return upcoming.length
+    ? `Blocked from future bookings. They're still booked for ${upcoming.length} upcoming shift${upcoming.length === 1 ? "" : "s"} — cancel from that shift's page if you'd like someone else.`
+    : "Blocked. This provider won't be offered your shifts again.";
+});
+
+export const unblockAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await setBlock(actor, str(fd, "providerId"), false);
+  revalidatePath("/clinic", "layout");
+  return "Unblocked.";
 });
 
 export const ratingAction = formAction(async (fd) => {
@@ -229,4 +272,25 @@ export const reportNoShowAction = formAction(async (fd) => {
   revalidatePath("/clinic", "layout");
   if (r.replacementShiftId) redirect(`/clinic/shifts/${r.replacementShiftId}`);
   return "Recorded. You won't be charged for this shift.";
+});
+
+export const clinicPhoneStartAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const phone = await auth.startPhoneVerification(actor, str(fd, "phone"));
+  revalidatePath("/clinic/settings");
+  return `We texted a code to ${phone}.`;
+});
+
+export const clinicPhoneConfirmAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await auth.confirmPhone(actor, str(fd, "code"), true);
+  revalidatePath("/clinic/settings");
+  return "Verified — you'll get texts about your shifts.";
+});
+
+export const privateFeedbackAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await feedback.submitFeedback(actor, str(fd, "assignmentId"), str(fd, "body"));
+  revalidatePath("/clinic/shifts");
+  return r;
 });

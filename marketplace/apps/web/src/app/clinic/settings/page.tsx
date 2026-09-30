@@ -5,12 +5,12 @@ import { Field, Input } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { agreementAction, orgAction, passwordAction } from "../actions";
+import { agreementAction, clinicPhoneConfirmAction, clinicPhoneStartAction, orgAction, passwordAction } from "../actions";
 
 export const metadata = { title: "Settings" };
 
 export default async function Settings() {
-  const { actor } = await requireActor("clinic");
+  const { actor, user } = await requireActor("clinic");
   const { org } = await clinicProfile(actor);
   const owner = actor.role === "CLINIC_OWNER";
   const signed = org.agreementVersion === AGREEMENT_VERSION.CLINIC && org.agreementSignedAt;
@@ -28,6 +28,21 @@ export default async function Settings() {
               <Field label="Billing email"><Input name="billingEmail" type="email" defaultValue={org.billingEmail ?? ""} disabled={!owner} /></Field>
               {owner ? <div className="sm:col-span-2"><SubmitButton>Save</SubmitButton></div> : null}
             </ActionForm>
+          </CardBody>
+        </Card>
+        <Card id="texts">
+          <CardHeader title="Text alerts" description="Get a text when your provider is on the way, if they cancel or don't show, and when a replacement is confirmed." />
+          <CardBody className="space-y-3">
+            {user.phoneVerifiedAt ? <Alert tone="success">Texts go to <strong>{user.phone}</strong>.</Alert> : null}
+            <ActionForm action={clinicPhoneStartAction} className="flex gap-2">
+              <Input name="phone" type="tel" placeholder="Your mobile, e.g. (407) 555-0123" defaultValue={user.phone ?? ""} required className="max-w-xs" />
+              <SubmitButton variant="outline">Send code</SubmitButton>
+            </ActionForm>
+            <ActionForm action={clinicPhoneConfirmAction} className="flex gap-2">
+              <Input name="code" inputMode="numeric" maxLength={6} placeholder="6-digit code" required className="max-w-40" />
+              <SubmitButton size="md">Verify</SubmitButton>
+            </ActionForm>
+            <p className="text-xs text-slate-500">By verifying, you agree to receive shift alerts by text. Msg &amp; data rates may apply. Reply STOP to opt out.</p>
           </CardBody>
         </Card>
         <Card id="agreement">

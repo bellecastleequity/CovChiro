@@ -194,8 +194,14 @@ export async function confirmInTx(
           body: `${who} is confirmed for ${shift.location.name}.`,
           link: `/clinic/shifts/${shiftId}`,
           ctaLabel: "View shift",
-          sms: true,
+          // Days of a multi-day booking: in-app only; one "fully covered" email summarizes them.
+          email: !shift.shiftGroupId,
+          sms: !shift.shiftGroupId,
         });
+    if (shift.shiftGroupId) {
+      const { maybeSendBookingCovered } = await import("./bookings");
+      await maybeSendBookingCovered(shiftId);
+    }
     // Lead conversion: a clinic's first confirmed shift.
     const prior = await prisma.assignment.count({ where: { shift: { location: { clinicOrgId: shift.location.clinicOrgId } }, id: { not: assignment.id } } });
     if (prior === 0) {

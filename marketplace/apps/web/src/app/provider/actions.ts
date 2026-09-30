@@ -6,6 +6,7 @@ import { DateTime } from "luxon";
 import { prisma } from "@cm/db";
 import {
   attendance,
+  bookings,
   dispatch,
   oncall,
   addBlackout, addMalpractice, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
@@ -34,7 +35,13 @@ export const onMyWayAction = formAction(async (fd) => {
 
 export const applyAction = formAction(async (fd) => {
   const { actor } = await me();
-  const r = await applyToShift(actor, str(fd, "shiftId"), { note: optStr(fd, "note"), commit: bool(fd, "commit") });
+  const input = { note: optStr(fd, "note"), commit: bool(fd, "commit") };
+  if (bool(fd, "allDays")) {
+    const all = await bookings.applyToAllDays(actor, str(fd, "shiftId"), input);
+    revalidatePath("/provider", "layout");
+    return `Applied for ${all.applied} day${all.applied === 1 ? "" : "s"}${all.skipped ? ` (${all.skipped} you can't take ${all.skipped === 1 ? "was" : "were"} skipped)` : ""}. We'll notify you if you're selected.`;
+  }
+  const r = await applyToShift(actor, str(fd, "shiftId"), input);
   revalidatePath("/provider", "layout");
   return r.confirmed ? "Instant book: you're confirmed! Check My shifts for details." : "Applied. We'll notify you if you're selected.";
 });
@@ -147,7 +154,14 @@ export const graceCancelAction = formAction(async (fd) => {
 
 export const cancelAssignmentAction = formAction(async (fd) => {
   const { actor } = await me();
-  await cancelAssignment(actor, str(fd, "assignmentId"), str(fd, "reason") || "Provider cancelled", { by: "PROVIDER" });
+  const reason = str(fd, "reason") || "Provider cancelled";
+  const scope = optStr(fd, "scope");
+  if (scope === "day" || scope === "remaining") {
+    const r = await bookings.cancelBookingDays(actor, str(fd, "assignmentId"), reason, scope);
+    revalidatePath("/provider", "layout");
+    return r.cancelled > 1 ? `${r.cancelled} days cancelled. The clinic has been notified.` : "Shift cancelled. The clinic has been notified.";
+  }
+  await cancelAssignment(actor, str(fd, "assignmentId"), reason, { by: "PROVIDER" });
   revalidatePath("/provider", "layout");
   return "Shift cancelled. The clinic has been notified.";
 });

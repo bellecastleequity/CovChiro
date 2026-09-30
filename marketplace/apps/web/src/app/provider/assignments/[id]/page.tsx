@@ -27,6 +27,10 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
   const myRating = a.ratings.find((r) => r.raterType === "PROVIDER");
   const theirRating = a.ratings.find((r) => r.raterType === "CLINIC" && r.revealedAt);
   const disputeOpen = Date.now() - +a.endsAt < s["payments.disputeWindowHours"] * 3_600_000;
+  // Multi-day booking: this provider's remaining confirmed days (this one included).
+  const remainingDays = a.shift.shiftGroupId
+    ? await prisma.assignment.count({ where: { providerId: actor.providerId!, status: { in: ["CONFIRMED", "IN_PROGRESS"] }, startsAt: { gte: a.startsAt }, shift: { shiftGroupId: a.shift.shiftGroupId } } })
+    : 1;
   return (
     <>
       <PageHeader eyebrow={loc.clinicOrg.displayName} title={dateLabel(a.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })} description={timeRange(a.startsAt, a.endsAt, tz)} actions={<StatusBadge status={a.status} />} />
@@ -141,6 +145,14 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
                 {hoursToStart < s["payments.providerLateCancelHours"] ? <Alert tone="warning" className="mb-3">Cancelling within {s["payments.providerLateCancelHours"]} hours counts as a late cancellation and affects your reliability score.</Alert> : null}
                 <ActionForm action={cancelAssignmentAction} confirm="Cancel this confirmed shift? The clinic will be notified and we'll look for a replacement.">
                   <input type="hidden" name="assignmentId" value={a.id} />
+                  {remainingDays > 1 ? (
+                    <Field label="Which days?" htmlFor="scope" className="mb-3">
+                      <Select id="scope" name="scope" defaultValue="day">
+                        <option value="day">Just this day</option>
+                        <option value="remaining">This and all my remaining days ({remainingDays})</option>
+                      </Select>
+                    </Field>
+                  ) : null}
                   <Textarea name="reason" placeholder="Reason (shared with our team)" required />
                   <SubmitButton variant="danger" className="mt-3 w-full">Cancel shift</SubmitButton>
                 </ActionForm>

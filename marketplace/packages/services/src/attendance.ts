@@ -82,6 +82,7 @@ export async function markOnMyWay(actor: Actor | null, assignmentId: string) {
     body: `Your provider for today at ${a.shift.location.name} has checked in and is heading over.`,
     link: `/clinic/shifts/${a.shiftId}`,
     email: false,
+    sms: true,
   });
   return "Thanks — we've let the clinic know you're on your way. Drive safe!";
 }

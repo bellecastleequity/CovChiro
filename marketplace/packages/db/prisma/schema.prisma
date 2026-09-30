@@ -1363,3 +1363,19 @@ model DigestSend {
   userId String
   sentAt DateTime @default(now()) @db.Timestamptz(3)
 }
+
+/// Private post-shift feedback from a clinic to a provider. Only the provider
+/// sees it; it never affects ratings, badges, matching or the public profile.
+model ProviderFeedback {
+  id           String    @id @default(cuid())
+  assignmentId String    @unique
+  providerId   String
+  clinicOrgId  String
+  authorUserId String
+  body         String
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+  readAt       DateTime? @db.Timestamptz(3)
+
+  @@index([providerId, createdAt])
+}

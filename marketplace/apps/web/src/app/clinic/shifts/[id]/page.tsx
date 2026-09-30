@@ -14,8 +14,8 @@ import { Alert, Empty, PageHeader } from "@/components/ui/misc";
 import { dateLabel, money, pct, relative, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import {
-  blockAction, boostAction, cancelDispatchAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
-  markArrivedAction, postDraftAction, ratingAction, reportNoShowAction, selectAction,
+  blockAction, boostAction, cancelDispatchAction, confirmAllDaysAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
+  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, reportNoShowAction, selectAction,
 } from "../../actions";
 
 type Cand = Awaited<ReturnType<typeof shiftCandidates>>["applicants"][number];
@@ -109,14 +109,32 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
   });
   const hoursToStart = (+shift.startsAt - Date.now()) / 3_600_000;
   const replacement = await prisma.shift.findFirst({ where: { rescueOfShiftId: id }, select: { id: true } });
+  const myFeedback = live?.status === "COMPLETED" ? await prisma.providerFeedback.findUnique({ where: { assignmentId: live.id } }) : null;
   const activeLive = live && (live.status === "CONFIRMED" || live.status === "IN_PROGRESS") && !live.arrivedAt && Date.now() < +shift.endsAt ? live : null;
   const fav = live ? await prisma.favorite.findFirst({ where: { fromType: "CLINIC", fromId: actor.clinicOrgId!, toType: "PROVIDER", toId: live.providerId } }) : null;
   const myRating = live?.ratings.find((r) => r.raterType === "CLINIC");
   const theirs = live?.ratings.find((r) => r.raterType === "PROVIDER" && r.revealedAt);
+  // Multi-day booking: every day with who covers it, and providers who applied for several open days.
+  const groupDays = shift.shiftGroupId
+    ? await prisma.shift.findMany({
+        where: { shiftGroupId: shift.shiftGroupId },
+        orderBy: { startsAt: "asc" },
+        select: { id: true, startsAt: true, endsAt: true, status: true, assignments: { where: { status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] } }, select: { provider: { select: { displayName: true } } } } },
+      })
+    : [];
+  const multiApplicants = shift.shiftGroupId
+    ? Object.values(
+        (await prisma.application.findMany({ where: { status: "ACTIVE", shift: { shiftGroupId: shift.shiftGroupId } }, select: { providerId: true, provider: { select: { displayName: true } } } })).reduce<Record<string, { providerId: string; name: string; days: number }>>((m, x) => {
+          (m[x.providerId] ??= { providerId: x.providerId, name: x.provider.displayName, days: 0 }).days++;
+          return m;
+        }, {}),
+      ).filter((x) => x.days > 1)
+    : [];
+  const dayNo = groupDays.findIndex((d) => d.id === shift.id) + 1;
   return (
     <>
       <PageHeader
-        eyebrow={`${shift.professionCode} · ${shift.location.name}`}
+        eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} · ${shift.location.name} · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} · ${shift.location.name}`}
         title={dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}
         description={timeRange(shift.startsAt, shift.endsAt, tz)}
         actions={<StatusBadge status={shift.status} />}
@@ -155,6 +173,36 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
       {live?.arrivedAt ? <p className="mb-5 text-sm text-emerald-700">✓ {live.provider.displayName} arrived.</p> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          {groupDays.length > 1 ? (
+            <Card>
+              <CardHeader title={`Part of a ${groupDays.length}-day booking`} description="Each day is covered on its own, so if a provider can't make one day we find cover for just that day." />
+              <CardBody className="divide-y divide-slate-100 p-0 text-sm">
+                {groupDays.map((d, i) => (
+                  <Link key={d.id} href={`/clinic/shifts/${d.id}`} className={`flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50 ${d.id === shift.id ? "bg-brand-50/50" : ""}`}>
+                    <span><span className="text-slate-400">Day {i + 1} · </span>{dateLabel(d.startsAt, tz, { weekday: "short", month: "short", day: "numeric" })} · {timeRange(d.startsAt, d.endsAt, tz)}</span>
+                    <span className="flex items-center gap-2">
+                      {d.assignments[0] ? <span className="text-slate-600">{d.assignments[0].provider.displayName}</span> : null}
+                      <StatusBadge status={d.status} />
+                    </span>
+                  </Link>
+                ))}
+              </CardBody>
+              {multiApplicants.length ? (
+                <CardBody className="space-y-2 border-t border-slate-100">
+                  {multiApplicants.map((m) => (
+                    <div key={m.providerId} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <span><span className="font-medium">{m.name}</span> applied for {m.days} days</span>
+                      <ActionForm action={confirmAllDaysAction} confirm={`Confirm ${m.name} for all ${m.days} days they applied for? A deposit is charged for each day.`}>
+                        <input type="hidden" name="shiftId" value={shift.id} />
+                        <input type="hidden" name="providerId" value={m.providerId} />
+                        <SubmitButton size="sm">Confirm for all {m.days} days</SubmitButton>
+                      </ActionForm>
+                    </div>
+                  ))}
+                </CardBody>
+              ) : null}
+            </Card>
+          ) : null}
           {track && (track.status === "ACTIVE" || (track.status === "EXHAUSTED" && selectable)) ? (
             <Card className={track.status === "ACTIVE" ? "border-brand-300 ring-2 ring-brand-100" : "border-amber-300"}>
               <CardBody className="space-y-3 py-5">
@@ -234,6 +282,12 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                       <SubmitButton size="sm" variant="outline"><Heart className={`size-4 ${fav ? "fill-red-500 text-red-500" : ""}`} />{fav ? "Favorited" : "Add to favorites"}</SubmitButton>
                     </ActionForm>
                   ) : null}
+                  {live.status === "COMPLETED" && !fav ? (
+                    <ActionForm action={blockAction} confirm={`Block ${live.provider.displayName} from your future bookings? Only you will know.`}>
+                      <input type="hidden" name="providerId" value={live.providerId} />
+                      <SubmitButton size="sm" variant="ghost"><Ban className="size-4" />Block from future bookings</SubmitButton>
+                    </ActionForm>
+                  ) : null}
                 </div>
                 {live.status === "CONFIRMED" ? (
                   <p className="text-sm text-slate-600">
@@ -241,6 +295,19 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                   </p>
                 ) : null}
                 {live.payments.some((p) => p.status === "FAILED") ? <Alert tone="error" title="Deposit failed">Update your payment method in Billing to keep this booking.</Alert> : null}
+              </CardBody>
+            </Card>
+          ) : null}
+          {live?.status === "COMPLETED" ? (
+            <Card>
+              <CardHeader title={`Private feedback for ${live.provider.displayName} (optional)`} description="Only they will see this — it doesn't affect their rating, their profile or who we send you. A kind, specific note helps them grow." />
+              <CardBody>
+                <ActionForm action={privateFeedbackAction} className="space-y-2">
+                  <input type="hidden" name="assignmentId" value={live.id} />
+                  <Textarea name="body" defaultValue={myFeedback?.body ?? ""} maxLength={2000} placeholder="e.g. Patients loved your adjustments. Next time, a quicker note turnaround at the end of the day would help our front desk." />
+                  <PhiNotice />
+                  <SubmitButton size="sm" variant="outline">{myFeedback ? "Update feedback" : "Send privately"}</SubmitButton>
+                </ActionForm>
               </CardBody>
             </Card>
           ) : null}

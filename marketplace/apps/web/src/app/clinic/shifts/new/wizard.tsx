@@ -28,7 +28,14 @@ interface Loc {
   timeZone: string;
   professions: Prof[];
 }
+interface DayQuote {
+  date: string;
+  subtotalCents: number;
+  premiums: { kind: string; percent: number }[];
+}
 interface Quote {
+  days?: DayQuote[];
+  totalCents?: number;
   coverageCents: number;
   discountCents: number;
   promoCode: string | null;
@@ -49,9 +56,17 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
   const [professionCode, setProfessionCode] = useState(firstEnabled);
   const prof = loc.professions.find((p) => p.code === professionCode);
   const tomorrow = new Date(Date.now() + 86_400_000 * 3).toISOString().slice(0, 10);
-  const [date, setDate] = useState(tomorrow);
-  const [start, setStart] = useState("08:00");
-  const [end, setEnd] = useState("17:00");
+  // One row per day; a booking of several days is posted together.
+  const [days, setDays] = useState([{ date: tomorrow, start: "08:00", end: "17:00" }]);
+  const { date, start, end } = days[0];
+  const setDay = (i: number, patch: Partial<{ date: string; start: string; end: string }>) => setDays((ds) => ds.map((d, j) => (j === i ? { ...d, ...patch } : d)));
+  const addDay = () =>
+    setDays((ds) => {
+      const last = ds[ds.length - 1];
+      const next = new Date(`${last.date}T12:00:00`);
+      next.setDate(next.getDate() + 1);
+      return [...ds, { date: next.toISOString().slice(0, 10), start: last.start, end: last.end }];
+    });
   const [required, setRequired] = useState<string[]>([]);
   const [preferred, setPreferred] = useState<string[]>([]);
   const [expectedPatients, setExpectedPatients] = useState("");
@@ -74,6 +89,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
         date,
         start,
         end,
+        days,
         requiredSkillIds: required,
         preferredSkillIds: preferred,
         expectedPatients: expectedPatients ? Number(expectedPatients) : null,
@@ -85,7 +101,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
         promoCode: promoCode.trim() || null,
         supervisionAttestation: prof?.supervisionRequired ? sup : null,
       }),
-    [locationId, professionCode, date, start, end, required, preferred, expectedPatients, notes, instantBook, lodgingAllowed, lodgingCap, maxTravelBudget, promoCode, sup, prof],
+    [locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, notes, instantBook, lodgingAllowed, lodgingCap, maxTravelBudget, promoCode, sup, prof],
   );
 
   function refreshQuote() {
@@ -105,7 +121,8 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string) => set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   const supOk = !prof?.supervisionRequired || (sup.supervisorName.length > 1 && sup.supervisorLicenseNumber.length > 2 && sup.onSiteEntireShift && !!sup.supervisorProfessionCode);
-  const canNext = [!!locationId, !!prof?.enabled && supOk, !!date && !!start && !!end, true, true][step];
+  const daysOk = days.every((d) => d.date && d.start && d.end) && new Set(days.map((d) => d.date)).size === days.length;
+  const canNext = [!!locationId, !!prof?.enabled && supOk, daysOk, true, true][step];
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -173,12 +190,24 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
             {step === 2 ? (
               <div className="space-y-4">
                 <h2 className="flex items-center gap-2 font-semibold"><CalendarDays className="size-4 text-accent-600" />When?</h2>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <Field label="Date"><Input type="date" value={date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDate(e.target.value)} /></Field>
-                  <Field label="Start"><Input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-                  <Field label="End"><Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+                <div className="space-y-3">
+                  {days.map((d, i) => (
+                    <div key={i} className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+                      <Field label={days.length > 1 ? `Day ${i + 1}` : "Date"}><Input type="date" value={d.date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDay(i, { date: e.target.value })} /></Field>
+                      <Field label="Start"><Input type="time" value={d.start} onChange={(e) => setDay(i, { start: e.target.value })} /></Field>
+                      <Field label="End"><Input type="time" value={d.end} onChange={(e) => setDay(i, { end: e.target.value })} /></Field>
+                      {days.length > 1 ? (
+                        <Button type="button" variant="ghost" onClick={() => setDays((ds) => ds.filter((_, j) => j !== i))} aria-label={`Remove day ${i + 1}`}>Remove</Button>
+                      ) : <span />}
+                    </div>
+                  ))}
                 </div>
-                <p className="text-xs text-slate-500">Times are local to {loc.name} ({loc.timeZone.replace("America/", "").replace("_", " ")}). Multi-day coverage: post each day as its own shift.</p>
+                {days.length < 14 ? <Button type="button" variant="outline" size="sm" onClick={addDay}>+ Add another day</Button> : null}
+                {new Set(days.map((d) => d.date)).size !== days.length ? <p className="text-sm text-red-700">Two rows have the same date.</p> : null}
+                <p className="text-xs text-slate-500">
+                  Times are local to {loc.name} ({loc.timeZone.replace("America/", "").replace("_", " ")}).
+                  {days.length > 1 ? " Several days are posted together as one booking: providers can apply to all of them at once, and you can confirm one provider for every day." : " Need several days? Add them here and post them as one booking."}
+                </p>
               </div>
             ) : null}
 
@@ -231,7 +260,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
                 <dl className="grid gap-2 text-sm sm:grid-cols-2">
                   <div><dt className="text-slate-500">Location</dt><dd className="font-medium">{loc.name}, {loc.city} {loc.state}</dd></div>
                   <div><dt className="text-slate-500">Coverage</dt><dd className="font-medium">{prof?.displayName}</dd></div>
-                  <div><dt className="text-slate-500">When</dt><dd className="font-medium">{date} · {start}–{end}</dd></div>
+                  <div><dt className="text-slate-500">When</dt><dd className="font-medium">{days.length > 1 ? `${days.length} days: ${days.map((d) => d.date).join(", ")}` : `${date} · ${start}–${end}`}</dd></div>
                   <div><dt className="text-slate-500">Booking</dt><dd className="font-medium">{instantBook ? "Instant book" : "You choose from applicants"}</dd></div>
                 </dl>
                 <div className="flex gap-2">
@@ -243,7 +272,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
                   <ActionForm action={createShiftAction} successMessage={false}>
                     <input type="hidden" name="payload" value={payload} />
                     <input type="hidden" name="mode" value="post" />
-                    <SubmitButton size="lg" pendingText="Posting…">{canPost ? "Post shift" : "Post shift"}</SubmitButton>
+                    <SubmitButton size="lg" pendingText="Posting…">{days.length > 1 ? `Post ${days.length}-day booking` : "Post shift"}</SubmitButton>
                   </ActionForm>
                   <ActionForm action={createShiftAction} successMessage={false}>
                     <input type="hidden" name="payload" value={payload} />
@@ -274,7 +303,14 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
                 <div className="flex justify-between"><span>Coverage ({quote.tier === "HOURLY" ? `${quote.billableHours}h` : quote.tier === "HALF_DAY" ? "half day" : `full day${quote.hours > 8 ? ` + ${Math.round((quote.hours - 8) * 100) / 100}h OT` : ""}`})</span><span className="tabular-nums">{money(quote.coverageCents)}</span></div>
                 {quote.premiums.map((p) => <div key={p.kind} className="flex justify-between text-xs text-slate-500"><span>incl. {p.kind.toLowerCase()} premium</span><span>+{p.percent}%</span></div>)}
                 {quote.discountCents ? <div className="flex justify-between text-emerald-700"><span>Promo {quote.promoCode}</span><span className="tabular-nums">−{money(quote.discountCents)}</span></div> : null}
-                <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold"><span>Subtotal</span><span className="tabular-nums">{money(quote.subtotalCents)}</span></div>
+                {quote.days && quote.days.length > 1 ? (
+                  <>
+                    {quote.days.map((d) => <div key={d.date} className="flex justify-between text-xs text-slate-600"><span>{d.date}{d.premiums.length ? ` (${d.premiums.map((p) => `${p.kind.toLowerCase()} +${p.percent}%`).join(", ")})` : ""}</span><span className="tabular-nums">{money(d.subtotalCents)}</span></div>)}
+                    <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold"><span>Total, {quote.days.length} days</span><span className="tabular-nums">{money(quote.totalCents ?? 0)}</span></div>
+                  </>
+                ) : (
+                  <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold"><span>Subtotal</span><span className="tabular-nums">{money(quote.subtotalCents)}</span></div>
+                )}
                 <p className="text-xs text-slate-500">Plus mileage at cost for the provider you confirm{lodgingAllowed ? " and any approved lodging" : ""}. A deposit is charged at confirmation; the balance after the shift.</p>
               </div>
             ) : !quoteError && !pending ? (

@@ -90,7 +90,7 @@ export async function postingOptions(actor: Actor, locationId: string) {
   return { location: loc, professions: out };
 }
 
-async function validateShiftInput(db: Db, orgId: string, input: z.output<typeof ShiftInput>, forPosting: boolean) {
+export async function validateShiftInput(db: Db, orgId: string, input: z.output<typeof ShiftInput>, forPosting: boolean) {
   const loc = await db.clinicLocation.findFirst({ where: { id: input.locationId, clinicOrgId: orgId, active: true } });
   if (!loc) throw new DomainError("NOT_FOUND", "Location not found");
   if (!loc.professionCodes.includes(input.professionCode)) throw new DomainError("VALIDATION", "This location doesn't post shifts for that profession. Add it in Locations first.");
@@ -264,7 +264,25 @@ export async function notifyEligibleProvidersOfShift(shiftId: string, reason: "p
   const targets = ranked.filter((r, i) => (favoritesOnly ? r.favorite : r.favorite || r.input.providerFavoritedClinic || i < s["matching.notifyTopN"]));
   const urgent = +shift.startsAt - Date.now() < 48 * 3_600_000;
   const date = shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric" });
+  // Multi-day bookings: one "booking available" message per provider, not one per day.
+  const group = shift.shiftGroupId && reason === "posted"
+    ? await prisma.shift.findMany({ where: { shiftGroupId: shift.shiftGroupId }, select: { id: true, startsAt: true }, orderBy: { startsAt: "asc" } })
+    : null;
   for (const t of targets) {
+    if (group && group.length > 1) {
+      const claimed = await prisma.digestSend.createMany({ data: [{ key: `groupnotice:${shift.shiftGroupId}:${t.providerId}`, userId: t.evaluated.provider.userId }], skipDuplicates: true });
+      if (!claimed.count) continue;
+      const d = (x: Date) => x.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric" });
+      await notify(prisma, t.evaluated.provider.userId, {
+        template: "booking_available",
+        title: `${group.length}-day booking available ${d(group[0].startsAt)} – ${d(group.at(-1)!.startsAt)} in ${shift.location.city}, ${shift.state}`,
+        body: `A ${shift.professionCode} coverage booking matches your licenses. Apply to all days in one tap, or just the days that suit you.`,
+        link: `/provider/shifts/${group[0].id}`,
+        ctaLabel: "View booking",
+        sms: urgent || favoritesOnly,
+      });
+      continue;
+    }
     await notify(prisma, t.evaluated.provider.userId, {
       template: "shift_available",
       title: `${reason === "reopened" ? "Urgent: " : ""}Shift available ${date} in ${shift.location.city}, ${shift.state}`,

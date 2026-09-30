@@ -20,6 +20,8 @@ export * from "./favorites";
 export * as digests from "./digests";
 export * as attendance from "./attendance";
 export * as emergency from "./emergency";
+export * as feedback from "./feedback";
+export * as bookings from "./bookings";
 export * as dispatch from "./dispatch";
 export * as oncall from "./oncall";
 export { badgesFor, providerPublicProfile } from "./profiles";

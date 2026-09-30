@@ -27,9 +27,20 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
   const skills = await prisma.skill.findMany({ where: { id: { in: [...shift.requiredSkillIds, ...shift.preferredSkillIds] } } });
   const clinicRating = await prisma.rating.aggregate({ where: { raterType: "PROVIDER", revealedAt: { not: null }, assignment: { shift: { location: { clinicOrgId: shift.location.clinicOrgId } } } }, _avg: { stars: true }, _count: true });
   const tz = shift.location.timeZone;
+  // Multi-day booking: the other days, and which of them this provider already applied to / works.
+  const groupDays = shift.shiftGroupId
+    ? await prisma.shift.findMany({
+        where: { shiftGroupId: shift.shiftGroupId, status: { not: "CANCELLED" } },
+        orderBy: { startsAt: "asc" },
+        select: { id: true, startsAt: true, endsAt: true, status: true, applications: { where: { providerId: actor.providerId! }, select: { status: true } }, assignments: { where: { providerId: actor.providerId!, status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] } }, select: { id: true } } },
+      })
+    : [];
+  const OPENISH = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"];
+  const openDays = groupDays.filter((d) => OPENISH.includes(d.status) && !d.applications.some((x) => x.status === "ACTIVE") && !d.assignments.length);
+  const dayNo = groupDays.findIndex((d) => d.id === shift.id) + 1;
   return (
     <>
-      <PageHeader eyebrow={`${shift.professionCode} coverage`} title={`${dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}`} description={`${timeRange(shift.startsAt, shift.endsAt, tz)} · ${shift.location.clinicOrg.displayName}`} />
+      <PageHeader eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} coverage · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} coverage`} title={`${dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}`} description={`${timeRange(shift.startsAt, shift.endsAt, tz)} · ${shift.location.clinicOrg.displayName}`} />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>
@@ -50,6 +61,22 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
               {shift.notes ? <p className="whitespace-pre-line rounded-xl bg-slate-50 p-3 text-slate-700">{shift.notes}</p> : null}
             </CardBody>
           </Card>
+          {groupDays.length > 1 ? (
+            <Card>
+              <CardHeader title={`Part of a ${groupDays.length}-day booking`} description="The clinic needs cover on each of these days. You can apply for one day or all of them." />
+              <CardBody className="divide-y divide-slate-100 p-0 text-sm">
+                {groupDays.map((d, i) => {
+                  const mine = d.assignments.length ? "You're booked" : d.applications.some((x) => x.status === "ACTIVE") ? "Applied" : OPENISH.includes(d.status) ? "Open" : "Filled";
+                  return (
+                    <a key={d.id} href={`/provider/shifts/${d.id}`} className={`flex items-center justify-between px-5 py-3 hover:bg-slate-50 ${d.id === shift.id ? "bg-brand-50/50" : ""}`}>
+                      <span><span className="text-slate-400">Day {i + 1} · </span>{dateLabel(d.startsAt, tz, { weekday: "short", month: "short", day: "numeric" })} · {timeRange(d.startsAt, d.endsAt, tz)}</span>
+                      <Badge tone={mine === "Open" ? "brand" : mine === "Filled" ? "gray" : "green"}>{mine}</Badge>
+                    </a>
+                  );
+                })}
+              </CardBody>
+            </Card>
+          ) : null}
         </div>
         <div className="space-y-6">
           <Card>
@@ -84,6 +111,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
                     <Textarea id="note" name="note" maxLength={500} placeholder="Techniques you use, what you're comfortable with…" />
                     <PhiNotice />
                   </Field>
+                  {openDays.length > 1 ? <Checkbox name="allDays" defaultChecked label={`Apply for all ${openDays.length} open days of this booking`} /> : null}
                   <Checkbox name="commit" required label="If selected, I commit to working this shift." />
                   <SubmitButton className="w-full" size="lg">{shift.instantBook ? "Book now" : "Apply"}</SubmitButton>
                 </ActionForm>
