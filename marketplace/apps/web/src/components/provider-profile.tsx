@@ -106,7 +106,7 @@ export function ProviderProfileView({ p }: { p: Awaited<ReturnType<typeof provid
           <Card>
             <CardHeader title="Verified credentials" />
             <CardBody className="space-y-2 text-sm">
-              {p.credentials.map((c) => <div key={`${c.professionCode}-${c.state}`} className="flex items-center gap-2"><ShieldCheck className="size-4 text-emerald-600" />{c.title} · {c.state}</div>)}
+              {p.credentials.map((c) => <div key={`${c.professionCode}-${c.state}`} className="flex items-center gap-2"><ShieldCheck className="size-4 text-emerald-600" />{c.title} · {c.state === "US" ? "National registry" : c.state}</div>)}
               {p.professions.filter((x) => x.yearsInPractice).map((x) => <div key={x.code} className="text-slate-500">{x.name}: {x.yearsInPractice} years in practice</div>)}
               {p.school ? <div className="flex items-center gap-2 text-slate-600"><GraduationCap className="size-4 text-slate-400" />{p.school}{p.graduationYear ? `, ${p.graduationYear}` : ""}</div> : null}
               {p.languages.length ? <div className="flex items-center gap-2 text-slate-600"><Languages className="size-4 text-slate-400" />{p.languages.join(", ")}</div> : null}

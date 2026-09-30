@@ -102,6 +102,15 @@ export async function sendVerificationEmail(user: Pick<User, "id" | "email" | "n
   });
 }
 
+/** "Resend confirmation email" (at most 5 an hour per account). */
+export async function resendVerificationEmail(userId: string) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  if (user.emailVerifiedAt) return "Your email is already confirmed.";
+  await checkRateLimit(`verify-resend:${userId}`, 5, 3600);
+  await sendVerificationEmail(user);
+  return `Sent to ${user.email}. It can take a few minutes — check spam too.`;
+}
+
 export async function verifyEmail(token: string) {
   const userId = await consumeToken(token, "EMAIL_VERIFY");
   await prisma.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date() } });

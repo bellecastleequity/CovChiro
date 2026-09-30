@@ -22,3 +22,15 @@ export const US_STATES: Record<string, string> = {
   RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah",
   VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
 };
+
+/**
+ * License.state for a national registry credential (e.g. ARDMS, CCI, ARRT),
+ * accepted only where the state doesn't license the profession and the
+ * admin has turned national credentials on (ProfessionStateConfig).
+ */
+export const NATIONAL_CREDENTIAL = "US";
+
+/** "Florida", or "National registry" for a national credential. */
+export function credentialPlace(state: string): string {
+  return state === NATIONAL_CREDENTIAL ? "National registry" : (US_STATES[state] ?? state);
+}

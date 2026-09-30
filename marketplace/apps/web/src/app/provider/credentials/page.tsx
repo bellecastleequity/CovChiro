@@ -1,5 +1,5 @@
 import { ExternalLink, FileText } from "lucide-react";
-import { US_STATES } from "@cm/core";
+import { credentialPlace, NATIONAL_CREDENTIAL, US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
 import { providerProfile } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
@@ -16,7 +16,7 @@ export const metadata = { title: "Credentials" };
 
 export default async function Credentials() {
   const { actor } = await requireActor("provider");
-  const { provider, canTake } = await providerProfile(actor);
+  const { provider, canTake, nationalCredentialStates } = await providerProfile(actor);
   const myCodes = provider.professions.map((p) => p.professionCode);
   const [allProfessions, skills] = await Promise.all([
     prisma.profession.findMany({ orderBy: { sortOrder: "asc" } }),
@@ -29,6 +29,7 @@ export default async function Credentials() {
       <div className="space-y-6">
         {provider.professions.map((pp) => {
           const lic = provider.licenses.filter((l) => l.professionCode === pp.professionCode);
+          const nationalStates = nationalCredentialStates[pp.professionCode] ?? [];
           return (
             <Card key={pp.professionCode}>
               <CardHeader title={`${pp.profession.displayName} licenses`} description={`${pp.profession.credentialSuffix} · status: ${pp.status.toLowerCase()}`} action={<StatusBadge status={pp.status} />} />
@@ -38,7 +39,7 @@ export default async function Credentials() {
                     {lic.map((l) => (
                       <li key={l.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
                         <div>
-                          <div className="font-medium">{US_STATES[l.state]} · {l.credentialTitle ?? pp.profession.credentialSuffix} #{l.licenseNumber}</div>
+                          <div className="font-medium">{credentialPlace(l.state)} · {l.credentialTitle ?? pp.profession.credentialSuffix} #{l.licenseNumber}</div>
                           <div className="text-xs text-slate-500">Expires {dateLabel(l.expiresAt, "UTC", { month: "short", day: "numeric", year: "numeric" })}{l.rejectionReason ? ` · ${l.rejectionReason}` : ""}</div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -58,6 +59,7 @@ export default async function Credentials() {
                   <Field label="State">
                     <Select name="state" required defaultValue="">
                       <option value="" disabled>Choose…</option>
+                      {nationalStates.length ? <option value={NATIONAL_CREDENTIAL}>National registry credential</option> : null}
                       {Object.entries(US_STATES).map(([c, n]) => <option key={c} value={c}>{n}</option>)}
                     </Select>
                   </Field>
@@ -68,6 +70,11 @@ export default async function Credentials() {
                   <div className="sm:col-span-2 lg:col-span-5"><SubmitButton size="sm">Add / update license</SubmitButton></div>
                 </ActionForm>
                 <p className="mt-2 text-xs text-slate-500">We verify every license with the state board before you can take shifts in that state. Editing a license sends it back for verification.</p>
+                {nationalStates.length ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {nationalStates.map((s) => US_STATES[s]).join(", ")} {nationalStates.length === 1 ? "doesn't" : "don't"} license this profession, so a verified national registry credential (for example ARDMS, CCI or ARRT) qualifies you there. In states that issue a license, you need that state's license.
+                  </p>
+                ) : null}
               </CardBody>
             </Card>
           );

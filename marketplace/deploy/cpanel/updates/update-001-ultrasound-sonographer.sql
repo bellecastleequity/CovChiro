@@ -22,11 +22,14 @@ FROM unnest(ARRAY[
 ]) AS n
 ON CONFLICT ("name", "professionCode") DO NOTHING;
 
--- Florida row (disabled): Florida does not license sonographers.
-INSERT INTO "ProfessionStateConfig" ("professionCode", "state", "licensedAtStateLevel", "credentialTitle",
-  "supervisingProfessionCodes", "malpracticeMinOccurrenceCents", "malpracticeMinAggregateCents", "scopeNotes")
-VALUES ('SONO', 'FL', false, 'Sonographer', ARRAY[]::TEXT[], 100000000, 300000000,
-  'Florida does not license sonographers. Registry credentials (ARDMS/CCI/ARRT) are the norm; not enabled until national credentials are accepted.')
+-- Florida row (disabled until you add rates and enable it): Florida doesn't
+-- license sonographers, so a verified national registry credential is the minimum.
+INSERT INTO "ProfessionStateConfig" ("professionCode", "state", "licensedAtStateLevel", "alternativeCredentialAllowed",
+  "alternativeCredentialPolicy", "credentialTitle", "supervisingProfessionCodes",
+  "malpracticeMinOccurrenceCents", "malpracticeMinAggregateCents", "scopeNotes")
+VALUES ('SONO', 'FL', false, true,
+  'ARDMS (RDMS, RDCS, RVT, RMSKS), CCI (RCS, RCCS, RVS, RPhS) or ARRT sonography (S, BS, VS)', 'Sonographer', ARRAY[]::TEXT[],
+  100000000, 300000000, 'Florida does not license sonographers; a verified national registry credential is required instead.')
 ON CONFLICT ("professionCode", "state") DO NOTHING;
 
 COMMIT;

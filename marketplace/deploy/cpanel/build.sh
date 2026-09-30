@@ -87,8 +87,26 @@ SQL=$OUT/database-setup.sql
 
 cp INSTALL-CPANEL.md "$OUT/INSTALL-CPANEL.md"
 cp deploy/cpanel/env.template "$OUT/environment-variables.txt"
-# Data updates for databases set up by an earlier release (each safe to re-run).
-cp deploy/cpanel/updates/update-*.sql "$OUT/"
+# Updates for databases set up by an earlier release (each safe to re-run).
+# "-- @migration <name>" expands to that migration plus its Prisma history row.
+for f in deploy/cpanel/updates/update-*.sql; do
+  {
+    while IFS= read -r line; do
+      if [[ $line =~ ^--\ @migration\ ([A-Za-z0-9_]+)$ ]]; then
+        name=${BASH_REMATCH[1]}
+        file=packages/db/prisma/migrations/$name/migration.sql
+        sum=$(sha256sum "$file" | cut -d' ' -f1)
+        echo "BEGIN;"
+        cat "$file"
+        echo "INSERT INTO \"_prisma_migrations\" (id, checksum, finished_at, migration_name, applied_steps_count) SELECT gen_random_uuid()::text, '$sum', now(), '$name', 1 WHERE NOT EXISTS (SELECT 1 FROM \"_prisma_migrations\" WHERE migration_name = '$name');"
+        echo "COMMIT;"
+        echo "SELECT 'update applied' AS result;"
+      else
+        echo "$line"
+      fi
+    done < "$f"
+  } > "$OUT/$(basename "$f")"
+done
 
 (cd "$OUT" && rm -f ../coverageoncall-cpanel.zip && zip -qr ../coverageoncall-cpanel.zip .)
 # Same content in three parts under 30 MB each (for size-limited transfers).

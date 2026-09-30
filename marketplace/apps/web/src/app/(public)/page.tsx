@@ -16,6 +16,7 @@ export default async function Home() {
     prisma.professionStateConfig.findMany({ where: { enabled: true }, select: { professionCode: true, state: true } }),
   ]);
   const liveStates = [...new Set(enabledPairs.map((p) => p.state))];
+  const liveNames = professions.filter((p) => p.active).map((p) => p.displayName);
   return (
     <>
       <section className="relative overflow-hidden bg-gradient-to-b from-accent-50 via-white to-white">
@@ -63,7 +64,7 @@ export default async function Home() {
                 ))}
               </div>
               <div className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                <ShieldCheck className="size-4 text-accent-600" /> Every candidate holds a verified Florida chiropractic license valid through the shift.
+                <ShieldCheck className="size-4 text-accent-600" /> Every candidate holds a verified state license valid through the shift.
               </div>
             </div>
           </div>
@@ -90,7 +91,7 @@ export default async function Home() {
       <section className="bg-slate-50 py-16">
         <div className="container-page">
           <h2 className="text-3xl font-semibold">Professions</h2>
-          <p className="mt-2 text-slate-600">Chiropractic coverage is live. More licensed professions are on the way — join the waitlist for yours.</p>
+          <p className="mt-2 text-slate-600">{liveNames.length ? `${listJoin(liveNames)} coverage is live. ` : ""}More licensed professions are on the way — join the waitlist for yours.</p>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {professions.map((p) => (
               <Link key={p.code} href={`/${p.slug}`} className="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-brand-300 hover:shadow-card">
@@ -131,4 +132,9 @@ export default async function Home() {
       <span className="sr-only">{b.name}</span>
     </>
   );
+}
+
+/** "A", "A and B", "A, B and C". */
+function listJoin(xs: string[]) {
+  return xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 }

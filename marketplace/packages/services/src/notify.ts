@@ -20,6 +20,8 @@ export interface EmailContent {
   heading: string;
   paragraphs: string[];
   cta?: { label: string; url: string };
+  /** Boxed list entries (e.g. one per booking), each with its own buttons. */
+  items?: { title: string; lines: string[]; links: { label: string; url: string }[] }[];
   footerNote?: string;
   unsubscribeUrl?: string;
 }
@@ -35,12 +37,24 @@ export function renderEmail(c: EmailContent): { html: string; text: string } {
 <tr><td style="padding-bottom:18px"><img src="${esc(absoluteUrl("/brand/mark-email.png"))}" width="28" height="28" alt="" style="vertical-align:middle;border:0"> <span style="vertical-align:middle;font-weight:700;font-size:17px;color:#282472">${esc(b.name)}</span></td></tr>
 <tr><td style="font-size:22px;font-weight:700;padding-bottom:12px">${esc(c.heading)}</td></tr>
 ${c.paragraphs.map((p) => `<tr><td style="font-size:15px;line-height:1.6;color:#334155;padding-bottom:12px">${esc(p)}</td></tr>`).join("")}
+${(c.items ?? [])
+  .map(
+    (it) => `<tr><td style="padding-bottom:12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px"><tr><td style="padding:14px 16px">
+<div style="font-size:16px;font-weight:700;color:#0f172a">${esc(it.title)}</div>
+${it.lines.map((l) => `<div style="font-size:14px;line-height:1.5;color:#475569;margin-top:2px">${esc(l)}</div>`).join("")}
+<div style="margin-top:10px">${it.links
+      .map((l, i) => `<a href="${esc(absoluteUrl(l.url))}" style="display:inline-block;margin:0 6px 6px 0;padding:8px 14px;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;${i === 0 ? "background:#282472;color:#ffffff" : "background:#ffffff;color:#282472;border:1px solid #cbd5e1"}">${esc(l.label)}</a>`)
+      .join("")}</div>
+</td></tr></table></td></tr>`,
+  )
+  .join("")}
 ${cta}
 <tr><td style="font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px">${esc(c.footerNote ?? `${b.name} · ${b.domain} · Questions? ${b.supportEmail}`)}${
     c.unsubscribeUrl ? ` · <a href="${esc(c.unsubscribeUrl)}" style="color:#94a3b8">Unsubscribe</a>` : ""
   }</td></tr>
 </table></td></tr></table></body></html>`;
-  const text = [c.heading, "", ...c.paragraphs, ...(c.cta ? ["", `${c.cta.label}: ${absoluteUrl(c.cta.url)}`] : []), "", `${b.name} · ${b.domain}`, ...(c.unsubscribeUrl ? [`Unsubscribe: ${c.unsubscribeUrl}`] : [])].join("\n");
+  const items = (c.items ?? []).flatMap((it) => ["", it.title, ...it.lines, ...it.links.map((l) => `${l.label}: ${absoluteUrl(l.url)}`)]);
+  const text = [c.heading, "", ...c.paragraphs, ...items, ...(c.cta ? ["", `${c.cta.label}: ${absoluteUrl(c.cta.url)}`] : []), "", `${b.name} · ${b.domain}`, ...(c.unsubscribeUrl ? [`Unsubscribe: ${c.unsubscribeUrl}`] : [])].join("\n");
   return { html, text };
 }
 

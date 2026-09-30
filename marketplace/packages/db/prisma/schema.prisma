@@ -1327,3 +1327,12 @@ model StandbyEntry {
 
   @@id([shiftId, providerId])
 }
+
+/// One row per booking-digest email sent ("daily:<providerId>:<local date>",
+/// "weekly:<providerId>:<week start>"), claimed before sending so repeated
+/// cron ticks never send a digest twice.
+model DigestSend {
+  key    String   @id
+  userId String
+  sentAt DateTime @default(now()) @db.Timestamptz(3)
+}

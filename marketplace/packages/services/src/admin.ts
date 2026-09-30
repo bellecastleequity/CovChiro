@@ -1,8 +1,9 @@
-import { validateSetting, SETTINGS } from "@cm/config";
-import { DomainError, nextReverifyAt, US_STATES } from "@cm/core";
+import { brand, validateSetting, SETTINGS } from "@cm/config";
+import { DomainError, NATIONAL_CREDENTIAL, nextReverifyAt, US_STATES } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
+import { mailProvider } from "@cm/integrations";
 import { audit, getSettings, invalidateSettings, requireAdmin, type Actor } from "./context";
-import { notify } from "./notify";
+import { notify, sendEmail } from "./notify";
 import { recomputeProviderStatus } from "./onboarding";
 
 // ======================================================================
@@ -41,7 +42,11 @@ export async function reviewLicense(actor: Actor, licenseId: string, input: { ap
   await notify(prisma, l.provider.userId, {
     template: input.approve ? "license_verified" : "license_rejected",
     title: input.approve ? `Your ${l.professionCode} license in ${l.state} is verified` : `We couldn't verify your ${l.professionCode} license in ${l.state}`,
-    body: input.approve ? `You can now take ${l.professionCode} shifts in ${US_STATES[l.state] ?? l.state}.` : (input.reason ?? "Please check the details and resubmit."),
+    body: input.approve
+      ? l.state === NATIONAL_CREDENTIAL
+        ? `Your national registry credential is verified. You can take ${l.professionCode} shifts in states that accept it instead of a state license.`
+        : `You can now take ${l.professionCode} shifts in ${US_STATES[l.state] ?? l.state}.`
+      : (input.reason ?? "Please check the details and resubmit."),
     link: "/provider/credentials",
   });
 }
@@ -159,6 +164,22 @@ export async function updateStateConfig(
   return { updated, confirmedAssignmentsToReview: affected.map((a) => a.id) };
 }
 
+/** Sends a test email and reports exactly what the email service said. */
+export async function sendTestEmail(actor: Actor, to: string) {
+  requireAdmin(actor);
+  const mailer = mailProvider();
+  const ok = await sendEmail(to, {
+    subject: `${brand().name} test email`,
+    heading: "Email is working",
+    paragraphs: [`This test was sent from ${brand().domain} via ${mailer.name}. Signup confirmations, booking emails and notifications use the same path.`],
+  });
+  if (mailer.name !== "sendgrid") {
+    throw new DomainError("VALIDATION", "SENDGRID_API_KEY isn't set, so email is only written to the server's outbox log. Add the key in Setup Node.js App → Environment variables and restart.");
+  }
+  if (!ok) throw new DomainError("VALIDATION", mailer.lastError ?? "The email service rejected the message.");
+  return `Sent to ${to} from ${brand().emailFrom}. If it doesn't arrive in a few minutes, check spam.`;
+}
+
 export async function updateProfessionState(
   actor: Actor,
   professionCode: string,
@@ -168,6 +189,8 @@ export async function updateProfessionState(
     legalReviewComplete: boolean;
     legalReviewNotes: string | null;
     licensedAtStateLevel: boolean;
+    alternativeCredentialAllowed: boolean;
+    alternativeCredentialPolicy: string | null;
     credentialTitle: string | null;
     boardLookupUrl: string | null;
     supervisionRequired: boolean;
@@ -181,6 +204,10 @@ export async function updateProfessionState(
   requireAdmin(actor);
   const profession = await prisma.profession.findUniqueOrThrow({ where: { code: professionCode } });
   const before = await prisma.professionStateConfig.findUnique({ where: { professionCode_state: { professionCode, state } } });
+  // A5: a national registry credential is the minimum only where the state issues no license.
+  if ((patch.alternativeCredentialAllowed ?? before?.alternativeCredentialAllowed) && (patch.licensedAtStateLevel ?? before?.licensedAtStateLevel ?? true)) {
+    throw new DomainError("VALIDATION", "National registry credentials can only be accepted where the state doesn't license this profession. Untick \"Licensed at the state level\" first, or turn off national credentials.");
+  }
   // Resolve profession-level minimums into the row so the DB trigger reads one place (Addendum §5.4).
   const resolved = {
     malpracticeMinOccurrenceCents: patch.malpracticeMinOccurrenceCents ?? before?.malpracticeMinOccurrenceCents ?? profession.defaultMalpracticeMinOccurrenceCents,

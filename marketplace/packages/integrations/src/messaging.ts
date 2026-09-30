@@ -14,6 +14,8 @@ export interface EmailMessage {
 export interface Mailer {
   name: string;
   send(m: EmailMessage): Promise<boolean>;
+  /** Why the last send failed, in the email service's own words. */
+  lastError?: string | null;
 }
 
 export interface Texter {
@@ -36,6 +38,7 @@ async function devLog(line: string) {
 
 class SendGridMailer implements Mailer {
   name = "sendgrid";
+  lastError: string | null = null;
   constructor(private key: string) {}
   async send(m: EmailMessage) {
     const from = brand().emailFrom;
@@ -55,7 +58,21 @@ class SendGridMailer implements Mailer {
         ...(m.unsubscribeUrl ? { headers: { "List-Unsubscribe": `<${m.unsubscribeUrl.replace("/unsubscribe?", "/api/unsubscribe?")}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } } : {}),
       }),
     });
-    return r.status >= 200 && r.status < 300;
+    if (r.status >= 200 && r.status < 300) {
+      this.lastError = null;
+      return true;
+    }
+    // e.g. 403 "The from address does not match a verified Sender Identity".
+    const body = await r.text().catch(() => "");
+    let detail = body.slice(0, 300);
+    try {
+      detail = (JSON.parse(body) as { errors?: { message: string }[] }).errors?.map((e) => e.message).join("; ") || detail;
+    } catch {
+      /* not JSON */
+    }
+    this.lastError = `SendGrid ${r.status}: ${detail} (from ${from})`;
+    console.error(`[email] ${this.lastError}`);
+    return false;
   }
 }
 

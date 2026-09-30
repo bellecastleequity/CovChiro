@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { dateLabel, money, relative, timeRange, firstName } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { CanTake } from "./can-take";
-import { onCallToggleAction } from "./actions";
+import { onCallToggleAction, resendVerificationAction } from "./actions";
 
 export default async function ProviderHome() {
   const { actor, user } = await requireActor("provider");
@@ -30,7 +30,7 @@ export default async function ProviderHome() {
     { label: "Add a profile photo", done: c.photo, href: "/provider/profile" },
     { label: "Add your NPI", done: c.npi, href: "/provider/profile" },
     ...checklist.perProfession.flatMap((p) => [
-      { label: `${p.displayName}: verified state license`, done: p.license, href: "/provider/credentials", hint: p.licensePending ? "Submitted — verification in progress." : undefined },
+      { label: `${p.displayName}: verified license`, done: p.license, href: "/provider/credentials", hint: p.licensePending ? "Submitted — verification in progress." : undefined },
       { label: `${p.displayName}: malpractice coverage`, done: p.malpractice, href: "/provider/credentials" },
     ]),
     { label: "Set up payouts (Stripe)", done: c.payouts, href: "/provider/payouts" },
@@ -45,6 +45,11 @@ export default async function ProviderHome() {
           <CardHeader title="Finish setting up" description={`${remaining} step${remaining === 1 ? "" : "s"} left before you can apply to shifts.`} />
           <CardBody>
             <Checklist items={items} />
+            {!c.emailVerified ? (
+              <ActionForm action={resendVerificationAction} className="mt-3">
+                <SubmitButton size="sm" variant="outline">Resend confirmation email</SubmitButton>
+              </ActionForm>
+            ) : null}
           </CardBody>
         </Card>
       ) : null}

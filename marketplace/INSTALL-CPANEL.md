@@ -203,10 +203,10 @@ If coveragechiropractor.com is on the same cPanel:
 ## Updating to a new version
 
 1. **Stop the app:** Setup Node.js App → **Stop App**.
-2. **Upload the new code:** in File Manager, move `coverageoncall.com/uploads` somewhere safe (for example to your home folder as `uploads-keep`), then rename `coverageoncall.com` to `coverageoncall.com-old`. Upload and extract the new zip in your home folder, delete the new, empty `coverageoncall.com/uploads`, and move `uploads-keep` back in its place as `coverageoncall.com/uploads`. The document root setting stays as it is.
+2. **Replace the code:** in File Manager, open `coverageoncall.com` and delete only the `app` and `node_modules` folders. Leave `public` (it holds the `.htaccess` that points the domain at the app) and `uploads` (providers' files) alone. Then upload the new zip (or its three parts) to your home folder and **Extract** each one there, the same as the first install. The new `app` and `node_modules` land in place; `public` and `uploads` keep their contents.
 3. **Update the database, if needed:** run each `update-*.sql` file you haven't run yet, in number order, in Neon's SQL Editor. They're safe to run again if you aren't sure. A brand-new install doesn't need them: `/setup` adds the same data.
 4. **Start the app:** **Start App**, then check the site. Your environment variables are kept, because they're stored with the app settings, not in the folder.
-5. **Clean up:** once the site is working, delete `coverageoncall.com-old`.
+5. **Clean up:** delete the uploaded zip files from your home folder.
 
 ## Troubleshooting
 
@@ -221,6 +221,7 @@ If coveragechiropractor.com is on the same cPanel:
 | `Prisma Client could not locate the Query Engine` | The zip was built on the wrong system. Rebuild it on Linux x86-64 with `deploy/cpanel/build.sh`. |
 | Offers never expire, payouts never go out | The cron job isn't running. Check the command, the secret, and that the cron isn't paused. Test by pasting the command into cPanel Terminal without `> /dev/null 2>&1`. |
 | App restarts or gets killed under load | You've hit shared-hosting CPU or memory limits (cPanel → *Resource Usage*). Upgrade the plan or move to a VPS. |
+| Signup confirmation (or any) email never arrives | Sign in as admin → **Settings** → **Email check** → **Send test email**. It shows SendGrid's exact reply. "does not match a verified Sender Identity" means the sending domain isn't authenticated yet: SendGrid → Settings → Sender Authentication → authenticate `coverageoncall.com`, add its DNS records in Namecheap → Advanced DNS, wait for SendGrid to show "Verified", then try again. "401" / "permission" means `SENDGRID_API_KEY` is wrong or lacks Mail Send access. Providers can then use **Resend confirmation email** on their dashboard. |
 | Admin lost their phone | In Neon SQL Editor: `UPDATE "User" SET "mfaEnabled"=false, "totpSecret"=NULL WHERE email='you@…';` |
 
 ## Limits of shared hosting, and when to move

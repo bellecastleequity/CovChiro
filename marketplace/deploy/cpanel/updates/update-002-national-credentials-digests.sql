@@ -1,0 +1,5 @@
+-- Accepts national registry credentials where a state doesn't license the
+-- profession, and adds the send log for daily/weekly booking emails.
+-- Run AFTER update-001. Safe to run more than once.
+-- Run in Neon: SQL Editor → paste → Run.
+-- @migration 0003_national_credentials_digests

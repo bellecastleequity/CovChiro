@@ -5,12 +5,12 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/misc";
 import { requireActor } from "@/lib/session";
-import { settingAction } from "../actions";
+import { settingAction, testEmailAction } from "../actions";
 
 export const metadata = { title: "Settings" };
 
 export default async function Settings() {
-  const { actor } = await requireActor("admin");
+  const { actor, user } = await requireActor("admin");
   const rows = await admin.settingsView(actor);
   const groups = [...new Set(rows.map((r) => r.group))];
   const open = rows.filter((r) => r.flag).length;
@@ -18,6 +18,13 @@ export default async function Settings() {
     <>
       <PageHeader title="Settings" description={`Every owner decision and threshold lives here. ${open} are flagged OWNER DECISION or ATTORNEY REVIEW. Changes are audit-logged.`} />
       <div className="space-y-6">
+        <Card>
+          <CardHeader title="Email check" description="Sends a test email the same way signup confirmations and booking emails go out, and shows the email service's exact reply if it fails." />
+          <ActionForm action={testEmailAction} className="flex flex-wrap items-center gap-2 px-5 pb-5">
+            <Input name="to" type="email" required defaultValue={user.email} className="w-72" />
+            <SubmitButton size="sm" variant="outline">Send test email</SubmitButton>
+          </ActionForm>
+        </Card>
         {groups.map((g) => (
           <Card key={g}>
             <CardHeader title={g} />

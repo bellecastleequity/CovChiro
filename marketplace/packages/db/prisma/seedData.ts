@@ -67,6 +67,14 @@ const FL_REGIONS = [
   { name: "FL-South", tier: 3, zip3List: ["330", "331", "332", "333", "334", "339", "341", "349"], half: [37500, 24000], full: [62500, 42500] },
 ];
 
+/** Sonography in a state that doesn't license it: accept the national registries (A5). */
+export const SONO_NATIONAL = {
+  licensedAtStateLevel: false,
+  alternativeCredentialAllowed: true,
+  alternativeCredentialPolicy: "ARDMS (RDMS, RDCS, RVT, RMSKS), CCI (RCS, RCCS, RVS, RPhS) or ARRT sonography (S, BS, VS)",
+  scopeNotes: "Florida does not license sonographers; a verified national registry credential is required instead.",
+};
+
 export async function seedBase(prisma: PrismaClient) {
   for (const p of PROFESSIONS) {
     const data = {
@@ -155,8 +163,8 @@ export async function seedBase(prisma: PrismaClient) {
         supervisionRequired: isDC ? false : null,
         supervisingProfessionCodes: isDC ? [] : [...p.supervising],
         credentialTitle: p.code === "LAC" ? "A.P." : p.code === "LMT" ? "LMT" : p.credentialSuffix,
-        // Florida has no sonographer license; enabling it waits on the registry-credential decision (A5).
-        ...(p.code === "SONO" ? { licensedAtStateLevel: false, scopeNotes: "Florida does not license sonographers. Registry credentials (ARDMS/CCI/ARRT) are the norm; not enabled until national credentials are accepted." } : {}),
+        // Florida has no sonographer license, so a national registry credential is the minimum (A5).
+        ...(p.code === "SONO" ? SONO_NATIONAL : {}),
         malpracticeMinOccurrenceCents: M1,
         malpracticeMinAggregateCents: M3,
         ...(isDC

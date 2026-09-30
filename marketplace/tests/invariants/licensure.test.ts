@@ -297,3 +297,59 @@ describe("posting service mirrors the DB rules", () => {
     void SYSTEM;
   });
 });
+
+describe("A5: national registry credential where the state doesn't license the profession", () => {
+  const pscKey = { professionCode_state: { professionCode: "SONO", state: "FL" } };
+  const sonographer = () =>
+    makeProvider({ licenses: [{ professionCode: "SONO", state: "US" }], malpractice: [{ covered: ["SONO"] }] });
+
+  beforeAll(async () => {
+    await enablePair("SONO");
+    await ensureRateCards("SONO", "FL", true);
+  });
+
+  it("seed: Florida accepts national credentials for sonography only", async () => {
+    expect(await prisma.professionStateConfig.findUniqueOrThrow({ where: pscKey })).toMatchObject({ licensedAtStateLevel: false, alternativeCredentialAllowed: true });
+    expect(await prisma.professionStateConfig.findUniqueOrThrow({ where: { professionCode_state: { professionCode: "DC", state: "FL" } } })).toMatchObject({
+      licensedAtStateLevel: true,
+      alternativeCredentialAllowed: false,
+    });
+  });
+
+  it("a verified national credential qualifies where accepted (board, candidates, assignment)", async () => {
+    const p = await sonographer();
+    const shift = await makeShift(fl.location.id, { professionCode: "SONO" });
+    expect((await shiftBoard(p.actor)).map((b) => b.id)).toContain(shift.id);
+    expect((await getEligibleProviders(prisma, shift.id)).eligible.map((e) => e.providerId)).toContain(p.id);
+    await adminAssign({ ...admin }, shift.id, p.id);
+  });
+
+  it("pending national credential, or one for another profession, never qualifies", async () => {
+    const shift = await makeShift(fl.location.id, { professionCode: "SONO" });
+    const pending = await makeProvider({ licenses: [{ professionCode: "SONO", state: "US", status: "PENDING_VERIFICATION" }], malpractice: [{ covered: ["SONO"] }] });
+    await assertExcludedEverywhere(pending, fl, shift.id);
+    // Florida licenses chiropractors, so a "national" DC credential is worthless there.
+    const dc = await makeProvider({ licenses: [{ professionCode: "DC", state: "US" }] });
+    await assertExcludedEverywhere(dc, fl, (await makeShift(fl.location.id)).id);
+  });
+
+  it("once the state licenses the profession, only the state license counts (app and DB trigger)", async () => {
+    const p = await sonographer();
+    const shift = await makeShift(fl.location.id, { professionCode: "SONO" });
+    await prisma.professionStateConfig.update({ where: pscKey, data: { alternativeCredentialAllowed: false, licensedAtStateLevel: true } });
+    try {
+      await assertExcludedEverywhere(p, fl, shift.id);
+    } finally {
+      await prisma.professionStateConfig.update({ where: pscKey, data: { licensedAtStateLevel: false, alternativeCredentialAllowed: true } });
+    }
+  });
+
+  it("national credentials can't be accepted where the state issues a license (DB + admin)", async () => {
+    await expectDbReject(
+      prisma.professionStateConfig.update({ where: { professionCode_state: { professionCode: "DC", state: "FL" } }, data: { alternativeCredentialAllowed: true } }),
+      /psc_national_credential_only_unlicensed/,
+    );
+    const { admin: adminSvc } = await import("@cm/services");
+    await expect(adminSvc.updateProfessionState(admin, "DC", "FL", { alternativeCredentialAllowed: true })).rejects.toBeInstanceOf(DomainError);
+  });
+});

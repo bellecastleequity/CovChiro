@@ -17,6 +17,7 @@ export * from "./onboarding";
 export * as admin from "./admin";
 export * as messaging from "./messaging";
 export * from "./favorites";
+export * as digests from "./digests";
 export * as dispatch from "./dispatch";
 export * as oncall from "./oncall";
 export { badgesFor, providerPublicProfile } from "./profiles";

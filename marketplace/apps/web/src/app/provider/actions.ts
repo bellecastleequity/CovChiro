@@ -17,6 +17,11 @@ import { saveUpload } from "@/lib/upload";
 
 const me = () => requireActor("provider");
 
+export const resendVerificationAction = formAction(async () => {
+  const { user } = await me();
+  return auth.resendVerificationEmail(user.id);
+});
+
 export const applyAction = formAction(async (fd) => {
   const { actor } = await me();
   const r = await applyToShift(actor, str(fd, "shiftId"), { note: optStr(fd, "note"), commit: bool(fd, "commit") });

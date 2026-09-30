@@ -41,6 +41,8 @@ const tierConfigSchema = z.object({
 export type TierConfig = z.infer<typeof tierConfigSchema>;
 
 const cents = z.number().int().min(0);
+/** "HH:MM", 24-hour. */
+const localTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM, e.g. 05:30");
 const percent = z.number().min(0).max(100);
 
 type Flag = "OWNER_DECISION" | "ATTORNEY_REVIEW" | null;
@@ -150,6 +152,24 @@ export const SETTINGS = {
     help: "One entry per email in the sequence; the first is sent immediately.",
     schema: z.array(z.number().int().min(0)).min(1).max(10),
     default: [0, 3, 10, 30, 75],
+    flag: null,
+  }),
+
+  // ---------- provider booking emails ----------
+  "digests.daily": def({
+    group: "Provider emails",
+    label: "Daily bookings email (provider's local time)",
+    help: "Sent only on days with bookings, with directions to each one.",
+    schema: z.object({ enabled: z.boolean(), time: localTime }),
+    default: { enabled: true, time: "05:30" },
+    flag: null,
+  }),
+  "digests.weekly": def({
+    group: "Provider emails",
+    label: "Weekly bookings email for the coming Monday–Sunday",
+    help: "weekday: 1 = Monday … 7 = Sunday. Sent only when the coming week has bookings.",
+    schema: z.object({ enabled: z.boolean(), weekday: z.number().int().min(1).max(7), time: localTime }),
+    default: { enabled: true, weekday: 7, time: "19:00" },
     flag: null,
   }),
 

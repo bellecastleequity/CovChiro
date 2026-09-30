@@ -11,6 +11,7 @@ export function config(over: Partial<ProfessionStateFacts> = {}): ProfessionStat
   return {
     enabled: true,
     stateEnabled: true,
+    nationalCredentialAccepted: false,
     supervisionRequired: false,
     supervisingProfessionCodes: [],
     malpracticeMinOccurrenceCents: 100_000_000,

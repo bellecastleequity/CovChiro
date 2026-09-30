@@ -26,6 +26,9 @@ This addendum overrides SPEC.md where they conflict.
 - Database transport: default is direct TCP. DATABASE_TRANSPORT=websocket uses @prisma/adapter-neon over port 443 (cPanel hosts block 5432). Verify adapter-sensitive changes with `TEST_DRIVER_ADAPTER=pg` or `neon-ws` (tests/adapterSetup.ts); raw queries must avoid types adapters can't decode (e.g. cast `name` to text).
 - Local dev: Postgres 16 + PostGIS + btree_gist. Every external service has a fake in packages/integrations used when its API key is unset.
 - Addendum 01 plan approved and implemented (docs/migrations/addendum-01-plan.md).
+- A5 (owner decision: accept the minimum credential the state requires): where ProfessionStateConfig has licensedAtStateLevel=false and alternativeCredentialAllowed=true, a VERIFIED national registry credential (License.state = "US", e.g. ARDMS/CCI/ARRT for sonography) satisfies INV-1 for that profession in that state. Nowhere else. The rule lives in core hasQualifyingLicense, the SQL prefilter and the provider_shift_problem trigger (migration 0003); a CHECK forbids national credentials where the state licenses the profession.
+- Provider booking emails (services/src/digests.ts): daily list at 5:30 local and Sunday-evening week-ahead, only when there are bookings; times are Settings (digests.*); DigestSend rows make each send once-only.
+- cPanel database updates for already-installed sites go in deploy/cpanel/updates/update-NNN-*.sql (re-runnable); `-- @migration <name>` inlines a migration plus its _prisma_migrations row at build time.
 - Eligibility lives in packages/services/src/eligibility.ts (DB loaders) + packages/core/src/eligibility.ts (pure rules). Tests: `pnpm test:core` and `pnpm test:invariants` (needs local Postgres + PostGIS; recreates the *_test database).
 
 ## Addendum 02 — Smart Dispatch & On Call (SPEC_ADDENDUM_02_DISPATCH_ONCALL.md)

@@ -18,8 +18,10 @@
     "@neondatabase/serverless": "^1.1.0",
     "@prisma/adapter-neon": "6.19.3",
     "@prisma/adapter-pg": "6.19.3",
+    "@types/luxon": "^3.7.6",
     "@types/node": "^22",
     "fast-check": "^4.10.2",
+    "luxon": "^3.7.2",
     "typescript": "5.9.3",
     "vitest": "^5.0.2"
   }

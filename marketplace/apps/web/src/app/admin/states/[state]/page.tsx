@@ -54,6 +54,8 @@ export default async function StatePage({ params, searchParams }: { params: Prom
                   <input type="hidden" name="professionCode" value={c.professionCode} />
                   <Checkbox name="legalReviewComplete" defaultChecked={psc?.legalReviewComplete} label="Legal review complete (ATTORNEY REVIEW)" />
                   <Checkbox name="licensedAtStateLevel" defaultChecked={psc?.licensedAtStateLevel ?? true} label="Licensed at the state level" />
+                  <Checkbox name="alternativeCredentialAllowed" defaultChecked={psc?.alternativeCredentialAllowed} label="Accept a national registry credential instead (only when the state doesn't license this profession)" className="sm:col-span-2" />
+                  <Field label="Accepted national credentials" className="sm:col-span-2"><Input name="alternativeCredentialPolicy" placeholder="e.g. ARDMS (RDMS, RDCS, RVT, RMSKS), CCI (RCS, RCCS, RVS, RPhS), ARRT (S, BS, VS)" defaultValue={psc?.alternativeCredentialPolicy ?? ""} /></Field>
                   <Field label="Credential title in this state"><Input name="credentialTitle" defaultValue={psc?.credentialTitle ?? prof.credentialSuffix} /></Field>
                   <Field label="Board lookup URL"><Input name="boardLookupUrl" defaultValue={psc?.boardLookupUrl ?? ""} /></Field>
                   <Field label="Supervision required?"><Select name="supervisionRequired" defaultValue={psc?.supervisionRequired === null || psc?.supervisionRequired === undefined ? "" : psc.supervisionRequired ? "yes" : "no"}><option value="">Not set</option><option value="no">No</option><option value="yes">Yes</option></Select></Field>

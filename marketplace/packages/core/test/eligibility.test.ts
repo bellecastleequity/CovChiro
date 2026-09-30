@@ -182,6 +182,22 @@ describe("Addendum 01 §13.2 — profession + state", () => {
     ).toEqual({ DC: ["FL", "GA"], LMT: ["FL"] });
     expect(hasQualifyingLicense([lic("DC", "FL")], "LMT", "FL", d("2026-01-01"))).toBe(false);
   });
+
+  it("a national registry credential counts only where the state accepts one for that profession", () => {
+    const sono = (over: Parameters<typeof config>[0] = {}) => shift({ professionCode: "SONO", config: config(over) });
+    const p = provider({ licenses: [lic("SONO", "US")], professions: [{ professionCode: "SONO", status: "ACTIVE" }], malpractice: [{ ...provider().malpractice[0], coveredProfessionCodes: ["SONO"] }] });
+    expect(ok(p, sono({ nationalCredentialAccepted: true }))).toBe(true);
+    expect(codes(evaluateEligibility(p, sono(), pair(), OPTS))).toContain("LICENSE_STATE_MISMATCH");
+    // Wrong profession, not verified, or expiring mid-shift never qualifies.
+    expect(hasQualifyingLicense([lic("DC", "US")], "SONO", "FL", d("2026-10-14"), true)).toBe(false);
+    expect(hasQualifyingLicense([lic("SONO", "US", "PENDING_VERIFICATION")], "SONO", "FL", d("2026-10-14"), true)).toBe(false);
+    const expiring = provider({ ...p, licenses: [lic("SONO", "US", "VERIFIED", d("2026-10-14T15:00:00Z"))] });
+    expect(codes(evaluateEligibility(expiring, sono({ nationalCredentialAccepted: true }), pair(), OPTS))).toContain("LICENSE_EXPIRES_BEFORE_SHIFT");
+    // A state license still works where national credentials are also accepted.
+    expect(hasQualifyingLicense([lic("SONO", "FL")], "SONO", "FL", d("2026-10-14"), true)).toBe(true);
+    expect(licensedPairs([lic("SONO", "US"), lic("DC", "GA")], d("2026-09-29"), { SONO: ["FL", "TX"] })).toEqual({ SONO: ["FL", "TX"], DC: ["GA"] });
+    expect(licensedPairs([lic("SONO", "US")], d("2026-09-29"))).toEqual({});
+  });
 });
 
 describe("other hard filters", () => {

@@ -6,6 +6,7 @@ import {
   evaluateEligibility,
   favoritesWindowEnd,
   looksLikePhi,
+  NATIONAL_CREDENTIAL,
   minPostingLeadOk,
   parseAttestation,
   providerView,
@@ -19,7 +20,7 @@ import { isInvariantViolation, prisma, type Prisma } from "@cm/db";
 import { audit, clock, getSettings, lockShift, SYSTEM, requireAdmin, requireClinic, requireProvider, tx, type Actor, type Db } from "./context";
 import { confirmInTx, confirmProvider } from "./confirm";
 import { Effects } from "./effects";
-import { assertProviderEligibleForShift, eligibilityOptions, evaluateProviderForShift, getEligibleProviders, loadProviders, loadShift } from "./eligibility";
+import { assertProviderEligibleForShift, eligibilityOptions, evaluateProviderForShift, getEligibleProviders, loadProviders, loadShift, nationalCredentialStates } from "./eligibility";
 import { logMatchRun, rankEvaluated } from "./matching";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
 import { depositPaidCents, refundAssignment } from "./payments";
@@ -285,7 +286,11 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
   const providerId = requireProvider(actor);
   const s = await getSettings();
   const me = await prisma.provider.findUniqueOrThrow({ where: { id: providerId }, include: { licenses: true } });
-  const pairs = me.licenses.filter((l) => l.status === "VERIFIED" && l.expiresAt > new Date());
+  const national = await nationalCredentialStates(prisma);
+  // A national registry credential stands in for a license in each state that accepts one (A5).
+  const pairs = me.licenses
+    .filter((l) => l.status === "VERIFIED" && l.expiresAt > new Date())
+    .flatMap((l) => (l.state === NATIONAL_CREDENTIAL ? (national[l.professionCode] ?? []).map((state) => ({ ...l, state })) : [l]));
   if (!pairs.length) return [];
   // Cheap SQL narrowing to the provider's verified profession+state pairs, then the shared evaluator decides.
   const candidates = await prisma.shift.findMany({
@@ -416,7 +421,10 @@ export async function shiftCandidates(actor: Actor, shiftId: string) {
   const ids = ranked.map((r) => r.providerId);
   const [profiles, licenses, skills, offers] = await Promise.all([
     prisma.provider.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, photoUrl: true, homeCity: true, homeState: true, bio: true } }),
-    prisma.license.findMany({ where: { providerId: { in: ids }, professionCode: loaded.facts.professionCode, state: loaded.facts.state, status: "VERIFIED" } }),
+    prisma.license.findMany({
+      where: { providerId: { in: ids }, professionCode: loaded.facts.professionCode, state: { in: [loaded.facts.state, NATIONAL_CREDENTIAL] }, status: "VERIFIED" },
+      orderBy: { state: "asc" }, // a state license ("FL") sorts before the national credential ("US")
+    }),
     prisma.providerSkill.findMany({
       where: { providerId: { in: ids }, skill: { OR: [{ professionCode: loaded.facts.professionCode }, { professionCode: null }] } },
       include: { skill: true },

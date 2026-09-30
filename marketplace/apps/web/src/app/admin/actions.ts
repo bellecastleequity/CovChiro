@@ -12,6 +12,12 @@ import { requireActor } from "@/lib/session";
 const me = () => requireActor("admin");
 const rv = (p: string) => revalidatePath(p, "layout");
 
+// ---------- email ----------
+export const testEmailAction = formAction(async (fd) => {
+  const { actor } = await me();
+  return admin.sendTestEmail(actor, str(fd, "to"));
+});
+
 // ---------- verification ----------
 export const reviewLicenseAction = formAction(async (fd) => {
   const { actor } = await me();
@@ -230,6 +236,8 @@ export const pscAction = formAction(async (fd) => {
     legalReviewComplete: bool(fd, "legalReviewComplete"),
     legalReviewNotes: optStr(fd, "legalReviewNotes"),
     licensedAtStateLevel: bool(fd, "licensedAtStateLevel"),
+    alternativeCredentialAllowed: bool(fd, "alternativeCredentialAllowed"),
+    alternativeCredentialPolicy: optStr(fd, "alternativeCredentialPolicy"),
     credentialTitle: optStr(fd, "credentialTitle"),
     boardLookupUrl: optStr(fd, "boardLookupUrl"),
     supervisionRequired: str(fd, "supervisionRequired") === "yes",

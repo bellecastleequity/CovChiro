@@ -1,6 +1,7 @@
 import type { ErrorCode } from "./errors";
 import { DomainError } from "./errors";
 import { supervisionProblem, type SupervisionAttestation } from "./supervision";
+import { NATIONAL_CREDENTIAL } from "./credentials";
 import { containedInUnion, expandWeeklyRules, iv, MINUTE, overlaps, type Interval, type WeeklyRule } from "./time";
 
 /**
@@ -62,6 +63,11 @@ export interface ProviderFacts {
 export interface ProfessionStateFacts {
   enabled: boolean;
   stateEnabled: boolean;
+  /**
+   * The state does not license this profession and the admin accepts a
+   * national registry credential (License.state = "US") instead (A5).
+   */
+  nationalCredentialAccepted: boolean;
   supervisionRequired: boolean;
   supervisingProfessionCodes: string[];
   malpracticeMinOccurrenceCents: number;
@@ -122,10 +128,19 @@ export interface EligibilityResult {
   failures: EligibilityFailure[];
 }
 
-/** A license counts only if VERIFIED, for the shift's profession, in the shift's state, valid past the shift end. */
-export function hasQualifyingLicense(licenses: LicenseFact[], professionCode: string, state: string, endsAt: Date): boolean {
+/**
+ * A license counts only if VERIFIED, for the shift's profession, in the
+ * shift's state, valid past the shift end. Where the state does not license
+ * the profession and accepts a national registry credential, a VERIFIED
+ * national credential (state "US") for the profession counts instead.
+ */
+export function hasQualifyingLicense(licenses: LicenseFact[], professionCode: string, state: string, endsAt: Date, nationalCredentialAccepted = false): boolean {
   return licenses.some(
-    (l) => l.professionCode === professionCode && l.state === state && l.status === "VERIFIED" && l.expiresAt.getTime() > endsAt.getTime(),
+    (l) =>
+      l.professionCode === professionCode &&
+      (l.state === state || (nationalCredentialAccepted && l.state === NATIONAL_CREDENTIAL)) &&
+      l.status === "VERIFIED" &&
+      l.expiresAt.getTime() > endsAt.getTime(),
   );
 }
 
@@ -145,12 +160,17 @@ export function hasQualifyingMalpractice(
   );
 }
 
-/** What a provider can take: { DC: ["FL","GA"], LMT: ["FL"] } ("You can take: Chiropractic shifts in FL, GA · …"). */
-export function licensedPairs(licenses: LicenseFact[], at: Date = new Date()): Record<string, string[]> {
+/**
+ * What a provider can take: { DC: ["FL","GA"], LMT: ["FL"] } ("You can take: Chiropractic shifts in FL, GA · …").
+ * `nationalStates` lists, per profession, the states that accept a national
+ * registry credential; a verified one expands to those states.
+ */
+export function licensedPairs(licenses: LicenseFact[], at: Date = new Date(), nationalStates: Record<string, string[]> = {}): Record<string, string[]> {
   const out: Record<string, Set<string>> = {};
   for (const l of licenses) {
     if (l.status !== "VERIFIED" || l.expiresAt <= at) continue;
-    (out[l.professionCode] ??= new Set()).add(l.state);
+    const states = l.state === NATIONAL_CREDENTIAL ? (nationalStates[l.professionCode] ?? []) : [l.state];
+    for (const st of states) (out[l.professionCode] ??= new Set()).add(st);
   }
   return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v].sort()]));
 }
@@ -180,9 +200,10 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   }
 
   // F1 — licensure by profession + state (INV-1). Home state / proximity / other professions are irrelevant.
-  if (!hasQualifyingLicense(provider.licenses, shift.professionCode, shift.state, shift.endsAt)) {
+  const national = cfg.nationalCredentialAccepted;
+  if (!hasQualifyingLicense(provider.licenses, shift.professionCode, shift.state, shift.endsAt, national)) {
     const verified = provider.licenses.filter((l) => l.status === "VERIFIED");
-    const samePair = verified.filter((l) => l.professionCode === shift.professionCode && l.state === shift.state);
+    const samePair = verified.filter((l) => l.professionCode === shift.professionCode && (l.state === shift.state || (national && l.state === NATIONAL_CREDENTIAL)));
     if (samePair.length) {
       fail("F1", "LICENSE_EXPIRES_BEFORE_SHIFT", `${shift.professionCode} license in ${shift.state} expires before the shift ends`);
     } else if (verified.some((l) => l.state === shift.state)) {

@@ -1,6 +1,7 @@
 import {
   DomainError,
   evaluateEligibility,
+  NATIONAL_CREDENTIAL,
   parseAttestation,
   travelEstimate,
   type EligibilityOptions,
@@ -64,6 +65,7 @@ export async function loadShift(db: Db, shiftId: string): Promise<LoadedShift> {
       config: {
         enabled: !!psc?.enabled,
         stateEnabled: !!stateCfg?.enabled,
+        nationalCredentialAccepted: !!psc && psc.alternativeCredentialAllowed && !psc.licensedAtStateLevel,
         supervisionRequired: psc?.supervisionRequired ?? profession?.requiresSupervisionDefault ?? false,
         supervisingProfessionCodes: psc?.supervisingProfessionCodes?.length ? psc.supervisingProfessionCodes : (profession?.defaultSupervisingProfessionCodes ?? []),
         malpracticeMinOccurrenceCents: psc?.malpracticeMinOccurrenceCents ?? profession?.defaultMalpracticeMinOccurrenceCents ?? 0,
@@ -246,6 +248,18 @@ export async function assertProviderEligibleForShift(db: Db, providerId: string,
 
 // ---------------- set-based ----------------
 
+/** Per profession, the states that accept a national registry credential instead of a state license (A5). */
+export async function nationalCredentialStates(db: Db): Promise<Record<string, string[]>> {
+  const rows = await db.professionStateConfig.findMany({
+    where: { alternativeCredentialAllowed: true, licensedAtStateLevel: false },
+    select: { professionCode: true, state: true },
+    orderBy: { state: "asc" },
+  });
+  const out: Record<string, string[]> = {};
+  for (const r of rows) (out[r.professionCode] ??= []).push(r.state);
+  return out;
+}
+
 /**
  * SQL prefilter: F1 (profession + state license) and F2 (malpractice) exactly
  * as the pure function defines them, then a straight-line distance bound
@@ -258,7 +272,8 @@ async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: numb
     SELECT p.id FROM "Provider" p
     WHERE EXISTS (
       SELECT 1 FROM "License" l
-      WHERE l."providerId" = p.id AND l."professionCode" = ${f.professionCode} AND l.state = ${f.state}
+      WHERE l."providerId" = p.id AND l."professionCode" = ${f.professionCode}
+        AND (l.state = ${f.state} OR (${f.config.nationalCredentialAccepted} AND l.state = ${NATIONAL_CREDENTIAL}))
         AND l.status = 'VERIFIED' AND l."expiresAt" > ${f.endsAt}
     )
     AND EXISTS (

@@ -264,13 +264,20 @@ describe("leads", () => {
 
   it("a profession is live exactly while some state has it enabled", async () => {
     const live = async () => (await prisma.profession.findUniqueOrThrow({ where: { code: "DC" } })).active;
-    expect(await live()).toBe(true);
-    await adminSvc.updateProfessionState(admin, "DC", "FL", { enabled: false });
-    expect(await live()).toBe(false);
-    await adminSvc.updateProfessionState(admin, "DC", "FL", { enabled: true });
-    expect(await live()).toBe(true);
-    const sono = await prisma.professionStateConfig.findUniqueOrThrow({ where: { professionCode_state: { professionCode: "SONO", state: "FL" } } });
-    expect(sono).toMatchObject({ enabled: false, licensedAtStateLevel: false });
+    // Other test files enable DC elsewhere; switch those off so Florida is the only one.
+    const others = await prisma.professionStateConfig.findMany({ where: { professionCode: "DC", enabled: true, state: { not: "FL" } } });
+    await prisma.professionStateConfig.updateMany({ where: { professionCode: "DC", state: { in: others.map((o) => o.state) } }, data: { enabled: false } });
+    try {
+      expect(await live()).toBe(true);
+      await adminSvc.updateProfessionState(admin, "DC", "FL", { enabled: false });
+      expect(await live()).toBe(false);
+      await adminSvc.updateProfessionState(admin, "DC", "FL", { enabled: true });
+      expect(await live()).toBe(true);
+    } finally {
+      await prisma.professionStateConfig.update({ where: { professionCode_state: { professionCode: "DC", state: "FL" } }, data: { enabled: true } });
+      await prisma.professionStateConfig.updateMany({ where: { professionCode: "DC", state: { in: others.map((o) => o.state) } }, data: { enabled: true } });
+      await prisma.profession.update({ where: { code: "DC" }, data: { active: true } });
+    }
     expect(await prisma.skill.count({ where: { professionCode: "SONO", requiresCertification: true } })).toBe(11);
   });
 });

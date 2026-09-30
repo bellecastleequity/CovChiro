@@ -1,5 +1,5 @@
 import { ExternalLink, FileText } from "lucide-react";
-import { US_STATES } from "@cm/core";
+import { credentialPlace, NATIONAL_CREDENTIAL } from "@cm/core";
 import { admin } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -9,6 +9,13 @@ import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { resolveNpiAction, reviewCertAction, reviewLicenseAction, reviewMalpracticeAction } from "../actions";
 
+
+/** Where to check a national registry credential (the credential letters say which registry). */
+const REGISTRY_LOOKUPS = [
+  ["ARDMS", "https://www.ardms.org/maintain-certification/registrant-support/statusverification/"],
+  ["CCI", "https://cci-online.org/"],
+  ["ARRT", "https://www.arrt.org/"],
+] as const;
 export const metadata = { title: "Verification" };
 
 function Decide({ action, hidden, withExpiry, expiry }: { action: typeof reviewLicenseAction; hidden: Record<string, string>; withExpiry?: boolean; expiry?: Date | null }) {
@@ -48,11 +55,13 @@ export default async function Verification() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <div className="font-semibold">{l.provider.legalName} <span className="font-normal text-slate-500">({l.provider.displayName})</span></div>
-                      <div className="text-slate-600">{l.profession.displayName} · {US_STATES[l.state]} · #{l.licenseNumber}{l.credentialTitle ? ` · ${l.credentialTitle}` : ""} · expires {dateLabel(l.expiresAt, "UTC", { month: "short", day: "numeric", year: "numeric" })}</div>
+                      <div className="text-slate-600">{l.profession.displayName} · {credentialPlace(l.state)} · #{l.licenseNumber}{l.credentialTitle ? ` · ${l.credentialTitle}` : ""} · expires {dateLabel(l.expiresAt, "UTC", { month: "short", day: "numeric", year: "numeric" })}</div>
                     </div>
                     <div className="flex gap-3">
                       {l.documentUrl ? <a className="flex items-center gap-1 text-brand-700" href={`/api/files/${l.documentUrl}`} target="_blank"><FileText className="size-4" />Upload</a> : null}
-                      {l.boardLookupUrl ? <a className="flex items-center gap-1 text-brand-700" href={l.boardLookupUrl} target="_blank" rel="noreferrer"><ExternalLink className="size-4" />Board lookup</a> : <span className="text-amber-700">No board URL for {l.professionCode}/{l.state}</span>}
+                      {l.state === NATIONAL_CREDENTIAL ? (
+                        REGISTRY_LOOKUPS.map(([name, url]) => <a key={name} className="flex items-center gap-1 text-brand-700" href={url} target="_blank" rel="noreferrer"><ExternalLink className="size-4" />{name}</a>)
+                      ) : l.boardLookupUrl ? <a className="flex items-center gap-1 text-brand-700" href={l.boardLookupUrl} target="_blank" rel="noreferrer"><ExternalLink className="size-4" />Board lookup</a> : <span className="text-amber-700">No board URL for {l.professionCode}/{l.state}</span>}
                     </div>
                   </div>
                   <Decide action={reviewLicenseAction} hidden={{ id: l.id }} withExpiry expiry={l.expiresAt} />

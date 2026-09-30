@@ -267,12 +267,18 @@ importers:
       '@prisma/adapter-pg':
         specifier: 6.19.3
         version: 6.19.3
+      '@types/luxon':
+        specifier: ^3.7.6
+        version: 3.7.6
       '@types/node':
         specifier: ^22
         version: 22.20.4
       fast-check:
         specifier: ^4.10.2
         version: 4.10.2
+      luxon:
+        specifier: ^3.7.2
+        version: 3.7.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3

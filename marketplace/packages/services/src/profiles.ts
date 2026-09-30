@@ -52,6 +52,7 @@ export async function badgesFor(providerIds: string[]): Promise<Map<string, Badg
         maxYearsInPractice: Math.max(0, ...p.professions.map((x) => x.yearsInPractice ?? 0)) || null,
         favoritedByClinics: favs.find((f) => f.toId === p.id)?._count ?? 0,
         verifiedProfessions: Object.keys(pairs).length,
+        // State licenses only: a national registry credential isn't a state license.
         verifiedStates: new Set(Object.values(pairs).flat()).size,
         licenseVerified: Object.keys(pairs).length > 0,
         malpracticeVerified: p.malpractice.some((m) => m.status === "VERIFIED" && m.expiresAt > now),

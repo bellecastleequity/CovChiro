@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { DomainError, licensedPairs, normalizeLinkedIn, US_STATES } from "@cm/core";
+import { DomainError, licensedPairs, NATIONAL_CREDENTIAL, normalizeLinkedIn, US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
 import { esignProvider, geoProvider, lookupNpi, paymentsProvider, testSigningEnabled } from "@cm/integrations";
 import { audit, requireClinic, requireProvider, SYSTEM, type Actor } from "./context";
@@ -9,6 +9,7 @@ import { activateClinicIfReady } from "./payments";
 import { resolveRateRegion } from "./pricing";
 import { hashPassword } from "./auth";
 import { onLeadConverted } from "./leads";
+import { nationalCredentialStates } from "./eligibility";
 
 /** Current agreement versions. Bumping one requires re-acceptance before the next application/posting (SPEC §13). */
 export const AGREEMENT_VERSION = { CLINIC: 1, PROVIDER: 1 } as const;
@@ -32,7 +33,8 @@ export async function providerProfile(actor: Actor) {
       openDates: { where: { endsAt: { gt: new Date() } }, orderBy: { startsAt: "asc" } },
     },
   });
-  return { provider: p, checklist: await providerChecklist(providerId), canTake: licensedPairs(p.licenses) };
+  const national = await nationalCredentialStates(prisma);
+  return { provider: p, checklist: await providerChecklist(providerId), canTake: licensedPairs(p.licenses, new Date(), national), nationalCredentialStates: national };
 }
 
 export async function providerChecklist(providerId: string) {
@@ -170,7 +172,8 @@ export async function addProfession(actor: Actor, professionCode: string) {
 
 export const LicenseInput = z.object({
   professionCode: z.string().min(1),
-  state: z.string().trim().toUpperCase().refine((s) => s in US_STATES, "Choose a state"),
+  /** A state, or "US" for a national registry credential (ARDMS, CCI, ARRT…). */
+  state: z.string().trim().toUpperCase().refine((s) => s in US_STATES || s === NATIONAL_CREDENTIAL, "Choose a state"),
   licenseNumber: z.string().trim().min(3).max(40),
   credentialTitle: z.string().trim().max(20).optional().nullable(),
   expiresAt: z.coerce.date(),
@@ -183,6 +186,9 @@ export async function upsertLicense(actor: Actor, raw: z.input<typeof LicenseInp
   if (input.expiresAt <= new Date()) throw new DomainError("VALIDATION", "That license has already expired.");
   const hasProfession = await prisma.providerProfession.findUnique({ where: { providerId_professionCode: { providerId, professionCode: input.professionCode } } });
   if (!hasProfession) throw new DomainError("VALIDATION", "Add this profession to your profile first.");
+  if (input.state === NATIONAL_CREDENTIAL && !(await nationalCredentialStates(prisma))[input.professionCode]?.length) {
+    throw new DomainError("VALIDATION", "National registry credentials aren't accepted for this profession yet. Add your state license instead.");
+  }
   const psc = await prisma.professionStateConfig.findUnique({ where: { professionCode_state: { professionCode: input.professionCode, state: input.state } } });
   // Any edit sends the license back to verification (INV-1: only VERIFIED counts).
   const l = await prisma.license.upsert({
