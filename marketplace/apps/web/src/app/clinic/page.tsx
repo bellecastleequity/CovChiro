@@ -23,7 +23,8 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
     prisma.assignment.findMany({ where: { shift: { location: { clinicOrgId: org.id } }, status: { in: ["CONFIRMED", "IN_PROGRESS"] } }, include: { provider: true, shift: { include: { location: true } } }, orderBy: { startsAt: "asc" }, take: 6 }),
     prisma.payment.aggregate({ where: { clinicOrgId: org.id, status: "SUCCEEDED", type: { not: "REFUND" }, createdAt: { gte: new Date(now.getFullYear(), 0, 1) } }, _sum: { amountCents: true } }),
   ]);
-  const needsSetup = !checklist.location || !checklist.paymentMethod || !checklist.agreement;
+  const emailVerified = !!user.emailVerifiedAt;
+  const needsSetup = !emailVerified || !checklist.location || !checklist.paymentMethod || !checklist.agreement;
   return (
     <>
       <PageHeader eyebrow={org.displayName} title={`Welcome${org.status === "ONBOARDING" ? "" : " back"}, ${firstName(user.name)}`} actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
@@ -34,6 +35,7 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
           <CardBody>
             <Checklist
               items={[
+                { label: "Confirm your email", done: emailVerified, hint: `We sent a link to ${user.email}. Not there? Check spam, or tap “Resend confirmation email” at the top of the page.` },
                 { label: "Add your clinic location", done: checklist.location, href: "/clinic/locations" },
                 { label: "Add a payment method (card or bank)", done: checklist.paymentMethod, href: "/clinic/billing" },
                 { label: "Sign the Clinic Platform Agreement", done: checklist.agreement, href: "/clinic/settings#agreement" },

@@ -94,7 +94,7 @@ async function consumeToken(token: string, purpose: string) {
 
 export async function sendVerificationEmail(user: Pick<User, "id" | "email" | "name">) {
   const token = await createToken(user.id, "EMAIL_VERIFY", 72);
-  await sendEmail(user.email, {
+  return sendEmail(user.email, {
     subject: `Confirm your email for ${brand().name}`,
     heading: "Confirm your email",
     paragraphs: [`Hi ${user.name.split(" ")[0]}, please confirm your email address to finish setting up your account.`],
@@ -107,7 +107,9 @@ export async function resendVerificationEmail(userId: string) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   if (user.emailVerifiedAt) return "Your email is already confirmed.";
   await checkRateLimit(`verify-resend:${userId}`, 5, 3600);
-  await sendVerificationEmail(user);
+  if (!(await sendVerificationEmail(user))) {
+    throw new DomainError("VALIDATION", `We couldn't send the email just now. Please try again in a few minutes, or contact ${brand().supportEmail}.`);
+  }
   return `Sent to ${user.email}. It can take a few minutes — check spam too.`;
 }
 

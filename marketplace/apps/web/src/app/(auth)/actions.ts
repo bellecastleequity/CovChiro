@@ -11,6 +11,13 @@ async function ip() {
   return h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
 }
 
+/** "Resend confirmation email" for whoever is signed in (providers and clinic users). */
+export const resendVerificationAction = formAction(async () => {
+  const s = await getSession();
+  if (!s) redirect("/login");
+  return auth.resendVerificationEmail(s.user.id);
+});
+
 export const loginAction = formAction(async (fd) => {
   const r = await auth.login(str(fd, "email"), str(fd, "password"), await ip());
   await setSessionCookie(r.token);

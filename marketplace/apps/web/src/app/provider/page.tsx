@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { dateLabel, money, relative, timeRange, firstName } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { CanTake } from "./can-take";
-import { onCallToggleAction, resendVerificationAction } from "./actions";
+import { onCallToggleAction } from "./actions";
 
 export default async function ProviderHome() {
   const { actor, user } = await requireActor("provider");
@@ -25,7 +25,7 @@ export default async function ProviderHome() {
   const onCall = settings["features.onCallEnabled"] && provider.status === "ACTIVE" ? await oncall.onCallOverview(actor) : null;
   const c = checklist.common;
   const items = [
-    { label: "Confirm your email", done: c.emailVerified, hint: "Check your inbox for the confirmation link." },
+    { label: "Confirm your email", done: c.emailVerified, hint: `We sent a link to ${user.email}. Not there? Check spam, or tap “Resend confirmation email” at the top of the page.` },
     { label: "Complete your profile, phone & home base", done: c.profile && c.homeBase, href: "/provider/profile" },
     { label: "Add a profile photo", done: c.photo, href: "/provider/profile" },
     { label: "Add your NPI", done: c.npi, href: "/provider/profile" },
@@ -45,11 +45,6 @@ export default async function ProviderHome() {
           <CardHeader title="Finish setting up" description={`${remaining} step${remaining === 1 ? "" : "s"} left before you can apply to shifts.`} />
           <CardBody>
             <Checklist items={items} />
-            {!c.emailVerified ? (
-              <ActionForm action={resendVerificationAction} className="mt-3">
-                <SubmitButton size="sm" variant="outline">Resend confirmation email</SubmitButton>
-              </ActionForm>
-            ) : null}
           </CardBody>
         </Card>
       ) : null}

@@ -1,13 +1,16 @@
 import Link from "next/link";
-import { Bell, LogOut } from "lucide-react";
+import { Bell, LogOut, MailWarning } from "lucide-react";
 import { brand } from "@cm/config";
 import { prisma } from "@cm/db";
 import { Logo } from "@/components/site/header";
+import { getSession } from "@/lib/session";
 import { BottomNav, SideNav, type NavItem } from "./nav-link";
+import { ResendVerification } from "./resend-verification";
 
 export async function AppShell({ items, root, userId, userName, subtitle, children }: { items: NavItem[]; root: string; userId: string; userName: string; subtitle?: string; children: React.ReactNode }) {
   const b = brand();
-  const unread = await prisma.notification.count({ where: { userId, readAt: null } });
+  const [unread, session] = await Promise.all([prisma.notification.count({ where: { userId, readAt: null } }), getSession()]);
+  const unconfirmedEmail = session && !session.user.emailVerifiedAt ? session.user.email : null;
   return (
     <div className="min-h-dvh bg-slate-50">
       <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-slate-200 bg-white px-3 py-4 lg:flex">
@@ -45,6 +48,17 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
             </form>
           </div>
         </header>
+        {unconfirmedEmail ? (
+          <div className="border-b border-amber-200 bg-amber-50">
+            <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-sm text-amber-900 sm:px-6">
+              <MailWarning className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 basis-72">
+                Please confirm your email. We sent a link to <strong className="break-all">{unconfirmedEmail}</strong> — check your spam folder too.
+              </span>
+              <ResendVerification className="max-w-full" />
+            </div>
+          </div>
+        ) : null}
         <main className="mx-auto max-w-6xl px-4 pb-28 pt-6 sm:px-6 lg:pb-12">{children}</main>
       </div>
       <BottomNav items={items} root={root} />
