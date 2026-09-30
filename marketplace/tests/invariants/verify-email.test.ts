@@ -17,3 +17,28 @@ describe("resend confirmation email", () => {
     expect(mine()).toHaveLength(before);
   });
 });
+
+describe("confirmation link page", () => {
+  const newUser = () => prisma.user.create({ data: { email: `v-${uid()}@test.dev`, name: "Sam Diaz", role: "PROVIDER" } });
+  const lastToken = (email: string) => devOutbox.filter((m) => m.to === email).at(-1)!.body.match(/verify-email\?token=([\w-]+)/)![1];
+
+  it("second click / scanner pre-open still reads as confirmed", async () => {
+    const u = await newUser();
+    await auth.resendVerificationEmail(u.id);
+    const t = lastToken(u.email);
+    expect(await auth.confirmEmailLink(t)).toBe("confirmed");
+    expect(await auth.confirmEmailLink(t)).toBe("already_confirmed");
+  });
+
+  it("an expired link offers a new one without signing in; a junk link is invalid", async () => {
+    const u = await newUser();
+    await auth.resendVerificationEmail(u.id);
+    const old = lastToken(u.email);
+    await prisma.authToken.updateMany({ where: { userId: u.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    expect(await auth.confirmEmailLink(old)).toBe("expired");
+    expect(await auth.resendVerificationFromLink(old)).toMatch(/^Sent to /);
+    expect(await auth.confirmEmailLink(lastToken(u.email))).toBe("confirmed");
+    expect(await auth.confirmEmailLink("not-a-real-token")).toBe("invalid");
+    await expect(auth.resendVerificationFromLink("not-a-real-token")).rejects.toThrow(/Sign in/);
+  });
+});

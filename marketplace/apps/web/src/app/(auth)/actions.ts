@@ -18,6 +18,8 @@ export const resendVerificationAction = formAction(async () => {
   return auth.resendVerificationEmail(s.user.id);
 });
 
+export const resendFromLinkAction = formAction(async (fd) => auth.resendVerificationFromLink(str(fd, "token")));
+
 export const loginAction = formAction(async (fd) => {
   const r = await auth.login(str(fd, "email"), str(fd, "password"), await ip());
   await setSessionCookie(r.token);

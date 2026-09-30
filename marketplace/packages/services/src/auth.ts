@@ -119,6 +119,33 @@ export async function verifyEmail(token: string) {
   return userId;
 }
 
+export type EmailLinkResult = "confirmed" | "already_confirmed" | "expired" | "invalid";
+
+/**
+ * The confirmation link page. Forgiving on purpose: a second click, a
+ * reload, or a mail scanner that opened the link first all end at "your
+ * email is confirmed" rather than "expired". An expired or superseded link
+ * still identifies the account, so the page can offer a new one without
+ * making the person sign in.
+ */
+export async function confirmEmailLink(token: string): Promise<EmailLinkResult> {
+  const row = token ? await prisma.authToken.findUnique({ where: { tokenHash: sha256(token) } }) : null;
+  if (!row || row.purpose !== "EMAIL_VERIFY") return "invalid";
+  const user = await prisma.user.findUnique({ where: { id: row.userId } });
+  if (!user) return "invalid";
+  if (user.emailVerifiedAt) return "already_confirmed";
+  if (row.usedAt || row.expiresAt < new Date()) return "expired";
+  await verifyEmail(token);
+  return "confirmed";
+}
+
+/** "Email me a new link" from an expired confirmation link (no sign-in needed; same rate limit). */
+export async function resendVerificationFromLink(token: string) {
+  const row = token ? await prisma.authToken.findUnique({ where: { tokenHash: sha256(token) } }) : null;
+  if (!row || row.purpose !== "EMAIL_VERIFY") throw new DomainError("VALIDATION", "Sign in, then use \"Resend confirmation email\" at the top of the page.");
+  return resendVerificationEmail(row.userId);
+}
+
 export async function requestPasswordReset(email: string, ip?: string) {
   if (ip) await checkRateLimit(`reset:${ip}`, 5, 3600);
   const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
