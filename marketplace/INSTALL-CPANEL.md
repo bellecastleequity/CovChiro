@@ -210,11 +210,15 @@ If coveragechiropractor.com is on the same cPanel:
 
 ## Updating to a new version
 
+Each release comes as **`coverageoncall-update.zip`** (the code only) plus any **`update-NNN-….sql`** files that are new in that release. SQL files from earlier releases are never sent again.
+
 1. **Stop the app:** Setup Node.js App → **Stop App**.
-2. **Replace the code:** in File Manager, open `coverageoncall.com` and delete only the `app` and `node_modules` folders. Leave `public` (it holds the `.htaccess` that points the domain at the app) and `uploads` (providers' files) alone. Then upload the new zip (or its three parts) to your home folder and **Extract** each one there, the same as the first install. The new `app` and `node_modules` land in place; `public` and `uploads` keep their contents.
-3. **Update the database, if needed:** run each `update-*.sql` file you haven't run yet, in number order, in Neon's SQL Editor. They're safe to run again if you aren't sure. A brand-new install doesn't need them: `/setup` adds the same data.
-4. **Start the app:** **Start App**, then check the site. Your environment variables are kept, because they're stored with the app settings, not in the folder.
-5. **Clean up:** delete the uploaded zip files from your home folder.
+2. **Replace the code:** in File Manager, open `coverageoncall.com` and delete only the **`app`** folder. Leave `node_modules`, `public` (it holds the `.htaccess` that points the domain at the app) and `uploads` (providers' files) alone. Upload `coverageoncall-update.zip` to your home folder and **Extract** it there; it replaces `app` and updates `node_modules` in place.
+3. **Update the database, if the release includes SQL files:** run each one in number order in Neon's SQL Editor. They're safe to run again if you aren't sure.
+4. **Start the app:** **Start App**, then check the site. Your environment variables are kept.
+5. **Clean up:** delete the uploaded zip from your home folder.
+
+The full three-part package is only needed for a brand-new install (or if a release note says so, e.g. after a Prisma upgrade).
 
 ## Troubleshooting
 

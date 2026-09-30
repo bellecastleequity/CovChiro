@@ -5,8 +5,12 @@ import { DomainError } from "@cm/core";
 
 export type ActionState = { ok?: string; error?: string; data?: unknown; at?: number } | null;
 
-/** Wraps a server action so domain/validation errors come back as messages instead of crashing the page. */
-export function formAction(fn: (fd: FormData) => Promise<string | void | { ok?: string; data?: unknown }>) {
+/**
+ * Wraps a server action so domain/validation errors come back as messages
+ * instead of crashing the page. `technical` (admin screens only) shows the
+ * underlying error text for anything unexpected, instead of a generic line.
+ */
+export function formAction(fn: (fd: FormData) => Promise<string | void | { ok?: string; data?: unknown }>, opts: { technical?: boolean } = {}) {
   return async (_prev: ActionState, fd: FormData): Promise<ActionState> => {
     try {
       const r = await fn(fd);
@@ -14,10 +18,21 @@ export function formAction(fn: (fd: FormData) => Promise<string | void | { ok?: 
       return { ok: r ?? "Saved", at: Date.now() };
     } catch (e) {
       unstable_rethrow(e);
-      return { error: errorMessage(e), at: Date.now() };
+      return { error: opts.technical ? technicalMessage(e) : errorMessage(e), at: Date.now() };
     }
   };
 }
+
+function technicalMessage(e: unknown): string {
+  const friendly = errorMessage(e);
+  if (friendly !== GENERIC) return friendly;
+  const text = e instanceof Error ? e.message : String(e);
+  // Prisma errors start with the call site; the reason is at the end.
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  return `Error: ${lines.slice(-2).join(" ").slice(0, 400) || "unknown"}`;
+}
+
+const GENERIC = "Something went wrong. Please try again.";
 
 export function errorMessage(e: unknown): string {
   if (e instanceof DomainError) return e.message;
@@ -29,7 +44,7 @@ export function errorMessage(e: unknown): string {
     return `Stripe said: ${se.message}`;
   }
   console.error(e);
-  return "Something went wrong. Please try again.";
+  return GENERIC;
 }
 
 export const str = (fd: FormData, k: string) => {

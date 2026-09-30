@@ -87,8 +87,14 @@ SQL=$OUT/database-setup.sql
 
 cp INSTALL-CPANEL.md "$OUT/INSTALL-CPANEL.md"
 cp deploy/cpanel/env.template "$OUT/environment-variables.txt"
-# Updates for databases set up by an earlier release (each safe to re-run).
-# "-- @migration <name>" expands to that migration plus its Prisma history row.
+# Database updates new in this release, for sites already installed (each
+# safe to re-run). Updates from earlier releases live in updates/archive and
+# aren't shipped again; a fresh install gets everything from
+# database-setup.sql + /setup. "-- @migration <name>" expands to that
+# migration plus its Prisma history row.
+UPD=$ROOT/dist/updates
+rm -rf "$UPD" && mkdir -p "$UPD"
+shopt -s nullglob
 for f in deploy/cpanel/updates/update-*.sql; do
   {
     while IFS= read -r line; do
@@ -105,8 +111,9 @@ for f in deploy/cpanel/updates/update-*.sql; do
         echo "$line"
       fi
     done < "$f"
-  } > "$OUT/$(basename "$f")"
+  } > "$UPD/$(basename "$f")"
 done
+shopt -u nullglob
 
 (cd "$OUT" && rm -f ../coverageoncall-cpanel.zip && zip -qr ../coverageoncall-cpanel.zip .)
 # Same content in three parts under 30 MB each (for size-limited transfers).
@@ -115,4 +122,12 @@ done
   && zip -qr -9 ../coverageoncall-cpanel-part1.zip . -x "$APP_DIR/node_modules/@prisma/*" "$APP_DIR/node_modules/.prisma/*" \
   && zip -qr -9 ../coverageoncall-cpanel-part2.zip "$APP_DIR/node_modules/@prisma" \
   && zip -qr -9 ../coverageoncall-cpanel-part3.zip "$APP_DIR/node_modules/.prisma")
+# Update package for an installed site: the code, including the generated
+# Prisma client in node_modules/.prisma (it changes with every schema change),
+# but not the ~20 MB query engine or @prisma/* runtime, which only change
+# with the Prisma version (then ship the full package). public/ and uploads/
+# are left alone.
+(cd "$OUT" && rm -f ../coverageoncall-update.zip \
+  && zip -qr -9 ../coverageoncall-update.zip "$APP_DIR/app" "$APP_DIR/node_modules" -x "$APP_DIR/node_modules/@prisma/*" "$APP_DIR/node_modules/.prisma/client/*.so.node")
+echo "Built dist/coverageoncall-update.zip ($(du -h dist/coverageoncall-update.zip | cut -f1)); database updates: $(ls "$UPD" | tr '\n' ' ' | sed 's/ $//' || true)"
 echo "Built dist/coverageoncall-cpanel.zip ($(du -h dist/coverageoncall-cpanel.zip | cut -f1), $(find "$SITE" -type f | wc -l) files)"

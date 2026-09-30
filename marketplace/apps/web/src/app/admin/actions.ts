@@ -6,10 +6,12 @@ import {
   addAdjustment, admin, adminAssign, dispatch, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
   reviewLodgingReceipt, setHold,
 } from "@cm/services";
-import { bool, dollarsToCents, formAction, optStr, str } from "@/lib/action";
+import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
 
 const me = () => requireActor("admin");
+// Admin screens show the real error text instead of "Something went wrong".
+const formAction: typeof baseFormAction = (fn) => baseFormAction(fn, { technical: true });
 const rv = (p: string) => revalidatePath(p, "layout");
 
 // ---------- email ----------
