@@ -48,15 +48,15 @@ describe("Phase 1 end-to-end: post → apply → select → deposit → complete
     const provider = await makeProvider();
     const shift = await postShift(clinic);
     expect(shift.status).toBe("OPEN");
-    // FL-Central full day: $575 clinic / $375 provider (seed placeholders).
-    expect(shift.clinicPriceCents).toBe(57500);
-    expect(shift.providerPayCents).toBe(37500);
+    // Orlando = FL major-city region, full day: $625 clinic / $425 provider (seed placeholders).
+    expect(shift.clinicPriceCents).toBe(62500);
+    expect(shift.providerPayCents).toBe(42500);
 
     // Board shows provider pay only.
     const board = await shiftBoard(provider.actor);
     const card = board.find((b) => b.id === shift.id)!;
-    expect(card.pay.payCents).toBe(37500);
-    expect(JSON.stringify(card)).not.toContain("57500");
+    expect(card.pay.payCents).toBe(42500);
+    expect(JSON.stringify(card)).not.toContain("62500");
 
     await applyToShift(provider.actor, shift.id, { commit: true, note: "Happy to help — call me at 407-555-1234" });
     const app = await prisma.application.findFirstOrThrow({ where: { shiftId: shift.id } });
@@ -65,12 +65,12 @@ describe("Phase 1 end-to-end: post → apply → select → deposit → complete
     // Candidate list never exposes provider pay.
     const cands = await shiftCandidates(clinic.actor, shift.id);
     expect(cands.applicants.map((a) => a.providerId)).toContain(provider.id);
-    expect(JSON.stringify(cands)).not.toMatch(/providerPay|payCents|37500/);
+    expect(JSON.stringify(cands)).not.toMatch(/providerPay|payCents|42500/);
 
     const { assignmentId } = await selectApplicant(clinic.actor, shift.id, provider.id);
     const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId }, include: { payments: true, payouts: true } });
-    expect(a.clinicTotalCents).toBe(57500 + a.mileageCents);
-    expect(a.providerTotalCents).toBe(37500 + a.mileageCents);
+    expect(a.clinicTotalCents).toBe(62500 + a.mileageCents);
+    expect(a.providerTotalCents).toBe(42500 + a.mileageCents);
     expect(a.payments.find((p) => p.type === "DEPOSIT")).toMatchObject({ status: "SUCCEEDED", amountCents: Math.round(a.clinicTotalCents * 0.1) });
     expect(a.payouts).toHaveLength(1);
     expect(a.payouts[0]).toMatchObject({ kind: "SHIFT", status: "PENDING", amountCents: a.providerTotalCents });
@@ -151,20 +151,20 @@ describe("promo codes come out of the margin, never provider pay", () => {
     await promo.createPromo(admin, { code: "HUGE", kind: "FIXED", value: 1000 }); // $1,000 off → capped at margin
     const clinic = await makeClinic();
     const shift = await postShift(clinic, 35, "spring25");
-    expect(shift.promoDiscountCents).toBe(Math.round(57500 * 0.25));
-    expect(shift.providerPayCents).toBe(37500);
+    expect(shift.promoDiscountCents).toBe(Math.round(62500 * 0.25));
+    expect(shift.providerPayCents).toBe(42500);
     expect((await prisma.promoCode.findUniqueOrThrow({ where: { code: "SPRING25" } })).usedCount).toBe(0);
 
     const clinic2 = await makeClinic();
     const capped = await postShift(clinic2, 35, "HUGE");
-    expect(capped.promoDiscountCents).toBe(57500 - 37500);
+    expect(capped.promoDiscountCents).toBe(62500 - 42500);
 
     const provider = await makeProvider();
     await applyToShift(provider.actor, shift.id, { commit: true });
     const { assignmentId } = await selectApplicant(clinic.actor, shift.id, provider.id);
     const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
-    expect(a.providerTotalCents).toBe(37500 + a.mileageCents);
-    expect(a.clinicTotalCents).toBe(57500 - shift.promoDiscountCents + a.mileageCents);
+    expect(a.providerTotalCents).toBe(42500 + a.mileageCents);
+    expect(a.clinicTotalCents).toBe(62500 - shift.promoDiscountCents + a.mileageCents);
     expect((await prisma.promoCode.findUniqueOrThrow({ where: { code: "SPRING25" } })).usedCount).toBe(1);
     // One use per clinic by default.
     await expect(postShift(clinic, 42, "SPRING25")).rejects.toMatchObject({ code: "PROMO_INVALID" });

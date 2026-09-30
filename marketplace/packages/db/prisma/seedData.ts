@@ -60,11 +60,15 @@ const SCOPE_SENSITIVE: [string, string][] = [
   ["Dry Needling", "PT"],
 ];
 
-// FL ZIP3 → region: OWNER DECISION placeholder, editable in Admin → Rates.
-const FL_REGIONS = [
-  { name: "FL-North", tier: 2, zip3List: ["320", "322", "323", "324", "325", "326", "344"], half: [37500, 24000], full: [62500, 42500] },
-  { name: "FL-Central", tier: 1, zip3List: ["321", "327", "328", "329", "335", "336", "337", "338", "342", "346", "347"], half: [32500, 20000], full: [57500, 37500] },
-  { name: "FL-South", tier: 3, zip3List: ["330", "331", "332", "333", "334", "339", "341", "349"], half: [37500, 24000], full: [62500, 42500] },
+/**
+ * FL ZIP3 → rate region: OWNER DECISION placeholder, editable in Admin → Rates.
+ * Tier 1 = major cities (higher rate): Miami, Fort Lauderdale, West Palm Beach,
+ * Orlando, Tampa, St. Petersburg, Jacksonville. Tier 2 = smaller cities and
+ * towns (lower rate). The public pricing page groups regions by tier.
+ */
+export const FL_REGIONS = [
+  { name: "FL-Major cities", tier: 1, zip3List: ["320", "322", "327", "328", "330", "331", "332", "333", "334", "335", "336", "337", "347"], half: [37500, 24000], full: [62500, 42500] },
+  { name: "FL-Smaller cities", tier: 2, zip3List: ["321", "323", "324", "325", "326", "329", "338", "339", "341", "342", "344", "346", "349"], half: [32500, 20000], full: [57500, 37500] },
 ];
 
 /** Sonography in a state that doesn't license it: accept the national registries (A5). */
@@ -150,7 +154,7 @@ export async function seedBase(prisma: PrismaClient) {
       }
     }
   }
-  await prisma.stateConfig.update({ where: { state: "FL" }, data: { defaultRateRegionId: regionIds["FL-Central"] } });
+  await prisma.stateConfig.update({ where: { state: "FL" }, data: { defaultRateRegionId: regionIds["FL-Smaller cities"] } });
 
   // Profession × FL rows so the admin matrix shows every cell; only DC is enabled.
   for (const p of PROFESSIONS) {

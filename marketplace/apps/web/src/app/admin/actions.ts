@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { DomainError } from "@cm/core";
 import { redirect } from "next/navigation";
 import {
   addAdjustment, admin, adminAssign, dispatch, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
@@ -299,6 +300,12 @@ export const settingAction = formAction(async (fd) => {
     value = JSON.parse(raw);
   } catch {
     value = raw;
+  }
+  // Money is edited in dollars and stored in cents.
+  if (str(fd, "unit") === "cents") {
+    const dollars = Number(raw.replace(/[$,\s]/g, ""));
+    if (!Number.isFinite(dollars)) throw new DomainError("VALIDATION", "Enter a dollar amount, like 0.35 or 100.00.");
+    value = Math.round(dollars * 100);
   }
   await admin.updateSetting(actor, str(fd, "key"), value);
   rv("/admin/settings");

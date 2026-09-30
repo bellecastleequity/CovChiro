@@ -39,7 +39,7 @@ export default async function OfferLink({ params }: { params: Promise<{ token: s
             <div className="flex items-center gap-2"><Clock className="size-4 text-slate-400" />{t(sh.startsAt)} – {t(sh.endsAt)}</div>
             <div className="flex items-center gap-2"><MapPin className="size-4 text-slate-400" />{sh.location.city}, {sh.state}</div>
             {rating._avg.stars ? <div className="flex items-center gap-2"><Star className="size-4 text-amber-500" />Clinic rated {rating._avg.stars.toFixed(1)}</div> : null}
-            <div className="flex items-center gap-2"><Car className="size-4 text-slate-400" />Mileage paid at {s["pricing.mileageRateCentsPerMile"]}¢/mile</div>
+            <div className="flex items-center gap-2"><Car className="size-4 text-slate-400" />Mileage paid at {money(s["pricing.mileageRateCentsPerMile"], { exact: true })}/mile</div>
           </div>
           <div className="mt-4 rounded-2xl bg-brand-50 p-4">
             <div className="text-sm text-brand-800">Your pay</div>

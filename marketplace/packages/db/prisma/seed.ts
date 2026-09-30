@@ -26,7 +26,7 @@ async function seedDemo() {
   const clinicOwner = await user("clinic@demo.test", "Casey Morgan", "CLINIC_OWNER", "demo-password-1");
   let org = await prisma.clinicOrg.findFirst({ where: { members: { some: { userId: clinicOwner.id } } } });
   if (!org) {
-    const region = await prisma.rateRegion.findUniqueOrThrow({ where: { name: "FL-Central" } });
+    const region = await prisma.rateRegion.findUniqueOrThrow({ where: { name: "FL-Smaller cities" } });
     const diversified = await prisma.skill.findFirstOrThrow({ where: { name: "Diversified", professionCode: "DC" } });
     org = await prisma.clinicOrg.create({
       data: {
