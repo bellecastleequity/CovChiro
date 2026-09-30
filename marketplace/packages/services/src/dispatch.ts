@@ -115,7 +115,8 @@ async function advanceInTx(db: Db, dispatchId: string, effects: Effects): Promis
       continue;
     }
     if (d.stage === "WAVES") {
-      if (d.currentWave >= cfg.wavesBeforeBroadcast) {
+      // Emergency cover asks everyone at once.
+      if (d.shift.emergencyAt || d.currentWave >= cfg.wavesBeforeBroadcast) {
         await db.dispatch.update({ where: { id: d.id }, data: { stage: "BROADCAST" } });
         continue;
       }
@@ -127,6 +128,17 @@ async function advanceInTx(db: Db, dispatchId: string, effects: Effects): Promis
     }
     if (d.stage === "BROADCAST") {
       const alreadyBroadcast = await db.wave.count({ where: { dispatchId: d.id, isBroadcast: true } });
+      if (d.shift.emergencyAt) {
+        // Each unanswered broadcast raises the rescue bonus a step and re-texts everyone (new pay).
+        const steps = s["emergency.bonusStepsPercent"];
+        if (alreadyBroadcast < steps.length) {
+          if (alreadyBroadcast > 0) await raiseRescueBonus(db, d.shiftId, steps[alreadyBroadcast]);
+          const sent = await sendWave(db, d.id, tier, cfg, true, effects, { reoffer: alreadyBroadcast > 0 });
+          if (sent) return;
+        }
+        await exhaust(db, d.id, effects);
+        return;
+      }
       if (!alreadyBroadcast) {
         const sent = await sendWave(db, d.id, tier, cfg, true, effects);
         if (sent) return;
@@ -136,6 +148,19 @@ async function advanceInTx(db: Db, dispatchId: string, effects: Effects): Promis
     }
     return;
   }
+}
+
+/** Rescue bonus comes out of the platform margin: provider pay rises, the clinic price doesn't. */
+export function rescuePay(basePayCents: number, percent: number, clinicPriceCents: number, promoDiscountCents: number) {
+  return Math.min(Math.round(basePayCents * (1 + percent / 100)), Math.max(0, clinicPriceCents - promoDiscountCents));
+}
+
+async function raiseRescueBonus(db: Db, shiftId: string, percent: number) {
+  const sh = await db.shift.findUniqueOrThrow({ where: { id: shiftId } });
+  const base = sh.emergencyBasePayCents ?? sh.providerPayCents;
+  const pay = rescuePay(base, percent, sh.clinicPriceCents, sh.promoDiscountCents);
+  await db.shift.update({ where: { id: shiftId }, data: { emergencyBonusPercent: percent, providerPayCents: pay } });
+  await audit(db, SYSTEM, "emergency.bonus_raised", "Shift", shiftId, { percent: sh.emergencyBonusPercent, providerPayCents: sh.providerPayCents }, { percent, providerPayCents: pay });
 }
 
 async function exhaust(db: Db, dispatchId: string, effects: Effects) {
@@ -152,7 +177,9 @@ async function exhaust(db: Db, dispatchId: string, effects: Effects) {
       ctaLabel: "Boost and search again",
       sms: true,
     });
-    await notifyAdmins(prisma, { template: "dispatch_exhausted_admin", title: "Dispatch exhausted", body: `Shift ${d.shiftId} (${d.shift.professionCode}, ${d.shift.state})`, link: `/admin/shifts/${d.shiftId}`, email: false });
+    await notifyAdmins(prisma, d.shift.emergencyAt
+      ? { template: "emergency_exhausted", title: "Emergency cover: nobody has accepted yet", body: `Every eligible provider has been texted at the top rescue bonus (+${d.shift.emergencyBonusPercent}%). Try calling from the emergency screen.`, link: `/admin/emergencies/${d.shiftId}`, sms: true }
+      : { template: "dispatch_exhausted_admin", title: "Dispatch exhausted", body: `Shift ${d.shiftId} (${d.shift.professionCode}, ${d.shift.state})`, link: `/admin/shifts/${d.shiftId}`, email: false });
   });
 }
 
@@ -178,7 +205,10 @@ async function buildCandidates(db: Db, dispatchId: string, tier: UrgencyTier, cf
   const d = await db.dispatch.findUniqueOrThrow({ where: { id: dispatchId }, include: { shift: true } });
   const shift = await loadShift(db, d.shiftId);
   // 1. The shared eligibility function — always first.
-  const set = await getEligibleProviders(db, shift, d.shift.boosted ? { distanceMultiplier: 1.5 } : {});
+  const set = await getEligibleProviders(db, shift, {
+    ...(d.shift.boosted ? { distanceMultiplier: 1.5 } : {}),
+    ...(d.shift.emergencyAt ? { distanceMultiplierAll: s["emergency.driveMultiplier"] } : {}),
+  });
   if (!set.eligible.length) return [];
   const ranked = await rankEvaluated(db, shift, set.eligible);
   const ids = ranked.map((r) => r.providerId);
@@ -192,7 +222,14 @@ async function buildCandidates(db: Db, dispatchId: string, tier: UrgencyTier, cf
     db.standbyEntry.findMany({ where: { providerId: { in: ids }, createdAt: { gte: new Date(+now - s["dispatch.standbyCourtesyDays"] * 86_400_000) } }, select: { providerId: true } }),
     db.application.findMany({ where: { shiftId: d.shiftId, status: "ACTIVE", providerId: { in: ids } }, select: { id: true, providerId: true } }),
   ]);
-  const pBy = new Map(providers.map((p) => [p.id, p]));
+  // Whoever cancelled, lapsed or didn't show on this shift (or the one it replaces) isn't asked again.
+  const dropped = new Set(
+    (await db.assignment.findMany({
+      where: { shiftId: { in: [d.shiftId, ...(d.shift.rescueOfShiftId ? [d.shift.rescueOfShiftId] : [])] }, status: { in: ["CANCELLED", "NO_SHOW", "LICENSE_LAPSED"] } },
+      select: { providerId: true },
+    })).map((x) => x.providerId),
+  );
+  const pBy = new Map(providers.filter((p) => !dropped.has(p.id)).map((p) => [p.id, p]));
   const offered = new Set(offeredHere.map((o) => o.providerId));
   const todayBy = new Map(offersToday.map((o) => [o.providerId, o._count]));
   const pendingBy = new Map(pending.map((o) => [o.providerId, o._count]));
@@ -293,7 +330,8 @@ async function createOffers(
     const prof = await db.profession.findUnique({ where: { code: shift.professionCode } });
     const rating = clinicRating._avg.stars ? ` Clinic rated ${clinicRating._avg.stars.toFixed(1)}.` : "";
     const link = absoluteUrl(`/o/${token}`);
-    const body = `${brand().name}: ${prof?.displayName ?? shift.professionCode} coverage ${day} ${t(shift.startsAt)}–${t(shift.endsAt)}, ${shift.location.city} ${shift.state} (${m.driveMinutes} min away). Pay $${(shift.providerPayCents / 100).toFixed(0)} + $${(mileage / 100).toFixed(0)} mileage.${rating}\nAccept: ${link} or reply YES ${code} / NO ${code}\nOffer closes ${t(wave.windowEndsAt)}.`;
+    const urgent = shift.emergencyBonusPercent > 0 ? `URGENT — includes +${shift.emergencyBonusPercent}% rescue bonus. ` : "";
+    const body = `${brand().name}: ${urgent}${prof?.displayName ?? shift.professionCode} coverage ${day} ${t(shift.startsAt)}–${t(shift.endsAt)}, ${shift.location.city} ${shift.state} (${m.driveMinutes} min away). Pay $${(shift.providerPayCents / 100).toFixed(0)} + $${(mileage / 100).toFixed(0)} mileage.${rating}\nAccept: ${link} or reply YES ${code} / NO ${code}\nOffer closes ${t(wave.windowEndsAt)}.`;
     effects.add(async () => {
       const user = await prisma.user.findUniqueOrThrow({ where: { id: m.userId } });
       const provider = await prisma.provider.findUniqueOrThrow({ where: { id: m.providerId } });
@@ -312,18 +350,18 @@ async function createOffers(
   }
 }
 
-async function sendWave(db: Db, dispatchId: string, tier: UrgencyTier, cfg: TierConfig, broadcast: boolean, effects: Effects): Promise<boolean> {
+async function sendWave(db: Db, dispatchId: string, tier: UrgencyTier, cfg: TierConfig, broadcast: boolean, effects: Effects, opts: { reoffer?: boolean } = {}): Promise<boolean> {
   const s = await getSettings(db);
   const now = clock.now();
   const d = await db.dispatch.findUniqueOrThrow({ where: { id: dispatchId }, include: { shift: true } });
-  const cands = await buildCandidates(db, dispatchId, tier, cfg);
+  const cands = await buildCandidates(db, dispatchId, tier, cfg, { includeAlreadyOffered: opts.reoffer });
   const number = d.currentWave + 1;
   // Existing active applications count as wave-1 acceptances (§5.6).
   const applicants = number === 1 || broadcast ? cands.filter((c) => c.applicationId) : [];
   const pool = cands.filter((c) => !c.applicationId);
   const want = broadcast ? pool.length : waveSize(cfg, number, pool.length);
   if (want === 0 && applicants.length === 0) return false;
-  const windowMin = broadcast ? cfg.broadcastWindowMin : cfg.windowMin;
+  const windowMin = d.shift.emergencyAt ? s["emergency.stepMinutes"] : broadcast ? cfg.broadcastWindowMin : cfg.windowMin;
   const capped = capWindow(now, windowMin, d.shift.startsAt, pool.slice(0, want), s["dispatch.arrivalBufferMinutes"], s["dispatch.minWindowMinutes"]);
   if (!capped.members.length && !applicants.length) return false;
   const wave = await db.wave.create({

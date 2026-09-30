@@ -265,7 +265,7 @@ export async function nationalCredentialStates(db: Db): Promise<Record<string, s
  * as the pure function defines them, then a straight-line distance bound
  * (maxDriveMinutes × 1.2 miles) for providers who can't take lodging.
  */
-async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: number): Promise<string[]> {
+async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: number, distanceMultiplierAll = 1): Promise<string[]> {
   const f = shift.facts;
   if (!f.config.enabled || !f.config.stateEnabled) return []; // F0 fails for everyone
   const rows = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
@@ -288,7 +288,7 @@ async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: numb
       OR (p."homeGeo" IS NOT NULL AND ST_DWithin(
             p."homeGeo",
             ST_SetSRID(ST_MakePoint(${shift.location.lng}, ${shift.location.lat}), 4326)::geography,
-            p."maxDriveMinutes" * (CASE WHEN p."willingOvernight" THEN ${distanceMultiplier}::float8 ELSE 1 END) * 1.2 * 1609.344))
+            p."maxDriveMinutes" * GREATEST(CASE WHEN p."willingOvernight" THEN ${distanceMultiplier}::float8 ELSE 1 END, ${distanceMultiplierAll}::float8) * 1.2 * 1609.344))
     )
   `);
   return rows.map((r) => r.id);
@@ -304,7 +304,7 @@ export interface EligibleSet {
 export async function getEligibleProviders(db: Db, shiftOrId: string | LoadedShift, extra: Partial<EligibilityOptions> = {}): Promise<EligibleSet> {
   const s = await getSettings(db);
   const shift = typeof shiftOrId === "string" ? await loadShift(db, shiftOrId) : shiftOrId;
-  const ids = await prefilterIds(db, shift, extra.distanceMultiplier ?? 1);
+  const ids = await prefilterIds(db, shift, extra.distanceMultiplier ?? 1, extra.distanceMultiplierAll ?? 1);
   const totalWithAnyLicense = await db.provider.count({ where: { licenses: { some: { professionCode: shift.facts.professionCode } } } });
   const providers = await loadProviders(db, ids, shift.facts.id);
   const drives = await driveTimes(

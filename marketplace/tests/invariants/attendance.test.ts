@@ -54,7 +54,8 @@ describe("shift reconfirmation", () => {
     expect((await prisma.shift.findUniqueOrThrow({ where: { id: b.shift.id } })).status).not.toBe("BOOKED");
     expect((await prisma.providerStats.findUniqueOrThrow({ where: { providerId: b.p.id } })).lateCancels).toBe(1);
     const clinicNote = await prisma.notification.findFirstOrThrow({ where: { userId: b.clinic.user.id, template: "backfill" } });
-    expect(clinicNote.title).toMatch(/didn't confirm/);
+    expect(clinicNote.title).toMatch(/We've had a cancellation/);
+    expect(clinicNote.body).toMatch(/didn't confirm/);
     expect(await b.notes(b.p.userId, "reconfirm_released")).toHaveLength(1);
     await b.sweep(23); // not twice
     expect(await b.notes(b.p.userId, "reconfirm_released")).toHaveLength(1);

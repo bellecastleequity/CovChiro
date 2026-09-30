@@ -170,14 +170,32 @@ export async function confirmInTx(
       ctaLabel: "View shift details",
       sms: true,
     });
-    await notifyClinic(prisma, shift.location.clinicOrgId, {
-      template: "shift_confirmed_clinic",
-      title: `Coverage confirmed for ${date}`,
-      body: `${ev.provider.displayName} is confirmed for ${shift.location.name}.`,
-      link: `/clinic/shifts/${shiftId}`,
-      ctaLabel: "View shift",
-      sms: true,
-    });
+    // A replacement after a cancellation or no-show gets the "we've found your replacement" email.
+    const replaced = !!shift.emergencyAt || !!shift.rescueOfShiftId || (await prisma.assignment.count({ where: { shiftId, id: { not: assignment.id }, status: { in: ["CANCELLED", "NO_SHOW", "LICENSE_LAPSED"] } } })) > 0;
+    const license = await prisma.license.findFirst({ where: { providerId, professionCode: shift.professionCode, status: "VERIFIED" }, orderBy: { state: "asc" } });
+    const who = `${ev.provider.displayName}${license?.credentialTitle ? `, ${license.credentialTitle}` : ""}`;
+    const arriveBy = new Date(+shift.startsAt - (await getSettings())["dispatch.arrivalBufferMinutes"] * 60_000).toLocaleTimeString("en-US", { timeZone: shift.location.timeZone, hour: "numeric", minute: "2-digit" });
+    await notifyClinic(prisma, shift.location.clinicOrgId, replaced
+      ? {
+          template: "replacement_confirmed_clinic",
+          title: `We've found your replacement: ${who}`,
+          body: `Good news — ${who} is your new coverage provider for ${date} at ${shift.location.name}, arriving by about ${arriveBy}.`,
+          details: [
+            "Their license and malpractice coverage are verified, like every provider we send.",
+            `You can view their profile and message them from the shift page. When they arrive, tap "Provider arrived".`,
+          ],
+          link: `/clinic/shifts/${shiftId}`,
+          ctaLabel: "See your new provider",
+          sms: true,
+        }
+      : {
+          template: "shift_confirmed_clinic",
+          title: `Coverage confirmed for ${date}`,
+          body: `${who} is confirmed for ${shift.location.name}.`,
+          link: `/clinic/shifts/${shiftId}`,
+          ctaLabel: "View shift",
+          sms: true,
+        });
     // Lead conversion: a clinic's first confirmed shift.
     const prior = await prisma.assignment.count({ where: { shift: { location: { clinicOrgId: shift.location.clinicOrgId } }, id: { not: assignment.id } } });
     if (prior === 0) {

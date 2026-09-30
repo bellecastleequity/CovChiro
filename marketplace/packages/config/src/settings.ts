@@ -191,6 +191,21 @@ export const SETTINGS = {
   "checkin.promptBeforeHours": def({ group: "Shift reconfirmation", label: "Day-of 'On my way' prompt, before the start", schema: z.number().min(0.5).max(12), default: 2, flag: null }),
   "checkin.alertBeforeMinutes": def({ group: "Shift reconfirmation", label: "Alert you and the clinic if not 'On my way' by this long before the start", schema: z.number().int().min(0).max(240), default: 30, flag: null }),
 
+  // ---------- emergency cover ----------
+  "emergency.triggerWithinHours": def({ group: "Emergency cover", label: "A provider cancelling this close to the start triggers emergency cover", schema: z.number().int().min(0).max(168), default: 24, flag: null }),
+  "emergency.bonusStepsPercent": def({
+    group: "Emergency cover",
+    label: "Rescue bonus steps (% of provider pay, from your margin)",
+    help: "The first step is offered right away; each later step when nobody has accepted.",
+    schema: z.array(z.number().int().min(0).max(100)).min(1).max(6),
+    default: [10, 15, 20],
+    flag: "OWNER_DECISION",
+  }),
+  "emergency.stepMinutes": def({ group: "Emergency cover", label: "Minutes before raising the bonus and re-texting everyone", schema: z.number().int().min(3).max(120), default: 10, flag: null }),
+  "emergency.driveMultiplier": def({ group: "Emergency cover", label: "Drive radius in an emergency (× each provider's usual max)", schema: z.number().min(1).max(3), default: 1.5, flag: null }),
+  "emergency.replacementLeadMinutes": def({ group: "Emergency cover", label: "After a no-show, the replacement starts this long from now", schema: z.number().int().min(15).max(240), default: 60, flag: null }),
+  "emergency.minRemainingMinutes": def({ group: "Emergency cover", label: "Don't send a replacement if less than this much of the shift is left", schema: z.number().int().min(30).max(480), default: 90, flag: null }),
+
   // ---------- Smart Dispatch (Addendum 02 §11) ----------
   "dispatch.tiers.SAME_DAY": def({ group: "Dispatch", label: "Same-day (<12h) waves", schema: tierConfigSchema, default: { wave1: 5, growth: 3, max: 15, windowMin: 5, wavesBeforeBroadcast: 3, broadcastWindowMin: 15, broadcastHoldMin: 3, beta: 0.6 }, flag: "OWNER_DECISION" }),
   "dispatch.tiers.SHORT": def({ group: "Dispatch", label: "Short notice (12–48h) waves", schema: tierConfigSchema, default: { wave1: 3, growth: 2, max: 10, windowMin: 15, wavesBeforeBroadcast: 3, broadcastWindowMin: 30, broadcastHoldMin: 10, beta: 0.4 }, flag: null }),

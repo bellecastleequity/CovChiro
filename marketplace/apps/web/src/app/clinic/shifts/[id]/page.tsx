@@ -15,7 +15,7 @@ import { dateLabel, money, pct, relative, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import {
   blockAction, boostAction, cancelDispatchAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
-  postDraftAction, ratingAction, selectAction,
+  markArrivedAction, postDraftAction, ratingAction, reportNoShowAction, selectAction,
 } from "../../actions";
 
 type Cand = Awaited<ReturnType<typeof shiftCandidates>>["applicants"][number];
@@ -108,6 +108,8 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
     lodgingCents: live?.lodgingApprovedCents ?? 0,
   });
   const hoursToStart = (+shift.startsAt - Date.now()) / 3_600_000;
+  const replacement = await prisma.shift.findFirst({ where: { rescueOfShiftId: id }, select: { id: true } });
+  const activeLive = live && (live.status === "CONFIRMED" || live.status === "IN_PROGRESS") && !live.arrivedAt && Date.now() < +shift.endsAt ? live : null;
   const fav = live ? await prisma.favorite.findFirst({ where: { fromType: "CLINIC", fromId: actor.clinicOrgId!, toType: "PROVIDER", toId: live.providerId } }) : null;
   const myRating = live?.ratings.find((r) => r.raterType === "CLINIC");
   const theirs = live?.ratings.find((r) => r.raterType === "PROVIDER" && r.revealedAt);
@@ -121,6 +123,36 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
       />
       {sp.posted ? <Alert tone="success" className="mb-5" title="Shift posted">We're notifying eligible providers now. Applicants will appear below.</Alert> : null}
       {sp.saved ? <Alert tone="info" className="mb-5">Draft saved.</Alert> : null}
+      {shift.emergencyAt && selectable ? (
+        <Alert tone="warning" className="mb-5" title={shift.rescueOfShiftId ? "Emergency replacement — we're on it" : "We've had a cancellation — we're on it"}>
+          No need to worry: we're finding a replacement urgently as we speak, texting every eligible provider nearby. We'll email you the moment your new provider is confirmed.
+        </Alert>
+      ) : null}
+      {replacement ? (
+        <Alert tone="info" className="mb-5" title="Your provider didn't show">
+          You won't be charged for them. <Link href={`/clinic/shifts/${replacement.id}`} className="font-medium underline">See the replacement shift →</Link>
+        </Alert>
+      ) : null}
+      {activeLive && hoursToStart <= 0.5 ? (
+        <Card className="mb-5">
+          <CardBody className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-semibold">Has {activeLive.provider.displayName} arrived?</div>
+              <div className="text-slate-600">Let us know either way — if they haven't shown up, we'll send a replacement right away.</div>
+            </div>
+            <div className="flex gap-2">
+              <ActionForm action={markArrivedAction}><input type="hidden" name="assignmentId" value={activeLive.id} /><SubmitButton size="sm">Provider arrived</SubmitButton></ActionForm>
+              {hoursToStart <= 0.25 ? (
+                <ActionForm action={reportNoShowAction} confirm={`Report that ${activeLive.provider.displayName} didn't show? We'll send an emergency replacement and you won't be charged for them.`}>
+                  <input type="hidden" name="assignmentId" value={activeLive.id} />
+                  <SubmitButton size="sm" variant="danger">My provider didn't show</SubmitButton>
+                </ActionForm>
+              ) : null}
+            </div>
+          </CardBody>
+        </Card>
+      ) : null}
+      {live?.arrivedAt ? <p className="mb-5 text-sm text-emerald-700">✓ {live.provider.displayName} arrived.</p> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {track && (track.status === "ACTIVE" || (track.status === "EXHAUSTED" && selectable)) ? (

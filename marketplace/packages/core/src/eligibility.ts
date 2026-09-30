@@ -111,6 +111,8 @@ export interface EligibilityOptions {
   travelBufferExtraMinutes: number;
   /** Cascade boost widens distance for overnight-willing providers (§7.7). Never touches F0–F2. */
   distanceMultiplier?: number;
+  /** Emergency cover widens every provider's drive limit (only offered; they can say no). Never touches F0–F2. */
+  distanceMultiplierAll?: number;
   /** Credential-only checks (nightly sweep, pre-shift check): F0, F1, F1b, F2 only. */
   credentialsOnly?: boolean;
 }
@@ -264,7 +266,7 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
 
   // F7 — distance.
   const overnightOk = provider.willingOvernight && shift.lodgingAllowed;
-  const limit = provider.maxDriveMinutes * (provider.willingOvernight ? (opts.distanceMultiplier ?? 1) : 1);
+  const limit = provider.maxDriveMinutes * Math.max(provider.willingOvernight ? (opts.distanceMultiplier ?? 1) : 1, opts.distanceMultiplierAll ?? 1);
   if (!overnightOk) {
     if (pair.driveMinutes === null) fail("F7", "TOO_FAR", "Drive time unavailable");
     else if (pair.driveMinutes > limit) {

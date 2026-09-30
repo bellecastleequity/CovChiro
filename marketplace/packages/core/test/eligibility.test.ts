@@ -210,6 +210,17 @@ describe("other hard filters", () => {
     expect(codes(evaluateEligibility(provider({ payoutsEnabled: false }), shift(), pair(), OPTS))).toContain("PROVIDER_NOT_ACTIVE");
   });
 
+  it("F7 emergency radius widens every provider's drive limit, never credentials", () => {
+    const far = pair({ driveMinutes: 120 });
+    const p = provider({ maxDriveMinutes: 90, willingOvernight: false });
+    expect(codes(evaluateEligibility(p, shift(), far, OPTS))).toContain("TOO_FAR");
+    expect(codes(evaluateEligibility(p, shift(), far, { ...OPTS, distanceMultiplier: 1.5 }))).toContain("TOO_FAR"); // boost: overnight-willing only
+    expect(codes(evaluateEligibility(p, shift(), far, { ...OPTS, distanceMultiplierAll: 1.5 }))).not.toContain("TOO_FAR");
+    expect(codes(evaluateEligibility(p, shift(), pair({ driveMinutes: 140 }), { ...OPTS, distanceMultiplierAll: 1.5 }))).toContain("TOO_FAR");
+    const unlicensed = provider({ maxDriveMinutes: 90, licenses: [] });
+    expect(codes(evaluateEligibility(unlicensed, shift(), far, { ...OPTS, distanceMultiplierAll: 1.5 }))).toContain("LICENSE_STATE_MISMATCH");
+  });
+
   it("F4 availability window includes travel buffer", () => {
     const rules = [{ weekday: 3, startMin: 9 * 60, endMin: 17 * 60, timeZone: "America/New_York" }];
     expect(codes(evaluateEligibility(provider({ availabilityRules: rules }), shift(), pair(), OPTS))).toContain("OUTSIDE_AVAILABILITY");

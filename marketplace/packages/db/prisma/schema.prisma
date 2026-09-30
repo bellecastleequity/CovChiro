@@ -525,6 +525,14 @@ model Shift {
   providerPayCents        Int
   premiumsApplied         Json           @default("[]")
   boosted                 Boolean        @default(false)
+  /// Emergency cover (no-show / late cancel): broadcast to everyone at once, wider radius, rescue bonus from margin.
+  emergencyAt             DateTime?      @db.Timestamptz(3)
+  emergencySource         String?
+  emergencyReason         String?
+  emergencyBonusPercent   Int            @default(0)
+  emergencyBasePayCents   Int?
+  /// Replacement for the remaining time of a shift whose provider didn't show.
+  rescueOfShiftId         String?
   promoCodeId             String?
   promoCode               PromoCode?     @relation(fields: [promoCodeId], references: [id])
   promoDiscountCents      Int            @default(0)
@@ -712,6 +720,8 @@ model Assignment {
   reconfirmedAt        DateTime?                 @db.Timestamptz(3)
   checkinPromptedAt    DateTime?                 @db.Timestamptz(3)
   onMyWayAt            DateTime?                 @db.Timestamptz(3)
+  /// The clinic confirmed the provider arrived.
+  arrivedAt            DateTime?                 @db.Timestamptz(3)
   checkinAlertedAt     DateTime?                 @db.Timestamptz(3)
   startedAt            DateTime?                 @db.Timestamptz(3)
   completedAt          DateTime?                 @db.Timestamptz(3)

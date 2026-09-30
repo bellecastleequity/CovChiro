@@ -8,7 +8,7 @@ import { Checkbox, Field, Input, Textarea } from "@/components/ui/form";
 import { PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateLabel, dateTimeLabel, money, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { adminAssignAction, adminCancelShiftAction, adminDispatchAction, adminStopDispatchAction, adminInviteAction, removeProviderAction, repriceAction } from "../../actions";
+import { findCoverAction, adminAssignAction, adminCancelShiftAction, adminDispatchAction, adminStopDispatchAction, adminInviteAction, removeProviderAction, repriceAction } from "../../actions";
 
 export default async function AdminShift({ params }: { params: Promise<{ id: string }> }) {
   await requireActor("admin");
@@ -41,6 +41,25 @@ export default async function AdminShift({ params }: { params: Promise<{ id: str
   return (
     <>
       <PageHeader eyebrow={`${shift.location.clinicOrg.displayName} · ${shift.professionCode} · ${shift.state}`} title={dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })} description={timeRange(shift.startsAt, shift.endsAt, tz)} actions={<StatusBadge status={shift.status} />} />
+      {live || selectable ? (
+        <Card className="mb-6 border-red-200 bg-red-50/60">
+          <CardBody className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-red-900">
+              <div className="font-semibold">{shift.emergencyAt ? `Emergency cover running — rescue bonus +${shift.emergencyBonusPercent}%` : "Provider didn't show or can't be reached?"}</div>
+              <div>{shift.emergencyAt ? "Everyone eligible nearby has been texted." : live ? "Records a no-show, refunds the clinic for them, and texts every eligible provider nearby with a rescue bonus." : "Texts every eligible provider nearby at once with a rescue bonus."}</div>
+            </div>
+            {shift.emergencyAt ? (
+              <a href={`/admin/emergencies/${id}`} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white">Open emergency screen</a>
+            ) : (
+              <ActionForm action={findCoverAction} confirm={live ? "Record the provider as a no-show and send emergency cover now?" : "Start emergency cover now?"} className="flex gap-2">
+                <input type="hidden" name="shiftId" value={id} />
+                <Input name="note" placeholder="Note (optional)" className="w-52 bg-white" />
+                <SubmitButton variant="danger">Find cover now</SubmitButton>
+              </ActionForm>
+            )}
+          </CardBody>
+        </Card>
+      ) : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {set ? (

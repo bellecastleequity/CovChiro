@@ -191,7 +191,7 @@ export async function attendanceSweep(now: Date = clock.now()) {
 
   // 5. Not on the way close to the start → alert admins and the clinic.
   const late = await prisma.assignment.findMany({
-    where: { status: { in: ["CONFIRMED", "IN_PROGRESS"] }, onMyWayAt: null, checkinAlertedAt: null, startsAt: { gt: new Date(+now - HOUR), lte: new Date(+now + s["checkin.alertBeforeMinutes"] * MIN) } },
+    where: { status: { in: ["CONFIRMED", "IN_PROGRESS"] }, onMyWayAt: null, arrivedAt: null, checkinAlertedAt: null, startsAt: { gt: new Date(+now - HOUR), lte: new Date(+now + s["checkin.alertBeforeMinutes"] * MIN) } },
     include: withShift,
   });
   for (const a of late) {

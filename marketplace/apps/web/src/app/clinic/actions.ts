@@ -6,6 +6,7 @@ import { DateTime } from "luxon";
 import { prisma } from "@cm/db";
 import {
   dispatch,
+  emergency,
   archiveLocation, auth, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic,
   requestAgreement, saveLocation, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
@@ -213,4 +214,19 @@ export const instantConfirmAction = formAction(async (fd) => {
   await dispatch.clinicInstantConfirm(actor, str(fd, "shiftId"), str(fd, "providerId"));
   revalidatePath(`/clinic/shifts/${str(fd, "shiftId")}`);
   return "Confirmed instantly — this provider is On Call for shifts like yours.";
+});
+
+export const markArrivedAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await emergency.markArrived(actor, str(fd, "assignmentId"));
+  revalidatePath("/clinic/shifts");
+  return r;
+});
+
+export const reportNoShowAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await emergency.reportNoShow(actor, str(fd, "assignmentId"));
+  revalidatePath("/clinic", "layout");
+  if (r.replacementShiftId) redirect(`/clinic/shifts/${r.replacementShiftId}`);
+  return "Recorded. You won't be charged for this shift.";
 });

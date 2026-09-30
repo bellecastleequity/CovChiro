@@ -12,6 +12,7 @@ export const EXPECTED_MIGRATIONS = [
   "0004_personal_injury_experience",
   "0005_admin_approval",
   "0006_attendance",
+  "0007_emergency_cover",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */

@@ -671,11 +671,15 @@ export async function cancelAssignment(
   actor: Actor,
   assignmentId: string,
   reason: string,
-  /** unconfirmed: the system releases a provider who didn't reconfirm — treated as the provider's (late) cancel. */
-  opts: { by: "PROVIDER" | "PLATFORM"; lapse?: boolean; noShow?: boolean; unconfirmed?: boolean } = { by: "PROVIDER" },
+  /**
+   * unconfirmed: the system releases a provider who didn't reconfirm — treated as the provider's (late) cancel.
+   * onBehalf: the platform records a provider-fault event (a no-show) for them.
+   * quiet: the caller sends its own clinic/admin messages (emergency cover).
+   */
+  opts: { by: "PROVIDER" | "PLATFORM"; lapse?: boolean; noShow?: boolean; unconfirmed?: boolean; onBehalf?: boolean; quiet?: boolean } = { by: "PROVIDER" },
 ) {
   const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId }, include: { shift: { include: { location: true } }, provider: true } });
-  if (opts.unconfirmed) {
+  if (opts.unconfirmed || opts.onBehalf) {
     if (actor.role !== "SYSTEM") requireAdmin(actor);
   } else if (opts.by === "PROVIDER") {
     const pid = requireProvider(actor);
@@ -714,14 +718,12 @@ export async function cancelAssignment(
   });
   if (outcome.refundDepositCents > 0) await refundAssignment(actor, a.id, outcome.refundDepositCents, `${newStatus.toLowerCase()} — full refund`);
   const day = a.startsAt.toLocaleDateString("en-US", { timeZone: a.shift.location.timeZone, weekday: "short", month: "short", day: "numeric" });
-  await notifyClinic(prisma, a.shift.location.clinicOrgId, {
+  if (!opts.quiet) await notifyClinic(prisma, a.shift.location.clinicOrgId, {
     template: "backfill",
-    title: opts.unconfirmed ? "Your provider didn't confirm — we're already finding a replacement" : reopen ? "We're finding a replacement" : "Your covering provider didn't show",
-    body: opts.unconfirmed
-      ? `${a.provider.displayName} didn't confirm they're still coming on ${day}, so we've released them and reopened the shift as urgent. Your deposit is being refunded.`
-      : reopen
-        ? `${a.provider.displayName} is no longer able to cover ${day}. Your deposit is being refunded and we've reopened the shift to eligible providers.`
-        : "Your deposit is being refunded in full. Our team will follow up.",
+    title: reopen ? `We've had a cancellation for ${day} — we're already finding a replacement` : "Your covering provider didn't show",
+    body: reopen
+      ? `${a.provider.displayName} ${opts.unconfirmed ? "didn't confirm they're still coming" : "can no longer make it"} on ${day}. No need to worry — we're finding a replacement urgently as we speak, and we'll email you the moment your new provider is confirmed. Your deposit for ${a.provider.displayName} is being refunded.`
+      : "Your deposit is being refunded in full. Our team will follow up.",
     link: `/clinic/shifts/${a.shiftId}`,
     sms: true,
   });
@@ -730,6 +732,14 @@ export async function cancelAssignment(
       template: "reconfirm_released",
       title: `Released from your ${day} shift`,
       body: "You didn't confirm you were still coming by the deadline, so the shift has gone to another provider. This counts as a late cancellation.",
+      link: "/provider/assignments",
+      sms: true,
+    });
+  } else if (opts.noShow && opts.onBehalf) {
+    await notify(prisma, a.provider.userId, {
+      template: "no_show_recorded",
+      title: `Recorded as a no-show: ${day}`,
+      body: "The clinic reported you didn't arrive, so the shift has gone to another provider and this is recorded as a no-show. If this is a mistake, reply to this message or contact us right away.",
       link: "/provider/assignments",
       sms: true,
     });
@@ -751,10 +761,16 @@ export async function cancelAssignment(
     }
   }
   if (reopen) {
-    // Backfill: standby first, then On Call check, then waves (Addendum 02 §3, §7).
-    const { startDispatch } = await import("./dispatch");
-    await startDispatch(a.shiftId, "BACKFILL").catch((e) => console.error("backfill dispatch failed", e));
+    if (+a.startsAt - +now <= s["emergency.triggerWithinHours"] * 3_600_000) {
+      // Late cancellation: emergency cover (everyone at once, wider radius, rescue bonus from margin).
+      const { activateEmergency } = await import("./emergency");
+      await activateEmergency(a.shiftId, opts.unconfirmed ? "UNCONFIRMED" : opts.by === "PROVIDER" ? "PROVIDER_CANCEL" : "ADMIN", reason).catch((e) => console.error("emergency cover failed", e));
+    } else {
+      // Backfill: standby first, then On Call check, then waves (Addendum 02 §3, §7).
+      const { startDispatch } = await import("./dispatch");
+      await startDispatch(a.shiftId, "BACKFILL").catch((e) => console.error("backfill dispatch failed", e));
+    }
   }
-  await notifyAdmins(prisma, { template: "backfill_admin", title: `Backfill started (${newStatus})`, body: `Shift ${a.shiftId} reopened: ${reason}`, link: `/admin/shifts/${a.shiftId}`, email: false });
+  if (!opts.quiet) await notifyAdmins(prisma, { template: "backfill_admin", title: `Backfill started (${newStatus})`, body: `Shift ${a.shiftId} reopened: ${reason}`, link: `/admin/shifts/${a.shiftId}`, email: false });
   return outcome;
 }

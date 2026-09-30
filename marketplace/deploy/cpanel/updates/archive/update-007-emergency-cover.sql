@@ -1,0 +1,4 @@
+-- Adds emergency cover for no-shows and late cancellations.
+-- Run AFTER update-006. Safe to run more than once.
+-- Run in Neon: SQL Editor → paste → Run.
+-- @migration 0007_emergency_cover

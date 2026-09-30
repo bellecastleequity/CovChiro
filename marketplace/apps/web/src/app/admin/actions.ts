@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { DomainError } from "@cm/core";
 import { redirect } from "next/navigation";
 import {
-  addAdjustment, admin, adminAssign, dispatch, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
+  addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
   reviewLodgingReceipt, setHold,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
@@ -83,6 +83,12 @@ export const adminStopDispatchAction = formAction(async (fd) => {
   await dispatch.cancelDispatch(actor, str(fd, "shiftId"));
   rv("/admin/shifts");
   return "Dispatch stopped.";
+});
+export const findCoverAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await emergency.findCoverNow(actor, str(fd, "shiftId"), optStr(fd, "note") ?? undefined);
+  rv("/admin");
+  redirect(`/admin/emergencies/${r.shiftId}`);
 });
 export const removeProviderAction = formAction(async (fd) => {
   const { actor } = await me();
