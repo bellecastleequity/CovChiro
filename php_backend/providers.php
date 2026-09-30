@@ -211,7 +211,10 @@ function provider_lifecycle(array $provider, array $lic, array $mal, bool $eligi
     if ($eligible) return $shiftCount > 0 ? 'active' : 'coverage_ready';
     if (!credential_submitted($lic)) {
         $grad = $provider['graduation_date'] ?? null;
-        return ($grad && $grad > date('Y-m-d')) ? 'registered' : 'pending_license';
+        // "Registered / New Graduate" only until graduation, and only while
+        // no license has ever been submitted (an expired or rejected one
+        // means they're waiting on a license, not still in school).
+        return ($lic['status'] === 'not_provided' && $grad && $grad > date('Y-m-d')) ? 'registered' : 'pending_license';
     }
     if (!credential_submitted($mal)) return 'pending_malpractice';
     return 'verification_pending';

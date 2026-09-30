@@ -1045,6 +1045,8 @@ async function initDashboardPage(){
     window.location.href = 'index.html' + (location.search ? '?next=' + encodeURIComponent('dashboard.html' + location.search) : '');
     return;
   }
+  // Provider-network accounts have their own dashboard.
+  if (user.accountType === 'provider'){ window.location.href = MAIN_SITE_URL + '/provider.html'; return; }
   renderAuthState();
   await loadAvailability();
   await loadMyBookings();

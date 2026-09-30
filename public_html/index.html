@@ -1490,7 +1490,7 @@ $('auth-submit').addEventListener('click', async () => {
   }
   // Not mid-booking — sign-in/registration from the header goes straight to
   // the relevant dashboard rather than leaving the client on the homepage.
-  window.location.href = user.isAdmin ? 'admin.html' : (pendingNext || 'dashboard.html');
+  window.location.href = user.isAdmin ? 'admin.html' : user.accountType === 'provider' ? 'provider.html' : (pendingNext || 'dashboard.html');
 });
 let pendingBooking = null;
 $('btn-book').addEventListener('click', () => {

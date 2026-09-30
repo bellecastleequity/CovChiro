@@ -77,7 +77,7 @@ function handle_login(PDO $pdo) {
     $stmt->execute([$user['id']]);
 
     start_session_for((int)$user['id'], $email);
-    json_response(['success' => true, 'user' => public_user($email, $user['name'], $user['clinic_name'], $user['phone'], (bool)$user['email_verified'])]);
+    json_response(['success' => true, 'user' => public_user($email, $user['name'], $user['clinic_name'], $user['phone'], (bool)$user['email_verified']) + ['accountType' => $user['account_type'] ?? 'clinic']]);
 }
 
 function handle_logout() {
@@ -93,11 +93,13 @@ function handle_logout() {
 function handle_me(PDO $pdo) {
     $current = current_user_or_null();
     if (!$current) json_response(['user' => null]);
-    $stmt = $pdo->prepare('SELECT email, name, clinic_name, phone, email_verified FROM users WHERE id = ?');
+    // SELECT * so this keeps working on a database that hasn't had
+    // migration_015 (users.account_type) run yet.
+    $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ?');
     $stmt->execute([$current['id']]);
     $user = $stmt->fetch();
     if (!$user) json_response(['user' => null]);
-    json_response(['user' => array_merge(public_user($user['email'], $user['name'], $user['clinic_name'], $user['phone'], (bool)$user['email_verified']), ['isAdmin' => $current['is_admin']])]);
+    json_response(['user' => array_merge(public_user($user['email'], $user['name'], $user['clinic_name'], $user['phone'], (bool)$user['email_verified']), ['isAdmin' => $current['is_admin'], 'accountType' => $user['account_type'] ?? 'clinic'])]);
 }
 
 function handle_verify_email(PDO $pdo) {

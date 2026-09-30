@@ -11,6 +11,7 @@
 --
 -- Safe to run multiple times. Only adds columns/tables.
 
+SET NAMES utf8mb4;
 SET @dbname = DATABASE();
 
 -- ---------- users: clinic accounts vs provider accounts ----------
@@ -37,7 +38,7 @@ CREATE TABLE IF NOT EXISTS provider_schools (
 );
 
 INSERT IGNORE INTO provider_schools (slug, name, city, state, created_at) VALUES
-  ('palmer', 'Palmer College of Chiropractic — Florida', 'Port Orange', 'FL', NOW()),
+  ('palmer', 'Palmer College of Chiropractic - Florida', 'Port Orange', 'FL', NOW()),
   ('keiser', 'Keiser University College of Chiropractic Medicine', 'West Palm Beach', 'FL', NOW()),
   ('life', 'Life University College of Chiropractic', 'Marietta', 'GA', NOW()),
   ('sherman', 'Sherman College of Chiropractic', 'Spartanburg', 'SC', NOW()),
@@ -45,15 +46,15 @@ INSERT IGNORE INTO provider_schools (slug, name, city, state, created_at) VALUES
   ('parker', 'Parker University', 'Dallas', 'TX', NOW()),
   ('national', 'National University of Health Sciences', 'Lombard', 'IL', NOW()),
   ('nwhsu', 'Northwestern Health Sciences University', 'Bloomington', 'MN', NOW()),
-  ('cleveland', 'Cleveland University–Kansas City', 'Overland Park', 'KS', NOW()),
+  ('cleveland', 'Cleveland University-Kansas City', 'Overland Park', 'KS', NOW()),
   ('texas', 'Texas Chiropractic College', 'Pasadena', 'TX', NOW()),
   ('uws', 'University of Western States', 'Portland', 'OR', NOW()),
   ('lifewest', 'Life Chiropractic College West', 'Hayward', 'CA', NOW()),
   ('scu', 'Southern California University of Health Sciences', 'Whittier', 'CA', NOW()),
   ('nycc', 'Northeast College of Health Sciences', 'Seneca Falls', 'NY', NOW()),
   ('bridgeport', 'University of Bridgeport School of Chiropractic', 'Bridgeport', 'CT', NOW()),
-  ('palmer-davenport', 'Palmer College of Chiropractic — Davenport', 'Davenport', 'IA', NOW()),
-  ('palmer-west', 'Palmer College of Chiropractic — West', 'San Jose', 'CA', NOW());
+  ('palmer-davenport', 'Palmer College of Chiropractic - Davenport', 'Davenport', 'IA', NOW()),
+  ('palmer-west', 'Palmer College of Chiropractic - West', 'San Jose', 'CA', NOW());
 
 -- ---------- provider profiles (one per provider user) ----------
 CREATE TABLE IF NOT EXISTS providers (
