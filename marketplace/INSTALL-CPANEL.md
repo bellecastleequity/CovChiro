@@ -67,7 +67,7 @@ To build the zip yourself, run `bash deploy/cpanel/build.sh` from the `marketpla
    ```
    This is your `DATABASE_URL`.
 
-**Neon cost:** the cron job wakes the database every minute, so it effectively runs 24/7. That may exceed Neon's free allowance. Budget for its entry paid plan and check current prices at https://neon.tech/pricing.
+**Neon cost:** the cron job wakes the database every few minutes, so it effectively runs 24/7. That may exceed Neon's free allowance. Budget for its entry paid plan and check current prices at https://neon.tech/pricing.
 
 ## Step 3 — Upload the app and point the domain at its `public` folder
 
@@ -125,9 +125,15 @@ Click **Create**, then **Start App**.
 
 ## Step 6 — Turn on HTTPS
 
-cPanel → **SSL/TLS Status** → select `coverageoncall.com` and `www.coverageoncall.com` → **Run AutoSSL**.
+Namecheap issues certificates through its own tool; cPanel's AutoSSL isn't available on its shared plans.
 
-At Namecheap, the domain's DNS must point at your hosting. If both are in the same Namecheap account, the default "Namecheap BasicDNS" with the hosting records is enough.
+1. **DNS first:** in Namecheap → Domain List → coverageoncall.com → **Nameservers**, choose **Namecheap Web Hosting DNS**. BasicDNS has no records pointing at your hosting. Allow up to a few hours for the change to spread.
+2. **Install the certificate:** cPanel → **Namecheap SSL**, find coverageoncall.com, and install it (free with the hosting). Click **Sync** to refresh the status until it shows **Active**.
+3. **If it's still pending after a few hours:** validation is failing.
+   - **Check the redirect:** if the `.htaccess` in your home folder forces HTTPS, add `RewriteCond %{REQUEST_URI} !^/\.well-known/` just before its redirect rule, so validation checks can use plain HTTP.
+   - **Or ask Namecheap:** live chat can switch validation to DNS (CNAME) or complete it for you.
+
+**Signing in needs HTTPS.** The sign-in cookie is HTTPS-only, so on `http://` the login page accepts your password and then sends you straight back to the login page. Wait for the certificate before signing in.
 
 ## Step 7 — Create your admin account
 
@@ -140,9 +146,9 @@ At Namecheap, the domain's DNS must point at your hosting. If both are in the sa
 
 cPanel → **Cron Jobs**:
 
-1. **Cron email:** clear the box, otherwise you'll get an email every minute.
+1. **Cron email:** clear the box, otherwise you'll get an email every run.
 2. **Add New Cron Job:**
-   - **Common settings:** *Once Per Minute (\* \* \* \* \*)*.
+   - **Common settings:** *Once Per Five Minutes (\*/5 \* \* \* \*)*. Namecheap doesn't allow cron jobs more often than every 5 minutes, and rejects `* * * * *`.
    - **Command** (replace `YOUR_CRON_SECRET`):
      ```
      curl -fsS -m 55 -H "Authorization: Bearer YOUR_CRON_SECRET" https://coverageoncall.com/api/cron > /dev/null 2>&1
@@ -150,7 +156,7 @@ cPanel → **Cron Jobs**:
 3. **Check it:** after a couple of minutes, open `https://coverageoncall.com/api/cron` in a browser. It should say **Unauthorized**. That means the endpoint is up and locked. The cron call itself returns a list of the jobs it ran.
 
 **What each tick runs:**
-- **Every minute:** offer windows, auto-selection deadlines, shift start and unfilled shifts, and invitation settlement.
+- **Every tick (every 5 minutes on Namecheap):** offer windows, auto-selection deadlines, shift start and unfilled shifts, and invitation settlement. Time-sensitive steps can run up to about 5 minutes late. Hosting with a 1-minute scheduler (such as Google Cloud) tightens that.
 - **Every 5, 15 or 60 minutes:** completions, payouts, lead emails and stats.
 - **Nightly, 2:00 AM Eastern:** the credential sweep. The timing is computed in Eastern time, so your server's time zone doesn't matter.
 
