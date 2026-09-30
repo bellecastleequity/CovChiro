@@ -1,6 +1,6 @@
 import { env } from "@cm/config";
 import { prisma } from "@cm/db";
-import { clinicProfile } from "@cm/services";
+import { clinicProfile, MAX_LOCATION_PHOTOS } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { AddressInput } from "@/components/ui/address-input";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Textarea } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/misc";
 import { requireActor } from "@/lib/session";
-import { archiveLocationAction, locationAction } from "../actions";
+import { archiveLocationAction, locationAction, locationPhotosAction, removeLocationPhotoAction } from "../actions";
 
 export const metadata = { title: "Locations" };
 
@@ -40,8 +40,8 @@ async function LocationForm({ loc }: { loc?: Loc }) {
           {professions.map((p) => <Checkbox key={p.code} name="professions" value={p.code} defaultChecked={chosen.includes(p.code)} label={`${p.displayName}${p.active ? "" : " (soon)"}`} />)}
         </div>
       </fieldset>
-      <Field label="Arrival notes for confirmed providers" className="sm:col-span-2" hint="Parking, entrance, who to ask for. Shown only after confirmation.">
-        <Textarea name="arrivalNotes" defaultValue={loc?.arrivalNotes ?? ""} />
+      <Field label="How to find us — cheat sheet for your provider (optional)" className="sm:col-span-2" hint="Parking, which entrance, door codes, who to ask for, where to put their things. Shown only to the provider booked here.">
+        <Textarea name="arrivalNotes" defaultValue={loc?.arrivalNotes ?? ""} placeholder={"Park behind the building, not in patient spots.\nUse the side door by the blue awning.\nAsk for Maria at the front desk."} />
       </Field>
       <fieldset className="sm:col-span-2">
         <legend className="mb-1.5 text-sm font-medium text-slate-700">Techniques used here</legend>
@@ -71,6 +71,34 @@ export default async function Locations() {
               action={<div className="flex items-center gap-2">{l.rateRegion ? <Badge>{l.rateRegion.name}</Badge> : null}<ActionForm action={archiveLocationAction} confirm="Archive this location?" successMessage={false}><input type="hidden" name="locationId" value={l.id} /><button className="text-xs text-slate-400 hover:text-red-600">Archive</button></ActionForm></div>}
             />
             <CardBody><LocationForm loc={l} /></CardBody>
+            <CardBody className="border-t border-slate-100">
+              <div className="mb-3">
+                <div className="text-sm font-medium text-slate-700">Photos to help providers find you (optional)</div>
+                <p className="text-sm text-slate-500">The building, your sign or the entrance to use. Up to {MAX_LOCATION_PHOTOS} (JPG, PNG or WebP; if an upload fails, try one photo at a time). Only the provider booked here sees them.</p>
+              </div>
+              {l.photoKeys.length ? (
+                <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {l.photoKeys.map((k) => (
+                    <div key={k} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`/api/files/${k}`} alt="Clinic exterior" className="aspect-[4/3] w-full rounded-xl object-cover ring-1 ring-slate-200" />
+                      <ActionForm action={removeLocationPhotoAction} className="absolute right-1.5 top-1.5" successMessage={false} confirm="Remove this photo?">
+                        <input type="hidden" name="locationId" value={l.id} />
+                        <input type="hidden" name="key" value={k} />
+                        <button className="rounded-full bg-white/90 px-2 py-0.5 text-xs text-slate-600 shadow hover:text-red-600">Remove</button>
+                      </ActionForm>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {l.photoKeys.length < MAX_LOCATION_PHOTOS ? (
+                <ActionForm action={locationPhotosAction} className="flex flex-wrap items-center gap-3" resetOnSuccess>
+                  <input type="hidden" name="locationId" value={l.id} />
+                  <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required className="text-sm" />
+                  <SubmitButton size="sm" variant="secondary">Upload photos</SubmitButton>
+                </ActionForm>
+              ) : null}
+            </CardBody>
           </Card>
         ))}
         <Card>

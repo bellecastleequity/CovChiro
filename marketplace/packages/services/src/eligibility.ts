@@ -59,6 +59,7 @@ export async function loadShift(db: Db, shiftId: string): Promise<LoadedShift> {
       startsAt: s.startsAt,
       endsAt: s.endsAt,
       requiredSkillIds: s.requiredSkillIds,
+      minYearsExperience: s.minYearsExperience,
       lodgingAllowed: s.lodgingAllowed,
       maxTravelBudgetCents: s.maxTravelBudgetCents,
       supervisionAttestation: s.supervisionAttestedAt ? parseAttestation(s.supervisionAttestation) : null,
@@ -117,7 +118,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
       facts: {
         id: p.id,
         status: p.status,
-        professions: p.professions.map((x) => ({ professionCode: x.professionCode, status: x.status })),
+        professions: p.professions.map((x) => ({ professionCode: x.professionCode, status: x.status, yearsInPractice: x.yearsInPractice })),
         payoutsEnabled: p.stripePayoutsEnabled,
         licenses: p.licenses.map((l) => ({ professionCode: l.professionCode, state: l.state, status: l.status, expiresAt: l.expiresAt })),
         malpractice: p.malpractice.map((m) => ({

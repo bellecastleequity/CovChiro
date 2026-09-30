@@ -17,6 +17,7 @@ import {
   supervisionProblem,
 } from "@cm/core";
 import { isInvariantViolation, prisma, type Prisma } from "@cm/db";
+import { agreementAccepted } from "./agreements";
 import { audit, clock, getSettings, lockShift, SYSTEM, requireAdmin, requireClinic, requireProvider, tx, type Actor, type Db } from "./context";
 import { confirmInTx, confirmProvider } from "./confirm";
 import { Effects } from "./effects";
@@ -38,6 +39,8 @@ export const ShiftInput = z.object({
   requiredSkillIds: z.array(z.string()).default([]),
   preferredSkillIds: z.array(z.string()).default([]),
   expectedPatients: z.coerce.number().int().min(0).max(500).nullable().optional(),
+  /** Minimum years of experience (0 = any). Omitted = the clinic's default from Settings. */
+  minYearsExperience: z.coerce.number().int().min(0).max(40).optional(),
   notes: z.string().max(2000).nullable().optional(),
   instantBook: z.boolean().default(false),
   maxTravelBudgetCents: z.coerce.number().int().min(0).nullable().optional(),
@@ -157,6 +160,9 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
     if (opts.post && (org.status !== "ACTIVE" || !org.hasPaymentMethod)) {
       throw new DomainError("FORBIDDEN", "Finish setup (payment method and agreement) before posting shifts.");
     }
+    if (opts.post && !(await agreementAccepted("CLINIC", org.agreementSignedAt, org.agreementVersion))) {
+      throw new DomainError("FORBIDDEN", "Please sign the updated Clinic Platform Agreement in Settings before posting shifts.");
+    }
     const { supervisionRequired } = await validateShiftInput(db, orgId, input, opts.post);
     const q = await quoteShift(db, input);
     const shift = await db.shift.create({
@@ -168,6 +174,7 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
         endsAt: input.endsAt,
         requiredSkillIds: input.requiredSkillIds,
         preferredSkillIds: input.preferredSkillIds,
+        minYearsExperience: input.minYearsExperience ?? org.minYearsExperience,
         expectedPatients: input.expectedPatients ?? null,
         notes: input.notes?.trim() || null,
         instantBook: input.instantBook,

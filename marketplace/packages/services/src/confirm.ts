@@ -168,7 +168,9 @@ export async function confirmInTx(
       body: `You're booked for ${date} in ${shift.location.city}, ${shift.location.state}. Arrival notes and the on-site contact are on the shift page.`,
       link: `/provider/assignments/${assignment.id}`,
       ctaLabel: "View shift details",
-      sms: true,
+      // Standing-booking days are expected: in-app only (the daily/weekly digests list them).
+      email: method !== "STANDING",
+      sms: method !== "STANDING",
     });
     // A replacement after a cancellation or no-show gets the "we've found your replacement" email.
     const replaced = !!shift.emergencyAt || !!shift.rescueOfShiftId || (await prisma.assignment.count({ where: { shiftId, id: { not: assignment.id }, status: { in: ["CANCELLED", "NO_SHOW", "LICENSE_LAPSED"] } } })) > 0;
@@ -195,8 +197,8 @@ export async function confirmInTx(
           link: `/clinic/shifts/${shiftId}`,
           ctaLabel: "View shift",
           // Days of a multi-day booking: in-app only; one "fully covered" email summarizes them.
-          email: !shift.shiftGroupId,
-          sms: !shift.shiftGroupId,
+          email: !shift.shiftGroupId && method !== "STANDING",
+          sms: !shift.shiftGroupId && method !== "STANDING",
         });
     if (shift.shiftGroupId) {
       const { maybeSendBookingCovered } = await import("./bookings");

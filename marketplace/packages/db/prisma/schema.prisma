@@ -165,47 +165,47 @@ enum ProviderStatus {
 }
 
 model Provider {
-  id                   String                                 @id @default(cuid())
-  userId               String                                 @unique
-  user                 User                                   @relation(fields: [userId], references: [id])
-  legalName            String
-  displayName          String
-  photoUrl             String?
-  npi                  String?                                @unique
-  npiVerifiedAt        DateTime?                              @db.Timestamptz(3)
-  npiMismatch          Boolean                                @default(false)
-  homeAddress          String?
-  homeLat              Float?
-  homeLng              Float?
-  homeCity             String?
+  id                       String                                 @id @default(cuid())
+  userId                   String                                 @unique
+  user                     User                                   @relation(fields: [userId], references: [id])
+  legalName                String
+  displayName              String
+  photoUrl                 String?
+  npi                      String?                                @unique
+  npiVerifiedAt            DateTime?                              @db.Timestamptz(3)
+  npiMismatch              Boolean                                @default(false)
+  homeAddress              String?
+  homeLat                  Float?
+  homeLng                  Float?
+  homeCity                 String?
   /// Display only — NEVER used for eligibility (INV-1).
-  homeState            String?
-  homeTimeZone         String                                 @default("America/New_York")
-  homeGeo              Unsupported("geography(Point, 4326)")?
-  maxDriveMinutes      Int                                    @default(90)
-  willingOvernight     Boolean                                @default(false)
-  bio                  String?
-  school               String?
-  graduationYear       Int?
-  languages            String[]                               @default([])
-  ehrSystems           String[]                               @default([])
-  xrayComfort          Boolean                                @default(false)
+  homeState                String?
+  homeTimeZone             String                                 @default("America/New_York")
+  homeGeo                  Unsupported("geography(Point, 4326)")?
+  maxDriveMinutes          Int                                    @default(90)
+  willingOvernight         Boolean                                @default(false)
+  bio                      String?
+  school                   String?
+  graduationYear           Int?
+  languages                String[]                               @default([])
+  ehrSystems               String[]                               @default([])
+  xrayComfort              Boolean                                @default(false)
   /// Has treated personal-injury (auto accident / PI) patients. null = not answered yet.
   personalInjuryExperience Boolean?
   /// Admin pushed this provider through onboarding: the profile, photo, email,
   /// NPI and agreement steps no longer block activation. Credentials (INV-1/3)
   /// and payouts are still required by matching.
-  adminApprovedAt          DateTime?                @db.Timestamptz(3)
+  adminApprovedAt          DateTime?                              @db.Timestamptz(3)
   adminApprovedById        String?
-  maxPatientsPerDay    Int?
-  stripeAccountId      String?                                @unique
-  stripePayoutsEnabled Boolean                                @default(false)
-  agreementSignedAt    DateTime?                              @db.Timestamptz(3)
-  agreementVersion     Int?
-  profileCompleteAt    DateTime?                              @db.Timestamptz(3)
-  status               ProviderStatus                         @default(ONBOARDING)
-  adminNotes           String?
-  createdAt            DateTime                               @default(now()) @db.Timestamptz(3)
+  maxPatientsPerDay        Int?
+  stripeAccountId          String?                                @unique
+  stripePayoutsEnabled     Boolean                                @default(false)
+  agreementSignedAt        DateTime?                              @db.Timestamptz(3)
+  agreementVersion         Int?
+  profileCompleteAt        DateTime?                              @db.Timestamptz(3)
+  status                   ProviderStatus                         @default(ONBOARDING)
+  adminNotes               String?
+  createdAt                DateTime                               @default(now()) @db.Timestamptz(3)
 
   /// Public profile (About me = bio).
   headline                 String?
@@ -391,29 +391,33 @@ enum ClinicStatus {
 }
 
 model ClinicOrg {
-  id                 String       @id @default(cuid())
-  legalName          String
-  displayName        String
-  logoUrl            String?
-  phone              String?
-  billingEmail       String?
-  stripeCustomerId   String?      @unique
-  hasPaymentMethod   Boolean      @default(false)
-  paymentMethodLabel String?
-  agreementSignedAt  DateTime?    @db.Timestamptz(3)
-  agreementVersion   Int?
-  status             ClinicStatus @default(ONBOARDING)
-  adminNotes         String?
-  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  id                         String       @id @default(cuid())
+  legalName                  String
+  displayName                String
+  logoUrl                    String?
+  phone                      String?
+  billingEmail               String?
+  stripeCustomerId           String?      @unique
+  hasPaymentMethod           Boolean      @default(false)
+  paymentMethodLabel         String?
+  agreementSignedAt          DateTime?    @db.Timestamptz(3)
+  agreementVersion           Int?
+  /// Default minimum years of experience for new shifts (0 = any).
+  minYearsExperience         Int          @default(0)
+  /// In emergency cover, drop the experience minimum so anyone qualified can step in.
+  relaxExperienceInEmergency Boolean      @default(true)
+  status                     ClinicStatus @default(ONBOARDING)
+  adminNotes                 String?
+  createdAt                  DateTime     @default(now()) @db.Timestamptz(3)
 
-  members          ClinicMember[]
-  locations        ClinicLocation[]
-  threads          MessageThread[]
-  promoRedemptions PromoRedemption[]
-  payments         Payment[]
+  members           ClinicMember[]
+  locations         ClinicLocation[]
+  threads           MessageThread[]
+  promoRedemptions  PromoRedemption[]
+  payments          Payment[]
   /// Admin pushed this clinic through onboarding (location / agreement steps waived; a payment method is still needed to post).
-  adminApprovedAt    DateTime? @db.Timestamptz(3)
-  adminApprovedById  String?
+  adminApprovedAt   DateTime?         @db.Timestamptz(3)
+  adminApprovedById String?
 }
 
 model ClinicMember {
@@ -455,6 +459,8 @@ model ClinicLocation {
   dressCode         String?
   /// Visible to the confirmed provider only.
   arrivalNotes      String?
+  /// Optional exterior/entrance photos (storage keys under locations/<id>/). Visible to clinic members and to providers booked here.
+  photoKeys         String[]                               @default([])
   active            Boolean                                @default(true)
   createdAt         DateTime                               @default(now()) @db.Timestamptz(3)
   skills            LocationSkill[]
@@ -472,6 +478,74 @@ model LocationSkill {
 }
 
 // ============================ shifts & matching ============================
+
+/// A clinic asking to hire a provider directly (off the shift marketplace).
+/// Our team arranges it by phone, quotes a placement fee, and on payment the
+/// provider is released to the clinic and no longer offered its shifts.
+model HireRequest {
+  id            String    @id @default(cuid())
+  clinicOrgId   String
+  providerId    String
+  requestedById String
+  /// FULL_TIME | PART_TIME | CONTRACT | OTHER
+  positionType  String
+  message       String?
+  callbackPhone String?
+  callbackTimes String?
+  /// NEW | IN_TALKS | QUOTED | PAID | RELEASED | DECLINED | CANCELLED
+  status        String    @default("NEW")
+  feeCents      Int?
+  terms         String?
+  quotedAt      DateTime? @db.Timestamptz(3)
+  quotedById    String?
+  acceptedName  String?
+  acceptedTitle String?
+  acceptedAt    DateTime? @db.Timestamptz(3)
+  acceptedIp    String?
+  termsHash     String?
+  paymentId     String?
+  releasedAt    DateTime? @db.Timestamptz(3)
+  adminNotes    String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([status, createdAt])
+  @@index([clinicOrgId, createdAt])
+}
+
+/// Ongoing work between a clinic and a provider, arranged through the platform:
+/// a weekly pattern that generates confirmed shifts a few weeks ahead, each
+/// priced, paid and cancellable like any other shift.
+model StandingBooking {
+  id               String    @id @default(cuid())
+  clinicOrgId      String
+  locationId       String
+  providerId       String
+  professionCode   String
+  /// Days of the week, 1 = Monday … 7 = Sunday (ISO).
+  weekdays         Int[]
+  /// Local "HH:MM" at the location.
+  startTime        String
+  endTime          String
+  startsOn         DateTime  @db.Date
+  endsOn           DateTime? @db.Date
+  notes            String?
+  /// PROPOSED | ACTIVE | DECLINED | ENDED | WITHDRAWN
+  status           String    @default("PROPOSED")
+  createdById      String
+  respondedAt      DateTime? @db.Timestamptz(3)
+  endedAt          DateTime? @db.Timestamptz(3)
+  endedByType      String?
+  endedReason      String?
+  /// Last date shifts have been generated for.
+  generatedThrough DateTime? @db.Date
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+  shifts           Shift[]
+
+  @@index([clinicOrgId, status])
+  @@index([providerId, status])
+}
 
 model ShiftGroup {
   id                   String         @id @default(cuid())
@@ -495,56 +569,61 @@ enum ShiftStatus {
 }
 
 model Shift {
-  id                      String         @id @default(cuid())
+  id                      String           @id @default(cuid())
   locationId              String
-  location                ClinicLocation @relation(fields: [locationId], references: [id])
+  location                ClinicLocation   @relation(fields: [locationId], references: [id])
   shiftGroupId            String?
-  shiftGroup              ShiftGroup?    @relation(fields: [shiftGroupId], references: [id])
+  shiftGroup              ShiftGroup?      @relation(fields: [shiftGroupId], references: [id])
+  /// Clinic preference: minimum years practicing this profession (0 = any).
+  minYearsExperience      Int              @default(0)
+  /// Generated from a standing booking (ongoing work between one clinic and one provider).
+  standingBookingId       String?
+  standingBooking         StandingBooking? @relation(fields: [standingBookingId], references: [id])
   /// Copy of location.state, set and kept in sync by trigger.
-  state                   String         @db.Char(2)
+  state                   String           @db.Char(2)
   professionCode          String
   /// INV-8 attestation: { supervisorName, supervisorProfessionCode, supervisorLicenseNumber, onSiteEntireShift }.
   supervisionAttestation  Json?
   supervisionAttestedById String?
-  supervisionAttestedAt   DateTime?      @db.Timestamptz(3)
-  startsAt                DateTime       @db.Timestamptz(3)
-  endsAt                  DateTime       @db.Timestamptz(3)
-  status                  ShiftStatus    @default(DRAFT)
-  requiredSkillIds        String[]       @default([])
-  preferredSkillIds       String[]       @default([])
+  supervisionAttestedAt   DateTime?        @db.Timestamptz(3)
+  startsAt                DateTime         @db.Timestamptz(3)
+  endsAt                  DateTime         @db.Timestamptz(3)
+  status                  ShiftStatus      @default(DRAFT)
+  requiredSkillIds        String[]         @default([])
+  preferredSkillIds       String[]         @default([])
   expectedPatients        Int?
   notes                   String?
-  instantBook             Boolean        @default(false)
+  instantBook             Boolean          @default(false)
   maxTravelBudgetCents    Int?
-  lodgingAllowed          Boolean        @default(false)
+  lodgingAllowed          Boolean          @default(false)
   lodgingCapCentsPerNight Int?
   // Pricing snapshot from the rate engine (INV-7)
   rateCardId              String?
   durationTier            DurationTier?
   clinicPriceCents        Int
   providerPayCents        Int
-  premiumsApplied         Json           @default("[]")
-  boosted                 Boolean        @default(false)
+  premiumsApplied         Json             @default("[]")
+  boosted                 Boolean          @default(false)
   /// Emergency cover (no-show / late cancel): broadcast to everyone at once, wider radius, rescue bonus from margin.
-  emergencyAt             DateTime?      @db.Timestamptz(3)
+  emergencyAt             DateTime?        @db.Timestamptz(3)
   emergencySource         String?
   emergencyReason         String?
-  emergencyBonusPercent   Int            @default(0)
+  emergencyBonusPercent   Int              @default(0)
   emergencyBasePayCents   Int?
   /// Replacement for the remaining time of a shift whose provider didn't show.
   rescueOfShiftId         String?
   promoCodeId             String?
-  promoCode               PromoCode?     @relation(fields: [promoCodeId], references: [id])
-  promoDiscountCents      Int            @default(0)
+  promoCode               PromoCode?       @relation(fields: [promoCodeId], references: [id])
+  promoDiscountCents      Int              @default(0)
   // Matching timeline
-  postedAt                DateTime?      @db.Timestamptz(3)
-  favoritesWindowEndsAt   DateTime?      @db.Timestamptz(3)
-  selectionDeadline       DateTime?      @db.Timestamptz(3)
-  cascadeStartedAt        DateTime?      @db.Timestamptz(3)
-  cancelledAt             DateTime?      @db.Timestamptz(3)
+  postedAt                DateTime?        @db.Timestamptz(3)
+  favoritesWindowEndsAt   DateTime?        @db.Timestamptz(3)
+  selectionDeadline       DateTime?        @db.Timestamptz(3)
+  cascadeStartedAt        DateTime?        @db.Timestamptz(3)
+  cancelledAt             DateTime?        @db.Timestamptz(3)
   cancelReason            String?
   createdById             String
-  createdAt               DateTime       @default(now()) @db.Timestamptz(3)
+  createdAt               DateTime         @default(now()) @db.Timestamptz(3)
 
   applications Application[]
   offers       Offer[]
@@ -673,6 +752,7 @@ enum SelectionMethod {
   DISPATCH_WAVE
   DISPATCH_BROADCAST
   STANDBY
+  STANDING
 }
 
 enum CancelParty {
@@ -814,6 +894,24 @@ model Message {
   createdAt        DateTime      @default(now()) @db.Timestamptz(3)
 
   @@index([threadId, createdAt])
+}
+
+/// A message that was not delivered because it shared contact details or
+/// arranged work off the platform (non-circumvention). Kept for admin review.
+model BlockedMessage {
+  id           String    @id @default(cuid())
+  threadId     String
+  senderUserId String
+  senderType   PartyType
+  body         String
+  /// phone | email | url | social | contact-request | off-platform | ai
+  reasons      String[]
+  source       String // RULES | AI
+  aiReason     String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([senderUserId, createdAt])
 }
 
 // ============================ money ============================
@@ -963,16 +1061,28 @@ model Dispute {
 // ============================ agreements ============================
 
 model AgreementSignature {
-  id           String    @id @default(cuid())
-  partyType    PartyType
-  partyId      String
-  signerUserId String
-  version      Int
-  provider     String // "dropbox-sign" | "dev"
-  envelopeId   String?   @unique
-  status       String    @default("SENT") // SENT | SIGNED | DECLINED
-  signedAt     DateTime? @db.Timestamptz(3)
-  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  id             String    @id @default(cuid())
+  partyType      PartyType
+  partyId        String
+  signerUserId   String
+  version        Int
+  provider       String // "internal" | "dropbox-sign" | "dev"
+  envelopeId     String?   @unique
+  status         String    @default("SENT") // SENT | SIGNED | DECLINED
+  signedAt       DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  // In-house e-signature evidence (ESIGN Act / UETA): who, when, from where, and exactly what.
+  viewedAt       DateTime? @db.Timestamptz(3)
+  consentAt      DateTime? @db.Timestamptz(3)
+  typedSignature String?
+  signerTitle    String?
+  signerEmail    String?
+  signerIp       String?
+  signerAgent    String?
+  /// The exact document signed (rendered sections) and its canonical text + SHA-256.
+  document       Json?
+  documentText   String?
+  documentHash   String?
 
   @@index([partyType, partyId])
 }

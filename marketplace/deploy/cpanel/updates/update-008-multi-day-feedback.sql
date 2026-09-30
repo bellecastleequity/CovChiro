@@ -1,4 +1,0 @@
--- Adds private post-shift feedback for providers (multi-day bookings need no DB change).
--- Run AFTER update-007. Safe to run more than once.
--- Run in Neon: SQL Editor → paste → Run.
--- @migration 0008_provider_feedback

@@ -1,3 +1,4 @@
+import { latestSignedAgreement } from "@cm/services";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@cm/db";
@@ -13,6 +14,7 @@ import { approveClinicAction, clinicStatusAction } from "../../actions";
 export default async function AdminClinic({ params }: { params: Promise<{ id: string }> }) {
   await requireActor("admin");
   const { id } = await params;
+  const signedCopy = await latestSignedAgreement("CLINIC", id);
   const c = await prisma.clinicOrg.findUnique({ where: { id }, include: { locations: true, members: { include: { user: true } }, payments: { orderBy: { createdAt: "desc" }, take: 20 } } });
   if (!c) notFound();
   const owner = c.members.find((m) => m.role === "CLINIC_OWNER")?.user;
@@ -26,7 +28,11 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
   const shifts = await prisma.shift.findMany({ where: { location: { clinicOrgId: id } }, orderBy: { startsAt: "desc" }, take: 20 });
   return (
     <>
-      <PageHeader title={c.displayName} description={`${c.legalName} · ${c.billingEmail ?? ""}`} actions={<StatusBadge status={c.status} />} />
+      <PageHeader
+        title={c.displayName}
+        description={<>{c.legalName} · {c.billingEmail ?? ""} · agreement {c.agreementSignedAt ? `v${c.agreementVersion}` : "unsigned"}{signedCopy ? <> · <Link className="text-brand-700" href={`/agreements/signed/${signedCopy.id}`}>signed copy</Link></> : null}</>}
+        actions={<StatusBadge status={c.status} />}
+      />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card><CardHeader title="Locations" /><CardBody className="space-y-1 text-sm">{c.locations.map((l) => <div key={l.id}>{l.name} — {l.addressLine1}, {l.city}, {l.state} {l.zip} · {l.professionCodes.join(", ")}{l.active ? "" : " (archived)"}</div>)}</CardBody></Card>

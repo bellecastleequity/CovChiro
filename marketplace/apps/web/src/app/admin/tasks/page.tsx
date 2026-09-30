@@ -14,7 +14,7 @@ const LINK: Record<string, (id: string) => string> = {
   LodgingReceipt: () => "/admin/payments",
   License: () => "/admin/verification",
   RateRegion: () => "/admin/rates",
-  MessageThread: () => "/admin/audit",
+  MessageThread: (id) => `/admin/messages/${id}`,
 };
 
 export default async function Tasks() {

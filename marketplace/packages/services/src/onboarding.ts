@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { DomainError, licensedPairs, NATIONAL_CREDENTIAL, normalizeLinkedIn, US_STATES } from "@cm/core";
-import { prisma } from "@cm/db";
+import { DomainError, licensedPairs, scanContactInfo, NATIONAL_CREDENTIAL, normalizeLinkedIn, US_STATES } from "@cm/core";
+import { prisma, type Prisma } from "@cm/db";
 import { esignProvider, GeoServiceError, geoProvider, lookupNpi, paymentsProvider, testSigningEnabled } from "@cm/integrations";
-import { audit, requireClinic, requireProvider, SYSTEM, type Actor } from "./context";
+import { AGREEMENT_VERSION, agreementAccepted, buildAgreementFor, sha256, type AgreementDoc } from "./agreements";
+import { audit, getSettings, requireClinic, requireProvider, SYSTEM, type Actor } from "./context";
 import { absoluteUrl, notify, sendEmail } from "./notify";
 import { activateClinicIfReady } from "./payments";
 import { resolveRateRegion } from "./pricing";
@@ -11,8 +12,7 @@ import { hashPassword } from "./auth";
 import { onLeadConverted } from "./leads";
 import { nationalCredentialStates } from "./eligibility";
 
-/** Current agreement versions. Bumping one requires re-acceptance before the next application/posting (SPEC §13). */
-export const AGREEMENT_VERSION = { CLINIC: 1, PROVIDER: 1 } as const;
+
 
 // ======================================================================
 // Provider
@@ -49,7 +49,7 @@ export async function providerChecklist(providerId: string) {
     homeBase: p.homeLat !== null,
     emailVerified: !!p.user.emailVerifiedAt,
     payouts: p.stripePayoutsEnabled,
-    agreement: p.agreementVersion === AGREEMENT_VERSION.PROVIDER && !!p.agreementSignedAt,
+    agreement: await agreementAccepted("PROVIDER", p.agreementSignedAt, p.agreementVersion),
     npi: p.professions.some((x) => x.profession.npiRequired) ? !!p.npiVerifiedAt : true,
   };
   const perProfession = p.professions.map((pp) => ({
@@ -150,6 +150,14 @@ export async function updateProviderProfile(actor: Actor, raw: z.input<typeof Pr
     npiData = { npi: input.npi, npiVerifiedAt: r.nameMatches ? new Date() : null, npiMismatch: !r.nameMatches };
     if (!r.nameMatches) await prisma.adminTask.create({ data: { kind: "NPI_MISMATCH", title: `NPI name mismatch: ${input.legalName} vs ${r.registryName}`, entityType: "Provider", entityId: providerId } });
   }
+  const thisYear = new Date().getFullYear();
+  if (input.graduationYear && input.graduationYear > thisYear) throw new DomainError("VALIDATION", "Your graduation year can't be in the future.");
+  const claimed = Math.max(0, ...Object.values(input.yearsInPractice ?? {}));
+  if (claimed > 0 && !input.graduationYear) throw new DomainError("VALIDATION", "Add your graduation year so we can confirm your years of experience.");
+  if (input.graduationYear && claimed > thisYear - input.graduationYear) {
+    throw new DomainError("VALIDATION", `Years practicing can't be more than ${thisYear - input.graduationYear} — the years since you graduated in ${input.graduationYear}.`);
+  }
+  if (input.bio && scanContactInfo(input.bio).found) throw new DomainError("VALIDATION", "Please remove phone numbers, emails, links and social handles from your bio. Clinics book you through the platform.");
   await prisma.$transaction([
     prisma.provider.update({
       where: { id: providerId },
@@ -360,14 +368,112 @@ export async function requestAgreement(actor: Actor): Promise<string> {
   const kind = isProvider ? "PROVIDER" : "CLINIC";
   const user = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId! } });
   const version = AGREEMENT_VERSION[kind];
-  if (esignProvider().name === "dev" && !testSigningEnabled()) {
-    throw new DomainError("CONFLICT", "Agreement signing isn't available yet. Please check back soon or contact support.");
+  // Dropbox Sign only when its key is set; otherwise our own signing page (the default).
+  if (esignProvider().name === "dropbox-sign") {
+    const req = await esignProvider().send({ kind, signerEmail: user.email, signerName: user.name, partyId, version });
+    await prisma.agreementSignature.create({
+      data: { partyType: kind, partyId, signerUserId: user.id, version, provider: "dropbox-sign", envelopeId: req.envelopeId },
+    });
+    return req.signUrl;
   }
-  const req = await esignProvider().send({ kind, signerEmail: user.email, signerName: user.name, partyId, version });
-  await prisma.agreementSignature.create({
-    data: { partyType: isProvider ? "PROVIDER" : "CLINIC", partyId, signerUserId: user.id, version, provider: esignProvider().name, envelopeId: req.envelopeId },
+  // Reuse an unsigned request for the same version rather than piling up rows.
+  const open = await prisma.agreementSignature.findFirst({ where: { partyType: kind, partyId, signerUserId: user.id, version, provider: "internal", status: "SENT" } });
+  const envelopeId = open?.envelopeId ?? `sig_${randomBytes(18).toString("base64url")}`;
+  if (!open) await prisma.agreementSignature.create({ data: { partyType: kind, partyId, signerUserId: user.id, version, provider: "internal", envelopeId } });
+  return `/agreements/sign/${envelopeId}`;
+}
+
+async function signatureForSigner(actor: Actor, envelopeId: string) {
+  const sig = await prisma.agreementSignature.findUnique({ where: { envelopeId } });
+  if (!sig || sig.signerUserId !== actor.userId || sig.provider !== "internal") throw new DomainError("NOT_FOUND", "Agreement not found");
+  return sig;
+}
+
+/** The signing page: the prefilled document for this signer, dated today. Records the first view. */
+export async function agreementForSigning(actor: Actor, envelopeId: string) {
+  const sig = await signatureForSigner(actor, envelopeId);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: sig.signerUserId } });
+  if (sig.status === "SIGNED") return { sig, user, doc: sig.document as unknown as AgreementDoc, hash: sig.documentHash, signed: true };
+  if (!sig.viewedAt) await prisma.agreementSignature.update({ where: { id: sig.id }, data: { viewedAt: new Date() } });
+  const kind = sig.partyType === "CLINIC" ? "CLINIC" : "PROVIDER";
+  const { doc, hash } = await buildAgreementFor(kind, sig.partyId, { name: user.name, email: user.email }, new Date());
+  return { sig, user, doc, hash, signed: false };
+}
+
+export const SignInput = z.object({
+  typedName: z.string().trim().min(3, "Type your full legal name to sign.").max(120),
+  title: z.string().trim().max(80).optional().nullable(),
+  consent: z.literal(true, { message: "Please agree to sign electronically." }),
+  agree: z.literal(true, { message: "Please confirm you have read and agree to the agreement." }),
+  /** SHA-256 of the text the signer was shown; must match what we'd record now. */
+  viewedHash: z.string().length(64),
+});
+
+/**
+ * In-house e-signature (ESIGN Act / UETA): consent to electronic records,
+ * intent (typed name + explicit agreement), attribution (signed-in account,
+ * IP, device) and integrity (the exact text and its SHA-256 are stored).
+ */
+export async function signAgreement(actor: Actor, envelopeId: string, raw: { typedName: string; title?: string | null; consent: boolean; agree: boolean; viewedHash: string }, meta: { ip: string | null; userAgent: string | null }) {
+  const input = SignInput.parse(raw);
+  const sig = await signatureForSigner(actor, envelopeId);
+  if (sig.status === "SIGNED") return sig.id;
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: sig.signerUserId } });
+  const kind = sig.partyType === "CLINIC" ? "CLINIC" : "PROVIDER";
+  if (kind === "CLINIC" && !input.title) throw new DomainError("VALIDATION", "Add your title (for example Owner or Office Manager).");
+  const now = new Date();
+  const { doc, text, hash } = await buildAgreementFor(kind, sig.partyId, { name: user.name, email: user.email }, now);
+  if (hash !== input.viewedHash) throw new DomainError("CONFLICT", "The agreement was updated while you were reading it. Please review the current version and sign again.");
+  await prisma.agreementSignature.update({
+    where: { id: sig.id },
+    data: {
+      typedSignature: input.typedName,
+      signerTitle: input.title ?? null,
+      signerEmail: user.email,
+      signerIp: meta.ip?.slice(0, 64) ?? null,
+      signerAgent: meta.userAgent?.slice(0, 400) ?? null,
+      consentAt: now,
+      document: doc as unknown as Prisma.InputJsonValue,
+      documentText: text,
+      documentHash: hash,
+    },
   });
-  return req.signUrl;
+  await markAgreementSigned(envelopeId);
+  await sendSignedCopy(sig.id).catch(() => undefined);
+  return sig.id;
+}
+
+/** A signed copy: for the signer, members of the signing clinic / the provider, and admins. */
+export async function signedAgreement(actor: Actor, id: string) {
+  const sig = await prisma.agreementSignature.findUnique({ where: { id } });
+  if (!sig || sig.status !== "SIGNED") throw new DomainError("NOT_FOUND", "Agreement not found");
+  const allowed =
+    actor.role === "PLATFORM_ADMIN" ||
+    sig.signerUserId === actor.userId ||
+    (sig.partyType === "CLINIC" && actor.clinicOrgId === sig.partyId) ||
+    (sig.partyType === "PROVIDER" && actor.providerId === sig.partyId);
+  if (!allowed) throw new DomainError("NOT_FOUND", "Agreement not found");
+  const signer = await prisma.user.findUnique({ where: { id: sig.signerUserId }, select: { name: true, email: true } });
+  return { sig, signer, doc: sig.document as unknown as AgreementDoc | null, intact: !!sig.documentText && sha256(sig.documentText) === sig.documentHash };
+}
+
+/** The latest signed agreement for a clinic or provider (for "View signed agreement" links). */
+export async function latestSignedAgreement(partyType: "CLINIC" | "PROVIDER", partyId: string) {
+  return prisma.agreementSignature.findFirst({ where: { partyType, partyId, status: "SIGNED" }, orderBy: { signedAt: "desc" }, select: { id: true, version: true, signedAt: true, provider: true } });
+}
+
+async function sendSignedCopy(id: string) {
+  const sig = await prisma.agreementSignature.findUniqueOrThrow({ where: { id } });
+  const doc = sig.document as unknown as AgreementDoc | null;
+  if (!doc || !sig.signerEmail) return;
+  const when = sig.signedAt!.toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "long", timeStyle: "long" });
+  const paragraphs = [
+    `Thanks for signing. Your copy of the ${doc.title} (version ${doc.version}) is below and always available in your account.`,
+    `Signed by ${sig.typedSignature}${sig.signerTitle ? `, ${sig.signerTitle}` : ""} (${sig.signerEmail}) on ${when}. Document fingerprint (SHA-256): ${sig.documentHash}.`,
+    ...doc.parties.map((p) => `${p.label}: ${p.lines.join(" · ")}`),
+    ...doc.sections.flatMap((x) => [x.heading.toUpperCase(), ...x.paragraphs]),
+  ];
+  await sendEmail(sig.signerEmail, { subject: `Your signed ${doc.title}`, heading: "Your signed agreement", paragraphs, cta: { label: "View or print your copy", url: `/agreements/signed/${sig.id}` } });
 }
 
 /** From the verified e-sign webhook (or the dev signing page outside production). */
@@ -402,7 +508,7 @@ export async function clinicProfile(actor: Actor) {
   const checklist = {
     location: org.locations.length > 0,
     paymentMethod: org.hasPaymentMethod,
-    agreement: org.agreementVersion === AGREEMENT_VERSION.CLINIC && !!org.agreementSignedAt,
+    agreement: await agreementAccepted("CLINIC", org.agreementSignedAt, org.agreementVersion),
   };
   return { org, checklist };
 }
@@ -418,6 +524,15 @@ export async function updateOrg(actor: Actor, raw: z.input<typeof OrgInput>) {
   const orgId = requireClinic(actor, { ownerOnly: true });
   const input = OrgInput.parse(raw);
   await prisma.clinicOrg.update({ where: { id: orgId }, data: input });
+}
+
+export const EXPERIENCE_LEVELS = [0, 2, 5, 10] as const;
+
+/** Clinic default: minimum years of experience for new shifts, and whether emergencies relax it. */
+export async function setExperiencePreference(actor: Actor, minYears: number, relaxInEmergency: boolean) {
+  const orgId = requireClinic(actor, { ownerOnly: true });
+  if (!(EXPERIENCE_LEVELS as readonly number[]).includes(minYears)) throw new DomainError("VALIDATION", "Pick one of the experience levels.");
+  await prisma.clinicOrg.update({ where: { id: orgId }, data: { minYearsExperience: minYears, relaxExperienceInEmergency: relaxInEmergency } });
 }
 
 export const LocationInput = z.object({
@@ -490,6 +605,38 @@ export async function archiveLocation(actor: Actor, locationId: string) {
   const open = await prisma.shift.count({ where: { locationId, location: { clinicOrgId: orgId }, status: { notIn: ["COMPLETED", "UNFILLED", "CANCELLED", "DRAFT"] } } });
   if (open) throw new DomainError("CONFLICT", "This location has active shifts.");
   await prisma.clinicLocation.updateMany({ where: { id: locationId, clinicOrgId: orgId }, data: { active: false } });
+}
+
+export const MAX_LOCATION_PHOTOS = 4;
+
+/** Exterior / entrance photos that help booked providers find the clinic. */
+export async function addLocationPhotos(actor: Actor, locationId: string, keys: string[]) {
+  const orgId = requireClinic(actor);
+  const loc = await prisma.clinicLocation.findFirst({ where: { id: locationId, clinicOrgId: orgId } });
+  if (!loc) throw new DomainError("NOT_FOUND", "Location not found");
+  if (loc.photoKeys.length + keys.length > MAX_LOCATION_PHOTOS) throw new DomainError("VALIDATION", `Up to ${MAX_LOCATION_PHOTOS} photos per location.`);
+  await prisma.clinicLocation.update({ where: { id: loc.id }, data: { photoKeys: [...loc.photoKeys, ...keys] } });
+}
+
+export async function removeLocationPhoto(actor: Actor, locationId: string, key: string) {
+  const orgId = requireClinic(actor);
+  const loc = await prisma.clinicLocation.findFirst({ where: { id: locationId, clinicOrgId: orgId } });
+  if (!loc) throw new DomainError("NOT_FOUND", "Location not found");
+  await prisma.clinicLocation.update({ where: { id: loc.id }, data: { photoKeys: loc.photoKeys.filter((k) => k !== key) } });
+}
+
+/** Who may view a location photo: that clinic's members, and providers booked there (upcoming or within the last day). */
+export async function canViewLocationPhoto(actor: Actor, key: string) {
+  const m = /^locations\/([^/]+)\//.exec(key);
+  if (!m) return false;
+  const loc = await prisma.clinicLocation.findUnique({ where: { id: m[1] }, select: { clinicOrgId: true, photoKeys: true } });
+  if (!loc || !loc.photoKeys.includes(key)) return false;
+  if (actor.clinicOrgId && actor.clinicOrgId === loc.clinicOrgId) return true;
+  if (!actor.providerId) return false;
+  return !!(await prisma.assignment.findFirst({
+    where: { providerId: actor.providerId, status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] }, endsAt: { gte: new Date(Date.now() - 86_400_000) }, shift: { locationId: m[1] } },
+    select: { id: true },
+  }));
 }
 
 export async function clinicPaymentSetupUrl(actor: Actor) {

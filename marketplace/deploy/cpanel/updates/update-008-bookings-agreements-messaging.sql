@@ -1,0 +1,6 @@
+-- This release: multi-day bookings, private provider feedback, standing bookings,
+-- in-house e-signature, message screening, clinic location photos, experience levels.
+-- Run AFTER update-007. Safe to run more than once.
+-- Run in Neon: SQL Editor → paste → Run.
+-- @migration 0008_provider_feedback
+-- @migration 0009_standing_esign_moderation

@@ -42,6 +42,10 @@ const EnvSchema = z.object({
   GCS_BUCKET_CREDENTIALS: z.string().optional(),
   UPLOAD_DIR: z.string().default(".uploads"),
   SENTRY_DSN: z.string().optional(),
+  /** Optional AI message moderation (non-circumvention). Claude is used when set, else Gemini; neither = rules only. */
+  ANTHROPIC_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  MODERATION_MODEL: z.string().optional(),
   NPPES_API_BASE: z.string().default("https://npiregistry.cms.hhs.gov/api/"),
 });
 export type Env = z.infer<typeof EnvSchema>;

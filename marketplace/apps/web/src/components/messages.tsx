@@ -1,3 +1,4 @@
+import { brand } from "@cm/config";
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 import { messaging, type Actor } from "@cm/services";
@@ -41,7 +42,7 @@ export async function ThreadView({ actor, threadId, send }: { actor: Actor; thre
   const { thread, messages, side } = await messaging.threadMessages(actor, threadId);
   return (
     <>
-      <PageHeader title={side === "PROVIDER" ? thread.clinicName : thread.providerName} description={thread.confirmed ? "Confirmed together — contact details may be shared." : "Contact details are hidden until a shift is confirmed."} />
+      <PageHeader title={side === "PROVIDER" ? thread.clinicName : thread.providerName} description={`Keep everything on ${brand().name}: messages with phone numbers, emails, links, social handles or offers to work off the platform aren't sent. ${thread.confirmed ? "The address, front desk number and arrival notes are on each booking." : "Booking details are shared once a shift is confirmed."}`} />
       <Card className="flex h-[65dvh] flex-col">
         <div className="flex-1 space-y-3 overflow-y-auto p-4">
           {messages.map((m) => {

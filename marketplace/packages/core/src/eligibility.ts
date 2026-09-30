@@ -45,7 +45,7 @@ export interface ProviderFacts {
   id: string;
   status: ProviderStatus;
   /** Per-profession activation; F3 checks the shift's profession. */
-  professions: { professionCode: string; status: ProviderProfessionStatus }[];
+  professions: { professionCode: string; status: ProviderProfessionStatus; yearsInPractice?: number | null }[];
   payoutsEnabled: boolean;
   licenses: LicenseFact[];
   malpractice: MalpracticeFact[];
@@ -90,6 +90,8 @@ export interface ShiftFacts {
   startsAt: Date;
   endsAt: Date;
   requiredSkillIds: string[];
+  /** Clinic preference: minimum years practicing this profession (0 = any). Relaxed in emergencies when the clinic allows it. */
+  minYearsExperience?: number;
   lodgingAllowed: boolean;
   maxTravelBudgetCents: number | null;
   supervisionAttestation: SupervisionAttestation | null;
@@ -117,7 +119,7 @@ export interface EligibilityOptions {
   credentialsOnly?: boolean;
 }
 
-export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10";
+export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11";
 
 export interface EligibilityFailure {
   filter: FilterId;
@@ -277,6 +279,12 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   // F8 — clinic's travel budget cap.
   if (shift.maxTravelBudgetCents !== null && pair.travelEstimateCents > shift.maxTravelBudgetCents) {
     fail("F8", "OVER_TRAVEL_BUDGET", "Estimated travel exceeds the clinic's travel budget");
+  }
+
+  // F11 — clinic's minimum experience (years practicing the shift's profession, as entered by the provider).
+  const minYears = shift.minYearsExperience ?? 0;
+  if (minYears > 0 && (prof?.yearsInPractice ?? 0) < minYears) {
+    fail("F11", "INSUFFICIENT_EXPERIENCE", `The clinic asks for ${minYears}+ years of ${shift.professionCode} experience`);
   }
 
   // F10 — declined an offer for this shift already.

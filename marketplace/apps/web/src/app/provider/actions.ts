@@ -7,6 +7,7 @@ import { prisma } from "@cm/db";
 import {
   attendance,
   bookings,
+  standing,
   dispatch,
   oncall,
   addBlackout, addMalpractice, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
@@ -44,6 +45,21 @@ export const applyAction = formAction(async (fd) => {
   const r = await applyToShift(actor, str(fd, "shiftId"), input);
   revalidatePath("/provider", "layout");
   return r.confirmed ? "Instant book: you're confirmed! Check My shifts for details." : "Applied. We'll notify you if you're selected.";
+});
+
+export const respondStandingAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const accept = str(fd, "decision") === "accept";
+  await standing.respondStanding(actor, str(fd, "standingId"), accept);
+  revalidatePath("/provider", "layout");
+  return accept ? "Accepted — your shifts are being booked now. You'll see them under My shifts." : "Declined. The clinic has been told.";
+});
+
+export const endStandingAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await standing.endStanding(actor, str(fd, "standingId"), str(fd, "reason") || "Ended by provider");
+  revalidatePath("/provider", "layout");
+  return r.cancelled ? `Ended. ${r.cancelled} later shift${r.cancelled === 1 ? " was" : "s were"} released.` : "Ended.";
 });
 
 export const withdrawAction = formAction(async (fd) => {

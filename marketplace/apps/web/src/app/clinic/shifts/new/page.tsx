@@ -28,6 +28,7 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
       <PageHeader title="Post a shift" description="Prices come from our regional rate card. You'll see the total before posting." />
       <PostShiftWizard
         canPost={org.status === "ACTIVE" && org.hasPaymentMethod}
+        defaultMinYears={org.minYearsExperience}
         defaultCode={code ?? welcome?.code ?? ""}
         locations={options.map((o) => ({
           id: o.location.id,

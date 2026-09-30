@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { DomainError } from "@cm/core";
 import { redirect } from "next/navigation";
 import {
+  hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
   reviewLodgingReceipt, setHold,
 } from "@cm/services";
@@ -298,6 +299,23 @@ export const rateCardAction = formAction(async (fd) => {
   rv("/admin/rates");
   return "Rate card saved. Existing shifts keep their original prices.";
 });
+export const hireStatusAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const status = str(fd, "status");
+  await hiring.updateHireRequest(actor, str(fd, "hireId"), { status: status === "IN_TALKS" || status === "DECLINED" ? status : undefined, adminNotes: str(fd, "adminNotes") || null });
+  rv("/admin/hire");
+  return "Saved.";
+});
+
+export const hireQuoteAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const dollars = Number(str(fd, "fee").replace(/[$,\s]/g, ""));
+  if (!Number.isFinite(dollars) || dollars <= 0) throw new DomainError("VALIDATION", "Enter the placement fee in dollars.");
+  await hiring.quoteHire(actor, str(fd, "hireId"), Math.round(dollars * 100), str(fd, "terms"));
+  rv("/admin/hire");
+  return "Sent — the clinic has the link to accept and pay.";
+});
+
 export const settingAction = formAction(async (fd) => {
   const { actor } = await me();
   const raw = str(fd, "value");

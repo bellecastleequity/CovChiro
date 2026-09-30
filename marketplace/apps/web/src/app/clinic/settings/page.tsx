@@ -1,11 +1,12 @@
-import { AGREEMENT_VERSION, clinicProfile } from "@cm/services";
+import Link from "next/link";
+import { AGREEMENT_VERSION, latestSignedAgreement, clinicProfile } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Field, Input } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { agreementAction, clinicPhoneConfirmAction, clinicPhoneStartAction, orgAction, passwordAction } from "../actions";
+import { agreementAction, clinicPhoneConfirmAction, experienceAction, clinicPhoneStartAction, orgAction, passwordAction } from "../actions";
 
 export const metadata = { title: "Settings" };
 
@@ -14,6 +15,7 @@ export default async function Settings() {
   const { org } = await clinicProfile(actor);
   const owner = actor.role === "CLINIC_OWNER";
   const signed = org.agreementVersion === AGREEMENT_VERSION.CLINIC && org.agreementSignedAt;
+  const signedCopy = await latestSignedAgreement("CLINIC", org.id);
   return (
     <>
       <PageHeader title="Settings" />
@@ -45,15 +47,32 @@ export default async function Settings() {
             <p className="text-xs text-slate-500">By verifying, you agree to receive shift alerts by text. Msg &amp; data rates may apply. Reply STOP to opt out.</p>
           </CardBody>
         </Card>
+        <Card id="experience">
+          <CardHeader title="Provider experience" description="The minimum years of experience for your new shifts. You can change it on any shift when you post it." />
+          <CardBody>
+            <ActionForm action={experienceAction} className="space-y-4">
+              <Field label="Minimum experience" htmlFor="minYears" hint="A higher minimum means fewer providers can take your shifts, so they may take longer to fill.">
+                <Select id="minYears" name="minYears" defaultValue={String(org.minYearsExperience)} className="max-w-xs">
+                  <option value="0">Any experience</option>
+                  <option value="2">2+ years</option>
+                  <option value="5">5+ years</option>
+                  <option value="10">10+ years</option>
+                </Select>
+              </Field>
+              <Checkbox name="relax" defaultChecked={org.relaxExperienceInEmergency} label="Relax this in emergencies — when a provider cancels last-minute or doesn't show, any qualified provider can step in." />
+              <SubmitButton variant="outline">Save</SubmitButton>
+            </ActionForm>
+          </CardBody>
+        </Card>
         <Card id="agreement">
           <CardHeader title="Clinic Platform Agreement" />
           <CardBody>
             {signed ? (
-              <Alert tone="success">Signed {dateLabel(org.agreementSignedAt!)} (version {org.agreementVersion}).</Alert>
+              <Alert tone="success">Signed {dateLabel(org.agreementSignedAt!)} (version {org.agreementVersion}).{signedCopy ? <> <Link href={`/agreements/signed/${signedCopy.id}`} className="font-medium underline">View or print your signed copy</Link></> : null}</Alert>
             ) : owner ? (
               <ActionForm action={agreementAction} successMessage={false}>
                 <p className="mb-3 text-sm text-slate-600">Covers pricing, deposits and cancellations, payment authorization, supervision responsibilities, no patient information on the platform, and non-circumvention.</p>
-                <SubmitButton>Review & sign</SubmitButton>
+                <SubmitButton>{org.agreementSignedAt ? "Review & sign the updated agreement" : "Review & sign"}</SubmitButton>
               </ActionForm>
             ) : <p className="text-sm text-slate-500">The clinic owner needs to sign the agreement.</p>}
           </CardBody>

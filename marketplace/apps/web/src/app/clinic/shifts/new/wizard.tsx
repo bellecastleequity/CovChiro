@@ -48,7 +48,7 @@ interface Quote {
 
 const STEPS = ["Where", "What", "When", "Details", "Review"] as const;
 
-export function PostShiftWizard({ locations, canPost, defaultCode }: { locations: Loc[]; canPost: boolean; defaultCode: string }) {
+export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0 }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number }) {
   const [step, setStep] = useState(0);
   const [locationId, setLocationId] = useState(locations[0].id);
   const loc = locations.find((l) => l.id === locationId)!;
@@ -70,6 +70,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
   const [required, setRequired] = useState<string[]>([]);
   const [preferred, setPreferred] = useState<string[]>([]);
   const [expectedPatients, setExpectedPatients] = useState("");
+  const [minYears, setMinYears] = useState(String(defaultMinYears));
   const [notes, setNotes] = useState("");
   const [instantBook, setInstantBook] = useState(false);
   const [lodgingAllowed, setLodgingAllowed] = useState(false);
@@ -93,6 +94,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
         requiredSkillIds: required,
         preferredSkillIds: preferred,
         expectedPatients: expectedPatients ? Number(expectedPatients) : null,
+        minYearsExperience: Number(minYears),
         notes,
         instantBook,
         lodgingAllowed,
@@ -101,7 +103,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
         promoCode: promoCode.trim() || null,
         supervisionAttestation: prof?.supervisionRequired ? sup : null,
       }),
-    [locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, notes, instantBook, lodgingAllowed, lodgingCap, maxTravelBudget, promoCode, sup, prof],
+    [locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, lodgingCap, maxTravelBudget, promoCode, sup, prof],
   );
 
   function refreshQuote() {
@@ -240,6 +242,14 @@ export function PostShiftWizard({ locations, canPost, defaultCode }: { locations
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Expected patients"><Input type="number" min={0} value={expectedPatients} onChange={(e) => setExpectedPatients(e.target.value)} /></Field>
+                  <Field label="Minimum experience" hint="Higher minimums mean fewer providers can take it.">
+                    <Select value={minYears} onChange={(e) => setMinYears(e.target.value)}>
+                      <option value="0">Any experience</option>
+                      <option value="2">2+ years</option>
+                      <option value="5">5+ years</option>
+                      <option value="10">10+ years</option>
+                    </Select>
+                  </Field>
                   <Field label="Max travel budget ($, optional)" hint="Mileage + lodging cap. Providers beyond it won't be matched."><Input inputMode="decimal" value={maxTravelBudget} onChange={(e) => setMaxTravelBudget(e.target.value)} /></Field>
                 </div>
                 <Field label="Notes for providers">

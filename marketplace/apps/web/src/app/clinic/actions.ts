@@ -1,19 +1,23 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DateTime } from "luxon";
 import { prisma } from "@cm/db";
 import {
+  hiring,
+  standing,
   dispatch,
   bookings,
   emergency,
   feedback,
   archiveLocation, auth, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic,
-  requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
+  addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
-import { formAction, optStr, str } from "@/lib/action";
+import { bool, formAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
+import { saveUpload } from "@/lib/upload";
 
 const me = () => requireActor("clinic");
 
@@ -44,6 +48,7 @@ async function shiftPayloadFrom(raw: any) {
     requiredSkillIds: raw.requiredSkillIds ?? [],
     preferredSkillIds: raw.preferredSkillIds ?? [],
     expectedPatients: raw.expectedPatients || null,
+    minYearsExperience: raw.minYearsExperience === undefined ? undefined : Number(raw.minYearsExperience) || 0,
     notes: raw.notes || null,
     instantBook: !!raw.instantBook,
     maxTravelBudgetCents: raw.maxTravelBudget ? Math.round(Number(raw.maxTravelBudget) * 100) : null,
@@ -100,6 +105,47 @@ export const confirmAllDaysAction = formAction(async (fd) => {
   const r = await bookings.confirmForAllDays(actor, str(fd, "shiftId"), str(fd, "providerId"));
   revalidatePath("/clinic", "layout");
   return `Confirmed for ${r.confirmed} day${r.confirmed === 1 ? "" : "s"}${r.failed ? ` (${r.failed} couldn't be confirmed — see each day)` : ""}. Your provider has been notified.`;
+});
+
+export const proposeStandingAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const [providerId, professionCode] = str(fd, "providerProfession").split("|");
+  await standing.proposeStanding(actor, {
+    providerId,
+    professionCode,
+    locationId: str(fd, "locationId"),
+    weekdays: fd.getAll("weekdays").map(Number),
+    startTime: str(fd, "startTime"),
+    endTime: str(fd, "endTime"),
+    startsOn: str(fd, "startsOn"),
+    endsOn: optStr(fd, "endsOn"),
+    notes: optStr(fd, "notes"),
+  });
+  revalidatePath("/clinic/standing");
+  return "Sent. We'll let you know when they accept — then each shift is booked automatically.";
+});
+
+export const endStandingAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await standing.endStanding(actor, str(fd, "standingId"), str(fd, "reason") || "Ended by clinic");
+  revalidatePath("/clinic", "layout");
+  return r.cancelled ? `Ended. ${r.cancelled} later shift${r.cancelled === 1 ? " was" : "s were"} cancelled at no charge.` : "Done.";
+});
+
+export const requestHireAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await hiring.requestHire(actor, { providerId: str(fd, "providerId"), positionType: str(fd, "positionType"), message: optStr(fd, "message"), callbackPhone: optStr(fd, "callbackPhone"), callbackTimes: optStr(fd, "callbackTimes") });
+  revalidatePath(`/clinic/providers/${str(fd, "providerId")}`);
+  return "Request sent. Our team will call you shortly.";
+});
+
+export const acceptHireAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || null;
+  await hiring.acceptHire(actor, str(fd, "hireId"), { name: str(fd, "name"), title: str(fd, "title"), agree: bool(fd, "agree") }, { ip });
+  revalidatePath("/clinic", "layout");
+  return "Paid — you're all set to hire them directly.";
 });
 
 export const inviteAction = formAction(async (fd) => {
@@ -193,11 +239,41 @@ export const locationAction = formAction(async (fd) => {
   return "Location saved. The state and time zone come from the verified address.";
 });
 
+export const locationPhotosAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const locationId = str(fd, "locationId");
+  // Check ownership before storing anything under this location's prefix.
+  if (!(await prisma.clinicLocation.count({ where: { id: locationId, clinicOrgId: actor.clinicOrgId! } }))) return "Location not found.";
+  const keys: string[] = [];
+  for (const f of fd.getAll("photos")) {
+    const key = await saveUpload(f, `locations/${locationId}`, { images: true });
+    if (key) keys.push(key);
+  }
+  if (!keys.length) return "Choose at least one photo.";
+  await addLocationPhotos(actor, locationId, keys);
+  revalidatePath("/clinic/locations");
+  return keys.length === 1 ? "Photo added." : `${keys.length} photos added.`;
+});
+
+export const removeLocationPhotoAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await removeLocationPhoto(actor, str(fd, "locationId"), str(fd, "key"));
+  revalidatePath("/clinic/locations");
+  return "Photo removed.";
+});
+
 export const archiveLocationAction = formAction(async (fd) => {
   const { actor } = await me();
   await archiveLocation(actor, str(fd, "locationId"));
   revalidatePath("/clinic/locations");
   return "Location archived.";
+});
+
+export const experienceAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await setExperiencePreference(actor, Number(str(fd, "minYears")), bool(fd, "relax"));
+  revalidatePath("/clinic/settings");
+  return "Saved. New shifts use this; you can change it on any shift when posting.";
 });
 
 export const orgAction = formAction(async (fd) => {

@@ -7,6 +7,7 @@ import * as leads from "./leads";
 import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSweep, preShiftChecks, recomputeStats, revealExpiredRatings, startDueShifts } from "./lifecycle";
 import { releaseDuePayouts } from "./payouts";
 import { settleDueInvites } from "./shifts";
+import { standingSweep } from "./standing";
 
 /**
  * Every background job is an idempotent sweep over due rows (SPEC.md §16):
@@ -42,6 +43,8 @@ export const JOBS: Job[] = [
   { name: "attendance", schedule: { everySeconds: 60 }, run: () => attendanceSweep() },
   // Provider booking emails: each provider's local send time, so check every tick.
   { name: "bookingDigests", schedule: { everySeconds: 60 }, run: () => sendBookingDigests() },
+  // Standing bookings: keep each one booked out to the horizon.
+  { name: "standingBookings", schedule: { everySeconds: 3600 }, run: () => standingSweep() },
   // Growth.
   { name: "leadDrip", schedule: { everySeconds: 900 }, run: () => leads.runLeadDrip() },
   // Quality.

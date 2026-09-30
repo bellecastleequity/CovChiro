@@ -1,5 +1,5 @@
 import { missingMigrations, prisma } from "@cm/db";
-import { emergency } from "@cm/services";
+import { emergency, hiring } from "@cm/services";
 import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-link";
@@ -7,12 +7,13 @@ import { requireActor } from "@/lib/session";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user } = await requireActor("admin");
-  const [pending, tasks, disputes, missing, emergencies] = await Promise.all([
+  const [pending, tasks, disputes, missing, emergencies, hires] = await Promise.all([
     prisma.license.count({ where: { status: "PENDING_VERIFICATION" } }).then(async (n) => n + (await prisma.malpracticePolicy.count({ where: { status: "PENDING_VERIFICATION" } }))),
     prisma.adminTask.count({ where: { resolvedAt: null } }),
     prisma.dispute.count({ where: { status: "OPEN" } }),
     missingMigrations(prisma),
     emergency.openEmergencyCount().catch(() => 0),
+    hiring.openHireCount().catch(() => 0),
   ]);
   const items: NavItem[] = [
     { href: "/admin", label: "Dashboard", icon: "dashboard", mobile: true },
@@ -29,6 +30,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/states", label: "States & professions", icon: "states" },
     { href: "/admin/rates", label: "Rates", icon: "rates" },
     { href: "/admin/settings", label: "Settings", icon: "settings" },
+    { href: "/admin/hire", label: "Hire requests", icon: "providers", badge: hires },
+    { href: "/admin/messages", label: "Blocked messages", icon: "messages" },
     { href: "/admin/tasks", label: "Tasks", icon: "tasks", badge: tasks },
     { href: "/admin/audit", label: "Audit log", icon: "audit" },
   ];

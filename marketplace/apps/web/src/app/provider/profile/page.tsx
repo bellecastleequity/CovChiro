@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { env } from "@cm/config";
 import { prisma } from "@cm/db";
-import { AGREEMENT_VERSION } from "@cm/services";
+import { AGREEMENT_VERSION, latestSignedAgreement } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { AddressInput } from "@/components/ui/address-input";
@@ -16,6 +17,7 @@ export default async function Profile() {
   const { actor, user } = await requireActor("provider");
   const p = await prisma.provider.findUniqueOrThrow({ where: { id: actor.providerId! }, include: { professions: { include: { profession: true } } } });
   const signed = p.agreementVersion === AGREEMENT_VERSION.PROVIDER && p.agreementSignedAt;
+  const signedCopy = await latestSignedAgreement("PROVIDER", p.id);
   return (
     <>
       <PageHeader title="Profile" description="Clinics see your photo, name, headline, About me, credentials, skills, ratings and badges — never your home address or phone." actions={<a href={`/provider/profile/public`} className="text-sm font-medium text-brand-700">Preview public profile →</a>} />
@@ -44,7 +46,7 @@ export default async function Profile() {
                 </Select>
               </Field>
               <Field label="School"><Input name="school" defaultValue={p.school ?? ""} /></Field>
-              <Field label="Graduation year"><Input name="graduationYear" type="number" defaultValue={p.graduationYear ?? ""} /></Field>
+              <Field label="Graduation year" hint="Years practicing can't be more than the years since you graduated."><Input name="graduationYear" type="number" min={1950} max={new Date().getFullYear()} defaultValue={p.graduationYear ?? ""} /></Field>
               <Field label="Languages (comma-separated)"><Input name="languages" defaultValue={p.languages.join(", ")} /></Field>
               <Field label="EHR systems you know"><Input name="ehrSystems" defaultValue={p.ehrSystems.join(", ")} /></Field>
               <Field label="About me" className="sm:col-span-2" hint="Your approach, techniques, the kinds of practices you love covering."><Textarea name="bio" defaultValue={p.bio ?? ""} maxLength={1500} required /></Field>
@@ -61,11 +63,11 @@ export default async function Profile() {
           <CardHeader title="Provider Platform Agreement" />
           <CardBody>
             {signed ? (
-              <Alert tone="success">Signed {dateLabel(p.agreementSignedAt!)} (version {p.agreementVersion}).</Alert>
+              <Alert tone="success">Signed {dateLabel(p.agreementSignedAt!)} (version {p.agreementVersion}).{signedCopy ? <> <Link href={`/agreements/signed/${signedCopy.id}`} className="font-medium underline">View or print your signed copy</Link></> : null}</Alert>
             ) : (
               <ActionForm action={agreementAction} successMessage={false}>
-                <p className="mb-3 text-sm text-slate-600">Covers independent-contractor status, keeping your credentials current (and reporting any board action within 24 hours), cancellations, payment terms and conduct.</p>
-                <SubmitButton>Review & sign</SubmitButton>
+                <p className="mb-3 text-sm text-slate-600">Covers independent-contractor status, keeping your credentials current (and reporting any board action within 24 hours), cancellations, pay, standing bookings and non-circumvention.</p>
+                <SubmitButton>{p.agreementSignedAt ? "Review & sign the updated agreement" : "Review & sign"}</SubmitButton>
               </ActionForm>
             )}
           </CardBody>

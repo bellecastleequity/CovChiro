@@ -32,6 +32,8 @@ export default async function MyProviders() {
                 {who(p)}
                 <div className="flex items-center gap-3 text-xs text-slate-500">
                   {p.shiftsTogether} shift{p.shiftsTogether === 1 ? "" : "s"} together
+                  <Link href={`/clinic/standing?provider=${p.id}`} className="font-medium text-brand-700 hover:underline">Standing booking</Link>
+                  <Link href={`/clinic/providers/${p.id}#hire`} className="font-medium text-brand-700 hover:underline">Request to hire</Link>
                   <ActionForm action={favoriteAction} successMessage={false}>
                     <input type="hidden" name="providerId" value={p.id} />
                     <input type="hidden" name="on" value="0" />

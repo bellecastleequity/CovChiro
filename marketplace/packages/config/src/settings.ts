@@ -247,6 +247,56 @@ export const SETTINGS = {
   // ---------- ratings (§12) ----------
   "ratings.windowDays": def({ group: "Ratings", label: "Rating window (days)", schema: z.number().int().positive(), default: 14, flag: null }),
 
+  // ---------- standing bookings ----------
+  "standing.horizonWeeks": def({ group: "Standing bookings", label: "Book standing shifts this many weeks ahead", schema: z.number().int().min(1).max(12), default: 4, flag: null }),
+  "standing.endNoticeDays": def({
+    group: "Standing bookings",
+    label: "Notice when either side ends a standing booking (days)",
+    help: "Shifts inside the notice period stay booked; later ones are cancelled at no charge.",
+    schema: z.number().int().min(0).max(60),
+    default: 14,
+    flag: "OWNER_DECISION",
+  }),
+
+  // ---------- direct hire (placement) ----------
+  "placement.defaultFeeCents": def({
+    group: "Direct hire",
+    label: "Suggested placement fee when a clinic hires a provider directly",
+    help: "Pre-filled on each quote; you can change it per request before sending the payment link.",
+    schema: cents,
+    default: 500_000,
+    flag: "OWNER_DECISION",
+  }),
+
+  // ---------- agreements (in-house e-signature) ----------
+  "agreements.companyLegalName": def({ group: "Agreements", label: "Company legal name shown in the agreements", schema: z.string().min(2).max(200), default: "CoverageOnCall LLC", flag: "ATTORNEY_REVIEW" }),
+  "agreements.companyAddress": def({ group: "Agreements", label: "Company mailing address for legal notices", schema: z.string().max(300), default: "", flag: "ATTORNEY_REVIEW" }),
+  "agreements.governingState": def({ group: "Agreements", label: "Governing law (state)", schema: z.string().min(2).max(60), default: "Florida", flag: "ATTORNEY_REVIEW" }),
+  "agreements.nonCircumventionMonths": def({
+    group: "Agreements",
+    label: "Non-circumvention lasts this long after the last shift together",
+    help: "Clinics and providers introduced on the platform may only work together through the platform (including standing bookings) during this period.",
+    schema: z.number().int().min(0).max(36),
+    default: 12,
+    flag: "ATTORNEY_REVIEW",
+  }),
+  "agreements.liquidatedDamagesCents": def({
+    group: "Agreements",
+    label: "Liquidated damages per circumvention breach",
+    help: "The pre-agreed amount owed when a clinic engages a platform provider directly (or a provider a platform clinic) during the non-circumvention period.",
+    schema: cents,
+    default: 1_000_000,
+    flag: "ATTORNEY_REVIEW",
+  }),
+  "agreements.requireLatestVersion": def({
+    group: "Agreements",
+    label: "Require everyone to sign the latest agreement version before booking",
+    help: "Off: people who signed an earlier version keep booking and are asked to sign the new one. On: they can't book until they do.",
+    schema: z.boolean(),
+    default: false,
+    flag: "OWNER_DECISION",
+  }),
+
   // ---------- feature flags (ATTORNEY REVIEW items ship OFF) ----------
   "features.onCallEnabled": def({ group: "Features", label: "On Call auto-accept (requires On Call Terms in the Provider Agreement)", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
   "features.conversionFeeEnabled": def({ group: "Features", label: "Allow charging conversion fees", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),

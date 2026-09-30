@@ -1,10 +1,10 @@
 import { env } from "@cm/config";
 
 /**
- * E-signature (SPEC §13). Dropbox Sign sends the versioned template to the
- * signer by email; its webhook (verified by event hash) marks it signed.
- * In development a local click-through page stands in for the vendor. No
- * custom e-signature in production.
+ * E-signature (SPEC §13). By default agreements are signed in-house
+ * (services/onboarding.ts signAgreement: typed signature, ESIGN consent,
+ * timestamps, IP/device and a SHA-256 of the exact text). Dropbox Sign is
+ * used instead only when ESIGN_API_KEY is set.
  */
 
 export type AgreementKind = "CLINIC" | "PROVIDER";

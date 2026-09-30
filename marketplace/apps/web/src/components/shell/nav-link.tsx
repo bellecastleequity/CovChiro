@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   AlertTriangle, BadgeCheck, BarChart3, Bell, Briefcase, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Gauge, Inbox, LayoutDashboard, ListChecks,
-  Map, MapPin, Megaphone, MessageSquare, PlusCircle, ScrollText, Search, Settings, ShieldCheck, Tag, UserRound, Users, Wallet,
+  Map, MapPin, Megaphone, MessageSquare, PlusCircle, Repeat, ScrollText, Search, Settings, ShieldCheck, Tag, UserRound, Users, Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -12,7 +12,7 @@ export const ICONS = {
   dashboard: LayoutDashboard, board: Search, shifts: CalendarDays, offers: Inbox, credentials: BadgeCheck, availability: CalendarDays, earnings: Wallet,
   messages: MessageSquare, profile: UserRound, post: PlusCircle, billing: CreditCard, locations: MapPin, team: Users, verification: ShieldCheck,
   providers: Briefcase, clinics: Building2, payouts: Wallet, payments: CreditCard, promo: Tag, leads: Megaphone, analytics: BarChart3, states: Map,
-  rates: Gauge, emergency: AlertTriangle, settings: Settings, tasks: ListChecks, audit: ScrollText, notifications: Bell, docs: FileText, list: ClipboardList,
+  standing: Repeat, rates: Gauge, emergency: AlertTriangle, settings: Settings, tasks: ListChecks, audit: ScrollText, notifications: Bell, docs: FileText, list: ClipboardList,
 } as const;
 export type IconName = keyof typeof ICONS;
 

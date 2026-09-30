@@ -136,7 +136,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
       <PageHeader
         eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} · ${shift.location.name} · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} · ${shift.location.name}`}
         title={dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}
-        description={timeRange(shift.startsAt, shift.endsAt, tz)}
+        description={`${timeRange(shift.startsAt, shift.endsAt, tz)}${shift.minYearsExperience ? ` · ${shift.minYearsExperience}+ years' experience` : ""}`}
         actions={<StatusBadge status={shift.status} />}
       />
       {sp.posted ? <Alert tone="success" className="mb-5" title="Shift posted">We're notifying eligible providers now. Applicants will appear below.</Alert> : null}

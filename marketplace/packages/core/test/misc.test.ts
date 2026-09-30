@@ -37,22 +37,52 @@ describe("message screening", () => {
   it.each([
     "call me at 407-555-1234",
     "my cell is (407) 555 1234",
+    "4075551234",
+    "4 0 7 5 5 5 1 2 3 4",
+    "4-0-7-5-5-5-1-2-3-4",
+    "407.555.1234",
+    "+1 407 555 1234",
+    "555-1234",
+    "four zero seven five five five one two three four",
+    "four oh seven, five five five, one two three four",
+    "4o7 555 l234",
+    "four 0 seven 555 twelve 34",
+    "407 double five 5 1234",
     "email jane.doe@gmail.com",
     "jane dot doe at gmail dot com",
+    "find me on gmail, janedoe",
     "see www.mysite.com",
-    "four zero seven five five five one two three four",
+    "mysite dot com",
     "text me at the number on my card",
-  ])("redacts contact info before confirmation: %s", (msg) => {
-    const r = screenMessage(msg, false);
-    expect(r.redacted).toBe(true);
-    expect(r.body).toContain("[contact removed]");
+    "follow me @drjane_dc",
+    "I'm on Instagram",
+    "venmo me",
+  ])("blocks contact info: %s", (msg) => {
+    expect(screenMessage(msg).blocked).toBe(true);
+    expect(scanContactInfo(msg).redacted).toContain("[contact removed]");
   });
-  it("allows contact after confirmation but flags repeats", () => {
-    expect(screenMessage("407-555-1234", true, 0)).toMatchObject({ redacted: false, flagged: false });
-    expect(screenMessage("407-555-1234", true, 1)).toMatchObject({ redacted: false, flagged: true });
+  it.each([
+    "we could just work directly and skip the fees",
+    "Want to book you directly next month?",
+    "we'd pay you cash",
+    "let's take this off the app",
+    "what's your personal email?",
+    "Would you consider joining our team full-time?",
+    "we have a full time position open",
+  ])("blocks off-platform dealing: %s", (msg) => {
+    expect(screenMessage(msg)).toMatchObject({ blocked: true, reasons: expect.arrayContaining(["off-platform"]) });
   });
-  it("leaves ordinary messages alone", () => {
-    expect(scanContactInfo("See you Tuesday at 8:30, parking is behind the building.").found).toBe(false);
+  it.each([
+    "See you Tuesday at 8:30, parking is behind the building.",
+    "Shift is 10/12/2026 from 8:00 to 5:00, about 40-50 patients.",
+    "Suite 200, 1234 Main St, Orlando FL 32801",
+    "The rate was $1,250.00 for the day",
+    "We see about 35 patients; I've done 1200 adjustments this year",
+    "Thanks! See you on the 14th.",
+    "Can you message me here if you're running late?",
+    "One of our tables is broken, we have two others",
+  ])("leaves ordinary messages alone: %s", (msg) => {
+    expect(screenMessage(msg).blocked).toBe(false);
   });
   it("warns on likely PHI", () => {
     expect(looksLikePhi("Patient John Smith needs follow up")).toBe(true);

@@ -205,6 +205,16 @@ describe("other hard filters", () => {
     expect(evaluateEligibility(provider({ status: "PAUSED" }), shift(), pair({ blocked: true }), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
   });
 
+  it("F11 clinic's minimum experience: years practicing the shift's profession", () => {
+    const years = (n: number | null) => provider({ professions: [{ professionCode: "DC", status: "ACTIVE", yearsInPractice: n }] });
+    expect(ok(years(null), shift())).toBe(true); // no minimum = anyone
+    expect(codes(evaluateEligibility(years(3), shift({ minYearsExperience: 5 }), pair(), OPTS))).toEqual(["INSUFFICIENT_EXPERIENCE"]);
+    expect(codes(evaluateEligibility(years(null), shift({ minYearsExperience: 2 }), pair(), OPTS))).toEqual(["INSUFFICIENT_EXPERIENCE"]);
+    expect(ok(years(5), shift({ minYearsExperience: 5 }))).toBe(true);
+    // A credentials-only check (nightly sweep) never looks at preferences.
+    expect(evaluateEligibility(years(0), shift({ minYearsExperience: 10 }), pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
+  });
+
   it("F3 status / payouts", () => {
     expect(codes(evaluateEligibility(provider({ status: "ONBOARDING" }), shift(), pair(), OPTS))).toContain("PROVIDER_NOT_ACTIVE");
     expect(codes(evaluateEligibility(provider({ payoutsEnabled: false }), shift(), pair(), OPTS))).toContain("PROVIDER_NOT_ACTIVE");

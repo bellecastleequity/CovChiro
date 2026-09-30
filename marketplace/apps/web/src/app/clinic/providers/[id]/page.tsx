@@ -1,12 +1,15 @@
 import { notFound } from "next/navigation";
 import { Ban, Heart } from "lucide-react";
 import { DomainError } from "@cm/core";
-import { clinicRelationshipWith, providerPublicProfile } from "@cm/services";
+import Link from "next/link";
+import { prisma } from "@cm/db";
+import { clinicRelationshipWith, hiring, providerPublicProfile } from "@cm/services";
 import { ProviderProfileView } from "@/components/provider-profile";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
-import { Input } from "@/components/ui/form";
+import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { requireActor } from "@/lib/session";
-import { blockAction, favoriteAction, unblockAction } from "../../actions";
+import { blockAction, favoriteAction, requestHireAction, unblockAction } from "../../actions";
 
 export default async function ClinicProviderProfile({ params }: { params: Promise<{ id: string }> }) {
   const { actor } = await requireActor("clinic");
@@ -16,6 +19,7 @@ export default async function ClinicProviderProfile({ params }: { params: Promis
     throw e;
   });
   const rel = await clinicRelationshipWith(actor, id);
+  const hire = await prisma.hireRequest.findFirst({ where: { clinicOrgId: actor.clinicOrgId!, providerId: id }, orderBy: { createdAt: "desc" } });
   return (
     <>
       <div className="mb-4 flex flex-wrap items-start justify-end gap-2">
@@ -40,6 +44,31 @@ export default async function ClinicProviderProfile({ params }: { params: Promis
         )}
       </div>
       <ProviderProfileView p={p} />
+      {hire && hire.status !== "DECLINED" && hire.status !== "CANCELLED" ? (
+        <Card className="mt-6">
+          <CardBody className="text-sm">
+            {hire.status === "RELEASED" ? "You hired this provider directly through a placement." : hire.status === "QUOTED" ? <>Your placement terms are ready. <Link href={`/clinic/hire/${hire.id}`} className="font-medium text-brand-700 underline">Review &amp; pay →</Link></> : "We've received your request to hire this provider and will call you shortly."}
+          </CardBody>
+        </Card>
+      ) : !rel.blocked ? (
+        <Card className="mt-6" id="hire">
+          <CardHeader title="Want to hire them directly?" description="Request to hire and our team will call you to arrange it with the provider. A one-time placement fee applies; after that you work together directly. This is the only way to hire a provider you met here — arranging it any other way breaches your Clinic Platform Agreement." />
+          <CardBody>
+            <ActionForm action={requestHireAction} className="grid gap-4 sm:grid-cols-2">
+              <input type="hidden" name="providerId" value={id} />
+              <Field label="Position" htmlFor="positionType">
+                <Select id="positionType" name="positionType" defaultValue="FULL_TIME">
+                  {Object.entries(hiring.POSITION_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </Select>
+              </Field>
+              <Field label="Best number to call you" htmlFor="callbackPhone"><Input id="callbackPhone" name="callbackPhone" type="tel" placeholder="Your clinic phone" /></Field>
+              <Field label="Best times to call (optional)" htmlFor="callbackTimes" className="sm:col-span-2"><Input id="callbackTimes" name="callbackTimes" placeholder="Weekdays after 2pm" /></Field>
+              <Field label="Anything we should know (optional)" htmlFor="message" className="sm:col-span-2"><Textarea id="message" name="message" maxLength={2000} placeholder="Schedule, start date, what you're offering…" /></Field>
+              <div className="sm:col-span-2"><SubmitButton variant="secondary">Request to hire</SubmitButton></div>
+            </ActionForm>
+          </CardBody>
+        </Card>
+      ) : null}
     </>
   );
 }

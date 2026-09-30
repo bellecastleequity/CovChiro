@@ -44,6 +44,8 @@ export async function activateEmergency(shiftId: string, source: EmergencySource
       emergencyBasePayCents: base,
       emergencyBonusPercent: first,
       providerPayCents: rescuePay(base, first, shift.clinicPriceCents, shift.promoDiscountCents),
+      // The clinic's experience minimum gives way in an emergency unless it opted out.
+      ...(shift.location.clinicOrg.relaxExperienceInEmergency ? { minYearsExperience: 0 } : {}),
     },
   });
   await audit(prisma, actor, "emergency.started", "Shift", shiftId, null, { source, reason, bonusPercent: first });
@@ -128,6 +130,7 @@ async function createReplacementShift(originalId: string, startsAt: Date, actor:
       startsAt,
       endsAt: o.endsAt,
       requiredSkillIds: o.requiredSkillIds,
+      minYearsExperience: o.minYearsExperience,
       preferredSkillIds: o.preferredSkillIds,
       expectedPatients: o.expectedPatients,
       notes: ["Emergency replacement — the original provider didn't show.", o.notes].filter(Boolean).join("\n\n"),
@@ -211,8 +214,14 @@ export async function emergencyView(actor: Actor, shiftId: string) {
     const set = await getEligibleProviders(prisma, await loadShift(prisma, shiftId), { distanceMultiplierAll: s["emergency.driveMultiplier"] });
     const users = await prisma.provider.findMany({ where: { id: { in: set.eligible.map((e) => e.providerId) } }, include: { user: true } });
     const uBy = new Map(users.map((u) => [u.id, u]));
-    const lastBy = new Map<string, string>();
-    for (const o of offers) if (!lastBy.has(o.providerId)) lastBy.set(o.providerId, o.status);
+    // Latest offer per provider; on a timestamp tie (a re-offer in the same instant) the live one wins.
+    const live = (st: string) => (st === "PENDING" || st === "ACCEPTED_PENDING" || st === "ACCEPTED" ? 1 : 0);
+    const latest = new Map<string, (typeof offers)[number]>();
+    for (const o of offers) {
+      const cur = latest.get(o.providerId);
+      if (!cur || +o.createdAt > +cur.createdAt || (+o.createdAt === +cur.createdAt && live(o.status) > live(cur.status))) latest.set(o.providerId, o);
+    }
+    const lastBy = new Map([...latest].map(([k, o]) => [k, o.status as string]));
     candidates = set.eligible
       .map((e) => ({ providerId: e.providerId, name: e.provider.displayName, phone: uBy.get(e.providerId)?.user.phone ?? null, driveMinutes: e.drive?.minutes ?? null, lastOffer: lastBy.get(e.providerId) ?? null }))
       .sort((a, b) => (a.driveMinutes ?? 999) - (b.driveMinutes ?? 999));

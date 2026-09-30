@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { storageProvider } from "@cm/integrations";
+import { canViewLocationPhoto } from "@cm/services";
 import { getSession } from "@/lib/session";
 
 /**
  * Authorised access to private documents. Admins see everything; providers
- * see their own documents; any signed-in user can see provider photos.
+ * see their own documents; any signed-in user can see provider photos;
+ * clinic location photos are for that clinic and providers booked there.
  */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ key: string[] }> }) {
   const key = (await params).key.join("/");
@@ -13,7 +15,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ key
   const isAdmin = s.actor.role === "PLATFORM_ADMIN" && s.mfaVerified;
   const own = s.actor.providerId && key.startsWith(`providers/${s.actor.providerId}/`);
   const photo = key.startsWith("photos/");
-  if (!isAdmin && !own && !photo) return new NextResponse("Not found", { status: 404 });
+  const locationPhoto = key.startsWith("locations/") && (await canViewLocationPhoto(s.actor, key));
+  if (!isAdmin && !own && !photo && !locationPhoto) return new NextResponse("Not found", { status: 404 });
   const st = storageProvider();
   const signed = await st.signedUrl(key, 10);
   if (signed) return NextResponse.redirect(signed);

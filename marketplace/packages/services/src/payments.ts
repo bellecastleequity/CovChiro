@@ -123,6 +123,11 @@ export async function adminCharge(actor: Actor, clinicOrgId: string, type: "CONV
   return p;
 }
 
+/** A clinic-accepted placement (direct hire) fee, charged to the card on file. */
+export async function chargePlacementFee(clinicOrgId: string, hireRequestId: string, amountCents: number, attempt: number, description: string) {
+  return charge(null, clinicOrgId, "CONVERSION_FEE", amountCents, `placement-${hireRequestId}-${attempt}`, description);
+}
+
 // ---------------- Stripe webhooks (the only other source of payment truth) ----------------
 
 export async function handleStripeEvent(rawBody: string, signature: string | null) {

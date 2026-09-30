@@ -67,7 +67,22 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
                 {loc.onSiteContactName ? <div className="flex gap-2"><User className="size-4 text-slate-400" />On-site contact: {loc.onSiteContactName}</div> : null}
                 {loc.phone ? <div className="flex gap-2"><Phone className="size-4 text-slate-400" />Front desk: {loc.phone}</div> : null}
                 {loc.dressCode ? <div><span className="font-medium">Dress code:</span> {loc.dressCode}</div> : null}
-                {loc.arrivalNotes ? <p className="whitespace-pre-line rounded-xl bg-brand-50 p-3 text-brand-900">{loc.arrivalNotes}</p> : null}
+                {loc.arrivalNotes ? (
+                  <div className="rounded-xl bg-brand-50 p-3 text-brand-900">
+                    <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-700">How to find us</div>
+                    <p className="whitespace-pre-line">{loc.arrivalNotes}</p>
+                  </div>
+                ) : null}
+                {loc.photoKeys.length ? (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {loc.photoKeys.map((k) => (
+                      <a key={k} href={`/api/files/${k}`} target="_blank" rel="noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={`/api/files/${k}`} alt="Clinic exterior" className="aspect-[4/3] w-full rounded-lg object-cover ring-1 ring-slate-200" />
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
                 {loc.ehr ? <div><span className="font-medium">EHR:</span> {loc.ehr}</div> : null}
                 <ActionForm action={openThreadAction} successMessage={false}>
                   <input type="hidden" name="shiftId" value={a.shiftId} />
