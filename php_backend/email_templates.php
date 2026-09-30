@@ -176,11 +176,14 @@ function email_reading($site) {
 // ---------- the full email ----------
 
 // $opts: site, preheader, admin (bool: provider-portal notification),
-//        signature (bool), reading (bool), unsubscribe (url), footer_note (html)
+//        network (bool: to a provider in the coverage network rather than a
+//        clinic client), signature (bool), reading (bool), unsubscribe (url),
+//        footer_note (html)
 function email_shell($content, array $opts = []) {
     $site = email_site($opts['site'] ?? null);
     $b = email_brand($site);
     $admin = !empty($opts['admin']);
+    $network = !$admin && !empty($opts['network']);
     $signature = $opts['signature'] ?? !$admin;
     $reading = $opts['reading'] ?? false;
     $pre = $opts['preheader'] ?? '';
@@ -190,7 +193,7 @@ function email_shell($content, array $opts = []) {
         . '<td style="vertical-align:middle;padding-right:12px;"><a href="' . em($b['url']) . '"><img src="' . em($b['url']) . '/assets/logo.png" width="44" height="44" alt="' . em($b['name']) . '" style="display:block;width:44px;height:44px;border-radius:8px;background:#FFFFFF;"></a></td>'
         . '<td style="vertical-align:middle;">'
         . '<div style="font-family:' . EM_SERIF . ';font-size:20px;color:#FFFFFF;line-height:1.2;">' . em($b['name']) . '</div>'
-        . '<div style="font-family:' . EM_FONT . ';font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#E3C58F;margin-top:3px;">' . ($admin ? 'Provider portal notification' : $b['tagline']) . '</div>'
+        . '<div style="font-family:' . EM_FONT . ';font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#E3C58F;margin-top:3px;">' . ($admin ? 'Provider portal notification' : ($network ? 'Chiropractic coverage network' : $b['tagline'])) . '</div>'
         . '</td></tr></table></td></tr>'
         . '<tr><td style="background:' . EM_GOLD . ';height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr>';
 
@@ -202,10 +205,13 @@ function email_shell($content, array $opts = []) {
 
     $footerLinks = $admin
         ? '<a href="' . em(SITE_URL) . '/admin.html" style="color:' . EM_TEAL . ';text-decoration:none;">Open the provider portal</a>'
+        : ($network
+        ? '<a href="' . em(SITE_URL) . '/provider.html" style="color:' . EM_TEAL . ';text-decoration:none;">My provider dashboard</a>'
+            . ' &nbsp;·&nbsp; <a href="tel:' . preg_replace('/[^0-9+]/', '', PHONE_NUMBER) . '" style="color:' . EM_TEAL . ';text-decoration:none;white-space:nowrap;">' . em(PHONE_NUMBER) . '</a>'
         : '<a href="' . em($b['book']) . '" style="color:' . EM_TEAL . ';text-decoration:none;">' . em($b['bookLabel']) . '</a>'
             . ' &nbsp;·&nbsp; <a href="' . em(dashboard_url($site)) . '" style="color:' . EM_TEAL . ';text-decoration:none;">My account</a>'
             . ($site === 'coverage' ? ' &nbsp;·&nbsp; <a href="' . em($b['url']) . '/help-center.html" style="color:' . EM_TEAL . ';text-decoration:none;">Help center</a>' : '')
-            . ' &nbsp;·&nbsp; <a href="tel:' . preg_replace('/[^0-9+]/', '', PHONE_NUMBER) . '" style="color:' . EM_TEAL . ';text-decoration:none;white-space:nowrap;">' . em(PHONE_NUMBER) . '</a>';
+            . ' &nbsp;·&nbsp; <a href="tel:' . preg_replace('/[^0-9+]/', '', PHONE_NUMBER) . '" style="color:' . EM_TEAL . ';text-decoration:none;white-space:nowrap;">' . em(PHONE_NUMBER) . '</a>');
     $footer = '<tr><td style="padding:22px 30px 30px;text-align:center;font-family:' . EM_FONT . ';font-size:12px;line-height:1.7;color:' . EM_SOFT . ';">'
         . '<div style="margin-bottom:8px;">' . $footerLinks . '</div>'
         . (!empty($opts['footer_note']) ? '<div style="margin-bottom:6px;">' . $opts['footer_note'] . '</div>' : '')

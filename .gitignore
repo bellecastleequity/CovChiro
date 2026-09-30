@@ -1,3 +1,4 @@
 php_backend/logs/
 php_backend/secrets.php
 php_backend/vendor/
+php_backend/uploads/

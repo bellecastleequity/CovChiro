@@ -881,6 +881,7 @@ function promo_discount_amount(array $promo, float $subtotal) {
 require_once __DIR__ . '/email_templates.php';
 require_once __DIR__ . '/lead_emails.php';
 require_once __DIR__ . '/ai.php';
+require_once __DIR__ . '/providers.php';
 
 // Applies a succeeded Stripe payment to a booking exactly once, whichever
 // caller notices it first (the browser's confirm call or the Stripe
