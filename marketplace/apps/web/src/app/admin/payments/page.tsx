@@ -17,7 +17,8 @@ export default async function Payments() {
     prisma.dispute.findMany({ where: { status: "OPEN" }, include: { assignment: { include: { provider: true, shift: { include: { location: { include: { clinicOrg: true } } } } } } }, orderBy: { createdAt: "asc" } }),
     prisma.lodgingReceipt.findMany({ where: { status: "SUBMITTED" }, include: { assignment: { include: { provider: true, shift: true } } } }),
     prisma.payment.findMany({ include: { clinicOrg: true }, orderBy: { createdAt: "desc" }, take: 50 }),
-    prisma.clinicOrg.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }),
+    // Only clinics with a saved card or bank account can be charged.
+    prisma.clinicOrg.findMany({ where: { hasPaymentMethod: true }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true, paymentMethodLabel: true } }),
   ]);
   return (
     <>
@@ -60,15 +61,22 @@ export default async function Payments() {
           </Card>
         ) : null}
         <Card>
-          <CardHeader title="Manual charge" description={s["features.conversionFeeEnabled"] ? "" : "Conversion fees are disabled until attorney review."} />
+          <CardHeader title="Manual charge" description={`Charge a clinic's saved payment method for an adjustment or fee.${s["features.conversionFeeEnabled"] ? "" : " Conversion fees are disabled until attorney review."}`} />
           <CardBody>
+            {clinics.length ? (
             <ActionForm action={adminChargeAction} className="grid gap-2 sm:grid-cols-5" resetOnSuccess confirm="Charge this clinic's saved payment method?">
-              <Select name="clinicOrgId" required className="sm:col-span-2">{clinics.map((c) => <option key={c.id} value={c.id}>{c.displayName}</option>)}</Select>
+              <Select name="clinicOrgId" required className="sm:col-span-2" defaultValue="">
+                <option value="" disabled>Choose a clinic…</option>
+                {clinics.map((c) => <option key={c.id} value={c.id}>{c.displayName}{c.paymentMethodLabel ? ` — ${c.paymentMethodLabel}` : ""}</option>)}
+              </Select>
               <Select name="type"><option value="ADJUSTMENT">Adjustment</option><option value="CANCELLATION_FEE">Cancellation fee</option>{s["features.conversionFeeEnabled"] ? <option value="CONVERSION_FEE">Conversion fee</option> : null}</Select>
               <Input name="amount" placeholder="$ amount" required />
               <Input name="description" placeholder="Description" required />
               <div><SubmitButton size="sm" variant="outline">Charge</SubmitButton></div>
             </ActionForm>
+            ) : (
+              <p className="text-sm text-slate-500">No clinics have a saved card or bank account yet. Clinics appear here once they add one in their Billing page.</p>
+            )}
           </CardBody>
         </Card>
         <Card>

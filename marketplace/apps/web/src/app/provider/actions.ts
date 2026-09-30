@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { DateTime } from "luxon";
 import { prisma } from "@cm/db";
 import {
+  attendance,
   dispatch,
   oncall,
   addBlackout, addMalpractice, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
@@ -16,6 +17,20 @@ import { requireActor } from "@/lib/session";
 import { saveUpload } from "@/lib/upload";
 
 const me = () => requireActor("provider");
+
+export const reconfirmAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await attendance.reconfirmAttendance(actor, str(fd, "assignmentId"));
+  revalidatePath("/provider", "layout");
+  return r;
+});
+
+export const onMyWayAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await attendance.markOnMyWay(actor, str(fd, "assignmentId"));
+  revalidatePath("/provider", "layout");
+  return r;
+});
 
 export const applyAction = formAction(async (fd) => {
   const { actor } = await me();

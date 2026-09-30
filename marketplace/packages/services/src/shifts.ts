@@ -667,14 +667,22 @@ export async function cancelShiftByClinic(actor: Actor, shiftId: string, reason:
  * Provider cancels (or platform removes them): full refund to the clinic,
  * reliability impact if late, shift reopens with urgent handling (backfill).
  */
-export async function cancelAssignment(actor: Actor, assignmentId: string, reason: string, opts: { by: "PROVIDER" | "PLATFORM"; lapse?: boolean; noShow?: boolean } = { by: "PROVIDER" }) {
+export async function cancelAssignment(
+  actor: Actor,
+  assignmentId: string,
+  reason: string,
+  /** unconfirmed: the system releases a provider who didn't reconfirm — treated as the provider's (late) cancel. */
+  opts: { by: "PROVIDER" | "PLATFORM"; lapse?: boolean; noShow?: boolean; unconfirmed?: boolean } = { by: "PROVIDER" },
+) {
   const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId }, include: { shift: { include: { location: true } }, provider: true } });
-  if (opts.by === "PROVIDER") {
+  if (opts.unconfirmed) {
+    if (actor.role !== "SYSTEM") requireAdmin(actor);
+  } else if (opts.by === "PROVIDER") {
     const pid = requireProvider(actor);
     if (a.providerId !== pid) throw new DomainError("NOT_FOUND", "Assignment not found");
   } else if (actor.role !== "SYSTEM") requireAdmin(actor);
   const s = await getSettings();
-  const now = new Date();
+  const now = clock.now();
   const deposit = await depositPaidCents(a.id);
   const outcome = cancellationOutcome({ by: opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", noShow: opts.noShow, now, startsAt: a.startsAt, depositPaidCents: deposit }, s);
   const newStatus = opts.lapse ? "LICENSE_LAPSED" : opts.noShow ? "NO_SHOW" : "CANCELLED";
@@ -705,16 +713,27 @@ export async function cancelAssignment(actor: Actor, assignmentId: string, reaso
     await audit(db, actor, `assignment.${newStatus.toLowerCase()}`, "Assignment", a.id, { status: a.status }, { status: newStatus, reason, outcome, reopened: reopen });
   });
   if (outcome.refundDepositCents > 0) await refundAssignment(actor, a.id, outcome.refundDepositCents, `${newStatus.toLowerCase()} — full refund`);
+  const day = a.startsAt.toLocaleDateString("en-US", { timeZone: a.shift.location.timeZone, weekday: "short", month: "short", day: "numeric" });
   await notifyClinic(prisma, a.shift.location.clinicOrgId, {
     template: "backfill",
-    title: reopen ? "We're finding a replacement" : "Your covering provider didn't show",
-    body: reopen
-      ? `${a.provider.displayName} is no longer able to cover ${a.startsAt.toLocaleDateString("en-US", { timeZone: a.shift.location.timeZone, month: "short", day: "numeric" })}. Your deposit is being refunded and we've reopened the shift to eligible providers.`
-      : "Your deposit is being refunded in full. Our team will follow up.",
+    title: opts.unconfirmed ? "Your provider didn't confirm — we're already finding a replacement" : reopen ? "We're finding a replacement" : "Your covering provider didn't show",
+    body: opts.unconfirmed
+      ? `${a.provider.displayName} didn't confirm they're still coming on ${day}, so we've released them and reopened the shift as urgent. Your deposit is being refunded.`
+      : reopen
+        ? `${a.provider.displayName} is no longer able to cover ${day}. Your deposit is being refunded and we've reopened the shift to eligible providers.`
+        : "Your deposit is being refunded in full. Our team will follow up.",
     link: `/clinic/shifts/${a.shiftId}`,
     sms: true,
   });
-  if (opts.by === "PLATFORM") {
+  if (opts.unconfirmed) {
+    await notify(prisma, a.provider.userId, {
+      template: "reconfirm_released",
+      title: `Released from your ${day} shift`,
+      body: "You didn't confirm you were still coming by the deadline, so the shift has gone to another provider. This counts as a late cancellation.",
+      link: "/provider/assignments",
+      sms: true,
+    });
+  } else if (opts.by === "PLATFORM") {
     await notify(prisma, a.provider.userId, {
       template: opts.lapse ? "license_lapsed" : "assignment_removed",
       title: opts.lapse ? "Action needed: a credential no longer qualifies" : "You were removed from a shift",

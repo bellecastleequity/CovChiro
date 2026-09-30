@@ -9,7 +9,7 @@ import { Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form"
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel, money, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { cancelAssignmentAction, disputeAction, graceCancelAction, lodgingAction, openThreadAction, ratingAction } from "../../actions";
+import { cancelAssignmentAction, disputeAction, graceCancelAction, lodgingAction, onMyWayAction, openThreadAction, ratingAction, reconfirmAction } from "../../actions";
 
 export default async function Assignment({ params }: { params: Promise<{ id: string }> }) {
   const { actor } = await requireActor("provider");
@@ -32,6 +32,29 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
       <PageHeader eyebrow={loc.clinicOrg.displayName} title={dateLabel(a.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })} description={timeRange(a.startsAt, a.endsAt, tz)} actions={<StatusBadge status={a.status} />} />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          {live && a.reconfirmRequestedAt && !a.reconfirmedAt ? (
+            <Alert tone="warning" title="Please confirm you're still coming">
+              <p>If you don't confirm by {dateLabel(new Date(+a.startsAt - s["reconfirm.deadlineBeforeHours"] * 3_600_000), tz, { weekday: "short", hour: "numeric", minute: "2-digit" })}, this shift goes to another provider.</p>
+              <ActionForm action={reconfirmAction} className="mt-2">
+                <input type="hidden" name="assignmentId" value={a.id} />
+                <SubmitButton size="sm">I'm still coming</SubmitButton>
+              </ActionForm>
+            </Alert>
+          ) : null}
+          {live && hoursToStart <= 12 && hoursToStart > -2 && !a.onMyWayAt ? (
+            <Card>
+              <CardHeader title="Heading out?" description="Let the clinic know you're on your way." />
+              <CardBody>
+                <ActionForm action={onMyWayAction}>
+                  <input type="hidden" name="assignmentId" value={a.id} />
+                  <SubmitButton>On my way</SubmitButton>
+                </ActionForm>
+              </CardBody>
+            </Card>
+          ) : null}
+          {live && (a.reconfirmedAt || a.onMyWayAt) ? (
+            <p className="text-sm text-emerald-700">{a.onMyWayAt ? "✓ The clinic knows you're on your way." : "✓ You've confirmed you're coming."}</p>
+          ) : null}
           {live ? (
             <Card>
               <CardHeader title="Where & who" description="Shared with you after confirmation." />

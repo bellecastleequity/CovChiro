@@ -173,6 +173,24 @@ export const SETTINGS = {
     flag: null,
   }),
 
+  // ---------- shift reconfirmation + day-of check-in ----------
+  "reconfirm.enabled": def({ group: "Shift reconfirmation", label: "Ask providers to reconfirm upcoming shifts", schema: z.boolean(), default: true, flag: null }),
+  "reconfirm.askBeforeHours": def({ group: "Shift reconfirmation", label: "Ask the provider to reconfirm this long before the start", schema: z.number().int().min(2).max(336), default: 48, flag: null }),
+  "reconfirm.reminderAfterHours": def({ group: "Shift reconfirmation", label: "Send one reminder this long after the ask", schema: z.number().int().min(1).max(72), default: 6, flag: null }),
+  "reconfirm.deadlineBeforeHours": def({
+    group: "Shift reconfirmation",
+    label: "Deadline to reconfirm, before the start",
+    help: "Unconfirmed at the deadline → released (counts as a late cancel), shift reopened as urgent, clinic told.",
+    schema: z.number().int().min(1).max(168),
+    default: 24,
+    flag: null,
+  }),
+  "reconfirm.skipIfBookedWithinHours": def({ group: "Shift reconfirmation", label: "Skip reconfirmation when booked this close to the start", schema: z.number().int().min(0).max(336), default: 72, flag: null }),
+  "reconfirm.missesBeforePause": def({ group: "Shift reconfirmation", label: "Missed reconfirmations that pause a provider", schema: z.number().int().min(1).max(10), default: 2, flag: null }),
+  "reconfirm.missWindowDays": def({ group: "Shift reconfirmation", label: "…counted over this many days", schema: z.number().int().min(7).max(365), default: 90, flag: null }),
+  "checkin.promptBeforeHours": def({ group: "Shift reconfirmation", label: "Day-of 'On my way' prompt, before the start", schema: z.number().min(0.5).max(12), default: 2, flag: null }),
+  "checkin.alertBeforeMinutes": def({ group: "Shift reconfirmation", label: "Alert you and the clinic if not 'On my way' by this long before the start", schema: z.number().int().min(0).max(240), default: 30, flag: null }),
+
   // ---------- Smart Dispatch (Addendum 02 §11) ----------
   "dispatch.tiers.SAME_DAY": def({ group: "Dispatch", label: "Same-day (<12h) waves", schema: tierConfigSchema, default: { wave1: 5, growth: 3, max: 15, windowMin: 5, wavesBeforeBroadcast: 3, broadcastWindowMin: 15, broadcastHoldMin: 3, beta: 0.6 }, flag: "OWNER_DECISION" }),
   "dispatch.tiers.SHORT": def({ group: "Dispatch", label: "Short notice (12–48h) waves", schema: tierConfigSchema, default: { wave1: 3, growth: 2, max: 10, windowMin: 15, wavesBeforeBroadcast: 3, broadcastWindowMin: 30, broadcastHoldMin: 10, beta: 0.4 }, flag: null }),

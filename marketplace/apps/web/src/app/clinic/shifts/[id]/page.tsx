@@ -203,6 +203,11 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                     </ActionForm>
                   ) : null}
                 </div>
+                {live.status === "CONFIRMED" ? (
+                  <p className="text-sm text-slate-600">
+                    {live.onMyWayAt ? "✓ Your provider is on the way." : live.reconfirmedAt ? "✓ Your provider has reconfirmed they're coming." : live.reconfirmRequestedAt ? "We've asked your provider to reconfirm; you'll hear from us if they don't." : null}
+                  </p>
+                ) : null}
                 {live.payments.some((p) => p.status === "FAILED") ? <Alert tone="error" title="Deposit failed">Update your payment method in Billing to keep this booking.</Alert> : null}
               </CardBody>
             </Card>

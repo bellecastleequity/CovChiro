@@ -1,0 +1,4 @@
+-- Adds shift reconfirmation and day-of "On my way" check-in.
+-- Run AFTER update-005. Safe to run more than once.
+-- Run in Neon: SQL Editor → paste → Run.
+-- @migration 0006_attendance

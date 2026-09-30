@@ -6,7 +6,7 @@ import { brand, env } from "@cm/config";
 import { DomainError } from "@cm/core";
 import { prisma, seedBase, type User } from "@cm/db";
 import { audit, SYSTEM, type Actor } from "./context";
-import { sendEmail } from "./notify";
+import { notifyAdmins, sendEmail } from "./notify";
 import { onUserSignup } from "./leads";
 import { track } from "./analytics";
 
@@ -51,17 +51,21 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
     throw new DomainError("CONFLICT", "An account with that email already exists. Try signing in.");
   }
   const passwordHash = await hashPassword(input.password);
+  let adminLink = "/admin";
+  let details: string[] = [];
   const user = await prisma.$transaction(async (db) => {
     if (input.role === "clinic") {
       const org = input.organization?.trim() || `${input.name}'s clinic`;
       const u = await db.user.create({ data: { email: input.email, name: input.name, passwordHash, role: "CLINIC_OWNER" } });
-      await db.clinicOrg.create({ data: { legalName: org, displayName: org, billingEmail: input.email, members: { create: { userId: u.id, role: "CLINIC_OWNER" } } } });
+      const c = await db.clinicOrg.create({ data: { legalName: org, displayName: org, billingEmail: input.email, members: { create: { userId: u.id, role: "CLINIC_OWNER" } } } });
+      adminLink = `/admin/clinics/${c.id}`;
+      details = [`Clinic: ${org}`];
       return u;
     }
     const professions = await db.profession.findMany({ where: { code: { in: input.professionCodes?.length ? input.professionCodes : ["DC"] } } });
     if (!professions.length) throw new DomainError("VALIDATION", "Choose at least one profession.");
     const u = await db.user.create({ data: { email: input.email, name: input.name, passwordHash, role: "PROVIDER" } });
-    await db.provider.create({
+    const p = await db.provider.create({
       data: {
         userId: u.id,
         legalName: input.name,
@@ -70,11 +74,22 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
         stats: { create: {} },
       },
     });
+    adminLink = `/admin/providers/${p.id}`;
+    details = [`Profession: ${professions.map((x) => x.displayName).join(", ")}`];
     return u;
   });
   await audit(prisma, { userId: user.id, role: user.role }, "user.signup", "User", user.id, null, { role: user.role });
   await sendVerificationEmail(user);
   await onUserSignup(user.id, user.email);
+  // Let the owner know about every new account.
+  await notifyAdmins(prisma, {
+    template: "admin_new_signup",
+    title: `New ${input.role} signup: ${input.role === "clinic" ? (input.organization?.trim() || input.name) : input.name}`,
+    body: `${input.name} (${input.email}) just created a ${input.role} account.`,
+    details,
+    link: adminLink,
+    ctaLabel: `View ${input.role}`,
+  }).catch((e) => console.error("admin signup notice failed", e));
   await track({ type: "SIGNUP", userId: user.id, visitorId: meta.visitorId, props: { role: input.role } });
   return user;
 }

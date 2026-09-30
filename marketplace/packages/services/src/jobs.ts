@@ -1,6 +1,7 @@
 import { prisma } from "@cm/db";
 import { DateTime } from "luxon";
 import * as dispatch from "./dispatch";
+import { attendanceSweep } from "./attendance";
 import { sendBookingDigests } from "./digests";
 import * as leads from "./leads";
 import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSweep, preShiftChecks, recomputeStats, revealExpiredRatings, startDueShifts } from "./lifecycle";
@@ -37,6 +38,8 @@ export const JOBS: Job[] = [
   { name: "preShiftEligibilityCheck", schedule: { everySeconds: 900 }, run: () => preShiftChecks() },
   // Money.
   { name: "payoutRelease", schedule: { everySeconds: 900 }, run: () => releaseDuePayouts() },
+  // Reconfirmation (48h/24h) and day-of "On my way" check-in.
+  { name: "attendance", schedule: { everySeconds: 60 }, run: () => attendanceSweep() },
   // Provider booking emails: each provider's local send time, so check every tick.
   { name: "bookingDigests", schedule: { everySeconds: 60 }, run: () => sendBookingDigests() },
   // Growth.

@@ -706,6 +706,13 @@ model Assignment {
   /// On Call auto-accepts: no-penalty cancel allowed until this time (Addendum 02 §4.5).
   graceEndsAt          DateTime?                 @db.Timestamptz(3)
   confirmedAt          DateTime                  @default(now()) @db.Timestamptz(3)
+  /// Attendance (reconfirmation + day-of check-in): each step is claimed once.
+  reconfirmRequestedAt DateTime?                 @db.Timestamptz(3)
+  reconfirmRemindedAt  DateTime?                 @db.Timestamptz(3)
+  reconfirmedAt        DateTime?                 @db.Timestamptz(3)
+  checkinPromptedAt    DateTime?                 @db.Timestamptz(3)
+  onMyWayAt            DateTime?                 @db.Timestamptz(3)
+  checkinAlertedAt     DateTime?                 @db.Timestamptz(3)
   startedAt            DateTime?                 @db.Timestamptz(3)
   completedAt          DateTime?                 @db.Timestamptz(3)
   cancelledAt          DateTime?                 @db.Timestamptz(3)
