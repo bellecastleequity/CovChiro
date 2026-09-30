@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { DomainError, licensedPairs, NATIONAL_CREDENTIAL, normalizeLinkedIn, US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
-import { esignProvider, geoProvider, lookupNpi, paymentsProvider, testSigningEnabled } from "@cm/integrations";
+import { esignProvider, GeoServiceError, geoProvider, lookupNpi, paymentsProvider, testSigningEnabled } from "@cm/integrations";
 import { audit, requireClinic, requireProvider, SYSTEM, type Actor } from "./context";
 import { absoluteUrl, sendEmail } from "./notify";
 import { activateClinicIfReady } from "./payments";
@@ -90,6 +90,9 @@ export const ProviderProfileInput = z.object({
   phone: z.string().trim().min(7).max(30),
   bio: z.string().trim().max(1500).optional().nullable(),
   homeAddress: z.string().trim().min(5).max(300),
+  /** Google place ID from the address autocomplete, when the provider picked a suggestion. */
+  homeAddressPlaceId: z.string().trim().max(300).optional().nullable(),
+  personalInjuryExperience: z.boolean().optional().nullable(),
   maxDriveMinutes: z.coerce.number().int().min(10).max(600),
   willingOvernight: z.boolean().default(false),
   school: z.string().trim().max(160).optional().nullable(),
@@ -112,8 +115,7 @@ export async function updateProviderProfile(actor: Actor, raw: z.input<typeof Pr
   if (input.linkedinUrl && !linkedin) throw new DomainError("VALIDATION", "Enter your LinkedIn profile URL, like linkedin.com/in/your-name.");
   let geo = {};
   if (input.homeAddress !== current.homeAddress) {
-    const g = await geoProvider().geocode(input.homeAddress);
-    if (!g) throw new DomainError("VALIDATION", "We couldn't find that address. Include street, city, state and ZIP.");
+    const g = await geocodeAddress(input.homeAddress, input.homeAddressPlaceId);
     // Home state is display-only; it is never used for eligibility (INV-1).
     geo = { homeAddress: input.homeAddress, homeLat: g.lat, homeLng: g.lng, homeCity: g.city, homeState: g.state, homeTimeZone: g.timeZone };
   }
@@ -139,6 +141,7 @@ export async function updateProviderProfile(actor: Actor, raw: z.input<typeof Pr
         languages: input.languages,
         ehrSystems: input.ehrSystems,
         xrayComfort: input.xrayComfort,
+        ...(input.personalInjuryExperience !== undefined ? { personalInjuryExperience: input.personalInjuryExperience } : {}),
         maxPatientsPerDay: input.maxPatientsPerDay ?? null,
         headline: input.headline || null,
         linkedinUrl: linkedin,
@@ -397,6 +400,7 @@ export async function updateOrg(actor: Actor, raw: z.input<typeof OrgInput>) {
 export const LocationInput = z.object({
   name: z.string().trim().min(2).max(120),
   address: z.string().trim().min(8).max(300),
+  addressPlaceId: z.string().trim().max(300).optional().nullable(),
   addressLine2: z.string().trim().max(120).optional().nullable(),
   phone: z.string().trim().max(30).optional().nullable(),
   onSiteContactName: z.string().trim().max(120).optional().nullable(),
@@ -409,6 +413,20 @@ export const LocationInput = z.object({
   skillIds: z.array(z.string()).default([]),
 });
 
+/** Geocode or explain why not: a bad address and a broken address service get different messages. */
+async function geocodeAddress(address: string, placeId?: string | null) {
+  try {
+    const g = await geoProvider().geocode(address, { placeId });
+    if (g) return g;
+  } catch (e) {
+    if (e instanceof GeoServiceError) {
+      throw new DomainError("VALIDATION", `Address lookup isn't working right now, so this couldn't be saved. Please try again later. (${e.message})`);
+    }
+    throw e;
+  }
+  throw new DomainError("VALIDATION", "We couldn't find that street address. Pick it from the suggestions, or enter street, city, state and ZIP.");
+}
+
 /** State and time zone come from the geocoder only (INV-1). */
 export async function saveLocation(actor: Actor, raw: z.input<typeof LocationInput>, locationId?: string) {
   const orgId = requireClinic(actor, { ownerOnly: true });
@@ -418,8 +436,7 @@ export async function saveLocation(actor: Actor, raw: z.input<typeof LocationInp
   const addressChanged = !existing || `${existing.addressLine1}, ${existing.city}, ${existing.state} ${existing.zip}`.toLowerCase() !== input.address.toLowerCase();
   let geo: Record<string, unknown> = {};
   if (addressChanged) {
-    const g = await geoProvider().geocode(input.address);
-    if (!g) throw new DomainError("VALIDATION", "We couldn't verify that address. Include street, city, state and ZIP.");
+    const g = await geocodeAddress(input.address, input.addressPlaceId);
     geo = { addressLine1: g.addressLine1 || input.address.split(",")[0], city: g.city, state: g.state, zip: g.zip, lat: g.lat, lng: g.lng, timeZone: g.timeZone, geocodedAt: new Date(), rateRegionId: await resolveRateRegion(prisma, g.state, g.zip) };
   }
   const data = {

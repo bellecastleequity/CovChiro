@@ -29,6 +29,8 @@ This addendum overrides SPEC.md where they conflict.
 - A5 (owner decision: accept the minimum credential the state requires): where ProfessionStateConfig has licensedAtStateLevel=false and alternativeCredentialAllowed=true, a VERIFIED national registry credential (License.state = "US", e.g. ARDMS/CCI/ARRT for sonography) satisfies INV-1 for that profession in that state. Nowhere else. The rule lives in core hasQualifyingLicense, the SQL prefilter and the provider_shift_problem trigger (migration 0003); a CHECK forbids national credentials where the state licenses the profession.
 - Provider booking emails (services/src/digests.ts): daily list at 5:30 local and Sunday-evening week-ahead, only when there are bookings; times are Settings (digests.*); DigestSend rows make each send once-only.
 - cPanel database updates for already-installed sites go in deploy/cpanel/updates/update-NNN-*.sql (re-runnable); `-- @migration <name>` inlines a migration plus its _prisma_migrations row at build time.
+- Behind cPanel/Passenger, req.url is the internal http://0.0.0.0:3000 address: redirects use relative Location headers (or APP_BASE_URL), never `new URL(path, req.url)`.
+- Addresses: AddressInput (Places API New, GOOGLE_MAPS_BROWSER_KEY passed from the server at runtime) posts `<name>PlaceId`; the server geocodes by place ID when present. GeoServiceError = Google key/API failure, reported separately from "address not found".
 - Eligibility lives in packages/services/src/eligibility.ts (DB loaders) + packages/core/src/eligibility.ts (pure rules). Tests: `pnpm test:core` and `pnpm test:invariants` (needs local Postgres + PostGIS; recreates the *_test database).
 
 ## Addendum 02 — Smart Dispatch & On Call (SPEC_ADDENDUM_02_DISPATCH_ONCALL.md)

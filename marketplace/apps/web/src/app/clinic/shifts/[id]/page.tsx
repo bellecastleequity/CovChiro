@@ -38,6 +38,7 @@ function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; ap
             <span className="flex items-center gap-1"><Star className="size-3 text-amber-500" />{c.ratingAvg ? `${c.ratingAvg.toFixed(1)} (${c.ratingCount})` : "No ratings yet"}</span>
             <span>Reliability {pct(c.reliability)}</span>
             <span>Match {Math.round(c.score * 100)}</span>
+            {c.personalInjuryExperience ? <span className="font-medium text-accent-700">Personal injury experience</span> : null}
           </div>
           {c.skills.length ? <div className="mt-2 flex flex-wrap gap-1">{c.skills.slice(0, 8).map((s) => <Badge key={s}>{s}</Badge>)}</div> : null}
           {c.earnedBadges.length ? <div className="mt-2"><BadgeList badges={c.earnedBadges} compact /></div> : null}

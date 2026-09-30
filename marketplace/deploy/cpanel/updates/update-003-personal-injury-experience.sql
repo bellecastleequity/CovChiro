@@ -1,0 +1,4 @@
+-- Adds the "Personal injury experience" answer to provider profiles.
+-- Run AFTER update-002. Safe to run more than once.
+-- Run in Neon: SQL Editor → paste → Run.
+-- @migration 0004_personal_injury_experience

@@ -109,6 +109,7 @@ export async function providerPublicProfile(viewer: Actor, providerId: string) {
     graduationYear: p.graduationYear,
     languages: p.languages,
     ehrSystems: p.ehrSystems,
+    personalInjuryExperience: p.personalInjuryExperience,
     professions: p.professions.map((x) => ({ code: x.professionCode, name: x.profession.displayName, yearsInPractice: x.yearsInPractice, status: x.status })),
     credentials: p.licenses.map((l) => ({ professionCode: l.professionCode, state: l.state, title: l.credentialTitle ?? l.professionCode })),
     skills: p.skills.filter((k) => !k.skill.requiresCertification || k.certificationStatus === "VERIFIED").map((k) => ({ name: k.skill.name, proficiency: k.proficiency, certified: k.certificationStatus === "VERIFIED" })),

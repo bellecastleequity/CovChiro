@@ -175,6 +175,14 @@ cPanel → **Cron Jobs**:
   - Restart the app.
 - **Dropbox Sign:** API settings → callback URL: `https://coverageoncall.com/api/webhooks/esign`.
 - **Twilio** (if used): Messaging Service → incoming message webhook: `https://coverageoncall.com/api/webhooks/twilio`.
+- **Google Maps:** in [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services, enable **Geocoding API**, **Time Zone API**, **Routes API**, **Maps JavaScript API** and **Places API (New)**. Billing must be on for the project. Then make two keys under **Credentials**:
+
+  | Variable | Application restriction | API restriction |
+  |---|---|---|
+  | `GOOGLE_MAPS_API_KEY` | **None** (the server calls Google, and it has no website to match; a "Websites" restriction makes every address fail) | Geocoding API, Time Zone API, Routes API |
+  | `GOOGLE_MAPS_BROWSER_KEY` | **Websites**: `https://coverageoncall.com/*` and `https://www.coverageoncall.com/*` | Maps JavaScript API, Places API (New) |
+
+  The browser key is visible in the page, which is why it's locked to your domain. Without it, address fields still work, just without suggestions.
 - **SendGrid:** Settings → Sender Authentication → authenticate `coverageoncall.com`. Add the DNS records it gives you in Namecheap → Advanced DNS.
 
 ## Step 10 — Set up the business in Admin
@@ -221,6 +229,8 @@ If coveragechiropractor.com is on the same cPanel:
 | `Prisma Client could not locate the Query Engine` | The zip was built on the wrong system. Rebuild it on Linux x86-64 with `deploy/cpanel/build.sh`. |
 | Offers never expire, payouts never go out | The cron job isn't running. Check the command, the secret, and that the cron isn't paused. Test by pasting the command into cPanel Terminal without `> /dev/null 2>&1`. |
 | App restarts or gets killed under load | You've hit shared-hosting CPU or memory limits (cPanel → *Resource Usage*). Upgrade the plan or move to a VPS. |
+| "Address lookup isn't working right now (Google Geocoding REQUEST_DENIED …)" | The server key can't use the Geocoding API. Check in Google Cloud: the API is enabled, billing is on, and `GOOGLE_MAPS_API_KEY` has **no** website restriction. The message shows Google's own reason. |
+| No suggestions appear under address fields | `GOOGLE_MAPS_BROWSER_KEY` is missing, or it isn't allowed for your domain / Maps JavaScript API / Places API (New). Your browser's console shows Google's error. |
 | Signup confirmation (or any) email never arrives | Sign in as admin → **Settings** → **Email check** → **Send test email**. It shows SendGrid's exact reply. "does not match a verified Sender Identity" means the sending domain isn't authenticated yet: SendGrid → Settings → Sender Authentication → authenticate `coverageoncall.com`, add its DNS records in Namecheap → Advanced DNS, wait for SendGrid to show "Verified", then try again. "401" / "permission" means `SENDGRID_API_KEY` is wrong or lacks Mail Send access. Providers can then use **Resend confirmation email** on their dashboard. |
 | Admin lost their phone | In Neon SQL Editor: `UPDATE "User" SET "mfaEnabled"=false, "totpSecret"=NULL WHERE email='you@…';` |
 

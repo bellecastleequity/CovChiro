@@ -1,8 +1,10 @@
+import { env } from "@cm/config";
 import { prisma } from "@cm/db";
 import { AGREEMENT_VERSION } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Checkbox, Field, Input, Textarea } from "@/components/ui/form";
+import { AddressInput } from "@/components/ui/address-input";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
@@ -31,9 +33,16 @@ export default async function Profile() {
                 <Field key={x.professionCode} label={`Years practicing — ${x.profession.displayName}`}><Input name={`years-${x.professionCode}`} type="number" min={0} max={70} defaultValue={x.yearsInPractice ?? ""} /></Field>
               ))}
               <Field label="NPI" hint={p.npiVerifiedAt ? "Verified with the NPPES registry." : p.npiMismatch ? "Name didn't match the registry — our team is reviewing." : "10 digits."}><Input name="npi" defaultValue={p.npi ?? ""} inputMode="numeric" maxLength={10} /></Field>
-              <Field label="Home base address" hint="Used for drive times and mileage. Never shown to clinics." className="sm:col-span-2"><Input name="homeAddress" defaultValue={p.homeAddress ?? ""} placeholder="Street, City, ST ZIP" required /></Field>
+              <Field label="Home base address" hint="Used for drive times and mileage. Never shown to clinics." className="sm:col-span-2"><AddressInput name="homeAddress" defaultValue={p.homeAddress ?? ""} placeholder="Start typing your address…" required browserKey={env().GOOGLE_MAPS_BROWSER_KEY} /></Field>
               <Field label="Max one-way drive (minutes)"><Input name="maxDriveMinutes" type="number" min={10} max={600} defaultValue={p.maxDriveMinutes} required /></Field>
               <Field label="Max patients per day (optional)"><Input name="maxPatientsPerDay" type="number" defaultValue={p.maxPatientsPerDay ?? ""} /></Field>
+              <Field label="Personal injury experience" hint="Treated auto-accident / PI patients (documentation, PIP, attorney cases).">
+                <Select name="personalInjuryExperience" defaultValue={p.personalInjuryExperience === null ? "" : p.personalInjuryExperience ? "yes" : "no"} required>
+                  <option value="" disabled>Choose…</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </Select>
+              </Field>
               <Field label="School"><Input name="school" defaultValue={p.school ?? ""} /></Field>
               <Field label="Graduation year"><Input name="graduationYear" type="number" defaultValue={p.graduationYear ?? ""} /></Field>
               <Field label="Languages (comma-separated)"><Input name="languages" defaultValue={p.languages.join(", ")} /></Field>

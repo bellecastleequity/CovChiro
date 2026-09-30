@@ -1,4 +1,4 @@
-import { Award, BadgeCheck, CalendarCheck, Clock, GraduationCap, Heart, Languages, Link2, MapPin, Shield, ShieldCheck, Star, Zap } from "lucide-react";
+import { Award, BadgeCheck, Briefcase, CalendarCheck, Clock, GraduationCap, Heart, Languages, Link2, MapPin, Shield, ShieldCheck, Star, Zap } from "lucide-react";
 import type { Badge as BadgeT } from "@cm/core";
 import { providerPublicProfile } from "@cm/services";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -109,6 +109,7 @@ export function ProviderProfileView({ p }: { p: Awaited<ReturnType<typeof provid
               {p.credentials.map((c) => <div key={`${c.professionCode}-${c.state}`} className="flex items-center gap-2"><ShieldCheck className="size-4 text-emerald-600" />{c.title} · {c.state === "US" ? "National registry" : c.state}</div>)}
               {p.professions.filter((x) => x.yearsInPractice).map((x) => <div key={x.code} className="text-slate-500">{x.name}: {x.yearsInPractice} years in practice</div>)}
               {p.school ? <div className="flex items-center gap-2 text-slate-600"><GraduationCap className="size-4 text-slate-400" />{p.school}{p.graduationYear ? `, ${p.graduationYear}` : ""}</div> : null}
+              {p.personalInjuryExperience !== null ? <div className="flex items-center gap-2 text-slate-600"><Briefcase className="size-4 text-slate-400" />Personal injury experience: {p.personalInjuryExperience ? "Yes" : "No"}</div> : null}
               {p.languages.length ? <div className="flex items-center gap-2 text-slate-600"><Languages className="size-4 text-slate-400" />{p.languages.join(", ")}</div> : null}
             </CardBody>
           </Card>

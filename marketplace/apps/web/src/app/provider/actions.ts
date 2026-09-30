@@ -150,6 +150,8 @@ export const profileAction = formAction(async (fd) => {
     phone: str(fd, "phone"),
     bio: optStr(fd, "bio"),
     homeAddress: str(fd, "homeAddress"),
+    homeAddressPlaceId: optStr(fd, "homeAddressPlaceId"),
+    personalInjuryExperience: str(fd, "personalInjuryExperience") ? str(fd, "personalInjuryExperience") === "yes" : undefined,
     maxDriveMinutes: Number(str(fd, "maxDriveMinutes") || 90),
     willingOvernight: bool(fd, "willingOvernight"),
     school: optStr(fd, "school"),

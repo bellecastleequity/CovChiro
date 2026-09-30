@@ -1,6 +1,8 @@
+import { env } from "@cm/config";
 import { prisma } from "@cm/db";
 import { clinicProfile } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
+import { AddressInput } from "@/components/ui/address-input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Textarea } from "@/components/ui/form";
@@ -24,7 +26,7 @@ async function LocationForm({ loc }: { loc?: Loc }) {
       <Field label="Location name"><Input name="name" defaultValue={loc?.name} placeholder="Main office" required /></Field>
       <Field label="Front desk phone"><Input name="phone" defaultValue={loc?.phone ?? ""} type="tel" /></Field>
       <Field label="Street address, city, state, ZIP" hint="Verified with our mapping service — your state comes from this address." className="sm:col-span-2">
-        <Input name="address" defaultValue={loc ? `${loc.addressLine1}, ${loc.city}, ${loc.state} ${loc.zip}` : ""} required />
+        <AddressInput name="address" defaultValue={loc ? `${loc.addressLine1}, ${loc.city}, ${loc.state} ${loc.zip}` : ""} placeholder="Start typing the address…" required browserKey={env().GOOGLE_MAPS_BROWSER_KEY} />
       </Field>
       <Field label="Suite / unit"><Input name="addressLine2" defaultValue={loc?.addressLine2 ?? ""} /></Field>
       <Field label="On-site contact"><Input name="onSiteContactName" defaultValue={loc?.onSiteContactName ?? ""} /></Field>

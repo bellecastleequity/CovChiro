@@ -17,35 +17,54 @@ export interface DriveResult {
   miles: number;
 }
 
+/** The address service itself failed (bad key, API not enabled, quota) — not a bad address. */
+export class GeoServiceError extends Error {}
+
 export interface GeoProvider {
   name: string;
-  geocode(address: string): Promise<GeocodeResult | null>;
+  /**
+   * null = no street-level US match. `placeId` comes from the address
+   * autocomplete and, when present, is looked up instead of the text.
+   */
+  geocode(address: string, opts?: { placeId?: string | null }): Promise<GeocodeResult | null>;
   /** Drive time/distance from many origins to one destination. null = no route. */
   driveMatrix(origins: { lat: number; lng: number }[], dest: { lat: number; lng: number }, departAt: Date): Promise<(DriveResult | null)[]>;
 }
 
 // ---------------- Google (Geocoding + Time Zone + Routes) ----------------
 
-class GoogleGeo implements GeoProvider {
+export class GoogleGeo implements GeoProvider {
   name = "google";
   constructor(private key: string) {}
 
-  async geocode(address: string): Promise<GeocodeResult | null> {
+  async geocode(address: string, opts: { placeId?: string | null } = {}): Promise<GeocodeResult | null> {
     const u = new URL("https://maps.googleapis.com/maps/api/geocode/json");
-    u.searchParams.set("address", address);
-    u.searchParams.set("components", "country:US");
+    if (opts.placeId) u.searchParams.set("place_id", opts.placeId);
+    else {
+      u.searchParams.set("address", address);
+      u.searchParams.set("components", "country:US");
+    }
     u.searchParams.set("key", this.key);
-    const r = await fetch(u);
-    const j = (await r.json()) as any;
+    const j = (await (await fetch(u)).json()) as any;
+    if (j.status !== "OK" && j.status !== "ZERO_RESULTS") {
+      // e.g. REQUEST_DENIED: "API keys with referer restrictions cannot be used with this API."
+      const why = `Google Geocoding ${j.status}${j.error_message ? `: ${j.error_message}` : ""}`;
+      console.error(`[geo] ${why}`);
+      throw new GeoServiceError(why);
+    }
     const top = j.results?.[0];
-    if (!top || top.partial_match) return null;
+    if (!top) return null;
     const comp = (t: string, short = false) => {
       const c = top.address_components.find((x: any) => x.types.includes(t));
       return c ? (short ? c.short_name : c.long_name) : "";
     };
     const state = comp("administrative_area_level_1", true);
     const zip = comp("postal_code");
-    if (!state || !zip) return null;
+    if (comp("country", true) !== "US" || !state || !zip) return null;
+    // Google flags spelling variants ("Terrace" vs "Ter") as partial matches;
+    // those are fine as long as it found the actual street address. A partial
+    // match that only reached the street, city or ZIP is not.
+    if (top.partial_match && !(comp("street_number") && comp("route"))) return null;
     const { lat, lng } = top.geometry.location;
     const tz = new URL("https://maps.googleapis.com/maps/api/timezone/json");
     tz.searchParams.set("location", `${lat},${lng}`);

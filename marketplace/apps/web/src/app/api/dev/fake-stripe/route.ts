@@ -25,7 +25,8 @@ export async function GET(req: NextRequest) {
     await prisma.provider.update({ where: { id: provider }, data: { stripePayoutsEnabled: true } });
     await refreshProviderStripe(provider);
   }
-  const url = new URL(back, req.url);
+  // Relative, same as logout: req.url is the internal address behind Passenger.
+  const url = new URL(back.startsWith("/") ? back : "/", "http://x");
   url.searchParams.set("stripe", "return");
-  return NextResponse.redirect(url);
+  return new NextResponse(null, { status: 303, headers: { Location: url.pathname + url.search } });
 }

@@ -190,6 +190,8 @@ model Provider {
   languages            String[]                               @default([])
   ehrSystems           String[]                               @default([])
   xrayComfort          Boolean                                @default(false)
+  /// Has treated personal-injury (auto accident / PI) patients. null = not answered yet.
+  personalInjuryExperience Boolean?
   maxPatientsPerDay    Int?
   stripeAccountId      String?                                @unique
   stripePayoutsEnabled Boolean                                @default(false)

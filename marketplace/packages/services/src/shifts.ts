@@ -420,7 +420,7 @@ export async function shiftCandidates(actor: Actor, shiftId: string) {
   const appBy = new Map(apps.map((a) => [a.providerId, a]));
   const ids = ranked.map((r) => r.providerId);
   const [profiles, licenses, skills, offers] = await Promise.all([
-    prisma.provider.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, photoUrl: true, homeCity: true, homeState: true, bio: true } }),
+    prisma.provider.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, photoUrl: true, homeCity: true, homeState: true, bio: true, personalInjuryExperience: true } }),
     prisma.license.findMany({
       where: { providerId: { in: ids }, professionCode: loaded.facts.professionCode, state: { in: [loaded.facts.state, NATIONAL_CREDENTIAL] }, status: "VERIFIED" },
       orderBy: { state: "asc" }, // a state license ("FL") sorts before the national credential ("US")
@@ -445,6 +445,7 @@ export async function shiftCandidates(actor: Actor, shiftId: string) {
       credentialTitle: lic?.credentialTitle ?? loaded.facts.professionCode,
       photoUrl: p.photoUrl,
       city: p.homeCity,
+      personalInjuryExperience: p.personalInjuryExperience,
       state: p.homeState,
       bio: p.bio,
       score: r.score,

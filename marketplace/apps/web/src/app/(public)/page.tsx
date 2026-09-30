@@ -4,11 +4,13 @@ import { brand } from "@cm/config";
 import { prisma } from "@cm/db";
 import { getSettings } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
+import { Alert } from "@/components/ui/misc";
 import { WelcomePopup } from "@/components/site/welcome-popup";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ signedout?: string }> }) {
+  const { signedout } = await searchParams;
   const b = brand();
   const [professions, s, enabledPairs] = await Promise.all([
     prisma.profession.findMany({ orderBy: { sortOrder: "asc" } }),
@@ -19,6 +21,11 @@ export default async function Home() {
   const liveNames = professions.filter((p) => p.active).map((p) => p.displayName);
   return (
     <>
+      {signedout ? (
+        <div className="container-page pt-4">
+          <Alert tone="success">You've signed out. See you next time.</Alert>
+        </div>
+      ) : null}
       <section className="relative overflow-hidden bg-gradient-to-b from-accent-50 via-white to-white">
         <div className="container-page grid items-center gap-12 py-16 sm:py-24 lg:grid-cols-2">
           <div>

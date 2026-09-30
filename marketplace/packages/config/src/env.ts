@@ -23,6 +23,8 @@ const EnvSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   GOOGLE_MAPS_API_KEY: z.string().optional(),
+  /** Sent to browsers for address suggestions: restrict it to your domain and to Maps JavaScript API + Places API (New). */
+  GOOGLE_MAPS_BROWSER_KEY: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),
   /** Defaults to "<BRAND_NAME> <mail@BRAND_DOMAIN>". */
   EMAIL_FROM: z.string().optional(),

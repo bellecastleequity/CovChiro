@@ -131,6 +131,7 @@ export const locationAction = formAction(async (fd) => {
     {
       name: str(fd, "name"),
       address: str(fd, "address"),
+      addressPlaceId: optStr(fd, "addressPlaceId"),
       addressLine2: optStr(fd, "addressLine2"),
       phone: optStr(fd, "phone"),
       onSiteContactName: optStr(fd, "onSiteContactName"),
