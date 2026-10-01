@@ -10,6 +10,8 @@ import type { Course, Lesson } from "./types";
 
 const hrs = (h: number) => (h === 1 ? "1 hour" : `${h} hours`);
 const mins = (m: number) => (m === 1 ? "1 minute" : `${m} minutes`);
+/** "a 2-hour head start" */
+const hrAdj = (h: number) => `${h}-hour`;
 
 const welcome: Lesson = {
   slug: "welcome",
@@ -232,7 +234,7 @@ const matching: Lesson = {
                 {
                   label: "48 hours or more",
                   title: "Planned",
-                  detail: `Your favorites get a ${hrs(s["matching.favoritesWindowHours"])} head start, then matching providers are notified and can apply. You choose by the deadline.`,
+                  detail: `Your favorites get a ${hrAdj(s["matching.favoritesWindowHours"])} head start, then matching providers are notified and can apply. You choose by the deadline.`,
                 },
                 {
                   label: "Under 48 hours",
@@ -563,7 +565,7 @@ const bench: Lesson = {
       />
       <H>Favorites and blocks</H>
       <P>
-        Add a provider to your favorites from a completed shift or their profile. Favorites get a {hrs(s["matching.favoritesWindowHours"])} head start on your planned shifts and rank higher in
+        Add a provider to your favorites from a completed shift or their profile. Favorites get a {hrAdj(s["matching.favoritesWindowHours"])} head start on your planned shifts and rank higher in
         your list. Blocked providers are never offered your shifts, and only you see that list.
       </P>
       <H>Standing bookings</H>

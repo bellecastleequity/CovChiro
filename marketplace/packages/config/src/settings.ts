@@ -342,7 +342,7 @@ export const SETTINGS = {
   }),
   "growth.outreachMode": def({ group: "Growth", label: "Clinic outreach: review (AI drafts wait for approval) or auto", schema: z.enum(["review", "auto"]), default: "review", flag: "OWNER_DECISION" }),
   "growth.postalAddress": def({ group: "Growth", label: "Physical postal address shown in marketing email", help: "Required in commercial email; marketing sends are blocked while blank.", schema: z.string().max(300), default: "", flag: "ATTORNEY_REVIEW" }),
-  "growth.aiProvider": def({ group: "Growth", label: "AI provider for growth agents (falls back to templates when its key is missing)", schema: z.enum(["anthropic", "gemini", "none"]), default: "anthropic", flag: "OWNER_DECISION" }),
+  "growth.aiProvider": def({ group: "Growth", label: "AI provider for growth agents (falls back to templates when its key is missing)", schema: z.enum(["anthropic", "gemini", "openai", "none"]), default: "anthropic", flag: "OWNER_DECISION" }),
   "growth.aiModels": def({
     group: "Growth",
     label: "AI model per task",
@@ -388,6 +388,38 @@ export const SETTINGS = {
   "growth.smsQuietEnd": def({ group: "Growth", label: "No automated texts before (local)", schema: localTime, default: "09:00", flag: null }),
   "growth.highValueDays": def({ group: "Growth", label: "Unfinished request this many days or longer goes to the sales queue", schema: z.number().int().min(1), default: 2, flag: null }),
   "growth.escalationEmail": def({ group: "Growth", label: "Email admins for each escalation", schema: z.boolean(), default: true, flag: null }),
+
+  // ---------- blog ----------
+  "blog.aiProvider": def({ group: "Blog", label: "AI provider for blog drafts (separate from Growth)", schema: z.enum(["anthropic", "gemini", "openai", "none"]), default: "openai", flag: null }),
+  "blog.aiModel": def({ group: "Blog", label: "AI model for blog drafts", help: "A model from the provider above: an OpenAI model (e.g. gpt-4.1-mini), a Gemini model (e.g. gemini-2.5-flash) or a Claude model ID. Add its price under Growth → AI price per million tokens so the spend caps count it correctly.", schema: z.string().min(1).max(80), default: "gpt-4.1-mini", flag: null }),
+  "blog.autoDraftsPerWeek": def({
+    group: "Blog",
+    label: "Drafts the AI writes on its own each week (0 = only when you ask)",
+    help: "Drafts wait for your review; nothing is published automatically. Topics come from the list below, then from AI suggestions.",
+    schema: z.number().int().min(0).max(7),
+    default: 1,
+    flag: "OWNER_DECISION",
+  }),
+  "blog.authorName": def({ group: "Blog", label: "Byline on posts (blank = “The <brand> team”)", schema: z.string().max(80), default: "", flag: null }),
+  "blog.topicQueue": def({
+    group: "Blog",
+    label: "Topic queue for automatic drafts",
+    help: 'Each item: {"topic": "...", "audience": "CLINIC" | "PROVIDER" | "ALL"}. Used in order; a topic is skipped once a post has been written from it.',
+    schema: z.array(z.object({ topic: z.string().min(5).max(200), audience: z.enum(["CLINIC", "PROVIDER", "ALL"]) })).max(100),
+    default: [
+      { topic: "What to do when the only doctor at a chiropractic clinic is out sick", audience: "CLINIC" },
+      { topic: "Locum agencies vs. a coverage marketplace: how chiropractic clinics can compare their options", audience: "CLINIC" },
+      { topic: "Planning coverage for a continuing-education weekend: a checklist for clinic owners", audience: "CLINIC" },
+      { topic: "What a covering chiropractor needs on day one: an onboarding checklist for your front desk", audience: "CLINIC" },
+      { topic: "Why license verification matters when you bring in a fill-in doctor", audience: "CLINIC" },
+      { topic: "Taking a real vacation as a solo chiropractor: how to keep the practice open", audience: "CLINIC" },
+      { topic: "Per diem chiropractic work: what to know before your first coverage shift", audience: "PROVIDER" },
+      { topic: "New chiropractic graduates: building real-world experience with coverage shifts", audience: "PROVIDER" },
+      { topic: "How to be the covering doctor clinics ask for again", audience: "PROVIDER" },
+      { topic: "Malpractice coverage for fill-in chiropractors: questions to ask your carrier", audience: "PROVIDER" },
+    ],
+    flag: null,
+  }),
 
   // ---------- training (academy) ----------
   "academy.videos": def({

@@ -228,28 +228,40 @@ type OpenAiReply = {
 const openAiText = (j: OpenAiReply) =>
   (j.output ?? []).filter((o) => o.type === "message").flatMap((o) => o.content ?? []).filter((c) => c.type === "output_text").map((c) => c.text ?? "");
 
-/** OpenAI Responses API (raw fetch). Research uses its built-in web_search tool. */
+/** OpenAI: Chat Completions in JSON mode for text; research uses the Responses API web_search tool. */
 const openai = (key: string): LlmProvider => ({
   name: "openai",
   async generate(req) {
-    const fail = (error: string, i = 0, o = 0): LlmResult => ({ ok: false, error, model: req.model, inputTokens: i, outputTokens: o });
+    const model = req.model;
+    const fail = (error: string, i = 0, o = 0): LlmResult => ({ ok: false, error, model, inputTokens: i, outputTokens: o });
     try {
-      const r = await fetch("https://api.openai.com/v1/responses", {
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
         body: JSON.stringify({
-          model: req.model, instructions: req.system, input: req.user, max_output_tokens: req.maxTokens * 4,
-          text: { format: { type: "json_schema", name: "reply", schema: req.schema, strict: false } },
-          ...(req.effort ? { reasoning: { effort: req.effort } } : {}),
+          model,
+          messages: [
+            { role: "system", content: req.system },
+            { role: "user", content: `${req.user}\n\nReply with only one JSON object matching this JSON Schema:\n${JSON.stringify(req.schema)}` },
+          ],
+          response_format: { type: "json_object" },
+          max_completion_tokens: req.maxTokens,
         }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(TIMEOUT_MS * 2),
       });
-      const j = (await r.json().catch(() => ({}))) as OpenAiReply;
-      const i = j.usage?.input_tokens ?? 0, o = j.usage?.output_tokens ?? 0;
-      if (!r.ok) return fail(`HTTP ${r.status}: ${j.error?.message ?? ""}`.slice(0, 240), i, o);
-      if (j.status === "incomplete") return fail(`incomplete: ${j.incomplete_details?.reason ?? ""}`, i, o);
-      const data = parseObject(openAiText(j).join(""));
-      return data ? { ok: true, data, model: req.model, inputTokens: i, outputTokens: o } : fail("unparseable output", i, o);
+      const j = (await r.json().catch(() => ({}))) as {
+        model?: string;
+        choices?: { message?: { content?: string | null; refusal?: string | null }; finish_reason?: string }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+        error?: { message?: string };
+      };
+      const i = j.usage?.prompt_tokens ?? 0, o = j.usage?.completion_tokens ?? 0;
+      if (!r.ok) return fail(`HTTP ${r.status}${j.error?.message ? `: ${j.error.message.slice(0, 200)}` : ""}`, i, o);
+      const c = j.choices?.[0];
+      if (c?.message?.refusal) return fail(`refused: ${c.message.refusal.slice(0, 200)}`, i, o);
+      if (c?.finish_reason === "length") return fail("output cut off (raise the token limit)", i, o);
+      const data = parseObject(c?.message?.content ?? "");
+      return data ? { ok: true, data, model: j.model ?? model, inputTokens: i, outputTokens: o } : fail("unparseable output", i, o);
     } catch (e) {
       return fail((e as Error).message.slice(0, 240));
     }

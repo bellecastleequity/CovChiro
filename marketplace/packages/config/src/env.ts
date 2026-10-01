@@ -47,7 +47,7 @@ const EnvSchema = z.object({
   /** Optional AI message moderation (non-circumvention). Claude is used when set, else Gemini; neither = rules only. */
   ANTHROPIC_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
-  /** Optional: OpenAI for Growth clinic web research (growth.researchProvider = openai). */
+  /** Optional OpenAI key: Growth clinic web research (growth.researchProvider), the blog, and growth agents if chosen. */
   OPENAI_API_KEY: z.string().optional(),
   MODERATION_MODEL: z.string().optional(),
   NPPES_API_BASE: z.string().default("https://npiregistry.cms.hhs.gov/api/"),

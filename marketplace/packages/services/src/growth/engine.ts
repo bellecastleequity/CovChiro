@@ -76,9 +76,13 @@ export async function aiSpendCents(since: Date): Promise<number> {
 }
 
 /** One structured AI call. Returns null data (with a reason) whenever AI is off, over budget or fails. */
-export async function ai(agent: string, task: AiTask, system: string, user: string, schema: Record<string, unknown>, maxTokens = 1500) {
+export async function ai(
+  agent: string, task: AiTask, system: string, user: string, schema: Record<string, unknown>, maxTokens = 1500,
+  /** Another feature's own provider/model (e.g. the blog's); caps and AiUsage logging still apply. */
+  use: { provider?: "anthropic" | "gemini" | "openai" | "none"; model?: string } = {},
+) {
   const s = await getSettings();
-  const provider = llmProvider(s["growth.aiProvider"]);
+  const provider = llmProvider(use.provider ?? s["growth.aiProvider"]);
   if (provider.name === "none") return { data: null, error: "ai_unavailable", model: null as string | null };
   const now = clock.now();
   const zone = "America/New_York";
@@ -87,10 +91,11 @@ export async function ai(agent: string, task: AiTask, system: string, user: stri
   if ((await aiSpendCents(dayStart)) >= s["growth.aiDailyBudgetCents"] || (await aiSpendCents(monthStart)) >= s["growth.aiMonthlyBudgetCents"]) {
     return { data: null, error: "ai_budget_exhausted", model: null };
   }
-  const model = s["growth.aiModels"][task];
+  const model = use.model ?? s["growth.aiModels"][task];
   const r = await provider.generate({ model, system, user, schema, maxTokens, effort: s["growth.aiEffort"] });
   const pricing = s["growth.aiPricing"];
-  const rate = pricing[r.model] ?? (provider.name === "gemini" ? (pricing.gemini ?? [0, 0]) : (Object.values(pricing)[0] ?? [0, 0]));
+  // Unknown OpenAI/Claude models fall back to the first (priciest) entry so the caps err on the safe side.
+  const rate = pricing[r.model] ?? pricing[use.model ?? ""] ?? (provider.name === "gemini" ? (pricing.gemini ?? [0, 0]) : (Object.values(pricing)[0] ?? [0, 0]));
   // cents per MTok → micro-dollars: tokens × cents / 1e6 × 1e4
   const costMicroUsd = Math.round((r.inputTokens * rate[0] + r.outputTokens * rate[1]) / 100);
   await prisma.aiUsage.create({

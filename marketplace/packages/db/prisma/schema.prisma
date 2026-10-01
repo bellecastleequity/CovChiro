@@ -1931,3 +1931,38 @@ model GrowthProfession {
   nameSuffix     String   @default("")
   updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 }
+
+// ---------- Blog (AI-drafted, human-published) ----------
+
+enum BlogStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// Public blog post. AI may draft; only an admin publishes, and only when core
+/// checkBlogPost has no errors. Body is a safe Markdown subset (core blog.ts).
+model BlogPost {
+  id            String     @id @default(cuid())
+  slug          String     @unique
+  title         String
+  /// Meta description for search results.
+  description   String
+  body          String
+  /// CLINIC | PROVIDER | ALL
+  audience      String     @default("ALL")
+  keywords      String[]   @default([])
+  status        BlogStatus @default(DRAFT)
+  aiGenerated   Boolean    @default(false)
+  aiModel       String?
+  /// The topic or brief the draft was written from.
+  brief         String?
+  authorName    String?
+  createdById   String?
+  publishedById String?
+  publishedAt   DateTime?  @db.Timestamptz(3)
+  createdAt     DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime   @updatedAt @db.Timestamptz(3)
+
+  @@index([status, publishedAt])
+}
