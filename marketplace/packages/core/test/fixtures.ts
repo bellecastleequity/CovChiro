@@ -60,6 +60,7 @@ export function provider(over: Partial<ProviderFacts> = {}): ProviderFacts {
     status: "ACTIVE",
     professions: [{ professionCode: "DC", status: "ACTIVE" }],
     payoutsEnabled: true,
+    agreementCurrent: true,
     licenses: [lic("DC", "FL", "VERIFIED", d("2028-01-31T00:00:00Z"))],
     malpractice: [policy(["DC"])],
     skills: [

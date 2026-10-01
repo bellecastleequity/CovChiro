@@ -288,14 +288,6 @@ export const SETTINGS = {
     default: 1_000_000,
     flag: "ATTORNEY_REVIEW",
   }),
-  "agreements.requireLatestVersion": def({
-    group: "Agreements",
-    label: "Require everyone to sign the latest agreement version before booking",
-    help: "Off: people who signed an earlier version keep booking and are asked to sign the new one. On: they can't book until they do.",
-    schema: z.boolean(),
-    default: false,
-    flag: "OWNER_DECISION",
-  }),
 
   // ---------- feature flags (ATTORNEY REVIEW items ship OFF) ----------
   "features.onCallEnabled": def({ group: "Features", label: "On Call auto-accept (requires On Call Terms in the Provider Agreement)", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),

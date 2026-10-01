@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { env } from "@cm/config";
 import { prisma } from "@cm/db";
+import { textingEnabled } from "@cm/integrations";
 import { AGREEMENT_VERSION, latestSignedAgreement } from "@cm/services";
+import { InfoTip } from "@/components/ui/info-tip";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { AddressInput } from "@/components/ui/address-input";
@@ -26,18 +28,18 @@ export default async function Profile() {
           <CardHeader title="About you" />
           <CardBody>
             <ActionForm action={profileAction} className="grid gap-4 sm:grid-cols-2">
-              <Field label="Legal name (as on your license)"><Input name="legalName" defaultValue={p.legalName} required /></Field>
+              <Field label={<>Legal name (as on your license)<InfoTip label="About legal name">Must match your license exactly. We verify your license, NPI and malpractice policy against it. Clinics see your display name, not this.</InfoTip></>}><Input name="legalName" defaultValue={p.legalName} required /></Field>
               <Field label="Display name" hint='e.g. "Dr. Jane Rivera"'><Input name="displayName" defaultValue={p.displayName} required /></Field>
-              <Field label="Mobile phone" hint={user.phoneVerifiedAt ? "Verified. Change it on the On Call page." : "Verify it on the On Call page to get text offers."}><Input name="phone" type="tel" defaultValue={user.phone ?? ""} required readOnly={!!user.phoneVerifiedAt} /></Field>
+              <Field label={<>Mobile phone<InfoTip label="About your phone">For account and shift alerts from us. It&apos;s never shown to clinics; you and clinics talk through Messages on the site.</InfoTip></>} hint={user.phoneVerifiedAt ? "Verified. Change it on the On Call page." : textingEnabled() ? "Verify it on the On Call page to get text offers." : "Alerts come by email for now."}><Input name="phone" type="tel" defaultValue={user.phone ?? ""} required readOnly={!!user.phoneVerifiedAt} /></Field>
               <Field label="Headline" hint='e.g. "Sports & family chiropractor · 12 years"' className="sm:col-span-2"><Input name="headline" defaultValue={p.headline ?? ""} maxLength={120} /></Field>
               <Field label="LinkedIn profile" hint="linkedin.com/in/your-name"><Input name="linkedinUrl" defaultValue={p.linkedinUrl ?? ""} placeholder="https://www.linkedin.com/in/…" /></Field>
               {p.professions.map((x) => (
-                <Field key={x.professionCode} label={`Years practicing — ${x.profession.displayName}`}><Input name={`years-${x.professionCode}`} type="number" min={0} max={70} defaultValue={x.yearsInPractice ?? ""} /></Field>
+                <Field key={x.professionCode} label={<>Years practicing — {x.profession.displayName}<InfoTip label="About years practicing">Clinics can ask for a minimum (2+, 5+ or 10+ years), and you&apos;re only matched to those shifts if you meet it. It can&apos;t be more than the years since your graduation year.</InfoTip></>}><Input name={`years-${x.professionCode}`} type="number" min={0} max={70} defaultValue={x.yearsInPractice ?? ""} /></Field>
               ))}
-              <Field label="NPI" hint={p.npiVerifiedAt ? "Verified with the NPPES registry." : p.npiMismatch ? "Name didn't match the registry — our team is reviewing." : "10 digits."}><Input name="npi" defaultValue={p.npi ?? ""} inputMode="numeric" maxLength={10} /></Field>
+              <Field label={<>NPI<InfoTip label="About NPI">Your 10-digit National Provider Identifier. We check it, with your name, against the national NPPES registry. Required for professions that bill under an NPI.</InfoTip></>} hint={p.npiVerifiedAt ? "Verified with the NPPES registry." : p.npiMismatch ? "Name didn't match the registry — our team is reviewing." : "10 digits."}><Input name="npi" defaultValue={p.npi ?? ""} inputMode="numeric" maxLength={10} /></Field>
               <Field label="Home base address" hint="Used for drive times and mileage. Never shown to clinics." className="sm:col-span-2"><AddressInput name="homeAddress" defaultValue={p.homeAddress ?? ""} placeholder="Start typing your address…" required browserKey={env().GOOGLE_MAPS_BROWSER_KEY} /></Field>
-              <Field label="Max one-way drive (minutes)"><Input name="maxDriveMinutes" type="number" min={10} max={600} defaultValue={p.maxDriveMinutes} required /></Field>
-              <Field label="Max patients per day (optional)"><Input name="maxPatientsPerDay" type="number" defaultValue={p.maxPatientsPerDay ?? ""} /></Field>
+              <Field label={<>Max one-way drive (minutes)<InfoTip label="About max drive">The longest you&apos;ll drive to a shift, from your home base. We only offer shifts within this drive time. Emergency cover may offer one a little farther, which you&apos;re free to decline. Mileage is paid on top of shift pay.</InfoTip></>}><Input name="maxDriveMinutes" type="number" min={10} max={600} defaultValue={p.maxDriveMinutes} required /></Field>
+              <Field label={<>Max patients per day (optional)<InfoTip label="About max patients">Your preferred pace. Compare it with each shift&apos;s expected patients before you apply or set up On Call.</InfoTip></>}><Input name="maxPatientsPerDay" type="number" defaultValue={p.maxPatientsPerDay ?? ""} /></Field>
               <Field label="Personal injury experience" hint="Treated auto-accident / PI patients (documentation, PIP, attorney cases).">
                 <Select name="personalInjuryExperience" defaultValue={p.personalInjuryExperience === null ? "" : p.personalInjuryExperience ? "yes" : "no"} required>
                   <option value="" disabled>Choose…</option>
@@ -52,7 +54,7 @@ export default async function Profile() {
               <Field label="About me" className="sm:col-span-2" hint="Your approach, techniques, the kinds of practices you love covering."><Textarea name="bio" defaultValue={p.bio ?? ""} maxLength={1500} required /></Field>
               <Field label="Headshot" hint="A clear, friendly photo of your face.">{p.photoUrl ? <img src={`/api/files/${p.photoUrl}`} alt="" className="mb-2 size-16 rounded-full object-cover" /> : null}<Input name="photo" type="file" accept="image/*" /></Field>
               <div className="space-y-2 pt-6">
-                <Checkbox name="willingOvernight" defaultChecked={p.willingOvernight} label="Willing to stay overnight for distant shifts" />
+                <Checkbox name="willingOvernight" defaultChecked={p.willingOvernight} label={<>Willing to stay overnight for distant shifts<InfoTip label="About overnight shifts">You&apos;ll also be offered shifts beyond your normal drive time when the clinic covers lodging. You book the room and upload the receipt to be reimbursed.</InfoTip></>} />
                 <Checkbox name="xrayComfort" defaultChecked={p.xrayComfort} label="Comfortable taking/reading X-rays" />
               </div>
               <div className="sm:col-span-2"><SubmitButton>Save profile</SubmitButton></div>

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { prisma, type LicenseStatus } from "@cm/db";
 import { isFederalHoliday } from "@cm/core";
-import type { Actor } from "@cm/services";
+import { AGREEMENT_VERSION, type Actor } from "@cm/services";
 
 /** Test data builders. Every provider/clinic is unique per call. */
 
@@ -52,7 +52,7 @@ export async function makeProvider(o: ProviderOpts = {}) {
       stripeAccountId: `acct_test_${id}`,
       stripePayoutsEnabled: true,
       agreementSignedAt: new Date(),
-      agreementVersion: 1,
+      agreementVersion: AGREEMENT_VERSION.PROVIDER,
       profileCompleteAt: new Date(),
       status: o.status ?? "ACTIVE",
       professions: { create: profs.map((p) => ({ professionCode: p.code, status: p.status ?? "ACTIVE" })) },
@@ -116,7 +116,7 @@ export async function makeClinic(o: ClinicOpts = {}) {
       hasPaymentMethod: true,
       stripeCustomerId: `cus_test_${id}`,
       agreementSignedAt: new Date(),
-      agreementVersion: 1,
+      agreementVersion: AGREEMENT_VERSION.CLINIC,
       members: { create: { userId: user.id, role: "CLINIC_OWNER" } },
     },
   });

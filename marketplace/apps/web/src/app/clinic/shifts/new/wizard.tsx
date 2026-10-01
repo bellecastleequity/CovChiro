@@ -173,7 +173,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 </div>
                 {prof?.supervisionRequired ? (
                   <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-amber-900"><ShieldCheck className="size-4" />Supervision attestation required</div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-amber-900"><ShieldCheck className="size-4" />Supervision attestation required<InfoTip label="About supervision">State law requires this profession to work under a licensed supervisor who is physically on site for the whole shift. We record your attestation with the shift; only providers who can legally work under that supervisor are matched.</InfoTip></div>
                     <p className="mt-1 text-xs text-amber-900">{prof.displayName}s must be supervised on site in {loc.state}. Name the supervising provider who will be present for the entire shift.</p>
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       <Field label="Supervisor name"><Input value={sup.supervisorName} onChange={(e) => setSup({ ...sup, supervisorName: e.target.value })} /></Field>
@@ -217,7 +217,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
             {step === 3 && prof ? (
               <div className="space-y-5">
                 <div>
-                  <h2 className="font-semibold">Skills</h2>
+                  <h2 className="font-semibold">Skills<InfoTip label="About skills">Tap a skill once for <b>preferred</b> (providers who have it rank higher) and again for <b>required</b> (only providers with it, and any certification it needs, are matched). Tap a third time to clear it. Requiring many skills means fewer providers qualify.</InfoTip></h2>
                   <p className="text-xs text-slate-500">Required skills filter providers; preferred skills improve their match score.</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {prof.skills.map((k) => {
@@ -242,8 +242,8 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Expected patients"><Input type="number" min={0} value={expectedPatients} onChange={(e) => setExpectedPatients(e.target.value)} /></Field>
-                  <Field label="Minimum experience" hint="Higher minimums mean fewer providers can take it.">
+                  <Field label={<>Expected patients<InfoTip label="About expected patients">Roughly how many patients the provider will see. It helps them judge the pace of the day; it doesn't change the price.</InfoTip></>}><Input type="number" min={0} value={expectedPatients} onChange={(e) => setExpectedPatients(e.target.value)} /></Field>
+                  <Field label={<>Minimum experience<InfoTip label="About minimum experience">Uses the years practicing providers enter on their profile (it can't exceed the years since they graduated). Higher minimums mean fewer providers qualify, so the shift may take longer to fill. Your default is in Settings, where you can also let emergency cover ignore it.</InfoTip></>} hint="Higher minimums mean fewer providers can take it.">
                     <Select value={minYears} onChange={(e) => setMinYears(e.target.value)}>
                       <option value="0">Any experience</option>
                       <option value="2">2+ years</option>
@@ -265,14 +265,14 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                     <Input inputMode="decimal" value={maxTravelBudget} onChange={(e) => setMaxTravelBudget(e.target.value)} placeholder="No limit" />
                   </Field>
                 </div>
-                <Field label="Notes for providers">
+                <Field label={<>Notes for providers<InfoTip label="About notes">Shown to eligible providers before they apply: practice style, a typical day, techniques you use. Don&apos;t include phone numbers or emails, or any patient information; arrival details are shared after a provider is confirmed.</InfoTip></>}>
                   <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} placeholder="Practice style, typical day, equipment. Arrival details are shared after confirmation." />
                   <PhiNotice />
                 </Field>
                 <div className="space-y-2">
-                  <Checkbox checked={instantBook} onChange={(e) => setInstantBook(e.target.checked)} label="Instant book — confirm the first well-matched applicant automatically" />
-                  <Checkbox checked={lodgingAllowed} onChange={(e) => setLodgingAllowed(e.target.checked)} label="Allow lodging for distant providers (reimbursed at cost)" />
-                  {lodgingAllowed ? <Field label="Nightly lodging cap ($)" className="max-w-xs"><Input inputMode="decimal" value={lodgingCap} onChange={(e) => setLodgingCap(e.target.value)} /></Field> : null}
+                  <Checkbox checked={instantBook} onChange={(e) => setInstantBook(e.target.checked)} label={<>Instant book — confirm the first well-matched applicant automatically<InfoTip label="About instant book">The first applicant who is a strong match (license, skills, distance, reliability) is confirmed right away and the deposit is charged, so you don&apos;t have to choose. Leave it off to review applicants and pick yourself.</InfoTip></>} />
+                  <Checkbox checked={lodgingAllowed} onChange={(e) => setLodgingAllowed(e.target.checked)} label={<>Allow lodging for distant providers (reimbursed at cost)<InfoTip label="About lodging">Lets us offer the shift to providers who live too far to drive in that morning. They book their own room and upload the receipt, and you reimburse the actual cost up to your nightly cap. Without it, only providers within their usual drive time are matched.</InfoTip></>} />
+                  {lodgingAllowed ? <Field label={<>Nightly lodging cap ($)<InfoTip label="About the lodging cap">The most you&apos;ll reimburse per night. Receipts above it are reimbursed up to the cap.</InfoTip></>} className="max-w-xs"><Input inputMode="decimal" value={lodgingCap} onChange={(e) => setLodgingCap(e.target.value)} /></Field> : null}
                 </div>
               </div>
             ) : null}
@@ -290,7 +290,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                   <Input value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="Promo code" className="font-mono" />
                   <Button type="button" variant="outline" onClick={refreshQuote} disabled={pending}>Apply</Button>
                 </div>
-                {!canPost ? <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="size-4" />Finish setup (payment method and agreement) to post. You can save a draft now.</p> : null}
+                {!canPost ? <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="size-4 shrink-0" /><span>Finish setup to post: a payment method and the current Clinic Platform Agreement (<a href="/clinic/settings#agreement" className="font-medium underline">sign in Settings</a>). You can save a draft now.</span></p> : null}
                 <div className="flex flex-wrap gap-2">
                   <ActionForm action={createShiftAction} successMessage={false}>
                     <input type="hidden" name="payload" value={payload} />

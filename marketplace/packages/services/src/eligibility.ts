@@ -1,3 +1,4 @@
+import { agreementCurrent } from "./agreements";
 import {
   DomainError,
   evaluateEligibility,
@@ -120,6 +121,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
         status: p.status,
         professions: p.professions.map((x) => ({ professionCode: x.professionCode, status: x.status, yearsInPractice: x.yearsInPractice })),
         payoutsEnabled: p.stripePayoutsEnabled,
+        agreementCurrent: agreementCurrent("PROVIDER", p.agreementSignedAt, p.agreementVersion),
         licenses: p.licenses.map((l) => ({ professionCode: l.professionCode, state: l.state, status: l.status, expiresAt: l.expiresAt })),
         malpractice: p.malpractice.map((m) => ({
           status: m.status,

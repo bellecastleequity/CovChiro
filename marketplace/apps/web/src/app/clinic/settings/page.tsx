@@ -4,6 +4,7 @@ import { AGREEMENT_VERSION, latestSignedAgreement, clinicProfile } from "@cm/ser
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
@@ -53,7 +54,7 @@ export default async function Settings() {
           </CardBody>
         </Card>
         <Card id="experience">
-          <CardHeader title="Provider experience" description="The minimum years of experience for your new shifts. You can change it on any shift when you post it." />
+          <CardHeader title={<>Provider experience<InfoTip label="About experience">New shifts start with this minimum, and you can change it on each shift. Providers enter their years of practice, which can&apos;t exceed the years since they graduated. With the emergency option on, a last-minute replacement can come from any qualified provider.</InfoTip></>} description="The minimum years of experience for your new shifts. You can change it on any shift when you post it." />
           <CardBody>
             <ActionForm action={experienceAction} className="space-y-4">
               <Field label="Minimum experience" htmlFor="minYears" hint="A higher minimum means fewer providers can take your shifts, so they may take longer to fill.">

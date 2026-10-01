@@ -6,6 +6,7 @@ import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { InfoTip } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/ui/misc";
 import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
@@ -64,7 +65,7 @@ export default async function Credentials() {
                     </Select>
                   </Field>
                   <Field label="License number"><Input name="licenseNumber" required /></Field>
-                  <Field label="Title (as issued)"><Input name="credentialTitle" placeholder={pp.profession.credentialSuffix} /></Field>
+                  <Field label={<>Title (as issued)<InfoTip label="About the title">The credential exactly as your board issues it (for example DC, LMT, PT). Clinics see it next to your name.</InfoTip></>}><Input name="credentialTitle" placeholder={pp.profession.credentialSuffix} /></Field>
                   <Field label="Expires"><Input name="expiresAt" type="date" required /></Field>
                   <Field label="Copy (optional)"><Input name="document" type="file" accept="application/pdf,image/*" /></Field>
                   <div className="sm:col-span-2 lg:col-span-5"><SubmitButton size="sm">Add / update license</SubmitButton></div>
@@ -94,7 +95,7 @@ export default async function Credentials() {
         </Card>
 
         <Card>
-          <CardHeader title="Malpractice insurance" description="One policy can cover several professions — list each one it covers." />
+          <CardHeader title={<>Malpractice insurance<InfoTip label="About malpractice">Required to be matched. Each state sets minimum per-occurrence and aggregate limits; you&apos;re only matched in states where your verified policy meets them and is current through the shift.</InfoTip></>} description="One policy can cover several professions — list each one it covers." />
           <CardBody>
             {provider.malpractice.length ? (
               <ul className="mb-5 divide-y divide-slate-100 rounded-xl border border-slate-200">
@@ -113,8 +114,8 @@ export default async function Credentials() {
               <Field label="Carrier"><Input name="carrier" required /></Field>
               <Field label="Policy number"><Input name="policyNumber" required /></Field>
               <Field label="Expires"><Input name="expiresAt" type="date" required /></Field>
-              <Field label="Per-occurrence limit ($)"><Input name="perOccurrence" inputMode="numeric" placeholder="1,000,000" required /></Field>
-              <Field label="Aggregate limit ($)"><Input name="aggregate" inputMode="numeric" placeholder="3,000,000" required /></Field>
+              <Field label={<>Per-occurrence limit ($)<InfoTip label="About per-occurrence">The most your policy pays for a single claim, as shown on your certificate of insurance. Often $1,000,000.</InfoTip></>}><Input name="perOccurrence" inputMode="numeric" placeholder="1,000,000" required /></Field>
+              <Field label={<>Aggregate limit ($)<InfoTip label="About aggregate">The most your policy pays for all claims in the policy year. Often $3,000,000.</InfoTip></>}><Input name="aggregate" inputMode="numeric" placeholder="3,000,000" required /></Field>
               <Field label="Certificate of insurance"><Input name="document" type="file" accept="application/pdf,image/*" required /></Field>
               <fieldset className="sm:col-span-2 lg:col-span-3">
                 <legend className="mb-1.5 text-sm font-medium text-slate-700">Professions covered</legend>
@@ -128,7 +129,7 @@ export default async function Credentials() {
         </Card>
 
         <Card>
-          <CardHeader title="Skills & techniques" description="Used to match you with clinics. Certification-based skills need a verified certificate." />
+          <CardHeader title={<>Skills &amp; techniques<InfoTip label="About skills">Clinics mark skills as required or preferred. Required ones decide whether you&apos;re matched at all, and some need a verified certificate before they count.</InfoTip></>} description="Used to match you with clinics. Certification-based skills need a verified certificate." />
           <CardBody>
             <ActionForm action={skillsAction} className="space-y-4">
               {[...myCodes, null].map((code) => {

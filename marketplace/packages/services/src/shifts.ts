@@ -161,7 +161,7 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
       throw new DomainError("FORBIDDEN", "Finish setup (payment method and agreement) before posting shifts.");
     }
     if (opts.post && !(await agreementAccepted("CLINIC", org.agreementSignedAt, org.agreementVersion))) {
-      throw new DomainError("FORBIDDEN", "Please sign the updated Clinic Platform Agreement in Settings before posting shifts.");
+      throw new DomainError("FORBIDDEN", "Please sign the current Clinic Platform Agreement in Settings before posting shifts.");
     }
     const { supervisionRequired } = await validateShiftInput(db, orgId, input, opts.post);
     const q = await quoteShift(db, input);
@@ -210,6 +210,9 @@ export async function postShift(actor: Actor, shiftId: string) {
     if (!shift) throw new DomainError("NOT_FOUND", "Shift not found");
     const org = await db.clinicOrg.findUniqueOrThrow({ where: { id: orgId } });
     if (org.status !== "ACTIVE" || !org.hasPaymentMethod) throw new DomainError("FORBIDDEN", "Finish setup before posting shifts.");
+    if (!(await agreementAccepted("CLINIC", org.agreementSignedAt, org.agreementVersion))) {
+      throw new DomainError("FORBIDDEN", "Please sign the current Clinic Platform Agreement in Settings before posting shifts.");
+    }
     await validateShiftInput(
       db,
       orgId,

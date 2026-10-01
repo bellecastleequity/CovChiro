@@ -92,7 +92,7 @@ export async function recomputeProviderStatus(providerId: string) {
     status = "ACTIVE";
   }
   // "You can start taking shifts": once per profession, only when matching would actually accept them.
-  if (status !== "ACTIVE" || !common.payouts) return;
+  if (status !== "ACTIVE" || !common.payouts || !common.agreement) return;
   for (const pp of perProfession) {
     if (pp.status !== "ACTIVE" || !pp.license || !pp.malpractice) continue;
     const claimed = await prisma.digestSend.createMany({ data: [{ key: `ready:${providerId}:${pp.professionCode}`, userId: provider.userId }], skipDuplicates: true });

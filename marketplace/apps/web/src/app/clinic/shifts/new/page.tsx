@@ -1,5 +1,5 @@
 import { prisma } from "@cm/db";
-import { getSettings, postingOptions } from "@cm/services";
+import { agreementCurrent, getSettings, postingOptions } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { requireActor } from "@/lib/session";
@@ -28,7 +28,7 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
     <>
       <PageHeader title="Post a shift" description="Prices come from our regional rate card. You'll see the total before posting." />
       <PostShiftWizard
-        canPost={org.status === "ACTIVE" && org.hasPaymentMethod}
+        canPost={org.status === "ACTIVE" && org.hasPaymentMethod && agreementCurrent("CLINIC", org.agreementSignedAt, org.agreementVersion)}
         defaultMinYears={org.minYearsExperience}
         mileage={{ rateLabel: `$${(settings["pricing.mileageRateCentsPerMile"] / 100).toFixed(2)}`, roundTrip: settings["pricing.mileageRoundTrip"] }}
         defaultCode={code ?? welcome?.code ?? ""}

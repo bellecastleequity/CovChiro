@@ -1,5 +1,5 @@
 import { prisma } from "@cm/db";
-import { AGREEMENT_VERSION, feedback } from "@cm/services";
+import { agreementCurrent, feedback } from "@cm/services";
 import Link from "next/link";
 import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
@@ -15,7 +15,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     prisma.provider.findUnique({ where: { id: actor.providerId! }, select: { agreementSignedAt: true, agreementVersion: true } }),
     prisma.standingBooking.count({ where: { providerId: actor.providerId!, status: "PROPOSED" } }).catch(() => 0),
   ]);
-  const agreementUpdate = !!me?.agreementSignedAt && (me.agreementVersion ?? 0) < AGREEMENT_VERSION.PROVIDER;
+  const needsAgreement = !agreementCurrent("PROVIDER", me?.agreementSignedAt ?? null, me?.agreementVersion ?? null);
   const items: NavItem[] = [
     { href: "/provider", label: "Home", icon: "dashboard", mobile: true },
     { href: "/provider/shifts", label: "Find shifts", icon: "board", mobile: true },
@@ -33,9 +33,9 @@ export default async function ProviderLayout({ children }: { children: React.Rea
   ];
   return (
     <AppShell items={items} root="/provider" userId={user.id} userName={user.name} subtitle="Provider">
-      {agreementUpdate ? (
-        <Alert tone="info" className="mb-6" title="Please review the updated Provider Agreement">
-          It now includes our standing-booking and non-circumvention terms. <Link href="/provider/profile#agreement" className="font-medium underline">Review &amp; sign →</Link>
+      {needsAgreement ? (
+        <Alert tone="warning" className="mb-6" title={me?.agreementSignedAt ? "Sign the updated Provider Agreement to keep getting shifts" : "Sign the Provider Agreement to start getting shifts"}>
+          Until you do, you won&apos;t be matched, offered or able to apply for shifts. Shifts you&apos;re already booked on stay booked. <Link href="/provider/profile#agreement" className="font-medium underline">Review &amp; sign →</Link>
         </Alert>
       ) : null}
       {children}

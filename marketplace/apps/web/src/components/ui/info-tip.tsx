@@ -18,7 +18,7 @@ export function InfoTip({ children, label = "More info" }: { children: React.Rea
   }, [open]);
   return (
     <span ref={ref} className="relative inline-flex align-middle" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-      <button type="button" aria-label={label} aria-describedby={open ? id : undefined} aria-expanded={open} onClick={() => setOpen((o) => !o)} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} className="ml-1 rounded-full text-slate-400 hover:text-brand-600 focus:text-brand-600 focus:outline-none">
+      <button type="button" aria-label={label} aria-describedby={open ? id : undefined} aria-expanded={open} onClick={(e) => (e.preventDefault(), e.stopPropagation(), setOpen((o) => !o))} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} className="ml-1 rounded-full text-slate-400 hover:text-brand-600 focus:text-brand-600 focus:outline-none">
         <Info className="size-4" />
       </button>
       {open ? (

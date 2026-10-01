@@ -5,6 +5,7 @@ import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
@@ -66,7 +67,7 @@ export default async function ClinicStanding({ searchParams }: { searchParams: P
         </div>
         <div className="lg:col-span-2">
           <Card>
-            <CardHeader title="Propose a standing booking" description="Available with providers you've completed a shift with." />
+            <CardHeader title={<>Propose a standing booking<InfoTip label="About standing bookings">The provider gets your request and accepts or declines. Once accepted, each matching day is booked automatically a few weeks ahead at your usual rates, with a deposit per shift like any booking. If they can&apos;t make a day, it&apos;s posted for other providers. Either side can end it with notice.</InfoTip></>} description="Available with providers you've completed a shift with." />
             <CardBody>
               {candidates.length && locations.length ? (
                 <ActionForm action={proposeStandingAction} className="space-y-4" resetOnSuccess>
