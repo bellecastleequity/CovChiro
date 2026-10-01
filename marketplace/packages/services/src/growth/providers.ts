@@ -9,6 +9,7 @@ import { marketForPoint } from "./analytics";
 import { agentOn, ai, aiRules, composeAndSend, Deferred, escalate, isSuppressed, livePrompts, logAgent, marketingOn, newToken, recipient, suppress } from "./engine";
 import { activeTargets, registryProfile } from "./expansion";
 import { KNOWN_PRICING, researchEngine, researchSpendCents } from "./prospecting";
+import { handleResearchFailure, researchBlocked } from "./aihealth";
 
 /**
  * Provider acquisition (the provider side of Growth):
@@ -169,6 +170,11 @@ export async function discoverContact(id: string, opts: { force?: boolean } = {}
     await prisma.providerProspect.update({ where: { id }, data: { researchStatus: "PENDING", researchedAt: null } });
     return "budget";
   }
+  const blocked = await researchBlocked();
+  if (blocked) {
+    await prisma.providerProspect.update({ where: { id }, data: { researchStatus: "PENDING", researchedAt: null } });
+    return blocked;
+  }
   const [profile, profession] = await Promise.all([registryProfile(p.professionCode), prisma.profession.findUnique({ where: { code: p.professionCode } })]);
   const person = profession?.displayName.toLowerCase() ?? "provider";
   const facts = { name: p.displayName, npi: p.npi, practiceAddress: [p.address, p.city, `${p.state} ${p.zip ?? ""}`.trim()].filter(Boolean).join(", "), practiceName: practice?.clinicName ?? null, practiceWebsite: practice?.website ?? p.website, colleaguesAtAddress: p.providersAtPractice };
@@ -192,9 +198,10 @@ export async function discoverContact(id: string, opts: { force?: boolean } = {}
   await prisma.aiUsage.create({ data: { agent: "contactDiscovery", task: "research", provider: provider.name, model: r.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens, costMicroUsd: cost, ok: r.ok, error: r.ok ? null : r.error.slice(0, 250) } });
   const now = clock.now();
   if (!r.ok) {
-    await prisma.providerProspect.update({ where: { id }, data: { researchStatus: "FAILED", researchAttempts: { increment: 1 }, researchedAt: now, researchCostMicroUsd: { increment: cost } } });
-    await logAgent("contactDiscovery", "research_failed", { entityType: "PROVIDER_PROSPECT", entityId: id, model: r.model, error: r.error });
-    return "failed";
+    const f = await handleResearchFailure(r.error);
+    await prisma.providerProspect.update({ where: { id }, data: f.requeue ? { researchStatus: "PENDING", researchedAt: null, researchCostMicroUsd: { increment: cost } } : { researchStatus: "FAILED", researchAttempts: { increment: 1 }, researchedAt: now, researchCostMicroUsd: { increment: cost } } });
+    await logAgent("contactDiscovery", "research_failed", { entityType: "PROVIDER_PROSPECT", entityId: id, model: r.model, error: r.error, contextRef: f.requeue ? `requeued (${f.kind})` : undefined });
+    return f.requeue ? f.kind : "failed";
   }
   const d = r.data;
   const confidence = typeof d.confidence === "number" ? Math.max(0, Math.min(1, d.confidence)) : 0;
@@ -259,8 +266,8 @@ export async function contactDiscoverySweep(opts: { wallMs?: number } = {}) {
     if (r === "verified") out.verified++;
     if (r === "not_found" || r === "rejected") out.notFound++;
     if (r === "ambiguous") out.ambiguous++;
-    // Without AI or over budget, only the free practice shortcut can still help; keep going for those.
-    if (r === "ai_unavailable" || r === "budget") out.stopped = r;
+    // Without AI, over budget or paused, only the free practice shortcut can still help; keep going for those.
+    if (["ai_unavailable", "budget", "paused", "request_cap", "quota", "rate_limited", "auth"].includes(r)) out.stopped = r;
   }
   if (out.checked) await logAgent("contactDiscovery", "sweep", { output: out });
   return out;

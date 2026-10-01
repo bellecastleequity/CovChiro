@@ -12,6 +12,7 @@ import { requireActor } from "@/lib/session";
 import { runContactDiscoveryAction, runProspectingAction } from "../../actions";
 import { GrowthTabs, usd } from "../../ui";
 import { ProspectSwitch } from "../switch";
+import { ResearchHealth } from "../../panels";
 
 export const metadata = { title: "Provider prospects" };
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export default async function ProviderProspects({ searchParams }: { searchParams
     prisma.profession.findMany({ orderBy: { sortOrder: "asc" }, select: { code: true, displayName: true } }),
     prisma.growthMarket.findMany({ orderBy: { name: "asc" }, select: { key: true, name: true } }),
   ]);
+  const failed = await prisma.providerProspect.count({ where: { researchStatus: "FAILED", providerId: null } });
   const qs = (patch: Record<string, string | undefined>) => new URLSearchParams(Object.fromEntries(Object.entries({ ...f, page: undefined, ...patch }).filter(([, v]) => v)) as Record<string, string>).toString();
   return (
     <>
@@ -46,6 +48,7 @@ export default async function ProviderProspects({ searchParams }: { searchParams
       />
       <GrowthTabs current="/admin/growth/prospects" />
       <ProspectSwitch current="providers" />
+      <div className="mb-4"><ResearchHealth side="providers" failed={failed} /></div>
       <div className="mb-4 flex flex-wrap gap-2 text-xs">
         <Link href={`?${qs({ status: undefined })}`} className={`rounded-full px-3 py-1 ring-1 ${!f.status ? "bg-brand-600 text-white ring-brand-600" : "ring-slate-200"}`}>All</Link>
         {STATUSES.map(([k, label]) => <Link key={k} href={`?${qs({ status: k })}`} className={`rounded-full px-3 py-1 ring-1 ${f.status === k ? "bg-brand-600 text-white ring-brand-600" : "ring-slate-200"}`}>{label} · {counts[k] ?? 0}</Link>)}

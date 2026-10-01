@@ -11,6 +11,7 @@ import { requireActor } from "@/lib/session";
 import { importProspectsAction, runProspectingAction, saveProspectAction } from "../actions";
 import { Stat } from "@/components/ui/misc";
 import { ProspectSwitch } from "./switch";
+import { ResearchHealth } from "../panels";
 import { GrowthTabs, SEGMENTS, STAGES } from "../ui";
 
 export const metadata = { title: "Clinic prospects" };
@@ -46,6 +47,7 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
           }
         />
         <CardBody className="space-y-3">
+          <ResearchHealth side="clinics" failed={r.FAILED ?? 0} />
           {!st.aiReady ? <p className="text-sm text-amber-700">Web research is waiting for an AI key (OPENAI_API_KEY for the default gpt-6-luna; or set Settings → Growth → research provider). Discovery from the registry still runs.</p> : null}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
             <Stat label="From the registry" value={st.fromRegistry} hint={`${st.citiesSearched} of ${st.citiesTotal} cities searched`} />

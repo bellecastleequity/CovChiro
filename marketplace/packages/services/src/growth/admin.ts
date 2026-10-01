@@ -11,6 +11,7 @@ import { ensureGrowthDefaults } from "./defaults";
 import { advanceOutreach, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
 import { discoverySweep, prospectingStatus, researchProspect, researchSweep } from "./prospecting";
 import { marketSupplySweep } from "./supply";
+import { resumeResearch } from "./aihealth";
 import { advanceProviderOutreach, handleProviderProspectReply, PROVIDER_OUTREACH_SEQUENCE } from "./providers";
 import { attribution, growthFunnels, growthKpis, liquidity, marketForPoint } from "./analytics";
 
@@ -540,3 +541,20 @@ export async function eligibleFor(actor: Actor, shiftId: string) {
 }
 
 export { invalidateSettings };
+
+/** "Retry failed": failed research goes back in the queue with a fresh set of attempts. */
+export async function retryFailedResearch(actor: Actor, side: "clinics" | "providers") {
+  requireAdmin(actor);
+  const r = side === "clinics"
+    ? await prisma.clinicProspect.updateMany({ where: { researchStatus: "FAILED", clinicOrgId: null }, data: { researchStatus: "PENDING", researchAttempts: 0, researchedAt: null } })
+    : await prisma.providerProspect.updateMany({ where: { researchStatus: "FAILED", providerId: null }, data: { researchStatus: "PENDING", researchAttempts: 0, researchedAt: null } });
+  await logAgent("admin", "research_retry", { humanOverrideBy: actor.userId, output: `${side}: ${r.count} back in the queue` });
+  return r.count;
+}
+
+/** Resume web research now (after adding credits or fixing the key). */
+export async function resumeResearchNow(actor: Actor) {
+  requireAdmin(actor);
+  await resumeResearch();
+  await logAgent("admin", "research_resumed", { humanOverrideBy: actor.userId });
+}

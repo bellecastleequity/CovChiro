@@ -101,7 +101,8 @@ export const runProspectingAction = formAction(async (fd) => {
   if (d.cities?.length) parts.push(`Searched ${d.cities.join(", ")}: ${d.practices ?? 0} practice locations, ${d.inserted ?? 0} new.`);
   else if (!d.errors?.length) parts.push("Every city was searched recently; nothing new to search.");
   if (d.errors?.length) parts.push(`The NPI registry couldn't be reached (${d.errors.join("; ")}).`);
-  parts.push(r.research.stopped === "ai_unavailable" ? "Web research needs an AI key (ANTHROPIC_API_KEY)." : r.research.stopped === "budget" ? "Web research stopped: today's research budget is used up." : `Researched ${r.research.researched} on the web (${r.research.notFound} not found, ${r.research.failed} failed).`);
+  const stop: Record<string, string> = { ai_unavailable: "Web research needs an AI key.", budget: "Web research stopped: today's research budget is used up.", paused: "Web research is paused (see the notice).", request_cap: "Web research stopped: today's request cap is reached.", quota: "Web research paused: the AI account is out of credits.", rate_limited: "Web research paused briefly: the AI provider is rate-limiting.", auth: "Web research paused: the API key was refused." };
+  parts.push(`Researched ${r.research.researched} on the web (${r.research.notFound} not found, ${r.research.failed} failed).${r.research.stopped && stop[r.research.stopped] ? ` ${stop[r.research.stopped]}` : ""}`);
   return parts.join(" ");
 });
 
@@ -109,7 +110,14 @@ export const researchProspectAction = formAction(async (fd) => {
   const { actor } = await me();
   const res = await growth.researchNow(actor, str(fd, "id"));
   rv();
-  return ({ done: "Researched: new details filled in.", not_found: "Research couldn't confidently find this practice online.", failed: "Research failed; see agent activity.", ai_unavailable: "Web research needs an AI key (ANTHROPIC_API_KEY).", budget: "Today's research budget is used up.", skipped: "Research is already running for this clinic." } as const)[res];
+  const msg: Record<string, string> = {
+    done: "Researched: new details filled in.", not_found: "Research couldn't confidently find this practice online.", failed: "Research failed; see agent activity.",
+    ai_unavailable: "Web research needs an AI key (OPENAI_API_KEY for the default research model).", budget: "Today's research budget is used up.", skipped: "Research is already running for this clinic.",
+    paused: "Web research is paused (see the notice on Prospecting).", request_cap: "Today's research request cap is reached (Settings → Growth).",
+    quota: "The AI account is out of credits; research is paused. Add a balance with the provider, then resume.", rate_limited: "The AI provider is rate-limiting; research paused for a few minutes and this clinic is back in the queue.",
+    auth: "The AI provider refused the API key; research is paused.", transient: "The AI provider had a temporary problem; this clinic is back in the queue.",
+  };
+  return msg[res] ?? `Research: ${res}`;
 });
 
 export const overrideProspectAction = formAction(async (fd) => {
@@ -329,4 +337,18 @@ export const tagMarketAction = formAction(async (fd) => {
   const n = await growth.tagMarketProspects(actor, str(fd, "market"), str(fd, "campaign"));
   rv();
   return `Tagged ${n} prospect${n === 1 ? "" : "s"}.`;
+});
+
+export const retryFailedAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const n = await growth.retryFailedResearch(actor, str(fd, "side") === "providers" ? "providers" : "clinics");
+  rv();
+  return `${n} back in the research queue. They'll be researched over the next runs.`;
+});
+
+export const resumeResearchAction = formAction(async () => {
+  const { actor } = await me();
+  await growth.resumeResearchNow(actor);
+  rv();
+  return "Research resumed. It continues on the next run (every 10 minutes).";
 });

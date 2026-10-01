@@ -15,3 +15,4 @@ export { STATE_CITIES } from "./cities";
 export { upsertProviderProspects, discoverContact, verifyContact, contactDiscoverySweep, providerOutreachSweep, handleProviderProspectReply, onProviderProspectSignup, linkProviderProspects, trackProviderProspect, PROVIDER_OUTREACH_SEQUENCE, advanceProviderOutreach } from "./providers";
 export { marketSupply, marketSupplySweep, type MarketRow } from "./supply";
 export * from "./command";
+export { classifyAiError, researchPause, researchRequestsToday } from "./aihealth";

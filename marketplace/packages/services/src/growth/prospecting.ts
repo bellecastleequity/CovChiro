@@ -8,6 +8,7 @@ import { classifyProspect, refreshProspect } from "./agents";
 import { marketForPoint } from "./analytics";
 import { activeTargets, registryProfile } from "./expansion";
 import { contactDiscoverySweep, upsertProviderProspects } from "./providers";
+import { handleResearchFailure, researchBlocked, researchPause, researchRequestsToday, type AiFailure } from "./aihealth";
 
 /**
  * Automatic clinic prospecting (agent "clinicProspecting"):
@@ -289,10 +290,12 @@ export function researchEngine(s: Awaited<ReturnType<typeof getSettings>>) {
  * Research one prospect on the web. Returns the outcome; budget/AI problems
  * leave the prospect PENDING (nothing is lost), real failures count an attempt.
  */
-export async function researchProspect(id: string, opts: { force?: boolean } = {}): Promise<"done" | "not_found" | "failed" | "ai_unavailable" | "budget" | "skipped"> {
+export async function researchProspect(id: string, opts: { force?: boolean } = {}): Promise<"done" | "not_found" | "failed" | "ai_unavailable" | "budget" | "skipped" | "paused" | "request_cap" | AiFailure> {
   const s = await getSettings();
   const { provider, model } = researchEngine(s);
   if (provider.name === "none" || !provider.research) return "ai_unavailable";
+  const blocked = await researchBlocked();
+  if (blocked) return blocked as "paused" | "request_cap";
   const dayStart = DateTime.fromJSDate(clock.now(), { zone: "America/New_York" }).startOf("day").toJSDate();
   if ((await researchSpendCents(dayStart)) >= s["growth.researchDailyBudgetCents"]) return "budget";
   if (opts.force) await prisma.clinicProspect.updateMany({ where: { id, researchStatus: { not: "RUNNING" } }, data: { researchStatus: "PENDING", researchAttempts: 0 } });
@@ -319,9 +322,11 @@ export async function researchProspect(id: string, opts: { force?: boolean } = {
   const now = clock.now();
   if (!r.ok) {
     const unavailable = r.error === "ai_unavailable";
-    await prisma.clinicProspect.update({ where: { id }, data: unavailable ? { researchStatus: "PENDING", researchedAt: null } : { researchStatus: "FAILED", researchAttempts: { increment: 1 }, researchedAt: now } });
-    await logAgent("clinicProspecting", "research_failed", { entityType: "PROSPECT", entityId: id, model: r.model, error: r.error, contextRef: `searches:${r.searches} fetches:${r.fetches}` });
-    return unavailable ? "ai_unavailable" : "failed";
+    // Out of credits, rate limits, a bad key or a provider outage aren't this clinic's fault: back in the queue, research pauses.
+    const f = unavailable ? { requeue: true, kind: "other" as AiFailure } : await handleResearchFailure(r.error);
+    await prisma.clinicProspect.update({ where: { id }, data: f.requeue ? { researchStatus: "PENDING", researchedAt: null } : { researchStatus: "FAILED", researchAttempts: { increment: 1 }, researchedAt: now } });
+    await logAgent("clinicProspecting", "research_failed", { entityType: "PROSPECT", entityId: id, model: r.model, error: r.error, contextRef: `searches:${r.searches} fetches:${r.fetches}${f.requeue && !unavailable ? ` · requeued (${f.kind})` : ""}` });
+    return unavailable ? "ai_unavailable" : f.requeue ? f.kind : "failed";
   }
 
   const findings = toFindings(r.data);
@@ -378,10 +383,12 @@ export async function researchSweep(opts: { wallMs?: number; concurrency?: numbe
       if (res === "done") out.researched++;
       else if (res === "not_found") out.notFound++;
       else if (res === "failed") out.failed++;
-      else if (res === "ai_unavailable" || res === "budget") out.stopped = res;
+      else if (res === "transient") out.failed++;
+      else if (res !== "skipped") out.stopped = res; // budget, request cap, paused, out of credits, rate limited, bad key
     }
   };
-  await Promise.all(Array.from({ length: Math.max(1, opts.concurrency ?? 3) }, worker));
+  if (await researchPause()) return { ...out, stopped: "paused" };
+  await Promise.all(Array.from({ length: Math.max(1, opts.concurrency ?? s["growth.researchConcurrency"]) }, worker));
   if (due.length) await saveState({ lastResearch: { at: now.toISOString(), out } });
   return out;
 }
@@ -423,5 +430,7 @@ export async function prospectingStatus() {
     lastDiscovery: state.lastDiscovery ?? null, lastResearch: state.lastResearch ?? null,
     researchSpendTodayCents: await researchSpendCents(dayStart), researchBudgetCents: s["growth.researchDailyBudgetCents"],
     model: researchEngine(s).model, researchProvider: researchEngine(s).provider.name, aiReady: researchEngine(s).provider.name !== "none",
+    pause: await researchPause(), requestsToday: await researchRequestsToday(), requestCap: s["growth.researchDailyRequestCap"],
+    recentErrors: (await prisma.aiUsage.groupBy({ by: ["error"], where: { task: "research", ok: false, createdAt: { gte: new Date(+clock.now() - DAY) } }, _count: { _all: true }, orderBy: { _count: { error: "desc" } }, take: 4 })).map((e) => ({ error: e.error ?? "?", n: e._count._all })),
   };
 }

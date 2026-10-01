@@ -222,7 +222,7 @@ type OpenAiReply = {
   incomplete_details?: { reason?: string } | null;
   output?: { type: string; content?: { type: string; text?: string }[] }[];
   usage?: { input_tokens?: number; output_tokens?: number };
-  error?: { message?: string } | null;
+  error?: { message?: string; code?: string | null; type?: string } | null;
 };
 
 const openAiText = (j: OpenAiReply) =>
@@ -288,7 +288,7 @@ const openai = (key: string): LlmProvider => ({
       tally.inputTokens = j.usage?.input_tokens ?? 0;
       tally.outputTokens = j.usage?.output_tokens ?? 0;
       tally.searches = (j.output ?? []).filter((o) => o.type === "web_search_call").length;
-      if (!r.ok) return fail(`HTTP ${r.status}: ${j.error?.message ?? ""}`);
+      if (!r.ok) return fail(`HTTP ${r.status}${j.error?.code ? ` ${j.error.code}` : ""}: ${j.error?.message ?? ""}`);
       if (j.status === "incomplete") return fail(`incomplete: ${j.incomplete_details?.reason ?? ""}`);
       const texts = openAiText(j);
       const data = parseObject(texts[texts.length - 1] ?? "") ?? parseObject(texts.join(""));

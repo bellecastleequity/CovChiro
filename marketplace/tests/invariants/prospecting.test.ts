@@ -168,3 +168,49 @@ describe("automatic prospecting: AI web research", () => {
     expect(called).toBe(false);
   });
 });
+
+describe("research when the AI provider refuses", () => {
+  const refusing = (error: string): LlmProvider => ({
+    name: "openai",
+    generate: async (req) => ({ ok: false, error: "unused", model: req.model, inputTokens: 0, outputTokens: 0 }),
+    research: async (req) => ({ ok: false, error, model: req.model, inputTokens: 900, outputTokens: 0, searches: 0, fetches: 0 }),
+  });
+  afterEach(async () => {
+    await prisma.setting.deleteMany({ where: { key: "growth.researchPause" } });
+  });
+
+  it("out of credits: the clinic goes back in the queue untouched, research pauses, and resumes on request", async () => {
+    const city = `Quota${uid()}`;
+    const fake = registry(city, "33701");
+    setNppesProvider({ name: "fake", search: async (q) => fake(q) });
+    await growth.discoverySweep({ cities: [city] });
+    const p = await prisma.clinicProspect.findFirstOrThrow({ where: { city } });
+    setLlmProvider(refusing("HTTP 429 insufficient_quota: You exceeded your current quota, please check your plan and billing details."));
+    expect(await growth.researchProspect(p.id, { force: true })).toBe("quota");
+    expect(await prisma.clinicProspect.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ researchStatus: "PENDING", researchAttempts: 0 });
+    expect((await growth.researchPause())?.reason).toBe("quota");
+    // While paused nothing is spent.
+    const calls = await prisma.aiUsage.count({ where: { task: "research" } });
+    expect(await growth.researchSweep()).toMatchObject({ stopped: "paused" });
+    expect(await prisma.aiUsage.count({ where: { task: "research" } })).toBe(calls);
+    await growth.resumeResearchNow(admin);
+    expect(await growth.researchPause()).toBeNull();
+  });
+
+  it("errors are told apart; a real failure counts an attempt and 'Retry failed' resets it", async () => {
+    expect(growth.classifyAiError("HTTP 429 rate_limit_exceeded: Rate limit reached for gpt-6-luna on requests per day (RPD)")).toBe("rate_limited");
+    expect(growth.classifyAiError("HTTP 401 invalid_api_key: Incorrect API key provided")).toBe("auth");
+    expect(growth.classifyAiError("HTTP 503: overloaded")).toBe("transient");
+    expect(growth.classifyAiError("unparseable output")).toBe("other");
+    const city = `Retry${uid()}`;
+    const fake = registry(city, "33702");
+    setNppesProvider({ name: "fake", search: async (q) => fake(q) });
+    await growth.discoverySweep({ cities: [city] });
+    const p = await prisma.clinicProspect.findFirstOrThrow({ where: { city } });
+    setLlmProvider(refusing("unparseable output"));
+    expect(await growth.researchProspect(p.id, { force: true })).toBe("failed");
+    expect(await prisma.clinicProspect.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ researchStatus: "FAILED", researchAttempts: 1 });
+    expect(await growth.retryFailedResearch(admin, "clinics")).toBeGreaterThanOrEqual(1);
+    expect(await prisma.clinicProspect.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ researchStatus: "PENDING", researchAttempts: 0 });
+  });
+});

@@ -370,6 +370,8 @@ export const SETTINGS = {
   "growth.discoveryAreasPerRun": def({ group: "Growth", label: "Prospecting: cities searched per agent run (across all prelaunch/live markets in Growth → Expansion)", schema: z.number().int().min(0).max(50), default: 3, flag: null }),
   "growth.rediscoverDays": def({ group: "Growth", label: "Prospecting: re-search each city every N days", schema: z.number().int().min(1), default: 30, flag: null }),
   "growth.researchPerRun": def({ group: "Growth", label: "Prospecting: clinics researched on the web per agent run", schema: z.number().int().min(0).max(100), default: 8, flag: null }),
+  "growth.researchConcurrency": def({ group: "Growth", label: "Prospecting: research calls at the same time (1 suits low API tiers)", schema: z.number().int().min(1).max(5), default: 1, flag: null }),
+  "growth.researchDailyRequestCap": def({ group: "Growth", label: "Prospecting: max web-research requests per day (0 = no cap; e.g. 45 on a 50-requests/day API tier)", schema: z.number().int().min(0).max(100000), default: 0, flag: null }),
   "growth.researchMaxSearches": def({ group: "Growth", label: "Prospecting: max web searches per clinic", schema: z.number().int().min(1).max(20), default: 5, flag: null }),
   "growth.researchDailyBudgetCents": def({ group: "Growth", label: "Prospecting: daily web-research spend cap (separate from the AI cap above)", schema: cents, default: 500, flag: "OWNER_DECISION" }),
   "growth.webSearchCentsPer1000": def({ group: "Growth", label: "Web search price per 1,000 searches", schema: cents, default: 1000, flag: null }),

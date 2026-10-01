@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
 import { dateTimeLabel } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { agentAction, marketingAction, pauseAction } from "./actions";
+import { requireActor } from "@/lib/session";
+import { agentAction, marketingAction, pauseAction, resumeResearchAction, retryFailedAction } from "./actions";
 
 /** The big PAUSE OUTBOUND AUTOMATION button (header action on Growth pages). */
 export function PauseButton({ paused }: { paused: boolean }) {
@@ -79,5 +80,35 @@ export async function ActivityFeed({ agent, kind, limit = 25, title = "Activity"
         )) : <li className="px-5 py-4 text-sm text-slate-500">Nothing yet.</li>}
       </ul>
     </Card>
+  );
+}
+
+/** Web-research health: pause (out of credits / rate limit / bad key), requests today, recent errors, retry. */
+export async function ResearchHealth({ side, failed }: { side: "clinics" | "providers"; failed: number }) {
+  const { actor } = await requireActor("admin");
+  const st = await growth.prospecting(actor);
+  const reason: Record<string, string> = {
+    quota: "the AI account is out of credits (add a balance with the provider)", rate_limited: "the AI provider is rate-limiting requests", daily_limit: "the AI account's daily request limit was reached",
+    auth: "the API key was refused (check OPENAI_API_KEY / the research provider)", paused: "paused",
+  };
+  return (
+    <div className="space-y-2">
+      {st.pause ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div><b>Web research is paused</b> until {dateTimeLabel(st.pause.until)}: {reason[st.pause.reason] ?? st.pause.reason}. Nothing was lost; records wait in the queue.{st.pause.error ? <div className="mt-1 text-xs opacity-80">{st.pause.error}</div> : null}</div>
+          <ActionForm action={resumeResearchAction} successMessage><SubmitButton size="sm" variant="outline">Resume now</SubmitButton></ActionForm>
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+        <span>Research requests today: <b className="text-slate-700">{st.requestsToday}</b>{st.requestCap ? ` of ${st.requestCap} (daily cap)` : " (no daily cap)"}</span>
+        {st.recentErrors.length ? <span>Errors (24h): {st.recentErrors.map((e) => `${e.error.slice(0, 80)} ×${e.n}`).join(" · ")}</span> : null}
+        {failed ? (
+          <ActionForm action={retryFailedAction} successMessage className="inline-flex">
+            <input type="hidden" name="side" value={side} />
+            <SubmitButton size="sm" variant="outline">Retry {failed} failed</SubmitButton>
+          </ActionForm>
+        ) : null}
+      </div>
+    </div>
   );
 }
