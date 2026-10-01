@@ -417,7 +417,8 @@ export async function composeAndSend(agent: AgentKey, r: Recipient, key: string,
 // ---------------- escalation (spec §15) ----------------
 
 export async function escalate(e: { entityType: string; entityId?: string | null; label: string; reasonCode: string; reason: string; intent?: string; summary?: string; action?: string; history?: unknown }) {
-  const existing = await prisma.escalation.findFirst({ where: { entityType: e.entityType, entityId: e.entityId ?? null, reasonCode: e.reasonCode, status: { not: "RESOLVED" } } });
+  // One open escalation per record and reason. Website questions have no record (entityId null): each is its own.
+  const existing = e.entityId ? await prisma.escalation.findFirst({ where: { entityType: e.entityType, entityId: e.entityId, reasonCode: e.reasonCode, status: { not: "RESOLVED" } } }) : null;
   if (existing) return existing.id;
   const row = await prisma.escalation.create({
     data: {

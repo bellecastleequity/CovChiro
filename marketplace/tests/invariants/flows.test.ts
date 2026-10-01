@@ -258,7 +258,7 @@ describe("leads", () => {
   it("waitlist signups record profession + state and never get a promo code", async () => {
     const r = await leads.captureLead({ name: "Ana Ruiz", email: `wait-${Date.now()}@test.dev`, source: "waitlist", audience: "PROVIDER", professionCode: "LMT", state: "FL" });
     expect(r.code).toBeNull();
-    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: r.leadId } });
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: r.leadId! } });
     expect(lead).toMatchObject({ professionCode: "LMT", state: "FL", status: "NURTURING", audience: "PROVIDER" });
   });
 

@@ -75,7 +75,11 @@ export const signupAction = formAction(async (fd) => {
       campaign: str(fd, "campaign") || null,
       prospectToken: str(fd, "c") || (await cookies()).get("cm_pt")?.value || null,
     },
-    { ip: await ip(), visitorId: (await cookies()).get("cm_vid")?.value ?? null },
+    {
+      ip: (await ip()) ?? "unknown",
+      visitorId: (await cookies()).get("cm_vid")?.value ?? null,
+      guard: { honeypot: str(fd, "website"), startedAt: str(fd, "startedAt") || null, token: str(fd, "cf-turnstile-response") || null },
+    },
   );
   const token = await auth.createSession(user.id, true);
   await setSessionCookie(token);

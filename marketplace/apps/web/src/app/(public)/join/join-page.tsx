@@ -5,6 +5,7 @@ import { brand } from "@cm/config";
 import { prisma } from "@cm/db";
 import { getSettings, prelicensure, schools } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
+import { FormGuard } from "@/components/site/form-guard";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { SOURCE_OPTIONS, StudentFields } from "@/components/provider/student-fields";
 import { signupAction } from "../../(auth)/actions";
@@ -111,6 +112,7 @@ export async function JoinPage({ slug, search }: { slug?: string; search: Search
               <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
             </Field>
             <Checkbox name="terms" required label={<>I agree to the terms of service and privacy policy.</>} />
+            <FormGuard />
             <SubmitButton className="w-full" size="lg" pendingText="Creating your profile…">
               Create my provider profile
             </SubmitButton>

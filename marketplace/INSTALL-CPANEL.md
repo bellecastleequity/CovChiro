@@ -185,6 +185,7 @@ cPanel → **Cron Jobs**:
   | `GOOGLE_MAPS_BROWSER_KEY` | **Websites**: `https://coverageoncall.com/*` and `https://www.coverageoncall.com/*` | Maps JavaScript API, Places API (New) |
 
   The browser key is visible in the page, which is why it's locked to your domain. Without it, address fields still work, just without suggestions.
+- **Cloudflare Turnstile (spam protection, optional):** dash.cloudflare.com → Turnstile → Add widget (hostnames `coverageoncall.com` and `www.coverageoncall.com`, mode Managed). Put the Site Key in `TURNSTILE_SITE_KEY` and the Secret Key in `TURNSTILE_SECRET_KEY`, then restart. Without them the public forms still work; the spam rules still run.
 - **SendGrid:** Settings → Sender Authentication → authenticate `coverageoncall.com`. Add the DNS records it gives you in Namecheap → Advanced DNS.
 
 ## Step 10 — Set up the business in Admin
@@ -236,6 +237,7 @@ The full three-part package is only needed for a brand-new install (or if a rele
 | Offers never expire, payouts never go out | The cron job isn't running. Check the command, the secret, and that the cron isn't paused. Test by pasting the command into cPanel Terminal without `> /dev/null 2>&1`. |
 | App restarts or gets killed under load | You've hit shared-hosting CPU or memory limits (cPanel → *Resource Usage*). Upgrade the plan or move to a VPS. |
 | "Address lookup isn't working right now (Google Geocoding REQUEST_DENIED …)" | The server key can't use the Geocoding API. Check in Google Cloud: the API is enabled, billing is on, and `GOOGLE_MAPS_API_KEY` has **no** website restriction. The message shows Google's own reason. |
+| Forms say “Please complete the verify you're human check” for everyone | The Turnstile Site Key and Secret Key don't belong to the same widget, or the widget's hostnames don't include your domain. Re-copy both from Cloudflare → Turnstile and restart. |
 | No suggestions appear under address fields | `GOOGLE_MAPS_BROWSER_KEY` is missing, or it isn't allowed for your domain / Maps JavaScript API / Places API (New). Your browser's console shows Google's error. |
 | Signup confirmation (or any) email never arrives | Sign in as admin → **Settings** → **Email check** → **Send test email**. It shows SendGrid's exact reply. "does not match a verified Sender Identity" means the sending domain isn't authenticated yet: SendGrid → Settings → Sender Authentication → authenticate `coverageoncall.com`, add its DNS records in Namecheap → Advanced DNS, wait for SendGrid to show "Verified", then try again. "401" / "permission" means `SENDGRID_API_KEY` is wrong or lacks Mail Send access. Providers can then use **Resend confirmation email** on their dashboard. |
 | Admin lost their phone | In Neon SQL Editor: `UPDATE "User" SET "mfaEnabled"=false, "totpSecret"=NULL WHERE email='you@…';` |

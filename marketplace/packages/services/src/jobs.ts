@@ -1,3 +1,4 @@
+import { purgeSpam } from "./spam";
 import { prisma } from "@cm/db";
 import { DateTime } from "luxon";
 import * as dispatch from "./dispatch";
@@ -57,6 +58,8 @@ export const JOBS: Job[] = [
   { name: "standingBookings", schedule: { everySeconds: 3600 }, run: () => standingSweep() },
   // Growth.
   { name: "leadDrip", schedule: { everySeconds: 900 }, run: () => leads.runLeadDrip() },
+  // Spam folder: delete filtered messages after spam.retentionDays.
+  { name: "spamCleanup", schedule: { cron: "20 4 * * *", tz: "America/New_York" }, run: () => purgeSpam() },
   // Students: one state-aware credential follow-up when due (30/60/90 days after graduation, then every 60).
   { name: "preLicensureFollowups", schedule: { cron: "15 10 * * *", tz: "America/New_York" }, run: () => runPreLicensureFollowups() },
   // Growth agents (services/src/growth): event-driven sweeps; nothing calls AI unless something is due.

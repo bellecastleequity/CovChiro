@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "@cm/db";
 import { DomainError } from "@cm/core";
 import { checkRateLimit } from "../auth";
+import { assessSender, checkHuman, fileSpamQuestion } from "../spam";
 import { clock } from "../context";
 import { track } from "../analytics";
 import { answerQuestion } from "./agents";
@@ -46,14 +47,30 @@ export const QuestionInput = z.object({
   name: z.string().trim().min(1, "Enter your name.").max(120),
   email: z.string().trim().toLowerCase().email("Enter a valid email address."),
   question: z.string().trim().min(5, "Type your question.").max(2000),
-  website: z.string().max(0).optional(),
+  /** Honeypot (hidden field). */
+  website: z.string().max(500).optional(),
+  startedAt: z.union([z.number(), z.string()]).optional().nullable(),
+  turnstileToken: z.string().max(4000).optional().nullable(),
 });
+
+const HAND_OFF = "Good question — we want to make sure you get an accurate answer, so a person from our team will reply by email shortly.";
 
 export async function askQuestion(raw: z.input<typeof QuestionInput>, ip?: string) {
   const input = QuestionInput.safeParse(raw);
   if (!input.success) throw new DomainError("VALIDATION", input.error.issues[0]?.message ?? "Check the form.");
-  if (ip) await checkRateLimit(`gask:${ip}`, 10, 3600);
-  const r = await answerQuestion(input.data);
+  if (ip) {
+    await checkRateLimit(`gask:${ip}`, 10, 3600);
+    // Bots get the same reply as everyone; nothing is stored.
+    if ((await checkHuman({ token: input.data.turnstileToken, honeypot: input.data.website, startedAt: input.data.startedAt, ip })) === "bot") return { answer: HAND_OFF, escalated: true };
+  }
+  const { name, email, question } = input.data;
+  const verdict = await assessSender({ name, email, text: question });
+  if (verdict.category) {
+    await fileSpamQuestion({ name, email, question, category: verdict.category, reasons: verdict.reasons, via: "rules" });
+    await track({ type: "QUESTION_ASKED", props: { escalated: false, spam: true } });
+    return { answer: HAND_OFF, escalated: true };
+  }
+  const r = await answerQuestion({ name, email, question });
   await track({ type: "QUESTION_ASKED", props: { escalated: r.escalated } });
   return r;
 }

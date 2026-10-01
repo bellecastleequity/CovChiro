@@ -6,14 +6,20 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/misc";
 import { dateLabel, dateTimeLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { deleteLeadAction, resendLeadAction, updateLeadAction } from "../../actions";
+import { deleteLeadAction, leadSpamAction, resendLeadAction, updateLeadAction } from "../../actions";
 
 export default async function Lead({ params }: { params: Promise<{ id: string }> }) {
   const { actor } = await requireActor("admin");
   const { lead, promo } = await leads.leadDetail(actor, (await params).id);
   return (
     <>
-      <PageHeader title={lead.name} description={`${lead.email}${lead.phone ? ` · ${lead.phone}` : ""}${lead.organization ? ` · ${lead.organization}` : ""}`} actions={<StatusBadge status={lead.status} />} />
+      <PageHeader title={lead.name} description={`${lead.email}${lead.phone ? ` · ${lead.phone}` : ""}${lead.organization ? ` · ${lead.organization}` : ""}`} actions={lead.spamCategory ? <span className="rounded-full bg-slate-700 px-3 py-1 text-xs text-white">{lead.spamCategory === "solicitation" ? "Sales pitch" : "Spam"}</span> : <StatusBadge status={lead.status} />} />
+      {lead.spamCategory ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <span>Filed as spam{lead.spamReasons.length ? `: ${lead.spamReasons.join(", ")}` : ""}. No code or emails were sent and nobody was notified.</span>
+          <ActionForm action={leadSpamAction} confirm="Restore this lead? They'll get the normal code / first email now."><input type="hidden" name="leadId" value={lead.id} /><input type="hidden" name="spam" value="false" /><SubmitButton size="sm" variant="outline">Not spam</SubmitButton></ActionForm>
+        </div>
+      ) : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {lead.message ? <Card><CardHeader title="Message" /><CardBody><p className="whitespace-pre-line text-sm">{lead.message}</p></CardBody></Card> : null}
@@ -55,8 +61,15 @@ export default async function Lead({ params }: { params: Promise<{ id: string }>
                 <Field label="Follow up on"><Input type="date" name="followUpAt" defaultValue={lead.followUpAt?.toISOString().slice(0, 10)} /></Field>
                 <SubmitButton size="sm">Save</SubmitButton>
               </ActionForm>
-              <div className="mt-4 flex gap-2">
+              <div className="mt-4 flex flex-wrap gap-2">
                 <ActionForm action={resendLeadAction}><input type="hidden" name="leadId" value={lead.id} /><SubmitButton size="sm" variant="outline">Resend last email</SubmitButton></ActionForm>
+                {!lead.spamCategory ? (
+                  <ActionForm action={leadSpamAction} className="flex gap-2" confirm="Mark as spam? Their follow-up emails stop.">
+                    <input type="hidden" name="leadId" value={lead.id} /><input type="hidden" name="spam" value="true" />
+                    <Select name="block" defaultValue="" className="w-40"><option value="">Spam only</option><option value="EMAIL">+ block sender</option><option value="DOMAIN">+ block domain</option></Select>
+                    <SubmitButton size="sm" variant="ghost">Mark spam</SubmitButton>
+                  </ActionForm>
+                ) : null}
                 <ActionForm action={deleteLeadAction} confirm="Delete this lead permanently?"><input type="hidden" name="leadId" value={lead.id} /><SubmitButton size="sm" variant="ghost">Delete</SubmitButton></ActionForm>
               </div>
             </CardBody>

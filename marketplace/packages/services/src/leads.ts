@@ -7,6 +7,7 @@ import { audit, getSettings, requireAdmin, type Actor } from "./context";
 import { absoluteUrl, sendEmail, type EmailContent } from "./notify";
 import { activeCampaign, codeStillGood, issuePersonalCode, issueWelcomeCode } from "./promo";
 import { track } from "./analytics";
+import { assessSender, checkHuman } from "./spam";
 
 /**
  * Lead management. Sources:
@@ -34,11 +35,33 @@ export const CaptureInput = z.object({
   utm: z.object({ source: z.string().max(100).optional(), medium: z.string().max(100).optional(), campaign: z.string().max(100).optional() }).partial().optional(),
   landingPath: z.string().max(300).optional().nullable(),
   visitorId: z.string().max(64).optional().nullable(),
+  /** Spam guard: hidden honeypot field, form-shown time, Turnstile token. */
+  website: z.string().max(500).optional().nullable(),
+  startedAt: z.union([z.number(), z.string()]).optional().nullable(),
+  turnstileToken: z.string().max(4000).optional().nullable(),
 });
 
-export async function captureLead(raw: z.input<typeof CaptureInput>) {
+/** What a filtered submission sees: the same thank-you as everyone, no code. */
+const QUIET = { leadId: null, code: null, offer: null, expiresAt: null, alreadySignedUp: false, dripDays: 0 };
+
+export async function captureLead(raw: z.input<typeof CaptureInput>, meta: { ip?: string; skipSpamCheck?: boolean } = {}) {
   const input = CaptureInput.parse(raw);
   const s = await getSettings();
+  if (meta.ip && (await checkHuman({ token: input.turnstileToken, honeypot: input.website, startedAt: input.startedAt, ip: meta.ip })) === "bot") return QUIET;
+  const verdict = meta.skipSpamCheck ? { category: null, score: 0, reasons: [] } : await assessSender({ name: input.name, email: input.email, text: [input.organization, input.message].filter(Boolean).join("\n") });
+  if (verdict.category) {
+    // Filed in Spam: no code, no emails, no admin notice. Never touches an existing real lead.
+    // The key keeps what "Not spam" needs to replay the signup (source + campaign).
+    await prisma.lead.create({
+      data: {
+        audience: input.audience, name: input.name, email: input.email, phone: input.phone || null, organization: input.organization || null, state: input.state || null,
+        professionCode: input.professionCode || null, message: input.message || null, source: input.source, campaignCode: `SPAM:${input.source}:${input.campaign ?? ""}:${Date.now()}${randomBytes(3).toString("hex")}`, status: "LOST",
+        unsubscribeToken: randomBytes(24).toString("hex"), landingPath: input.landingPath ?? null, spamCategory: verdict.category, spamReasons: verdict.reasons.slice(0, 10),
+        activities: { create: { kind: "CAPTURED", body: `Filed as spam (score ${verdict.score}): ${verdict.reasons.join(", ")}` } },
+      },
+    });
+    return QUIET;
+  }
   let campaign: PromoCode | null = null;
   let campaignCode = "";
   if (input.source === "landing") {
@@ -215,7 +238,7 @@ export async function unsubscribe(token: string) {
 
 /** A lead's email created an account: stop the sequence, link the user. */
 export async function onUserSignup(userId: string, email: string) {
-  const leads = await prisma.lead.findMany({ where: { email: email.toLowerCase(), convertedUserId: null } });
+  const leads = await prisma.lead.findMany({ where: { email: email.toLowerCase(), convertedUserId: null, spamCategory: null } });
   for (const l of leads) {
     await prisma.lead.update({ where: { id: l.id }, data: { convertedUserId: userId, status: l.status === "NURTURING" || l.status === "NEW" ? "CONTACTED" : l.status, nextDripAt: null } });
     await prisma.leadActivity.create({ data: { leadId: l.id, kind: "SIGNUP", body: "Created an account" } });
@@ -233,9 +256,10 @@ export async function onLeadConverted(userIds: string[], shiftId: string | null)
 
 // ---------------- admin ----------------
 
-export async function listLeads(actor: Actor, f: { q?: string; status?: LeadStatus; audience?: "CLINIC" | "PROVIDER"; source?: string; take?: number } = {}) {
+export async function listLeads(actor: Actor, f: { q?: string; status?: LeadStatus; audience?: "CLINIC" | "PROVIDER"; source?: string; take?: number; spam?: boolean } = {}) {
   requireAdmin(actor);
   const where = {
+    spamCategory: f.spam ? { not: null } : null,
     ...(f.status ? { status: f.status } : {}),
     ...(f.audience ? { audience: f.audience } : {}),
     ...(f.source ? { source: f.source } : {}),
@@ -245,9 +269,10 @@ export async function listLeads(actor: Actor, f: { q?: string; status?: LeadStat
   };
   const [rows, counts] = await Promise.all([
     prisma.lead.findMany({ where, orderBy: { createdAt: "desc" }, take: f.take ?? 200 }),
-    prisma.lead.groupBy({ by: ["status"], _count: true }),
+    prisma.lead.groupBy({ by: ["status"], where: { spamCategory: null }, _count: true }),
   ]);
-  return { rows, counts: Object.fromEntries(counts.map((c) => [c.status, c._count])) as Record<string, number> };
+  const spam = await prisma.lead.count({ where: { spamCategory: { not: null } } });
+  return { rows, counts: Object.fromEntries(counts.map((c) => [c.status, c._count])) as Record<string, number>, spam };
 }
 
 export async function leadDetail(actor: Actor, id: string) {
@@ -329,4 +354,47 @@ export function leadsCsv(rows: Lead[]) {
         .join(","),
     ),
   ].join("\n");
+}
+
+/**
+ * Admin: move a lead into or out of Spam. "Not spam" replays the original signup (code, first
+ * email, admin notice for contact inquiries) as if it had never been filtered, then removes the
+ * spam copy. "Spam" stops its emails; optionally blocks the sender's address or domain.
+ */
+export async function setLeadSpam(actor: Actor, id: string, spam: boolean, block: "EMAIL" | "DOMAIN" | null = null) {
+  requireAdmin(actor);
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id } });
+  if (spam) {
+    await prisma.lead.update({ where: { id }, data: { spamCategory: lead.spamCategory ?? "spam", status: "LOST", nextDripAt: null, activities: { create: { kind: "STATUS", body: "Marked as spam", actorId: actor.userId } } } });
+    if (block) {
+      const { blockSender } = await import("./spam");
+      await blockSender(actor, lead.email, block, `From lead ${lead.name}`);
+    }
+    await audit(prisma, actor, "spam.mark", "Lead", id, null, { block });
+    return { leadId: id };
+  }
+  if (!lead.spamCategory) return { leadId: id };
+  const [, source, campaign] = lead.campaignCode.split(":");
+  if (!lead.campaignCode.startsWith("SPAM:")) {
+    await prisma.lead.update({ where: { id }, data: { spamCategory: null, spamReasons: [], status: "NEW", activities: { create: { kind: "STATUS", body: "Not spam", actorId: actor.userId } } } });
+    await audit(prisma, actor, "spam.unmark", "Lead", id, null, null);
+    return { leadId: id };
+  }
+  const { blockedSenderFor } = await import("./spam");
+  const blocked = await blockedSenderFor(lead.email);
+  if (blocked?.kind === "EMAIL") await prisma.blockedSender.delete({ where: { id: blocked.id } });
+  const r = await captureLead(
+    {
+      name: lead.name, email: lead.email, phone: lead.phone, organization: lead.organization, state: lead.state, professionCode: lead.professionCode, message: lead.message,
+      source: (["popup", "landing", "waitlist", "contact"].includes(source) ? source : "contact") as "contact", audience: lead.audience, campaign: campaign || null, landingPath: lead.landingPath,
+    },
+    { skipSpamCheck: true },
+  ).catch(async (e) => {
+    // e.g. the campaign offer ended: keep the person as a plain contact lead instead.
+    console.error("not-spam replay failed", e);
+    return captureLead({ name: lead.name, email: lead.email, message: lead.message, organization: lead.organization, source: "contact", audience: lead.audience }, { skipSpamCheck: true });
+  });
+  await prisma.lead.delete({ where: { id } });
+  await audit(prisma, actor, "spam.unmark", "Lead", r.leadId ?? id, null, { from: id });
+  return { leadId: r.leadId };
 }

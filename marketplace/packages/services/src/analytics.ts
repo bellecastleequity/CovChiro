@@ -69,8 +69,8 @@ export async function analyticsSummary(actor: Actor, range: { from: Date; to: Da
       where: { confirmedAt: inRange, status: { in: [...LIVE] } },
       select: { clinicPriceCents: true, providerPayCents: true, promoDiscountCents: true, mileageCents: true, lodgingApprovedCents: true, confirmedAt: true, shift: { select: { postedAt: true } } },
     }),
-    prisma.lead.groupBy({ by: ["status"], where: { createdAt: inRange }, _count: true }),
-    prisma.lead.groupBy({ by: ["source"], where: { createdAt: inRange }, _count: true }),
+    prisma.lead.groupBy({ by: ["status"], where: { createdAt: inRange, spamCategory: null }, _count: true }),
+    prisma.lead.groupBy({ by: ["source"], where: { createdAt: inRange, spamCategory: null }, _count: true }),
     prisma.assignment.groupBy({ by: ["professionCode"], where: { confirmedAt: inRange, status: { in: [...LIVE] } }, _count: true, _sum: { clinicPriceCents: true, providerPayCents: true, promoDiscountCents: true } }),
     prisma.assignment.groupBy({ by: ["state"], where: { confirmedAt: inRange, status: { in: [...LIVE] } }, _count: true, _sum: { clinicPriceCents: true, providerPayCents: true, promoDiscountCents: true } }),
   ]);

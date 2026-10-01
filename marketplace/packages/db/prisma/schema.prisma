@@ -1306,6 +1306,9 @@ model Lead {
   ownerId          String?
   followUpAt       DateTime?      @db.Timestamptz(3)
   unsubscribedAt   DateTime?      @db.Timestamptz(3)
+  /// Set when filed as spam: solicitation | spam (no code, no emails, no admin notice).
+  spamCategory     String?
+  spamReasons      String[]       @default([])
   createdAt        DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime       @updatedAt @db.Timestamptz(3)
   activities       LeadActivity[]
@@ -1821,6 +1824,9 @@ model Escalation {
   recommendedAction String?
   history           Json?
   status            EscalationStatus @default(OPEN)
+  /// Set when filed in the Spam folder: solicitation | spam (filed RESOLVED, no notification).
+  spamCategory      String?
+  spamReasons       String[]         @default([])
   resolution        String?
   resolvedById      String?
   createdAt         DateTime         @default(now()) @db.Timestamptz(3)
@@ -1828,6 +1834,18 @@ model Escalation {
 
   @@index([status, createdAt])
   @@index([entityType, entityId])
+  @@index([spamCategory, createdAt])
+}
+
+/// Senders whose public-form messages go straight to the Spam folder (email address or whole domain).
+model BlockedSender {
+  id          String   @id @default(cuid())
+  /// EMAIL | DOMAIN
+  kind        String
+  value       String   @unique @db.Citext
+  reason      String?
+  createdById String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
 }
 
 /// Audit log of every agent action (what it saw by reference, prompt version, model, output).

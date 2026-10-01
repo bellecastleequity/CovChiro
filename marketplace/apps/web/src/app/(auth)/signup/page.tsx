@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@cm/db";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
+import { FormGuard } from "@/components/site/form-guard";
 import { getSettings, schools } from "@cm/services";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { SOURCE_OPTIONS, StudentFields } from "@/components/provider/student-fields";
@@ -85,6 +86,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         </Field>
         <Checkbox name="terms" required label={<>I agree to the terms of service and privacy policy.</>} />
         {code ? <p className="rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-800">Your code <strong className="font-mono">{code}</strong> will be ready when you post your first shift.</p> : null}
+        <FormGuard />
         <SubmitButton className="w-full" size="lg" pendingText="Creating account…">
           Create account
         </SubmitButton>

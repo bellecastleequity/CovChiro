@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
 import { authenticator } from "otplib";
 import { z } from "zod";
+import { assessSender, checkHuman, type FormGuard } from "./spam";
 import { brand, env } from "@cm/config";
 import { DomainError } from "@cm/core";
 import { prisma, seedBase, type Prisma, type User } from "@cm/db";
@@ -56,9 +57,12 @@ export const SignupInput = z.object({
   prospectToken: z.string().trim().max(60).optional().nullable(),
 });
 
-export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: string; visitorId?: string | null } = {}) {
+export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: string; visitorId?: string | null; guard?: FormGuard } = {}) {
   const input = SignupInput.parse(raw);
-  if (meta.ip) await checkRateLimit(`signup:${meta.ip}`, 10, 3600);
+  if (meta.ip) {
+    await checkRateLimit(`signup:${meta.ip}`, 10, 3600);
+    if ((await checkHuman({ ...meta.guard, ip: meta.ip })) === "bot") throw new DomainError("VALIDATION", "Something went wrong. Please refresh the page and try again.");
+  }
   if (await prisma.user.findUnique({ where: { email: input.email } })) {
     throw new DomainError("CONFLICT", "An account with that email already exists. Try signing in.");
   }
@@ -122,12 +126,15 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
   } catch (e) {
     console.error("growth signup attribution failed", e);
   }
+  // Spam signups are only flagged here (never blocked): the owner decides with suspend / ban.
+  const spam = await assessSender({ name: input.name, email: input.email, text: input.organization ?? "" }).catch(() => null);
+  if (spam?.category) await audit(prisma, { userId: user.id, role: user.role }, "user.signup_flagged", "User", user.id, null, { score: spam.score, reasons: spam.reasons });
   // Let the owner know about every new account.
   await notifyAdmins(prisma, {
     template: "admin_new_signup",
-    title: `New ${input.role} signup: ${input.role === "clinic" ? (input.organization?.trim() || input.name) : input.name}`,
+    title: `${spam?.category ? "Possible spam — " : ""}New ${input.role} signup: ${input.role === "clinic" ? (input.organization?.trim() || input.name) : input.name}`,
     body: `${input.name} (${input.email}) just created a ${input.role} account.`,
-    details,
+    details: spam?.category ? [...details, `Spam check: ${spam.reasons.join(", ")} (score ${spam.score}). Suspend or ban from their admin page if it isn't a real ${input.role}.`] : details,
     link: adminLink,
     ctaLabel: `View ${input.role}`,
   }).catch((e) => console.error("admin signup notice failed", e));

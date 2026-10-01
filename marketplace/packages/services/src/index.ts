@@ -35,3 +35,4 @@ export * as growth from "./growth";
 export * as accounts from "./accounts";
 export * as schools from "./schools";
 export * as blog from "./blog";
+export * as spam from "./spam";

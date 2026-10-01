@@ -157,9 +157,12 @@ export async function decideApproval(actor: Actor, id: string, decision: "approv
 
 // ---------------- escalations ----------------
 
-export async function escalations(actor: Actor, all = false) {
+/** open (default) | all (incl. resolved) | spam (the Spam folder). Spam never shows in the other two. */
+export async function escalations(actor: Actor, view: boolean | "open" | "all" | "spam" = "open") {
   requireAdmin(actor);
-  return prisma.escalation.findMany({ where: all ? {} : { status: { not: "RESOLVED" } }, orderBy: { createdAt: "desc" }, take: 200 });
+  const v = view === true ? "all" : view === false ? "open" : view;
+  const where: Prisma.EscalationWhereInput = v === "spam" ? { spamCategory: { not: null } } : v === "all" ? { spamCategory: null } : { spamCategory: null, status: { not: "RESOLVED" } };
+  return prisma.escalation.findMany({ where, orderBy: { createdAt: "desc" }, take: 200 });
 }
 
 export async function updateEscalation(actor: Actor, id: string, status: "OPEN" | "IN_PROGRESS" | "RESOLVED", resolution?: string | null) {

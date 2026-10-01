@@ -155,6 +155,14 @@ export const SETTINGS = {
     flag: null,
   }),
 
+  // ---------- spam (public forms) ----------
+  "spam.enabled": def({ group: "Spam", label: "Spam filter on public forms", help: "Ask a question, contact / offer / waitlist forms and signups. Off = everything goes through as before (the human check still runs when Turnstile keys are set).", schema: z.boolean(), default: true, flag: null }),
+  "spam.threshold": def({ group: "Spam", label: "Spam score that files a message as spam (0-100)", help: "Lower catches more; raise it if real people land in Spam. Signups are only flagged in your new-signup email, never blocked.", schema: z.number().int().min(10).max(100), default: 50, flag: null }),
+  "spam.aiCheck": def({ group: "Spam", label: "Let the question-answering AI also flag sales pitches and spam", help: "Uses the call that already answers website questions, so it costs nothing extra.", schema: z.boolean(), default: true, flag: null }),
+  "spam.checkEmailDomain": def({ group: "Spam", label: "Treat addresses whose domain can't receive email as spam", schema: z.boolean(), default: true, flag: null }),
+  "spam.minSubmitSeconds": def({ group: "Spam", label: "Fastest a person can fill in a form (seconds)", help: "Faster submissions are treated as bots and quietly dropped. 0 turns this off.", schema: z.number().int().min(0).max(30), default: 3, flag: null }),
+  "spam.retentionDays": def({ group: "Spam", label: "Days to keep spam before it's deleted", schema: z.number().int().min(1).max(365), default: 30, flag: "OWNER_DECISION" }),
+
   // ---------- provider booking emails ----------
   "digests.daily": def({
     group: "Provider emails",

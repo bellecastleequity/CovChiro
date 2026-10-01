@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { buttonClass } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/form";
 import { askQuestionAction } from "@/app/(public)/ask-action";
+import { FormGuard } from "./form-guard";
 
 /**
  * "Ask a question": answered from the approved knowledge base when it covers
@@ -32,7 +33,7 @@ export function AskForm() {
         <Input name="email" type="email" placeholder="Email" required />
       </div>
       <Textarea name="question" placeholder="Ask about coverage, pricing, credentials, how it works…" required className="min-h-24" />
-      <input name="website" className="hidden" tabIndex={-1} autoComplete="off" aria-hidden />
+      <FormGuard />
       <button className={buttonClass("primary")} disabled={busy}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}Ask</button>
       {error ? <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p> : null}
       {answer ? (

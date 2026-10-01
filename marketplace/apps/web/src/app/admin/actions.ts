@@ -279,6 +279,16 @@ export const resendLeadAction = formAction(async (fd) => {
   rv("/admin/leads");
   return "Email re-sent.";
 });
+export const leadSpamAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const isSpam = str(fd, "spam") === "true";
+  const block = str(fd, "block") === "EMAIL" ? "EMAIL" : str(fd, "block") === "DOMAIN" ? "DOMAIN" : null;
+  const r = await leads.setLeadSpam(actor, str(fd, "leadId"), isSpam, block);
+  rv("/admin/leads");
+  if (!isSpam && r.leadId && r.leadId !== str(fd, "leadId")) redirect(`/admin/leads/${r.leadId}`);
+  return isSpam ? "Marked as spam. No more emails go to this lead." : "Not spam: restored as a normal lead.";
+});
+
 export const deleteLeadAction = formAction(async (fd) => {
   const { actor } = await me();
   await leads.deleteLead(actor, str(fd, "leadId"));

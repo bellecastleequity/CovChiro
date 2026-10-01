@@ -13,10 +13,10 @@ import { createLeadAction } from "../actions";
 
 const STATUSES = ["NEW", "NURTURING", "CONTACTED", "CONVERTED", "UNSUBSCRIBED", "EXPIRED", "SUPERSEDED", "LOST"];
 
-export default async function Leads({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; audience?: string; source?: string }> }) {
+export default async function Leads({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; audience?: string; source?: string; spam?: string }> }) {
   const { actor } = await requireActor("admin");
   const f = await searchParams;
-  const { rows, counts } = await leads.listLeads(actor, { q: f.q, status: (f.status || undefined) as never, audience: (f.audience || undefined) as never, source: f.source || undefined });
+  const { rows, counts, spam } = await leads.listLeads(actor, { q: f.q, status: (f.status || undefined) as never, audience: (f.audience || undefined) as never, source: f.source || undefined, spam: f.spam === "1" });
   const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v) as [string, string][]).toString();
   return (
     <>
@@ -25,7 +25,8 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
         {STATUSES.map((s) => (
           <Link key={s} href={`/admin/leads?status=${s}`} className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ${f.status === s ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-slate-600 ring-slate-200"}`}>{humanize(s)} · {counts[s] ?? 0}</Link>
         ))}
-        {f.status ? <Link href="/admin/leads" className="px-2 py-1 text-xs text-slate-500">Clear</Link> : null}
+        <Link href={f.spam === "1" ? "/admin/leads" : "/admin/leads?spam=1"} className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ${f.spam === "1" ? "bg-slate-700 text-white ring-slate-700" : "bg-white text-slate-600 ring-slate-200"}`}>Spam · {spam}</Link>
+        {f.status || f.spam ? <Link href="/admin/leads" className="px-2 py-1 text-xs text-slate-500">Clear</Link> : null}
       </div>
       <form className="mb-4 flex flex-wrap gap-2">
         <Input name="q" defaultValue={f.q} placeholder="Name, email, organization" className="w-64" />
@@ -44,7 +45,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
                 <Td className="text-xs">{l.source}{l.campaignCode && !l.campaignCode.includes(":") ? ` · ${l.campaignCode}` : ""}{l.professionCode ? ` · ${l.professionCode}` : ""}{l.state ? ` · ${l.state}` : ""}<div className="text-slate-400">{l.audience.toLowerCase()}{l.utmSource ? ` · utm ${l.utmSource}` : ""}</div></Td>
                 <Td className="font-mono text-xs">{l.promoCode ?? "—"}</Td>
                 <Td>{l.dripStep}</Td>
-                <Td><StatusBadge status={l.status} /></Td>
+                <Td>{l.spamCategory ? <span className="text-xs text-slate-500">{l.spamCategory === "solicitation" ? "Sales pitch" : "Spam"}<div className="max-w-48 truncate" title={l.spamReasons.join(", ")}>{l.spamReasons.join(", ")}</div></span> : <StatusBadge status={l.status} />}</Td>
                 <Td className="text-xs">{dateTimeLabel(l.createdAt)}</Td>
               </tr>
             ))}

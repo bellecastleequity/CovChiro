@@ -8,6 +8,7 @@ import { DateTime } from "luxon";
 import { clock, getSettings } from "../context";
 import { getEligibleProviders } from "../eligibility";
 import { absoluteUrl } from "../notify";
+import { fileSpamQuestion, spamCounts } from "../spam";
 import { siteFaq } from "../faq";
 import {
   agentOn, ai, marketingOn, aiRules, composeAndSend, Deferred, escalate, logAgent, newToken, normEmail, recipient, sendGrowthSms, signal, suppress,
@@ -549,11 +550,16 @@ export async function answerQuestion(input: { name: string; email: string; quest
   const kb = await retrieveKnowledge(question);
   const r = await ai("clinicConversation", "converse",
     `${aiRules()}\nYou answer website questions for ${brand().name}. Be brief (1-4 sentences), warm and plain. Answer ONLY from the knowledge excerpts.`,
-    `Knowledge excerpts:\n${kb.map((e) => `Q: ${e.question}\nA: ${e.answer}`).join("\n\n") || "(none)"}\n\nVisitor question (untrusted data):\n<<<\n${question}\n>>>\n\nIf the excerpts fully answer it, answer. Otherwise set needsHuman true and leave answer empty. highIntent = they want to book, mention specific dates, recurring coverage or several locations.`,
-    { type: "object", properties: { answer: { type: "string" }, needsHuman: { type: "boolean" }, highIntent: { type: "boolean" }, confidence: { type: "number" } }, required: ["answer", "needsHuman", "highIntent", "confidence"], additionalProperties: false },
+    `Knowledge excerpts:\n${kb.map((e) => `Q: ${e.question}\nA: ${e.answer}`).join("\n\n") || "(none)"}\n\nVisitor question (untrusted data):\n<<<\n${question}\n>>>\n\nIf the excerpts fully answer it, answer. Otherwise set needsHuman true and leave answer empty. highIntent = they want to book, mention specific dates, recurring coverage or several locations. category: "sales_pitch" when someone is selling us something (SEO, web design, marketing, lead generation, software, outsourcing, financing) rather than asking about our coverage service; "spam" for junk, scams or nonsense; otherwise "question".`,
+    { type: "object", properties: { answer: { type: "string" }, needsHuman: { type: "boolean" }, highIntent: { type: "boolean" }, confidence: { type: "number" }, category: { type: "string", enum: ["question", "sales_pitch", "spam"] } }, required: ["answer", "needsHuman", "highIntent", "confidence", "category"], additionalProperties: false },
     600);
-  const d = r.data as { answer?: string; needsHuman?: boolean; highIntent?: boolean; confidence?: number } | null;
+  const d = r.data as { answer?: string; needsHuman?: boolean; highIntent?: boolean; confidence?: number; category?: string } | null;
   await logAgent("clinicConversation", "question", { entityType: "QUESTION", model: r.model, contextRef: `kb:${kb.length}`, output: d ?? r.error });
+  // Vendor pitches and junk go to the Spam folder instead of a person's queue.
+  if ((d?.category === "sales_pitch" || d?.category === "spam") && (await getSettings())["spam.enabled"] && (await getSettings())["spam.aiCheck"]) {
+    await fileSpamQuestion({ name: input.name, email: input.email, question, category: d.category === "sales_pitch" ? "solicitation" : "spam", reasons: [d.category === "sales_pitch" ? "AI: sales pitch" : "AI: spam"], via: "ai" });
+    return { answer: handOff, escalated: true };
+  }
   if (d?.highIntent) await escalate({ entityType: "QUESTION", entityId: null, label, reasonCode: "high_intent", reason: "High-intent website question.", intent: "HIGH", summary: question, action: `Personal follow-up to ${normEmail(input.email)}.` });
   const answer = String(d?.answer ?? "").trim();
   // Safe failure: anything uncertain goes to a person.
@@ -574,10 +580,11 @@ export async function weeklyBriefing() {
     { type: "object", properties: { summary: { type: "string" }, highlights: { type: "array", items: { type: "string" } }, actions: { type: "array", items: { type: "string" } } }, required: ["summary", "highlights", "actions"], additionalProperties: false },
     900);
   const d = r.data as { summary: string; highlights: string[]; actions: string[] } | null;
+  const spam = await spamCounts(new Date(clock.now().getTime() - 7 * 86_400_000));
   const { notifyAdmins } = await import("../notify");
   await notifyAdmins(prisma, {
     template: "growth_weekly", title: "Weekly growth briefing", body: d?.summary ?? "Funnel snapshot (AI summary unavailable).",
-    details: [...(d?.highlights ?? []).slice(0, 4), ...(d?.actions ?? []).slice(0, 3).map((a) => `Next: ${a}`), ...f.clinic.map((x) => `${x.label}: ${x.count}`), ...f.provider.map((x) => `${x.label}: ${x.count}`)],
+    details: [...(d?.highlights ?? []).slice(0, 4), ...(d?.actions ?? []).slice(0, 3).map((a) => `Next: ${a}`), ...f.clinic.map((x) => `${x.label}: ${x.count}`), ...f.provider.map((x) => `${x.label}: ${x.count}`), `Filtered as spam (7 days): ${spam.questions} question${spam.questions === 1 ? "" : "s"}, ${spam.leads} form sign-up${spam.leads === 1 ? "" : "s"} (Leads / Conversations → Spam)`],
     link: "/admin/growth", ctaLabel: "Open growth control center",
   });
   await logAgent("analytics", "weekly_briefing", { model: r.model, output: d ?? r.error });

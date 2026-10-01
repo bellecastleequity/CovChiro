@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { admin, growth } from "@cm/services";
+import { admin, growth, spam } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
 
@@ -58,6 +58,32 @@ export const escalationAction = formAction(async (fd) => {
   await growth.updateEscalation(actor, str(fd, "id"), str(fd, "status") as "OPEN" | "IN_PROGRESS" | "RESOLVED", optStr(fd, "resolution"));
   rv();
   return "Updated.";
+});
+
+// ---------- spam folder ----------
+const blockOf = (fd: FormData) => (str(fd, "block") === "EMAIL" ? "EMAIL" : str(fd, "block") === "DOMAIN" ? "DOMAIN" : null);
+
+export const escalationSpamAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const isSpam = str(fd, "spam") === "true";
+  const block = blockOf(fd);
+  await spam.setEscalationSpam(actor, str(fd, "id"), isSpam, block);
+  rv();
+  return isSpam ? `Moved to Spam${block ? ` and ${block === "DOMAIN" ? "the domain" : "the sender"} blocked` : ""}.` : "Moved back to the open queue.";
+});
+
+export const blockSenderAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const row = await spam.blockSender(actor, str(fd, "value"), str(fd, "kind") === "DOMAIN" ? "DOMAIN" : "EMAIL", optStr(fd, "reason"));
+  rv();
+  return `Blocked ${row.value}. Their form messages now go straight to Spam.`;
+});
+
+export const unblockSenderAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await spam.unblockSender(actor, str(fd, "id"));
+  rv();
+  return "Unblocked.";
 });
 
 // ---------- prospects ----------

@@ -357,7 +357,7 @@ export async function providerFunnel(actor: Actor, opts: { studentsOnly?: boolea
   const all = await providerRows(now);
   const rows = opts.studentsOnly ? all.filter((r) => r.p.preLicensureSince) : all;
   const providerEmails = new Set((await prisma.user.findMany({ where: { provider: { id: { in: rows.map((r) => r.p.id) } } }, select: { email: true } })).map((u) => u.email.toLowerCase()));
-  const leadEmails = (await prisma.lead.findMany({ where: { audience: "PROVIDER" }, select: { email: true } })).map((l) => l.email.toLowerCase());
+  const leadEmails = (await prisma.lead.findMany({ where: { audience: "PROVIDER", spamCategory: null }, select: { email: true } })).map((l) => l.email.toLowerCase());
   const visits = await prisma.analyticsEvent.count({ where: { type: "PAGE_VIEW", OR: [{ path: "/join" }, { path: { startsWith: "/join/" } }] } });
   const assignmentsBy = new Map(
     (await prisma.assignment.groupBy({ by: ["providerId"], where: { status: { in: LIVE_ASSIGNMENT } }, _count: true })).map((a) => [a.providerId, a._count]),

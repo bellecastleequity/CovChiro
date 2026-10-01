@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CheckCircle2, Copy, Loader2 } from "lucide-react";
 import { buttonClass } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/form";
+import { FormGuard, guardFields } from "./form-guard";
 
 type Kind = "popup" | "landing" | "waitlist" | "contact";
 
@@ -48,6 +49,7 @@ export function LeadForm({
       campaign,
       landingPath: location.pathname,
       utm: { source: params.get("utm_source") ?? undefined, medium: params.get("utm_medium") ?? undefined, campaign: params.get("utm_campaign") ?? undefined },
+      ...guardFields(fd),
     };
     try {
       const r = await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -121,6 +123,7 @@ export function LeadForm({
         </div>
       ) : null}
       {source === "contact" ? <Textarea name="message" required placeholder="How can we help?" aria-label="Message" /> : null}
+      <FormGuard />
       {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p> : null}
       <button type="submit" disabled={busy} className={buttonClass("primary", "lg", "w-full")}>
         {busy ? <Loader2 className="size-4 animate-spin" /> : null}
