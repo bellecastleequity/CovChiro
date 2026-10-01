@@ -14,7 +14,7 @@ export default async function Activity({ searchParams }: { searchParams: Promise
   const { actor } = await requireActor("admin");
   const f = await searchParams;
   const [act, comms] = await Promise.all([growth.activity(actor, { agent: f.agent, errors: f.errors === "1" }), growth.communications(actor, { status: f.status })]);
-  const chip = (href: string, label: string, on: boolean) => <Link href={href} className={`rounded-full px-3 py-1 text-xs ring-1 ${on ? "bg-brand-600 text-white ring-brand-600" : "ring-slate-200"}`}>{label}</Link>;
+  const chip = (href: string, label: string, on: boolean) => <Link key={href} href={href} className={`rounded-full px-3 py-1 text-xs ring-1 ${on ? "bg-brand-600 text-white ring-brand-600" : "ring-slate-200"}`}>{label}</Link>;
   return (
     <>
       <PageHeader title="Agent activity" description="Audit log of every agent action: what it acted on, the prompt version and model, the output, the send status, any human override, and errors. Context is stored by reference, never as raw personal data." />

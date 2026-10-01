@@ -6,12 +6,18 @@ import { clock } from "../context";
 import { track } from "../analytics";
 import { answerQuestion } from "./agents";
 import { logAgent, signal } from "./engine";
+import { ensureGrowthDefaults } from "./defaults";
 
 /** Public-facing growth entry points: campaign links, tracked links, website questions, signup attribution. */
 
 /** /join/<code>: the campaign's landing copy; counts a visit unless previewing. */
 export async function joinCampaign(code: string, countVisit = true) {
-  const c = await prisma.growthCampaign.findFirst({ where: { code: code.toLowerCase(), active: true } });
+  let c = await prisma.growthCampaign.findFirst({ where: { code: code.toLowerCase(), active: true } });
+  if (!c && !(await prisma.growthCampaign.count())) {
+    // Fresh install: the starter school links exist before the first agent run.
+    await ensureGrowthDefaults();
+    c = await prisma.growthCampaign.findFirst({ where: { code: code.toLowerCase(), active: true } });
+  }
   if (c && countVisit) await prisma.growthCampaign.update({ where: { id: c.id }, data: { visits: { increment: 1 } } });
   return c;
 }

@@ -71,6 +71,9 @@ Run the licensure invariant suite before every commit.
 | `preShiftEligibilityCheck` | 15 min | Re-checks licence and malpractice (INV-1/INV-3) 24 h before start |
 | `payoutRelease` | 15 min | Transfers provider pay once the dispute window closes |
 | `leadDrip` | 15 min | Sends lead follow-up emails |
+| `growthAgents` | 15 min | Growth agents: provider credential follow-ups and activation, clinic prospect classification/scoring, outreach (when launched), unposted-request recovery, onboarding nudges |
+| `growthSupplyGaps` | 1 h | Escalates open shifts starting within 3 days that have no eligible provider |
+| `growthWeeklyBriefing` | Mon 08:00 America/New_York | Funnel briefing to admins (aggregate numbers only) |
 | `ratingsReveal`, `statsRecompute`, `responsivenessRecompute` | 1 h | Quality metrics |
 | `nightlyCredentialSweep` | 02:00 America/New_York | Expires credentials, handles lapses, creates re-verify tasks, sends reminders |
 
