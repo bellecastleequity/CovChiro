@@ -25,6 +25,12 @@ const EnvSchema = z.object({
   GOOGLE_MAPS_API_KEY: z.string().optional(),
   /** Sent to browsers for address suggestions: restrict it to your domain and to Maps JavaScript API + Places API (New). */
   GOOGLE_MAPS_BROWSER_KEY: z.string().optional(),
+  /** Neon management API (Admin → Backups: restore points and point-in-time restore). */
+  NEON_API_KEY: z.string().optional(),
+  NEON_PROJECT_ID: z.string().optional(),
+  NEON_BRANCH_ID: z.string().optional(),
+  /** Encrypts the nightly database exports. Default: derived from SESSION_SECRET (keep a copy of whichever you use). */
+  BACKUP_KEY: z.string().optional(),
   /** Cloudflare Turnstile ("verify you're human") on public forms; both unset = no check. */
   TURNSTILE_SITE_KEY: z.string().optional(),
   TURNSTILE_SECRET_KEY: z.string().optional(),

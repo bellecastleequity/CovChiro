@@ -39,3 +39,4 @@ export * as spam from "./spam";
 export * as referrals from "./referrals";
 export * as search from "./search";
 export * as timeclock from "./timeclock";
+export * as backups from "./backups";

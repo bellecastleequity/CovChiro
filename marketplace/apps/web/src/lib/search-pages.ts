@@ -30,6 +30,7 @@ const ADMIN: SearchPage[] = [
   { label: "Messages", href: "/admin/messages", section: "Trust & safety", keywords: "blocked messages contact info circumvention" },
   { label: "Emergencies", href: "/admin/emergencies", section: "Trust & safety", keywords: "no show cancel cover rescue" },
   { label: "Tasks", href: "/admin/tasks", section: "Admin", keywords: "todo follow up" },
+  { label: "Backups & restore", href: "/admin/backups", section: "Admin", keywords: "backup restore rollback undo neon database export version release" },
   { label: "Audit log", href: "/admin/audit", section: "Admin", keywords: "history changes who did" },
   { label: "Notifications", href: "/admin/notifications", section: "Admin", keywords: "alerts inbox" },
   { label: "Settings", href: "/admin/settings", section: "Admin", keywords: "configuration owner decisions email check google check text check twilio sendgrid" },

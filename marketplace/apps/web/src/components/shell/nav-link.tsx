@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  AlertTriangle, BadgeCheck, Clock, BarChart3, Bell, Briefcase, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Gauge, GraduationCap, Inbox, LayoutDashboard, ListChecks,
+  AlertTriangle, BadgeCheck, Clock, DatabaseBackup, BarChart3, Bell, Briefcase, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Gauge, GraduationCap, Inbox, LayoutDashboard, ListChecks,
   LogOut, Map, MapPin, Menu, Megaphone, MessageSquare, PlusCircle, Repeat, ScrollText, Search, Settings, ShieldCheck, Gift, Tag, UserRound, Users, Wallet, X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -13,7 +13,7 @@ export const ICONS = {
   dashboard: LayoutDashboard, board: Search, shifts: CalendarDays, offers: Inbox, credentials: BadgeCheck, availability: CalendarDays, earnings: Wallet,
   messages: MessageSquare, profile: UserRound, post: PlusCircle, billing: CreditCard, locations: MapPin, team: Users, verification: ShieldCheck,
   providers: Briefcase, clinics: Building2, payouts: Wallet, payments: CreditCard, promo: Tag, leads: Megaphone, analytics: BarChart3, states: Map,
-  standing: Repeat, rates: Gauge, emergency: AlertTriangle, settings: Settings, tasks: ListChecks, audit: ScrollText, notifications: Bell, docs: FileText, list: ClipboardList, academy: GraduationCap, refer: Gift, timeclock: Clock,
+  standing: Repeat, rates: Gauge, emergency: AlertTriangle, settings: Settings, tasks: ListChecks, audit: ScrollText, notifications: Bell, docs: FileText, list: ClipboardList, academy: GraduationCap, refer: Gift, timeclock: Clock, backup: DatabaseBackup,
 } as const;
 export type IconName = keyof typeof ICONS;
 

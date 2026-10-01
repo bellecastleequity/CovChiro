@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { env } from "@cm/config";
@@ -16,6 +16,7 @@ export interface Storage {
   read(key: string): Promise<{ data: Buffer; contentType: string } | null>;
   /** Signed URL (GCS) or null when the caller should stream via read(). */
   signedUrl(key: string, minutes?: number): Promise<string | null>;
+  remove(key: string): Promise<void>;
 }
 
 const EXT: Record<string, string> = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
@@ -45,6 +46,12 @@ class LocalStorage implements Storage {
   async signedUrl() {
     return null;
   }
+  async remove(key: string) {
+    if (key.includes("..")) return;
+    const file = path.join(this.root, key);
+    await rm(file, { force: true });
+    await rm(file + ".type", { force: true });
+  }
 }
 
 class GcsStorage implements Storage {
@@ -73,6 +80,9 @@ class GcsStorage implements Storage {
   async signedUrl(key: string, minutes = 10) {
     const [url] = await (await this.bucketP).file(key).getSignedUrl({ action: "read", expires: Date.now() + minutes * 60_000 });
     return url;
+  }
+  async remove(key: string) {
+    await (await this.bucketP).file(key).delete({ ignoreNotFound: true });
   }
 }
 

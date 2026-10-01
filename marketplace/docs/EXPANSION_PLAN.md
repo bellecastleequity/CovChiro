@@ -425,3 +425,8 @@ Gaps to close when a new vertical actually needs them (not before):
 - Shift fields: break, recurring flag beyond standing bookings, facility requirements.
 - Financial reporting of platform fee / processing cost / net revenue per shift (§34).
 - Non-shift scheduling models (behavioral health caseloads, telehealth) and staffing-agency/W-2 models (nursing) need their own legal + product review first.
+
+## Saved for later: clinic membership (owner, Oct 2026)
+Roll out once the provider roster is fuller. Idea: a monthly clinic plan with a lower per-shift fee and
+priority matching (recurring revenue + loyalty). Pricing, what "priority" means in dispatch (must never
+bypass getEligibleProviders or rank-protected awards), and Stripe subscription billing to be designed then.

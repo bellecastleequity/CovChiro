@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { DateTime } from "luxon";
 import { DomainError } from "@cm/core";
 import { redirect } from "next/navigation";
 import {
@@ -8,7 +9,7 @@ import {
   schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold, prelicensure, referrals,
+  reviewLodgingReceipt, setHold, prelicensure, referrals, backups,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -400,6 +401,27 @@ export const hireQuoteAction = formAction(async (fd) => {
   await hiring.quoteHire(actor, str(fd, "hireId"), Math.round(dollars * 100), str(fd, "terms"));
   rv("/admin/hire");
   return "Sent — the clinic has the link to accept and pay.";
+});
+
+// ---------- backups ----------
+export const backupNowAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await backups.exportBackup(actor, { label: optStr(fd, "label") ?? undefined });
+  rv("/admin/backups");
+  return `Backup saved (${(r.rowCount ?? 0).toLocaleString()} rows).`;
+});
+export const restorePointAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await backups.createRestorePoint(actor, optStr(fd, "label") ?? undefined);
+  rv("/admin/backups");
+  return "Restore point created.";
+});
+export const restoreAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const pointId = optStr(fd, "restorePointId");
+  const at = str(fd, "at") ? DateTime.fromISO(str(fd, "at"), { zone: "America/New_York" }).toJSDate() : null;
+  const r = await backups.restoreDatabase(actor, { at: pointId ? null : at, restorePointId: pointId, confirm: str(fd, "confirm") });
+  return `Restore started. The site may pause for a few seconds. Today's data was kept as "${r.preserveAs}" in Neon, so you can undo this.`;
 });
 
 export const settingAction = formAction(async (fd) => {

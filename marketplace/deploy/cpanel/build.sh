@@ -60,6 +60,9 @@ printf '<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModul
 cat > "$APP/package.json" <<'JSON'
 { "name": "coverageoncall", "private": true, "scripts": { "start": "node apps/web/server.js", "dbcheck": "node dbcheck.js" } }
 JSON
+# Which release is installed (Admin → Backups shows it; rollback = previous app folder).
+LATEST_MIGRATION=$(ls packages/db/prisma/migrations | grep -E '^[0-9]{4}_' | sort | tail -1)
+printf '{ "version": "%s", "builtAt": "%s", "latestMigration": "%s" }\n' "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$LATEST_MIGRATION" > "$APP/RELEASE.json"
 # Diagnostics: Setup Node.js App → "Run JS script" → dbcheck.
 cp deploy/cpanel/dbcheck.js "$APP/dbcheck.js"
 # Never ship local env files.

@@ -1,4 +1,5 @@
 import { purgeSpam } from "./spam";
+import { nightlyBackup } from "./backups";
 import { referralSweep } from "./referrals";
 import { timeclockSweep } from "./timeclock";
 import { prisma } from "@cm/db";
@@ -65,6 +66,8 @@ export const JOBS: Job[] = [
   // Time clock: close forgotten punch-outs, remind clinics, auto-approve timesheets.
   { name: "timeclockSweep", schedule: { everySeconds: 900 }, run: () => timeclockSweep() },
   { name: "referralSweep", schedule: { everySeconds: 3600 }, run: () => referralSweep() },
+  // Backups: encrypted export + Neon restore point + pruning, nightly at 3:10 ET.
+  { name: "dbBackup", schedule: { cron: "10 3 * * *", tz: "America/New_York" }, run: () => nightlyBackup(), leaseMinutes: 30, long: true },
   { name: "spamCleanup", schedule: { cron: "20 4 * * *", tz: "America/New_York" }, run: () => purgeSpam() },
   // Students: one state-aware credential follow-up when due (30/60/90 days after graduation, then every 60).
   { name: "preLicensureFollowups", schedule: { cron: "15 10 * * *", tz: "America/New_York" }, run: () => runPreLicensureFollowups() },

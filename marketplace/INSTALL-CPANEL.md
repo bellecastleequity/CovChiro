@@ -215,11 +215,20 @@ If coveragechiropractor.com is on the same cPanel:
 
 Each release comes as **`coverageoncall-update.zip`** (the code only) plus any **`update-NNN-….sql`** files that are new in that release. SQL files from earlier releases are never sent again.
 
+0. **Make a restore point:** Admin → **Backups & restore** → **Create restore point** (or **Back up now** if Neon isn't connected yet).
 1. **Stop the app:** Setup Node.js App → **Stop App**.
-2. **Replace the code:** in File Manager, open `coverageoncall.com` and delete only the **`app`** folder. Leave `node_modules`, `public` (it holds the `.htaccess` that points the domain at the app) and `uploads` (providers' files) alone. Upload `coverageoncall-update.zip` to your home folder and **Extract** it there; it replaces `app` and updates `node_modules` in place.
-3. **Update the database, if the release includes SQL files:** run each one in number order in Neon's SQL Editor. They're safe to run again if you aren't sure.
-4. **Start the app:** **Start App**, then check the site. Your environment variables are kept.
-5. **Clean up:** delete the uploaded zip from your home folder.
+2. **Keep the old version for rollback:** in File Manager, open `coverageoncall.com`, delete any old **`app-previous`** folder, then **rename `app` to `app-previous`**. If the release includes part 2, do the same for `node_modules` (→ `node_modules-previous`). Leave `public` and `uploads` alone.
+3. **Add the new code:** upload the zip(s) to your home folder and **Extract** them there.
+4. **Update the database, if the release includes SQL files:** run each one in number order in Neon's SQL Editor. They're safe to run again if you aren't sure.
+5. **Start the app:** **Start App**, then check the site. Your environment variables are kept.
+6. **Clean up:** delete the uploaded zips from your home folder.
+
+**Something wrong after an update?** Roll back the code: Stop App → rename `app` to `app-broken` and `app-previous` to `app` (same for `node_modules` if you swapped it) → Start App. Database updates only add tables and columns, so the previous code runs on the newer database. If data itself went wrong, rewind it in Admin → **Backups & restore** (or Neon console → Branches → main → **Restore**).
+
+### Backups
+
+- Every night (3:10 am ET) the whole database is exported, encrypted with `BACKUP_KEY` (or, if unset, a key made from `SESSION_SECRET`: keep a copy of that value somewhere safe) and kept in the `uploads` storage: 14 daily, 8 weekly, 12 monthly. Download them from Admin → Backups. To load one into a fresh database: `packages/db/scripts/restore-backup.ts` (instructions at the top of the file).
+- **Connect Neon** for restore points and one-click "restore to a time": Neon console → Account settings → **API keys** → create one; your project → Settings → copy the **Project ID**; add `NEON_API_KEY` and `NEON_PROJECT_ID` in Setup Node.js App → Environment variables, Save, Restart. How far back you can rewind depends on your Neon plan (Admin → Backups shows it).
 
 The full three-part package is only needed for a brand-new install (or if a release note says so, e.g. after a Prisma upgrade).
 

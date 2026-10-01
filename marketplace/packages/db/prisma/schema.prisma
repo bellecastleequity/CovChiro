@@ -2193,3 +2193,27 @@ model PayoutTransferLeg {
   @@index([transferId])
   @@index([paymentId])
 }
+
+/// Database backups: nightly encrypted exports (EXPORT), Neon restore points (SNAPSHOT) and restores (RESTORE).
+model BackupRun {
+  id           String    @id @default(cuid())
+  /// EXPORT | SNAPSHOT | RESTORE
+  kind         String
+  /// RUNNING | DONE | FAILED | DELETED
+  status       String    @default("RUNNING")
+  label        String?
+  /// daily | weekly | monthly | manual | before-restore
+  tier         String?
+  storageKey   String?
+  sizeBytes    Int?
+  rowCount     Int?
+  tables       Json?
+  neonBranchId String?
+  restoredTo   DateTime? @db.Timestamptz(3)
+  error        String?
+  createdById  String?
+  startedAt    DateTime  @default(now()) @db.Timestamptz(3)
+  finishedAt   DateTime? @db.Timestamptz(3)
+
+  @@index([kind, startedAt])
+}
