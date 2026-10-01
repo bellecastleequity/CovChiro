@@ -215,7 +215,7 @@ export function contactDecision(c: ContactContext): { ok: boolean; reason: strin
   if (c.automated && c.pausedOutbound) return no("automation_paused");
   if (c.doNotContact) return no("do_not_contact");
   if (!c.address.trim()) return no("no_address");
-  const hardSuppression = c.suppression && ["BOUNCE", "COMPLAINT", "DO_NOT_CONTACT", "SMS_STOP"].includes(c.suppression);
+  const hardSuppression = c.suppression !== null && ["BOUNCE", "COMPLAINT", "DO_NOT_CONTACT", "SMS_STOP"].includes(c.suppression);
   if (c.channel === "EMAIL") {
     if (c.emailStatus === "BOUNCED" || c.emailStatus === "COMPLAINED") return no(`email_${c.emailStatus.toLowerCase()}`);
     if (c.emailStatus === "UNSUBSCRIBED" && c.purpose !== "TRANSACTIONAL") return no("unsubscribed");
@@ -266,7 +266,7 @@ export function validateAiCopy(approved: string, body: string, subject: string):
   if (after.some((u) => !before.includes(u))) return "added_link";
   if (EMAIL.test(body) && !EMAIL.test(approved)) return "added_email";
   if (PHONE.test(body) && !PHONE.test(approved)) return "added_phone";
-  const money = (t: string) => t.match(/\$\s?\d[\d,]*/g) ?? [];
+  const money = (t: string): string[] => t.match(/\$\s?\d[\d,]*/g) ?? [];
   const known = money(approved);
   if (money(body).some((m) => !known.includes(m))) return "added_dollar_amount";
   if (PROHIBITED.test(body) || PROHIBITED.test(subject)) return "prohibited_claim";
