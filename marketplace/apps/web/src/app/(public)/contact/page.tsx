@@ -1,8 +1,9 @@
 import { brand } from "@cm/config";
 import { AskForm } from "@/components/site/ask-form";
 import { LeadForm } from "@/components/site/lead-form";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata = { title: "Contact" };
+export const metadata = pageMeta({ title: "Contact us", description: "Questions about fill-in coverage for your clinic or picking up shifts as a provider? Ask us here.", path: "/contact" });
 
 export default function Contact() {
   const b = brand();

@@ -3,7 +3,7 @@ import { growth } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Join as a provider" };
+export const metadata = { title: "Join as a provider", robots: { index: false, follow: true } };
 
 /** School / event recruiting link (/join/palmer). Students can register before licensure. */
 export default async function Join({ params, searchParams }: { params: Promise<{ code: string }>; searchParams: Promise<{ preview?: string }> }) {

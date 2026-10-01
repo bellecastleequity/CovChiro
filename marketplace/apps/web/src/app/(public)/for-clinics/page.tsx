@@ -3,8 +3,13 @@ import { prisma } from "@cm/db";
 import { getSettings } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
 import { money } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata = { title: "Pricing for clinics" };
+export const metadata = pageMeta({
+  title: "Fill-in chiropractor coverage pricing for clinics",
+  description: "Clear pricing for fill-in chiropractor coverage by region and shift length. Post the days you need covered and get matched with verified providers.",
+  path: "/for-clinics",
+});
 export const dynamic = "force-dynamic";
 
 export default async function ForClinics() {

@@ -1,3 +1,4 @@
+import { PRIVATE_META } from "@/lib/seo";
 import { prisma } from "@cm/db";
 import Link from "next/link";
 import { AGREEMENT_VERSION } from "@cm/services";
@@ -36,3 +37,6 @@ export default async function ClinicLayout({ children }: { children: React.React
     </AppShell>
   );
 }
+
+/** Never indexed. */
+export const metadata = PRIVATE_META;

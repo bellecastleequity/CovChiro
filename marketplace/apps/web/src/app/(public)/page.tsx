@@ -6,6 +6,17 @@ import { getSettings } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
 import { Alert } from "@/components/ui/misc";
 import { WelcomePopup } from "@/components/site/welcome-popup";
+import { pageMeta } from "@/lib/seo";
+
+export function generateMetadata() {
+  const b = brand();
+  return pageMeta({
+    title: `Locum & fill-in chiropractor coverage for clinics | ${b.name}`,
+    description: `Book licensed, verified fill-in chiropractors for vacations, sick days and seminars. Chiropractors: find per diem shifts near you.`,
+    path: "/",
+    absoluteTitle: true,
+  });
+}
 
 export const dynamic = "force-dynamic";
 

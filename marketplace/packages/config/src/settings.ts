@@ -60,6 +60,16 @@ function def<S extends z.ZodTypeAny>(d: SettingDef<S>): SettingDef<S> {
   return d;
 }
 
+/** Florida cities: prospecting discovery and the public city landing pages. */
+export const FL_CITIES = [
+      "Orlando", "Kissimmee", "Winter Park", "Sanford", "Oviedo", "Clermont", "Lake Mary", "Altamonte Springs", "Apopka", "Ocoee", "Winter Garden", "Daytona Beach", "Deltona", "Ocala", "The Villages", "Lakeland", "Winter Haven",
+      "Tampa", "Brandon", "Riverview", "Wesley Chapel", "Clearwater", "St Petersburg", "Largo", "Palm Harbor", "New Port Richey", "Sarasota", "Bradenton", "Venice",
+      "Jacksonville", "Jacksonville Beach", "Orange Park", "St Augustine", "Ponte Vedra Beach", "Fernandina Beach", "Gainesville", "Palm Coast",
+      "Miami", "Miami Beach", "Hialeah", "Coral Gables", "Doral", "Homestead", "Fort Lauderdale", "Hollywood", "Pembroke Pines", "Coral Springs", "Plantation", "Davie", "Boca Raton", "Delray Beach", "Boynton Beach", "West Palm Beach", "Jupiter", "Palm Beach Gardens", "Wellington", "Port St Lucie", "Stuart", "Vero Beach", "Melbourne", "Palm Bay",
+      "Fort Myers", "Cape Coral", "Naples", "Bonita Springs", "Port Charlotte", "Punta Gorda",
+      "Tallahassee", "Pensacola", "Panama City", "Destin", "Fort Walton Beach",
+    ];
+
 export const SETTINGS = {
   // ---------- matching (§7) ----------
   "matching.weights": def({
@@ -354,16 +364,30 @@ export const SETTINGS = {
     label: "Prospecting: cities searched in the NPI registry (launch state)",
     help: "Each city is searched for chiropractic practices; the list rotates, a few per run.",
     schema: z.array(z.string().min(2).max(60)).max(500),
-    default: [
-      "Orlando", "Kissimmee", "Winter Park", "Sanford", "Oviedo", "Clermont", "Lake Mary", "Altamonte Springs", "Apopka", "Ocoee", "Winter Garden", "Daytona Beach", "Deltona", "Ocala", "The Villages", "Lakeland", "Winter Haven",
-      "Tampa", "Brandon", "Riverview", "Wesley Chapel", "Clearwater", "St Petersburg", "Largo", "Palm Harbor", "New Port Richey", "Sarasota", "Bradenton", "Venice",
-      "Jacksonville", "Jacksonville Beach", "Orange Park", "St Augustine", "Ponte Vedra Beach", "Fernandina Beach", "Gainesville", "Palm Coast",
-      "Miami", "Miami Beach", "Hialeah", "Coral Gables", "Doral", "Homestead", "Fort Lauderdale", "Hollywood", "Pembroke Pines", "Coral Springs", "Plantation", "Davie", "Boca Raton", "Delray Beach", "Boynton Beach", "West Palm Beach", "Jupiter", "Palm Beach Gardens", "Wellington", "Port St Lucie", "Stuart", "Vero Beach", "Melbourne", "Palm Bay",
-      "Fort Myers", "Cape Coral", "Naples", "Bonita Springs", "Port Charlotte", "Punta Gorda",
-      "Tallahassee", "Pensacola", "Panama City", "Destin", "Fort Walton Beach",
-    ],
+    default: FL_CITIES,
     flag: "OWNER_DECISION",
   }),
+  // ---------- search engines (apps/web: sitemap, robots, landing pages, structured data) ----------
+  "seo.cities": def({
+    group: "SEO",
+    label: "Cities with landing pages, by state",
+    help: "Each live state gets a page per city for clinics (coverage) and for providers (jobs), all listed in the sitemap.",
+    schema: z.record(z.string().length(2), z.array(z.string().min(2).max(60)).max(300)),
+    default: { FL: FL_CITIES },
+    flag: "OWNER_DECISION",
+  }),
+  "seo.publicJobListings": def({
+    group: "SEO",
+    label: "Publish open shifts as public job listings (Google for Jobs)",
+    help: "City, date, hours and provider pay only: never the clinic's name or street address.",
+    schema: z.boolean(),
+    default: true,
+    flag: "OWNER_DECISION",
+  }),
+  "seo.localStatsMinimum": def({ group: "SEO", label: "Show local provider/practice counts on city pages from this number up", schema: z.number().int().min(1), default: 3, flag: null }),
+  "seo.googleSiteVerification": def({ group: "SEO", label: "Google Search Console verification code (content of the google-site-verification meta tag)", schema: z.string().max(200), default: "", flag: null }),
+  "seo.bingSiteVerification": def({ group: "SEO", label: "Bing Webmaster Tools verification code (msvalidate.01)", schema: z.string().max(200), default: "", flag: null }),
+  "seo.sameAs": def({ group: "SEO", label: "Official social profile URLs (structured data)", schema: z.array(z.string().url()).max(10), default: [], flag: null }),
   "growth.discoveryAreasPerRun": def({ group: "Growth", label: "Prospecting: cities searched per agent run", schema: z.number().int().min(0).max(50), default: 3, flag: null }),
   "growth.rediscoverDays": def({ group: "Growth", label: "Prospecting: re-search each city every N days", schema: z.number().int().min(1), default: 30, flag: null }),
   "growth.researchPerRun": def({ group: "Growth", label: "Prospecting: clinics researched on the web per agent run", schema: z.number().int().min(0).max(100), default: 8, flag: null }),

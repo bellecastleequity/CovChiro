@@ -3,12 +3,22 @@ import { US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
 import { LinkButton } from "@/components/ui/button";
 import { LeadForm } from "@/components/site/lead-form";
+import { slugify } from "@cm/core";
+import { breadcrumbLd, JsonLd, pageMeta, serviceLd } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const p = await prisma.profession.findUnique({ where: { slug: (await params).slug } });
-  return p ? { title: `${p.displayName} coverage` } : {};
+  if (!p) return {};
+  const prof = p.displayName.toLowerCase();
+  return pageMeta({
+    title: p.active ? `Locum & fill-in ${prof} coverage` : `${p.displayName} coverage (coming soon)`,
+    description: p.active
+      ? `Book licensed fill-in ${prof}s for vacations and sick days, or find per diem ${prof} shifts near you. Every license is verified for the clinic's state.`
+      : `${p.displayName} fill-in coverage is coming soon. Join the waitlist for clinics and ${prof}s.`,
+    path: `/${p.slug}`,
+  });
 }
 
 /** SEO landing page per profession (Addendum 01 §12). Inactive → waitlist. */
@@ -20,6 +30,12 @@ export default async function ProfessionPage({ params }: { params: Promise<{ slu
   const stateList = Object.entries(US_STATES).map(([code, name]) => ({ code, name }));
   return (
     <div className="container-page grid gap-12 py-16 lg:grid-cols-2">
+      <JsonLd
+        data={[
+          breadcrumbLd([{ name: "Home", path: "/" }, { name: `${p.displayName} coverage`, path: `/${p.slug}` }]),
+          ...(p.active ? [serviceLd({ name: `Locum ${p.displayName.toLowerCase()} coverage`, serviceType: `Locum ${p.displayName.toLowerCase()} staffing`, description: `Fill-in ${p.displayName.toLowerCase()}s with verified state licenses for clinics.`, path: `/${p.slug}`, areaServed: { state: states[0] ?? "US", stateName: states.map((s) => US_STATES[s]).join(", ") || "United States" } })] : []),
+        ]}
+      />
       <div>
         <div className="text-sm font-semibold uppercase tracking-wider text-brand-700">{p.displayName} coverage</div>
         <h1 className="mt-2 text-4xl font-semibold">
@@ -32,13 +48,26 @@ export default async function ProfessionPage({ params }: { params: Promise<{ slu
         </p>
         {p.active ? (
           <>
-            <p className="mt-4 text-sm text-slate-500">Available in: {states.map((s) => US_STATES[s]).join(", ") || "coming soon"}</p>
+            <p className="mt-4 text-sm text-slate-500">
+              Available in:{" "}
+              {states.length
+                ? states.map((s, i) => (
+                    <span key={s}>
+                      {i ? ", " : ""}
+                      <a href={`/${p.slug}/${slugify(US_STATES[s])}`} className="text-brand-700 hover:underline">{US_STATES[s]}</a>
+                    </span>
+                  ))
+                : "coming soon"}
+            </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <LinkButton href="/signup?role=clinic" size="lg">
                 Post a shift
               </LinkButton>
               <LinkButton href={`/signup?role=provider&profession=${p.code}`} variant="outline" size="lg">
                 Join as a {p.credentialSuffix}
+              </LinkButton>
+              <LinkButton href={states.length ? `/jobs/${p.slug}/${slugify(US_STATES[states[0]])}` : "/jobs"} variant="ghost" size="lg">
+                See open shifts
               </LinkButton>
             </div>
           </>

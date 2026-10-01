@@ -1,7 +1,8 @@
 import { US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata = { title: "Where we're available" };
+export const metadata = pageMeta({ title: "Where we're available", description: "States and professions where clinics can book licensed fill-in coverage today, and where we're opening next.", path: "/states" });
 export const dynamic = "force-dynamic";
 
 export default async function States() {

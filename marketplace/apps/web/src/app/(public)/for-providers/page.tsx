@@ -1,7 +1,12 @@
 import { Banknote, CalendarCheck, Car, ShieldCheck } from "lucide-react";
 import { LinkButton } from "@/components/ui/button";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata = { title: "For providers" };
+export const metadata = pageMeta({
+  title: "Per diem & locum chiropractor jobs",
+  description: "Pick up fill-in shifts at chiropractic clinics near you. Choose your days and drive radius, see pay up front, and get paid after every shift.",
+  path: "/for-providers",
+});
 
 export default function ForProviders() {
   return (

@@ -1,3 +1,4 @@
+import { PRIVATE_META } from "@/lib/seo";
 import { prisma } from "@cm/db";
 import { AGREEMENT_VERSION, feedback } from "@cm/services";
 import Link from "next/link";
@@ -42,3 +43,6 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     </AppShell>
   );
 }
+
+/** Never indexed. */
+export const metadata = PRIVATE_META;

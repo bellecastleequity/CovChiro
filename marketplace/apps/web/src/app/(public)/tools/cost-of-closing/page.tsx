@@ -1,11 +1,13 @@
 import { Suspense } from "react";
 import { LinkButton } from "@/components/ui/button";
+import { pageMeta } from "@/lib/seo";
 import { CostOfClosing } from "./calculator";
 
-export const metadata = {
-  title: "Cost of closing calculator",
+export const metadata = pageMeta({
+  title: "Cost of closing calculator for chiropractic clinics",
   description: "Compare what your office normally brings in on the days you're away with what temporary coverage would cost. An educational comparison, not a guarantee.",
-};
+  path: "/tools/cost-of-closing",
+});
 
 export default function CostOfClosingPage() {
   return (

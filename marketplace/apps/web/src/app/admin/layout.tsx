@@ -1,3 +1,4 @@
+import { PRIVATE_META } from "@/lib/seo";
 import { missingMigrations, prisma } from "@cm/db";
 import { emergency, hiring } from "@cm/services";
 import { Alert } from "@/components/ui/misc";
@@ -48,3 +49,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     </AppShell>
   );
 }
+
+/** Never indexed. */
+export const metadata = PRIVATE_META;

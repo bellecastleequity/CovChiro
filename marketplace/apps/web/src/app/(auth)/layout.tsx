@@ -1,3 +1,4 @@
+import { PRIVATE_META } from "@/lib/seo";
 import Link from "next/link";
 import { brand } from "@cm/config";
 import { Logo } from "@/components/site/header";
@@ -13,3 +14,6 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     </div>
   );
 }
+
+/** Never indexed. */
+export const metadata = PRIVATE_META;

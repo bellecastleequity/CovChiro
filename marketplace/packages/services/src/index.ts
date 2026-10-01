@@ -31,3 +31,4 @@ export * from "./agreements";
 export * as hiring from "./hiring";
 export { siteFaq } from "./faq";
 export * as growth from "./growth";
+export * as seo from "./seo";

@@ -1,4 +1,10 @@
-export const metadata = { title: "How it works" };
+import { pageMeta } from "@/lib/seo";
+
+export const metadata = pageMeta({
+  title: "How fill-in coverage works",
+  description: "How clinics book licensed fill-in providers and how providers find coverage shifts: post the day, review verified matches, confirm, and pay through the platform.",
+  path: "/how-it-works",
+});
 
 const CLINIC = [
   ["Post the day", "Choose the location, profession, date and hours. Pricing is shown instantly."],
