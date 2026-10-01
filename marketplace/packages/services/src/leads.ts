@@ -200,8 +200,12 @@ export async function runLeadDrip(now = new Date()) {
 }
 
 export async function unsubscribe(token: string) {
+  const { unsubscribeByToken, suppress } = await import("./growth/engine");
+  if (token.startsWith("g.")) return unsubscribeByToken(token);
   const lead = await prisma.lead.findUnique({ where: { unsubscribeToken: token } });
   if (!lead) return false;
+  // Growth outreach honors the same opt-out.
+  await suppress("EMAIL", lead.email, "UNSUBSCRIBE", "lead unsubscribe link");
   await prisma.lead.updateMany({ where: { email: lead.email, status: { in: ["NURTURING", "NEW", "CONTACTED"] } }, data: { status: "UNSUBSCRIBED", unsubscribedAt: new Date(), nextDripAt: null } });
   await prisma.leadActivity.create({ data: { leadId: lead.id, kind: "STATUS", body: "Unsubscribed via email link" } });
   return true;

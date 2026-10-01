@@ -626,6 +626,9 @@ export async function handleInboundSms(fromPhone: string, text: string): Promise
   const r = parseSmsReply(text);
   if (r.kind === "STOP") {
     if (user?.provider) await prisma.provider.update({ where: { id: user.provider.id }, data: { smsConsentAt: null } });
+    // Growth texts check this list before every send.
+    const { suppress } = await import("./growth/engine");
+    await suppress("SMS", fromPhone, "SMS_STOP", "inbound SMS");
     return `${b.name}: You're unsubscribed from texts. Reply START to resubscribe.`;
   }
   if (r.kind === "START") {
