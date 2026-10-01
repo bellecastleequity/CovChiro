@@ -6,6 +6,12 @@ Non-negotiables (see SPEC.md Section 2):
 - No PHI stored anywhere. No client-trusted payment amounts. Prices come only from the rate engine.
 - Any value marked OWNER DECISION in SPEC.md is a Setting, never hard-coded.
 
+Future expansion (docs/EXPANSION_PLAN.md — owner's saved plan, read it before any architecture work):
+- Live market is Chiropractic — Florida only. Do NOT activate other professions, specialties or states without the owner.
+- Build chiropractic first, architect for healthcare, expand on data: keep core objects profession-agnostic (profession × specialty × state × facility × credential rules), configurable, and behind activation flags — but never slow the Florida MVP for hypothetical verticals ("future-compatible, not overengineered").
+- Never hard-code chiropractic assumptions (provider = chiropractor, customer = chiropractic clinic, credential = chiropractic license, one global price) into core infrastructure.
+- AI never decides or overrides credential requirements. Nursing, advanced practice, pharmacy and physician locums each need a separate legal/business review before activation.
+
 Workflow:
 - Work one phase at a time (SPEC.md Section 19). Write tests first for anything in packages/core.
 - Run the licensure invariant suite before every commit.
