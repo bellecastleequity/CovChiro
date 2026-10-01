@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { track } from "@cm/services";
+import { growth, track } from "@cm/services";
 import { getSession } from "@/lib/session";
 
 const ALLOWED = new Set(["PAGE_VIEW", "CTA_CLICK"]);
@@ -11,6 +11,15 @@ export async function POST(req: NextRequest) {
     body = JSON.parse(await req.text());
   } catch {
     return new NextResponse(null, { status: 204 });
+  }
+  // Growth: visits from our own emailed links (?c=<prospect token>) → lead-scoring signal; the token is kept
+  // in a cookie so a later signup links the new account to that prospect.
+  if (body.type === "PROSPECT" && typeof body.c === "string" && /^[a-f0-9]{40}$/.test(body.c)) {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined;
+    await growth.trackProspect(body.c, String(body.signal ?? "site_visit"), { days: typeof body.days === "number" ? body.days : undefined }, ip).catch(() => undefined);
+    const res = new NextResponse(null, { status: 204 });
+    res.cookies.set("cm_pt", body.c, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 30 * 86_400 });
+    return res;
   }
   if (!ALLOWED.has(body.type)) return new NextResponse(null, { status: 204 });
   if (/bot|crawl|spider|slurp|preview/i.test(req.headers.get("user-agent") ?? "")) return new NextResponse(null, { status: 204 });

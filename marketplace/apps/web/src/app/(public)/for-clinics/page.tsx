@@ -79,9 +79,12 @@ export default async function ForClinics() {
           </dl>
         </div>
       </div>
-      <div className="mt-10">
+      <div className="mt-10 flex flex-wrap gap-3">
         <LinkButton href="/signup?role=clinic" size="lg">
           Create a clinic account
+        </LinkButton>
+        <LinkButton href="/tools/cost-of-closing" size="lg" variant="outline">
+          Cost of closing calculator
         </LinkButton>
       </div>
     </div>

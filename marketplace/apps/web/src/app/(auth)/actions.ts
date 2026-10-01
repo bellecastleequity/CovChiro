@@ -40,6 +40,10 @@ export const signupAction = formAction(async (fd) => {
       organization: str(fd, "organization") || undefined,
       professionCodes: fd.getAll("professions").map(String),
       acceptTerms: fd.get("terms") === "on" ? true : (false as never),
+      campaign: str(fd, "campaign") || null,
+      graduationDate: str(fd, "graduation") || null,
+      isStudent: str(fd, "stage") === "student",
+      prospectToken: str(fd, "c") || (await cookies()).get("cm_pt")?.value || null,
     },
     { ip: await ip(), visitorId: (await cookies()).get("cm_vid")?.value ?? null },
   );

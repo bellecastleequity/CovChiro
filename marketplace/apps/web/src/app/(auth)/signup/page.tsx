@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { prisma } from "@cm/db";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
-import { Checkbox, Field, Input } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { signupAction } from "../actions";
 
 export const metadata = { title: "Create your account" };
 
-export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string }> }) {
-  const { role: r, code, profession } = await searchParams;
+export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string; campaign?: string; c?: string }> }) {
+  const { role: r, code, profession, campaign, c } = await searchParams;
   const role = r === "provider" ? "provider" : "clinic";
   const professions = await prisma.profession.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
   return (
@@ -25,6 +25,8 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
       <ActionForm action={signupAction} className="mt-6 space-y-4" successMessage={false}>
         <input type="hidden" name="role" value={role} />
         <input type="hidden" name="code" value={code ?? ""} />
+        <input type="hidden" name="campaign" value={campaign ?? ""} />
+        <input type="hidden" name="c" value={c && /^[a-f0-9]{40}$/.test(c) ? c : ""} />
         <Field label="Your name" htmlFor="name">
           <Input id="name" name="name" autoComplete="name" required />
         </Field>
@@ -43,6 +45,20 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
             <p className="mt-1 text-xs text-slate-500">More professions are coming soon — you can add them later.</p>
           </fieldset>
         )}
+        {role === "provider" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Where are you today?" htmlFor="stage">
+              <Select id="stage" name="stage" defaultValue="licensed">
+                <option value="student">Still in school</option>
+                <option value="graduate">Graduated, waiting on my license</option>
+                <option value="licensed">Licensed</option>
+              </Select>
+            </Field>
+            <Field label="Graduation (month)" htmlFor="graduation" hint="Students can register before licensure.">
+              <Input id="graduation" name="graduation" type="month" />
+            </Field>
+          </div>
+        ) : null}
         <Field label="Email" htmlFor="email">
           <Input id="email" name="email" type="email" autoComplete="email" required />
         </Field>

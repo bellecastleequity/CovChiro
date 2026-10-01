@@ -1,4 +1,5 @@
 import { brand } from "@cm/config";
+import { AskForm } from "@/components/site/ask-form";
 import { LeadForm } from "@/components/site/lead-form";
 
 export const metadata = { title: "Contact" };
@@ -14,8 +15,15 @@ export default function Contact() {
           Or email <a className="font-medium text-brand-700" href={`mailto:${b.supportEmail}`}>{b.supportEmail}</a>
         </p>
       </div>
-      <div className="rounded-2xl border border-slate-200 p-6 shadow-card">
-        <LeadForm source="contact" cta="Send message" />
+      <div className="space-y-6">
+        <div className="rounded-2xl border border-slate-200 p-6 shadow-card">
+          <h2 className="mb-1 font-semibold">Quick question?</h2>
+          <p className="mb-4 text-sm text-slate-500">Get an instant answer from our published policies, or a person will reply by email.</p>
+          <AskForm />
+        </div>
+        <div className="rounded-2xl border border-slate-200 p-6 shadow-card">
+          <LeadForm source="contact" cta="Send message" />
+        </div>
       </div>
     </div>
   );
