@@ -71,6 +71,27 @@ export const STATUS_TONE: Record<string, "gray" | "green" | "amber" | "red" | "b
   LICENSE_LAPSED: "red",
   NO_SHOW: "red",
   DISPUTED: "amber",
+  // growth
+  SENT: "green",
+  APPROVED: "green",
+  BLOCKED: "red",
+  PENDING_APPROVAL: "amber",
+  RECEIVED: "blue",
+  LOGGED: "gray",
+  RESOLVED: "gray",
+  PROSPECT: "gray",
+  CONTACTABLE: "gray",
+  OUTREACH_STARTED: "blue",
+  ENGAGED: "amber",
+  INTERESTED: "amber",
+  ACCOUNT_CREATED: "brand",
+  COVERAGE_REQUESTED: "amber",
+  FIRST_SHIFT_BOOKED: "green",
+  FIRST_SHIFT_COMPLETED: "green",
+  REPEAT_CLINIC: "green",
+  DORMANT: "gray",
+  NOT_INTERESTED: "gray",
+  DO_NOT_CONTACT: "red",
 };
 
 export function humanize(s: string) {
