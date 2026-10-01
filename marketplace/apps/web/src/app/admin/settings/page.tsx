@@ -5,7 +5,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Select, Textarea } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/misc";
 import { requireActor } from "@/lib/session";
-import { settingAction, testEmailAction } from "../actions";
+import { settingAction, testEmailAction, testTextAction } from "../actions";
 
 export const metadata = { title: "Settings" };
 
@@ -23,6 +23,13 @@ export default async function Settings() {
           <ActionForm action={testEmailAction} className="flex flex-wrap items-center gap-2 px-5 pb-5">
             <Input name="to" type="email" required defaultValue={user.email} className="w-72" />
             <SubmitButton size="sm" variant="outline">Send test email</SubmitButton>
+          </ActionForm>
+        </Card>
+        <Card>
+          <CardHeader title="Text message check" description="Sends a test text through Twilio, waits for the delivery result, and explains any Twilio error in plain words (missing keys, trial account, A2P 10DLC / toll-free registration, wrong sender…)." />
+          <ActionForm action={testTextAction} className="flex flex-wrap items-center gap-2 px-5 pb-5">
+            <Input name="to" type="tel" required defaultValue={user.phone ?? ""} placeholder="Your mobile number" className="w-72" />
+            <SubmitButton size="sm" variant="outline" pendingText="Sending… (up to 15 seconds)">Send test text</SubmitButton>
           </ActionForm>
         </Card>
         {groups.map((g) => (

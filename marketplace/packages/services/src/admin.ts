@@ -1,7 +1,7 @@
-import { brand, validateSetting, SETTINGS } from "@cm/config";
+import { brand, env, validateSetting, SETTINGS } from "@cm/config";
 import { DomainError, NATIONAL_CREDENTIAL, nextReverifyAt, US_STATES } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
-import { mailProvider } from "@cm/integrations";
+import { mailProvider, smsProvider, TWILIO_ERROR_HELP } from "@cm/integrations";
 import { audit, getSettings, invalidateSettings, requireAdmin, type Actor } from "./context";
 import { notify, sendEmail } from "./notify";
 import { recomputeProviderStatus } from "./onboarding";
@@ -166,6 +166,43 @@ export async function updateStateConfig(
     affected = await prisma.assignment.findMany({ where: { state, status: { in: ["CONFIRMED", "IN_PROGRESS"] } }, select: { id: true } });
   }
   return { updated, confirmedAssignmentsToReview: affected.map((a) => a.id) };
+}
+
+/**
+ * Sends a test text and reports exactly what happened: missing settings,
+ * Twilio's rejection, or — since Twilio accepts first and delivers later —
+ * the delivery result a few seconds on (where registration problems show up).
+ */
+export async function sendTestText(actor: Actor, toRaw: string) {
+  requireAdmin(actor);
+  const e = env();
+  const missing = (["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_MESSAGING_SERVICE_SID"] as const).filter((k) => !e[k]);
+  if (missing.length) throw new DomainError("VALIDATION", `Texting is off: ${missing.join(", ")} ${missing.length === 1 ? "isn't" : "aren't"} set. Add ${missing.length === 1 ? "it" : "them"} in cPanel → Setup Node.js App → Environment variables, then restart the app.`);
+  const shape: string[] = [];
+  if (!e.TWILIO_ACCOUNT_SID!.startsWith("AC")) shape.push("TWILIO_ACCOUNT_SID should start with AC");
+  if (!e.TWILIO_MESSAGING_SERVICE_SID!.startsWith("MG")) shape.push("TWILIO_MESSAGING_SERVICE_SID should start with MG (a Messaging Service SID, not a phone number)");
+  if (shape.length) throw new DomainError("VALIDATION", `Check your Twilio settings: ${shape.join("; ")}.`);
+  const digits = toRaw.replace(/\D/g, "");
+  const to = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : null;
+  if (!to) throw new DomainError("VALIDATION", "Enter a 10-digit US mobile number.");
+  const sms = smsProvider();
+  if (!(await sms.send(to, `${brand().name} test text — texting works.`))) {
+    const help = sms.lastErrorCode ? TWILIO_ERROR_HELP[sms.lastErrorCode] : null;
+    throw new DomainError("VALIDATION", `${sms.lastError ?? "Twilio rejected the text."}${help ? ` — ${help}` : ""}`);
+  }
+  // Accepted; now watch delivery for up to ~12 seconds.
+  let last: Awaited<ReturnType<NonNullable<typeof sms.status>>> = null;
+  for (let i = 0; i < 6 && sms.lastId && sms.status; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    last = await sms.status(sms.lastId);
+    if (last && ["delivered", "undelivered", "failed"].includes(last.status)) break;
+  }
+  if (last?.status === "delivered") return `Delivered to ${to}. Texting works.`;
+  if (last && (last.status === "undelivered" || last.status === "failed")) {
+    const help = last.errorCode ? TWILIO_ERROR_HELP[last.errorCode] : null;
+    throw new DomainError("VALIDATION", `Twilio accepted the text but it was ${last.status}${last.errorCode ? ` (error ${last.errorCode})` : ""}. ${help ?? last.errorMessage ?? ""}`.trim());
+  }
+  return `Twilio accepted the text (status: ${last?.status ?? "queued"}). If it doesn't arrive within a minute, open Twilio Console → Monitor → Logs → Messaging to see why — or run this check again.`;
 }
 
 /** Sends a test email and reports exactly what the email service said. */

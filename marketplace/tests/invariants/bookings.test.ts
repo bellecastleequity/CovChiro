@@ -11,9 +11,10 @@ const actorOf = async (providerId: string) => {
 
 async function booking(n: number, firstDay = 30) {
   const clinic = await makeClinic();
+  const first = futureWeekday(firstDay);
   const days = Array.from({ length: n }, (_, i) => {
-    const { startsAt, endsAt } = futureWeekday(firstDay + i * 7); // a week apart, always weekdays
-    return { locationId: clinic.location.id, professionCode: "DC", startsAt, endsAt };
+    const shift = i * 7 * 86_400_000; // a week apart, same weekday
+    return { locationId: clinic.location.id, professionCode: "DC", startsAt: new Date(+first.startsAt + shift), endsAt: new Date(+first.endsAt + shift) };
   });
   const r = await bookings.createMultiDay(clinic.actor, days, { post: true });
   return { clinic, ...r };

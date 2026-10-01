@@ -16,7 +16,12 @@ const me = () => requireActor("admin");
 const formAction: typeof baseFormAction = (fn) => baseFormAction(fn, { technical: true });
 const rv = (p: string) => revalidatePath(p, "layout");
 
-// ---------- email ----------
+// ---------- email & texts ----------
+export const testTextAction = formAction(async (fd) => {
+  const { actor } = await me();
+  return admin.sendTestText(actor, str(fd, "to"));
+});
+
 export const testEmailAction = formAction(async (fd) => {
   const { actor } = await me();
   return admin.sendTestEmail(actor, str(fd, "to"));

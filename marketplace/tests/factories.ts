@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { prisma, type LicenseStatus } from "@cm/db";
+import { isFederalHoliday } from "@cm/core";
 import type { Actor } from "@cm/services";
 
 /** Test data builders. Every provider/clinic is unique per call. */
@@ -12,6 +13,8 @@ export function futureWeekday(days: number, startHourUtc = 13, hours = 8) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + days);
   while (d.getUTCDay() !== 3) d.setUTCDate(d.getUTCDate() + 1);
+  // Never a federal holiday: the holiday premium would change every price assertion.
+  while (isFederalHoliday(d.toISOString().slice(0, 10))) d.setUTCDate(d.getUTCDate() + 7);
   d.setUTCHours(startHourUtc, 0, 0, 0);
   return { startsAt: d, endsAt: new Date(+d + hours * 3_600_000) };
 }
