@@ -22,7 +22,12 @@ import { autoDraftSweep } from "./blog";
  * advisory lock inside the service layer.
  */
 export type Schedule = { everySeconds: number } | { cron: string; tz: string };
-export type Job = { name: string; schedule: Schedule; run: () => Promise<unknown> };
+/**
+ * leaseMinutes: while a run holds its lease, another tick skips the job instead of starting a
+ * second copy (slow AI work under a once-a-minute cron would otherwise pile up processes).
+ * long: on the external cron, the request returns without waiting; the run finishes in the background.
+ */
+export type Job = { name: string; schedule: Schedule; run: () => Promise<unknown>; leaseMinutes?: number; long?: boolean };
 
 async function forActiveProviders(fn: (id: string) => Promise<unknown>) {
   const ids = await prisma.provider.findMany({ where: { status: "ACTIVE" }, select: { id: true } });
@@ -55,15 +60,15 @@ export const JOBS: Job[] = [
   // Students: one state-aware credential follow-up when due (30/60/90 days after graduation, then every 60).
   { name: "preLicensureFollowups", schedule: { cron: "15 10 * * *", tz: "America/New_York" }, run: () => runPreLicensureFollowups() },
   // Growth agents (services/src/growth): event-driven sweeps; nothing calls AI unless something is due.
-  { name: "growthAgents", schedule: { everySeconds: 900 }, run: () => growthTick() },
+  { name: "growthAgents", schedule: { everySeconds: 900 }, run: () => growthTick(), leaseMinutes: 20, long: true },
   // Automatic clinic prospecting: NPI registry discovery + AI web research (budget-capped, ~2 min per run max).
-  { name: "growthProspecting", schedule: { everySeconds: 600 }, run: () => prospectingTick() },
+  { name: "growthProspecting", schedule: { everySeconds: 600 }, run: () => prospectingTick(), leaseMinutes: 15, long: true },
   // Supply Gap agent: open shifts with no eligible provider + every market's supply status.
-  { name: "growthSupplyGaps", schedule: { everySeconds: 3600 }, run: async () => ({ shifts: await supplyGapSweep(), markets: await marketSupplySweep() }) },
+  { name: "growthSupplyGaps", schedule: { everySeconds: 3600 }, run: async () => ({ shifts: await supplyGapSweep(), markets: await marketSupplySweep() }), leaseMinutes: 15, long: true },
   // Blog: AI writes up to blog.autoDraftsPerWeek drafts for review (never publishes).
-  { name: "blogAutoDraft", schedule: { cron: "40 9 * * *", tz: "America/New_York" }, run: () => autoDraftSweep() },
+  { name: "blogAutoDraft", schedule: { cron: "40 9 * * *", tz: "America/New_York" }, run: () => autoDraftSweep(), leaseMinutes: 15, long: true },
   // Daily schedule slot; the briefing itself only goes out on Mondays.
-  { name: "growthWeeklyBriefing", schedule: { cron: "0 8 * * *", tz: "America/New_York" }, run: () => (DateTime.now().setZone("America/New_York").weekday === 1 ? weeklyBriefing() : Promise.resolve("not Monday")) },
+  { name: "growthWeeklyBriefing", schedule: { cron: "0 8 * * *", tz: "America/New_York" }, run: () => (DateTime.now().setZone("America/New_York").weekday === 1 ? weeklyBriefing() : Promise.resolve("not Monday")), leaseMinutes: 15, long: true },
   // Quality.
   { name: "ratingsReveal", schedule: { everySeconds: 3600 }, run: () => revealExpiredRatings() },
   { name: "statsRecompute", schedule: { everySeconds: 3600 }, run: () => forActiveProviders((id) => recomputeStats(id)) },
@@ -88,17 +93,53 @@ export function jobsDueAt(now: Date): Job[] {
   });
 }
 
-/** Run jobs one after another; one failure never stops the rest. */
-export async function runJobs(jobs: Job[]) {
-  const out: { job: string; ok: boolean; ms: number; result?: unknown; error?: string }[] = [];
+const leaseKey = (name: string) => `job.lease.${name}`;
+
+/** Take a job's run lease (false = another run still holds it). Expired leases are taken over. */
+export async function acquireLease(name: string, minutes: number): Promise<boolean> {
+  const until = new Date(Date.now() + minutes * 60_000).toISOString();
+  const rows = await prisma.$queryRawUnsafe<{ key: string }[]>(
+    `INSERT INTO "Setting" ("key", "value", "updatedAt") VALUES ($1, jsonb_build_object('until', $2::text), now())
+     ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value", "updatedAt" = now()
+     WHERE ("Setting"."value"->>'until')::timestamptz < now()
+     RETURNING "key"::text AS key`,
+    leaseKey(name), until,
+  );
+  return rows.length === 1;
+}
+
+export async function releaseLease(name: string) {
+  await prisma.setting.deleteMany({ where: { key: leaseKey(name) } });
+}
+
+/**
+ * Run jobs one after another; one failure never stops the rest. A job whose previous run is
+ * still going is skipped. With `background`, long jobs are started and not awaited (cron ticks).
+ */
+export async function runJobs(jobs: Job[], opts: { background?: boolean } = {}) {
+  const out: { job: string; ok: boolean; ms: number; result?: unknown; error?: string; skipped?: string; started?: boolean }[] = [];
   for (const j of jobs) {
     const t = Date.now();
-    try {
-      const result = await j.run();
-      out.push({ job: j.name, ok: true, ms: Date.now() - t, result });
-    } catch (e) {
-      out.push({ job: j.name, ok: false, ms: Date.now() - t, error: (e as Error).message });
+    if (!(await acquireLease(j.name, j.leaseMinutes ?? 5).catch(() => true))) {
+      out.push({ job: j.name, ok: true, ms: 0, skipped: "still running" });
+      continue;
     }
+    const exec = async () => {
+      try {
+        return { ok: true as const, result: await j.run() };
+      } catch (e) {
+        return { ok: false as const, error: (e as Error).message };
+      } finally {
+        await releaseLease(j.name).catch(() => undefined);
+      }
+    };
+    if (opts.background && j.long) {
+      void exec().then((r) => { if (!r.ok) console.error(JSON.stringify({ msg: "job.failed", job: j.name, error: r.error })); });
+      out.push({ job: j.name, ok: true, ms: 0, started: true });
+      continue;
+    }
+    const r = await exec();
+    out.push({ job: j.name, ok: r.ok, ms: Date.now() - t, ...(r.ok ? { result: r.result } : { error: r.error }) });
   }
   return out;
 }

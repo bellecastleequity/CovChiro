@@ -71,4 +71,5 @@ Precedence: Addendum 02 > Addendum 01 > SPEC.md.
 - All confirmations go through the SPEC.md 7.8 transaction under a per-shift advisory lock.
 - All dispatch numbers are Settings. Use fake timers in dispatch tests.
 - Clinic/admin invitations (non-dispatch offers) are rank-protected as well: accept → ACCEPTED_PENDING, confirmed by settleInvites once no higher-match invitation is still open.
+- Job runs take a lease (Setting job.lease.<name>, acquireLease/releaseLease in jobs.ts): a tick skips a job whose previous run is still going. Jobs marked long (Growth agents, prospecting, supply gaps, blog drafts, weekly briefing) are started without awaiting on /api/cron (runJobs background mode) so cron requests return fast and Passenger doesn't spawn extra app processes on shared hosting.
 - Background work lives in packages/services/src/jobs.ts as idempotent sweeps, driven by apps/worker (BullMQ, or in-process timers without REDIS_URL) or by an external once-a-minute tick to /api/cron (cPanel hosting; see INSTALL-CPANEL.md).

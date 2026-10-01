@@ -160,6 +160,8 @@ cPanel → **Cron Jobs**:
 - **Every 5, 15 or 60 minutes:** completions, payouts, lead emails and stats.
 - **Nightly, 2:00 AM Eastern:** the credential sweep. The timing is computed in Eastern time, so your server's time zone doesn't matter.
 
+**If the site freezes with "cagefs_enter: Unable to fork" / 500 errors:** the hosting account hit its process or memory limit (cPanel → Resource Usage shows the faults). Disable the cron job (put `#` in front of the command), wait 5–10 minutes for running requests to finish, then restart the app in **Setup Node.js App**. If the Node.js page won't load, rename the `app` folder in File Manager for a few minutes (the app can't start without it), rename it back and restart; or ask Namecheap support to kill your account's processes. Background AI jobs (Growth agents, prospecting research, blog drafts) run without holding the cron request open, and a job that's still running is skipped by the next tick, so ticks don't pile up.
+
 ## Step 9 — Connect Stripe, Dropbox Sign and Twilio
 
 - **Stripe:**

@@ -7,7 +7,7 @@ import { jobByName, jobsDueAt, runJobs } from "@cm/services";
  * External once-a-minute tick for hosts without an always-on worker (cPanel
  * cron, Cloud Scheduler). Runs whatever background sweeps are due now; every
  * sweep is idempotent, so a duplicate or missed tick is harmless.
- *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron
+ *   curl -fsS --max-time 50 -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron
  * `?jobs=a,b` runs specific jobs instead.
  */
 export const dynamic = "force-dynamic";
@@ -25,7 +25,8 @@ async function handle(req: NextRequest) {
   if (!authorized(req, secret)) return new NextResponse("Unauthorized", { status: 401 });
   const names = req.nextUrl.searchParams.get("jobs");
   const jobs = names ? names.split(",").map((n) => jobByName.get(n.trim())).filter((j) => !!j) : jobsDueAt(new Date());
-  const results = await runJobs(jobs);
+  // Slow AI jobs run in the background so the request returns quickly; a job still running is skipped.
+  const results = await runJobs(jobs, { background: true });
   const failed = results.filter((r) => !r.ok);
   if (failed.length) console.error(JSON.stringify({ msg: "cron.failed", failed }));
   return NextResponse.json({ ran: results.length, failed: failed.length, results }, { status: failed.length ? 500 : 200 });

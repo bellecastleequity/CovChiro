@@ -26,7 +26,7 @@ export * as standing from "./standing";
 export * as dispatch from "./dispatch";
 export * as oncall from "./oncall";
 export { badgesFor, providerPublicProfile } from "./profiles";
-export { JOBS, jobByName, jobsDueAt, runJobs, type Job, type Schedule } from "./jobs";
+export { JOBS, acquireLease, jobByName, jobsDueAt, releaseLease, runJobs, type Job, type Schedule } from "./jobs";
 export * from "./agreements";
 export * as hiring from "./hiring";
 export * as prelicensure from "./prelicensure";
