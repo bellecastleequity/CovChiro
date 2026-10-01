@@ -158,10 +158,15 @@ export async function updateProviderProfile(actor: Actor, raw: z.input<typeof Pr
     if (!r.nameMatches) await prisma.adminTask.create({ data: { kind: "NPI_MISMATCH", title: `NPI name mismatch: ${input.legalName} vs ${r.registryName}`, entityType: "Provider", entityId: providerId } });
   }
   const thisYear = new Date().getFullYear();
-  if (input.graduationYear && input.graduationYear > thisYear) throw new DomainError("VALIDATION", "Your graduation year can't be in the future.");
   const claimed = Math.max(0, ...Object.values(input.yearsInPractice ?? {}));
+  // Students (pre-licensure path) have an expected graduation in the future; nobody else does.
+  if (input.graduationYear && input.graduationYear > thisYear) {
+    const me = await prisma.provider.findUniqueOrThrow({ where: { id: providerId }, select: { preLicensure: true } });
+    if (!me.preLicensure) throw new DomainError("VALIDATION", "Your graduation year can't be in the future.");
+    if (claimed > 0) throw new DomainError("VALIDATION", "Years practicing should be 0 until you've graduated.");
+  }
   if (claimed > 0 && !input.graduationYear) throw new DomainError("VALIDATION", "Add your graduation year so we can confirm your years of experience.");
-  if (input.graduationYear && claimed > thisYear - input.graduationYear) {
+  if (input.graduationYear && claimed > 0 && claimed > thisYear - input.graduationYear) {
     throw new DomainError("VALIDATION", `Years practicing can't be more than ${thisYear - input.graduationYear} — the years since you graduated in ${input.graduationYear}.`);
   }
   if (input.bio && scanContactInfo(input.bio).found) throw new DomainError("VALIDATION", "Please remove phone numbers, emails, links and social handles from your bio. Clinics book you through the platform.");

@@ -56,7 +56,14 @@ export default async function Profile() {
                 </Select>
               </Field>
               <Field label="School"><Input name="school" defaultValue={p.school ?? ""} /></Field>
-              <Field label="Graduation year" hint="Years practicing can't be more than the years since you graduated."><Input name="graduationYear" type="number" min={1950} max={new Date().getFullYear()} defaultValue={p.graduationYear ?? ""} /></Field>
+              {p.preLicensure && p.graduationDate ? (
+                <Field label="Graduation" hint="Set in the student section below.">
+                  <input type="hidden" name="graduationYear" value={p.graduationYear ?? ""} />
+                  <p className="py-2 text-sm text-slate-700">{p.graduationDate.toLocaleDateString("en-US", { timeZone: "UTC", month: "long", day: "numeric", year: "numeric" })}{+p.graduationDate > Date.now() ? " (expected)" : ""}</p>
+                </Field>
+              ) : (
+                <Field label="Graduation year" hint="Years practicing can't be more than the years since you graduated."><Input name="graduationYear" type="number" min={1950} max={new Date().getFullYear()} defaultValue={p.graduationYear ?? ""} /></Field>
+              )}
               <Field label="Languages (comma-separated)"><Input name="languages" defaultValue={p.languages.join(", ")} /></Field>
               <Field label="EHR systems you know"><Input name="ehrSystems" defaultValue={p.ehrSystems.join(", ")} /></Field>
               <Field label="About me" className="sm:col-span-2" hint="Your approach, techniques, the kinds of practices you love covering."><Textarea name="bio" defaultValue={p.bio ?? ""} maxLength={1500} required /></Field>
