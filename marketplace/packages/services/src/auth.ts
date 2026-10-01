@@ -7,6 +7,7 @@ import { DomainError } from "@cm/core";
 import { prisma, seedBase, type Prisma, type User } from "@cm/db";
 import { audit, getSettings, SYSTEM, type Actor } from "./context";
 import { notifyAdmins, sendEmail } from "./notify";
+import * as growthPublic from "./growth/public";
 import { onUserSignup } from "./leads";
 import { track } from "./analytics";
 import { AttributionInput, attributionFields, StudentInput, studentFields } from "./prelicensure";
@@ -48,6 +49,11 @@ export const SignupInput = z.object({
   student: StudentInput.optional(),
   attribution: AttributionInput.optional(),
   acceptTerms: z.literal(true, { message: "Please accept the terms to continue." }),
+  /** Growth attribution: /join/<campaign> link, pre-licensure details, or a prospect's emailed-link token. */
+  campaign: z.string().trim().max(60).optional().nullable(),
+  graduationDate: z.string().trim().max(10).optional().nullable(),
+  isStudent: z.boolean().optional(),
+  prospectToken: z.string().trim().max(60).optional().nullable(),
 });
 
 export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: string; visitorId?: string | null } = {}) {
@@ -65,12 +71,15 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
   const passwordHash = await hashPassword(input.password);
   let adminLink = "/admin";
   let details: string[] = [];
+  let clinicOrgId: string | null = null;
+  let providerId: string | null = null;
   const user = await prisma.$transaction(async (db) => {
     if (input.role === "clinic") {
       const org = input.organization?.trim() || `${input.name}'s clinic`;
       const u = await db.user.create({ data: { email: input.email, name: input.name, passwordHash, role: "CLINIC_OWNER" } });
       const c = await db.clinicOrg.create({ data: { legalName: org, displayName: org, billingEmail: input.email, members: { create: { userId: u.id, role: "CLINIC_OWNER" } } } });
       adminLink = `/admin/clinics/${c.id}`;
+      clinicOrgId = c.id;
       details = [`Clinic: ${org}`];
       return u;
     }
@@ -89,12 +98,26 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
       } as Prisma.ProviderUncheckedCreateInput,
     });
     adminLink = `/admin/providers/${p.id}`;
+    providerId = p.id;
     details = [`Profession: ${professions.map((x) => x.displayName).join(", ")}`, ...(input.student ? [`Student / not yet licensed — graduating ${input.student.graduationDate.toISOString().slice(0, 10)}, ${input.student.school}`] : [])];
     return u;
   });
   await audit(prisma, { userId: user.id, role: user.role }, "user.signup", "User", user.id, null, { role: user.role });
   await sendVerificationEmail(user);
   await onUserSignup(user.id, user.email);
+  try {
+    // The student path (input.student) is the source of truth; Growth only records attribution from it.
+    if (providerId) {
+      await growthPublic.onProviderSignup(providerId, {
+        campaign: input.campaign ?? input.attribution?.campaign ?? null,
+        graduationDate: input.student ? input.student.graduationDate.toISOString().slice(0, 10) : input.graduationDate,
+        isStudent: !!input.student || !!input.isStudent,
+      });
+    }
+    if (clinicOrgId) await growthPublic.onClinicSignup(clinicOrgId, input.prospectToken);
+  } catch (e) {
+    console.error("growth signup attribution failed", e);
+  }
   // Let the owner know about every new account.
   await notifyAdmins(prisma, {
     template: "admin_new_signup",

@@ -211,83 +211,92 @@ model Provider {
   headline                 String?
   linkedinUrl              String?
   /// Offers & On Call (Addendum 02). Quiet hours are minutes from local midnight in homeTimeZone.
-  quietHoursStart          Int                      @default(1260)
-  quietHoursEnd            Int                      @default(360)
-  urgentDuringQuietHours   Boolean                  @default(false)
-  snoozedUntil             DateTime?                @db.Timestamptz(3)
-  consecutiveIgnoredOffers Int                      @default(0)
+  quietHoursStart          Int       @default(1260)
+  quietHoursEnd            Int       @default(360)
+  urgentDuringQuietHours   Boolean   @default(false)
+  snoozedUntil             DateTime? @db.Timestamptz(3)
+  consecutiveIgnoredOffers Int       @default(0)
   oncallPausedReason       String?
-  smsConsentAt             DateTime?                @db.Timestamptz(3)
+  smsConsentAt             DateTime? @db.Timestamptz(3)
 
   /// Pre-licensure (students & new graduates) — opt-in via the "not licensed
   /// yet" toggle. Display, nurture and reporting ONLY: eligibility (INV-1/3)
   /// never reads any of these fields.
-  preLicensure             Boolean                  @default(false)
-  preLicensureSince        DateTime?                @db.Timestamptz(3)
+  preLicensure         Boolean                  @default(false)
+  preLicensureSince    DateTime?                @db.Timestamptz(3)
   /// Set when the first license is verified and the student flag turns off.
-  graduatedOutAt           DateTime?                @db.Timestamptz(3)
+  graduatedOutAt       DateTime?                @db.Timestamptz(3)
   /// Graduation or expected graduation date (graduationYear is kept in step).
-  graduationDate           DateTime?                @db.Date
+  graduationDate       DateTime?                @db.Date
   /// no | yes — has applied to the licensing board.
-  licensureApplied         String?
+  licensureApplied     String?
   /// 0-1 | 1-3 | 3-6 | 6-12 | 12+ | unsure (months)
-  expectedLicensure        String?
+  expectedLicensure    String?
   /// Planning only — never used for eligibility (INV-1 uses verified licenses).
-  intendedStates           String[]                 @default([])
-  preferredArea            String?
-  homeZip                  String?
-  homeCounty               String?
+  intendedStates       String[]                 @default([])
+  preferredArea        String?
+  homeZip              String?
+  homeCounty           String?
   /// Acquisition attribution (all providers).
-  acquisitionSource        String?
-  acquisitionDetail        String?
-  recruitCampaignId        String?
-  recruitCampaign          RecruitCampaign?         @relation(fields: [recruitCampaignId], references: [id], onDelete: SetNull)
-  utmSource                String?
-  utmMedium                String?
-  utmCampaign              String?
-  utmTerm                  String?
-  utmContent               String?
-  landingPath              String?
-  referredBy               String?
+  acquisitionSource    String?
+  acquisitionDetail    String?
+  recruitCampaignId    String?
+  recruitCampaign      RecruitCampaign?         @relation(fields: [recruitCampaignId], references: [id], onDelete: SetNull)
+  utmSource            String?
+  utmMedium            String?
+  utmCampaign          String?
+  utmTerm              String?
+  utmContent           String?
+  landingPath          String?
+  referredBy           String?
   /// Credential follow-up sequence (students only).
-  credFollowupStep         Int                      @default(0)
-  credFollowupLastAt       DateTime?                @db.Timestamptz(3)
-  credFollowupLastKind     String?
-  credFollowupOptOut       Boolean                  @default(false)
-  onCallRules              OnCallRule[]
-  responsiveness           ProviderResponsiveness[]
-  standby                  StandbyEntry[]
-  professions              ProviderProfession[]
-  licenses                 License[]
-  malpractice              MalpracticePolicy[]
-  skills                   ProviderSkill[]
-  availability             AvailabilityRule[]
-  blackouts                AvailabilityBlackout[]
-  openDates                AvailabilityOpenDate[]
-  applications             Application[]
-  offers                   Offer[]
-  assignments              Assignment[]
-  stats                    ProviderStats?
-  payouts                  Payout[]
-  transfers                PayoutTransfer[]
-  threads                  MessageThread[]
+  credFollowupStep     Int                      @default(0)
+  credFollowupLastAt   DateTime?                @db.Timestamptz(3)
+  credFollowupLastKind String?
+  credFollowupOptOut   Boolean                  @default(false)
+  /// Growth: attribution and nurture bookkeeping (graduationDate is shared with the student path above). Eligibility never reads these.
+  isStudent            Boolean                  @default(false)
+  /// GrowthCampaign.code the provider registered through (/join/<code>).
+  campaignCode         String?
+  growthSource         String?
+  nurtureCount         Int                      @default(0)
+  lastNurtureAt        DateTime?                @db.Timestamptz(3)
+  activationCount      Int                      @default(0)
+  lastActivationAt     DateTime?                @db.Timestamptz(3)
+  onCallRules          OnCallRule[]
+  responsiveness       ProviderResponsiveness[]
+  standby              StandbyEntry[]
+  professions          ProviderProfession[]
+  licenses             License[]
+  malpractice          MalpracticePolicy[]
+  skills               ProviderSkill[]
+  availability         AvailabilityRule[]
+  blackouts            AvailabilityBlackout[]
+  openDates            AvailabilityOpenDate[]
+  applications         Application[]
+  offers               Offer[]
+  assignments          Assignment[]
+  stats                ProviderStats?
+  payouts              Payout[]
+  transfers            PayoutTransfer[]
+  threads              MessageThread[]
 }
 
 /// A recruitment link: coverageoncall.com/join/<slug> (school, event or
 /// campaign). Visits are AnalyticsEvent rows (path /join/<slug>).
 model RecruitCampaign {
-  id         String     @id @default(cuid())
-  slug       String     @unique
-  name       String
+  id        String     @id @default(cuid())
+  slug      String     @unique
+  name      String
   /// SCHOOL | EVENT | CAMPAIGN
-  kind       String     @default("SCHOOL")
-  state      String?    @db.Char(2)
-  city       String?
-  headline   String?
-  costCents  Int        @default(0)
-  active     Boolean    @default(true)
-  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
-  providers  Provider[]
+  kind      String     @default("SCHOOL")
+  state     String?    @db.Char(2)
+  city      String?
+  headline  String?
+  costCents Int        @default(0)
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now()) @db.Timestamptz(3)
+  providers Provider[]
 }
 
 enum LicenseStatus {
@@ -1541,4 +1550,322 @@ model ProviderFeedback {
   readAt       DateTime? @db.Timestamptz(3)
 
   @@index([providerId, createdAt])
+}
+
+// ============================ growth: AI marketing & marketplace activation ============================
+// Software decides who is contacted, when, and whether they're eligible; AI
+// only writes, classifies and summarizes inside those decisions. See
+// packages/services/src/growth/.
+
+/// Strategic launch regions; "ready" when enough coverage-ready providers sit inside the radius.
+model GrowthMarket {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  name            String
+  state           String   @db.Char(2)
+  professionCode  String   @default("DC")
+  centerLat       Float
+  centerLng       Float
+  radiusMiles     Int      @default(60)
+  targetProviders Int      @default(5)
+  priority        Int      @default(100)
+  active          Boolean  @default(true)
+  notes           String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+}
+
+enum ProspectStage {
+  PROSPECT
+  CONTACTABLE
+  OUTREACH_STARTED
+  ENGAGED
+  INTERESTED
+  ACCOUNT_STARTED
+  ACCOUNT_CREATED
+  COVERAGE_REQUESTED
+  FIRST_SHIFT_BOOKED
+  FIRST_SHIFT_COMPLETED
+  REPEAT_CLINIC
+  DORMANT
+  NOT_INTERESTED
+  DO_NOT_CONTACT
+}
+
+enum IntentCategory {
+  COLD
+  WARM
+  ENGAGED
+  HIGH_INTENT
+  ACTIVE_CUSTOMER
+  REPEAT_CUSTOMER
+}
+
+/// Clinic prospect CRM: one row per practice, public business information only.
+/// clinicOrgId links it once the practice has an account.
+model ClinicProspect {
+  id                 String         @id @default(cuid())
+  clinicName         String
+  ownerName          String?
+  doctors            String[]       @default([])
+  email              String?        @db.Citext
+  phone              String?
+  website            String?
+  address            String?
+  city               String?
+  county             String?
+  state              String         @default("FL") @db.Char(2)
+  zip                String?
+  lat                Float?
+  lng                Float?
+  marketKey          String?
+  locationsCount     Int?
+  providerCount      Int?
+  practiceType       String?
+  /// independent | group | franchise | unknown
+  ownership          String?
+  multidisciplinary  Boolean?
+  hasContactForm     Boolean?
+  socialUrls         String[]       @default([])
+  source             String?
+  collectedAt        DateTime?      @db.Timestamptz(3)
+  verifiedAt         DateTime?      @db.Timestamptz(3)
+  /// solo | multi_dc | multi_location | franchise | multidisciplinary | high_volume | specialty | unknown
+  segment            String         @default("unknown")
+  segmentConfidence  Float?
+  /// NONE | RULE | AI | MANUAL — an AI guess is never shown as fact.
+  segmentBasis       String         @default("NONE")
+  segmentReason      String?
+  stage              ProspectStage  @default(PROSPECT)
+  intentScore        Int            @default(0)
+  intentCategory     IntentCategory @default(COLD)
+  clinicOrgId        String?        @unique
+  /// UNKNOWN | VALID | BOUNCED | COMPLAINED | UNSUBSCRIBED
+  emailStatus        String         @default("UNKNOWN")
+  smsConsentAt       DateTime?      @db.Timestamptz(3)
+  doNotContact       Boolean        @default(false)
+  outreachStep       Int            @default(0)
+  outreachPaused     Boolean        @default(false)
+  lastContactedAt    DateTime?      @db.Timestamptz(3)
+  lastInboundAt      DateTime?      @db.Timestamptz(3)
+  objections         String[]       @default([])
+  aiSummary          String?
+  notes              String?
+  campaignCode       String?
+  /// Automatic prospecting: normalized practice address (dedupe) and the NPPES NPIs seen there.
+  addressKey         String?        @unique
+  npis               String[]       @default([])
+  /// The name is a doctor's name from the registry; research may replace it with the practice name.
+  nameFromRegistry   Boolean        @default(false)
+  /// PENDING | RUNNING | DONE | NOT_FOUND | FAILED
+  researchStatus     String         @default("PENDING")
+  researchAttempts   Int            @default(0)
+  researchedAt       DateTime?      @db.Timestamptz(3)
+  researchConfidence Float?
+  /// Pages the AI research cited for this record.
+  sourceUrls         String[]       @default([])
+  /// Unsubscribe and tracked-link token.
+  publicToken        String         @unique
+  createdAt          DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@index([stage])
+  @@index([researchStatus])
+  @@index([marketKey])
+  @@index([intentScore])
+  @@index([email])
+}
+
+/// Campaign links: /join/<code> (providers, e.g. schools) and clinic campaigns. QR codes encode the link.
+model GrowthCampaign {
+  id             String    @id @default(cuid())
+  code           String    @unique
+  audience       PartyType @default(PROVIDER)
+  /// school | event | ads | social | email | referral | other
+  kind           String    @default("school")
+  name           String
+  schoolName     String?
+  professionCode String    @default("DC")
+  headline       String?
+  body           String?
+  spendCents     Int       @default(0)
+  visits         Int       @default(0)
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+}
+
+/// Checked in code before every growth send; no agent can override it.
+model CommSuppression {
+  id        String   @id @default(cuid())
+  /// EMAIL | SMS | ALL
+  channel   String
+  /// Lower-case email or E.164 phone.
+  address   String   @db.Citext
+  /// UNSUBSCRIBE | BOUNCE | COMPLAINT | MANUAL | DO_NOT_CONTACT | SMS_STOP
+  reason    String
+  source    String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([channel, address])
+}
+
+/// Every growth message in or out, including blocked and pending-approval ones.
+model Communication {
+  id            String   @id @default(cuid())
+  /// PROSPECT | PROVIDER | CLINIC
+  entityType    String
+  entityId      String
+  /// EMAIL | SMS | CHAT | PHONE | NOTE
+  channel       String
+  /// OUT | IN
+  direction     String   @default("OUT")
+  agent         String?
+  /// COMMERCIAL | RELATIONSHIP | TRANSACTIONAL | CONVERSATIONAL
+  purpose       String
+  promptKey     String?
+  promptVersion Int?
+  toAddress     String?
+  subject       String?
+  body          String?
+  /// SENT | FAILED | BLOCKED | PENDING_APPROVAL | APPROVED | REJECTED | RECEIVED | LOGGED
+  status        String
+  blockReason   String?
+  error         String?
+  /// One message per (entity, step): makes every sweep idempotent.
+  dedupeKey     String?  @unique
+  createdById   String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([status, createdAt])
+  @@index([promptKey, promptVersion])
+}
+
+enum PromptStatus {
+  DRAFT
+  APPROVED
+  RETIRED
+}
+
+/// Centralized, versioned message templates. body is the approved text (sent
+/// verbatim when AI is off or its output fails the guardrails); instructions
+/// let AI personalize within it. Saving creates a new DRAFT version.
+model PromptTemplate {
+  id              String       @id @default(cuid())
+  key             String
+  version         Int
+  agent           String
+  channel         String       @default("EMAIL")
+  purpose         String
+  subjectTemplate String?
+  body            String
+  instructions    String?
+  allowedVars     String[]     @default([])
+  abWeight        Int          @default(100)
+  status          PromptStatus @default(DRAFT)
+  active          Boolean      @default(false)
+  approvedById    String?
+  approvedAt      DateTime?    @db.Timestamptz(3)
+  notes           String?
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@unique([key, version])
+}
+
+/// Approved knowledge the conversation agent may answer from.
+model KbArticle {
+  id          String   @id @default(cuid())
+  topic       String
+  /// CLINIC | PROVIDER | ALL
+  audience    String   @default("ALL")
+  question    String
+  answer      String
+  keywords    String[] @default([])
+  approved    Boolean  @default(false)
+  active      Boolean  @default(true)
+  updatedById String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+}
+
+enum EscalationStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+/// "A person should handle this": legal/payment/safety questions, high intent,
+/// low AI confidence, explicit requests for a human.
+model Escalation {
+  id                String           @id @default(cuid())
+  entityType        String
+  entityId          String?
+  entityLabel       String
+  reasonCode        String
+  reason            String
+  intentLevel       String?
+  summary           String?
+  recommendedAction String?
+  history           Json?
+  status            EscalationStatus @default(OPEN)
+  resolution        String?
+  resolvedById      String?
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  resolvedAt        DateTime?        @db.Timestamptz(3)
+
+  @@index([status, createdAt])
+  @@index([entityType, entityId])
+}
+
+/// Audit log of every agent action (what it saw by reference, prompt version, model, output).
+model AgentActivity {
+  id              String   @id @default(cuid())
+  agent           String
+  action          String
+  entityType      String?
+  entityId        String?
+  trigger         String?
+  contextRef      String?
+  promptKey       String?
+  promptVersion   Int?
+  model           String?
+  output          String?
+  channel         String?
+  sendStatus      String?
+  humanOverrideBy String?
+  error           String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([agent, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+/// AI spend. Cost is in micro-dollars (1/1,000,000 USD) because single calls cost fractions of a cent.
+model AiUsage {
+  id           String   @id @default(cuid())
+  agent        String
+  task         String
+  provider     String
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  costMicroUsd Int      @default(0)
+  ok           Boolean  @default(true)
+  error        String?
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt])
+}
+
+/// Lead-scoring signals (replies, calculator use, dates entered...). Opens are deliberately not a signal.
+model LeadSignal {
+  id         String   @id @default(cuid())
+  /// PROSPECT | PROVIDER
+  entityType String
+  entityId   String
+  kind       String
+  meta       Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([entityType, entityId, createdAt])
 }

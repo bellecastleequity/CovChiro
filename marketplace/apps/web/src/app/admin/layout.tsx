@@ -7,13 +7,14 @@ import { requireActor } from "@/lib/session";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user } = await requireActor("admin");
-  const [pending, tasks, disputes, missing, emergencies, hires] = await Promise.all([
+  const [pending, tasks, disputes, missing, emergencies, hires, growthBadge] = await Promise.all([
     prisma.license.count({ where: { status: "PENDING_VERIFICATION" } }).then(async (n) => n + (await prisma.malpracticePolicy.count({ where: { status: "PENDING_VERIFICATION" } }))),
     prisma.adminTask.count({ where: { resolvedAt: null } }),
     prisma.dispute.count({ where: { status: "OPEN" } }),
     missingMigrations(prisma),
     emergency.openEmergencyCount().catch(() => 0),
     hiring.openHireCount().catch(() => 0),
+    Promise.all([prisma.communication.count({ where: { status: "PENDING_APPROVAL" } }), prisma.escalation.count({ where: { status: { not: "RESOLVED" } } })]).then(([a, b]) => a + b).catch(() => 0),
   ]);
   const items: NavItem[] = [
     { href: "/admin", label: "Dashboard", icon: "dashboard", mobile: true },
@@ -24,6 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/providers", label: "Providers", icon: "providers" },
     { href: "/admin/clinics", label: "Clinics", icon: "clinics" },
     { href: "/admin/payments", label: "Payments & disputes", icon: "payments", badge: disputes },
+    { href: "/admin/growth", label: "Growth", icon: "analytics", badge: growthBadge },
     { href: "/admin/leads", label: "Leads", icon: "leads", mobile: true },
     { href: "/admin/recruitment", label: "Recruitment", icon: "leads" },
     { href: "/admin/funnel", label: "Provider funnel", icon: "analytics" },

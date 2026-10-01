@@ -9,12 +9,14 @@ import { signupAction } from "../actions";
 
 export const metadata = { title: "Create your account" };
 
-export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string; student?: string }> }) {
-  const { role: r, code, profession, student: st } = await searchParams;
+export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string; student?: string; campaign?: string; c?: string }> }) {
+  const { role: r, code, profession, student: st, campaign, c } = await searchParams;
   const role = r === "provider" ? "provider" : "clinic";
   const studentEnabled = (await getSettings())["features.preLicensureEnabled"];
   const student = role === "provider" && studentEnabled && st === "1";
   const professions = await prisma.profession.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
+  // Growth campaign links (/join/<code>) and prospect tokens survive switching tabs.
+  const keep = `${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}${profession ? `&profession=${encodeURIComponent(profession)}` : ""}`;
   return (
     <>
       <h1 className="text-xl font-semibold">Create your account</h1>
@@ -22,16 +24,16 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         <Link href={`/signup?role=clinic${code ? `&code=${code}` : ""}`} className={cn("rounded-lg py-2 text-center", role === "clinic" ? "bg-white shadow-sm" : "text-slate-500")}>
           I'm a clinic
         </Link>
-        <Link href="/signup?role=provider" className={cn("rounded-lg py-2 text-center", role === "provider" ? "bg-white shadow-sm" : "text-slate-500")}>
+        <Link href={`/signup?role=provider${keep}`} className={cn("rounded-lg py-2 text-center", role === "provider" ? "bg-white shadow-sm" : "text-slate-500")}>
           I'm a provider
         </Link>
       </div>
       {role === "provider" && studentEnabled ? (
         <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-slate-200 p-1 text-sm font-medium" role="group" aria-label="Licensure">
-          <Link href="/signup?role=provider" className={cn("rounded-lg py-2 text-center", !student ? "bg-brand-600 text-white" : "text-slate-500")}>
+          <Link href={`/signup?role=provider${keep}`} className={cn("rounded-lg py-2 text-center", !student ? "bg-brand-600 text-white" : "text-slate-500")}>
             Licensed provider
           </Link>
-          <Link href="/signup?role=provider&student=1" className={cn("rounded-lg py-2 text-center", student ? "bg-brand-600 text-white" : "text-slate-500")}>
+          <Link href={`/signup?role=provider&student=1${keep}`} className={cn("rounded-lg py-2 text-center", student ? "bg-brand-600 text-white" : "text-slate-500")}>
             Student / not yet licensed
           </Link>
         </div>
@@ -40,6 +42,8 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         <input type="hidden" name="role" value={role} />
         {student ? <input type="hidden" name="student" value="1" /> : null}
         <input type="hidden" name="code" value={code ?? ""} />
+        <input type="hidden" name="campaign" value={campaign ?? ""} />
+        <input type="hidden" name="c" value={c && /^[a-f0-9]{40}$/.test(c) ? c : ""} />
         <Field label="Your name" htmlFor="name">
           <Input id="name" name="name" autoComplete="name" required />
         </Field>

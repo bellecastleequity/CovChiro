@@ -71,6 +71,9 @@ export const signupAction = formAction(async (fd) => {
       student: role === "provider" ? studentFromForm(fd) : undefined,
       attribution: role === "provider" ? attributionFromForm(fd) : undefined,
       acceptTerms: fd.get("terms") === "on" ? true : (false as never),
+      // Student details come from the student path (studentFromForm) above.
+      campaign: str(fd, "campaign") || null,
+      prospectToken: str(fd, "c") || (await cookies()).get("cm_pt")?.value || null,
     },
     { ip: await ip(), visitorId: (await cookies()).get("cm_vid")?.value ?? null },
   );

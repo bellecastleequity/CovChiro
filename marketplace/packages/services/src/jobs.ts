@@ -4,6 +4,8 @@ import * as dispatch from "./dispatch";
 import { attendanceSweep } from "./attendance";
 import { sendBookingDigests } from "./digests";
 import * as leads from "./leads";
+import { growthTick, supplyGapSweep, weeklyBriefing } from "./growth/agents";
+import { prospectingTick } from "./growth/prospecting";
 import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSweep, preShiftChecks, recomputeStats, revealExpiredRatings, startDueShifts } from "./lifecycle";
 import { releaseDuePayouts } from "./payouts";
 import { settleDueInvites } from "./shifts";
@@ -50,6 +52,13 @@ export const JOBS: Job[] = [
   { name: "leadDrip", schedule: { everySeconds: 900 }, run: () => leads.runLeadDrip() },
   // Students: one state-aware credential follow-up when due (30/60/90 days after graduation, then every 60).
   { name: "preLicensureFollowups", schedule: { cron: "15 10 * * *", tz: "America/New_York" }, run: () => runPreLicensureFollowups() },
+  // Growth agents (services/src/growth): event-driven sweeps; nothing calls AI unless something is due.
+  { name: "growthAgents", schedule: { everySeconds: 900 }, run: () => growthTick() },
+  // Automatic clinic prospecting: NPI registry discovery + AI web research (budget-capped, ~2 min per run max).
+  { name: "growthProspecting", schedule: { everySeconds: 600 }, run: () => prospectingTick() },
+  { name: "growthSupplyGaps", schedule: { everySeconds: 3600 }, run: () => supplyGapSweep() },
+  // Daily schedule slot; the briefing itself only goes out on Mondays.
+  { name: "growthWeeklyBriefing", schedule: { cron: "0 8 * * *", tz: "America/New_York" }, run: () => (DateTime.now().setZone("America/New_York").weekday === 1 ? weeklyBriefing() : Promise.resolve("not Monday")) },
   // Quality.
   { name: "ratingsReveal", schedule: { everySeconds: 3600 }, run: () => revealExpiredRatings() },
   { name: "statsRecompute", schedule: { everySeconds: 3600 }, run: () => forActiveProviders((id) => recomputeStats(id)) },

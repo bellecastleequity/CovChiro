@@ -15,3 +15,5 @@ export * from "./supervision";
 export * from "./badges";
 export * from "./dispatch";
 export * from "./prelicensure";
+export * from "./growth";
+export * from "./prospecting";
