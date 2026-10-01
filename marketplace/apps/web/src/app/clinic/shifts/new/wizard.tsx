@@ -9,7 +9,7 @@ import { Checkbox, Field, Input, PhiNotice, Select, Textarea } from "@/component
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
-import { createShiftAction, quoteAction } from "../../actions";
+import { createShiftAction, quoteAction, updateDraftAction } from "../../actions";
 
 interface Prof {
   code: string;
@@ -49,16 +49,37 @@ interface Quote {
 
 const STEPS = ["Where", "What", "When", "Details", "Review"] as const;
 
-export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean } }) {
+/** A saved draft being edited (times already in the location's local zone). */
+export interface DraftInit {
+  id: string;
+  inGroup: boolean;
+  locationId: string;
+  professionCode: string;
+  date: string;
+  start: string;
+  end: string;
+  requiredSkillIds: string[];
+  preferredSkillIds: string[];
+  expectedPatients: string;
+  minYears: string;
+  notes: string;
+  instantBook: boolean;
+  lodgingAllowed: boolean;
+  lodgingCap: string;
+  maxTravelBudget: string;
+  sup: { supervisorName: string; supervisorProfessionCode: string; supervisorLicenseNumber: string; onSiteEntireShift: boolean } | null;
+}
+
+export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit }) {
   const [step, setStep] = useState(0);
-  const [locationId, setLocationId] = useState(locations[0].id);
+  const [locationId, setLocationId] = useState(draft && locations.some((l) => l.id === draft.locationId) ? draft.locationId : locations[0].id);
   const loc = locations.find((l) => l.id === locationId)!;
   const firstEnabled = loc.professions.find((p) => p.enabled)?.code ?? "";
-  const [professionCode, setProfessionCode] = useState(firstEnabled);
+  const [professionCode, setProfessionCode] = useState(draft?.professionCode ?? firstEnabled);
   const prof = loc.professions.find((p) => p.code === professionCode);
   const tomorrow = new Date(Date.now() + 86_400_000 * 3).toISOString().slice(0, 10);
   // One row per day; a booking of several days is posted together.
-  const [days, setDays] = useState([{ date: tomorrow, start: "08:00", end: "17:00" }]);
+  const [days, setDays] = useState([draft ? { date: draft.date, start: draft.start, end: draft.end } : { date: tomorrow, start: "08:00", end: "17:00" }]);
   const { date, start, end } = days[0];
   const setDay = (i: number, patch: Partial<{ date: string; start: string; end: string }>) => setDays((ds) => ds.map((d, j) => (j === i ? { ...d, ...patch } : d)));
   const addDay = () =>
@@ -68,17 +89,17 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
       next.setDate(next.getDate() + 1);
       return [...ds, { date: next.toISOString().slice(0, 10), start: last.start, end: last.end }];
     });
-  const [required, setRequired] = useState<string[]>([]);
-  const [preferred, setPreferred] = useState<string[]>([]);
-  const [expectedPatients, setExpectedPatients] = useState("");
-  const [minYears, setMinYears] = useState(String(defaultMinYears));
-  const [notes, setNotes] = useState("");
-  const [instantBook, setInstantBook] = useState(false);
-  const [lodgingAllowed, setLodgingAllowed] = useState(false);
-  const [lodgingCap, setLodgingCap] = useState("150");
-  const [maxTravelBudget, setMaxTravelBudget] = useState("");
+  const [required, setRequired] = useState<string[]>(draft?.requiredSkillIds ?? []);
+  const [preferred, setPreferred] = useState<string[]>(draft?.preferredSkillIds ?? []);
+  const [expectedPatients, setExpectedPatients] = useState(draft?.expectedPatients ?? "");
+  const [minYears, setMinYears] = useState(draft?.minYears ?? String(defaultMinYears));
+  const [notes, setNotes] = useState(draft?.notes ?? "");
+  const [instantBook, setInstantBook] = useState(draft?.instantBook ?? false);
+  const [lodgingAllowed, setLodgingAllowed] = useState(draft?.lodgingAllowed ?? false);
+  const [lodgingCap, setLodgingCap] = useState(draft?.lodgingCap || "150");
+  const [maxTravelBudget, setMaxTravelBudget] = useState(draft?.maxTravelBudget ?? "");
   const [promoCode, setPromoCode] = useState(defaultCode);
-  const [sup, setSup] = useState({ supervisorName: "", supervisorProfessionCode: prof?.supervisingProfessionCodes[0] ?? "", supervisorLicenseNumber: "", onSiteEntireShift: false });
+  const [sup, setSup] = useState(draft?.sup ?? { supervisorName: "", supervisorProfessionCode: prof?.supervisingProfessionCodes[0] ?? "", supervisorLicenseNumber: "", onSiteEntireShift: false });
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -205,7 +226,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                     </div>
                   ))}
                 </div>
-                {days.length < 14 ? <Button type="button" variant="outline" size="sm" onClick={addDay}>+ Add another day</Button> : null}
+                {days.length < 14 && !draft ? <Button type="button" variant="outline" size="sm" onClick={addDay}>+ Add another day</Button> : null}
                 {new Set(days.map((d) => d.date)).size !== days.length ? <p className="text-sm text-red-700">Two rows have the same date.</p> : null}
                 <p className="text-xs text-slate-500">
                   Times are local to {loc.name} ({loc.timeZone.replace("America/", "").replace("_", " ")}).
@@ -279,7 +300,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
 
             {step === 4 ? (
               <div className="space-y-4">
-                <h2 className="font-semibold">Review & post</h2>
+                <h2 className="font-semibold">{draft ? "Review & save changes" : "Review & post"}</h2>
                 <dl className="grid gap-2 text-sm sm:grid-cols-2">
                   <div><dt className="text-slate-500">Location</dt><dd className="font-medium">{loc.name}, {loc.city} {loc.state}</dd></div>
                   <div><dt className="text-slate-500">Coverage</dt><dd className="font-medium">{prof?.displayName}</dd></div>
@@ -292,15 +313,17 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 </div>
                 {!canPost ? <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="size-4 shrink-0" /><span>Finish setup to post: a payment method and the current Clinic Platform Agreement (<a href="/clinic/settings#agreement" className="font-medium underline">sign in Settings</a>). You can save a draft now.</span></p> : null}
                 <div className="flex flex-wrap gap-2">
-                  <ActionForm action={createShiftAction} successMessage={false}>
+                  <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
+                    {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
                     <input type="hidden" name="payload" value={payload} />
                     <input type="hidden" name="mode" value="post" />
                     <SubmitButton size="lg" pendingText="Posting…">{days.length > 1 ? `Post ${days.length}-day booking` : "Post shift"}</SubmitButton>
                   </ActionForm>
-                  <ActionForm action={createShiftAction} successMessage={false}>
+                  <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
+                    {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
                     <input type="hidden" name="payload" value={payload} />
                     <input type="hidden" name="mode" value="draft" />
-                    <SubmitButton variant="outline" size="lg">Save draft</SubmitButton>
+                    <SubmitButton variant="outline" size="lg">{draft ? "Save changes" : "Save draft"}</SubmitButton>
                   </ActionForm>
                 </div>
               </div>

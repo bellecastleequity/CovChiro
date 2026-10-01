@@ -28,6 +28,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/growth", label: "Growth", icon: "analytics", badge: growthBadge },
     { href: "/admin/leads", label: "Leads", icon: "leads", mobile: true },
     { href: "/admin/recruitment", label: "Recruitment", icon: "leads" },
+    { href: "/admin/schools", label: "Schools", icon: "leads" },
     { href: "/admin/funnel", label: "Provider funnel", icon: "analytics" },
     { href: "/admin/supply", label: "Provider supply", icon: "states" },
     { href: "/admin/promo", label: "Promo codes", icon: "promo" },

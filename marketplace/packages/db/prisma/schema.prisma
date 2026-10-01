@@ -1604,6 +1604,8 @@ enum IntentCategory {
 /// clinicOrgId links it once the practice has an account.
 model ClinicProspect {
   id                 String         @id @default(cuid())
+  /// Professions practising at this location (from the registry search that found it). Outreach uses the first one with a LIVE growth target here.
+  professionCodes    String[]       @default(["DC"])
   clinicName         String
   ownerName          String?
   doctors            String[]       @default([])
@@ -1752,6 +1754,8 @@ enum PromptStatus {
 model PromptTemplate {
   id              String       @id @default(cuid())
   key             String
+  /// Profession this wording is for; null = any profession. A profession-specific version wins over a generic one.
+  professionCode  String?
   version         Int
   agent           String
   channel         String       @default("EMAIL")
@@ -1773,18 +1777,20 @@ model PromptTemplate {
 
 /// Approved knowledge the conversation agent may answer from.
 model KbArticle {
-  id          String   @id @default(cuid())
-  topic       String
+  id             String   @id @default(cuid())
+  /// null = every profession.
+  professionCode String?
+  topic          String
   /// CLINIC | PROVIDER | ALL
-  audience    String   @default("ALL")
-  question    String
-  answer      String
-  keywords    String[] @default([])
-  approved    Boolean  @default(false)
-  active      Boolean  @default(true)
-  updatedById String?
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  audience       String   @default("ALL")
+  question       String
+  answer         String
+  keywords       String[] @default([])
+  approved       Boolean  @default(false)
+  active         Boolean  @default(true)
+  updatedById    String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 }
 
 enum EscalationStatus {
@@ -1868,4 +1874,60 @@ model LeadSignal {
   createdAt  DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([entityType, entityId, createdAt])
+}
+
+/// Emails of banned accounts: signup refuses them. Removed when an admin reinstates the account.
+model BannedEmail {
+  email       String   @id @db.Citext
+  reason      String?
+  createdById String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+}
+
+/// Schools shown in the student sign-up dropdown, per profession. Built-in lists are added
+/// when a profession goes active (or into Growth prelaunch); admins add or hide the rest.
+model School {
+  id             String   @id @default(cuid())
+  professionCode String
+  name           String
+  city           String?
+  state          String?  @db.Char(2)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([professionCode, name])
+}
+
+/// Growth expansion: one row per profession × state (Admin → Growth → Expansion).
+/// OFF: nothing. PRELAUNCH: registry discovery + web research of clinics, and provider
+/// welcome/credential/activation emails; no clinic outreach. LIVE: clinic outreach too, but only
+/// while the marketplace has the profession enabled in that state (StateConfig + ProfessionStateConfig).
+model GrowthTarget {
+  id              String    @id @default(cuid())
+  professionCode  String
+  state           String    @db.Char(2)
+  /// OFF | PRELAUNCH | LIVE
+  status          String    @default("OFF")
+  /// Cities searched in the NPI registry, rotating a few per run.
+  cities          String[]  @default([])
+  notes           String?
+  statusChangedAt DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([professionCode, state])
+}
+
+/// Growth settings per profession: how to find its practices in the NPI registry and how to name them.
+model GrowthProfession {
+  professionCode String   @id
+  /// NPPES taxonomy_description search term, e.g. "Chiropractor". Blank = discovery skipped.
+  registrySearch String   @default("")
+  /// NPI taxonomy code prefixes that count as this profession, e.g. 111N.
+  taxonomyCodes  String[] @default([])
+  /// e.g. "chiropractic practice", "physical therapy clinic".
+  practiceNoun   String   @default("practice")
+  /// Credential after a sole practitioner's name, e.g. "D.C.", "PT".
+  nameSuffix     String   @default("")
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 }

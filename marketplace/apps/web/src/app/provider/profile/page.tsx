@@ -12,7 +12,7 @@ import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { agreementAction, passwordAction, profileAction, studentModeAction } from "../actions";
-import { getSettings } from "@cm/services";
+import { getSettings, schools } from "@cm/services";
 import { StudentFields } from "@/components/provider/student-fields";
 
 export const metadata = { title: "Profile" };
@@ -24,6 +24,7 @@ export default async function Profile() {
   const signedCopy = await latestSignedAgreement("PROVIDER", p.id);
   const studentEnabled = (await getSettings())["features.preLicensureEnabled"];
   const hasVerifiedLicense = (await prisma.license.count({ where: { providerId: p.id, status: "VERIFIED", expiresAt: { gt: new Date() } } })) > 0;
+  const schoolGroups = await schools.schoolOptions(p.professions.map((pp) => pp.professionCode));
   const studentDefaults = {
     school: p.school, graduationDate: p.graduationDate?.toISOString().slice(0, 10) ?? null, intendedStates: p.intendedStates, licensureApplied: p.licensureApplied,
     expectedLicensure: p.expectedLicensure, homeZip: p.homeZip, maxDriveMinutes: p.maxDriveMinutes, preferredArea: p.preferredArea, smsConsent: !!p.smsConsentAt,
@@ -87,7 +88,7 @@ export default async function Profile() {
                 <>
                   <ActionForm action={studentModeAction} className="space-y-4">
                     <input type="hidden" name="on" value="1" />
-                    <StudentFields withPhone={false} defaults={studentDefaults} />
+                    <StudentFields schools={schoolGroups} withPhone={false} defaults={studentDefaults} />
                     <SubmitButton>Save student details</SubmitButton>
                   </ActionForm>
                   <ActionForm action={studentModeAction} className="mt-3">
@@ -100,7 +101,7 @@ export default async function Profile() {
                   <summary className="cursor-pointer text-sm font-medium text-brand-700">I'm a student / not yet licensed</summary>
                   <ActionForm action={studentModeAction} className="mt-4 space-y-4">
                     <input type="hidden" name="on" value="1" />
-                    <StudentFields withPhone={false} defaults={studentDefaults} />
+                    <StudentFields schools={schoolGroups} withPhone={false} defaults={studentDefaults} />
                     <SubmitButton>Turn on the student path</SubmitButton>
                   </ActionForm>
                 </details>

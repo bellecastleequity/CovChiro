@@ -62,6 +62,9 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
   if (await prisma.user.findUnique({ where: { email: input.email } })) {
     throw new DomainError("CONFLICT", "An account with that email already exists. Try signing in.");
   }
+  if (await prisma.bannedEmail.findUnique({ where: { email: input.email.trim().toLowerCase() } })) {
+    throw new DomainError("FORBIDDEN", "We can't create an account with that email. Contact us if you think this is a mistake.");
+  }
   if (input.student && input.role === "provider") {
     if (!(await getSettings())["features.preLicensureEnabled"]) throw new DomainError("FORBIDDEN", "Student sign-up isn't available right now.");
     if ((input.phone ?? "").replace(/\D/g, "").length < 10) throw new DomainError("VALIDATION", "Enter your mobile number.");

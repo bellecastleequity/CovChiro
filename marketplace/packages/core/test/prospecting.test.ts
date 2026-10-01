@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { acceptBusinessEmail, addressKey, applyResearch, detectFranchise, groupRegistryRecords, type RegistryRecord, type ResearchFindings } from "../src";
 
 const rec = (o: Partial<RegistryRecord>): RegistryRecord => ({
-  npi: "1000000000", kind: "individual", name: "", firstName: null, lastName: null, credential: "DC", isChiropractic: true,
+  npi: "1000000000", kind: "individual", name: "", firstName: null, lastName: null, credential: "DC", taxonomyCodes: ["111N00000X"],
   location: { line1: "100 Main Street, Suite 200", line2: null, city: "TAMPA", state: "FL", zip: "336021234", phone: "813-555-0100" }, ...o,
 });
 
@@ -33,9 +33,24 @@ describe("grouping registry records into clinics", () => {
   it("skips other states, non-chiropractic records and records without a practice address", () => {
     expect(groupRegistryRecords([
       rec({ location: { line1: "1 A St", line2: null, city: "ATLANTA", state: "GA", zip: "30303", phone: null } }),
-      rec({ isChiropractic: false }),
+      rec({ taxonomyCodes: ["225100000X"] }),
       rec({ location: null }),
     ], "FL")).toEqual([]);
+  });
+});
+
+describe("grouping for other professions", () => {
+  const PT = { taxonomyCodes: ["2251"], nameSuffix: "PT", practiceNoun: "physical therapy clinic" };
+  it("uses the profession's taxonomy codes and naming", () => {
+    const recs = [
+      rec({ npi: "1", firstName: "LEE", lastName: "PARK", taxonomyCodes: ["225100000X"] }),
+      rec({ npi: "2", firstName: "ANA", lastName: "RIVERA", location: { line1: "9 Bay Rd", line2: null, city: "TAMPA", state: "FL", zip: "33602", phone: null } }),
+    ];
+    const pt = groupRegistryRecords(recs, "FL", PT);
+    expect(pt).toHaveLength(1);
+    expect(pt[0].clinicName).toBe("Dr. Lee Park, PT");
+    expect(groupRegistryRecords(recs, "FL")).toHaveLength(1); // chiropractic by default
+    expect(groupRegistryRecords(recs, "FL", { ...PT, taxonomyCodes: [] })).toEqual([]); // no codes = nothing matches
   });
 });
 

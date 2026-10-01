@@ -35,7 +35,7 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
       <Card className="mb-6">
         <CardHeader
           title="Automatic discovery & web research"
-          description={`Runs every 10 minutes (job “growthProspecting”) while the Clinic Prospecting agent is on. It builds the list even while clinic marketing is off. Research model: ${st.model} · up to the research budget each day.`}
+          description={`Runs every 10 minutes (job “growthProspecting”) while the Clinic Prospecting agent is on. It builds the list even while clinic marketing is off. Research: ${st.researchProvider} · ${st.model} · up to the research budget each day.`}
           action={
             <ActionForm action={runProspectingAction} successMessage className="flex gap-2">
               <Input name="cities" placeholder="Cities (optional), e.g. Tampa, Naples" className="w-64" />
@@ -44,7 +44,7 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
           }
         />
         <CardBody className="space-y-3">
-          {!st.aiReady ? <p className="text-sm text-amber-700">Web research is waiting for an AI key (ANTHROPIC_API_KEY). Discovery from the registry still runs.</p> : null}
+          {!st.aiReady ? <p className="text-sm text-amber-700">Web research is waiting for an AI key (OPENAI_API_KEY for the default gpt-6-luna; or set Settings → Growth → research provider). Discovery from the registry still runs.</p> : null}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
             <Stat label="From the registry" value={st.fromRegistry} hint={`${st.citiesSearched} of ${st.citiesTotal} cities searched`} />
             <Stat label="Waiting for research" value={(r.PENDING ?? 0) + (r.RUNNING ?? 0)} />

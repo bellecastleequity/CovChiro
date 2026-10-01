@@ -15,9 +15,25 @@ export interface RegistryRecord {
   firstName: string | null;
   lastName: string | null;
   credential: string | null;
-  /** Any taxonomy is chiropractic (111N…). */
-  isChiropractic: boolean;
+  /** NPI taxonomy codes on the record (e.g. 111N00000X = chiropractor). */
+  taxonomyCodes: string[];
   location: { line1: string; line2: string | null; city: string; state: string; zip: string; phone: string | null } | null;
+}
+
+/** What counts as a practice of one profession in the registry, and how to name it. */
+export interface RegistryProfile {
+  /** Taxonomy code prefixes for the profession, e.g. ["111N"]. */
+  taxonomyCodes: string[];
+  /** After a sole practitioner's name, e.g. "D.C." (blank = none). */
+  nameSuffix: string;
+  /** e.g. "chiropractic practice". */
+  practiceNoun: string;
+}
+
+export const CHIROPRACTIC_PROFILE: RegistryProfile = { taxonomyCodes: ["111N"], nameSuffix: "D.C.", practiceNoun: "chiropractic practice" };
+
+export function matchesProfile(r: Pick<RegistryRecord, "taxonomyCodes">, profile: RegistryProfile) {
+  return profile.taxonomyCodes.length > 0 && r.taxonomyCodes.some((c) => profile.taxonomyCodes.some((p) => p && c.toUpperCase().startsWith(p.toUpperCase())));
 }
 
 export interface ClinicCandidate {
@@ -70,11 +86,11 @@ function formatPhone(p: string | null): string | null {
   return ten.length === 10 ? `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}` : null;
 }
 
-/** Groups registry records into one candidate per practice location in `state`. */
-export function groupRegistryRecords(records: RegistryRecord[], state: string): ClinicCandidate[] {
+/** Groups registry records of one profession into one candidate per practice location in `state`. */
+export function groupRegistryRecords(records: RegistryRecord[], state: string, profile: RegistryProfile = CHIROPRACTIC_PROFILE): ClinicCandidate[] {
   const groups = new Map<string, RegistryRecord[]>();
   for (const r of records) {
-    if (!r.isChiropractic || !r.location || r.location.state.toUpperCase() !== state.toUpperCase() || !r.location.line1.trim()) continue;
+    if (!matchesProfile(r, profile) || !r.location || r.location.state.toUpperCase() !== state.toUpperCase() || !r.location.line1.trim()) continue;
     const key = addressKey(r.location.line1, r.location.zip);
     groups.set(key, [...(groups.get(key) ?? []), r]);
   }
@@ -87,7 +103,7 @@ export function groupRegistryRecords(records: RegistryRecord[], state: string): 
     const orgName = orgs.map((o) => titleCase(o.name)).find(Boolean);
     out.push({
       addressKey: key,
-      clinicName: orgName ?? (doctors.length === 1 ? `${doctors[0]}, D.C.` : `${titleCase(loc.city)} chiropractic practice (${titleCase(loc.line1)})`),
+      clinicName: orgName ?? (doctors.length === 1 ? `${doctors[0]}${profile.nameSuffix ? `, ${profile.nameSuffix}` : ""}` : `${titleCase(loc.city)} ${profile.practiceNoun} (${titleCase(loc.line1)})`),
       nameFromIndividual: !orgName,
       ownerName: people.length === 1 ? doctors[0] : null,
       doctors,

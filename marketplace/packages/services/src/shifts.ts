@@ -157,6 +157,7 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
   const effects = new Effects();
   const shiftId = await tx(async (db) => {
     const org = await db.clinicOrg.findUniqueOrThrow({ where: { id: orgId } });
+    if (opts.post && (org.status === "SUSPENDED" || org.status === "DEACTIVATED")) throw new DomainError("FORBIDDEN", "Your account is suspended, so new shifts can't be posted. Please contact us.");
     if (opts.post && (org.status !== "ACTIVE" || !org.hasPaymentMethod)) {
       throw new DomainError("FORBIDDEN", "Finish setup (payment method and agreement) before posting shifts.");
     }
@@ -209,6 +210,7 @@ export async function postShift(actor: Actor, shiftId: string) {
     const shift = await db.shift.findFirst({ where: { id: shiftId, location: { clinicOrgId: orgId } } });
     if (!shift) throw new DomainError("NOT_FOUND", "Shift not found");
     const org = await db.clinicOrg.findUniqueOrThrow({ where: { id: orgId } });
+    if (org.status === "SUSPENDED" || org.status === "DEACTIVATED") throw new DomainError("FORBIDDEN", "Your account is suspended, so new shifts can't be posted. Please contact us.");
     if (org.status !== "ACTIVE" || !org.hasPaymentMethod) throw new DomainError("FORBIDDEN", "Finish setup before posting shifts.");
     if (!(await agreementAccepted("CLINIC", org.agreementSignedAt, org.agreementVersion))) {
       throw new DomainError("FORBIDDEN", "Please sign the current Clinic Platform Agreement in Settings before posting shifts.");
@@ -222,6 +224,57 @@ export async function postShift(actor: Actor, shiftId: string) {
     await postInTx(db, actor, shiftId, effects);
   });
   await effects.run();
+}
+
+/** Edit a saved draft (re-validated and re-priced by the rate engine), optionally posting it. */
+export async function updateDraftShift(actor: Actor, shiftId: string, raw: ShiftInputT, opts: { post: boolean }) {
+  const orgId = requireClinic(actor);
+  const input = ShiftInput.parse(raw);
+  if (!(input.endsAt > input.startsAt)) throw new DomainError("VALIDATION", "The end time must be after the start.");
+  const effects = new Effects();
+  await tx(async (db) => {
+    const shift = await db.shift.findFirst({ where: { id: shiftId, location: { clinicOrgId: orgId } } });
+    if (!shift) throw new DomainError("NOT_FOUND", "Shift not found");
+    if (shift.status !== "DRAFT") throw new DomainError("VALIDATION", "Only drafts can be edited. This shift has already been posted.");
+    const loc = await db.clinicLocation.findFirst({ where: { id: input.locationId, clinicOrgId: orgId } });
+    if (!loc) throw new DomainError("NOT_FOUND", "Location not found");
+    if (shift.shiftGroupId && input.locationId !== shift.locationId) {
+      throw new DomainError("VALIDATION", "This day is part of a multi-day booking; its location can't be changed.");
+    }
+    const { supervisionRequired } = await validateShiftInput(db, orgId, input, false);
+    const q = await quoteShift(db, input);
+    await db.shift.update({
+      where: { id: shiftId },
+      data: {
+        locationId: input.locationId,
+        professionCode: input.professionCode,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        requiredSkillIds: input.requiredSkillIds,
+        preferredSkillIds: input.preferredSkillIds,
+        minYearsExperience: input.minYearsExperience ?? shift.minYearsExperience,
+        expectedPatients: input.expectedPatients ?? null,
+        notes: input.notes?.trim() || null,
+        instantBook: input.instantBook,
+        maxTravelBudgetCents: input.maxTravelBudgetCents ?? null,
+        lodgingAllowed: input.lodgingAllowed,
+        lodgingCapCentsPerNight: input.lodgingAllowed ? (input.lodgingCapCentsPerNight ?? null) : null,
+        rateCardId: q.rateCardId,
+        durationTier: q.base.tier,
+        clinicPriceCents: q.base.clinicPriceCents,
+        providerPayCents: q.base.providerPayCents,
+        premiumsApplied: q.base.premiums as unknown as Prisma.InputJsonValue,
+        promoCodeId: q.promo?.id ?? null,
+        promoDiscountCents: q.promo?.discountCents ?? 0,
+        ...(supervisionRequired && input.supervisionAttestation
+          ? { supervisionAttestation: parseAttestation(input.supervisionAttestation) as unknown as Prisma.InputJsonValue, supervisionAttestedById: actor.userId, supervisionAttestedAt: new Date() }
+          : {}),
+      },
+    });
+    await audit(db, actor, "shift.draft_edited", "Shift", shiftId, { startsAt: shift.startsAt, clinicPriceCents: shift.clinicPriceCents }, { startsAt: input.startsAt, clinicPriceCents: q.base.clinicPriceCents });
+  });
+  await effects.run();
+  if (opts.post) await postShift(actor, shiftId);
 }
 
 async function postInTx(db: Db, actor: Actor, shiftId: string, effects: Effects) {

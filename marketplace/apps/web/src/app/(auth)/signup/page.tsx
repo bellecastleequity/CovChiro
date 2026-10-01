@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@cm/db";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
-import { getSettings } from "@cm/services";
+import { getSettings, schools } from "@cm/services";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { SOURCE_OPTIONS, StudentFields } from "@/components/provider/student-fields";
 import { cn } from "@/lib/cn";
@@ -15,6 +15,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
   const studentEnabled = (await getSettings())["features.preLicensureEnabled"];
   const student = role === "provider" && studentEnabled && st === "1";
   const professions = await prisma.profession.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
+  const schoolGroups = await schools.schoolOptions();
   // Growth campaign links (/join/<code>) and prospect tokens survive switching tabs.
   const keep = `${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}${profession ? `&profession=${encodeURIComponent(profession)}` : ""}`;
   return (
@@ -67,7 +68,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         </Field>
         {student ? (
           <>
-            <StudentFields />
+            <StudentFields schools={schoolGroups} />
             <Field label="How did you hear about us?" htmlFor="source">
               <Select id="source" name="source" defaultValue="">
                 {SOURCE_OPTIONS.map(([v, l]) => (

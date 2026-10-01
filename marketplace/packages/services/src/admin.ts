@@ -5,6 +5,7 @@ import { checkGoogleServerKey, mailProvider, smsProvider, TWILIO_ERROR_HELP } fr
 import { audit, getSettings, invalidateSettings, requireAdmin, type Actor } from "./context";
 import { notify, sendEmail } from "./notify";
 import { recomputeProviderStatus } from "./onboarding";
+import { ensureSchools } from "./schools";
 
 // ======================================================================
 // Verification queue (SPEC §4.3, admin-assisted)
@@ -305,6 +306,8 @@ export async function updateProfessionState(
     const live = patch.enabled || (await prisma.professionStateConfig.count({ where: { professionCode, enabled: true } })) > 0;
     if (live !== profession.active) await prisma.profession.update({ where: { code: professionCode }, data: { active: live } });
   }
+  // Turning a profession on adds its built-in school list to the student sign-up dropdown.
+  if (patch.enabled) await ensureSchools([professionCode]);
   await audit(prisma, actor, patch.enabled !== undefined && patch.enabled !== before?.enabled ? (patch.enabled ? "profession_state.enabled" : "profession_state.disabled") : "profession_state.updated", "ProfessionStateConfig", `${professionCode}:${state}`, before, updated);
   return updated;
 }

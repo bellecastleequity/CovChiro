@@ -10,3 +10,5 @@ export { growthFunnels, growthKpis, liquidity, attribution } from "./analytics";
 export { discoverySweep, researchSweep, researchProspect, prospectingTick, citiesDue, toFindings } from "./prospecting";
 export * from "./admin";
 export * from "./public";
+export { activeTargets, primaryTarget, marketplaceOpen, outreachAllowed, providerTargetFrom, promptReadiness, expansionOverview, setTargetStatus, saveTargetCities, saveGrowthProfession, createStarterDrafts, TARGET_STATUSES, type TargetStatus } from "./expansion";
+export { STATE_CITIES } from "./cities";

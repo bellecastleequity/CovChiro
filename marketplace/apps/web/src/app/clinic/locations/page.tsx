@@ -107,10 +107,17 @@ export default async function Locations() {
             </CardBody>
           </Card>
         ))}
-        <Card>
-          <CardHeader title="Add a location" />
-          <CardBody><LocationForm /></CardBody>
-        </Card>
+        {org.locations.length ? (
+          <details className="group rounded-2xl border border-dashed border-slate-300 bg-white">
+            <summary className="cursor-pointer list-none px-5 py-4 text-sm font-medium text-brand-700 hover:text-brand-800">+ Add another location</summary>
+            <div className="border-t border-slate-100 px-5 py-5"><LocationForm /></div>
+          </details>
+        ) : (
+          <Card>
+            <CardHeader title="Add a location" />
+            <CardBody><LocationForm /></CardBody>
+          </Card>
+        )}
       </div>
     </>
   );

@@ -243,9 +243,16 @@ export async function checkContact(r: Recipient, channel: Channel, purpose: Purp
 
 // ---------------- prompts ----------------
 
-/** One approved, active version of a key; several = A/B test, picked by abWeight. */
-export async function pickPrompt(key: string): Promise<PromptTemplate | null> {
-  const rows = await prisma.promptTemplate.findMany({ where: { key, status: "APPROVED", active: true }, orderBy: { version: "asc" } });
+/** Approved, active versions of a key for a profession: its own wording first, else an any-profession version. Never another profession's. */
+export async function livePrompts(key: string, professionCode: string | null = null) {
+  const rows = await prisma.promptTemplate.findMany({ where: { key, status: "APPROVED", active: true, professionCode: professionCode ? { in: [professionCode] } : null }, orderBy: { version: "asc" } });
+  if (rows.length || !professionCode) return rows;
+  return prisma.promptTemplate.findMany({ where: { key, status: "APPROVED", active: true, professionCode: null }, orderBy: { version: "asc" } });
+}
+
+/** One approved, active version of a key (for the profession); several = A/B test, picked by abWeight. */
+export async function pickPrompt(key: string, professionCode: string | null = null): Promise<PromptTemplate | null> {
+  const rows = await livePrompts(key, professionCode);
   if (rows.length <= 1) return rows[0] ?? null;
   const total = rows.reduce((a, r) => a + Math.max(0, r.abWeight), 0);
   if (total <= 0) return rows[0];
@@ -340,7 +347,9 @@ export async function sendGrowthSms(r: Recipient, text: string, o: { agent: stri
  * for a person to approve. Returns a short outcome for the activity log.
  */
 export async function composeAndSend(agent: AgentKey, r: Recipient, key: string, vars: Record<string, string | null | undefined>, o: {
-  purpose: Purpose; dedupeKey: string; facts?: Record<string, string | null | undefined>; review?: boolean; allowAi?: boolean; cta?: { label: string; url: string };
+  purpose: Purpose; dedupeKey: string;
+  /** Picks that profession's wording (or an any-profession version); null = any-profession versions only. */
+  professionCode?: string | null; facts?: Record<string, string | null | undefined>; review?: boolean; allowAi?: boolean; cta?: { label: string; url: string };
 }): Promise<"sent" | "pending_approval" | "blocked" | "failed" | "skipped"> {
   if (await prisma.communication.findUnique({ where: { dedupeKey: o.dedupeKey } })) return "skipped";
   // Cheap pre-check so no AI is spent on a message that can't go out.
@@ -351,9 +360,9 @@ export async function composeAndSend(agent: AgentKey, r: Recipient, key: string,
     await logAgent(agent, "send_blocked", { entityType: r.type, entityId: r.id, promptKey: key, channel: "EMAIL", sendStatus: "blocked", output: pre.reason });
     return "blocked";
   }
-  const prompt = await pickPrompt(key);
+  const prompt = await pickPrompt(key, o.professionCode ?? null);
   if (!prompt) {
-    await logAgent(agent, "no_approved_prompt", { entityType: r.type, entityId: r.id, promptKey: key, error: "No approved, active version" });
+    await logAgent(agent, "no_approved_prompt", { entityType: r.type, entityId: r.id, promptKey: key, error: `No approved, active version${o.professionCode ? ` for ${o.professionCode}` : ""}` });
     return "skipped";
   }
   const msg = await compose(agent, prompt, vars, o.facts ?? {}, o.allowAi ?? true);

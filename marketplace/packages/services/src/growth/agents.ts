@@ -14,6 +14,7 @@ import {
 } from "./engine";
 import { ensureGrowthDefaults } from "./defaults";
 import { growthFunnels, marketForPoint } from "./analytics";
+import { activeTargets, outreachProfessionFor, primaryTarget, promptReadiness, providerTargetFrom } from "./expansion";
 
 /**
  * Growth agents as idempotent sweeps (same model as jobs.ts): each finds
@@ -44,9 +45,8 @@ async function cadence(): Promise<GrowthCadence> {
 
 // ---------------- providers: welcome, credential nurture, activation ----------------
 
-async function launchContext() {
-  const s = await getSettings();
-  const professionCode = s["growth.launchProfession"], state = s["growth.launchState"];
+/** Credential context for one profession in one state (malpractice minimums, national-credential rule). */
+async function marketContext(professionCode: string, state: string) {
   const [profession, psc] = await Promise.all([
     prisma.profession.findUnique({ where: { code: professionCode } }),
     prisma.professionStateConfig.findUnique({ where: { professionCode_state: { professionCode, state } } }),
@@ -61,11 +61,19 @@ async function launchContext() {
   };
 }
 
-/** Growth view of one provider in the launch profession + state (messaging only — never eligibility). */
-export async function providerSnapshot(providerId: string) {
-  const ctx = await launchContext();
+/**
+ * Growth view of one provider in their growth market (a PRELAUNCH or LIVE target for one of their
+ * professions — Growth → Expansion). Messaging only — never eligibility. inMarket=false: no target, no growth email.
+ */
+export async function providerSnapshot(providerId: string, targets?: Awaited<ReturnType<typeof activeTargets>>) {
   const p = await prisma.provider.findUnique({ where: { id: providerId }, include: { licenses: true, malpractice: true, stats: true, availability: { select: { id: true } }, professions: true } });
   if (!p) return null;
+  const target = providerTargetFrom(
+    { professions: p.professions.map((x) => x.professionCode), licenseStates: p.licenses.filter((l) => l.status !== "REJECTED" && l.status !== "REVOKED").map((l) => l.state), homeState: p.homeState, intendedStates: p.intendedStates },
+    targets ?? (await activeTargets()),
+  );
+  const fallback = await primaryTarget();
+  const ctx = await marketContext(target?.professionCode ?? fallback.professionCode, target?.state ?? fallback.state);
   const now = clock.now();
   const state = providerGrowthState({
     licenses: p.licenses.map((l) => ({ professionCode: l.professionCode, state: l.state, status: l.status, expiresAt: l.expiresAt })),
@@ -74,7 +82,7 @@ export async function providerSnapshot(providerId: string) {
     // The student path (preLicensure) is the source of truth for who is a student.
     graduationDate: p.graduationDate, isStudent: p.isStudent || p.preLicensure, shiftsCompleted: p.stats?.completedShifts ?? 0, now,
   });
-  return { provider: p, ...state, ctx, inLaunchProfession: p.professions.some((x) => x.professionCode === ctx.professionCode), hasAvailability: p.availability.length > 0 };
+  return { provider: p, ...state, ctx, inMarket: !!target, inLaunchProfession: !!target, hasAvailability: p.availability.length > 0 };
 }
 
 const providerUrls = () => ({ profile_url: absoluteUrl("/provider/profile"), credentials_url: absoluteUrl("/provider/credentials"), availability_url: absoluteUrl("/provider/availability") });
@@ -94,9 +102,21 @@ export async function providerSweep(batchSize = 500) {
     if (batch.length < batchSize) break;
     cursor = batch[batch.length - 1].id;
   }
+  const targets = await activeTargets();
+  // A profession whose provider emails aren't approved yet is skipped (never sent another profession's wording).
+  const ready = new Map<string, boolean>();
+  const professionReady = async (code: string) => {
+    if (!ready.has(code)) {
+      // Shown on Growth → Expansion; not logged here every run.
+      ready.set(code, (await promptReadiness(code)).providerMissing.length === 0);
+    }
+    return ready.get(code)!;
+  };
   for (const { id } of ids) {
-    const snap = await providerSnapshot(id);
-    if (!snap || !snap.inLaunchProfession) continue;
+    const snap = await providerSnapshot(id, targets);
+    if (!snap || !snap.inMarket) continue;
+    const professionCode = snap.ctx.professionCode;
+    if (!(await professionReady(professionCode))) continue;
     const p = snap.provider;
     const r = await recipient("PROVIDER", id);
     if (!r) continue;
@@ -108,7 +128,7 @@ export async function providerSweep(batchSize = 500) {
           : snap.message === "malpractice" ? "Next step: upload your malpractice insurance certificate."
             : snap.message === "license" ? "Next step: once your license arrives, add it to your profile."
               : "You're registered as a student. You'll become eligible for coverage shifts once your license and malpractice insurance are verified.";
-      const res = await outcome(() => composeAndSend("providerRecruitment", r, "PROVIDER_WELCOME", { ...vars, status_line: line }, { purpose: "RELATIONSHIP", dedupeKey: `welcome:${id}`, allowAi: false }));
+      const res = await outcome(() => composeAndSend("providerRecruitment", r, "PROVIDER_WELCOME", { ...vars, status_line: line }, { purpose: "RELATIONSHIP", dedupeKey: `welcome:${id}`, allowAi: false, professionCode }));
       if (res === "sent") out.welcomed++;
       if (res.startsWith("deferred")) out.deferred++;
     }
@@ -119,7 +139,7 @@ export async function providerSweep(batchSize = 500) {
     const skipCredentialNurture = p.credFollowupOptOut || (p.preLicensure && studentFollowupsOn);
     if (nurtureOn && !skipCredentialNurture && nurtureDue(p, snap.message, c, now)) {
       const key = snap.message === "license" ? "PROVIDER_LICENSE_REMINDER" : "PROVIDER_MALPRACTICE_REMINDER";
-      const res = await outcome(() => composeAndSend("providerCredentialing", r, key, vars, { purpose: "RELATIONSHIP", dedupeKey: `nurture:${id}:${p.nurtureCount}`, facts: { school: p.school, state_name: vars.state_name } }));
+      const res = await outcome(() => composeAndSend("providerCredentialing", r, key, vars, { purpose: "RELATIONSHIP", professionCode, dedupeKey: `nurture:${id}:${p.nurtureCount}`, facts: { school: p.school, state_name: vars.state_name } }));
       if (res === "sent" || res === "blocked") await prisma.provider.update({ where: { id }, data: { nurtureCount: { increment: 1 }, lastNurtureAt: now } });
       if (res === "sent") out.nurtured++;
       if (res.startsWith("deferred")) out.deferred++;
@@ -138,7 +158,7 @@ export async function providerSweep(batchSize = 500) {
       const market = p.homeLat != null && p.homeLng != null ? await marketForPoint(p.homeLat, p.homeLng) : null;
       const travel = `Your maximum drive is set to ${p.maxDriveMinutes} minutes; a longer drive can make more offices visible to you.`;
       const res = await outcome(() => composeAndSend("providerActivation", r, kind === "ready" ? "PROVIDER_COVERAGE_READY" : "PROVIDER_REACTIVATION", { ...vars, travel_line: travel, market_name: market?.name },
-        { purpose: "RELATIONSHIP", dedupeKey: `activation:${id}:${p.activationCount}`, facts: { market_name: market?.name } }));
+        { purpose: "RELATIONSHIP", professionCode, dedupeKey: `activation:${id}:${p.activationCount}`, facts: { market_name: market?.name } }));
       if (res === "sent" || res === "blocked") await prisma.provider.update({ where: { id }, data: { activationCount: { increment: 1 }, lastActivationAt: now } });
       if (res === "sent") {
         out.activated++;
@@ -283,14 +303,18 @@ export async function outreachSweep() {
     orderBy: [{ outreachStep: "desc" }, { intentScore: "desc" }, { createdAt: "asc" }],
     take: s["growth.dailyOutreachCap"] * 2,
   });
+  const allowed = new Map<string, boolean>();
   for (const c of rows) {
+    // Safety: only where the growth target is LIVE and the marketplace takes shifts for that profession there.
+    const professionCode = await outreachProfessionFor(c, allowed);
+    if (!professionCode) continue;
     if (!outreachStepDue(c.outreachStep, c.lastContactedAt, gaps, now)) continue;
     if (await prisma.communication.count({ where: { entityType: "PROSPECT", entityId: c.id, status: "PENDING_APPROVAL" } })) continue;
     const r = await recipient("PROSPECT", c.id);
     if (!r) continue;
     out.queued++;
     const res = await outcome(() => composeAndSend("clinicOutreach", r, OUTREACH_SEQUENCE[c.outreachStep], prospectVars(c, r.firstName), {
-      purpose: "COMMERCIAL", dedupeKey: `outreach:${c.id}:${c.outreachStep}`, review: s["growth.outreachMode"] !== "auto",
+      purpose: "COMMERCIAL", professionCode, dedupeKey: `outreach:${c.id}:${c.outreachStep}`, review: s["growth.outreachMode"] !== "auto",
       facts: { city: c.city, segment: c.segment !== "unknown" ? c.segment : null, clinic_name: c.clinicName },
     }));
     // In review mode the step advances when a person approves the draft.
@@ -480,7 +504,7 @@ export async function handleProspectReply(prospectId: string, text: string) {
         await set({ objections: [...new Set([...c.objections, "cost"])] });
         const rec = await recipient("PROSPECT", prospectId);
         // Replies are always drafted for a person to approve.
-        if (rec) return composeAndSend("clinicConversation", rec, "CLINIC_OBJECTION_COST", { ...prospectVars(c, rec.firstName), reply_summary: d.summary }, { purpose: "RELATIONSHIP", dedupeKey: `objection:${prospectId}:${+now}`, review: true, facts: { reply_summary: d.summary } });
+        if (rec) return composeAndSend("clinicConversation", rec, "CLINIC_OBJECTION_COST", { ...prospectVars(c, rec.firstName), reply_summary: d.summary }, { purpose: "RELATIONSHIP", professionCode: c.professionCodes[0] ?? "DC", dedupeKey: `objection:${prospectId}:${+now}`, review: true, facts: { reply_summary: d.summary } });
       }
       await esc("question", "Prospect asked a question.", "MEDIUM", "Answer from the knowledge base or personally.");
       return "escalated:question";
@@ -489,12 +513,14 @@ export async function handleProspectReply(prospectId: string, text: string) {
 }
 
 /** Approved knowledge: KB articles + the published FAQ, ranked by word overlap. */
-export async function retrieveKnowledge(question: string, n = 4) {
+export async function retrieveKnowledge(question: string, n = 4, professionCode?: string | null) {
   const words = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 2));
   const q = words(question);
   const s = await getSettings();
+  // Articles for every profession, plus the asker's profession (or, unknown, the professions that are live on the platform).
+  const codes = professionCode ? [professionCode] : (await prisma.profession.findMany({ where: { active: true }, select: { code: true } })).map((x) => x.code);
   const entries = [
-    ...(await prisma.kbArticle.findMany({ where: { approved: true, active: true } })).map((a) => ({ question: a.question, answer: a.answer, keywords: a.keywords.join(" ") })),
+    ...(await prisma.kbArticle.findMany({ where: { approved: true, active: true, OR: [{ professionCode: null }, { professionCode: { in: codes } }] } })).map((a) => ({ question: a.question, answer: a.answer, keywords: a.keywords.join(" ") })),
     ...siteFaq(s).map(([question, answer]) => ({ question, answer, keywords: "" })),
   ];
   return entries

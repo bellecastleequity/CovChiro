@@ -1,6 +1,7 @@
 import { providerGrowthState } from "@cm/core";
 import { haversineMiles } from "@cm/integrations";
 import { prisma } from "@cm/db";
+import { primaryTarget } from "./expansion";
 import { clock, getSettings } from "../context";
 import { aiSpendCents } from "./engine";
 
@@ -22,10 +23,9 @@ export async function marketForPoint(lat: number, lng: number) {
   return best;
 }
 
-/** Coverage-ready providers (launch profession + state) with a home location. Messaging/planning view only. */
-export async function coverageReadyProviders() {
-  const s = await getSettings();
-  const professionCode = s["growth.launchProfession"], state = s["growth.launchState"];
+/** Coverage-ready providers in a growth market (default: the primary live one). Messaging/planning view only. */
+export async function coverageReadyProviders(market?: { professionCode: string; state: string }) {
+  const { professionCode, state } = market ?? (await primaryTarget());
   const [profession, psc] = await Promise.all([
     prisma.profession.findUnique({ where: { code: professionCode } }),
     prisma.professionStateConfig.findUnique({ where: { professionCode_state: { professionCode, state } } }),
@@ -78,8 +78,7 @@ const AFTER_ENGAGED = ["ENGAGED", "INTERESTED", "ACCOUNT_STARTED", "ACCOUNT_CREA
 const AFTER_REQUESTED = ["COVERAGE_REQUESTED", "FIRST_SHIFT_BOOKED", "FIRST_SHIFT_COMPLETED", "REPEAT_CLINIC"] as const;
 
 export async function growthFunnels() {
-  const s = await getSettings();
-  const professionCode = s["growth.launchProfession"];
+  const { professionCode } = await primaryTarget();
   const ready = await coverageReadyProviders();
   const stage = (stages: readonly string[]) => prisma.clinicProspect.count({ where: { stage: { in: stages as never } } });
   const clinic = [

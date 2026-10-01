@@ -9,6 +9,7 @@ import { Input, Select } from "@/components/ui/form";
 import { PageHeader, Stat } from "@/components/ui/misc";
 import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
+import { AccountModeration } from "@/components/admin/account-moderation";
 import { approveProviderAction, providerStatusAction } from "../../actions";
 
 export default async function AdminProvider({ params }: { params: Promise<{ id: string }> }) {
@@ -118,6 +119,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
             <Link href={`/admin/providers/${p.id}/profile`} className="mt-2 block text-sm font-medium text-brand-700">Public profile & badges →</Link>
           </CardBody>
         </Card>
+        <AccountModeration kind="provider" id={p.id} status={p.status} />
         </div>
       </div>
     </>

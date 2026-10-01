@@ -1,5 +1,6 @@
 import { EXPECTED_LICENSURE, US_STATES } from "@cm/core";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { SchoolPicker, type SchoolGroup } from "./school-picker";
 
 /**
  * Extra sign-up fields shown ONLY on the opt-in student / not-yet-licensed
@@ -18,7 +19,7 @@ export interface StudentDefaults {
   smsConsent?: boolean;
 }
 
-export function StudentFields({ defaultSchool, defaultStates = ["FL"], defaults = {}, withPhone = true }: { defaultSchool?: string; defaultStates?: string[]; defaults?: StudentDefaults; withPhone?: boolean }) {
+export function StudentFields({ schools, defaultSchool, defaultStates = ["FL"], defaults = {}, withPhone = true }: { schools: SchoolGroup[]; defaultSchool?: string; defaultStates?: string[]; defaults?: StudentDefaults; withPhone?: boolean }) {
   const states = defaults.intendedStates?.length ? defaults.intendedStates : defaultStates;
   return (
     <div className="space-y-4 rounded-xl border border-accent-200 bg-accent-50/40 p-4">
@@ -28,8 +29,8 @@ export function StudentFields({ defaultSchool, defaultStates = ["FL"], defaults 
           <Input id="phone" name="phone" type="tel" autoComplete="tel" required />
         </Field>
       ) : null}
-      <Field label="Chiropractic school" htmlFor="school">
-        <Input id="school" name="school" defaultValue={defaults.school ?? defaultSchool} required />
+      <Field label="School" htmlFor="school">
+        <SchoolPicker groups={schools} defaultValue={defaults.school ?? defaultSchool} />
       </Field>
       <Field label="Graduation date (or expected graduation date)" htmlFor="graduationDate">
         <Input id="graduationDate" name="graduationDate" type="date" defaultValue={defaults.graduationDate ?? undefined} required />

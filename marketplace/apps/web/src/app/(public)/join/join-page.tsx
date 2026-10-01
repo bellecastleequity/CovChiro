@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Check, Lock } from "lucide-react";
 import { brand } from "@cm/config";
 import { prisma } from "@cm/db";
-import { getSettings, prelicensure } from "@cm/services";
+import { getSettings, prelicensure, schools } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { SOURCE_OPTIONS, StudentFields } from "@/components/provider/student-fields";
@@ -30,6 +30,7 @@ const BENEFITS = [
  */
 export async function JoinPage({ slug, search }: { slug?: string; search: Search }) {
   if (!(await getSettings())["features.preLicensureEnabled"]) notFound();
+  const schoolGroups = await schools.schoolOptions();
   const campaign = slug ? await prelicensure.campaignForSlug(slug) : null;
   const dc = await prisma.profession.findUnique({ where: { code: "DC" } });
   const utm = Object.fromEntries((["source", "medium", "campaign", "term", "content"] as const).map((k) => [k, one(search[`utm_${k}`])]));
@@ -94,7 +95,7 @@ export async function JoinPage({ slug, search }: { slug?: string; search: Search
             <Field label="Email" htmlFor="email">
               <Input id="email" name="email" type="email" autoComplete="email" required />
             </Field>
-            <StudentFields defaultSchool={campaign?.kind === "SCHOOL" ? campaign.name : undefined} />
+            <StudentFields schools={schoolGroups} defaultSchool={campaign?.kind === "SCHOOL" ? campaign.name : undefined} />
             {knownSource ? null : (
               <Field label="How did you hear about us?" htmlFor="source">
                 <Select id="source" name="source" defaultValue={one(search.ref) ? "referral" : ""}>

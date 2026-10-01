@@ -161,7 +161,7 @@ export async function generateStanding(id: string) {
   const loc = await prisma.clinicLocation.findUniqueOrThrow({ where: { id: b.locationId } });
   // Booking a standing day is posting a shift: the clinic needs the current agreement (the provider's is checked by eligibility).
   const org = await prisma.clinicOrg.findUniqueOrThrow({ where: { id: b.clinicOrgId } });
-  if (!agreementCurrent("CLINIC", org.agreementSignedAt, org.agreementVersion)) return 0;
+  if (org.status !== "ACTIVE" || !agreementCurrent("CLINIC", org.agreementSignedAt, org.agreementVersion)) return 0;
   const s = await getSettings();
   const now = DateTime.fromJSDate(clock.now()).setZone(loc.timeZone);
   // Never book inside the next 24 hours: that's what normal posting / emergency cover is for.

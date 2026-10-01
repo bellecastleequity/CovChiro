@@ -3,8 +3,8 @@ import { env } from "@cm/config";
 /**
  * Structured-JSON text generation for the growth agents (classification,
  * personalization, summaries, knowledge-base answers). Same providers and
- * raw-fetch style as moderation.ts: Anthropic (ANTHROPIC_API_KEY) or Gemini
- * (GEMINI_API_KEY). With no key, or under test, the "none" provider answers
+ * raw-fetch style as moderation.ts: Anthropic (ANTHROPIC_API_KEY), Gemini
+ * (GEMINI_API_KEY) or OpenAI (OPENAI_API_KEY). With no key, or under test, the "none" provider answers
  * { ok: false } and every caller falls back to approved templates or a
  * human escalation, so the platform works without any AI at all.
  */
@@ -42,7 +42,7 @@ export type ResearchResult = (
 ) & { model: string; inputTokens: number; outputTokens: number; searches: number; fetches: number };
 
 export interface LlmProvider {
-  name: "anthropic" | "gemini" | "none";
+  name: "anthropic" | "gemini" | "openai" | "none";
   generate(req: LlmRequest): Promise<LlmResult>;
   /** Absent = this provider can't research (callers treat it as AI unavailable). */
   research?(req: ResearchRequest): Promise<ResearchResult>;
@@ -217,6 +217,76 @@ const gemini = (key: string): LlmProvider => ({
   },
 });
 
+type OpenAiReply = {
+  status?: string;
+  incomplete_details?: { reason?: string } | null;
+  output?: { type: string; content?: { type: string; text?: string }[] }[];
+  usage?: { input_tokens?: number; output_tokens?: number };
+  error?: { message?: string } | null;
+};
+
+const openAiText = (j: OpenAiReply) =>
+  (j.output ?? []).filter((o) => o.type === "message").flatMap((o) => o.content ?? []).filter((c) => c.type === "output_text").map((c) => c.text ?? "");
+
+/** OpenAI Responses API (raw fetch). Research uses its built-in web_search tool. */
+const openai = (key: string): LlmProvider => ({
+  name: "openai",
+  async generate(req) {
+    const fail = (error: string, i = 0, o = 0): LlmResult => ({ ok: false, error, model: req.model, inputTokens: i, outputTokens: o });
+    try {
+      const r = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model: req.model, instructions: req.system, input: req.user, max_output_tokens: req.maxTokens * 4,
+          text: { format: { type: "json_schema", name: "reply", schema: req.schema, strict: false } },
+          ...(req.effort ? { reasoning: { effort: req.effort } } : {}),
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const j = (await r.json().catch(() => ({}))) as OpenAiReply;
+      const i = j.usage?.input_tokens ?? 0, o = j.usage?.output_tokens ?? 0;
+      if (!r.ok) return fail(`HTTP ${r.status}: ${j.error?.message ?? ""}`.slice(0, 240), i, o);
+      if (j.status === "incomplete") return fail(`incomplete: ${j.incomplete_details?.reason ?? ""}`, i, o);
+      const data = parseObject(openAiText(j).join(""));
+      return data ? { ok: true, data, model: req.model, inputTokens: i, outputTokens: o } : fail("unparseable output", i, o);
+    } catch (e) {
+      return fail((e as Error).message.slice(0, 240));
+    }
+  },
+  async research(req) {
+    const tally = { model: req.model, inputTokens: 0, outputTokens: 0, searches: 0, fetches: 0 };
+    const fail = (error: string): ResearchResult => ({ ok: false, error: error.slice(0, 240), ...tally });
+    try {
+      const r = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model: req.model, instructions: req.system, input: researchPrompt(req),
+          tools: [{ type: "web_search", user_location: { type: "approximate", country: "US" } }],
+          // Opening a page is part of web_search here, so searches and page reads share one cap.
+          max_tool_calls: req.maxSearches + req.maxFetches,
+          // Reasoning tokens count toward the output cap.
+          max_output_tokens: req.maxTokens * 4,
+          ...(req.effort ? { reasoning: { effort: req.effort } } : {}),
+        }),
+        signal: AbortSignal.timeout(RESEARCH_TIMEOUT_MS),
+      });
+      const j = (await r.json().catch(() => ({}))) as OpenAiReply;
+      tally.inputTokens = j.usage?.input_tokens ?? 0;
+      tally.outputTokens = j.usage?.output_tokens ?? 0;
+      tally.searches = (j.output ?? []).filter((o) => o.type === "web_search_call").length;
+      if (!r.ok) return fail(`HTTP ${r.status}: ${j.error?.message ?? ""}`);
+      if (j.status === "incomplete") return fail(`incomplete: ${j.incomplete_details?.reason ?? ""}`);
+      const texts = openAiText(j);
+      const data = parseObject(texts[texts.length - 1] ?? "") ?? parseObject(texts.join(""));
+      return data ? { ok: true, data, ...tally } : fail("unparseable output");
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+});
+
 const none: LlmProvider = {
   name: "none",
   generate: async (req) => ({ ok: false, error: "ai_unavailable", model: req.model, inputTokens: 0, outputTokens: 0 }),
@@ -230,11 +300,12 @@ export function setLlmProvider(p: LlmProvider | null) {
 }
 
 /** `preferred` comes from the growth.aiProvider setting; a provider without a key is never used. */
-export function llmProvider(preferred: "anthropic" | "gemini" | "none"): LlmProvider {
+export function llmProvider(preferred: "anthropic" | "gemini" | "openai" | "none"): LlmProvider {
   if (override) return override;
   const e = env();
   if (e.NODE_ENV === "test" || preferred === "none") return none;
   if (preferred === "anthropic" && e.ANTHROPIC_API_KEY) return anthropic(e.ANTHROPIC_API_KEY);
   if (preferred === "gemini" && e.GEMINI_API_KEY) return gemini(e.GEMINI_API_KEY);
+  if (preferred === "openai" && e.OPENAI_API_KEY) return openai(e.OPENAI_API_KEY);
   return none;
 }

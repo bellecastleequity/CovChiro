@@ -2,8 +2,9 @@ import { env } from "@cm/config";
 
 /**
  * Clinic discovery source: the public NPPES NPI registry (CMS). Free, no key,
- * and it lists every chiropractor and chiropractic practice with its practice
- * location, so we know where the offices are and how many DCs work at each.
+ * and it lists every licensed provider and practice by taxonomy (chiropractor,
+ * physical therapist…) with its practice location, so we know where the offices
+ * are and how many providers work at each.
  * Results are reduced to public practice-location facts (no mailing/home
  * addresses). Shape matches core RegistryRecord.
  */
@@ -14,11 +15,14 @@ export interface NppesRecord {
   firstName: string | null;
   lastName: string | null;
   credential: string | null;
-  isChiropractic: boolean;
+  /** NPI taxonomy codes, e.g. 111N00000X (chiropractor). */
+  taxonomyCodes: string[];
   location: { line1: string; line2: string | null; city: string; state: string; zip: string; phone: string | null } | null;
 }
 
 export interface NppesQuery {
+  /** NPPES taxonomy_description, e.g. "Chiropractor". */
+  taxonomy: string;
   state: string;
   city: string;
   enumerationType: "NPI-1" | "NPI-2";
@@ -57,7 +61,7 @@ export function mapNppesResult(r: RawResult): NppesRecord | null {
     firstName: r.basic?.first_name?.trim() || null,
     lastName: r.basic?.last_name?.trim() || null,
     credential: r.basic?.credential?.trim() || null,
-    isChiropractic: (r.taxonomies ?? []).some((t) => (t.code ?? "").startsWith("111N") || /chiropract/i.test(t.desc ?? "")),
+    taxonomyCodes: (r.taxonomies ?? []).map((t) => (t.code ?? "").trim()).filter(Boolean),
     location: loc?.address_1
       ? { line1: loc.address_1.trim(), line2: loc.address_2?.trim() || null, city: (loc.city ?? "").trim(), state: (loc.state ?? "").trim(), zip: (loc.postal_code ?? "").trim(), phone: loc.telephone_number?.trim() || null }
       : null,
@@ -69,7 +73,7 @@ const registry: NppesProvider = {
   async search(q) {
     const u = new URL(env().NPPES_API_BASE);
     u.searchParams.set("version", "2.1");
-    u.searchParams.set("taxonomy_description", "Chiropractor");
+    u.searchParams.set("taxonomy_description", q.taxonomy);
     u.searchParams.set("state", q.state);
     u.searchParams.set("city", q.city);
     u.searchParams.set("enumeration_type", q.enumerationType);

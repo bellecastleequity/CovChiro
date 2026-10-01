@@ -22,7 +22,7 @@ export default async function PromptDetail({ params }: { params: Promise<{ id: s
   await growth.prompts(actor);
   const p = await prisma.promptTemplate.findUnique({ where: { id: (await params).id } });
   if (!p) notFound();
-  const versions = await prisma.promptTemplate.findMany({ where: { key: p.key }, orderBy: { version: "desc" }, select: { id: true, version: true, status: true, active: true, abWeight: true } });
+  const versions = await prisma.promptTemplate.findMany({ where: { key: p.key, professionCode: p.professionCode }, orderBy: { version: "desc" }, select: { id: true, version: true, status: true, active: true, abWeight: true } });
   const op = (value: string, label: string, variant: "primary" | "outline" | "danger" = "outline") => <button name="op" value={value} className={buttonClass(variant, "sm")}>{label}</button>;
   return (
     <>
@@ -60,7 +60,7 @@ export default async function PromptDetail({ params }: { params: Promise<{ id: s
           <CardHeader title="Edit → new draft version" description="Approved versions are never edited in place." />
           <CardBody>
             <ActionForm action={savePromptAction} className="space-y-3">
-              <input type="hidden" name="key" value={p.key} /><input type="hidden" name="agent" value={p.agent} /><input type="hidden" name="abWeight" value={p.abWeight} />
+              <input type="hidden" name="key" value={p.key} /><input type="hidden" name="professionCode" value={p.professionCode ?? ""} /><input type="hidden" name="agent" value={p.agent} /><input type="hidden" name="abWeight" value={p.abWeight} />
               <Field label="Purpose"><Input name="purpose" defaultValue={p.purpose} required /></Field>
               <Field label="Allowed variables"><Input name="allowedVars" defaultValue={p.allowedVars.join(", ")} /></Field>
               <Field label="Subject"><Input name="subjectTemplate" defaultValue={p.subjectTemplate ?? ""} /></Field>
