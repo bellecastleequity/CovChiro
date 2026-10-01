@@ -76,6 +76,7 @@ export default async function ForClinics() {
             <div className="flex justify-between gap-4"><dt>Overtime beyond 8 hours</dt><dd className="font-medium">{money(s["pricing.overtimeClinicCentsPerHour"])}/hr</dd></div>
             <div className="flex justify-between gap-4"><dt>Mileage</dt><dd className="font-medium">{money(s["pricing.mileageRateCentsPerMile"], { exact: true })}/mile {s["pricing.mileageRoundTrip"] ? "round-trip" : "one-way"}</dd></div>
             <div className="flex justify-between gap-4"><dt>Weekend / holiday / &lt;48h</dt><dd className="font-medium">+{s["pricing.premiumWeekendPercent"]}% / +{s["pricing.premiumHolidayPercent"]}% / +{s["pricing.premiumUrgentPercent"]}%</dd></div>
+            {s["pricing.premiumRushPercent"] > 0 ? <div className="flex justify-between gap-4"><dt>Rush (posted &lt;{s["pricing.rushWithinHours"]}h before)</dt><dd className="font-medium">+{s["pricing.premiumRushPercent"]}% instead of +{s["pricing.premiumUrgentPercent"]}%</dd></div> : null}
           </dl>
         </div>
       </div>

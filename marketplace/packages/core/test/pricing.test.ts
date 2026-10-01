@@ -44,6 +44,7 @@ describe("quoteBase", () => {
     const combos = [
       { name: "none", start: "2026-10-14T13:00:00Z", pricedAt: early, boosted: false, kinds: [] },
       { name: "urgent", start: "2026-10-14T13:00:00Z", pricedAt: d("2026-10-13T13:00:00Z"), boosted: false, kinds: ["URGENT"] },
+      { name: "rush (<24h) replaces urgent", start: "2026-10-14T13:00:00Z", pricedAt: d("2026-10-14T01:00:00Z"), boosted: false, kinds: ["RUSH"] },
       { name: "weekend", start: "2026-10-17T13:00:00Z", pricedAt: early, boosted: false, kinds: ["WEEKEND"] },
       { name: "holiday (Thanksgiving)", start: "2026-11-26T14:00:00Z", pricedAt: early, boosted: false, kinds: ["HOLIDAY"] },
       { name: "boost", start: "2026-10-14T13:00:00Z", pricedAt: early, boosted: true, kinds: ["BOOST"] },
@@ -55,7 +56,7 @@ describe("quoteBase", () => {
       const q = quoteBase({ startsAt, endsAt }, "TIERED", FL_CENTRAL, { pricedAt: c.pricedAt, timeZone: TZ, boosted: c.boosted }, S);
       expect(q.premiums.map((p) => p.kind), c.name).toEqual(c.kinds);
       const pct: Record<string, number> = {
-        URGENT: S["pricing.premiumUrgentPercent"], WEEKEND: S["pricing.premiumWeekendPercent"], HOLIDAY: S["pricing.premiumHolidayPercent"], BOOST: S["pricing.boostPercent"],
+        URGENT: S["pricing.premiumUrgentPercent"], RUSH: S["pricing.premiumRushPercent"], WEEKEND: S["pricing.premiumWeekendPercent"], HOLIDAY: S["pricing.premiumHolidayPercent"], BOOST: S["pricing.boostPercent"],
       };
       const mult = c.kinds.reduce((m, k) => m * (1 + pct[k] / 100), 1);
       expect(q.clinicPriceCents, c.name).toBe(Math.round(57500 * mult));

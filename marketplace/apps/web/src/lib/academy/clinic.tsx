@@ -315,7 +315,7 @@ const money_: Lesson = {
         items={[
           "Your base price comes from the rate card for your clinic's region (set by ZIP code) and the shift length: half day (under 4 hours), full day (4–8 hours).",
           `Hours beyond 8 are billed at ${money(s["pricing.overtimeClinicCentsPerHour"])} per hour.`,
-          `Premiums apply automatically: weekend +${s["pricing.premiumWeekendPercent"]}%, federal holiday +${s["pricing.premiumHolidayPercent"]}%, posted under 48 hours before the start +${s["pricing.premiumUrgentPercent"]}%.`,
+          `Premiums apply automatically: weekend +${s["pricing.premiumWeekendPercent"]}%, federal holiday +${s["pricing.premiumHolidayPercent"]}%, posted under 48 hours before the start +${s["pricing.premiumUrgentPercent"]}%${s["pricing.premiumRushPercent"] > 0 ? `, or +${s["pricing.premiumRushPercent"]}% instead when posted under ${s["pricing.rushWithinHours"]} hours before (rush)` : ""}. Premiums raise your provider's pay by the same percent, which is what gets short-notice shifts filled.`,
           <>
             <b>Travel is passed straight through to your provider</b>: mileage at {money(s["pricing.mileageRateCentsPerMile"], { exact: true })} per mile{" "}
             {s["pricing.mileageRoundTrip"] ? "round-trip" : "one-way"}, plus lodging only if you allowed it. We keep nothing from travel.

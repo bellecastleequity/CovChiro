@@ -10,7 +10,7 @@ import { hoursBetween, localParts } from "./time";
 
 export type PricingModel = "TIERED" | "HOURLY";
 export type DurationTier = "HALF_DAY" | "FULL_DAY" | "HOURLY";
-export type PremiumKind = "URGENT" | "WEEKEND" | "HOLIDAY" | "BOOST";
+export type PremiumKind = "URGENT" | "RUSH" | "WEEKEND" | "HOLIDAY" | "BOOST";
 
 /** TIERED: flat price per tier. HOURLY: per-hour rates with a billable minimum. */
 export interface RateCardFacts {
@@ -63,6 +63,8 @@ type PricingSettings = Pick<
   | "pricing.overtimeClinicCentsPerHour"
   | "pricing.overtimeProviderCentsPerHour"
   | "pricing.premiumUrgentPercent"
+  | "pricing.premiumRushPercent"
+  | "pricing.rushWithinHours"
   | "pricing.premiumWeekendPercent"
   | "pricing.premiumHolidayPercent"
   | "pricing.boostPercent"
@@ -73,7 +75,11 @@ type PricingSettings = Pick<
 export function applicablePremiums(input: PremiumInput, s: PricingSettings): AppliedPremium[] {
   const o = (input.professionCode && s["pricing.premiumOverridesByProfession"][input.professionCode]) || {};
   const out: AppliedPremium[] = [];
-  if (hoursBetween(input.pricedAt, input.startsAt) < 48) out.push({ kind: "URGENT", percent: o.urgent ?? s["pricing.premiumUrgentPercent"] });
+  // Short notice: RUSH (posted within pricing.rushWithinHours) replaces URGENT (< 48h); they never stack.
+  const notice = hoursBetween(input.pricedAt, input.startsAt);
+  const rush = o.rush ?? s["pricing.premiumRushPercent"];
+  if (notice < s["pricing.rushWithinHours"] && rush > 0) out.push({ kind: "RUSH", percent: rush });
+  else if (notice < 48) out.push({ kind: "URGENT", percent: o.urgent ?? s["pricing.premiumUrgentPercent"] });
   const local = localParts(input.startsAt, input.timeZone);
   if (local.weekday === 0 || local.weekday === 6) out.push({ kind: "WEEKEND", percent: o.weekend ?? s["pricing.premiumWeekendPercent"] });
   if (isFederalHoliday(local.isoDate)) out.push({ kind: "HOLIDAY", percent: o.holiday ?? s["pricing.premiumHolidayPercent"] });
