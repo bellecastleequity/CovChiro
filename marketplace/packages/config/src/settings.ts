@@ -297,7 +297,31 @@ export const SETTINGS = {
     flag: "OWNER_DECISION",
   }),
 
+  // ---------- credential expiry ----------
+  "credentials.expiryReminderDays": def({
+    group: "Credentials",
+    label: "Renewal reminders (days before a license or malpractice policy expires)",
+    help: "One reminder at each of these points. The last one also goes by SMS.",
+    schema: z.array(z.number().int().min(1).max(365)).min(1).max(8),
+    default: [60, 30, 14, 7],
+    flag: null,
+  }),
+
+  // ---------- pre-licensure (students & new graduates) ----------
+  "prelicensure.followupsEnabled": def({ group: "Students & new graduates", label: "Send credential follow-up emails to students", schema: z.boolean(), default: true, flag: null }),
+  "prelicensure.followupDays": def({
+    group: "Students & new graduates",
+    label: "Follow-ups: days after graduation (or signup, if later)",
+    help: "Each email asks only for what is still missing (license, malpractice, or a correction). Nothing is sent while everything is under review.",
+    schema: z.array(z.number().int().min(1).max(730)).min(1).max(10),
+    default: [30, 60, 90],
+    flag: null,
+  }),
+  "prelicensure.repeatDays": def({ group: "Students & new graduates", label: "Then repeat every (days) while still incomplete", schema: z.number().int().min(7).max(365), default: 60, flag: null }),
+  "prelicensure.minGapDays": def({ group: "Students & new graduates", label: "Never send two follow-ups closer than (days)", schema: z.number().int().min(1).max(90), default: 14, flag: null }),
+
   // ---------- feature flags (ATTORNEY REVIEW items ship OFF) ----------
+  "features.preLicensureEnabled": def({ group: "Features", label: "Student / not-yet-licensed signup path and /join recruitment pages", schema: z.boolean(), default: true, flag: null }),
   "features.onCallEnabled": def({ group: "Features", label: "On Call auto-accept (requires On Call Terms in the Provider Agreement)", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
   "features.conversionFeeEnabled": def({ group: "Features", label: "Allow charging conversion fees", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
 } as const;

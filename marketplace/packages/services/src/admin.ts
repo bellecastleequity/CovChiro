@@ -13,8 +13,8 @@ import { recomputeProviderStatus } from "./onboarding";
 export async function verificationQueue(actor: Actor) {
   requireAdmin(actor);
   const [licenses, policies, certs, npi] = await Promise.all([
-    prisma.license.findMany({ where: { status: "PENDING_VERIFICATION" }, include: { provider: { select: { id: true, displayName: true, legalName: true, npi: true } }, profession: true }, orderBy: { createdAt: "asc" } }),
-    prisma.malpracticePolicy.findMany({ where: { status: "PENDING_VERIFICATION" }, include: { provider: { select: { id: true, displayName: true, legalName: true } } }, orderBy: { createdAt: "asc" } }),
+    prisma.license.findMany({ where: { status: "PENDING_VERIFICATION" }, include: { provider: { select: { id: true, displayName: true, legalName: true, npi: true, preLicensure: true } }, profession: true }, orderBy: { createdAt: "asc" } }),
+    prisma.malpracticePolicy.findMany({ where: { status: "PENDING_VERIFICATION" }, include: { provider: { select: { id: true, displayName: true, legalName: true, preLicensure: true } } }, orderBy: { createdAt: "asc" } }),
     prisma.providerSkill.findMany({ where: { certificationStatus: "PENDING_VERIFICATION" }, include: { provider: { select: { id: true, displayName: true } }, skill: true } }),
     prisma.provider.findMany({ where: { npiMismatch: true, npiVerifiedAt: null }, select: { id: true, displayName: true, legalName: true, npi: true } }),
   ]);
@@ -45,11 +45,16 @@ export async function reviewLicense(actor: Actor, licenseId: string, input: { ap
       ? `${profession?.displayName ?? l.professionCode} national registry credential`
       : `${US_STATES[l.state] ?? l.state} ${(profession?.displayName ?? l.professionCode).toLowerCase()} license`;
   const providerReady = (await prisma.digestSend.count({ where: { key: { startsWith: `ready:${l.providerId}:` } } })) > 0;
+  // Students: say exactly what's next (scope copy). Read before recompute may have graduated them out.
+  const studentNeedsMalpractice =
+    input.approve && l.provider.preLicensure && !(await prisma.malpracticePolicy.count({ where: { providerId: l.providerId, status: "VERIFIED", expiresAt: { gt: now } } }));
   await notify(prisma, l.provider.userId, {
     template: input.approve ? "license_verified" : "license_rejected",
     title: input.approve ? `Your ${credName} is verified` : `We couldn't verify your ${credName}`,
     body: input.approve
-      ? `We've confirmed it's active and marked it verified on your profile.${providerReady ? "" : " Finish the remaining setup steps on your dashboard and we'll let you know when you can start taking shifts."}`
+      ? studentNeedsMalpractice
+        ? "Your chiropractic license has been received and verified. Add your malpractice insurance to complete your coverage eligibility."
+        : `We've confirmed it's active and marked it verified on your profile.${providerReady ? "" : " Finish the remaining setup steps on your dashboard and we'll let you know when you can start taking shifts."}`
       : (input.reason ?? "Please check the details and resubmit."),
     link: "/provider/credentials",
   });

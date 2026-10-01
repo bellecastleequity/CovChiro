@@ -9,7 +9,9 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { agreementAction, passwordAction, profileAction } from "../actions";
+import { agreementAction, passwordAction, profileAction, studentModeAction } from "../actions";
+import { getSettings } from "@cm/services";
+import { StudentFields } from "@/components/provider/student-fields";
 
 export const metadata = { title: "Profile" };
 
@@ -18,6 +20,12 @@ export default async function Profile() {
   const p = await prisma.provider.findUniqueOrThrow({ where: { id: actor.providerId! }, include: { professions: { include: { profession: true } } } });
   const signed = p.agreementVersion === AGREEMENT_VERSION.PROVIDER && p.agreementSignedAt;
   const signedCopy = await latestSignedAgreement("PROVIDER", p.id);
+  const studentEnabled = (await getSettings())["features.preLicensureEnabled"];
+  const hasVerifiedLicense = (await prisma.license.count({ where: { providerId: p.id, status: "VERIFIED", expiresAt: { gt: new Date() } } })) > 0;
+  const studentDefaults = {
+    school: p.school, graduationDate: p.graduationDate?.toISOString().slice(0, 10) ?? null, intendedStates: p.intendedStates, licensureApplied: p.licensureApplied,
+    expectedLicensure: p.expectedLicensure, homeZip: p.homeZip, maxDriveMinutes: p.maxDriveMinutes, preferredArea: p.preferredArea, smsConsent: !!p.smsConsentAt,
+  };
   return (
     <>
       <PageHeader title="Profile" description="Clinics see your photo, name, headline, About me, credentials, skills, ratings and badges — never your home address or phone." actions={<a href={`/provider/profile/public`} className="text-sm font-medium text-brand-700">Preview public profile →</a>} />
@@ -59,6 +67,38 @@ export default async function Profile() {
             </ActionForm>
           </CardBody>
         </Card>
+        {studentEnabled && (p.preLicensure || !hasVerifiedLicense) ? (
+          <Card id="student">
+            <CardHeader
+              title="Student / not yet licensed"
+              description={p.preLicensure ? "You're on the student path: we'll check in about your license and malpractice and show your coverage readiness. It turns off by itself once both are verified." : "Still in school or waiting on your license? Turn this on and we'll guide you to coverage-ready."}
+            />
+            <CardBody>
+              {p.preLicensure ? (
+                <>
+                  <ActionForm action={studentModeAction} className="space-y-4">
+                    <input type="hidden" name="on" value="1" />
+                    <StudentFields withPhone={false} defaults={studentDefaults} />
+                    <SubmitButton>Save student details</SubmitButton>
+                  </ActionForm>
+                  <ActionForm action={studentModeAction} className="mt-3">
+                    <input type="hidden" name="on" value="0" />
+                    <SubmitButton variant="ghost" size="sm">I'm not a student — turn this off</SubmitButton>
+                  </ActionForm>
+                </>
+              ) : (
+                <details>
+                  <summary className="cursor-pointer text-sm font-medium text-brand-700">I'm a student / not yet licensed</summary>
+                  <ActionForm action={studentModeAction} className="mt-4 space-y-4">
+                    <input type="hidden" name="on" value="1" />
+                    <StudentFields withPhone={false} defaults={studentDefaults} />
+                    <SubmitButton>Turn on the student path</SubmitButton>
+                  </ActionForm>
+                </details>
+              )}
+            </CardBody>
+          </Card>
+        ) : null}
         <Card id="agreement">
           <CardHeader title="Provider Platform Agreement" />
           <CardBody>

@@ -14,3 +14,4 @@ export * from "./credentials";
 export * from "./supervision";
 export * from "./badges";
 export * from "./dispatch";
+export * from "./prelicensure";

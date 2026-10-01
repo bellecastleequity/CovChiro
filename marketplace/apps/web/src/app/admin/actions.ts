@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import {
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold,
+  reviewLodgingReceipt, setHold, prelicensure,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -340,4 +340,25 @@ export const resolveTaskAction = formAction(async (fd) => {
   await admin.resolveTask(actor, str(fd, "taskId"));
   rv("/admin");
   return "Resolved.";
+});
+
+// ---------- recruitment links (/join/<slug>) ----------
+export const saveCampaignAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await prelicensure.saveCampaign(
+    actor,
+    {
+      slug: str(fd, "slug"),
+      name: str(fd, "name"),
+      kind: (str(fd, "kind") || "SCHOOL") as "SCHOOL" | "EVENT" | "CAMPAIGN",
+      state: optStr(fd, "state"),
+      city: optStr(fd, "city"),
+      headline: optStr(fd, "headline"),
+      costDollars: Number(str(fd, "costDollars") || 0),
+      active: bool(fd, "active"),
+    },
+    str(fd, "id") || undefined,
+  );
+  rv("/admin/recruitment");
+  return "Saved.";
 });

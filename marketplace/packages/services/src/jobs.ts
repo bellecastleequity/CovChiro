@@ -8,6 +8,7 @@ import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSwe
 import { releaseDuePayouts } from "./payouts";
 import { settleDueInvites } from "./shifts";
 import { standingSweep } from "./standing";
+import { runPreLicensureFollowups } from "./prelicensure";
 
 /**
  * Every background job is an idempotent sweep over due rows (SPEC.md §16):
@@ -47,6 +48,8 @@ export const JOBS: Job[] = [
   { name: "standingBookings", schedule: { everySeconds: 3600 }, run: () => standingSweep() },
   // Growth.
   { name: "leadDrip", schedule: { everySeconds: 900 }, run: () => leads.runLeadDrip() },
+  // Students: one state-aware credential follow-up when due (30/60/90 days after graduation, then every 60).
+  { name: "preLicensureFollowups", schedule: { cron: "15 10 * * *", tz: "America/New_York" }, run: () => runPreLicensureFollowups() },
   // Quality.
   { name: "ratingsReveal", schedule: { everySeconds: 3600 }, run: () => revealExpiredRatings() },
   { name: "statsRecompute", schedule: { everySeconds: 3600 }, run: () => forActiveProviders((id) => recomputeStats(id)) },

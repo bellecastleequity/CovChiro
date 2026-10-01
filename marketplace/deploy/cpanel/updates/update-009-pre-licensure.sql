@@ -1,0 +1,6 @@
+-- This release: opt-in student / not-yet-licensed signup path, /join
+-- recruitment links, credential follow-ups for students, provider funnel and
+-- supply reports, configurable renewal reminders (60/30/14/7 days).
+-- Run AFTER update-008. Safe to run more than once.
+-- Run in Neon: SQL Editor → paste → Run.
+-- @migration 0010_pre_licensure
