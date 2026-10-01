@@ -20,7 +20,7 @@ import { DateTime } from "luxon";
  */
 
 export const AGENTS = {
-  clinicProspecting: ["Clinic Prospecting", "Imports and classifies Florida chiropractic offices; assigns markets."],
+  clinicProspecting: ["Clinic Prospecting", "Finds Florida chiropractic offices in the public NPI registry, researches each on the web (website, business email, size), classifies them and assigns markets."],
   clinicOutreach: ["Clinic Outreach", "Sends the educational email sequence to contactable prospects (the launch switch)."],
   clinicConversation: ["Clinic Conversation", "Answers questions from the approved knowledge base and classifies replies."],
   clinicOnboarding: ["Clinic Onboarding", "Nudges new clinic accounts toward their next incomplete step."],
@@ -69,8 +69,9 @@ export function aiRules() {
   ].join("\n");
 }
 
+/** Spend under the general AI caps (web research has its own cap: growth.researchDailyBudgetCents). */
 export async function aiSpendCents(since: Date): Promise<number> {
-  const r = await prisma.aiUsage.aggregate({ where: { createdAt: { gte: since } }, _sum: { costMicroUsd: true } });
+  const r = await prisma.aiUsage.aggregate({ where: { createdAt: { gte: since }, task: { not: "research" } }, _sum: { costMicroUsd: true } });
   return (r._sum.costMicroUsd ?? 0) / 10_000;
 }
 

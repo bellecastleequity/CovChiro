@@ -72,6 +72,7 @@ Run the licensure invariant suite before every commit.
 | `payoutRelease` | 15 min | Transfers provider pay once the dispute window closes |
 | `leadDrip` | 15 min | Sends lead follow-up emails |
 | `growthAgents` | 15 min | Growth agents: provider credential follow-ups and activation, clinic prospect classification/scoring, outreach (when launched), unposted-request recovery, onboarding nudges |
+| `growthProspecting` | 10 min | Automatic clinic prospecting: next Florida cities from the public NPPES NPI registry (one prospect per practice location), then AI web research of a few prospects (website, public business email, size; cited sources; separate daily budget) |
 | `growthSupplyGaps` | 1 h | Escalates open shifts starting within 3 days that have no eligible provider |
 | `growthWeeklyBriefing` | Mon 08:00 America/New_York | Funnel briefing to admins (aggregate numbers only) |
 | `ratingsReveal`, `statsRecompute`, `responsivenessRecompute` | 1 h | Quality metrics |

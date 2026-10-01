@@ -1604,7 +1604,7 @@ model ClinicProspect {
   npis               String[]       @default([])
   /// The name is a doctor's name from the registry; research may replace it with the practice name.
   nameFromRegistry   Boolean        @default(false)
-  /// PENDING | DONE | NOT_FOUND | FAILED | SKIPPED
+  /// PENDING | RUNNING | DONE | NOT_FOUND | FAILED
   researchStatus     String         @default("PENDING")
   researchAttempts   Int            @default(0)
   researchedAt       DateTime?      @db.Timestamptz(3)

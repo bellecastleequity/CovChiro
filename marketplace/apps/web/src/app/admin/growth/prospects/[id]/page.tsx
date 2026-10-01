@@ -9,7 +9,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Checklist, PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateTimeLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { manualEmailAction, noteAction, overrideProspectAction, replyAction, saveProspectAction } from "../../actions";
+import { manualEmailAction, noteAction, overrideProspectAction, replyAction, researchProspectAction, saveProspectAction } from "../../actions";
 import { GrowthTabs, SEGMENTS, STAGES } from "../../ui";
 
 export const metadata = { title: "Clinic prospect" };
@@ -92,6 +92,22 @@ export default async function ProspectDetail({ params }: { params: Promise<{ id:
         </div>
 
         <div className="space-y-6">
+          <Card>
+            <CardHeader title="Web research" action={<ActionForm action={researchProspectAction} successMessage><input type="hidden" name="id" value={p.id} /><SubmitButton size="sm" variant="outline">{p.researchStatus === "PENDING" ? "Research now" : "Research again"}</SubmitButton></ActionForm>} />
+            <CardBody className="space-y-2 text-sm">
+              <div><StatusBadge status={p.researchStatus} /> {p.researchConfidence != null ? <span className="text-xs text-slate-500">confidence {Math.round(p.researchConfidence * 100)}%</span> : null} {p.researchedAt ? <span className="text-xs text-slate-500">· {dateTimeLabel(p.researchedAt)}</span> : null}</div>
+              {p.nameFromRegistry ? <p className="text-xs text-amber-700">The name is a doctor's name from the NPI registry; research replaces it with the practice name.</p> : null}
+              {p.website ? <div className="text-xs">Website: <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">{p.website}</a></div> : null}
+              {p.doctors.length ? <div className="text-xs">Chiropractors: {p.doctors.join(", ")}</div> : null}
+              {p.socialUrls.length ? <div className="text-xs">Social: {p.socialUrls.map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="mr-2 text-brand-700 hover:underline">{u.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]}</a>)}</div> : null}
+              {p.sourceUrls.length ? (
+                <details><summary className="cursor-pointer text-xs text-slate-500">Sources ({p.sourceUrls.length})</summary>
+                  <ul className="mt-1 space-y-0.5">{p.sourceUrls.map((u) => <li key={u} className="truncate text-xs"><a href={u} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">{u}</a></li>)}</ul>
+                </details>
+              ) : null}
+              {p.npis.length ? <div className="text-xs text-slate-500">NPI registry: {p.npis.join(", ")}</div> : null}
+            </CardBody>
+          </Card>
           {d.checklist ? <Card><CardHeader title="Onboarding" /><CardBody><Checklist items={d.checklist.map((s) => ({ label: s.label, done: s.done }))} /></CardBody></Card> : null}
           <Card>
             <CardHeader title="Overrides" description="People can change what automation decided." />

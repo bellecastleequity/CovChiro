@@ -90,6 +90,28 @@ export const importProspectsAction = formAction(async (fd) => {
   return `Imported: ${r.inserted} new, ${r.updated} updated, ${r.skipped} skipped.`;
 });
 
+export const runProspectingAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const cities = str(fd, "cities").split(",").map((c) => c.trim()).filter(Boolean);
+  const r = await growth.runProspectingNow(actor, cities);
+  rv();
+  const d = r.discovery as { cities?: string[]; practices?: number; inserted?: number; errors?: string[]; skipped?: string };
+  if (d.skipped) return "Clinic Prospecting is switched off (Growth → Overview → Agents).";
+  const parts: string[] = [];
+  if (d.cities?.length) parts.push(`Searched ${d.cities.join(", ")}: ${d.practices ?? 0} practice locations, ${d.inserted ?? 0} new.`);
+  else if (!d.errors?.length) parts.push("Every city was searched recently; nothing new to search.");
+  if (d.errors?.length) parts.push(`The NPI registry couldn't be reached (${d.errors.join("; ")}).`);
+  parts.push(r.research.stopped === "ai_unavailable" ? "Web research needs an AI key (ANTHROPIC_API_KEY)." : r.research.stopped === "budget" ? "Web research stopped: today's research budget is used up." : `Researched ${r.research.researched} on the web (${r.research.notFound} not found, ${r.research.failed} failed).`);
+  return parts.join(" ");
+});
+
+export const researchProspectAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const res = await growth.researchNow(actor, str(fd, "id"));
+  rv();
+  return ({ done: "Researched: new details filled in.", not_found: "Research couldn't confidently find this practice online.", failed: "Research failed; see agent activity.", ai_unavailable: "Web research needs an AI key (ANTHROPIC_API_KEY).", budget: "Today's research budget is used up.", skipped: "Research is already running for this clinic." } as const)[res];
+});
+
 export const overrideProspectAction = formAction(async (fd) => {
   const { actor } = await me();
   const o: Parameters<typeof growth.overrideProspect>[2] = {};

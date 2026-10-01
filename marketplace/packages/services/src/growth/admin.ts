@@ -9,6 +9,7 @@ import { getEligibleProviders } from "../eligibility";
 import { AGENT_AUDIENCE, AGENTS, ai, aiRules, aiSpendCents, logAgent, newToken, normEmail, recipient, sendGrowthEmail, suppress, type AgentKey, type Audience, type GrowthEntityType } from "./engine";
 import { ensureGrowthDefaults } from "./defaults";
 import { advanceOutreach, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
+import { discoverySweep, prospectingStatus, researchProspect, researchSweep } from "./prospecting";
 import { attribution, growthFunnels, growthKpis, liquidity, marketForPoint } from "./analytics";
 
 /** Admin side of the growth control center. Every human override is audit-logged. */
@@ -63,6 +64,29 @@ export async function setAgent(actor: Actor, key: AgentKey, on: boolean) {
   const s = await getSettings(undefined, true);
   await updateSetting(actor, "growth.agents", { ...s["growth.agents"], [key]: on });
   await logAgent("admin", on ? "agent_on" : "agent_off", { trigger: key, humanOverrideBy: actor.userId });
+}
+
+// ---------------- automatic prospecting ----------------
+
+export async function prospecting(actor: Actor) {
+  requireAdmin(actor);
+  return prospectingStatus();
+}
+
+/** "Find clinics now": the next cities (or the ones named), then a research batch. */
+export async function runProspectingNow(actor: Actor, cities?: string[]) {
+  requireAdmin(actor);
+  const discovery = await discoverySweep({ cities: cities?.length ? cities : undefined });
+  const research = await researchSweep({ wallMs: 90_000 });
+  await logAgent("admin", "prospecting_run", { humanOverrideBy: actor.userId, output: { discovery, research } });
+  return { discovery, research };
+}
+
+export async function researchNow(actor: Actor, prospectId: string) {
+  requireAdmin(actor);
+  const res = await researchProspect(prospectId, { force: true });
+  await logAgent("admin", "research_requested", { entityType: "PROSPECT", entityId: prospectId, humanOverrideBy: actor.userId, output: res });
+  return res;
 }
 
 export async function runNow(actor: Actor) {
@@ -140,7 +164,7 @@ export async function updateEscalation(actor: Actor, id: string, status: "OPEN" 
 
 // ---------------- prospects ----------------
 
-export async function prospects(actor: Actor, f: { q?: string; stage?: string; intent?: string; segment?: string; market?: string; skip?: number } = {}) {
+export async function prospects(actor: Actor, f: { q?: string; stage?: string; intent?: string; segment?: string; market?: string; research?: string; skip?: number } = {}) {
   requireAdmin(actor);
   const where: Prisma.ClinicProspectWhereInput = {
     ...(f.q ? { OR: ["clinicName", "ownerName", "email", "city", "zip"].map((k) => ({ [k]: { contains: f.q, mode: "insensitive" } })) } : {}),
@@ -148,6 +172,7 @@ export async function prospects(actor: Actor, f: { q?: string; stage?: string; i
     ...(f.intent ? { intentCategory: f.intent as never } : {}),
     ...(f.segment ? { segment: f.segment } : {}),
     ...(f.market ? { marketKey: f.market } : {}),
+    ...(f.research === "with_email" ? { email: { not: null } } : f.research ? { researchStatus: f.research } : {}),
   };
   const [rows, total] = await Promise.all([
     prisma.clinicProspect.findMany({ where, orderBy: [{ intentScore: "desc" }, { createdAt: "desc" }], take: 50, skip: f.skip ?? 0 }),
