@@ -1,6 +1,7 @@
 # Pre-licensure recruitment (students & new graduates) — audit and plan
 
-Status: DRAFT for owner approval. Owner direction (2026-10-01): pre-licensure
+Status: APPROVED by owner 2026-10-01 with the default decisions (D1–D4) and IMPLEMENTED.
+One change from the draft: the student flag turns off once license AND malpractice are both verified (not at the first license), so the "license verified — add malpractice" follow-up still reaches them. Owner direction (2026-10-01): pre-licensure
 must be an **opt-in path** behind a "Student / not yet licensed" toggle — not
 extra fields or a new default for every provider.
 

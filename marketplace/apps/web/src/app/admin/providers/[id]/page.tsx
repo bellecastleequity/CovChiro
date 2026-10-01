@@ -50,7 +50,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
               <div><span className="text-slate-500">Malpractice:</span> {student.summary.malpractice.replace("_", " ")}</div>
               {student.wasStudent ? (
                 <>
-                  <div><span className="text-slate-500">Graduation:</span> {student.graduationDate ? dateLabel(student.graduationDate) : "—"}{student.graduatedOutAt ? ` · credentialed ${dateLabel(student.graduatedOutAt)}` : ""}</div>
+                  <div><span className="text-slate-500">Graduation:</span> {student.graduationDate ? dateLabel(student.graduationDate, "UTC", { month: "short", day: "numeric", year: "numeric" }) : "—"}{student.graduatedOutAt ? ` · credentialed ${dateLabel(student.graduatedOutAt)}` : ""}</div>
                   <div><span className="text-slate-500">License application:</span> {student.licensureApplied === "yes" ? "submitted" : "not yet"} · expected {student.expectedLicensure ?? "—"}</div>
                   <div><span className="text-slate-500">Intended states:</span> {student.intendedStates.join(", ") || "—"}</div>
                   <div><span className="text-slate-500">ZIP / area:</span> {student.homeZip ?? "—"}{student.preferredArea ? ` · ${student.preferredArea}` : ""}</div>

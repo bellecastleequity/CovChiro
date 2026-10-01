@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@cm/db";
-import { StatusBadge } from "@/components/ui/badge";
+import { Badge, StatusBadge } from "@/components/ui/badge";
 import { buttonClass } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/form";
@@ -35,7 +35,7 @@ export default async function Providers({ searchParams }: { searchParams: Promis
                   <Td>{p.licenses.map((l) => `${l.professionCode}-${l.state}`).join(", ") || "—"}</Td>
                   <Td>{s?.completedShifts ?? 0}</Td>
                   <Td>{pct(rel)}</Td>
-                  <Td><StatusBadge status={p.status} /></Td>
+                  <Td><div className="flex flex-wrap gap-1"><StatusBadge status={p.status} />{p.preLicensure ? <Badge tone="blue">Student</Badge> : null}</div></Td>
                 </tr>
               );
             })}
