@@ -197,6 +197,20 @@ describe("research when the AI provider refuses", () => {
     expect(await growth.researchPause()).toBeNull();
   });
 
+  it("a short per-minute limit is waited out once, not failed", async () => {
+    const tpm = "HTTP 429 rate_limit_exceeded: Rate limit reached for gpt-5.4-mini on tokens per min (TPM): Limit 200000, Used 186380, Requested 17874. Please try again in 300ms.";
+    expect(growth.retryAfterMs(tpm)).toBe(300);
+    expect(growth.retryAfterMs("Please try again in 1.276s")).toBe(1276);
+    let calls = 0;
+    const r = await growth.withRateLimitRetry(async () => (++calls === 1 ? { ok: false, error: tpm } : { ok: true }));
+    expect(r.ok).toBe(true);
+    expect(calls).toBe(2);
+    // A daily limit is never "waited out".
+    calls = 0;
+    await growth.withRateLimitRetry(async () => (++calls, { ok: false, error: "HTTP 429 rate_limit_exceeded: requests per day (RPD). Please try again in 2s." }));
+    expect(calls).toBe(1);
+  });
+
   it("errors are told apart; a real failure counts an attempt and 'Retry failed' resets it", async () => {
     expect(growth.classifyAiError("HTTP 429 rate_limit_exceeded: Rate limit reached for gpt-6-luna on requests per day (RPD)")).toBe("rate_limited");
     expect(growth.classifyAiError("HTTP 401 invalid_api_key: Incorrect API key provided")).toBe("auth");

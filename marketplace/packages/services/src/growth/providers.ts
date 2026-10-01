@@ -9,7 +9,7 @@ import { marketForPoint } from "./analytics";
 import { agentOn, ai, aiRules, composeAndSend, Deferred, escalate, isSuppressed, livePrompts, logAgent, marketingOn, newToken, recipient, suppress } from "./engine";
 import { activeTargets, registryProfile } from "./expansion";
 import { KNOWN_PRICING, researchEngine, researchSpendCents } from "./prospecting";
-import { handleResearchFailure, researchBlocked } from "./aihealth";
+import { handleResearchFailure, researchBlocked, withRateLimitRetry } from "./aihealth";
 
 /**
  * Provider acquisition (the provider side of Growth):
@@ -178,7 +178,7 @@ export async function discoverContact(id: string, opts: { force?: boolean } = {}
   const [profile, profession] = await Promise.all([registryProfile(p.professionCode), prisma.profession.findUnique({ where: { code: p.professionCode } })]);
   const person = profession?.displayName.toLowerCase() ?? "provider";
   const facts = { name: p.displayName, npi: p.npi, practiceAddress: [p.address, p.city, `${p.state} ${p.zip ?? ""}`.trim()].filter(Boolean).join(", "), practiceName: practice?.clinicName ?? null, practiceWebsite: practice?.website ?? p.website, colleaguesAtAddress: p.providersAtPractice };
-  const r = await provider.research({
+  const r = await withRateLimitRetry(() => provider.research!({
     model,
     system: [
       aiRules(),
@@ -191,7 +191,7 @@ export async function discoverContact(id: string, opts: { force?: boolean } = {}
     ].join("\n"),
     user: `Find the professional contact for this ${person}.\n${JSON.stringify(facts, null, 1)}\nStart from the practice address; keep searches focused (the practice's website and team/contact pages first).\n\nWhen you are done, reply with only one JSON object.`,
     schema: CONTACT_SCHEMA(person), maxTokens: 3000, maxSearches: s["growth.researchMaxSearches"], maxFetches: s["growth.researchMaxSearches"] + 2, effort: s["growth.aiEffort"],
-  });
+  }));
   const pricing = s["growth.aiPricing"];
   const rate = pricing[r.model] ?? KNOWN_PRICING[r.model] ?? (provider.name === "gemini" ? (pricing.gemini ?? [0, 0]) : (Object.values(pricing)[0] ?? [0, 0]));
   const cost = Math.round((r.inputTokens * rate[0] + r.outputTokens * rate[1]) / 100 + (r.searches * s["growth.webSearchCentsPer1000"] * 10_000) / 1000);

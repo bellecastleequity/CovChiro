@@ -8,7 +8,7 @@ import { classifyProspect, refreshProspect } from "./agents";
 import { marketForPoint } from "./analytics";
 import { activeTargets, registryProfile } from "./expansion";
 import { contactDiscoverySweep, upsertProviderProspects } from "./providers";
-import { handleResearchFailure, researchBlocked, researchPause, researchRequestsToday, type AiFailure } from "./aihealth";
+import { handleResearchFailure, researchBlocked, withRateLimitRetry, researchPause, researchRequestsToday, type AiFailure } from "./aihealth";
 
 /**
  * Automatic clinic prospecting (agent "clinicProspecting"):
@@ -305,10 +305,10 @@ export async function researchProspect(id: string, opts: { force?: boolean } = {
   const professionCode = p.professionCodes[0] ?? "DC";
   const [profile, profession] = await Promise.all([registryProfile(professionCode), prisma.profession.findUnique({ where: { code: professionCode } })]);
   const person = profession?.displayName.toLowerCase() ?? "provider";
-  const r = await provider.research({
+  const r = await withRateLimitRetry(() => provider.research!({
     model, system: researchSystem(profile.practiceNoun), user: researchUser(p, profile.practiceNoun, person), schema: researchSchema(person), maxTokens: 4000,
     maxSearches: s["growth.researchMaxSearches"], maxFetches: s["growth.researchMaxSearches"] + 2, effort: s["growth.aiEffort"],
-  });
+  }));
   const pricing = s["growth.aiPricing"];
   const rate = pricing[r.model] ?? KNOWN_PRICING[r.model] ?? (provider.name === "gemini" ? (pricing.gemini ?? [0, 0]) : (Object.values(pricing)[0] ?? [0, 0]));
   const tokenMicro = (r.inputTokens * rate[0] + r.outputTokens * rate[1]) / 100;

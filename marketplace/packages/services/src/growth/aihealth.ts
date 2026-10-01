@@ -10,7 +10,30 @@ import { logAgent } from "./engine";
  */
 export type AiFailure = "quota" | "rate_limited" | "auth" | "transient" | "other";
 const KEY = "growth.researchPause";
-const PAUSE_MIN: Record<string, number> = { quota: 360, rate_limited: 10, daily_limit: 180, auth: 360 };
+const PAUSE_MIN: Record<string, number> = { quota: 360, rate_limited: 10, per_minute: 2, daily_limit: 180, auth: 360 };
+
+/** "Please try again in 1.276s" / "in 850ms" → milliseconds (null when the provider didn't say). */
+export function retryAfterMs(error: string): number | null {
+  const m = /try again in ([\d.]+)\s*(ms|s)\b/i.exec(error);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? Math.ceil(m[2].toLowerCase() === "ms" ? n : n * 1000) : null;
+}
+
+const perMinute = (error: string) => /per min|tpm|rpm/i.test(error);
+
+/**
+ * One research call; a short rate-limit wait the provider asks for ("try again in 1.3s",
+ * tokens/requests per minute) is honored once instead of failing the record.
+ */
+export async function withRateLimitRetry<T extends { ok: boolean; error?: string }>(call: () => Promise<T>, maxWaitMs = 30_000): Promise<T> {
+  const first = await call();
+  if (first.ok || !first.error || classifyAiError(first.error) !== "rate_limited" || /per day|rpd|daily/i.test(first.error)) return first;
+  const wait = retryAfterMs(first.error) ?? (perMinute(first.error) ? 15_000 : null);
+  if (wait == null || wait > maxWaitMs) return first;
+  await new Promise((r) => setTimeout(r, wait + 500));
+  return call();
+}
 
 export function classifyAiError(error: string): AiFailure {
   const e = error.toLowerCase();
@@ -30,11 +53,11 @@ export async function researchPause(): Promise<{ until: Date; reason: string; er
 
 export async function pauseResearch(kind: AiFailure, error: string) {
   const daily = /per day|rpd|daily/i.test(error);
-  const minutes = daily ? PAUSE_MIN.daily_limit : (PAUSE_MIN[kind] ?? 10);
+  const minutes = daily ? PAUSE_MIN.daily_limit : kind === "rate_limited" && perMinute(error) ? PAUSE_MIN.per_minute : (PAUSE_MIN[kind] ?? 10);
   const until = new Date(+clock.now() + minutes * 60_000);
-  const value = { until: until.toISOString(), reason: daily ? "daily_limit" : kind, error: error.slice(0, 300) } as unknown as Prisma.InputJsonValue;
+  const value = { until: until.toISOString(), reason: daily ? "daily_limit" : kind === "rate_limited" && perMinute(error) ? "per_minute" : kind, error: error.slice(0, 300) } as unknown as Prisma.InputJsonValue;
   await prisma.setting.upsert({ where: { key: KEY }, create: { key: KEY, value }, update: { value } });
-  await logAgent("clinicProspecting", "research_paused", { output: `Web research paused until ${until.toISOString()} (${daily ? "daily request limit" : kind.replace("_", " ")})`, error: error.slice(0, 300) });
+  await logAgent("clinicProspecting", "research_paused", { output: `Web research paused until ${until.toISOString()} (${daily ? "daily request limit" : kind === "rate_limited" && perMinute(error) ? "per-minute limit" : kind.replace("_", " ")})`, error: error.slice(0, 300) });
 }
 
 export async function resumeResearch() {

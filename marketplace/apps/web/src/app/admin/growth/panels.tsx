@@ -88,7 +88,7 @@ export async function ResearchHealth({ side, failed }: { side: "clinics" | "prov
   const { actor } = await requireActor("admin");
   const st = await growth.prospecting(actor);
   const reason: Record<string, string> = {
-    quota: "the AI account is out of credits (add a balance with the provider)", rate_limited: "the AI provider is rate-limiting requests", daily_limit: "the AI account's daily request limit was reached",
+    quota: "the AI account is out of credits (add a balance with the provider)", rate_limited: "the AI provider is rate-limiting requests", per_minute: "the AI account's per-minute limit was reached (it resumes in about 2 minutes)", daily_limit: "the AI account's daily request limit was reached",
     auth: "the API key was refused (check OPENAI_API_KEY / the research provider)", paused: "paused",
   };
   return (
