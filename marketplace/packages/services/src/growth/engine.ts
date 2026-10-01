@@ -144,6 +144,11 @@ async function suppressionFor(channel: "EMAIL" | "SMS", address: string) {
   return row?.reason ?? null;
 }
 
+/** Has this address unsubscribed / bounced / complained (any growth list)? Other senders honor it too. */
+export async function isSuppressed(channel: "EMAIL" | "SMS", address: string) {
+  return !!(await suppressionFor(channel, channel === "SMS" ? normPhone(address) : normEmail(address)));
+}
+
 // ---------------- unsubscribe tokens ----------------
 
 function sig(payload: string) {

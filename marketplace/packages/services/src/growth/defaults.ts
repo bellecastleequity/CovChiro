@@ -125,7 +125,10 @@ export async function ensureGrowthDefaults() {
   if ((await prisma.growthMarket.count()) === 0) {
     for (const m of MARKETS) await prisma.growthMarket.create({ data: { ...m, state: "FL", professionCode: "DC" } }).catch(() => undefined);
   }
+  // School links live in one place: skip any code the student path already uses (Admin → Recruitment).
+  const recruitSlugs = new Set((await prisma.recruitCampaign.findMany({ select: { slug: true } })).map((r) => r.slug));
   for (const c of CAMPAIGNS) {
+    if (recruitSlugs.has(c.code)) continue;
     await prisma.growthCampaign.upsert({
       where: { code: c.code },
       create: { ...c, audience: "PROVIDER", kind: "school", body: "Register now, even before you're licensed. We'll let you know as soon as you're eligible for coverage shifts." },

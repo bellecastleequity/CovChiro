@@ -1,3 +1,4 @@
+import { isSuppressed } from "./growth/engine";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { env } from "@cm/config";
@@ -260,6 +261,8 @@ export async function runPreLicensureFollowups(now = clock.now()) {
   for (const p of students) {
     const sum = summarize(p, now);
     if (sum.coverageReady || !sum.followup) continue;
+    // Someone who unsubscribed (or bounced) through the Growth emails gets no student follow-ups either.
+    if (await isSuppressed("EMAIL", p.user.email)) continue;
     const due = followupDue({
       step: p.credFollowupStep,
       anchor: followupAnchor(p.graduationDate, p.createdAt),
@@ -306,6 +309,8 @@ export async function saveCampaign(actor: Actor, raw: z.input<typeof CampaignInp
   const i = CampaignInput.parse(raw);
   const clash = await prisma.recruitCampaign.findFirst({ where: { slug: i.slug, ...(id ? { NOT: { id } } : {}) } });
   if (clash) throw new DomainError("CONFLICT", "That link name is already used.");
+  // /join/<code> is shared with Growth campaign links, so names must be unique across both.
+  if (await prisma.growthCampaign.count({ where: { code: i.slug } })) throw new DomainError("CONFLICT", `"${i.slug}" is already a Growth campaign code (Admin → Growth → Campaigns). Pick another link name.`);
   const data = { slug: i.slug, name: i.name, kind: i.kind, state: i.state || null, city: i.city || null, headline: i.headline || null, costCents: Math.round(i.costDollars * 100), active: i.active };
   const c = id ? await prisma.recruitCampaign.update({ where: { id }, data }) : await prisma.recruitCampaign.create({ data });
   await audit(prisma, actor, id ? "recruit.updated" : "recruit.created", "RecruitCampaign", c.id, null, data);
