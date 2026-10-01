@@ -24,6 +24,9 @@
   .ai-email-step{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);}
   .ai-email-step textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:3px;background:var(--paper);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;resize:vertical;}
   details.ai-emails > summary{cursor:pointer;font-weight:600;font-size:0.9rem;}
+  /* Wide tables (Providers tab) scroll inside their card instead of stretching the page. */
+  .admin-grid > div{min-width:0;}
+  #pv-body .an-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));}
 </style>
 </head>
 <body>
@@ -90,6 +93,7 @@
           <button class="dash-tab" data-adm="video">Video requests</button>
           <button class="dash-tab" data-adm="promo">Promo codes</button>
           <button class="dash-tab" data-adm="leads">Leads</button>
+          <button class="dash-tab" data-adm="providers">Providers</button>
           <button class="dash-tab" data-adm="inventory">Inventory alerts</button>
           <button class="dash-tab" data-adm="standing">Standing days</button>
           <button class="dash-tab" data-adm="invoices">Invoices</button>
@@ -1747,6 +1751,8 @@ function renderAdmin(){
       renderAdmin();
       showToast(`Promo code ${btn.dataset.togglePromo} updated.`);
     }));
+  } else if (admView === 'providers'){
+    renderProvidersTab(el);
   } else if (admView === 'leads'){
     renderLeadsTab(el);
   } else if (admView === 'inventory'){
@@ -2686,6 +2692,7 @@ document.querySelectorAll('[data-adm]').forEach(t => t.addEventListener('click',
     try { promoCodes = (await apiFetch('/api/promo.php?action=list')).codes || []; } catch (e) { promoCodes = []; }
   }
   if (admView === 'leads') await loadLeadsTab();
+  if (admView === 'providers') await loadProvidersTab();
   if (admView === 'inventory'){
     await loadAdminBookings();
     try { flexRateDates = (await apiFetch('/api/flexrate.php?action=list')).flexRates || []; } catch (e) { flexRateDates = []; }
@@ -2748,5 +2755,6 @@ async function initAdminPage(){
 initAdminPage();
 
 </script>
+<script src="assets/admin-providers.js?v=1"></script>
 </body>
 </html>

@@ -11,6 +11,10 @@ RewriteRule ^(.*)$ https://coveragechiropractor.com/$1 [L,R=301]
 # Campaign landing pages: /offer/CODE serves offer.html?c=CODE
 RewriteRule ^offer/([A-Za-z0-9_-]+)/?$ offer.html?c=$1 [L,QSA,NC]
 
+# Provider recruitment: /join and per-school/campaign links like /join/palmer
+RewriteRule ^join/?$ join.html [L,QSA,NC]
+RewriteRule ^join/([A-Za-z0-9-]+)/?$ join.html?s=$1 [L,QSA,NC]
+
 Options -Indexes
 
 # Browser-side hardening. HSTS is deliberately left out for now — add it

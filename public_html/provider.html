@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Provider Dashboard | CoverageChiropractor.com</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="/assets/logo-square.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=13">
+<style>
+  .pv-grid{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:24px;align-items:start;}
+  .ready-card{background:var(--white);border:1px solid var(--line);border-radius:6px;padding:22px;}
+  .ready-card h3{font-size:1.1rem;margin-bottom:12px;}
+  .ready-list{list-style:none;display:grid;gap:9px;}
+  .ready-list li{display:flex;gap:10px;align-items:flex-start;font-size:0.9rem;}
+  .ready-list .mk{flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:var(--white);margin-top:1px;}
+  .ready-list li.done .mk{background:var(--teal);border-color:var(--teal);}
+  .ready-list li.warn .mk{border-color:var(--red);color:var(--red);}
+  .ready-list .dt{font-size:0.76rem;color:#6b7280;}
+  .lock{margin-top:16px;padding:14px;border-radius:5px;background:rgba(155,59,46,0.07);border:1px solid rgba(155,59,46,0.3);}
+  .lock.open{background:rgba(47,93,83,0.1);border-color:var(--teal);}
+  .lock strong{display:block;font-family:'IBM Plex Mono',monospace;font-size:0.82rem;letter-spacing:0.04em;text-transform:uppercase;margin-bottom:4px;}
+  .lock p{font-size:0.84rem;color:#3d4552;}
+  .pill{display:inline-block;padding:3px 10px;border-radius:12px;font-size:0.72rem;font-weight:600;font-family:'IBM Plex Mono',monospace;letter-spacing:0.02em;}
+  .pill.verified{background:rgba(47,93,83,0.15);color:var(--teal-dark);}
+  .pill.pending,.pill.uploaded{background:rgba(184,134,63,0.18);color:#7a5a20;}
+  .pill.rejected,.pill.expired{background:rgba(155,59,46,0.12);color:var(--red);}
+  .pill.not_provided{background:var(--paper-2);color:#6b7280;}
+  .cred-card{margin-bottom:18px;}
+  .cred-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;}
+  .cred-facts{font-size:0.84rem;color:#3d4552;display:grid;gap:3px;margin:8px 0;}
+  .note-box{margin:10px 0;padding:10px 12px;border-left:3px solid var(--red);background:rgba(155,59,46,0.06);font-size:0.85rem;}
+  .info-box{margin:10px 0;padding:10px 12px;border-left:3px solid var(--ochre);background:rgba(184,134,63,0.08);font-size:0.85rem;}
+  .shift{background:var(--white);border:1px solid var(--line);border-left:3px solid var(--teal);border-radius:4px;padding:13px 15px;margin-bottom:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;}
+  .shift .when{font-family:'IBM Plex Mono',monospace;font-size:0.86rem;font-weight:600;}
+  .shift .meta{font-size:0.8rem;color:#6b7280;margin-top:3px;}
+  .shift .pay{font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--teal-dark);}
+  .state-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:4px;max-height:130px;overflow-y:auto;padding:8px;border:1px solid var(--line);border-radius:3px;background:var(--paper);}
+  .state-grid label{display:flex !important;align-items:center;gap:4px;margin:0 !important;font-size:0.78rem;font-family:'IBM Plex Mono',monospace;color:var(--ink) !important;cursor:pointer;}
+  .admin-card textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:3px;background:var(--paper);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;}
+  .banner{padding:12px 16px;border-radius:5px;margin-bottom:18px;font-size:0.88rem;display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+  .banner.warn{background:rgba(184,134,63,0.14);border:1px solid var(--ochre);}
+  .banner.good{background:rgba(47,93,83,0.12);border:1px solid var(--teal);}
+  .signin-card{max-width:420px;margin:0 auto;}
+  @media (max-width:860px){ .pv-grid{grid-template-columns:minmax(0,1fr);} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a href="/" class="brand" style="color:inherit;text-decoration:none;"><img src="/assets/logo-square.png" alt="" class="brand-logo"><div class="brand-text">Coverage<span> Chiropractor</span><div style="font-size:0.66rem;font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;font-weight:400;margin-top:1px;">Provider Network</div></div></a>
+    <div class="hdr-actions"><a href="#" id="sign-out-link" class="hidden" style="font-size:0.78rem;color:#6b7280;align-self:center;">Sign out</a></div>
+  </div>
+</header>
+
+<section style="background:var(--paper-2);min-height:70vh;">
+  <div class="wrap" id="pv-root"><p style="color:#8a8171;">Loading…</p></div>
+</section>
+
+<script src="/assets/app-shared.js?v=10"></script>
+<script>
+const STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+const EXPECTED = { licensed: 'Already licensed', '0-1': 'Within a month', '1-3': '1–3 months', '3-6': '3–6 months', '6-12': '6–12 months', '12+': 'More than a year', unsure: 'Not sure yet' };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+const params = new URLSearchParams(location.search);
+let me = null, schools = [], shiftsData = null, tab = 'credentials';
+const root = $('pv-root');
+
+function renderSignIn(msg){
+  root.innerHTML = `
+    <div class="admin-card signin-card">
+      <h3>Provider sign in</h3>
+      ${msg ? `<p style="font-size:0.85rem;color:var(--teal-dark);margin-bottom:6px;">${esc(msg)}</p>` : ''}
+      <label for="si-email">Email</label><input type="email" id="si-email" autocomplete="email">
+      <label for="si-pass">Password</label><input type="password" id="si-pass" autocomplete="current-password">
+      <div class="err-msg" id="si-err"></div>
+      <button class="btn" id="si-go" style="width:100%;">Sign in</button>
+      <p style="font-size:0.8rem;margin-top:12px;text-align:center;"><a href="#" id="si-forgot">Forgot password?</a> · <a href="/join">Create a provider profile</a></p>
+    </div>`;
+  const go = async () => {
+    $('si-err').textContent = '';
+    try {
+      const r = await apiFetch('/api/auth.php?action=login', { method: 'POST', body: JSON.stringify({ email: $('si-email').value.trim(), password: $('si-pass').value }) });
+      if (r.user.accountType !== 'provider'){ location.href = r.user.isAdmin ? 'admin.html' : 'dashboard.html'; return; }
+      await init();
+    } catch (e) { $('si-err').textContent = e.message; }
+  };
+  $('si-go').addEventListener('click', go);
+  $('si-pass').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  $('si-forgot').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = $('si-email').value.trim();
+    if (!email){ $('si-err').textContent = 'Enter your email first, then click "Forgot password?"'; return; }
+    try { await apiFetch('/api/auth.php?action=request_reset', { method: 'POST', body: JSON.stringify({ email }) }); showToast('If that account exists, a reset link is on its way.'); }
+    catch (err) { $('si-err').textContent = err.message; }
+  });
+}
+
+function readinessHtml(){
+  const r = me.readiness;
+  const items = r.checklist.map(c => {
+    const warn = !c.done && ['rejected', 'expired'].includes(c.status);
+    return `<li class="${c.done ? 'done' : warn ? 'warn' : ''}"><span class="mk">${c.done ? '✓' : warn ? '!' : ''}</span>
+      <div><div>${esc(c.label)}</div>${c.detail && !c.done || (c.detail && ['license','malpractice'].includes(c.key)) ? `<div class="dt">${esc(c.detail)}</div>` : ''}</div></li>`;
+  }).join('');
+  return `<div class="ready-card">
+    <h3>Your Coverage Readiness</h3>
+    <ul class="ready-list">${items}</ul>
+    ${r.eligible
+      ? `<div class="lock open"><strong>✓ Coverage ready</strong><p>You are eligible to accept available coverage shifts.</p></div>`
+      : `<div class="lock"><strong>🔒 Coverage shifts locked</strong><p>Complete credential verification to begin accepting coverage opportunities.</p></div>`}
+    <p style="font-size:0.76rem;color:#8a8171;margin-top:12px;">Stage: ${esc(me.profile.lifecycleLabel)}</p>
+  </div>`;
+}
+
+function credCardHtml(type){
+  const s = me.credentials[type];
+  const label = type === 'license' ? 'Chiropractic license' : 'Malpractice insurance';
+  const c = s.current;
+  const facts = c ? (type === 'license'
+    ? [['License #', c.licenseNumber], ['State', c.licenseState], ['Issued', fmtDate(c.issueDate)], ['Expires', fmtDate(c.expirationDate)]]
+    : [['Carrier', c.carrier], ['Policy #', c.policyNumber], ['Coverage start', fmtDate(c.coverageStart)], ['Expires', fmtDate(c.expirationDate)],
+       ['Per-claim limit', c.perClaimLimit ? money(c.perClaimLimit) : ''], ['Aggregate limit', c.aggregateLimit ? money(c.aggregateLimit) : '']]) : [];
+  const incomplete = s.status === 'uploaded' && c;
+  const renewal = s.renewal;
+  let notes = '';
+  if (s.status === 'rejected' && c && c.reviewNotes) notes = `<div class="note-box"><strong>Needs correction:</strong> ${esc(c.reviewNotes)}</div>`;
+  if (s.status === 'pending') notes = `<div class="info-box"><strong>Verification pending.</strong> We're reviewing this — nothing more is needed from you right now.</div>`;
+  if (s.status === 'expired') notes = `<div class="note-box"><strong>Expired.</strong> Upload your renewed document to be verified again.</div>`;
+  if (s.status === 'verified' && s.daysToExpiry !== null && s.daysToExpiry <= 60 && !renewal) notes = `<div class="info-box">Expires in ${s.daysToExpiry} day${s.daysToExpiry === 1 ? '' : 's'} — upload your renewal below so there's no gap.</div>`;
+  if (renewal) notes += renewal.status === 'rejected'
+    ? `<div class="note-box"><strong>Your renewal needs a correction:</strong> ${esc(renewal.reviewNotes || '')}</div>`
+    : `<div class="info-box">Renewal submitted ${fmtDate(renewal.submittedAt && renewal.submittedAt.slice(0, 10))} — under review. Your current credential stays active meanwhile.</div>`;
+  const formTitle = incomplete ? 'Finish the missing details' : s.status === 'not_provided' ? `Add your ${label.toLowerCase()}` : s.status === 'verified' ? 'Upload a renewal or replacement' : s.status === 'pending' ? 'Replace this submission' : 'Upload a corrected document';
+  const v = incomplete ? c : {};
+  const fields = type === 'license' ? `
+    <div class="row2">
+      <div><label for="f-${type}-num">License number</label><input type="text" id="f-${type}-num" value="${esc(v.licenseNumber || '')}"></div>
+      <div><label for="f-${type}-state">State</label><select id="f-${type}-state"><option value="">—</option>${STATES.map(st => `<option ${(v.licenseState || (me.profile.intendedStates[0] || 'FL')) === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
+    </div>
+    <div class="row2">
+      <div><label for="f-${type}-issue">Issue date (if shown)</label><input type="date" id="f-${type}-issue" value="${esc(v.issueDate || '')}"></div>
+      <div><label for="f-${type}-exp">Expiration date</label><input type="date" id="f-${type}-exp" value="${esc(v.expirationDate || '')}"></div>
+    </div>` : `
+    <div class="row2">
+      <div><label for="f-${type}-carrier">Insurance carrier</label><input type="text" id="f-${type}-carrier" value="${esc(v.carrier || '')}"></div>
+      <div><label for="f-${type}-policy">Policy number</label><input type="text" id="f-${type}-policy" value="${esc(v.policyNumber || '')}"></div>
+    </div>
+    <div class="row2">
+      <div><label for="f-${type}-start">Coverage start</label><input type="date" id="f-${type}-start" value="${esc(v.coverageStart || '')}"></div>
+      <div><label for="f-${type}-exp">Expiration date</label><input type="date" id="f-${type}-exp" value="${esc(v.expirationDate || '')}"></div>
+    </div>
+    <div class="row2">
+      <div><label for="f-${type}-claim">Per-claim limit (optional)</label><input type="text" id="f-${type}-claim" inputmode="decimal" placeholder="e.g. 1,000,000" value="${v.perClaimLimit || ''}"></div>
+      <div><label for="f-${type}-agg">Aggregate limit (optional)</label><input type="text" id="f-${type}-agg" inputmode="decimal" placeholder="e.g. 3,000,000" value="${v.aggregateLimit || ''}"></div>
+    </div>`;
+  return `<div class="admin-card cred-card" id="card-${type}">
+    <div class="cred-head"><h3 style="margin:0;">${label}</h3><span class="pill ${s.status}">${esc(s.statusLabel)}</span></div>
+    ${facts.length ? `<div class="cred-facts">${facts.filter(f => f[1]).map(f => `<div><span style="color:#8a8171;">${f[0]}:</span> ${esc(f[1])}</div>`).join('')}${c && c.fileUrl ? `<div><a href="${c.fileUrl}" target="_blank" rel="noopener">View uploaded document</a></div>` : ''}</div>` : ''}
+    ${notes}
+    <details ${['not_provided', 'uploaded', 'rejected', 'expired'].includes(s.status) || (renewal && renewal.status === 'rejected') ? 'open' : ''} style="margin-top:8px;">
+      <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;">${formTitle}</summary>
+      ${fields}
+      ${incomplete ? '' : `<label for="f-${type}-file">Document (PDF, JPG or PNG, up to 10MB)</label><input type="file" id="f-${type}-file" accept=".pdf,.jpg,.jpeg,.png">`}
+      <div class="err-msg" id="f-${type}-err"></div>
+      <button class="btn sm" data-submit-cred="${type}" ${incomplete ? `data-cred-id="${c.id}"` : ''}>${incomplete ? 'Save details' : 'Submit for verification'}</button>
+      <p style="font-size:0.74rem;color:#8a8171;margin-top:8px;">Uploading doesn't make a credential valid — our team verifies each one before coverage unlocks.</p>
+    </details>
+  </div>`;
+}
+
+function credentialsHtml(){
+  return credCardHtml('license') + credCardHtml('malpractice');
+}
+
+function shiftRow(s, mine){
+  const hours = s.startTime && s.endTime ? `${s.startTime}–${s.endTime}` : (s.dayType === 'half' ? 'Half day' : 'Full day');
+  const where = mine ? `${esc(s.clinicName || '')}${s.address ? ' · ' + esc(s.address) : ''}` : `${esc(s.city || '')}${s.city ? ', ' : ''}${esc(s.state)} ${esc(s.zip || '')}`;
+  return `<div class="shift" style="${mine && s.needsReview ? 'border-left-color:var(--red);' : ''}">
+    <div style="min-width:0;">
+      <div class="when">${new Date(s.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} · ${hours}</div>
+      <div class="meta">${where}${s.miles != null ? ` · ~${s.miles} mi${s.withinRadius === false ? ' (outside your travel radius)' : ''}` : ''}</div>
+      ${mine && s.notes ? `<div class="meta">${esc(s.notes)}</div>` : ''}
+      ${mine && s.needsReview ? `<div class="meta" style="color:var(--red);">Under review — your credentials need renewal for this date.</div>` : ''}
+      ${!mine && !s.canAccept ? `<div class="meta" style="color:var(--red);">Not available to you: ${esc(s.blockedBy.join('; '))}</div>` : ''}
+    </div>
+    <div style="text-align:right;">
+      <div class="pay">${money(s.pay)}</div>
+      ${mine ? `<div class="meta">${s.status === 'completed' ? 'Completed' : 'Confirmed'}</div>` : `<button class="btn sm" data-accept="${s.id}" ${s.canAccept ? '' : 'disabled'}>Accept shift</button>`}
+    </div>
+  </div>`;
+}
+
+function shiftsHtml(){
+  if (!shiftsData) return `<p style="color:#8a8171;">Loading shifts…</p>`;
+  const d = shiftsData;
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = d.mine.filter(s => s.date >= today && s.status === 'assigned');
+  const past = d.mine.filter(s => !(s.date >= today && s.status === 'assigned'));
+  const openHtml = d.locked
+    ? `<div class="lock"><strong>🔒 Coverage shifts locked</strong><p>${d.openCount ? `${d.openCount} shift${d.openCount === 1 ? ' is' : 's are'} open right now. ` : ''}Complete credential verification to begin accepting coverage opportunities.</p>
+        <ul style="margin:8px 0 0 18px;font-size:0.82rem;">${d.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>`
+    : (d.open.length ? d.open.map(s => shiftRow(s, false)).join('') : `<div class="empty">No open shifts right now — we'll email you when one opens within your travel radius.</div>`);
+  return `<div class="admin-card" style="margin-bottom:18px;"><h3>Available shifts</h3>
+      <p style="font-size:0.8rem;color:#6b7280;margin-bottom:12px;">Pay, date, hours and general location are shown before you accept. The clinic's name and address are shared once the shift is yours. First come, first served.</p>
+      ${openHtml}<div class="err-msg" id="accept-err"></div></div>
+    <div class="admin-card"><h3>My shifts</h3>
+      ${upcoming.length ? upcoming.map(s => shiftRow(s, true)).join('') : '<p style="font-size:0.85rem;color:#6b7280;">No upcoming shifts.</p>'}
+      ${past.length ? `<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:0.85rem;">Past shifts (${past.length})</summary>${past.map(s => shiftRow(s, true)).join('')}</details>` : ''}
+    </div>`;
+}
+
+function profileHtml(){
+  const p = me.profile;
+  const schoolOpts = schools.map(s => `<option value="${s.id}" ${p.schoolId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+  return `<div class="admin-card">
+    <h3>Profile &amp; preferences</h3>
+    <div class="row2">
+      <div><label for="pf-name">Full name</label><input type="text" id="pf-name" value="${esc(p.name)}"></div>
+      <div><label for="pf-phone">Mobile number</label><input type="tel" id="pf-phone" value="${esc(p.phone)}"></div>
+    </div>
+    <label>Email</label><input type="email" value="${esc(p.email)}" disabled>
+    <div class="row2">
+      <div><label for="pf-school">Chiropractic school</label><select id="pf-school"><option value="">Other (below)</option>${schoolOpts}</select>
+        <input type="text" id="pf-school-name" placeholder="School name" value="${p.schoolId ? '' : esc(p.schoolName)}" style="margin-top:6px;" class="${p.schoolId ? 'hidden' : ''}"></div>
+      <div><label for="pf-grad">Graduation date</label><input type="date" id="pf-grad" value="${esc(p.graduationDate || '')}"></div>
+    </div>
+    <div class="row2">
+      <div><label for="pf-applied">License application</label><select id="pf-applied">
+        ${[['no', 'Not yet applied'], ['yes', 'Application submitted'], ['licensed', 'Already licensed']].map(([k, l]) => `<option value="${k}" ${p.licensureApplied === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div><label for="pf-expected">Expected licensure</label><select id="pf-expected">${Object.entries(EXPECTED).map(([k, l]) => `<option value="${k}" ${p.expectedLicensure === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    </div>
+    <label>State(s) where you are or intend to be licensed</label>
+    <div class="state-grid" id="pf-states">${STATES.map(s => `<label><input type="checkbox" value="${s}" ${p.intendedStates.includes(s) ? 'checked' : ''}> ${s}</label>`).join('')}</div>
+    <div class="row2">
+      <div><label for="pf-zip">Home ZIP code</label><input type="text" id="pf-zip" maxlength="5" inputmode="numeric" value="${esc(p.zip || '')}"></div>
+      <div><label for="pf-radius">Travel radius (miles)</label><input type="number" id="pf-radius" min="5" max="500" value="${p.travelRadius}"></div>
+    </div>
+    ${p.city || p.metro ? `<p style="font-size:0.76rem;color:#8a8171;margin-top:4px;">${esc([p.city, p.county, p.state].filter(Boolean).join(', '))}${p.metro ? ' · ' + esc(p.metro) + ' area' : ''}</p>` : ''}
+    <label for="pf-area">Preferred work area</label><input type="text" id="pf-area" value="${esc(p.preferredArea)}">
+    <label for="pf-tech">Techniques you use</label><input type="text" id="pf-tech" placeholder="e.g. Diversified, Activator, Thompson, Gonstead" value="${esc(p.techniques)}">
+    <label for="pf-bio">Short bio (shared with clinics you cover)</label><textarea id="pf-bio" rows="3">${esc(p.bio)}</textarea>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;margin-top:12px;"><input type="checkbox" id="pf-sms" style="width:auto;" ${p.smsConsent ? 'checked' : ''}> <span>Text me about my credential status and coverage opportunities. Message &amp; data rates may apply; reply STOP to opt out.</span></label>
+    <div class="err-msg" id="pf-err"></div>
+    <button class="btn" id="pf-save">Save profile</button>
+  </div>`;
+}
+
+function render(){
+  const p = me.profile;
+  root.innerHTML = `
+    <div class="section-head" style="margin-bottom:22px;"><span class="mono">Provider dashboard</span><h2>Welcome, ${esc(p.name.split(' ')[0])}</h2></div>
+    ${params.get('welcome') ? `<div class="banner good">Your provider profile is created. Next: confirm your email, then add your license and malpractice insurance when you have them.</div>` : ''}
+    ${!p.emailVerified ? `<div class="banner warn"><span>Please confirm your email — we sent a link to <strong>${esc(p.email)}</strong>.</span><button class="btn ghost sm" id="resend-verify">Resend link</button></div>` : ''}
+    ${p.accountStatus === 'suspended' ? `<div class="banner warn">Your account is on hold. Please contact us at ${esc(PHONE)}.</div>` : ''}
+    <div class="pv-grid">
+      <div>${readinessHtml()}</div>
+      <div>
+        <div class="dash-tabs" style="margin-bottom:16px;">
+          <button class="dash-tab ${tab === 'credentials' ? 'on' : ''}" data-tab="credentials">Credentials</button>
+          <button class="dash-tab ${tab === 'shifts' ? 'on' : ''}" data-tab="shifts">Shifts</button>
+          <button class="dash-tab ${tab === 'profile' ? 'on' : ''}" data-tab="profile">Profile</button>
+        </div>
+        <div id="pv-tab">${tab === 'credentials' ? credentialsHtml() : tab === 'shifts' ? shiftsHtml() : profileHtml()}</div>
+      </div>
+    </div>`;
+  wire();
+}
+const PHONE = '(650) 713-4326';
+
+function wire(){
+  document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', async () => {
+    tab = b.dataset.tab;
+    if (tab === 'shifts') { shiftsData = null; render(); await loadShifts(); }
+    render();
+  }));
+  const rv = $('resend-verify');
+  if (rv) rv.addEventListener('click', async () => {
+    try { await apiFetch('/api/auth.php?action=resend_verification', { method: 'POST' }); showToast('Verification link sent.'); } catch (e) { showToast(e.message, 'error'); }
+  });
+  document.querySelectorAll('[data-submit-cred]').forEach(btn => btn.addEventListener('click', () => submitCred(btn)));
+  document.querySelectorAll('[data-accept]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Accept this coverage shift? You are committing to cover the full shift.')) return;
+    btn.disabled = true;
+    try { await apiFetch('/api/provider.php?action=accept_shift', { method: 'POST', body: JSON.stringify({ id: btn.dataset.accept }) }); showToast('Shift accepted — details are in your email.'); }
+    catch (e) { $('accept-err').textContent = e.message; }
+    await loadShifts(); await loadMe(); render();
+  }));
+  const pfSchool = $('pf-school');
+  if (pfSchool) pfSchool.addEventListener('change', () => $('pf-school-name').classList.toggle('hidden', !!pfSchool.value));
+  const save = $('pf-save');
+  if (save) save.addEventListener('click', saveProfile);
+}
+
+async function submitCred(btn){
+  const type = btn.dataset.submitCred, err = $(`f-${type}-err`);
+  err.textContent = '';
+  const fd = new FormData();
+  fd.append('type', type);
+  const val = id => ($(id) ? $(id).value.trim() : '');
+  if (type === 'license') {
+    fd.append('licenseNumber', val(`f-${type}-num`)); fd.append('licenseState', val(`f-${type}-state`));
+    fd.append('issueDate', val(`f-${type}-issue`)); fd.append('expirationDate', val(`f-${type}-exp`));
+  } else {
+    fd.append('carrier', val(`f-${type}-carrier`)); fd.append('policyNumber', val(`f-${type}-policy`));
+    fd.append('coverageStart', val(`f-${type}-start`)); fd.append('expirationDate', val(`f-${type}-exp`));
+    fd.append('perClaimLimit', val(`f-${type}-claim`)); fd.append('aggregateLimit', val(`f-${type}-agg`));
+  }
+  if (btn.dataset.credId) fd.append('credentialId', btn.dataset.credId);
+  else {
+    const f = $(`f-${type}-file`);
+    if (!f.files.length){ err.textContent = 'Attach a copy of the document.'; return; }
+    fd.append('file', f.files[0]);
+  }
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/provider.php?action=submit_credential', { method: 'POST', credentials: 'same-origin', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Upload failed.');
+    me = data;
+    render();
+    showToast(data.credentials[type].status === 'uploaded' ? 'Saved — a few details are still needed.' : 'Submitted — verification pending.');
+  } catch (e) { err.textContent = e.message; btn.disabled = false; }
+}
+
+async function saveProfile(){
+  const err = $('pf-err'); err.textContent = '';
+  const body = {
+    name: $('pf-name').value.trim(), phone: $('pf-phone').value.trim(),
+    schoolId: $('pf-school').value ? Number($('pf-school').value) : null, schoolName: $('pf-school-name').value.trim(),
+    graduationDate: $('pf-grad').value, licensureApplied: $('pf-applied').value, expectedLicensure: $('pf-expected').value,
+    intendedStates: [...document.querySelectorAll('#pf-states input:checked')].map(i => i.value),
+    zip: $('pf-zip').value.trim(), travelRadius: Number($('pf-radius').value), preferredArea: $('pf-area').value.trim(),
+    techniques: $('pf-tech').value.trim(), bio: $('pf-bio').value.trim(), smsConsent: $('pf-sms').checked,
+  };
+  $('pf-save').disabled = true;
+  try { me = await apiFetch('/api/provider.php?action=update_profile', { method: 'POST', body: JSON.stringify(body) }); render(); showToast('Profile saved.'); }
+  catch (e) { err.textContent = e.message; $('pf-save').disabled = false; }
+}
+
+async function loadMe(){ me = await apiFetch('/api/provider.php?action=me'); }
+async function loadShifts(){ try { shiftsData = await apiFetch('/api/provider.php?action=shifts'); } catch (e) { shiftsData = { locked: true, reasons: [e.message], openCount: 0, mine: [] }; } }
+
+async function init(){
+  const verify = params.get('verify');
+  let verifyMsg = '';
+  if (verify) {
+    try { await apiFetch('/api/auth.php?action=verify_email&token=' + encodeURIComponent(verify)); verifyMsg = 'Email confirmed — thank you!'; }
+    catch (e) { verifyMsg = e.message; }
+    history.replaceState(null, '', location.pathname + (params.get('view') ? '?view=' + params.get('view') : ''));
+  }
+  try { user = (await apiFetch('/api/auth.php?action=me')).user || null; } catch (e) { user = null; }
+  $('sign-out-link').classList.toggle('hidden', !user);
+  if (!user) { renderSignIn(verifyMsg ? verifyMsg + ' Sign in to continue.' : ''); return; }
+  if (user.accountType !== 'provider') {
+    root.innerHTML = `<div class="admin-card signin-card"><h3>This is a clinic account</h3><p style="font-size:0.88rem;">You're signed in as ${esc(user.email)}, which is a clinic account. Provider profiles are separate — <a href="#" id="pv-out">sign out</a> and <a href="/join">create a provider profile</a>, or go to <a href="${user.isAdmin ? 'admin.html' : 'dashboard.html'}">your ${user.isAdmin ? 'admin portal' : 'bookings'}</a>.</p></div>`;
+    $('pv-out').addEventListener('click', async e => { e.preventDefault(); await apiFetch('/api/auth.php?action=logout', { method: 'POST' }); location.reload(); });
+    return;
+  }
+  try { await loadMe(); } catch (e) { root.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  try { schools = (await apiFetch('/api/provider.php?action=schools')).schools || []; } catch (e) { schools = []; }
+  const view = params.get('view');
+  if (['license', 'malpractice'].includes(view)) tab = 'credentials';
+  else if (['shifts', 'profile'].includes(view)) tab = view;
+  if (tab === 'shifts') await loadShifts();
+  render();
+  if (verifyMsg) showToast(verifyMsg);
+  if (['license', 'malpractice'].includes(view)) {
+    const card = $('card-' + view);
+    if (card) { card.querySelector('details').open = true; card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  }
+}
+init();
+</script>
+</body>
+</html>

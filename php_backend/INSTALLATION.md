@@ -163,6 +163,26 @@ booking) — one email at 3, 10, 30 and 80 days after signup, stopping as soon
 as they book, unsubscribe, or the code expires. Requires
 `migration_012_lead_capture.sql` to have been run.
 
+**Provider network automation** (new): cPanel → **Cron Jobs** → **Add New Cron Job**:
+
+```
+Minute: 30   Hour: 8   (once daily)
+Command: /usr/bin/php /home/[username]/php_backend/cron/provider_network.php
+```
+
+For the pre-licensure provider network (`/join`, `provider.html`, admin →
+Providers). Each run: marks verified credentials that have passed their
+expiration date as expired (the provider immediately loses shift
+eligibility and is emailed); sends renewal reminders 60/30/14/7 days before
+expiry; flags any upcoming shift assignment the provider is no longer
+eligible to work for admin review (never removed automatically); and sends
+state-aware credential follow-ups to providers who aren't coverage-ready —
+30/60/90 days after graduation, then every 60 days, asking only for what's
+actually missing. Timing is editable in admin → Providers → Automation.
+Requires `migration_015_provider_network.sql`. Credential documents are
+saved under `php_backend/uploads/` (outside the web root) — make sure PHP
+can write there and include it in backups.
+
 **Late fees, interest & invoices** (new): cPanel → **Cron Jobs** → **Add New Cron Job**:
 
 ```
@@ -335,4 +355,12 @@ GET  /api/analytics.php?action=summary                      (admin)
 POST /api/payment.php?action=create_payment_intent|confirm_payment  (auth)
 POST /api/payment.php?action=create_standing_payment_intent|confirm_standing_payment  (auth)
 POST /api/stripe_webhook.php                                (Stripe only)
+
+GET  /api/provider.php?action=schools|campaign               (public)
+POST /api/provider.php?action=lead|register                  (public)
+GET  /api/provider.php?action=me|shifts|credential_file       (provider)
+POST /api/provider.php?action=update_profile|submit_credential|accept_shift  (provider)
+GET  /api/provider.php?action=admin_list|admin_provider|admin_funnel|admin_supply|admin_schools|admin_settings|admin_shifts|admin_shift_candidates  (admin)
+POST /api/provider.php?action=admin_review_credential|admin_set_account|admin_school_save|admin_settings_save  (admin)
+POST /api/provider.php?action=admin_shift_save|admin_shift_assign|admin_shift_unassign|admin_shift_status|admin_shift_review  (admin)
 ```
