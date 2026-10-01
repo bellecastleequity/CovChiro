@@ -6,6 +6,7 @@ import { ActionForm, SubmitButton, type ActionState } from "@/components/ui/acti
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Checkbox, Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form";
+import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import { createShiftAction, quoteAction } from "../../actions";
@@ -48,7 +49,7 @@ interface Quote {
 
 const STEPS = ["Where", "What", "When", "Details", "Review"] as const;
 
-export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0 }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number }) {
+export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean } }) {
   const [step, setStep] = useState(0);
   const [locationId, setLocationId] = useState(locations[0].id);
   const loc = locations.find((l) => l.id === locationId)!;
@@ -250,7 +251,19 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                       <option value="10">10+ years</option>
                     </Select>
                   </Field>
-                  <Field label="Max travel budget ($, optional)" hint="Mileage + lodging cap. Providers beyond it won't be matched."><Input inputMode="decimal" value={maxTravelBudget} onChange={(e) => setMaxTravelBudget(e.target.value)} /></Field>
+                  <Field
+                    label={
+                      <>
+                        Max travel budget ($, optional)
+                        <InfoTip label="About the travel budget">
+                          The most you&apos;re willing to pay for this provider&apos;s travel, on top of the shift price. Travel is mileage ({mileage.rateLabel} per mile, {mileage.roundTrip ? "round trip" : "one way"}, from the provider&apos;s home to your clinic) plus lodging if you allow it. Providers whose estimated travel would cost more won&apos;t be offered the shift. Leave it blank for no limit; nearby providers cost little in mileage.
+                        </InfoTip>
+                      </>
+                    }
+                    hint="Mileage + lodging cap. Providers beyond it won't be matched."
+                  >
+                    <Input inputMode="decimal" value={maxTravelBudget} onChange={(e) => setMaxTravelBudget(e.target.value)} placeholder="No limit" />
+                  </Field>
                 </div>
                 <Field label="Notes for providers">
                   <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} placeholder="Practice style, typical day, equipment. Arrival details are shared after confirmation." />

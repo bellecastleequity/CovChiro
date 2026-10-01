@@ -66,7 +66,7 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
                 <div className="flex gap-2"><MapPin className="size-4 shrink-0 text-slate-400" /><span>{loc.addressLine1}{loc.addressLine2 ? `, ${loc.addressLine2}` : ""}, {loc.city}, {loc.state} {loc.zip}</span></div>
                 {loc.onSiteContactName ? <div className="flex gap-2"><User className="size-4 text-slate-400" />On-site contact: {loc.onSiteContactName}</div> : null}
                 {loc.phone ? <div className="flex gap-2"><Phone className="size-4 text-slate-400" />Front desk: {loc.phone}</div> : null}
-                {loc.dressCode ? <div><span className="font-medium">Dress code:</span> {loc.dressCode}</div> : null}
+                {loc.dressCode ? <div><span className="font-medium">Attire:</span> {loc.dressCode}</div> : null}
                 {loc.arrivalNotes ? (
                   <div className="rounded-xl bg-brand-50 p-3 text-brand-900">
                     <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-700">How to find us</div>

@@ -1,5 +1,5 @@
 import { prisma } from "@cm/db";
-import { postingOptions } from "@cm/services";
+import { getSettings, postingOptions } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { requireActor } from "@/lib/session";
@@ -20,6 +20,7 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
       </>
     );
   }
+  const settings = await getSettings();
   const options = await Promise.all(locations.map((l) => postingOptions(actor, l.id)));
   const redemptions = await prisma.promoRedemption.count({ where: { clinicOrgId: org.id, voidedAt: null } });
   const welcome = redemptions === 0 ? await prisma.promoCode.findFirst({ where: { assignedEmail: org.billingEmail ?? "", active: true, usedCount: 0, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, orderBy: { createdAt: "desc" } }) : null;
@@ -29,6 +30,7 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
       <PostShiftWizard
         canPost={org.status === "ACTIVE" && org.hasPaymentMethod}
         defaultMinYears={org.minYearsExperience}
+        mileage={{ rateLabel: `$${(settings["pricing.mileageRateCentsPerMile"] / 100).toFixed(2)}`, roundTrip: settings["pricing.mileageRoundTrip"] }}
         defaultCode={code ?? welcome?.code ?? ""}
         locations={options.map((o) => ({
           id: o.location.id,

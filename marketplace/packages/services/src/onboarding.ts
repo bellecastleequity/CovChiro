@@ -528,6 +528,9 @@ export async function updateOrg(actor: Actor, raw: z.input<typeof OrgInput>) {
 
 export const EXPERIENCE_LEVELS = [0, 2, 5, 10] as const;
 
+/** Clinic attire a location asks providers to wear (one per location). */
+export const ATTIRE_OPTIONS = ["Medical scrubs", "Business casual", "Business with clinical jacket"] as const;
+
 /** Clinic default: minimum years of experience for new shifts, and whether emergencies relax it. */
 export async function setExperiencePreference(actor: Actor, minYears: number, relaxInEmergency: boolean) {
   const orgId = requireClinic(actor, { ownerOnly: true });
@@ -546,7 +549,7 @@ export const LocationInput = z.object({
   patientsPerDay: z.coerce.number().int().min(0).max(1000).optional().nullable(),
   ehr: z.string().trim().max(80).optional().nullable(),
   equipment: z.array(z.string().trim().max(60)).max(20).default([]),
-  dressCode: z.string().trim().max(200).optional().nullable(),
+  dressCode: z.string().trim().max(200).refine((v) => !v || (ATTIRE_OPTIONS as readonly string[]).includes(v), "Pick the attire: medical scrubs, business casual, or business with clinical jacket.").optional().nullable(),
   arrivalNotes: z.string().trim().max(2000).optional().nullable(),
   skillIds: z.array(z.string()).default([]),
 });
