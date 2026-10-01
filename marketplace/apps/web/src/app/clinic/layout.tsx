@@ -24,6 +24,7 @@ export default async function ClinicLayout({ children }: { children: React.React
     { href: "/clinic/locations", label: "Locations", icon: "locations" },
     { href: "/clinic/team", label: "Team", icon: "team" },
     { href: "/clinic/settings", label: "Settings", icon: "settings" },
+    { href: "/clinic/academy", label: "Training", icon: "academy" },
   ];
   return (
     <AppShell items={items} root="/clinic" userId={user.id} userName={user.name} subtitle={org.displayName}>
