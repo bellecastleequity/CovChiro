@@ -404,6 +404,16 @@ export const SETTINGS = {
   "growth.highValueDays": def({ group: "Growth", label: "Unfinished request this many days or longer goes to the sales queue", schema: z.number().int().min(1), default: 2, flag: null }),
   "growth.escalationEmail": def({ group: "Growth", label: "Email admins for each escalation", schema: z.boolean(), default: true, flag: null }),
 
+  // ---------- training (academy) ----------
+  "academy.videos": def({
+    group: "Training",
+    label: "Training videos (lesson → YouTube video ID or link)",
+    help: 'Unlisted YouTube walkthroughs shown at the top of each lesson, e.g. {"clinic/posting": "dQw4w9WgXcQ"}. Keys are <course>/<lesson>; a lesson without one shows no video.',
+    schema: z.record(z.string(), z.string().max(200)),
+    default: {},
+    flag: null,
+  }),
+
   // ---------- feature flags (ATTORNEY REVIEW items ship OFF) ----------
   "features.preLicensureEnabled": def({ group: "Features", label: "Student / not-yet-licensed signup path and /join recruitment pages", schema: z.boolean(), default: true, flag: null }),
   "features.onCallEnabled": def({ group: "Features", label: "On Call auto-accept (requires On Call Terms in the Provider Agreement)", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
