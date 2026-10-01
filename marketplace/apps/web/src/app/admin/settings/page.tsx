@@ -5,7 +5,9 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Select, Textarea } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/misc";
 import { requireActor } from "@/lib/session";
-import { settingAction, testEmailAction, testTextAction } from "../actions";
+import { env } from "@cm/config";
+import { GoogleBrowserCheck } from "@/components/admin/google-browser-check";
+import { googleCheckAction, settingAction, testEmailAction, testTextAction } from "../actions";
 
 export const metadata = { title: "Settings" };
 
@@ -24,6 +26,15 @@ export default async function Settings() {
             <Input name="to" type="email" required defaultValue={user.email} className="w-72" />
             <SubmitButton size="sm" variant="outline">Send test email</SubmitButton>
           </ActionForm>
+        </Card>
+        <Card>
+          <CardHeader title="Google check" description="Tests both Maps keys and shows Google's exact answer. The server key (GOOGLE_MAPS_API_KEY) does address lookup, time zones and drive times; the browser key (GOOGLE_MAPS_BROWSER_KEY) gives address suggestions as people type." />
+          <div className="flex flex-wrap items-start gap-4 px-5 pb-5">
+            <ActionForm action={googleCheckAction}>
+              <SubmitButton size="sm" variant="outline" pendingText="Checking…">Test server key</SubmitButton>
+            </ActionForm>
+            <GoogleBrowserCheck browserKey={env().GOOGLE_MAPS_BROWSER_KEY ?? null} />
+          </div>
         </Card>
         <Card>
           <CardHeader title="Text message check" description="Sends a test text through Twilio, waits for the delivery result, and explains any Twilio error in plain words (missing keys, trial account, A2P 10DLC / toll-free registration, wrong sender…)." />

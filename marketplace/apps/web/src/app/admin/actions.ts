@@ -17,6 +17,11 @@ const formAction: typeof baseFormAction = (fn) => baseFormAction(fn, { technical
 const rv = (p: string) => revalidatePath(p, "layout");
 
 // ---------- email & texts ----------
+export const googleCheckAction = formAction(async () => {
+  const { actor } = await me();
+  return admin.checkGoogle(actor);
+});
+
 export const testTextAction = formAction(async (fd) => {
   const { actor } = await me();
   return admin.sendTestText(actor, str(fd, "to"));

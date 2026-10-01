@@ -8,12 +8,19 @@ import { Input } from "./form";
 type Places = any;
 
 let placesLib: Promise<Places> | null = null;
+/** Google calls this when the browser key is rejected (wrong website, API not allowed, billing…). */
+let authFailed = false;
 
 /** Loads Google Maps JS once per page and resolves to the Places library (Places API "New"). */
-function loadPlaces(key: string): Promise<Places> {
+export function loadPlaces(key: string): Promise<Places> {
   if (!placesLib) {
     placesLib = new Promise<void>((resolve, reject) => {
       const w = window as any;
+      w.gm_authFailure = () => {
+        authFailed = true;
+        console.error("[maps] Google rejected GOOGLE_MAPS_BROWSER_KEY for this page (" + location.origin + "). Check the key's website list and that Maps JavaScript API + Places API (New) are allowed.");
+        window.dispatchEvent(new Event("cm-maps-auth-failure"));
+      };
       if (w.google?.maps?.importLibrary) return resolve();
       w.__cmMapsReady = () => resolve();
       const s = document.createElement("script");
@@ -55,9 +62,14 @@ export function AddressInput({ name, defaultValue, placeholder, required, browse
     return () => form.removeEventListener("reset", reset);
   }, [defaultValue]);
 
+  const [unavailable, setUnavailable] = useState(false);
   useEffect(() => {
     if (!browserKey) return;
-    loadPlaces(browserKey).then((p) => (places.current = p)).catch(() => {});
+    const off = () => setUnavailable(true);
+    window.addEventListener("cm-maps-auth-failure", off);
+    if (authFailed) off();
+    loadPlaces(browserKey).then((p) => (places.current = p)).catch((e) => (console.error("[maps]", e), off()));
+    return () => window.removeEventListener("cm-maps-auth-failure", off);
   }, [browserKey]);
 
   function lookup(text: string) {
@@ -73,7 +85,9 @@ export function AddressInput({ name, defaultValue, placeholder, required, browse
         setSuggestions(found.filter((s: any) => s.placePrediction).slice(0, 5).map((s: any) => ({ text: s.placePrediction.text.toString(), prediction: s.placePrediction })));
         setActive(-1);
         setOpen(true);
-      } catch {
+      } catch (e) {
+        console.error("[maps] Address suggestions failed:", e);
+        setUnavailable(true);
         setSuggestions([]);
       }
     }, 250);
@@ -141,6 +155,7 @@ export function AddressInput({ name, defaultValue, placeholder, required, browse
           <li className="px-3 pb-1 pt-1.5 text-right text-[10px] text-slate-400">powered by Google</li>
         </ul>
       ) : null}
+      {unavailable ? <p className="mt-1 text-xs text-slate-500">Address suggestions aren&apos;t available right now — type the full street address, city, state and ZIP.</p> : null}
     </div>
   );
 }

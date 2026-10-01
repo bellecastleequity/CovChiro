@@ -1,7 +1,7 @@
 import { brand, env, validateSetting, SETTINGS } from "@cm/config";
 import { DomainError, NATIONAL_CREDENTIAL, nextReverifyAt, US_STATES } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
-import { mailProvider, smsProvider, TWILIO_ERROR_HELP } from "@cm/integrations";
+import { checkGoogleServerKey, mailProvider, smsProvider, TWILIO_ERROR_HELP } from "@cm/integrations";
 import { audit, getSettings, invalidateSettings, requireAdmin, type Actor } from "./context";
 import { notify, sendEmail } from "./notify";
 import { recomputeProviderStatus } from "./onboarding";
@@ -205,6 +205,29 @@ export async function sendTestText(actor: Actor, toRaw: string) {
     throw new DomainError("VALIDATION", `Twilio accepted the text but it was ${last.status}${last.errorCode ? ` (error ${last.errorCode})` : ""}. ${help ?? last.errorMessage ?? ""}`.trim());
   }
   return `Twilio accepted the text (status: ${last?.status ?? "queued"}). If it doesn't arrive within a minute, open Twilio Console → Monitor → Logs → Messaging to see why — or run this check again.`;
+}
+
+/** Tests the server Maps key against each API it needs and explains the usual fixes. */
+export async function checkGoogle(actor: Actor) {
+  requireAdmin(actor);
+  const key = env().GOOGLE_MAPS_API_KEY;
+  if (!key) throw new DomainError("VALIDATION", "GOOGLE_MAPS_API_KEY isn't set (the site uses a stand-in address lookup). Add it in cPanel → Setup Node.js App → Environment variables, then restart the app.");
+  const results = await checkGoogleServerKey(key);
+  const lines = results.map((r) => `${r.ok ? "✓" : "✗"} ${r.api}: ${r.detail}`);
+  if (results.every((r) => r.ok)) return `Server key works. ${lines.join(" · ")}`;
+  const all = results.map((r) => r.detail).join(" ");
+  const hint = /referer|referrer/i.test(all)
+    ? "This key has a Websites restriction — set Application restrictions to None for the server key."
+    : /not authorized to use this API|not been used in project|is disabled|SERVICE_DISABLED|API_KEY_SERVICE_BLOCKED/i.test(all)
+      ? "An API is either not enabled (APIs & Services → Library) or not ticked in this key's API restrictions."
+      : /IP address|not authorized/i.test(all)
+        ? "The key's IP-address restriction doesn't match your server. Set Application restrictions to None."
+        : /billing/i.test(all)
+          ? "Billing isn't enabled for this Google Cloud project."
+          : /invalid/i.test(all)
+            ? "The key itself isn't valid — re-copy it into GOOGLE_MAPS_API_KEY and restart."
+            : "";
+  throw new DomainError("VALIDATION", `${lines.join(" · ")}${hint ? ` — Fix: ${hint}` : ""}`);
 }
 
 /** Sends a test email and reports exactly what the email service said. */
