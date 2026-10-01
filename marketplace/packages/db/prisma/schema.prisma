@@ -218,6 +218,42 @@ model Provider {
   consecutiveIgnoredOffers Int                      @default(0)
   oncallPausedReason       String?
   smsConsentAt             DateTime?                @db.Timestamptz(3)
+
+  /// Pre-licensure (students & new graduates) — opt-in via the "not licensed
+  /// yet" toggle. Display, nurture and reporting ONLY: eligibility (INV-1/3)
+  /// never reads any of these fields.
+  preLicensure             Boolean                  @default(false)
+  preLicensureSince        DateTime?                @db.Timestamptz(3)
+  /// Set when the first license is verified and the student flag turns off.
+  graduatedOutAt           DateTime?                @db.Timestamptz(3)
+  /// Graduation or expected graduation date (graduationYear is kept in step).
+  graduationDate           DateTime?                @db.Date
+  /// no | yes — has applied to the licensing board.
+  licensureApplied         String?
+  /// 0-1 | 1-3 | 3-6 | 6-12 | 12+ | unsure (months)
+  expectedLicensure        String?
+  /// Planning only — never used for eligibility (INV-1 uses verified licenses).
+  intendedStates           String[]                 @default([])
+  preferredArea            String?
+  homeZip                  String?
+  homeCounty               String?
+  /// Acquisition attribution (all providers).
+  acquisitionSource        String?
+  acquisitionDetail        String?
+  recruitCampaignId        String?
+  recruitCampaign          RecruitCampaign?         @relation(fields: [recruitCampaignId], references: [id], onDelete: SetNull)
+  utmSource                String?
+  utmMedium                String?
+  utmCampaign              String?
+  utmTerm                  String?
+  utmContent               String?
+  landingPath              String?
+  referredBy               String?
+  /// Credential follow-up sequence (students only).
+  credFollowupStep         Int                      @default(0)
+  credFollowupLastAt       DateTime?                @db.Timestamptz(3)
+  credFollowupLastKind     String?
+  credFollowupOptOut       Boolean                  @default(false)
   onCallRules              OnCallRule[]
   responsiveness           ProviderResponsiveness[]
   standby                  StandbyEntry[]
@@ -235,6 +271,23 @@ model Provider {
   payouts                  Payout[]
   transfers                PayoutTransfer[]
   threads                  MessageThread[]
+}
+
+/// A recruitment link: coverageoncall.com/join/<slug> (school, event or
+/// campaign). Visits are AnalyticsEvent rows (path /join/<slug>).
+model RecruitCampaign {
+  id         String     @id @default(cuid())
+  slug       String     @unique
+  name       String
+  /// SCHOOL | EVENT | CAMPAIGN
+  kind       String     @default("SCHOOL")
+  state      String?    @db.Char(2)
+  city       String?
+  headline   String?
+  costCents  Int        @default(0)
+  active     Boolean    @default(true)
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  providers  Provider[]
 }
 
 enum LicenseStatus {

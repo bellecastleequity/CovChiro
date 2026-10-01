@@ -1,15 +1,19 @@
 import Link from "next/link";
 import { prisma } from "@cm/db";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
-import { Checkbox, Field, Input } from "@/components/ui/form";
+import { getSettings } from "@cm/services";
+import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { SOURCE_OPTIONS, StudentFields } from "@/components/provider/student-fields";
 import { cn } from "@/lib/cn";
 import { signupAction } from "../actions";
 
 export const metadata = { title: "Create your account" };
 
-export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string }> }) {
-  const { role: r, code, profession } = await searchParams;
+export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string; student?: string }> }) {
+  const { role: r, code, profession, student: st } = await searchParams;
   const role = r === "provider" ? "provider" : "clinic";
+  const studentEnabled = (await getSettings())["features.preLicensureEnabled"];
+  const student = role === "provider" && studentEnabled && st === "1";
   const professions = await prisma.profession.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
   return (
     <>
@@ -22,8 +26,19 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
           I'm a provider
         </Link>
       </div>
+      {role === "provider" && studentEnabled ? (
+        <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-slate-200 p-1 text-sm font-medium" role="group" aria-label="Licensure">
+          <Link href="/signup?role=provider" className={cn("rounded-lg py-2 text-center", !student ? "bg-brand-600 text-white" : "text-slate-500")}>
+            Licensed provider
+          </Link>
+          <Link href="/signup?role=provider&student=1" className={cn("rounded-lg py-2 text-center", student ? "bg-brand-600 text-white" : "text-slate-500")}>
+            Student / not yet licensed
+          </Link>
+        </div>
+      ) : null}
       <ActionForm action={signupAction} className="mt-6 space-y-4" successMessage={false}>
         <input type="hidden" name="role" value={role} />
+        {student ? <input type="hidden" name="student" value="1" /> : null}
         <input type="hidden" name="code" value={code ?? ""} />
         <Field label="Your name" htmlFor="name">
           <Input id="name" name="name" autoComplete="name" required />
@@ -46,6 +61,20 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         <Field label="Email" htmlFor="email">
           <Input id="email" name="email" type="email" autoComplete="email" required />
         </Field>
+        {student ? (
+          <>
+            <StudentFields />
+            <Field label="How did you hear about us?" htmlFor="source">
+              <Select id="source" name="source" defaultValue="">
+                {SOURCE_OPTIONS.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </>
+        ) : null}
         <Field label="Password" htmlFor="password" hint="At least 10 characters.">
           <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
         </Field>

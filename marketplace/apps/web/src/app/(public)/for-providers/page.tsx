@@ -14,6 +14,9 @@ export default function ForProviders() {
           <LinkButton href="/signup?role=provider" size="lg">
             Create your profile
           </LinkButton>
+          <LinkButton href="/join" size="lg" variant="outline">
+            Student or new graduate?
+          </LinkButton>
         </div>
       </div>
       <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">

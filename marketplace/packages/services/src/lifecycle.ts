@@ -145,14 +145,15 @@ export async function nightlyCredentialSweep(now = new Date()) {
   const future = await prisma.assignment.findMany({ where: { status: { in: ["CONFIRMED", "IN_PROGRESS"] }, endsAt: { gt: now } }, select: { id: true } });
   const lapsed = await recheckAssignments(future.map((f) => f.id), "Nightly credential sweep");
 
-  // Expiry reminders at 60/30/7 days.
-  const soon = new Date(+now + 61 * DAY);
+  // Expiry reminders at the configured points (default 60/30/14/7 days); the last one also by SMS.
+  const reminderDays = (await getSettings())["credentials.expiryReminderDays"];
+  const soon = new Date(+now + (Math.max(...reminderDays) + 1) * DAY);
   const [lics, pols] = await Promise.all([
     prisma.license.findMany({ where: { status: "VERIFIED", expiresAt: { lte: soon, gt: now } }, include: { provider: true } }),
     prisma.malpracticePolicy.findMany({ where: { status: "VERIFIED", expiresAt: { lte: soon, gt: now } }, include: { provider: true } }),
   ]);
   for (const c of [...lics.map((l) => ({ ...l, label: `${l.professionCode} license (${l.state})` })), ...pols.map((p) => ({ ...p, label: "Malpractice policy" }))]) {
-    const due = expiryReminderDue(c.expiresAt, now);
+    const due = expiryReminderDue(c.expiresAt, now, reminderDays);
     if (!due) continue;
     await notify(prisma, c.provider.userId, {
       template: "credential_expiring",
@@ -160,7 +161,7 @@ export async function nightlyCredentialSweep(now = new Date()) {
       body: "Upload the renewal so you stay eligible for shifts. Shifts after the expiration date won't be offered to you.",
       link: "/provider/credentials",
       ctaLabel: "Update credentials",
-      sms: due === 7,
+      sms: due === Math.min(...reminderDays),
     });
   }
   // Re-verification tasks.

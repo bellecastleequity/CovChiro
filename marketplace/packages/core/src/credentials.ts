@@ -5,11 +5,13 @@ export function nextReverifyAt(verifiedAt: Date, expiresAt: Date): Date {
   return new Date(Math.min(+expiresAt - 30 * DAY, +verifiedAt + 90 * DAY));
 }
 
-/** Days until expiry, for 60/30/7-day reminders. */
-export function expiryReminderDue(expiresAt: Date, now: Date): 60 | 30 | 7 | null {
-  const days = Math.ceil((+expiresAt - +now) / DAY);
-  if (days === 60 || days === 30 || days === 7) return days;
-  return null;
+/**
+ * Days until expiry when that day is one of the reminder points (setting
+ * credentials.expiryReminderDays, e.g. 60/30/14/7), else null. Run daily.
+ */
+export function expiryReminderDue(expiresAt: Date, now: Date, days: readonly number[] = [60, 30, 7]): number | null {
+  const left = Math.ceil((+expiresAt - +now) / DAY);
+  return days.includes(left) ? left : null;
 }
 
 export const US_STATES: Record<string, string> = {

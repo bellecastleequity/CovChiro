@@ -12,7 +12,7 @@ import {
   oncall,
   addBlackout, addMalpractice, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
   removeAvailabilityException, requestAgreement, respondToOffer, setAvailability, setProviderPhoto, setSkills, submitLodgingReceipt, submitRating,
-  updateProviderProfile, upsertLicense, withdrawApplication,
+  updateProviderProfile, upsertLicense, withdrawApplication, prelicensure,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -357,4 +357,28 @@ export const passwordAction = formAction(async (fd) => {
   const { actor } = await me();
   await auth.changePassword(actor, str(fd, "current"), str(fd, "next"));
   return "Password changed.";
+});
+
+/** Student / not-yet-licensed toggle on the profile. Never affects shift eligibility. */
+export const studentModeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  if (str(fd, "on") !== "1") {
+    await prelicensure.setStudentMode(actor, false);
+    revalidatePath("/provider");
+    return "Student path turned off.";
+  }
+  const maxDrive = Number(str(fd, "maxDriveMinutes"));
+  await prelicensure.setStudentMode(actor, true, {
+    school: str(fd, "school"),
+    graduationDate: str(fd, "graduationDate"),
+    intendedStates: fd.getAll("intendedStates").map(String),
+    licensureApplied: str(fd, "licensureApplied") === "yes" ? "yes" : "no",
+    expectedLicensure: str(fd, "expectedLicensure"),
+    preferredArea: optStr(fd, "preferredArea"),
+    homeZip: str(fd, "homeZip"),
+    maxDriveMinutes: maxDrive || undefined,
+    smsConsent: fd.get("smsConsent") === "on",
+  });
+  revalidatePath("/provider");
+  return "Saved.";
 });

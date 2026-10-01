@@ -4,11 +4,12 @@ import { authenticator } from "otplib";
 import { z } from "zod";
 import { brand, env } from "@cm/config";
 import { DomainError } from "@cm/core";
-import { prisma, seedBase, type User } from "@cm/db";
-import { audit, SYSTEM, type Actor } from "./context";
+import { prisma, seedBase, type Prisma, type User } from "@cm/db";
+import { audit, getSettings, SYSTEM, type Actor } from "./context";
 import { notifyAdmins, sendEmail } from "./notify";
 import { onUserSignup } from "./leads";
 import { track } from "./analytics";
+import { AttributionInput, attributionFields, StudentInput, studentFields } from "./prelicensure";
 
 /**
  * Email/password auth with DB-backed sessions (cookie holds a random token;
@@ -41,6 +42,11 @@ export const SignupInput = z.object({
   password: z.string().min(10, "Use at least 10 characters.").max(200),
   organization: z.string().trim().max(160).optional(),
   professionCodes: z.array(z.string()).optional(),
+  /** Providers only: mobile number (required on the student path). */
+  phone: z.string().trim().max(30).optional(),
+  /** Providers only, opt-in: "I'm a student or new graduate — not licensed yet". */
+  student: StudentInput.optional(),
+  attribution: AttributionInput.optional(),
   acceptTerms: z.literal(true, { message: "Please accept the terms to continue." }),
 });
 
@@ -50,6 +56,12 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
   if (await prisma.user.findUnique({ where: { email: input.email } })) {
     throw new DomainError("CONFLICT", "An account with that email already exists. Try signing in.");
   }
+  if (input.student && input.role === "provider") {
+    if (!(await getSettings())["features.preLicensureEnabled"]) throw new DomainError("FORBIDDEN", "Student sign-up isn't available right now.");
+    if ((input.phone ?? "").replace(/\D/g, "").length < 10) throw new DomainError("VALIDATION", "Enter your mobile number.");
+  }
+  // Prepared outside the transaction: the student ZIP lookup may call the geocoder.
+  const studentData = input.role === "provider" && input.student ? await studentFields(input.student, new Date()) : {};
   const passwordHash = await hashPassword(input.password);
   let adminLink = "/admin";
   let details: string[] = [];
@@ -64,7 +76,7 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
     }
     const professions = await db.profession.findMany({ where: { code: { in: input.professionCodes?.length ? input.professionCodes : ["DC"] } } });
     if (!professions.length) throw new DomainError("VALIDATION", "Choose at least one profession.");
-    const u = await db.user.create({ data: { email: input.email, name: input.name, passwordHash, role: "PROVIDER" } });
+    const u = await db.user.create({ data: { email: input.email, name: input.name, passwordHash, role: "PROVIDER", phone: input.phone || null } });
     const p = await db.provider.create({
       data: {
         userId: u.id,
@@ -72,10 +84,12 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
         displayName: input.name,
         professions: { create: professions.map((p) => ({ professionCode: p.code })) },
         stats: { create: {} },
-      },
+        ...(await attributionFields(db, input.attribution)),
+        ...studentData,
+      } as Prisma.ProviderUncheckedCreateInput,
     });
     adminLink = `/admin/providers/${p.id}`;
-    details = [`Profession: ${professions.map((x) => x.displayName).join(", ")}`];
+    details = [`Profession: ${professions.map((x) => x.displayName).join(", ")}`, ...(input.student ? [`Student / not yet licensed — graduating ${input.student.graduationDate.toISOString().slice(0, 10)}, ${input.student.school}`] : [])];
     return u;
   });
   await audit(prisma, { userId: user.id, role: user.role }, "user.signup", "User", user.id, null, { role: user.role });
@@ -90,7 +104,7 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
     link: adminLink,
     ctaLabel: `View ${input.role}`,
   }).catch((e) => console.error("admin signup notice failed", e));
-  await track({ type: "SIGNUP", userId: user.id, visitorId: meta.visitorId, props: { role: input.role } });
+  await track({ type: "SIGNUP", userId: user.id, visitorId: meta.visitorId, path: input.attribution?.landingPath ?? null, utm: input.attribution?.utm, props: { role: input.role, student: !!input.student, campaign: input.attribution?.campaign ?? null } });
   return user;
 }
 

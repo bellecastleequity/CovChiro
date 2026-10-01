@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@cm/db";
-import { earningsFor, latestSignedAgreement, providerChecklist } from "@cm/services";
+import { earningsFor, latestSignedAgreement, prelicensure, providerChecklist } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
-import { StatusBadge } from "@/components/ui/badge";
+import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/form";
 import { PageHeader, Stat } from "@/components/ui/misc";
@@ -17,7 +17,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
   const signedCopy = await latestSignedAgreement("PROVIDER", id);
   const p = await prisma.provider.findUnique({ where: { id }, include: { user: true, licenses: true, malpractice: true, professions: true, stats: true, assignments: { include: { shift: { include: { location: { include: { clinicOrg: true } } } } }, orderBy: { startsAt: "desc" }, take: 20 } } });
   if (!p) notFound();
-  const [e, checklist] = await Promise.all([earningsFor(id), providerChecklist(id)]);
+  const [e, checklist, student] = await Promise.all([earningsFor(id), providerChecklist(id), prelicensure.studentInfo(id)]);
   const c = checklist.common;
   // [label, done, still required for matching even after approval]
   const steps: [string, boolean, boolean][] = [
@@ -34,7 +34,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
   ];
   return (
     <>
-      <PageHeader title={p.displayName} description={`${p.legalName} · ${p.user.email} · ${p.user.phone ?? "no phone"} · home ${p.homeCity ?? "?"}, ${p.homeState ?? "?"}`} actions={<StatusBadge status={p.status} />} />
+      <PageHeader title={p.displayName} description={`${p.legalName} · ${p.user.email} · ${p.user.phone ?? "no phone"} · home ${p.homeCity ?? "?"}, ${p.homeState ?? "?"}`} actions={<div className="flex gap-2">{student.preLicensure ? <Badge tone="blue">Student</Badge> : student.wasStudent ? <Badge tone="gray">Former student</Badge> : null}<StatusBadge status={p.status} /></div>} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Completed shifts" value={p.stats?.completedShifts ?? 0} />
         <Stat label="Late cancels / no-shows" value={`${p.stats?.lateCancels ?? 0} / ${p.stats?.noShows ?? 0}`} />
@@ -43,6 +43,25 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader title="Coverage readiness & acquisition" description={`Stage: ${student.summary.stageLabel}`} />
+            <CardBody className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+              <div><span className="text-slate-500">License:</span> {student.summary.license.replace("_", " ")}</div>
+              <div><span className="text-slate-500">Malpractice:</span> {student.summary.malpractice.replace("_", " ")}</div>
+              {student.wasStudent ? (
+                <>
+                  <div><span className="text-slate-500">Graduation:</span> {student.graduationDate ? dateLabel(student.graduationDate, "UTC", { month: "short", day: "numeric", year: "numeric" }) : "—"}{student.graduatedOutAt ? ` · credentialed ${dateLabel(student.graduatedOutAt)}` : ""}</div>
+                  <div><span className="text-slate-500">License application:</span> {student.licensureApplied === "yes" ? "submitted" : "not yet"} · expected {student.expectedLicensure ?? "—"}</div>
+                  <div><span className="text-slate-500">Intended states:</span> {student.intendedStates.join(", ") || "—"}</div>
+                  <div><span className="text-slate-500">ZIP / area:</span> {student.homeZip ?? "—"}{student.preferredArea ? ` · ${student.preferredArea}` : ""}</div>
+                  <div><span className="text-slate-500">Follow-ups:</span> {student.followups.step} sent{student.followups.lastKind ? ` · last: ${student.followups.lastKind.replace(/_/g, " ")}` : ""}{student.followups.optOut ? " · unsubscribed" : ""}</div>
+                </>
+              ) : null}
+              <div><span className="text-slate-500">Source:</span> {student.acquisition.source ?? "—"}{student.acquisition.campaign ? ` · ${student.acquisition.campaign}` : student.acquisition.detail ? ` · ${student.acquisition.detail}` : ""}</div>
+              {student.acquisition.utm ? <div><span className="text-slate-500">UTM:</span> {student.acquisition.utm}</div> : null}
+              {student.acquisition.referredBy ? <div><span className="text-slate-500">Referred by:</span> {student.acquisition.referredBy}</div> : null}
+            </CardBody>
+          </Card>
           <Card>
             <CardHeader title="Credentials" action={<Link className="text-sm text-brand-700" href="/admin/verification">Verification queue</Link>} />
             <CardBody className="space-y-2 text-sm">

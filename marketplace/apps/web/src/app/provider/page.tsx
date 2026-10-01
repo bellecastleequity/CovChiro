@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ArrowRight, CalendarDays, Inbox, ShieldCheck, Wallet, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
-import { earningsFor, getSettings, oncall, providerProfile } from "@cm/services";
+import { earningsFor, getSettings, oncall, prelicensure, providerProfile } from "@cm/services";
+import { ReadinessCard } from "@/components/provider/readiness-card";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -37,10 +38,28 @@ export default async function ProviderHome() {
     { label: "Sign the Provider Platform Agreement", done: c.agreement, href: "/provider/profile#agreement" },
   ];
   const remaining = items.filter((i) => !i.done).length;
+  // Student path: readiness card instead of the setup checklist; profile-type
+  // steps move under "After you're licensed" (credentials are still required).
+  const readiness = provider.preLicensure ? await prelicensure.readinessSummary(provider.id) : null;
+  const laterSteps = [
+    { label: "Complete your profile & home base", done: c.profile && c.homeBase, href: "/provider/profile" },
+    { label: "Add a profile photo", done: c.photo, href: "/provider/profile" },
+    { label: "Add your NPI", done: c.npi, href: "/provider/profile" },
+    { label: "Set up payouts (Stripe)", done: c.payouts, href: "/provider/payouts" },
+    { label: "Sign the Provider Platform Agreement", done: c.agreement, href: "/provider/profile#agreement" },
+  ];
   return (
     <>
       <PageHeader eyebrow={`Hi, ${firstName(user.name)}`} title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
-      {provider.status !== "ACTIVE" || remaining ? (
+      {readiness ? (
+        <ReadinessCard
+          summary={readiness}
+          emailVerified={c.emailVerified}
+          contactDone={!!provider.user.phone && !!(provider.homeZip || provider.homeLat !== null)}
+          graduationDone={!!provider.graduationDate && !!provider.school}
+          laterSteps={laterSteps}
+        />
+      ) : provider.status !== "ACTIVE" || remaining ? (
         <Card className="mb-6">
           <CardHeader title="Finish setting up" description={`${remaining} step${remaining === 1 ? "" : "s"} left before you can apply to shifts.`} />
           <CardBody>

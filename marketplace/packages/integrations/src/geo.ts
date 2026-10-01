@@ -7,6 +7,8 @@ export interface GeocodeResult {
   /** USPS 2-letter code, derived from the geocoder — the only source of a location's state (INV-1). */
   state: string;
   zip: string;
+  /** County name when the geocoder returns one (reporting only). */
+  county?: string;
   lat: number;
   lng: number;
   timeZone: string;
@@ -77,6 +79,7 @@ export class GoogleGeo implements GeoProvider {
       city: comp("locality") || comp("sublocality") || comp("postal_town"),
       state,
       zip,
+      county: comp("administrative_area_level_2") || undefined,
       lat,
       lng,
       timeZone: tj.timeZoneId ?? "America/New_York",
