@@ -1,5 +1,5 @@
 import { brand, env } from "@cm/config";
-import { mailProvider, smsProvider } from "@cm/integrations";
+import { mailProvider, smsProvider, textingEnabled } from "@cm/integrations";
 import type { Db } from "./context";
 
 /**
@@ -97,11 +97,21 @@ export async function notify(db: Db, userId: string, n: NotifyInput) {
     });
     if (ok) sent.push("email");
   }
-  if (n.sms && user.phone && user.phoneVerifiedAt) {
+  if (n.sms && user.phone && user.phoneVerifiedAt && textingEnabled()) {
     const ok = await smsProvider()
       .send(user.phone, `${brand().name}: ${n.title}${n.link ? ` ${absoluteUrl(n.link)}` : ""}`)
       .catch(() => false);
     if (ok) sent.push("sms");
+  }
+  // A text-worthy alert that couldn't go by text (texting off, no verified mobile, or it failed) goes by email instead.
+  if (n.sms && n.email === false && !sent.includes("sms")) {
+    const ok = await sendEmail(user.email, {
+      subject: n.title,
+      heading: n.title,
+      paragraphs: [n.body, ...(n.details ?? [])],
+      cta: n.link ? { label: n.ctaLabel ?? "Open", url: n.link } : undefined,
+    });
+    if (ok) sent.push("email");
   }
   if (sent.length) await db.notification.update({ where: { id: row.id }, data: { sentAt: new Date(), payload: { sent } } });
 }

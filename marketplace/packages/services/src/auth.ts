@@ -284,10 +284,10 @@ export async function startPhoneVerification(actor: Actor, phoneRaw: string) {
   const code = String(Math.floor(100000 + Math.random() * 900000));
   await prisma.user.update({ where: { id: actor.userId }, data: { phone, phoneVerifiedAt: null } });
   await prisma.authToken.create({ data: { userId: actor.userId, purpose: "PHONE_VERIFY", tokenHash: sha256(`${actor.userId}:${code}`), expiresAt: new Date(Date.now() + 10 * 60_000) } });
-  const { smsProvider, TWILIO_ERROR_HELP } = await import("@cm/integrations");
+  const { smsProvider, textingEnabled, TWILIO_ERROR_HELP } = await import("@cm/integrations");
   const sms = smsProvider();
-  if (sms.name !== "twilio" && env().NODE_ENV === "production") {
-    throw new DomainError("CONFLICT", "Text messages aren't set up on this site yet, so we can't send your code. Please try again later.");
+  if (!textingEnabled() && env().NODE_ENV === "production") {
+    throw new DomainError("CONFLICT", "Text alerts aren't available yet — we'll email you instead for now. Your number is saved.");
   }
   if (!(await sms.send(phone, `${brand().name}: your verification code is ${code}. Msg & data rates may apply. Reply STOP to opt out.`))) {
     const help = sms.lastErrorCode ? TWILIO_ERROR_HELP[sms.lastErrorCode] : null;

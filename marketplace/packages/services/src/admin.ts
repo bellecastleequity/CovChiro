@@ -176,11 +176,13 @@ export async function updateStateConfig(
 export async function sendTestText(actor: Actor, toRaw: string) {
   requireAdmin(actor);
   const e = env();
-  const missing = (["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_MESSAGING_SERVICE_SID"] as const).filter((k) => !e[k]);
-  if (missing.length) throw new DomainError("VALIDATION", `Texting is off: ${missing.join(", ")} ${missing.length === 1 ? "isn't" : "aren't"} set. Add ${missing.length === 1 ? "it" : "them"} in cPanel → Setup Node.js App → Environment variables, then restart the app.`);
+  const missing: string[] = (["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"] as const).filter((k) => !e[k]);
+  if (!e.TWILIO_MESSAGING_SERVICE_SID && !e.TWILIO_FROM_NUMBER) missing.push("TWILIO_FROM_NUMBER (or TWILIO_MESSAGING_SERVICE_SID)");
+  if (missing.length) throw new DomainError("VALIDATION", `Texting is off — the site is in email-only mode (text alerts go by email). To turn texting on, set ${missing.join(", ")} in cPanel → Setup Node.js App → Environment variables, then restart the app.`);
   const shape: string[] = [];
   if (!e.TWILIO_ACCOUNT_SID!.startsWith("AC")) shape.push("TWILIO_ACCOUNT_SID should start with AC");
-  if (!e.TWILIO_MESSAGING_SERVICE_SID!.startsWith("MG")) shape.push("TWILIO_MESSAGING_SERVICE_SID should start with MG (a Messaging Service SID, not a phone number)");
+  if (e.TWILIO_MESSAGING_SERVICE_SID && !e.TWILIO_MESSAGING_SERVICE_SID.startsWith("MG")) shape.push("TWILIO_MESSAGING_SERVICE_SID should start with MG (a Messaging Service SID, not a phone number) — or remove it and use TWILIO_FROM_NUMBER");
+  if (!e.TWILIO_MESSAGING_SERVICE_SID && !/^\+1\d{10}$/.test(e.TWILIO_FROM_NUMBER!.replace(/[\s()-]/g, ""))) shape.push("TWILIO_FROM_NUMBER should be your Twilio number like +14075550123");
   if (shape.length) throw new DomainError("VALIDATION", `Check your Twilio settings: ${shape.join("; ")}.`);
   const digits = toRaw.replace(/\D/g, "");
   const to = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : null;

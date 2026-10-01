@@ -98,7 +98,8 @@ class TwilioTexter implements Texter {
   lastError: string | null = null;
   lastErrorCode: number | null = null;
   lastId: string | null = null;
-  constructor(private sid: string, private token: string, private service: string) {}
+  /** Sends through a Messaging Service (MG…) when set, otherwise from a plain Twilio number. */
+  constructor(private sid: string, private token: string, private sender: { service?: string; from?: string }) {}
   private auth() {
     return "Basic " + Buffer.from(`${this.sid}:${this.token}`).toString("base64");
   }
@@ -110,7 +111,7 @@ class TwilioTexter implements Texter {
       const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${this.sid}/Messages.json`, {
         method: "POST",
         headers: { Authorization: this.auth(), "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ To: to, MessagingServiceSid: this.service, Body: body }),
+        body: new URLSearchParams({ To: to, Body: body, ...(this.sender.service ? { MessagingServiceSid: this.sender.service } : { From: this.sender.from! }) }),
         signal: AbortSignal.timeout(15000),
       });
       const j = (await r.json().catch(() => ({}))) as { sid?: string; code?: number; message?: string };
@@ -168,6 +169,16 @@ export const TWILIO_ERROR_HELP: Record<number, string> = {
   30034: "Your 10-digit number isn't registered for A2P 10DLC. US carriers now block texts from unregistered numbers. In Twilio: Messaging → Regulatory Compliance → A2P 10DLC — register your brand and a campaign, then add the number to that campaign's Messaging Service.",
 };
 
+/**
+ * Is real texting set up? When it isn't (no Twilio keys), the site runs in
+ * email-only mode: text alerts go by email, phone numbers save without a code,
+ * and nothing requires a verified mobile.
+ */
+export function textingEnabled() {
+  // Tests run with the fake texter standing in for Twilio, so text paths stay covered.
+  return smsProvider().name === "twilio" || env().NODE_ENV === "test";
+}
+
 let mailer: Mailer | null = null;
 let texter: Texter | null = null;
 export function mailProvider(): Mailer {
@@ -177,8 +188,8 @@ export function mailProvider(): Mailer {
 export function smsProvider(): Texter {
   if (!texter) {
     const e = env();
-    texter = e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_MESSAGING_SERVICE_SID
-      ? new TwilioTexter(e.TWILIO_ACCOUNT_SID, e.TWILIO_AUTH_TOKEN, e.TWILIO_MESSAGING_SERVICE_SID)
+    texter = e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && (e.TWILIO_MESSAGING_SERVICE_SID || e.TWILIO_FROM_NUMBER)
+      ? new TwilioTexter(e.TWILIO_ACCOUNT_SID, e.TWILIO_AUTH_TOKEN, { service: e.TWILIO_MESSAGING_SERVICE_SID, from: e.TWILIO_FROM_NUMBER })
       : new DevTexter();
   }
   return texter;

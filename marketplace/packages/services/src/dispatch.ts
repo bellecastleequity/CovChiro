@@ -23,7 +23,7 @@ import {
   type WaveOffer,
 } from "@cm/core";
 import { prisma, type DispatchTrigger, type Offer, type SelectionMethod, type Wave } from "@cm/db";
-import { smsProvider } from "@cm/integrations";
+import { smsProvider, textingEnabled } from "@cm/integrations";
 import { confirmInTx } from "./confirm";
 import { audit, clock, getSettings, lockShift, requireClinic, requireProvider, SYSTEM, type Actor, type Db } from "./context";
 import { Effects } from "./effects";
@@ -702,7 +702,8 @@ export async function onCallEligibility(db: Db, providerId: string): Promise<{ o
   const reasons: string[] = [];
   if (!s["features.onCallEnabled"]) reasons.push("On Call isn't available yet");
   if (p.status !== "ACTIVE" || !p.stripePayoutsEnabled) reasons.push("Finish your profile and payout setup");
-  if (!p.user.phoneVerifiedAt || !p.smsConsentAt) reasons.push("Verify your mobile number and allow texts");
+  // Texts are how On Call reaches people fast; in email-only mode (no texting set up) it's not required.
+  if (textingEnabled() && (!p.user.phoneVerifiedAt || !p.smsConsentAt)) reasons.push("Verify your mobile number and allow texts");
   const st = p.stats ?? { completedShifts: 0, lateCancels: 0, noShows: 0 };
   if (st.completedShifts < s["oncall.minCompletedShifts"]) reasons.push(`Complete at least ${s["oncall.minCompletedShifts"]} shift(s) first`);
   if (reliabilityComponent(st) < s["oncall.minReliability"]) reasons.push("Reliability is below the On Call minimum");

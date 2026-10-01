@@ -1,3 +1,4 @@
+import { textingEnabled } from "@cm/integrations";
 import { Moon, PhoneCall, Zap } from "lucide-react";
 import { oncall } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
@@ -90,6 +91,7 @@ export default async function OnCallPage() {
           <Card>
             <CardHeader title={<span className="flex items-center gap-2"><PhoneCall className="size-4 text-accent-600" />Mobile & texts</span>} />
             <CardBody className="space-y-3">
+              {!textingEnabled() ? <Alert tone="info" title="By email for now">Text alerts are coming soon. Until then, shift offers and alerts are emailed to you, so keep an eye on your inbox.</Alert> : (<>
               {user.phoneVerifiedAt ? <div className="text-sm">Verified: <strong>{user.phone}</strong> {p.smsConsentAt ? <Badge tone="green">Texts on</Badge> : <Badge tone="amber">Texts off</Badge>}</div> : null}
               <ActionForm action={phoneStartAction} className="flex gap-2">
                 <Input name="phone" type="tel" placeholder="(407) 555-0123" defaultValue={user.phone ?? ""} required />
@@ -100,6 +102,7 @@ export default async function OnCallPage() {
                 <Checkbox name="consent" defaultChecked label="Text me shift offers and account alerts. Msg & data rates may apply. Reply STOP to opt out." />
                 <SubmitButton size="sm">Verify</SubmitButton>
               </ActionForm>
+              </>)}
             </CardBody>
           </Card>
           <Card>
