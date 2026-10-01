@@ -75,3 +75,43 @@ export function netTransfer(rows: { id: string; amountCents: number }[]): { ids:
   if (amountCents <= 0) return null;
   return { ids: rows.map((r) => r.id), amountCents };
 }
+
+/** A clinic charge that can fund provider transfers: amount − refunds − already transferred. */
+export interface ChargeSource { paymentId: string; assignmentId: string; capacityCents: number }
+export interface TransferLeg { paymentId: string | null; amountCents: number }
+
+/**
+ * Split one provider payment into Stripe transfers, each linked to a clinic charge of the
+ * same booking (Stripe source_transaction), so those funds are set aside for the provider
+ * and never paid out to the platform. Charges are used in the order given (deposit, then
+ * balance). Whatever they can't cover (bonuses, adjustments, refunded charges) is one
+ * unlinked leg from the platform balance. Negative rows reduce unlinked money first.
+ * The legs always add up to the net amount owed.
+ */
+export function planTransferLegs(rows: { assignmentId: string | null; amountCents: number }[], sources: ChargeSource[]): TransferLeg[] {
+  const net = rows.reduce((a, r) => a + r.amountCents, 0);
+  if (net <= 0) return [];
+  const owed = new Map<string, number>();
+  for (const r of rows) if (r.assignmentId) owed.set(r.assignmentId, (owed.get(r.assignmentId) ?? 0) + r.amountCents);
+  const capacity = new Map(sources.map((s) => [s.paymentId, Math.max(0, s.capacityCents)]));
+  const linked: { paymentId: string; amountCents: number }[] = [];
+  for (const [assignmentId, amount] of owed) {
+    let left = Math.max(0, amount);
+    for (const s of sources.filter((x) => x.assignmentId === assignmentId)) {
+      if (left <= 0) break;
+      const take = Math.min(left, capacity.get(s.paymentId) ?? 0);
+      if (take <= 0) continue;
+      linked.push({ paymentId: s.paymentId, amountCents: take });
+      capacity.set(s.paymentId, (capacity.get(s.paymentId) ?? 0) - take);
+      left -= take;
+    }
+  }
+  let unlinked = net - linked.reduce((a, l) => a + l.amountCents, 0);
+  // Negative adjustments larger than the unlinked money come off the last linked legs.
+  for (let i = linked.length - 1; unlinked < 0 && i >= 0; i--) {
+    const cut = Math.min(linked[i].amountCents, -unlinked);
+    linked[i].amountCents -= cut;
+    unlinked += cut;
+  }
+  return [...linked.filter((l) => l.amountCents > 0), ...(unlinked > 0 ? [{ paymentId: null, amountCents: unlinked }] : [])];
+}

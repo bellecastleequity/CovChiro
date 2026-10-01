@@ -26,7 +26,12 @@ export interface PaymentsProvider {
   accountStatus(accountId: string): Promise<{ payoutsEnabled: boolean; detailsSubmitted: boolean }>;
   chargeOffSession(input: { customerId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string> }): Promise<ChargeResult>;
   refund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string }): Promise<{ id: string }>;
-  transfer(input: { accountId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string> }): Promise<{ id: string }>;
+  /**
+   * Connect transfer to a provider. With sourcePaymentIntentId the transfer is linked to that clinic
+   * charge (Stripe source_transaction): the funds are reserved for the provider (never paid out to
+   * the platform) and the transfer can run before the charge's funds become available.
+   */
+  transfer(input: { accountId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string>; sourcePaymentIntentId?: string | null }): Promise<{ id: string }>;
   /** Throws if the signature is invalid. */
   parseWebhook(rawBody: string, signature: string | null): Stripe.Event;
 }
@@ -120,9 +125,15 @@ class StripePayments implements PaymentsProvider {
     const r = await this.s.refunds.create({ payment_intent: i.paymentIntentId, amount: i.amountCents }, { idempotencyKey: i.idempotencyKey });
     return { id: r.id };
   }
-  async transfer(i: { accountId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string> }) {
+  async transfer(i: { accountId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string>; sourcePaymentIntentId?: string | null }) {
+    let source: string | undefined;
+    if (i.sourcePaymentIntentId) {
+      const pi = await this.s.paymentIntents.retrieve(i.sourcePaymentIntentId);
+      source = typeof pi.latest_charge === "string" ? pi.latest_charge : (pi.latest_charge?.id ?? undefined);
+      if (!source) throw new Error(`No charge found for ${i.sourcePaymentIntentId}`);
+    }
     const t = await this.s.transfers.create(
-      { amount: i.amountCents, currency: "usd", destination: i.accountId, description: i.description, metadata: i.metadata },
+      { amount: i.amountCents, currency: "usd", destination: i.accountId, description: i.description, metadata: i.metadata, ...(source ? { source_transaction: source } : {}) },
       { idempotencyKey: i.idempotencyKey },
     );
     return { id: t.id };
@@ -184,7 +195,21 @@ export class FakePayments implements PaymentsProvider {
   async refund(i: { idempotencyKey: string }) {
     return { id: this.id("re", i.idempotencyKey) };
   }
-  async transfer(i: { idempotencyKey: string }) {
+  /** Transfers made (tests read this to check linking). */
+  transfers: { amountCents: number; sourcePaymentIntentId: string | null; idempotencyKey: string }[] = [];
+  /** Every transfer call that went through, in order (tests check nothing is sent twice). */
+  transferCalls: string[] = [];
+  /** Tests: make the next N transfer calls fail. */
+  failNextTransfers = 0;
+  /** Tests: fail any transfer this matches. */
+  failTransferIf: ((i: { amountCents: number; sourcePaymentIntentId: string | null }) => boolean) | null = null;
+  async transfer(i: { amountCents: number; idempotencyKey: string; sourcePaymentIntentId?: string | null }) {
+    if (this.failNextTransfers > 0 || this.failTransferIf?.({ amountCents: i.amountCents, sourcePaymentIntentId: i.sourcePaymentIntentId ?? null })) {
+      if (this.failNextTransfers > 0) this.failNextTransfers--;
+      throw new Error("Transfer failed (test)");
+    }
+    this.transferCalls.push(i.idempotencyKey);
+    if (!this.transfers.some((t) => t.idempotencyKey === i.idempotencyKey)) this.transfers.push({ amountCents: i.amountCents, sourcePaymentIntentId: i.sourcePaymentIntentId ?? null, idempotencyKey: i.idempotencyKey });
     return { id: this.id("tr", i.idempotencyKey) };
   }
   parseWebhook(rawBody: string): Stripe.Event {

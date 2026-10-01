@@ -1009,6 +1009,8 @@ model Payment {
   stripeRefundId        String?       @unique
   idempotencyKey        String        @unique
   status                PaymentStatus @default(PENDING)
+  /// Provider pay already transferred out of this charge (linked transfers, source_transaction).
+  transferredCents      Int           @default(0)
   failureReason         String?
   description           String?
   createdById           String?
@@ -1072,20 +1074,21 @@ enum TransferStatus {
 
 /// One Stripe Connect transfer, covering one or more ledger rows for a provider.
 model PayoutTransfer {
-  id               String         @id @default(cuid())
+  id               String              @id @default(cuid())
   providerId       String
-  provider         Provider       @relation(fields: [providerId], references: [id])
+  provider         Provider            @relation(fields: [providerId], references: [id])
   amountCents      Int
-  stripeTransferId String?        @unique
-  idempotencyKey   String         @unique
-  status           TransferStatus @default(PROCESSING)
+  stripeTransferId String?             @unique
+  idempotencyKey   String              @unique
+  status           TransferStatus      @default(PROCESSING)
   failureReason    String?
   /// null = released automatically by the payoutRelease job.
   initiatedById    String?
   note             String?
-  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
-  paidAt           DateTime?      @db.Timestamptz(3)
+  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+  paidAt           DateTime?           @db.Timestamptz(3)
   payouts          Payout[]
+  legs             PayoutTransferLeg[]
 
   @@index([providerId, createdAt])
 }
@@ -2058,4 +2061,26 @@ model GrowthCost {
   createdAt    DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([month])
+}
+
+/// One Stripe transfer within a provider payment. A leg linked to a clinic charge (paymentId)
+/// uses Stripe source_transaction, so those funds are reserved for the provider and never paid
+/// out to the platform; an unlinked leg comes from the platform balance (bonuses, adjustments).
+/// Retries only re-send legs that aren't PAID, with the same idempotency key.
+model PayoutTransferLeg {
+  id               String         @id @default(cuid())
+  transferId       String
+  transfer         PayoutTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  paymentId        String?
+  amountCents      Int
+  idempotencyKey   String         @unique
+  stripeTransferId String?        @unique
+  /// PENDING | PAID | FAILED
+  status           String         @default("PENDING")
+  failureReason    String?
+  paidAt           DateTime?      @db.Timestamptz(3)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@index([transferId])
+  @@index([paymentId])
 }
