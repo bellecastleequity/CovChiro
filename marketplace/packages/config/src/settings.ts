@@ -155,6 +155,17 @@ export const SETTINGS = {
     flag: null,
   }),
 
+  // ---------- time clock ----------
+  "timeclock.enabled": def({ group: "Time clock", label: "Providers punch in / lunch / out and clinics sign off the timesheet", schema: z.boolean(), default: true, flag: null }),
+  "timeclock.earliestInMinutes": def({ group: "Time clock", label: "Earliest punch-in (minutes before the shift starts)", schema: z.number().int().min(0).max(240), default: 60, flag: null }),
+  "timeclock.latestHoursAfterEnd": def({ group: "Time clock", label: "Clock stays open this many hours after the scheduled end", help: "After that, missed times are added by hand with a note.", schema: z.number().int().min(1).max(48), default: 6, flag: null }),
+  "timeclock.lateGraceMinutes": def({ group: "Time clock", label: "Minutes late / early before a punch is flagged to the clinic", schema: z.number().int().min(0).max(120), default: 10, flag: null }),
+  "timeclock.farMiles": def({ group: "Time clock", label: "Flag punches made farther than this from the clinic (miles)", help: "Only when the phone shares its location; punching never needs it.", schema: z.number().min(0.1).max(50), default: 0.5, flag: null }),
+  "timeclock.autoCloseHours": def({ group: "Time clock", label: "Hours after the scheduled end to close a timesheet with no punch-out", help: "It's closed at the scheduled end, flagged, and sent to the clinic.", schema: z.number().int().min(1).max(48), default: 3, flag: null }),
+  "timeclock.clinicReminderHours": def({ group: "Time clock", label: "Remind the clinic to sign off after this many hours", schema: z.number().int().min(1).max(72), default: 24, flag: null }),
+  "timeclock.autoApproveHours": def({ group: "Time clock", label: "Approve automatically if the clinic doesn't respond within (hours)", help: "Matches the dispute window by default, so pay isn't held longer than it is today.", schema: z.number().int().min(1).max(336), default: 48, flag: "OWNER_DECISION" }),
+  "timeclock.allowOnsiteSignature": def({ group: "Time clock", label: "Let a manager sign the timesheet on the provider's phone", help: "The clinic still gets an emailed copy and can report a problem.", schema: z.boolean(), default: true, flag: null }),
+
   // ---------- referrals ----------
   "referrals.enabled": def({ group: "Referrals", label: "Referral program on", help: "Off hides the Refer & earn pages and stops new rewards; earned rewards still pay.", schema: z.boolean(), default: true, flag: null }),
   "referrals.referrerRewardCents": def({ group: "Referrals", label: "Reward to the person who refers (cents)", help: "Providers get it as pay through Stripe; clinics as a credit toward their next shift.", schema: cents, default: 2000, flag: "OWNER_DECISION" }),

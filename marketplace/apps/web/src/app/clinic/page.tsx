@@ -2,7 +2,7 @@ import { GroundFloor } from "@/components/referrals/refer-page";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, PlusCircle, Users } from "lucide-react";
 import { prisma } from "@cm/db";
-import { clinicProfile, getSettings } from "@cm/services";
+import { clinicProfile, getSettings, timeclock } from "@cm/services";
 import { StatusBadge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -14,6 +14,7 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
   const { actor, user } = await requireActor("clinic");
   const { code, welcome } = await searchParams;
   const rs = await getSettings();
+  const sheets = await timeclock.pendingForClinic(actor);
   const { org, checklist } = await clinicProfile(actor);
   const now = new Date();
   const [open, upcoming, spent] = await Promise.all([
@@ -31,6 +32,11 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
     <>
       <PageHeader eyebrow={org.displayName} title={`Welcome${org.status === "ONBOARDING" ? "" : " back"}, ${firstName(user.name)}`} actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
       {rs["referrals.enabled"] ? <GroundFloor kind="clinic" referrerRewardCents={rs["referrals.referrerRewardCents"]} friendRewardCents={rs["referrals.refereeRewardCents"]} justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
+      {sheets.length ? (
+        <Alert tone="warning" className="mb-6" title={`${sheets.length} timesheet${sheets.length === 1 ? "" : "s"} to sign off`}>
+          Check your provider&apos;s punches and sign off, or tell us if something&apos;s not right. <Link href="/clinic/timesheets" className="font-medium underline">Review timesheets →</Link>
+        </Alert>
+      ) : null}
       {code ? <Alert tone="success" className="mb-6" title={`Your code ${code} is ready`}>Enter it on the pricing step when you post your first shift.</Alert> : null}
       {needsSetup ? (
         <Card className="mb-6">

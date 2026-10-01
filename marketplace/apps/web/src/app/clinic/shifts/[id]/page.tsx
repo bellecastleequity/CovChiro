@@ -3,7 +3,10 @@ import Link from "next/link";
 import { Ban, Car, Heart, MessageSquare, Radar, Star, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
 import { clinicView } from "@cm/core";
-import { dispatch, getSettings, shiftCandidates } from "@cm/services";
+import { dispatch, getSettings, shiftCandidates, timeclock } from "@cm/services";
+import { clinicApproveAction, clinicReportAction } from "@/app/timeclock-actions";
+import { SignOffForm } from "@/components/timeclock/signoff-form";
+import { TimesheetPanel, TimesheetStatus } from "@/components/timeclock/timesheet-panel";
 import { AutoRefresh, Countdown } from "@/components/countdown";
 import { BadgeList } from "@/components/provider-profile";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
@@ -82,7 +85,7 @@ function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; ap
 }
 
 export default async function ClinicShift({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ posted?: string; saved?: string }> }) {
-  const { actor } = await requireActor("clinic");
+  const { actor, user } = await requireActor("clinic");
   const { id } = await params;
   const sp = await searchParams;
   const shift = await prisma.shift.findFirst({
@@ -97,6 +100,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
   const s = await getSettings();
   const tz = shift.location.timeZone;
   const live = shift.assignments.find((a) => ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"].includes(a.status));
+  const sheet = live && s["timeclock.enabled"] && +live.startsAt - Date.now() < s["timeclock.earliestInMinutes"] * 60_000 ? await timeclock.timesheetForClinic(actor, live.id) : null;
   const selectable = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"].includes(shift.status);
   const cands = selectable ? await shiftCandidates(actor, id) : null;
   const track = await dispatch.dispatchStatus(id);
@@ -261,6 +265,15 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                 <LinkButton variant="outline" href={`/clinic/shifts/new?draft=${shift.id}`}>Edit draft</LinkButton>
               </div>
             </CardBody></Card>
+          ) : null}
+          {sheet ? (
+            <Card id="timesheet" className={sheet.status === "SUBMITTED" ? "border-amber-300 ring-2 ring-amber-100" : undefined}>
+              <CardHeader title="Timesheet" description={sheet.status === "SUBMITTED" ? "Check the times and sign off. Not right? Tell us and we'll sort it out before pay goes out." : "Punches from your provider's phone, stamped with our server's time."} action={<TimesheetStatus status={sheet.status} />} />
+              <CardBody className="space-y-4">
+                <TimesheetPanel v={sheet} />
+                {sheet.status === "SUBMITTED" ? <SignOffForm approve={clinicApproveAction} report={clinicReportAction} hidden={{ assignmentId: sheet.assignmentId }} defaultName={user.name} /> : null}
+              </CardBody>
+            </Card>
           ) : null}
           {live ? (
             <Card>

@@ -8,10 +8,11 @@ import { requireActor } from "@/lib/session";
 
 export default async function ClinicLayout({ children }: { children: React.ReactNode }) {
   const { actor, user } = await requireActor("clinic");
-  const [org, unread, newApps] = await Promise.all([
+  const [org, unread, newApps, pendingSheets] = await Promise.all([
     prisma.clinicOrg.findUniqueOrThrow({ where: { id: actor.clinicOrgId! } }),
     prisma.message.count({ where: { readAt: null, senderType: "PROVIDER", thread: { clinicOrgId: actor.clinicOrgId! } } }),
     prisma.application.count({ where: { status: "ACTIVE", shift: { location: { clinicOrgId: actor.clinicOrgId! }, status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] } } } }),
+    prisma.timesheet.count({ where: { status: "SUBMITTED", assignment: { shift: { location: { clinicOrgId: actor.clinicOrgId! } } } } }),
   ]);
   const items: NavItem[] = [
     { href: "/clinic", label: "Home", icon: "dashboard", mobile: true },
@@ -19,6 +20,7 @@ export default async function ClinicLayout({ children }: { children: React.React
     { href: "/clinic/shifts", label: "Shifts", icon: "shifts", badge: newApps, mobile: true },
     { href: "/clinic/messages", label: "Messages", icon: "messages", badge: unread, mobile: true },
     { href: "/clinic/billing", label: "Billing", icon: "billing", mobile: true },
+    { href: "/clinic/timesheets", label: "Timesheets", icon: "timeclock", badge: pendingSheets },
     { href: "/clinic/providers", label: "My providers", icon: "providers" },
     { href: "/clinic/refer", label: "Refer & earn", icon: "refer" },
     { href: "/clinic/standing", label: "Standing bookings", icon: "standing" },

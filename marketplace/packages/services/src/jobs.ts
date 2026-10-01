@@ -1,5 +1,6 @@
 import { purgeSpam } from "./spam";
 import { referralSweep } from "./referrals";
+import { timeclockSweep } from "./timeclock";
 import { prisma } from "@cm/db";
 import { DateTime } from "luxon";
 import * as dispatch from "./dispatch";
@@ -61,6 +62,8 @@ export const JOBS: Job[] = [
   { name: "leadDrip", schedule: { everySeconds: 900 }, run: () => leads.runLeadDrip() },
   // Spam folder: delete filtered messages after spam.retentionDays.
   // Referral rewards: both sides once the invited person's first shift is done (+ hold).
+  // Time clock: close forgotten punch-outs, remind clinics, auto-approve timesheets.
+  { name: "timeclockSweep", schedule: { everySeconds: 900 }, run: () => timeclockSweep() },
   { name: "referralSweep", schedule: { everySeconds: 3600 }, run: () => referralSweep() },
   { name: "spamCleanup", schedule: { cron: "20 4 * * *", tz: "America/New_York" }, run: () => purgeSpam() },
   // Students: one state-aware credential follow-up when due (30/60/90 days after graduation, then every 60).

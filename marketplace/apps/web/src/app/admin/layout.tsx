@@ -23,6 +23,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/verification", label: "Verification", icon: "verification", badge: pending, mobile: true },
     { href: "/admin/shifts", label: "Shifts", icon: "shifts", mobile: true },
     { href: "/admin/payouts", label: "Provider pay", icon: "payouts", mobile: true },
+    { href: "/admin/timesheets", label: "Timesheets", icon: "timeclock" },
     { href: "/admin/providers", label: "Providers", icon: "providers" },
     { href: "/admin/clinics", label: "Clinics", icon: "clinics" },
     { href: "/admin/payments", label: "Payments & disputes", icon: "payments", badge: disputes },
