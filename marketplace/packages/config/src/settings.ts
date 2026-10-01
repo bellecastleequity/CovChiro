@@ -298,15 +298,29 @@ export const SETTINGS = {
     default: 1_000_000,
     flag: "ATTORNEY_REVIEW",
   }),
-  "agreements.requireLatestVersion": def({
-    group: "Agreements",
-    label: "Require everyone to sign the latest agreement version before booking",
-    help: "Off: people who signed an earlier version keep booking and are asked to sign the new one. On: they can't book until they do.",
-    schema: z.boolean(),
-    default: false,
-    flag: "OWNER_DECISION",
+
+  // ---------- credential expiry ----------
+  "credentials.expiryReminderDays": def({
+    group: "Credentials",
+    label: "Renewal reminders (days before a license or malpractice policy expires)",
+    help: "One reminder at each of these points. The last one also goes by SMS.",
+    schema: z.array(z.number().int().min(1).max(365)).min(1).max(8),
+    default: [60, 30, 14, 7],
+    flag: null,
   }),
 
+  // ---------- pre-licensure (students & new graduates) ----------
+  "prelicensure.followupsEnabled": def({ group: "Students & new graduates", label: "Send credential follow-up emails to students", schema: z.boolean(), default: true, flag: null }),
+  "prelicensure.followupDays": def({
+    group: "Students & new graduates",
+    label: "Follow-ups: days after graduation (or signup, if later)",
+    help: "Each email asks only for what is still missing (license, malpractice, or a correction). Nothing is sent while everything is under review.",
+    schema: z.array(z.number().int().min(1).max(730)).min(1).max(10),
+    default: [30, 60, 90],
+    flag: null,
+  }),
+  "prelicensure.repeatDays": def({ group: "Students & new graduates", label: "Then repeat every (days) while still incomplete", schema: z.number().int().min(7).max(365), default: 60, flag: null }),
+  "prelicensure.minGapDays": def({ group: "Students & new graduates", label: "Never send two follow-ups closer than (days)", schema: z.number().int().min(1).max(90), default: 14, flag: null }),
   // ---------- growth: AI marketing & marketplace activation (services/src/growth) ----------
   "growth.pausedOutbound": def({ group: "Growth", label: "PAUSE OUTBOUND AUTOMATION (no automated growth email/SMS is sent while on)", schema: z.boolean(), default: false, flag: null }),
   "growth.providerMarketing": def({
@@ -338,17 +352,17 @@ export const SETTINGS = {
   }),
   "growth.outreachMode": def({ group: "Growth", label: "Clinic outreach: review (AI drafts wait for approval) or auto", schema: z.enum(["review", "auto"]), default: "review", flag: "OWNER_DECISION" }),
   "growth.postalAddress": def({ group: "Growth", label: "Physical postal address shown in marketing email", help: "Required in commercial email; marketing sends are blocked while blank.", schema: z.string().max(300), default: "", flag: "ATTORNEY_REVIEW" }),
-  "growth.launchState": def({ group: "Growth", label: "Launch state for credential follow-ups", schema: z.string().length(2), default: "FL", flag: "OWNER_DECISION" }),
-  "growth.launchProfession": def({ group: "Growth", label: "Launch profession code", schema: z.string().min(1).max(10), default: "DC", flag: "OWNER_DECISION" }),
-  "growth.aiProvider": def({ group: "Growth", label: "AI provider for growth agents (falls back to templates when its key is missing)", schema: z.enum(["anthropic", "gemini", "none"]), default: "anthropic", flag: "OWNER_DECISION" }),
+  "growth.aiProvider": def({ group: "Growth", label: "AI provider for growth agents (falls back to templates when its key is missing)", schema: z.enum(["anthropic", "gemini", "openai", "none"]), default: "anthropic", flag: "OWNER_DECISION" }),
   "growth.aiModels": def({
     group: "Growth",
     label: "AI model per task",
-    help: "classify = cheap tasks (segments, reply intent); write = personalized emails; converse = website chat; summarize = briefings; research = clinic web research (web search + fetch).",
+    help: "classify = cheap tasks (segments, reply intent); write = personalized emails; converse = website chat; summarize = briefings; research = clinic web research when the research provider's key is missing (see Prospecting: research provider).",
     schema: z.object({ classify: z.string().min(1), write: z.string().min(1), converse: z.string().min(1), summarize: z.string().min(1), research: z.string().min(1).default("claude-opus-5-5") }),
     default: { classify: "claude-haiku-4-5", write: "claude-opus-5-5", converse: "claude-opus-5-5", summarize: "claude-haiku-4-5", research: "claude-opus-5-5" },
     flag: "OWNER_DECISION",
   }),
+  "growth.researchProvider": def({ group: "Growth", label: "Prospecting: AI provider for clinic web research", help: "Uses OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY. If that key is missing, research uses the growth AI provider above with its research model.", schema: z.enum(["openai", "anthropic", "gemini"]), default: "openai", flag: "OWNER_DECISION" }),
+  "growth.researchModel": def({ group: "Growth", label: "Prospecting: research model", help: "The model ID for the research provider, e.g. gpt-6-luna (OpenAI), claude-opus-5-5 (Anthropic), gemini-2.5-flash (Gemini).", schema: z.string().min(1).max(80), default: "gpt-6-luna", flag: "OWNER_DECISION" }),
   "growth.aiEffort": def({ group: "Growth", label: "AI effort for larger models (lower = cheaper)", schema: z.enum(["low", "medium", "high"]), default: "low", flag: null }),
   "growth.aiDailyBudgetCents": def({ group: "Growth", label: "AI daily spend cap", schema: cents, default: 300, flag: "OWNER_DECISION" }),
   "growth.aiMonthlyBudgetCents": def({ group: "Growth", label: "AI monthly spend cap", schema: cents, default: 4000, flag: "OWNER_DECISION" }),
@@ -356,17 +370,10 @@ export const SETTINGS = {
     group: "Growth",
     label: "AI price per million tokens, in cents [input, output]",
     schema: z.record(z.string(), z.tuple([z.number().min(0), z.number().min(0)])),
-    default: { "claude-opus-5-5": [400, 2000], "claude-sonnet-5-5": [200, 1000], "claude-haiku-4-5": [100, 500], gemini: [0, 0] },
+    default: { "claude-opus-5-5": [400, 2000], "claude-sonnet-5-5": [200, 1000], "claude-haiku-4-5": [100, 500], "gpt-6-luna": [10, 50], gemini: [0, 0] },
     flag: null,
   }),
-  "growth.discoveryAreas": def({
-    group: "Growth",
-    label: "Prospecting: cities searched in the NPI registry (launch state)",
-    help: "Each city is searched for chiropractic practices; the list rotates, a few per run.",
-    schema: z.array(z.string().min(2).max(60)).max(500),
-    default: FL_CITIES,
-    flag: "OWNER_DECISION",
-  }),
+  "growth.discoveryAreasPerRun": def({ group: "Growth", label: "Prospecting: cities searched per agent run (across all prelaunch/live markets in Growth → Expansion)", schema: z.number().int().min(0).max(50), default: 3, flag: null }),
   // ---------- search engines (apps/web: sitemap, robots, landing pages, structured data) ----------
   "seo.cities": def({
     group: "SEO",
@@ -388,7 +395,6 @@ export const SETTINGS = {
   "seo.googleSiteVerification": def({ group: "SEO", label: "Google Search Console verification code (content of the google-site-verification meta tag)", schema: z.string().max(200), default: "", flag: null }),
   "seo.bingSiteVerification": def({ group: "SEO", label: "Bing Webmaster Tools verification code (msvalidate.01)", schema: z.string().max(200), default: "", flag: null }),
   "seo.sameAs": def({ group: "SEO", label: "Official social profile URLs (structured data)", schema: z.array(z.string().url()).max(10), default: [], flag: null }),
-  "growth.discoveryAreasPerRun": def({ group: "Growth", label: "Prospecting: cities searched per agent run", schema: z.number().int().min(0).max(50), default: 3, flag: null }),
   "growth.rediscoverDays": def({ group: "Growth", label: "Prospecting: re-search each city every N days", schema: z.number().int().min(1), default: 30, flag: null }),
   "growth.researchPerRun": def({ group: "Growth", label: "Prospecting: clinics researched on the web per agent run", schema: z.number().int().min(0).max(100), default: 8, flag: null }),
   "growth.researchMaxSearches": def({ group: "Growth", label: "Prospecting: max web searches per clinic", schema: z.number().int().min(1).max(20), default: 5, flag: null }),
@@ -414,7 +420,50 @@ export const SETTINGS = {
   "growth.highValueDays": def({ group: "Growth", label: "Unfinished request this many days or longer goes to the sales queue", schema: z.number().int().min(1), default: 2, flag: null }),
   "growth.escalationEmail": def({ group: "Growth", label: "Email admins for each escalation", schema: z.boolean(), default: true, flag: null }),
 
+  // ---------- blog ----------
+  "blog.aiProvider": def({ group: "Blog", label: "AI provider for blog drafts (separate from Growth)", schema: z.enum(["anthropic", "gemini", "openai", "none"]), default: "openai", flag: null }),
+  "blog.aiModel": def({ group: "Blog", label: "AI model for blog drafts", help: "A model from the provider above: an OpenAI model (e.g. gpt-4.1-mini), a Gemini model (e.g. gemini-2.5-flash) or a Claude model ID. Add its price under Growth → AI price per million tokens so the spend caps count it correctly.", schema: z.string().min(1).max(80), default: "gpt-4.1-mini", flag: null }),
+  "blog.autoDraftsPerWeek": def({
+    group: "Blog",
+    label: "Drafts the AI writes on its own each week (0 = only when you ask)",
+    help: "Drafts wait for your review; nothing is published automatically. Topics come from the list below, then from AI suggestions.",
+    schema: z.number().int().min(0).max(7),
+    default: 1,
+    flag: "OWNER_DECISION",
+  }),
+  "blog.authorName": def({ group: "Blog", label: "Byline on posts (blank = “The <brand> team”)", schema: z.string().max(80), default: "", flag: null }),
+  "blog.topicQueue": def({
+    group: "Blog",
+    label: "Topic queue for automatic drafts",
+    help: 'Each item: {"topic": "...", "audience": "CLINIC" | "PROVIDER" | "ALL"}. Used in order; a topic is skipped once a post has been written from it.',
+    schema: z.array(z.object({ topic: z.string().min(5).max(200), audience: z.enum(["CLINIC", "PROVIDER", "ALL"]) })).max(100),
+    default: [
+      { topic: "What to do when the only doctor at a chiropractic clinic is out sick", audience: "CLINIC" },
+      { topic: "Locum agencies vs. a coverage marketplace: how chiropractic clinics can compare their options", audience: "CLINIC" },
+      { topic: "Planning coverage for a continuing-education weekend: a checklist for clinic owners", audience: "CLINIC" },
+      { topic: "What a covering chiropractor needs on day one: an onboarding checklist for your front desk", audience: "CLINIC" },
+      { topic: "Why license verification matters when you bring in a fill-in doctor", audience: "CLINIC" },
+      { topic: "Taking a real vacation as a solo chiropractor: how to keep the practice open", audience: "CLINIC" },
+      { topic: "Per diem chiropractic work: what to know before your first coverage shift", audience: "PROVIDER" },
+      { topic: "New chiropractic graduates: building real-world experience with coverage shifts", audience: "PROVIDER" },
+      { topic: "How to be the covering doctor clinics ask for again", audience: "PROVIDER" },
+      { topic: "Malpractice coverage for fill-in chiropractors: questions to ask your carrier", audience: "PROVIDER" },
+    ],
+    flag: null,
+  }),
+
+  // ---------- training (academy) ----------
+  "academy.videos": def({
+    group: "Training",
+    label: "Training videos (lesson → YouTube video ID or link)",
+    help: 'Unlisted YouTube walkthroughs shown at the top of each lesson, e.g. {"clinic/posting": "dQw4w9WgXcQ"}. Keys are <course>/<lesson>; a lesson without one shows no video.',
+    schema: z.record(z.string(), z.string().max(200)),
+    default: {},
+    flag: null,
+  }),
+
   // ---------- feature flags (ATTORNEY REVIEW items ship OFF) ----------
+  "features.preLicensureEnabled": def({ group: "Features", label: "Student / not-yet-licensed signup path and /join recruitment pages", schema: z.boolean(), default: true, flag: null }),
   "features.onCallEnabled": def({ group: "Features", label: "On Call auto-accept (requires On Call Terms in the Provider Agreement)", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
   "features.conversionFeeEnabled": def({ group: "Features", label: "Allow charging conversion fees", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
 } as const;

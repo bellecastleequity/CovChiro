@@ -1,8 +1,10 @@
+import { textingEnabled } from "@cm/integrations";
 import Link from "next/link";
 import { AGREEMENT_VERSION, latestSignedAgreement, clinicProfile } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
@@ -16,6 +18,7 @@ export default async function Settings() {
   const owner = actor.role === "CLINIC_OWNER";
   const signed = org.agreementVersion === AGREEMENT_VERSION.CLINIC && org.agreementSignedAt;
   const signedCopy = await latestSignedAgreement("CLINIC", org.id);
+  const texting = textingEnabled();
   return (
     <>
       <PageHeader title="Settings" />
@@ -35,7 +38,9 @@ export default async function Settings() {
         <Card id="texts">
           <CardHeader title="Text alerts" description="Get a text when your provider is on the way, if they cancel or don't show, and when a replacement is confirmed." />
           <CardBody className="space-y-3">
-            {user.phoneVerifiedAt ? <Alert tone="success">Texts go to <strong>{user.phone}</strong>.</Alert> : null}
+            {!texting ? <Alert tone="info" title="By email for now">Text alerts are coming soon. Until then, these alerts are emailed to {user.email}.</Alert> : null}
+            {texting && user.phoneVerifiedAt ? <Alert tone="success">Texts go to <strong>{user.phone}</strong>.</Alert> : null}
+            {texting ? (<>
             <ActionForm action={clinicPhoneStartAction} className="flex gap-2">
               <Input name="phone" type="tel" placeholder="Your mobile, e.g. (407) 555-0123" defaultValue={user.phone ?? ""} required className="max-w-xs" />
               <SubmitButton variant="outline">Send code</SubmitButton>
@@ -45,10 +50,11 @@ export default async function Settings() {
               <SubmitButton size="md">Verify</SubmitButton>
             </ActionForm>
             <p className="text-xs text-slate-500">By verifying, you agree to receive shift alerts by text. Msg &amp; data rates may apply. Reply STOP to opt out.</p>
+            </>) : null}
           </CardBody>
         </Card>
         <Card id="experience">
-          <CardHeader title="Provider experience" description="The minimum years of experience for your new shifts. You can change it on any shift when you post it." />
+          <CardHeader title={<>Provider experience<InfoTip label="About experience">New shifts start with this minimum, and you can change it on each shift. Providers enter their years of practice, which can&apos;t exceed the years since they graduated. With the emergency option on, a last-minute replacement can come from any qualified provider.</InfoTip></>} description="The minimum years of experience for your new shifts. You can change it on any shift when you post it." />
           <CardBody>
             <ActionForm action={experienceAction} className="space-y-4">
               <Field label="Minimum experience" htmlFor="minYears" hint="A higher minimum means fewer providers can take your shifts, so they may take longer to fill.">

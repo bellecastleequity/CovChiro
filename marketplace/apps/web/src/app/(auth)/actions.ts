@@ -29,6 +29,34 @@ export const loginAction = formAction(async (fd) => {
   redirect(next.startsWith("/") && !next.startsWith("//") ? next : homeFor(r.user.role));
 });
 
+/** Student-path fields (signup?student=1 and /join); undefined on the normal path. */
+function studentFromForm(fd: FormData) {
+  if (str(fd, "student") !== "1") return undefined;
+  return {
+    school: str(fd, "school"),
+    graduationDate: str(fd, "graduationDate") as unknown as Date,
+    intendedStates: fd.getAll("intendedStates").map(String),
+    licensureApplied: (str(fd, "licensureApplied") === "yes" ? "yes" : "no") as "yes" | "no",
+    expectedLicensure: str(fd, "expectedLicensure"),
+    preferredArea: str(fd, "preferredArea") || null,
+    homeZip: str(fd, "homeZip"),
+    maxDriveMinutes: Number(str(fd, "maxDriveMinutes")) || undefined,
+    smsConsent: fd.get("smsConsent") === "on",
+  };
+}
+
+function attributionFromForm(fd: FormData) {
+  const utm = Object.fromEntries((["source", "medium", "campaign", "term", "content"] as const).map((k) => [k, str(fd, `utm_${k}`)]).filter(([, v]) => v));
+  return {
+    campaign: str(fd, "campaign") || undefined,
+    source: str(fd, "source") || undefined,
+    sourceDetail: str(fd, "sourceDetail") || undefined,
+    referredBy: str(fd, "ref") || undefined,
+    landingPath: str(fd, "landingPath") || undefined,
+    utm,
+  };
+}
+
 export const signupAction = formAction(async (fd) => {
   const role = str(fd, "role") === "provider" ? "provider" : "clinic";
   const user = await auth.signup(
@@ -39,10 +67,12 @@ export const signupAction = formAction(async (fd) => {
       password: str(fd, "password"),
       organization: str(fd, "organization") || undefined,
       professionCodes: fd.getAll("professions").map(String),
+      phone: str(fd, "phone") || undefined,
+      student: role === "provider" ? studentFromForm(fd) : undefined,
+      attribution: role === "provider" ? attributionFromForm(fd) : undefined,
       acceptTerms: fd.get("terms") === "on" ? true : (false as never),
+      // Student details come from the student path (studentFromForm) above.
       campaign: str(fd, "campaign") || null,
-      graduationDate: str(fd, "graduation") || null,
-      isStudent: str(fd, "stage") === "student",
       prospectToken: str(fd, "c") || (await cookies()).get("cm_pt")?.value || null,
     },
     { ip: await ip(), visitorId: (await cookies()).get("cm_vid")?.value ?? null },

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Car, Clock, MapPin, Star, Users } from "lucide-react";
+import { Car, Clock, MapPin, Shirt, Star, Users } from "lucide-react";
 import { prisma } from "@cm/db";
 import { evaluateProviderForShift, getSettings } from "@cm/services";
 import { providerView } from "@cm/core";
@@ -49,8 +49,9 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
               <div className="flex items-center gap-2"><MapPin className="size-4 text-slate-400" />{shift.location.city}, {shift.state} <span className="text-slate-400">(exact address after confirmation)</span></div>
               <div className="flex items-center gap-2"><Clock className="size-4 text-slate-400" />{timeRange(shift.startsAt, shift.endsAt, tz)}</div>
               {ev.drive ? <div className="flex items-center gap-2"><Car className="size-4 text-slate-400" />About {ev.drive.minutes} min drive ({ev.drive.miles} mi)</div> : null}
+              {shift.location.dressCode ? <div className="flex items-center gap-2"><Shirt className="size-4 text-slate-400" />Attire: {shift.location.dressCode}</div> : null}
               {shift.minYearsExperience ? <div className="flex items-center gap-2"><Star className="size-4 text-slate-400" />Clinic asks for {shift.minYearsExperience}+ years&apos; experience</div> : null}
-              {shift.expectedPatients ? <div className="flex items-center gap-2"><Users className="size-4 text-slate-400" />About {shift.expectedPatients} patients</div> : null}
+              {shift.expectedPatients ? <div className="flex items-center gap-2"><Users className="size-4 text-slate-400" />About {shift.expectedPatients} patients</div> : shift.location.patientsPerDay ? <div className="flex items-center gap-2"><Users className="size-4 text-slate-400" />Usually about {shift.location.patientsPerDay} patients a day</div> : null}
               {clinicRating._count ? <div className="flex items-center gap-2"><Star className="size-4 text-amber-500" />{clinicRating._avg.stars?.toFixed(1)} from {clinicRating._count} provider rating{clinicRating._count === 1 ? "" : "s"}</div> : null}
               {skills.length ? (
                 <div className="flex flex-wrap gap-1.5 pt-1">

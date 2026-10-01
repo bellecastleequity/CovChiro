@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 import { DomainError } from "@cm/core";
 import { redirect } from "next/navigation";
 import {
+  accounts,
+  schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold,
+  reviewLodgingReceipt, setHold, prelicensure,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -16,7 +18,17 @@ const me = () => requireActor("admin");
 const formAction: typeof baseFormAction = (fn) => baseFormAction(fn, { technical: true });
 const rv = (p: string) => revalidatePath(p, "layout");
 
-// ---------- email ----------
+// ---------- email & texts ----------
+export const googleCheckAction = formAction(async () => {
+  const { actor } = await me();
+  return admin.checkGoogle(actor);
+});
+
+export const testTextAction = formAction(async (fd) => {
+  const { actor } = await me();
+  return admin.sendTestText(actor, str(fd, "to"));
+});
+
 export const testEmailAction = formAction(async (fd) => {
   const { actor } = await me();
   return admin.sendTestEmail(actor, str(fd, "to"));
@@ -122,6 +134,42 @@ export const clinicStatusAction = formAction(async (fd) => {
   await admin.setClinicStatus(actor, str(fd, "clinicOrgId"), str(fd, "status") as "ACTIVE", optStr(fd, "note") ?? undefined);
   rv("/admin/clinics");
   return "Status updated.";
+});
+
+export const moderateAccountAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const kind = str(fd, "kind") as "provider" | "clinic";
+  const id = str(fd, "id");
+  const msg = await accounts.moderateAccount(actor, { kind, id, action: str(fd, "action") as "suspend", reason: str(fd, "reason"), releaseUpcoming: bool(fd, "releaseUpcoming") });
+  rv(kind === "provider" ? `/admin/providers/${id}` : `/admin/clinics/${id}`);
+  return msg;
+});
+export const deleteAccountAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const kind = str(fd, "kind") as "provider" | "clinic";
+  if (str(fd, "confirmText").trim().toUpperCase() !== "DELETE") throw new DomainError("VALIDATION", "Type DELETE to confirm.");
+  await accounts.deleteAccount(actor, kind, str(fd, "id"), str(fd, "reason"));
+  rv(kind === "provider" ? "/admin/providers" : "/admin/clinics");
+  redirect(kind === "provider" ? "/admin/providers?deleted=1" : "/admin/clinics?deleted=1");
+});
+
+export const addSchoolAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await schools.addSchool(actor, { professionCode: str(fd, "professionCode"), name: str(fd, "name"), city: optStr(fd, "city"), state: optStr(fd, "state") });
+  rv("/admin/schools");
+  return "School added to the sign-up dropdown.";
+});
+export const schoolActiveAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await schools.setSchoolActive(actor, str(fd, "id"), bool(fd, "active"));
+  rv("/admin/schools");
+  return bool(fd, "active") ? "Shown in the dropdown." : "Hidden from the dropdown.";
+});
+export const loadSchoolListAction = formAction(async (fd) => {
+  await me();
+  const n = await schools.ensureSchools([str(fd, "professionCode")]);
+  rv("/admin/schools");
+  return n ? `Added ${n} school${n === 1 ? "" : "s"}.` : "Already up to date.";
 });
 
 // ---------- provider pay ----------
@@ -340,4 +388,25 @@ export const resolveTaskAction = formAction(async (fd) => {
   await admin.resolveTask(actor, str(fd, "taskId"));
   rv("/admin");
   return "Resolved.";
+});
+
+// ---------- recruitment links (/join/<slug>) ----------
+export const saveCampaignAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await prelicensure.saveCampaign(
+    actor,
+    {
+      slug: str(fd, "slug"),
+      name: str(fd, "name"),
+      kind: (str(fd, "kind") || "SCHOOL") as "SCHOOL" | "EVENT" | "CAMPAIGN",
+      state: optStr(fd, "state"),
+      city: optStr(fd, "city"),
+      headline: optStr(fd, "headline"),
+      costDollars: Number(str(fd, "costDollars") || 0),
+      active: bool(fd, "active"),
+    },
+    str(fd, "id") || undefined,
+  );
+  rv("/admin/recruitment");
+  return "Saved.";
 });

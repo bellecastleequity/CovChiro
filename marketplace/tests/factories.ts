@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { prisma, type LicenseStatus } from "@cm/db";
-import type { Actor } from "@cm/services";
+import { isFederalHoliday } from "@cm/core";
+import { AGREEMENT_VERSION, type Actor } from "@cm/services";
 
 /** Test data builders. Every provider/clinic is unique per call. */
 
@@ -12,6 +13,8 @@ export function futureWeekday(days: number, startHourUtc = 13, hours = 8) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + days);
   while (d.getUTCDay() !== 3) d.setUTCDate(d.getUTCDate() + 1);
+  // Never a federal holiday: the holiday premium would change every price assertion.
+  while (isFederalHoliday(d.toISOString().slice(0, 10))) d.setUTCDate(d.getUTCDate() + 7);
   d.setUTCHours(startHourUtc, 0, 0, 0);
   return { startsAt: d, endsAt: new Date(+d + hours * 3_600_000) };
 }
@@ -49,7 +52,7 @@ export async function makeProvider(o: ProviderOpts = {}) {
       stripeAccountId: `acct_test_${id}`,
       stripePayoutsEnabled: true,
       agreementSignedAt: new Date(),
-      agreementVersion: 1,
+      agreementVersion: AGREEMENT_VERSION.PROVIDER,
       profileCompleteAt: new Date(),
       status: o.status ?? "ACTIVE",
       professions: { create: profs.map((p) => ({ professionCode: p.code, status: p.status ?? "ACTIVE" })) },
@@ -113,7 +116,7 @@ export async function makeClinic(o: ClinicOpts = {}) {
       hasPaymentMethod: true,
       stripeCustomerId: `cus_test_${id}`,
       agreementSignedAt: new Date(),
-      agreementVersion: 1,
+      agreementVersion: AGREEMENT_VERSION.CLINIC,
       members: { create: { userId: user.id, role: "CLINIC_OWNER" } },
     },
   });

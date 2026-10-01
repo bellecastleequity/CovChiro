@@ -12,7 +12,7 @@ import {
   bookings,
   emergency,
   feedback,
-  archiveLocation, auth, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic,
+  archiveLocation, auth, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
 import { bool, formAction, optStr, str } from "@/lib/action";
@@ -84,6 +84,16 @@ export const createShiftAction = formAction(async (fd) => {
   const { shiftIds } = await bookings.createMultiDay(actor, inputs, { post });
   revalidatePath("/clinic", "layout");
   redirect(`/clinic/shifts/${shiftIds[0]}?${post ? "posted" : "saved"}=1`);
+});
+
+export const updateDraftAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const post = str(fd, "mode") !== "draft";
+  const shiftId = str(fd, "shiftId");
+  const [input] = await shiftPayloads(fd);
+  await updateDraftShift(actor, shiftId, input, { post });
+  revalidatePath("/clinic", "layout");
+  redirect(`/clinic/shifts/${shiftId}?${post ? "posted" : "saved"}=1`);
 });
 
 export const postDraftAction = formAction(async (fd) => {

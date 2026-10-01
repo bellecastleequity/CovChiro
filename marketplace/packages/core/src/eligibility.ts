@@ -47,6 +47,8 @@ export interface ProviderFacts {
   /** Per-profession activation; F3 checks the shift's profession. */
   professions: { professionCode: string; status: ProviderProfessionStatus; yearsInPractice?: number | null }[];
   payoutsEnabled: boolean;
+  /** Signed the current Provider Agreement (any older version doesn't count). */
+  agreementCurrent: boolean;
   licenses: LicenseFact[];
   malpractice: MalpracticeFact[];
   skills: ProviderSkillFact[];
@@ -235,6 +237,7 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   if (provider.status !== "ACTIVE" || prof?.status !== "ACTIVE" || !provider.payoutsEnabled) {
     fail("F3", "PROVIDER_NOT_ACTIVE", `Provider is not active for ${shift.professionCode} shifts, or payouts are not enabled`);
   }
+  if (!provider.agreementCurrent) fail("F3", "AGREEMENT_NOT_SIGNED", "Sign the current Provider Agreement (Profile → Agreement) to be matched to shifts");
 
   // F9 — blocks, either direction.
   if (pair.blocked) fail("F9", "BLOCKED", "Blocked");

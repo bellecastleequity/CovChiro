@@ -10,6 +10,8 @@ import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSwe
 import { releaseDuePayouts } from "./payouts";
 import { settleDueInvites } from "./shifts";
 import { standingSweep } from "./standing";
+import { runPreLicensureFollowups } from "./prelicensure";
+import { autoDraftSweep } from "./blog";
 
 /**
  * Every background job is an idempotent sweep over due rows (SPEC.md §16):
@@ -49,11 +51,15 @@ export const JOBS: Job[] = [
   { name: "standingBookings", schedule: { everySeconds: 3600 }, run: () => standingSweep() },
   // Growth.
   { name: "leadDrip", schedule: { everySeconds: 900 }, run: () => leads.runLeadDrip() },
+  // Students: one state-aware credential follow-up when due (30/60/90 days after graduation, then every 60).
+  { name: "preLicensureFollowups", schedule: { cron: "15 10 * * *", tz: "America/New_York" }, run: () => runPreLicensureFollowups() },
   // Growth agents (services/src/growth): event-driven sweeps; nothing calls AI unless something is due.
   { name: "growthAgents", schedule: { everySeconds: 900 }, run: () => growthTick() },
   // Automatic clinic prospecting: NPI registry discovery + AI web research (budget-capped, ~2 min per run max).
   { name: "growthProspecting", schedule: { everySeconds: 600 }, run: () => prospectingTick() },
   { name: "growthSupplyGaps", schedule: { everySeconds: 3600 }, run: () => supplyGapSweep() },
+  // Blog: AI writes up to blog.autoDraftsPerWeek drafts for review (never publishes).
+  { name: "blogAutoDraft", schedule: { cron: "40 9 * * *", tz: "America/New_York" }, run: () => autoDraftSweep() },
   // Daily schedule slot; the briefing itself only goes out on Mondays.
   { name: "growthWeeklyBriefing", schedule: { cron: "0 8 * * *", tz: "America/New_York" }, run: () => (DateTime.now().setZone("America/New_York").weekday === 1 ? weeklyBriefing() : Promise.resolve("not Monday")) },
   // Quality.

@@ -215,6 +215,12 @@ describe("other hard filters", () => {
     expect(evaluateEligibility(years(0), shift({ minYearsExperience: 10 }), pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
   });
 
+  it("F3 a provider must have signed the current agreement — even if otherwise active", () => {
+    expect(codes(evaluateEligibility(provider({ agreementCurrent: false }), shift(), pair(), OPTS))).toEqual(["AGREEMENT_NOT_SIGNED"]);
+    // Nightly credential sweeps don't touch it (they only re-check licenses/malpractice of booked shifts).
+    expect(evaluateEligibility(provider({ agreementCurrent: false }), shift(), pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
+  });
+
   it("F3 status / payouts", () => {
     expect(codes(evaluateEligibility(provider({ status: "ONBOARDING" }), shift(), pair(), OPTS))).toContain("PROVIDER_NOT_ACTIVE");
     expect(codes(evaluateEligibility(provider({ payoutsEnabled: false }), shift(), pair(), OPTS))).toContain("PROVIDER_NOT_ACTIVE");

@@ -1,11 +1,12 @@
 import { env } from "@cm/config";
 import { prisma } from "@cm/db";
-import { clinicProfile, MAX_LOCATION_PHOTOS } from "@cm/services";
+import { ATTIRE_OPTIONS, clinicProfile, MAX_LOCATION_PHOTOS } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { AddressInput } from "@/components/ui/address-input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Checkbox, Field, Input, Textarea } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
+import { InfoTip } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/ui/misc";
 import { requireActor } from "@/lib/session";
 import { archiveLocationAction, locationAction, locationPhotosAction, removeLocationPhotoAction } from "../actions";
@@ -24,18 +25,23 @@ async function LocationForm({ loc }: { loc?: Loc }) {
     <ActionForm action={locationAction} className="grid gap-4 sm:grid-cols-2" resetOnSuccess={!loc}>
       {loc ? <input type="hidden" name="locationId" value={loc.id} /> : null}
       <Field label="Location name"><Input name="name" defaultValue={loc?.name} placeholder="Main office" required /></Field>
-      <Field label="Front desk phone"><Input name="phone" defaultValue={loc?.phone ?? ""} type="tel" /></Field>
+      <Field label={<>Front desk phone<InfoTip label="About the front desk phone">Shown only to the provider booked at this location, so they can call if they&apos;re running late or can&apos;t find you.</InfoTip></>}><Input name="phone" defaultValue={loc?.phone ?? ""} type="tel" /></Field>
       <Field label="Street address, city, state, ZIP" hint="Verified with our mapping service — your state comes from this address." className="sm:col-span-2">
         <AddressInput name="address" defaultValue={loc ? `${loc.addressLine1}, ${loc.city}, ${loc.state} ${loc.zip}` : ""} placeholder="Start typing the address…" required browserKey={env().GOOGLE_MAPS_BROWSER_KEY} />
       </Field>
       <Field label="Suite / unit"><Input name="addressLine2" defaultValue={loc?.addressLine2 ?? ""} /></Field>
-      <Field label="On-site contact"><Input name="onSiteContactName" defaultValue={loc?.onSiteContactName ?? ""} /></Field>
-      <Field label="Patients per day"><Input name="patientsPerDay" type="number" defaultValue={loc?.patientsPerDay ?? ""} /></Field>
+      <Field label={<>On-site contact<InfoTip label="About the on-site contact">Who the provider should ask for when they arrive. Shown only after a provider is booked.</InfoTip></>}><Input name="onSiteContactName" defaultValue={loc?.onSiteContactName ?? ""} /></Field>
+      <Field label={<>Patients per day<InfoTip label="About patients per day">Your typical volume. Providers see it so they know the pace to expect.</InfoTip></>}><Input name="patientsPerDay" type="number" defaultValue={loc?.patientsPerDay ?? ""} /></Field>
       <Field label="EHR"><Input name="ehr" defaultValue={loc?.ehr ?? ""} /></Field>
       <Field label="Equipment (comma-separated)" className="sm:col-span-2"><Input name="equipment" defaultValue={loc?.equipment.join(", ")} placeholder="Drop tables, X-ray, e-stim" /></Field>
-      <Field label="Dress code"><Input name="dressCode" defaultValue={loc?.dressCode ?? ""} /></Field>
+      <Field label="Provider attire" htmlFor={`dressCode-${loc?.id ?? "new"}`} hint="What you'd like providers to wear here. Shown before they apply.">
+        <Select id={`dressCode-${loc?.id ?? "new"}`} name="dressCode" required defaultValue={loc?.dressCode && (ATTIRE_OPTIONS as readonly string[]).includes(loc.dressCode) ? loc.dressCode : ""}>
+          <option value="" disabled>Select one</option>
+          {ATTIRE_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+        </Select>
+      </Field>
       <fieldset>
-        <legend className="mb-1.5 text-sm font-medium text-slate-700">We post shifts for</legend>
+        <legend className="mb-1.5 text-sm font-medium text-slate-700">We post shifts for<InfoTip label="About professions">The professions you&apos;ll post shifts for at this location. Professions marked (soon) aren&apos;t open on the platform yet.</InfoTip></legend>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           {professions.map((p) => <Checkbox key={p.code} name="professions" value={p.code} defaultChecked={chosen.includes(p.code)} label={`${p.displayName}${p.active ? "" : " (soon)"}`} />)}
         </div>
@@ -101,10 +107,17 @@ export default async function Locations() {
             </CardBody>
           </Card>
         ))}
-        <Card>
-          <CardHeader title="Add a location" />
-          <CardBody><LocationForm /></CardBody>
-        </Card>
+        {org.locations.length ? (
+          <details className="group rounded-2xl border border-dashed border-slate-300 bg-white">
+            <summary className="cursor-pointer list-none px-5 py-4 text-sm font-medium text-brand-700 hover:text-brand-800">+ Add another location</summary>
+            <div className="border-t border-slate-100 px-5 py-5"><LocationForm /></div>
+          </details>
+        ) : (
+          <Card>
+            <CardHeader title="Add a location" />
+            <CardBody><LocationForm /></CardBody>
+          </Card>
+        )}
       </div>
     </>
   );

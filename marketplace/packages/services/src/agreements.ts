@@ -9,11 +9,18 @@ export { agreementText, renderAgreement, type AgreementDoc, type AgreementKind }
 /** Bump when the agreement wording changes (agreement-text.ts). v1 was the placeholder used in the build & test phase. */
 export const AGREEMENT_VERSION = { CLINIC: 2, PROVIDER: 2 } as const;
 
-/** Signed a version good enough to book: the latest, or any version unless Settings require the latest. */
+/**
+ * Has this clinic/provider signed the CURRENT agreement? Required — no
+ * exceptions, admin approval included — before a clinic posts shifts and
+ * before a provider is matched, offered, invited or can apply. Bumping
+ * AGREEMENT_VERSION immediately requires everyone to sign the new version.
+ */
+export function agreementCurrent(kind: AgreementKind, signedAt: Date | null, version: number | null) {
+  return !!signedAt && !!version && version >= AGREEMENT_VERSION[kind];
+}
+
 export async function agreementAccepted(kind: AgreementKind, signedAt: Date | null, version: number | null) {
-  if (!signedAt || !version) return false;
-  if (version >= AGREEMENT_VERSION[kind]) return true;
-  return !(await getSettings())["agreements.requireLatestVersion"];
+  return agreementCurrent(kind, signedAt, version);
 }
 
 export const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");

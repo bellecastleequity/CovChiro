@@ -173,3 +173,33 @@ describe("request to hire (placement)", () => {
     expect(await prisma.payment.count({ where: { clinicOrgId: clinic.org.id, type: "CONVERSION_FEE" } })).toBe(1);
   });
 });
+
+describe("email-only mode (no texting set up)", () => {
+  it("a text-only alert falls back to email when it can't be texted", async () => {
+    const { devOutbox } = await import("@cm/integrations");
+    const { notify } = await import("@cm/services");
+    const clinic = await makeClinic();
+    const before = devOutbox.filter((m) => m.channel === "email" && m.to === clinic.user.email).length;
+    await notify(prisma, clinic.user.id, { template: "on_my_way", title: "Your provider is on the way", body: "Arriving about 8:45", email: false, sms: true });
+    expect(devOutbox.filter((m) => m.channel === "email" && m.to === clinic.user.email).length).toBe(before + 1);
+    // Something sent quietly on purpose (no email, no text) stays quiet.
+    await notify(prisma, clinic.user.id, { template: "quiet", title: "In-app only", body: "x", email: false, sms: false });
+    expect(devOutbox.filter((m) => m.channel === "email" && m.to === clinic.user.email).length).toBe(before + 1);
+  });
+});
+
+describe("experience × student path", () => {
+  it("students can save a future (expected) graduation year with no years practicing; others can't", async () => {
+    const { updateProviderProfile } = await import("@cm/services");
+    const year = new Date().getFullYear();
+    // A real student: not licensed or insured yet (otherwise they'd graduate out of the student path on save).
+    const student = await makeProvider({ status: "ONBOARDING", licenses: [], malpractice: null, professions: [{ code: "DC", status: "ONBOARDING" }] });
+    const pp = await prisma.providerProfession.findFirstOrThrow({ where: { providerId: student.id } });
+    await prisma.provider.update({ where: { id: student.id }, data: { preLicensure: true, preLicensureSince: new Date(), graduationYear: year + 1 } });
+    const base = (p: { legalName: string; displayName: string }) => ({ legalName: p.legalName, displayName: p.displayName, phone: "4075550100", homeAddress: "100 Main St, Orlando, FL 32801", maxDriveMinutes: 60, personalInjuryExperience: false, bio: "Chiropractic student." });
+    await expect(updateProviderProfile(await actorOf(student.id), { ...base(student), graduationYear: year + 1, yearsInPractice: { [pp.professionCode]: 0 } } as never)).resolves.toBeUndefined();
+    await expect(updateProviderProfile(await actorOf(student.id), { ...base(student), graduationYear: year + 1, yearsInPractice: { [pp.professionCode]: 2 } } as never)).rejects.toThrow(/0 until you've graduated/);
+    const licensed = await makeProvider();
+    await expect(updateProviderProfile(await actorOf(licensed.id), { ...base(licensed), graduationYear: year + 1 } as never)).rejects.toThrow(/can't be in the future/);
+  });
+});

@@ -9,6 +9,7 @@ import { Input, Select } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/misc";
 import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
+import { AccountModeration } from "@/components/admin/account-moderation";
 import { approveClinicAction, clinicStatusAction } from "../../actions";
 
 export default async function AdminClinic({ params }: { params: Promise<{ id: string }> }) {
@@ -71,6 +72,7 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
               </ActionForm>
             </CardBody>
           </Card>
+          <AccountModeration kind="clinic" id={c.id} status={c.status} />
         </div>
       </div>
     </>

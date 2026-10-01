@@ -1,16 +1,23 @@
 import Link from "next/link";
 import { prisma } from "@cm/db";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
+import { getSettings, schools } from "@cm/services";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { SOURCE_OPTIONS, StudentFields } from "@/components/provider/student-fields";
 import { cn } from "@/lib/cn";
 import { signupAction } from "../actions";
 
 export const metadata = { title: "Create your account" };
 
-export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string; campaign?: string; c?: string }> }) {
-  const { role: r, code, profession, campaign, c } = await searchParams;
+export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string; student?: string; campaign?: string; c?: string }> }) {
+  const { role: r, code, profession, student: st, campaign, c } = await searchParams;
   const role = r === "provider" ? "provider" : "clinic";
+  const studentEnabled = (await getSettings())["features.preLicensureEnabled"];
+  const student = role === "provider" && studentEnabled && st === "1";
   const professions = await prisma.profession.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
+  const schoolGroups = await schools.schoolOptions();
+  // Growth campaign links (/join/<code>) and prospect tokens survive switching tabs.
+  const keep = `${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}${profession ? `&profession=${encodeURIComponent(profession)}` : ""}`;
   return (
     <>
       <h1 className="text-xl font-semibold">Create your account</h1>
@@ -18,12 +25,23 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         <Link href={`/signup?role=clinic${code ? `&code=${code}` : ""}`} className={cn("rounded-lg py-2 text-center", role === "clinic" ? "bg-white shadow-sm" : "text-slate-500")}>
           I'm a clinic
         </Link>
-        <Link href="/signup?role=provider" className={cn("rounded-lg py-2 text-center", role === "provider" ? "bg-white shadow-sm" : "text-slate-500")}>
+        <Link href={`/signup?role=provider${keep}`} className={cn("rounded-lg py-2 text-center", role === "provider" ? "bg-white shadow-sm" : "text-slate-500")}>
           I'm a provider
         </Link>
       </div>
+      {role === "provider" && studentEnabled ? (
+        <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-slate-200 p-1 text-sm font-medium" role="group" aria-label="Licensure">
+          <Link href={`/signup?role=provider${keep}`} className={cn("rounded-lg py-2 text-center", !student ? "bg-brand-600 text-white" : "text-slate-500")}>
+            Licensed provider
+          </Link>
+          <Link href={`/signup?role=provider&student=1${keep}`} className={cn("rounded-lg py-2 text-center", student ? "bg-brand-600 text-white" : "text-slate-500")}>
+            Student / not yet licensed
+          </Link>
+        </div>
+      ) : null}
       <ActionForm action={signupAction} className="mt-6 space-y-4" successMessage={false}>
         <input type="hidden" name="role" value={role} />
+        {student ? <input type="hidden" name="student" value="1" /> : null}
         <input type="hidden" name="code" value={code ?? ""} />
         <input type="hidden" name="campaign" value={campaign ?? ""} />
         <input type="hidden" name="c" value={c && /^[a-f0-9]{40}$/.test(c) ? c : ""} />
@@ -45,23 +63,23 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
             <p className="mt-1 text-xs text-slate-500">More professions are coming soon — you can add them later.</p>
           </fieldset>
         )}
-        {role === "provider" ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Where are you today?" htmlFor="stage">
-              <Select id="stage" name="stage" defaultValue="licensed">
-                <option value="student">Still in school</option>
-                <option value="graduate">Graduated, waiting on my license</option>
-                <option value="licensed">Licensed</option>
-              </Select>
-            </Field>
-            <Field label="Graduation (month)" htmlFor="graduation" hint="Students can register before licensure.">
-              <Input id="graduation" name="graduation" type="month" />
-            </Field>
-          </div>
-        ) : null}
         <Field label="Email" htmlFor="email">
           <Input id="email" name="email" type="email" autoComplete="email" required />
         </Field>
+        {student ? (
+          <>
+            <StudentFields schools={schoolGroups} />
+            <Field label="How did you hear about us?" htmlFor="source">
+              <Select id="source" name="source" defaultValue="">
+                {SOURCE_OPTIONS.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </>
+        ) : null}
         <Field label="Password" htmlFor="password" hint="At least 10 characters.">
           <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
         </Field>

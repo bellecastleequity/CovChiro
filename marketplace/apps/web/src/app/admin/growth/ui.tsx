@@ -8,6 +8,7 @@ const TABS = [
   ["/admin/growth/escalations", "Escalations"],
   ["/admin/growth/prospects", "Clinic prospects"],
   ["/admin/growth/providers", "Provider pipeline"],
+  ["/admin/growth/expansion", "Expansion"],
   ["/admin/growth/markets", "Markets"],
   ["/admin/growth/campaigns", "Campaigns"],
   ["/admin/growth/prompts", "Prompts"],

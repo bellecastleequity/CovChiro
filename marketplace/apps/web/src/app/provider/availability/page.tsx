@@ -2,6 +2,7 @@ import { prisma } from "@cm/db";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input } from "@/components/ui/form";
+import { InfoTip } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/ui/misc";
 import { dateTimeLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
@@ -23,7 +24,7 @@ export default async function Availability() {
       <PageHeader title="Availability" description={`Times are in your home time zone (${tz.replace("America/", "").replace("_", " ")}). Include travel time — we add your drive plus a buffer before and after each shift.`} />
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
-          <CardHeader title="Weekly schedule" />
+          <CardHeader title={<>Weekly schedule<InfoTip label="About your schedule">We only offer shifts that fit inside these hours, including your drive there and back. Shifts outside them never reach you, so keep this current.</InfoTip></>} />
           <CardBody>
             <ActionForm action={availabilityAction} className="space-y-2">
               {DAYS.map((d, i) => {
@@ -42,7 +43,7 @@ export default async function Availability() {
         </Card>
         <div className="space-y-6 lg:col-span-2">
           <Card>
-            <CardHeader title="Time off" description="Blocks shifts during these times." />
+            <CardHeader title={<>Time off<InfoTip label="About time off">Vacation, other jobs, appointments: no offers during these dates, even inside your weekly schedule. Shifts you&apos;re already booked on aren&apos;t affected.</InfoTip></>} description="Blocks shifts during these times." />
             <CardBody>
               <ul className="mb-3 space-y-1 text-sm">
                 {p.blackouts.map((b) => (
@@ -61,7 +62,7 @@ export default async function Availability() {
             </CardBody>
           </Card>
           <Card>
-            <CardHeader title="Extra open days" description="One-off availability outside your weekly schedule." />
+            <CardHeader title={<>Extra open days<InfoTip label="About extra open days">Free on a day you normally aren&apos;t? Add it and you&apos;ll get offers for that day too, without changing your weekly schedule.</InfoTip></>} description="One-off availability outside your weekly schedule." />
             <CardBody>
               <ul className="mb-3 space-y-1 text-sm">
                 {p.openDates.map((b) => (

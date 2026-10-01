@@ -73,6 +73,13 @@ export async function providerChecklist(providerId: string) {
 export async function recomputeProviderStatus(providerId: string) {
   const { common, perProfession } = await providerChecklist(providerId);
   const provider = await prisma.provider.findUniqueOrThrow({ where: { id: providerId }, include: { user: true } });
+  // Student path ends once a license AND malpractice are verified: from then on
+  // they're an ordinary provider (normal checklist, no student follow-ups).
+  // Eligibility never reads this flag either way.
+  if (provider.preLicensure && perProfession.some((pp) => pp.license && pp.malpractice)) {
+    await prisma.provider.update({ where: { id: providerId }, data: { preLicensure: false, graduatedOutAt: new Date() } });
+    await audit(prisma, SYSTEM, "provider.student_graduated", "Provider", providerId, { preLicensure: true }, { preLicensure: false });
+  }
   const approved = !!provider.adminApprovedAt;
   const base = approved || (common.profile && common.photo && common.homeBase && common.emailVerified && common.payouts && common.agreement);
   let anyActive = false;
@@ -92,7 +99,7 @@ export async function recomputeProviderStatus(providerId: string) {
     status = "ACTIVE";
   }
   // "You can start taking shifts": once per profession, only when matching would actually accept them.
-  if (status !== "ACTIVE" || !common.payouts) return;
+  if (status !== "ACTIVE" || !common.payouts || !common.agreement) return;
   for (const pp of perProfession) {
     if (pp.status !== "ACTIVE" || !pp.license || !pp.malpractice) continue;
     const claimed = await prisma.digestSend.createMany({ data: [{ key: `ready:${providerId}:${pp.professionCode}`, userId: provider.userId }], skipDuplicates: true });
@@ -140,7 +147,7 @@ export async function updateProviderProfile(actor: Actor, raw: z.input<typeof Pr
   if (input.homeAddress !== current.homeAddress) {
     const g = await geocodeAddress(input.homeAddress, input.homeAddressPlaceId);
     // Home state is display-only; it is never used for eligibility (INV-1).
-    geo = { homeAddress: input.homeAddress, homeLat: g.lat, homeLng: g.lng, homeCity: g.city, homeState: g.state, homeTimeZone: g.timeZone };
+    geo = { homeAddress: input.homeAddress, homeLat: g.lat, homeLng: g.lng, homeCity: g.city, homeState: g.state, homeTimeZone: g.timeZone, homeZip: g.zip, homeCounty: g.county ?? null };
   }
   let npiData = {};
   if (input.npi && input.npi !== current.npi) {
@@ -151,10 +158,15 @@ export async function updateProviderProfile(actor: Actor, raw: z.input<typeof Pr
     if (!r.nameMatches) await prisma.adminTask.create({ data: { kind: "NPI_MISMATCH", title: `NPI name mismatch: ${input.legalName} vs ${r.registryName}`, entityType: "Provider", entityId: providerId } });
   }
   const thisYear = new Date().getFullYear();
-  if (input.graduationYear && input.graduationYear > thisYear) throw new DomainError("VALIDATION", "Your graduation year can't be in the future.");
   const claimed = Math.max(0, ...Object.values(input.yearsInPractice ?? {}));
+  // Students (pre-licensure path) have an expected graduation in the future; nobody else does.
+  if (input.graduationYear && input.graduationYear > thisYear) {
+    const me = await prisma.provider.findUniqueOrThrow({ where: { id: providerId }, select: { preLicensure: true } });
+    if (!me.preLicensure) throw new DomainError("VALIDATION", "Your graduation year can't be in the future.");
+    if (claimed > 0) throw new DomainError("VALIDATION", "Years practicing should be 0 until you've graduated.");
+  }
   if (claimed > 0 && !input.graduationYear) throw new DomainError("VALIDATION", "Add your graduation year so we can confirm your years of experience.");
-  if (input.graduationYear && claimed > thisYear - input.graduationYear) {
+  if (input.graduationYear && claimed > 0 && claimed > thisYear - input.graduationYear) {
     throw new DomainError("VALIDATION", `Years practicing can't be more than ${thisYear - input.graduationYear} — the years since you graduated in ${input.graduationYear}.`);
   }
   if (input.bio && scanContactInfo(input.bio).found) throw new DomainError("VALIDATION", "Please remove phone numbers, emails, links and social handles from your bio. Clinics book you through the platform.");
@@ -528,6 +540,9 @@ export async function updateOrg(actor: Actor, raw: z.input<typeof OrgInput>) {
 
 export const EXPERIENCE_LEVELS = [0, 2, 5, 10] as const;
 
+/** Clinic attire a location asks providers to wear (one per location). */
+export const ATTIRE_OPTIONS = ["Medical scrubs", "Business casual", "Business with clinical jacket"] as const;
+
 /** Clinic default: minimum years of experience for new shifts, and whether emergencies relax it. */
 export async function setExperiencePreference(actor: Actor, minYears: number, relaxInEmergency: boolean) {
   const orgId = requireClinic(actor, { ownerOnly: true });
@@ -546,7 +561,7 @@ export const LocationInput = z.object({
   patientsPerDay: z.coerce.number().int().min(0).max(1000).optional().nullable(),
   ehr: z.string().trim().max(80).optional().nullable(),
   equipment: z.array(z.string().trim().max(60)).max(20).default([]),
-  dressCode: z.string().trim().max(200).optional().nullable(),
+  dressCode: z.string().trim().max(200).refine((v) => !v || (ATTIRE_OPTIONS as readonly string[]).includes(v), "Pick the attire: medical scrubs, business casual, or business with clinical jacket.").optional().nullable(),
   arrivalNotes: z.string().trim().max(2000).optional().nullable(),
   skillIds: z.array(z.string()).default([]),
 });

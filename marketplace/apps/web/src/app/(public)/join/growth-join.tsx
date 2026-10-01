@@ -1,14 +1,9 @@
 import { CalendarCheck, GraduationCap, ShieldCheck } from "lucide-react";
-import { growth } from "@cm/services";
+import type { growth } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
 
-export const dynamic = "force-dynamic";
-export const metadata = { title: "Join as a provider", robots: { index: false, follow: true } };
-
-/** School / event recruiting link (/join/palmer). Students can register before licensure. */
-export default async function Join({ params, searchParams }: { params: Promise<{ code: string }>; searchParams: Promise<{ preview?: string }> }) {
-  const { code } = await params;
-  const c = await growth.joinCampaign(code, (await searchParams).preview !== "1");
+/** Growth campaign landing (/join/<code>, e.g. a school or event link from Admin → Growth → Campaigns). */
+export function GrowthJoin({ c }: { c: Awaited<ReturnType<typeof growth.joinCampaign>> }) {
   const signup = `/signup?role=provider${c ? `&campaign=${encodeURIComponent(c.code)}` : ""}&profession=${c?.professionCode ?? "DC"}`;
   return (
     <div className="container-page py-16">
@@ -16,7 +11,7 @@ export default async function Join({ params, searchParams }: { params: Promise<{
         <div className="text-sm font-semibold uppercase tracking-wider text-brand-700">{c?.schoolName ?? "For chiropractors and students"}</div>
         <h1 className="mt-2 text-4xl font-semibold">{c?.headline ?? "Choose coverage days around your schedule"}</h1>
         <p className="mt-4 text-lg text-slate-600">{c?.body ?? "Pick up coverage days without committing to another permanent position. Register now, even before you're licensed. We'll tell you as soon as you're eligible for coverage shifts."}</p>
-        <div className="mt-8 flex gap-3"><LinkButton href={signup} size="lg">Register</LinkButton></div>
+        <div className="mt-8 flex flex-wrap gap-3"><LinkButton href={signup} size="lg">I&apos;m licensed — register</LinkButton><LinkButton href={`${signup}&student=1`} size="lg" variant="outline">I&apos;m still a student</LinkButton></div>
         <p className="mt-3 text-xs text-slate-500">Registering doesn&apos;t guarantee any shifts. You become eligible once your license and malpractice insurance are verified.</p>
       </div>
       <div className="mt-12 grid gap-5 sm:grid-cols-3">

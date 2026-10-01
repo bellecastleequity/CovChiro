@@ -1,5 +1,7 @@
+import { textingEnabled } from "@cm/integrations";
 import { Moon, PhoneCall, Zap } from "lucide-react";
 import { oncall } from "@cm/services";
+import { InfoTip } from "@/components/ui/info-tip";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -51,7 +53,7 @@ export default async function OnCallPage() {
           </Card>
 
           <Card>
-            <CardHeader title="Your On Call rules" description="You're confirmed automatically — and the booking is binding — when a shift you're licensed and available for matches every rule. You get a short grace period to cancel with no penalty." />
+            <CardHeader title={<>Your On Call rules<InfoTip label="About On Call">With On Call on, a shift that matches every rule below is accepted for you automatically, so you don&apos;t have to watch for offers. It&apos;s a real booking: you can release it with no penalty only during the short grace period right after it&apos;s booked.</InfoTip></>} description="You're confirmed automatically — and the booking is binding — when a shift you're licensed and available for matches every rule. You get a short grace period to cancel with no penalty." />
             <CardBody>
               <ActionForm action={onCallRuleAction} className="grid gap-4 sm:grid-cols-2">
                 {rule ? <input type="hidden" name="ruleId" value={rule.id} /> : null}
@@ -69,15 +71,15 @@ export default async function OnCallPage() {
                 <Field label="Or specific dates — from"><Input type="date" name="dateFrom" /></Field>
                 <Field label="to"><Input type="date" name="dateTo" /></Field>
                 <Field label="Max drive (minutes)" hint={`Up to your profile max of ${p.maxDriveMinutes}.`}><Input type="number" name="maxDriveMinutes" min={5} max={p.maxDriveMinutes} defaultValue={rule?.maxDriveMinutes ?? Math.min(45, p.maxDriveMinutes)} /></Field>
-                <Field label="Minimum notice (minutes)"><Input type="number" name="minNotice" min={0} defaultValue={rule?.minNoticeMinutes ?? 90} /></Field>
-                <Field label="Min pay — full day ($)"><Input name="minFull" inputMode="decimal" defaultValue={rule?.minPayFullDayCents ? rule.minPayFullDayCents / 100 : ""} /></Field>
+                <Field label={<>Minimum notice (minutes)<InfoTip label="About minimum notice">Shifts starting sooner than this won&apos;t be auto-accepted, so you always have time to get ready and drive there.</InfoTip></>}><Input type="number" name="minNotice" min={0} defaultValue={rule?.minNoticeMinutes ?? 90} /></Field>
+                <Field label={<>Min pay — full day ($)<InfoTip label="About minimum pay">Only shifts paying at least this much (before mileage) are auto-accepted. Leave blank to accept any rate.</InfoTip></>}><Input name="minFull" inputMode="decimal" defaultValue={rule?.minPayFullDayCents ? rule.minPayFullDayCents / 100 : ""} /></Field>
                 <Field label="Min pay — half day ($)"><Input name="minHalf" inputMode="decimal" defaultValue={rule?.minPayHalfDayCents ? rule.minPayHalfDayCents / 100 : ""} /></Field>
                 <Field label="Min pay — hourly ($/hr)"><Input name="minHourly" inputMode="decimal" defaultValue={rule?.minPayHourlyCents ? rule.minPayHourlyCents / 100 : ""} /></Field>
-                <Field label="Min clinic rating"><Select name="minClinicRating" defaultValue={rule?.minClinicRating?.toString() ?? ""}><option value="">Any</option>{[4, 4.5, 4.8].map((r) => <option key={r} value={r}>{r}★+</option>)}</Select></Field>
-                <Field label="Max On Call shifts per day"><Input type="number" name="maxPerDay" min={1} max={3} defaultValue={rule?.maxPerDay ?? 1} /></Field>
+                <Field label={<>Min clinic rating<InfoTip label="About clinic rating">The average rating providers gave the clinic. When this is set, clinics that don&apos;t have ratings yet aren&apos;t auto-accepted; choose Any to include them.</InfoTip></>}><Select name="minClinicRating" defaultValue={rule?.minClinicRating?.toString() ?? ""}><option value="">Any</option>{[4, 4.5, 4.8].map((r) => <option key={r} value={r}>{r}★+</option>)}</Select></Field>
+                <Field label={<>Max On Call shifts per day<InfoTip label="About daily limit">A cap on how many shifts On Call books for you in one day. Shifts you accept yourself don&apos;t count.</InfoTip></>}><Input type="number" name="maxPerDay" min={1} max={3} defaultValue={rule?.maxPerDay ?? 1} /></Field>
                 <Field label="Max per week"><Input type="number" name="maxPerWeek" min={1} max={14} defaultValue={rule?.maxPerWeek ?? 5} /></Field>
                 <div className="space-y-2 sm:col-span-2">
-                  <Checkbox name="favoritesOnly" defaultChecked={rule?.favoritesOnly} label="Only clinics I've favorited" />
+                  <Checkbox name="favoritesOnly" defaultChecked={rule?.favoritesOnly} label={<>Only clinics I&apos;ve favorited<InfoTip label="About favorites only">On Call only books shifts at clinics you&apos;ve marked as favorites. You can favorite a clinic after completing a shift there.</InfoTip></>} />
                   <Checkbox name="allowOvernight" defaultChecked={rule?.allowOvernight} label="Allow overnight shifts where lodging is covered" />
                 </div>
                 <div className="sm:col-span-2"><SubmitButton>Save rules</SubmitButton></div>
@@ -90,6 +92,7 @@ export default async function OnCallPage() {
           <Card>
             <CardHeader title={<span className="flex items-center gap-2"><PhoneCall className="size-4 text-accent-600" />Mobile & texts</span>} />
             <CardBody className="space-y-3">
+              {!textingEnabled() ? <Alert tone="info" title="By email for now">Text alerts are coming soon. Until then, shift offers and alerts are emailed to you, so keep an eye on your inbox.</Alert> : (<>
               {user.phoneVerifiedAt ? <div className="text-sm">Verified: <strong>{user.phone}</strong> {p.smsConsentAt ? <Badge tone="green">Texts on</Badge> : <Badge tone="amber">Texts off</Badge>}</div> : null}
               <ActionForm action={phoneStartAction} className="flex gap-2">
                 <Input name="phone" type="tel" placeholder="(407) 555-0123" defaultValue={user.phone ?? ""} required />
@@ -100,6 +103,7 @@ export default async function OnCallPage() {
                 <Checkbox name="consent" defaultChecked label="Text me shift offers and account alerts. Msg & data rates may apply. Reply STOP to opt out." />
                 <SubmitButton size="sm">Verify</SubmitButton>
               </ActionForm>
+              </>)}
             </CardBody>
           </Card>
           <Card>
@@ -127,13 +131,13 @@ export default async function OnCallPage() {
                   <Input type="time" name="start" defaultValue={hhmm(p.quietHoursStart)} aria-label="Quiet from" />
                   <Input type="time" name="end" defaultValue={hhmm(p.quietHoursEnd)} aria-label="Quiet until" />
                 </div>
-                <Checkbox name="urgent" defaultChecked={p.urgentDuringQuietHours} label="Still send urgent (same-day / next-day) offers" />
+                <Checkbox name="urgent" defaultChecked={p.urgentDuringQuietHours} label={<>Still send urgent (same-day / next-day) offers<InfoTip label="About urgent offers">Last-minute cover, often with a rescue bonus. Turn this off to never be contacted during quiet hours.</InfoTip></>} />
                 <SubmitButton size="sm" variant="outline">Save</SubmitButton>
               </ActionForm>
             </CardBody>
           </Card>
           <Card>
-            <CardHeader title="How quickly you answer" description="Only you see this. Declining counts as answering — it helps clinics too." />
+            <CardHeader title={<>How quickly you answer<InfoTip label="About response speed">The share of offers you answered, yes or no, within the window. Providers who answer quickly are asked first, so a quick no helps you too.</InfoTip></>} description="Only you see this. Declining counts as answering — it helps clinics too." />
             <CardBody className="grid grid-cols-2 gap-2">
               {(["SAME_DAY", "SHORT", "NEAR", "PLANNED"] as const).map((t) => {
                 const r = o.responsiveness.find((x) => x.tier === t);

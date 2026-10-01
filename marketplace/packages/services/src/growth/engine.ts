@@ -76,9 +76,13 @@ export async function aiSpendCents(since: Date): Promise<number> {
 }
 
 /** One structured AI call. Returns null data (with a reason) whenever AI is off, over budget or fails. */
-export async function ai(agent: string, task: AiTask, system: string, user: string, schema: Record<string, unknown>, maxTokens = 1500) {
+export async function ai(
+  agent: string, task: AiTask, system: string, user: string, schema: Record<string, unknown>, maxTokens = 1500,
+  /** Another feature's own provider/model (e.g. the blog's); caps and AiUsage logging still apply. */
+  use: { provider?: "anthropic" | "gemini" | "openai" | "none"; model?: string } = {},
+) {
   const s = await getSettings();
-  const provider = llmProvider(s["growth.aiProvider"]);
+  const provider = llmProvider(use.provider ?? s["growth.aiProvider"]);
   if (provider.name === "none") return { data: null, error: "ai_unavailable", model: null as string | null };
   const now = clock.now();
   const zone = "America/New_York";
@@ -87,10 +91,11 @@ export async function ai(agent: string, task: AiTask, system: string, user: stri
   if ((await aiSpendCents(dayStart)) >= s["growth.aiDailyBudgetCents"] || (await aiSpendCents(monthStart)) >= s["growth.aiMonthlyBudgetCents"]) {
     return { data: null, error: "ai_budget_exhausted", model: null };
   }
-  const model = s["growth.aiModels"][task];
+  const model = use.model ?? s["growth.aiModels"][task];
   const r = await provider.generate({ model, system, user, schema, maxTokens, effort: s["growth.aiEffort"] });
   const pricing = s["growth.aiPricing"];
-  const rate = pricing[r.model] ?? (provider.name === "gemini" ? (pricing.gemini ?? [0, 0]) : (Object.values(pricing)[0] ?? [0, 0]));
+  // Unknown OpenAI/Claude models fall back to the first (priciest) entry so the caps err on the safe side.
+  const rate = pricing[r.model] ?? pricing[use.model ?? ""] ?? (provider.name === "gemini" ? (pricing.gemini ?? [0, 0]) : (Object.values(pricing)[0] ?? [0, 0]));
   // cents per MTok → micro-dollars: tokens × cents / 1e6 × 1e4
   const costMicroUsd = Math.round((r.inputTokens * rate[0] + r.outputTokens * rate[1]) / 100);
   await prisma.aiUsage.create({
@@ -137,6 +142,11 @@ export async function suppress(channel: "EMAIL" | "SMS" | "ALL", address: string
 async function suppressionFor(channel: "EMAIL" | "SMS", address: string) {
   const row = await prisma.commSuppression.findFirst({ where: { address, channel: { in: [channel, "ALL"] } } });
   return row?.reason ?? null;
+}
+
+/** Has this address unsubscribed / bounced / complained (any growth list)? Other senders honor it too. */
+export async function isSuppressed(channel: "EMAIL" | "SMS", address: string) {
+  return !!(await suppressionFor(channel, channel === "SMS" ? normPhone(address) : normEmail(address)));
 }
 
 // ---------------- unsubscribe tokens ----------------
@@ -238,9 +248,16 @@ export async function checkContact(r: Recipient, channel: Channel, purpose: Purp
 
 // ---------------- prompts ----------------
 
-/** One approved, active version of a key; several = A/B test, picked by abWeight. */
-export async function pickPrompt(key: string): Promise<PromptTemplate | null> {
-  const rows = await prisma.promptTemplate.findMany({ where: { key, status: "APPROVED", active: true }, orderBy: { version: "asc" } });
+/** Approved, active versions of a key for a profession: its own wording first, else an any-profession version. Never another profession's. */
+export async function livePrompts(key: string, professionCode: string | null = null) {
+  const rows = await prisma.promptTemplate.findMany({ where: { key, status: "APPROVED", active: true, professionCode: professionCode ? { in: [professionCode] } : null }, orderBy: { version: "asc" } });
+  if (rows.length || !professionCode) return rows;
+  return prisma.promptTemplate.findMany({ where: { key, status: "APPROVED", active: true, professionCode: null }, orderBy: { version: "asc" } });
+}
+
+/** One approved, active version of a key (for the profession); several = A/B test, picked by abWeight. */
+export async function pickPrompt(key: string, professionCode: string | null = null): Promise<PromptTemplate | null> {
+  const rows = await livePrompts(key, professionCode);
   if (rows.length <= 1) return rows[0] ?? null;
   const total = rows.reduce((a, r) => a + Math.max(0, r.abWeight), 0);
   if (total <= 0) return rows[0];
@@ -335,7 +352,9 @@ export async function sendGrowthSms(r: Recipient, text: string, o: { agent: stri
  * for a person to approve. Returns a short outcome for the activity log.
  */
 export async function composeAndSend(agent: AgentKey, r: Recipient, key: string, vars: Record<string, string | null | undefined>, o: {
-  purpose: Purpose; dedupeKey: string; facts?: Record<string, string | null | undefined>; review?: boolean; allowAi?: boolean; cta?: { label: string; url: string };
+  purpose: Purpose; dedupeKey: string;
+  /** Picks that profession's wording (or an any-profession version); null = any-profession versions only. */
+  professionCode?: string | null; facts?: Record<string, string | null | undefined>; review?: boolean; allowAi?: boolean; cta?: { label: string; url: string };
 }): Promise<"sent" | "pending_approval" | "blocked" | "failed" | "skipped"> {
   if (await prisma.communication.findUnique({ where: { dedupeKey: o.dedupeKey } })) return "skipped";
   // Cheap pre-check so no AI is spent on a message that can't go out.
@@ -346,9 +365,9 @@ export async function composeAndSend(agent: AgentKey, r: Recipient, key: string,
     await logAgent(agent, "send_blocked", { entityType: r.type, entityId: r.id, promptKey: key, channel: "EMAIL", sendStatus: "blocked", output: pre.reason });
     return "blocked";
   }
-  const prompt = await pickPrompt(key);
+  const prompt = await pickPrompt(key, o.professionCode ?? null);
   if (!prompt) {
-    await logAgent(agent, "no_approved_prompt", { entityType: r.type, entityId: r.id, promptKey: key, error: "No approved, active version" });
+    await logAgent(agent, "no_approved_prompt", { entityType: r.type, entityId: r.id, promptKey: key, error: `No approved, active version${o.professionCode ? ` for ${o.professionCode}` : ""}` });
     return "skipped";
   }
   const msg = await compose(agent, prompt, vars, o.facts ?? {}, o.allowAi ?? true);

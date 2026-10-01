@@ -9,6 +9,9 @@ import { prisma } from "@cm/db";
 
 type Seed = { key: string; agent: string; purpose: string; subject: string | null; body: string; instructions: string | null; vars: string[]; channel?: string };
 
+/** Starter prompts that aren't about one profession; the rest are chiropractic wording. */
+export const GENERIC_PROMPT_KEYS = ["CLINIC_ONBOARDING_NEXT_STEP", "ABANDONED_COVERAGE_REQUEST"];
+
 export const DEFAULT_PROMPTS: Seed[] = [
   {
     key: "CLINIC_FIRST_CONTACT", agent: "clinicOutreach", purpose: "First educational email to a chiropractic office.",
@@ -119,13 +122,16 @@ export async function ensureGrowthDefaults() {
   for (const p of DEFAULT_PROMPTS) {
     if (existing.has(p.key)) continue;
     await prisma.promptTemplate.create({
-      data: { key: p.key, version: 1, agent: p.agent, channel: p.channel ?? "EMAIL", purpose: p.purpose, subjectTemplate: p.subject, body: p.body, instructions: p.instructions, allowedVars: p.vars, status: "APPROVED", active: true, approvedAt: new Date(), notes: "Starter version" },
+      data: { key: p.key, professionCode: GENERIC_PROMPT_KEYS.includes(p.key) ? null : "DC", version: 1, agent: p.agent, channel: p.channel ?? "EMAIL", purpose: p.purpose, subjectTemplate: p.subject, body: p.body, instructions: p.instructions, allowedVars: p.vars, status: "APPROVED", active: true, approvedAt: new Date(), notes: "Starter version" },
     }).catch(() => undefined);
   }
   if ((await prisma.growthMarket.count()) === 0) {
     for (const m of MARKETS) await prisma.growthMarket.create({ data: { ...m, state: "FL", professionCode: "DC" } }).catch(() => undefined);
   }
+  // School links live in one place: skip any code the student path already uses (Admin → Recruitment).
+  const recruitSlugs = new Set((await prisma.recruitCampaign.findMany({ select: { slug: true } })).map((r) => r.slug));
   for (const c of CAMPAIGNS) {
+    if (recruitSlugs.has(c.code)) continue;
     await prisma.growthCampaign.upsert({
       where: { code: c.code },
       create: { ...c, audience: "PROVIDER", kind: "school", body: "Register now, even before you're licensed. We'll let you know as soon as you're eligible for coverage shifts." },

@@ -1,7 +1,7 @@
 import { PRIVATE_META } from "@/lib/seo";
 import { prisma } from "@cm/db";
 import Link from "next/link";
-import { AGREEMENT_VERSION } from "@cm/services";
+import { agreementCurrent } from "@cm/services";
 import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-link";
@@ -25,12 +25,13 @@ export default async function ClinicLayout({ children }: { children: React.React
     { href: "/clinic/locations", label: "Locations", icon: "locations" },
     { href: "/clinic/team", label: "Team", icon: "team" },
     { href: "/clinic/settings", label: "Settings", icon: "settings" },
+    { href: "/clinic/academy", label: "Training", icon: "academy" },
   ];
   return (
     <AppShell items={items} root="/clinic" userId={user.id} userName={user.name} subtitle={org.displayName}>
-      {org.agreementSignedAt && (org.agreementVersion ?? 0) < AGREEMENT_VERSION.CLINIC ? (
-        <Alert tone="info" className="mb-6" title="Please review the updated Clinic Platform Agreement">
-          It now includes our standing-booking and non-circumvention terms. <Link href="/clinic/settings#agreement" className="font-medium underline">Review &amp; sign →</Link>
+      {!agreementCurrent("CLINIC", org.agreementSignedAt, org.agreementVersion) ? (
+        <Alert tone="warning" className="mb-6" title={org.agreementSignedAt ? "Sign the updated Clinic Platform Agreement to keep posting shifts" : "Sign the Clinic Platform Agreement to post shifts"}>
+          Until it&apos;s signed you can save drafts, but you can&apos;t post shifts and standing bookings pause. Shifts already booked stay booked. <Link href="/clinic/settings#agreement" className="font-medium underline">Review &amp; sign →</Link>
         </Alert>
       ) : null}
       {children}

@@ -7,6 +7,8 @@ export interface GeocodeResult {
   /** USPS 2-letter code, derived from the geocoder — the only source of a location's state (INV-1). */
   state: string;
   zip: string;
+  /** County name when the geocoder returns one (reporting only). */
+  county?: string;
   lat: number;
   lng: number;
   timeZone: string;
@@ -77,6 +79,7 @@ export class GoogleGeo implements GeoProvider {
       city: comp("locality") || comp("sublocality") || comp("postal_town"),
       state,
       zip,
+      county: comp("administrative_area_level_2") || undefined,
       lat,
       lng,
       timeZone: tj.timeZoneId ?? "America/New_York",
@@ -100,7 +103,8 @@ export class GoogleGeo implements GeoProvider {
         ...(departAt > new Date() ? { departureTime: departAt.toISOString() } : {}),
       }),
     });
-    const rows = (await r.json()) as any[];
+    const rows = (await r.json()) as any;
+    if (!r.ok || !Array.isArray(rows)) console.error(`[geo] Google Routes ${r.status}: ${rows?.error?.message ?? "unexpected response"}`);
     const out: (DriveResult | null)[] = origins.map(() => null);
     for (const e of Array.isArray(rows) ? rows : []) {
       if (e.condition !== "ROUTE_EXISTS") continue;
@@ -108,6 +112,51 @@ export class GoogleGeo implements GeoProvider {
     }
     return out;
   }
+}
+
+/**
+ * Admin "Google check": calls each server-side API once with the server key
+ * and reports Google's own answer, so a key/restriction/API problem is
+ * visible instead of silently falling back.
+ */
+export async function checkGoogleServerKey(key: string): Promise<{ api: string; ok: boolean; detail: string }[]> {
+  const out: { api: string; ok: boolean; detail: string }[] = [];
+  const get = async (u: URL) => {
+    try {
+      return (await (await fetch(u, { signal: AbortSignal.timeout(10000) })).json()) as any;
+    } catch (e) {
+      return { status: "NETWORK_ERROR", error_message: (e as Error).message };
+    }
+  };
+  const g = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+  g.searchParams.set("address", "1600 Pennsylvania Ave NW, Washington, DC 20500");
+  g.searchParams.set("key", key);
+  const gj = await get(g);
+  out.push({ api: "Geocoding API", ok: gj.status === "OK", detail: gj.status === "OK" ? "Works" : `${gj.status}${gj.error_message ? `: ${gj.error_message}` : ""}` });
+  const t = new URL("https://maps.googleapis.com/maps/api/timezone/json");
+  t.searchParams.set("location", "38.8977,-77.0365");
+  t.searchParams.set("timestamp", String(Math.floor(Date.now() / 1000)));
+  t.searchParams.set("key", key);
+  const tj = await get(t);
+  out.push({ api: "Time Zone API", ok: tj.status === "OK", detail: tj.status === "OK" ? "Works" : `${tj.status}${tj.errorMessage || tj.error_message ? `: ${tj.errorMessage ?? tj.error_message}` : ""}` });
+  try {
+    const r = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "originIndex,destinationIndex,duration,condition" },
+      body: JSON.stringify({
+        origins: [{ waypoint: { location: { latLng: { latitude: 38.8977, longitude: -77.0365 } } } }],
+        destinations: [{ waypoint: { location: { latLng: { latitude: 38.8899, longitude: -77.0091 } } } }],
+        travelMode: "DRIVE",
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const j = (await r.json().catch(() => null)) as any;
+    const ok = r.ok && Array.isArray(j);
+    out.push({ api: "Routes API", ok, detail: ok ? "Works" : `HTTP ${r.status}${j?.error?.status ? ` ${j.error.status}` : ""}${j?.error?.message ? `: ${j.error.message}` : ""}` });
+  } catch (e) {
+    out.push({ api: "Routes API", ok: false, detail: `Couldn't reach Google: ${(e as Error).message}` });
+  }
+  return out;
 }
 
 // ---------------- Fake (development / tests) ----------------

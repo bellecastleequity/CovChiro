@@ -340,7 +340,7 @@ export async function providerPipeline(actor: Actor, f: { q?: string; campaign?:
     if (!snap) continue;
     const p = snap.provider;
     out.push({
-      id, name: p.displayName, school: p.school, campaignCode: p.campaignCode, graduationDate: p.graduationDate, isStudent: p.isStudent, status: p.status,
+      id, name: p.displayName, school: p.school, campaignCode: p.campaignCode, graduationDate: p.graduationDate, isStudent: p.isStudent || p.preLicensure, status: p.status,
       stage: snap.stage, message: snap.message, coverageReady: snap.coverageReady, inLaunchProfession: snap.inLaunchProfession, hasAvailability: snap.hasAvailability,
       nurtureCount: p.nurtureCount, lastNurtureAt: p.lastNurtureAt, activationCount: p.activationCount, shifts: p.stats?.completedShifts ?? 0, createdAt: p.createdAt,
     });
@@ -360,6 +360,8 @@ export async function prompts(actor: Actor) {
 
 export const PromptInput = z.object({
   key: z.string().trim().toUpperCase().regex(/^[A-Z0-9_]{3,60}$/, "Key: letters, digits and underscores."),
+  /** Profession this wording is for; blank = any profession. */
+  professionCode: z.string().trim().max(10).optional().nullable().transform((v) => v || null),
   agent: z.string().refine((a) => a in AGENTS, "Unknown agent."),
   channel: z.enum(["EMAIL", "SMS"]).default("EMAIL"),
   purpose: z.string().trim().min(1).max(255),
@@ -392,7 +394,7 @@ export async function promptStatus(actor: Actor, id: string, op: "approve" | "ac
     if (p.status !== "APPROVED") throw new DomainError("VALIDATION", "Approve this version before activating it.");
     await prisma.promptTemplate.update({ where: { id }, data: { active: true } });
     // Unless A/B testing, the newly active version replaces the others.
-    if (op === "activate") await prisma.promptTemplate.updateMany({ where: { key: p.key, id: { not: id } }, data: { active: false } });
+    if (op === "activate") await prisma.promptTemplate.updateMany({ where: { key: p.key, professionCode: p.professionCode, id: { not: id } }, data: { active: false } });
   }
   if (op === "deactivate") await prisma.promptTemplate.update({ where: { id }, data: { active: false } });
   if (op === "retire") await prisma.promptTemplate.update({ where: { id }, data: { status: "RETIRED", active: false } });
@@ -431,10 +433,10 @@ export async function kb(actor: Actor) {
   return prisma.kbArticle.findMany({ orderBy: [{ topic: "asc" }, { createdAt: "asc" }] });
 }
 
-export async function saveKb(actor: Actor, raw: { id?: string; topic: string; audience: string; question: string; answer: string; keywords: string; approved: boolean; active: boolean }) {
+export async function saveKb(actor: Actor, raw: { id?: string; professionCode?: string | null; topic: string; audience: string; question: string; answer: string; keywords: string; approved: boolean; active: boolean }) {
   requireAdmin(actor);
   if (!raw.question.trim() || !raw.answer.trim()) throw new DomainError("VALIDATION", "Question and answer are required.");
-  const data = { topic: raw.topic.slice(0, 40), audience: ["CLINIC", "PROVIDER", "ALL"].includes(raw.audience) ? raw.audience : "ALL", question: raw.question.trim().slice(0, 255), answer: raw.answer.trim().slice(0, 4000), keywords: raw.keywords.split(",").map((k) => k.trim()).filter(Boolean).slice(0, 30), approved: raw.approved, active: raw.active, updatedById: actor.userId };
+  const data = { professionCode: raw.professionCode || null, topic: raw.topic.slice(0, 40), audience: ["CLINIC", "PROVIDER", "ALL"].includes(raw.audience) ? raw.audience : "ALL", question: raw.question.trim().slice(0, 255), answer: raw.answer.trim().slice(0, 4000), keywords: raw.keywords.split(",").map((k) => k.trim()).filter(Boolean).slice(0, 30), approved: raw.approved, active: raw.active, updatedById: actor.userId };
   const row = raw.id ? await prisma.kbArticle.update({ where: { id: raw.id }, data }) : await prisma.kbArticle.create({ data });
   await audit(prisma, actor, "growth.kb.saved", "KbArticle", row.id, null, { question: row.question, approved: row.approved });
 }
@@ -474,6 +476,8 @@ export async function saveCampaign(actor: Actor, raw: { code: string; name: stri
   requireAdmin(actor);
   const code = raw.code.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
   if (code.length < 2 || !raw.name.trim()) throw new DomainError("VALIDATION", "A short code (letters, numbers, dashes) and a name are required.");
+  // /join/<code> is shared with the student path's recruitment links, so codes must be unique across both.
+  if (await prisma.recruitCampaign.count({ where: { slug: code } })) throw new DomainError("CONFLICT", `"${code}" is already a recruitment link (Admin → Recruitment). Pick another code.`);
   const data = { name: raw.name.trim().slice(0, 150), audience: raw.audience, kind: raw.kind.slice(0, 20), schoolName: raw.schoolName?.trim() || null, headline: raw.headline?.trim() || null, body: raw.body?.trim() || null, spendCents: Math.max(0, Math.round(raw.spendCents ?? 0)), active: raw.active ?? true };
   await prisma.growthCampaign.upsert({ where: { code }, create: { code, ...data }, update: data });
   await audit(prisma, actor, "growth.campaign.saved", "GrowthCampaign", code, null, data);

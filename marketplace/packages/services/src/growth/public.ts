@@ -59,9 +59,17 @@ export async function onProviderSignup(providerId: string, extra: { campaign?: s
   const code = extra.campaign?.toLowerCase().replace(/[^a-z0-9-]/g, "") || null;
   const campaign = code ? await prisma.growthCampaign.findUnique({ where: { code } }) : null;
   const grad = extra.graduationDate && /^\d{4}-\d{2}(-\d{2})?$/.test(extra.graduationDate) ? new Date(`${extra.graduationDate.length === 7 ? `${extra.graduationDate}-01` : extra.graduationDate}T12:00:00Z`) : null;
+  // A student-path recruitment link (Admin → Recruitment) counts as the campaign too.
+  const recruit = !campaign && code ? await prisma.recruitCampaign.findUnique({ where: { slug: code } }) : null;
   await prisma.provider.update({
     where: { id: providerId },
-    data: { campaignCode: campaign?.code ?? null, graduationDate: grad, isStudent: !!extra.isStudent, growthSource: campaign ? campaign.kind : (extra.source?.slice(0, 40) ?? "organic") },
+    data: {
+      campaignCode: campaign?.code ?? recruit?.slug ?? null,
+      // Never clear a graduation date the student path already stored.
+      ...(grad ? { graduationDate: grad } : {}),
+      isStudent: !!extra.isStudent,
+      growthSource: campaign ? campaign.kind : recruit ? "recruitment" : (extra.source?.slice(0, 40) ?? "organic"),
+    },
   });
   await logAgent("providerRecruitment", "registered", { entityType: "PROVIDER", entityId: providerId, contextRef: `campaign:${campaign?.code ?? "-"}${extra.isStudent ? " student" : ""}` });
 }

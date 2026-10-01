@@ -12,6 +12,7 @@ const NAV = [
   { href: "/for-providers", label: "For providers" },
   { href: "/how-it-works", label: "How it works" },
   { href: "/states", label: "Availability" },
+  { href: "/blog", label: "Blog" },
   { href: "/faq", label: "FAQ" },
 ];
 
@@ -100,6 +101,7 @@ export async function SiteFooter() {
         <div className="text-sm">
           <div className="mb-2 font-semibold text-slate-900">Company</div>
           <ul className="space-y-1.5 text-slate-600">
+            <li><Link href="/blog">Blog</Link></li>
             <li><Link href="/faq">FAQ</Link></li>
             <li><Link href="/contact">Contact</Link></li>
             <li><a href={`mailto:${b.supportEmail}`}>{b.supportEmail}</a></li>

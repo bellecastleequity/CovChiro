@@ -150,7 +150,7 @@ export const manualEmailAction = formAction(async (fd) => {
 export const savePromptAction = formAction(async (fd) => {
   const { actor } = await me();
   const row = await growth.savePromptDraft(actor, {
-    key: str(fd, "key"), agent: str(fd, "agent"), channel: "EMAIL", purpose: str(fd, "purpose"), subjectTemplate: optStr(fd, "subjectTemplate"), body: str(fd, "body"),
+    key: str(fd, "key"), professionCode: optStr(fd, "professionCode"), agent: str(fd, "agent"), channel: "EMAIL", purpose: str(fd, "purpose"), subjectTemplate: optStr(fd, "subjectTemplate"), body: str(fd, "body"),
     instructions: optStr(fd, "instructions"), allowedVars: str(fd, "allowedVars").split(",").map((v) => v.trim()).filter(Boolean), abWeight: Number(str(fd, "abWeight") || 100), notes: optStr(fd, "notes"),
   });
   rv();
@@ -173,7 +173,7 @@ export const previewPromptAction = formAction(async (fd) => {
 // ---------- KB, suppression, campaigns, markets ----------
 export const saveKbAction = formAction(async (fd) => {
   const { actor } = await me();
-  await growth.saveKb(actor, { id: optStr(fd, "id") ?? undefined, topic: str(fd, "topic"), audience: str(fd, "audience"), question: str(fd, "question"), answer: str(fd, "answer"), keywords: str(fd, "keywords"), approved: bool(fd, "approved"), active: bool(fd, "active") });
+  await growth.saveKb(actor, { id: optStr(fd, "id") ?? undefined, professionCode: optStr(fd, "professionCode"), topic: str(fd, "topic"), audience: str(fd, "audience"), question: str(fd, "question"), answer: str(fd, "answer"), keywords: str(fd, "keywords"), approved: bool(fd, "approved"), active: bool(fd, "active") });
   rv();
   return "Saved.";
 });
@@ -217,4 +217,40 @@ export const saveMarketAction = formAction(async (fd) => {
   });
   rv();
   return "Saved.";
+});
+
+// ---------- expansion ----------
+export const targetStatusAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const t = await growth.setTargetStatus(actor, str(fd, "professionCode"), str(fd, "state"), str(fd, "status") as growth.TargetStatus);
+  rv();
+  return t.status === "OFF" ? "Off." : t.status === "PRELAUNCH" ? `Prelaunch: bots are researching ${t.cities.length} cities.` : "Live: clinic outreach can run here.";
+});
+export const targetCitiesAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const t = await growth.saveTargetCities(actor, str(fd, "professionCode"), str(fd, "state"), str(fd, "cities").split(/[\n,;]+/), optStr(fd, "notes"));
+  rv();
+  return `Saved ${t.cities.length} cities.`;
+});
+export const starterCitiesAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const state = str(fd, "state").toUpperCase();
+  const t = await growth.saveTargetCities(actor, str(fd, "professionCode"), state, growth.STATE_CITIES[state] ?? []);
+  rv();
+  return `Loaded ${t.cities.length} starter cities.`;
+});
+export const growthProfessionAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await growth.saveGrowthProfession(actor, {
+    professionCode: str(fd, "professionCode"), registrySearch: str(fd, "registrySearch"), taxonomyCodes: str(fd, "taxonomyCodes").split(/[\s,]+/),
+    practiceNoun: str(fd, "practiceNoun"), nameSuffix: str(fd, "nameSuffix"),
+  });
+  rv();
+  return "Saved.";
+});
+export const starterDraftsAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const n = await growth.createStarterDrafts(actor, str(fd, "professionCode"));
+  rv();
+  return n ? `Created ${n} draft emails. Review and approve them under Prompts.` : "Nothing to create: drafts or approved versions already exist.";
 });

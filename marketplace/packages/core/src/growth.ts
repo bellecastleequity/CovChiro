@@ -256,7 +256,7 @@ export function urlsIn(text: string): string[] {
 
 const PHONE = /\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/;
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.]+/;
-const PROHIBITED = /\b(guarantee[ds]?|risk[- ]free|double your|increase (your )?(revenue|collections|income)|\d+\s?% (more|increase|boost))\b/i;
+export const PROHIBITED_CLAIMS = /\b(guarantee[ds]?|risk[- ]free|double your|increase (your )?(revenue|collections|income)|\d+\s?% (more|increase|boost))\b/i;
 
 /**
  * Checks an AI rewrite of an approved message. Same links, nothing new to
@@ -272,7 +272,7 @@ export function validateAiCopy(approved: string, body: string, subject: string):
   const money = (t: string): string[] => t.match(/\$\s?\d[\d,]*/g) ?? [];
   const known = money(approved);
   if (money(body).some((m) => !known.includes(m))) return "added_dollar_amount";
-  if (PROHIBITED.test(body) || PROHIBITED.test(subject)) return "prohibited_claim";
+  if (PROHIBITED_CLAIMS.test(body) || PROHIBITED_CLAIMS.test(subject)) return "prohibited_claim";
   if (!subject.trim() || subject.length > 120) return "bad_subject";
   if (body.length < 0.4 * approved.length || body.length > 2.2 * approved.length + 200) return "length_out_of_range";
   return null;

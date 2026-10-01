@@ -1,10 +1,11 @@
-import { brand, validateSetting, SETTINGS } from "@cm/config";
+import { brand, env, validateSetting, SETTINGS } from "@cm/config";
 import { DomainError, NATIONAL_CREDENTIAL, nextReverifyAt, US_STATES } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
-import { mailProvider } from "@cm/integrations";
+import { checkGoogleServerKey, mailProvider, smsProvider, TWILIO_ERROR_HELP } from "@cm/integrations";
 import { audit, getSettings, invalidateSettings, requireAdmin, type Actor } from "./context";
 import { notify, sendEmail } from "./notify";
 import { recomputeProviderStatus } from "./onboarding";
+import { ensureSchools } from "./schools";
 
 // ======================================================================
 // Verification queue (SPEC §4.3, admin-assisted)
@@ -13,8 +14,8 @@ import { recomputeProviderStatus } from "./onboarding";
 export async function verificationQueue(actor: Actor) {
   requireAdmin(actor);
   const [licenses, policies, certs, npi] = await Promise.all([
-    prisma.license.findMany({ where: { status: "PENDING_VERIFICATION" }, include: { provider: { select: { id: true, displayName: true, legalName: true, npi: true } }, profession: true }, orderBy: { createdAt: "asc" } }),
-    prisma.malpracticePolicy.findMany({ where: { status: "PENDING_VERIFICATION" }, include: { provider: { select: { id: true, displayName: true, legalName: true } } }, orderBy: { createdAt: "asc" } }),
+    prisma.license.findMany({ where: { status: "PENDING_VERIFICATION" }, include: { provider: { select: { id: true, displayName: true, legalName: true, npi: true, preLicensure: true } }, profession: true }, orderBy: { createdAt: "asc" } }),
+    prisma.malpracticePolicy.findMany({ where: { status: "PENDING_VERIFICATION" }, include: { provider: { select: { id: true, displayName: true, legalName: true, preLicensure: true } } }, orderBy: { createdAt: "asc" } }),
     prisma.providerSkill.findMany({ where: { certificationStatus: "PENDING_VERIFICATION" }, include: { provider: { select: { id: true, displayName: true } }, skill: true } }),
     prisma.provider.findMany({ where: { npiMismatch: true, npiVerifiedAt: null }, select: { id: true, displayName: true, legalName: true, npi: true } }),
   ]);
@@ -45,11 +46,16 @@ export async function reviewLicense(actor: Actor, licenseId: string, input: { ap
       ? `${profession?.displayName ?? l.professionCode} national registry credential`
       : `${US_STATES[l.state] ?? l.state} ${(profession?.displayName ?? l.professionCode).toLowerCase()} license`;
   const providerReady = (await prisma.digestSend.count({ where: { key: { startsWith: `ready:${l.providerId}:` } } })) > 0;
+  // Students: say exactly what's next (scope copy). Read before recompute may have graduated them out.
+  const studentNeedsMalpractice =
+    input.approve && l.provider.preLicensure && !(await prisma.malpracticePolicy.count({ where: { providerId: l.providerId, status: "VERIFIED", expiresAt: { gt: now } } }));
   await notify(prisma, l.provider.userId, {
     template: input.approve ? "license_verified" : "license_rejected",
     title: input.approve ? `Your ${credName} is verified` : `We couldn't verify your ${credName}`,
     body: input.approve
-      ? `We've confirmed it's active and marked it verified on your profile.${providerReady ? "" : " Finish the remaining setup steps on your dashboard and we'll let you know when you can start taking shifts."}`
+      ? studentNeedsMalpractice
+        ? "Your chiropractic license has been received and verified. Add your malpractice insurance to complete your coverage eligibility."
+        : `We've confirmed it's active and marked it verified on your profile.${providerReady ? "" : " Finish the remaining setup steps on your dashboard and we'll let you know when you can start taking shifts."}`
       : (input.reason ?? "Please check the details and resubmit."),
     link: "/provider/credentials",
   });
@@ -168,6 +174,68 @@ export async function updateStateConfig(
   return { updated, confirmedAssignmentsToReview: affected.map((a) => a.id) };
 }
 
+/**
+ * Sends a test text and reports exactly what happened: missing settings,
+ * Twilio's rejection, or — since Twilio accepts first and delivers later —
+ * the delivery result a few seconds on (where registration problems show up).
+ */
+export async function sendTestText(actor: Actor, toRaw: string) {
+  requireAdmin(actor);
+  const e = env();
+  const missing: string[] = (["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"] as const).filter((k) => !e[k]);
+  if (!e.TWILIO_MESSAGING_SERVICE_SID && !e.TWILIO_FROM_NUMBER) missing.push("TWILIO_FROM_NUMBER (or TWILIO_MESSAGING_SERVICE_SID)");
+  if (missing.length) throw new DomainError("VALIDATION", `Texting is off — the site is in email-only mode (text alerts go by email). To turn texting on, set ${missing.join(", ")} in cPanel → Setup Node.js App → Environment variables, then restart the app.`);
+  const shape: string[] = [];
+  if (!e.TWILIO_ACCOUNT_SID!.startsWith("AC")) shape.push("TWILIO_ACCOUNT_SID should start with AC");
+  if (e.TWILIO_MESSAGING_SERVICE_SID && !e.TWILIO_MESSAGING_SERVICE_SID.startsWith("MG")) shape.push("TWILIO_MESSAGING_SERVICE_SID should start with MG (a Messaging Service SID, not a phone number) — or remove it and use TWILIO_FROM_NUMBER");
+  if (!e.TWILIO_MESSAGING_SERVICE_SID && !/^\+1\d{10}$/.test(e.TWILIO_FROM_NUMBER!.replace(/[\s()-]/g, ""))) shape.push("TWILIO_FROM_NUMBER should be your Twilio number like +14075550123");
+  if (shape.length) throw new DomainError("VALIDATION", `Check your Twilio settings: ${shape.join("; ")}.`);
+  const digits = toRaw.replace(/\D/g, "");
+  const to = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : null;
+  if (!to) throw new DomainError("VALIDATION", "Enter a 10-digit US mobile number.");
+  const sms = smsProvider();
+  if (!(await sms.send(to, `${brand().name} test text — texting works.`))) {
+    const help = sms.lastErrorCode ? TWILIO_ERROR_HELP[sms.lastErrorCode] : null;
+    throw new DomainError("VALIDATION", `${sms.lastError ?? "Twilio rejected the text."}${help ? ` — ${help}` : ""}`);
+  }
+  // Accepted; now watch delivery for up to ~12 seconds.
+  let last: Awaited<ReturnType<NonNullable<typeof sms.status>>> = null;
+  for (let i = 0; i < 6 && sms.lastId && sms.status; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    last = await sms.status(sms.lastId);
+    if (last && ["delivered", "undelivered", "failed"].includes(last.status)) break;
+  }
+  if (last?.status === "delivered") return `Delivered to ${to}. Texting works.`;
+  if (last && (last.status === "undelivered" || last.status === "failed")) {
+    const help = last.errorCode ? TWILIO_ERROR_HELP[last.errorCode] : null;
+    throw new DomainError("VALIDATION", `Twilio accepted the text but it was ${last.status}${last.errorCode ? ` (error ${last.errorCode})` : ""}. ${help ?? last.errorMessage ?? ""}`.trim());
+  }
+  return `Twilio accepted the text (status: ${last?.status ?? "queued"}). If it doesn't arrive within a minute, open Twilio Console → Monitor → Logs → Messaging to see why — or run this check again.`;
+}
+
+/** Tests the server Maps key against each API it needs and explains the usual fixes. */
+export async function checkGoogle(actor: Actor) {
+  requireAdmin(actor);
+  const key = env().GOOGLE_MAPS_API_KEY;
+  if (!key) throw new DomainError("VALIDATION", "GOOGLE_MAPS_API_KEY isn't set (the site uses a stand-in address lookup). Add it in cPanel → Setup Node.js App → Environment variables, then restart the app.");
+  const results = await checkGoogleServerKey(key);
+  const lines = results.map((r) => `${r.ok ? "✓" : "✗"} ${r.api}: ${r.detail}`);
+  if (results.every((r) => r.ok)) return `Server key works. ${lines.join(" · ")}`;
+  const all = results.map((r) => r.detail).join(" ");
+  const hint = /referer|referrer/i.test(all)
+    ? "This key has a Websites restriction — set Application restrictions to None for the server key."
+    : /not authorized to use this API|not been used in project|is disabled|SERVICE_DISABLED|API_KEY_SERVICE_BLOCKED/i.test(all)
+      ? "An API is either not enabled (APIs & Services → Library) or not ticked in this key's API restrictions."
+      : /IP address|not authorized/i.test(all)
+        ? "The key's IP-address restriction doesn't match your server. Set Application restrictions to None."
+        : /billing/i.test(all)
+          ? "Billing isn't enabled for this Google Cloud project."
+          : /invalid/i.test(all)
+            ? "The key itself isn't valid — re-copy it into GOOGLE_MAPS_API_KEY and restart."
+            : "";
+  throw new DomainError("VALIDATION", `${lines.join(" · ")}${hint ? ` — Fix: ${hint}` : ""}`);
+}
+
 /** Sends a test email and reports exactly what the email service said. */
 export async function sendTestEmail(actor: Actor, to: string) {
   requireAdmin(actor);
@@ -238,6 +306,8 @@ export async function updateProfessionState(
     const live = patch.enabled || (await prisma.professionStateConfig.count({ where: { professionCode, enabled: true } })) > 0;
     if (live !== profession.active) await prisma.profession.update({ where: { code: professionCode }, data: { active: live } });
   }
+  // Turning a profession on adds its built-in school list to the student sign-up dropdown.
+  if (patch.enabled) await ensureSchools([professionCode]);
   await audit(prisma, actor, patch.enabled !== undefined && patch.enabled !== before?.enabled ? (patch.enabled ? "profession_state.enabled" : "profession_state.disabled") : "profession_state.updated", "ProfessionStateConfig", `${professionCode}:${state}`, before, updated);
   return updated;
 }

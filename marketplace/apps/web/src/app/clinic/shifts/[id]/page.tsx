@@ -8,6 +8,7 @@ import { AutoRefresh, Countdown } from "@/components/countdown";
 import { BadgeList } from "@/components/provider-profile";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
+import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, PhiNotice, Select, Textarea } from "@/components/ui/form";
 import { Alert, Empty, PageHeader } from "@/components/ui/misc";
@@ -255,7 +256,10 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
           ) : null}
           {shift.status === "DRAFT" ? (
             <Card><CardBody>
-              <ActionForm action={postDraftAction}><input type="hidden" name="shiftId" value={shift.id} /><SubmitButton>Post this shift</SubmitButton></ActionForm>
+              <div className="flex flex-wrap items-center gap-2">
+                <ActionForm action={postDraftAction}><input type="hidden" name="shiftId" value={shift.id} /><SubmitButton>Post this shift</SubmitButton></ActionForm>
+                <LinkButton variant="outline" href={`/clinic/shifts/new?draft=${shift.id}`}>Edit draft</LinkButton>
+              </div>
             </CardBody></Card>
           ) : null}
           {live ? (

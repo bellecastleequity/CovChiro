@@ -15,8 +15,11 @@ export const EXPECTED_MIGRATIONS = [
   "0007_emergency_cover",
   "0008_provider_feedback",
   "0009_standing_esign_moderation",
-  "0010_growth",
-  "0011_prospecting",
+  "0010_pre_licensure",
+  "0011_growth",
+  "0012_prospecting",
+  "0013_blog",
+  "0014_growth_expansion",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */

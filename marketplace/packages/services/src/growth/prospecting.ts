@@ -6,6 +6,7 @@ import { clock, getSettings } from "../context";
 import { agentOn, aiRules, logAgent, newToken } from "./engine";
 import { classifyProspect, refreshProspect } from "./agents";
 import { marketForPoint } from "./analytics";
+import { activeTargets, registryProfile } from "./expansion";
 
 /**
  * Automatic clinic prospecting (agent "clinicProspecting"):
@@ -47,11 +48,17 @@ export function citiesDue(areas: string[], searched: Record<string, string>, now
     .slice(0, n);
 }
 
-async function fetchCity(state: string, city: string) {
+/** Progress key for one city of one target. Keys saved before expansion were the bare city (Florida chiropractic). */
+const areaKey = (professionCode: string, state: string, city: string) => `${professionCode}|${state}|${city}`;
+function searchedAt(map: Record<string, string>, professionCode: string, state: string, city: string) {
+  return map[areaKey(professionCode, state, city)] ?? (professionCode === "DC" && state === "FL" ? map[city] : undefined);
+}
+
+async function fetchCity(taxonomy: string, state: string, city: string) {
   const out = [];
   for (const enumerationType of ["NPI-2", "NPI-1"] as const) {
     for (let skip = 0; skip <= 1000; skip += 200) {
-      const page = await nppesProvider().search({ state, city, enumerationType, skip, limit: 200 });
+      const page = await nppesProvider().search({ taxonomy, state, city, enumerationType, skip, limit: 200 });
       out.push(...page);
       if (page.length < 200) break;
     }
@@ -70,7 +77,7 @@ async function place(c: ClinicCandidate) {
 }
 
 /** Insert a new practice location, or merge the registry's facts into the existing record (never overwriting people's data). */
-async function upsertCandidate(c: ClinicCandidate): Promise<"inserted" | "updated" | "unchanged"> {
+async function upsertCandidate(c: ClinicCandidate, professionCode: string): Promise<"inserted" | "updated" | "unchanged"> {
   let existing: ClinicProspect | null = await prisma.clinicProspect.findUnique({ where: { addressKey: c.addressKey } });
   if (!existing) {
     // A clinic someone entered by hand (or imported) at the same address.
@@ -83,7 +90,7 @@ async function upsertCandidate(c: ClinicCandidate): Promise<"inserted" | "update
       data: {
         clinicName: c.clinicName, nameFromRegistry: c.nameFromIndividual, ownerName: c.ownerName, doctors: c.doctors, providerCount: c.providerCount || null,
         address: c.address, city: c.city, state: c.state, zip: c.zip, phone: c.phone, ...geo,
-        addressKey: c.addressKey, npis: c.npis, source: SOURCE, collectedAt: clock.now(), verifiedAt: clock.now(), researchStatus: "PENDING", publicToken: newToken(),
+        addressKey: c.addressKey, npis: c.npis, professionCodes: [professionCode], source: SOURCE, collectedAt: clock.now(), verifiedAt: clock.now(), researchStatus: "PENDING", publicToken: newToken(),
       },
     });
     return "inserted";
@@ -92,6 +99,8 @@ async function upsertCandidate(c: ClinicCandidate): Promise<"inserted" | "update
   const doctors = [...new Set([...existing.doctors, ...c.doctors])].slice(0, 20);
   const data: Prisma.ClinicProspectUpdateInput = { verifiedAt: clock.now() };
   if (!existing.addressKey) data.addressKey = c.addressKey;
+  // A multidisciplinary location turns up under several professions.
+  if (!existing.professionCodes.includes(professionCode)) data.professionCodes = [...existing.professionCodes, professionCode];
   if (npis.length !== existing.npis.length) data.npis = npis;
   if (doctors.length !== existing.doctors.length) data.doctors = doctors;
   if (!existing.phone && c.phone) data.phone = c.phone;
@@ -103,36 +112,65 @@ async function upsertCandidate(c: ClinicCandidate): Promise<"inserted" | "update
   return changed ? "updated" : "unchanged";
 }
 
-/** One run: the next few cities from growth.discoveryAreas, each re-searched every growth.rediscoverDays. */
-export async function discoverySweep(opts: { cities?: string[] } = {}) {
+/**
+ * One run: the next few cities (growth.discoveryAreasPerRun) across every PRELAUNCH or LIVE growth
+ * target, oldest-searched first; each city is re-searched every growth.rediscoverDays.
+ * `cities` (tests/admin) searches those cities for one target (default Florida chiropractic);
+ * professionCode/state alone limit the rotation to that market.
+ */
+export async function discoverySweep(opts: { cities?: string[]; professionCode?: string; state?: string } = {}) {
   const out = { cities: [] as string[], records: 0, practices: 0, inserted: 0, updated: 0, errors: [] as string[] };
   if (!(await agentOn("clinicProspecting"))) return { ...out, skipped: "agent off" };
   const s = await getSettings();
   const state = await loadState();
   const now = clock.now();
-  const cities = opts.cities ?? citiesDue(s["growth.discoveryAreas"], state.cities, now, s["growth.rediscoverDays"], s["growth.discoveryAreasPerRun"]);
-  for (const city of cities) {
+  type Job = { professionCode: string; state: string; city: string };
+  let jobs: Job[];
+  if (opts.cities) {
+    jobs = opts.cities.map((city) => ({ professionCode: opts.professionCode ?? "DC", state: opts.state ?? "FL", city }));
+  } else {
+    const all: (Job & { at: number })[] = [];
+    const targets = (await activeTargets()).filter((t) => (!opts.professionCode || t.professionCode === opts.professionCode) && (!opts.state || t.state === opts.state));
+    for (const t of targets) {
+      for (const city of t.cities) {
+        const at = searchedAt(state.cities, t.professionCode, t.state, city);
+        if (at && +now - +new Date(at) < s["growth.rediscoverDays"] * DAY) continue;
+        all.push({ professionCode: t.professionCode, state: t.state, city, at: at ? +new Date(at) : 0 });
+      }
+    }
+    jobs = all.sort((a, b) => a.at - b.at).slice(0, s["growth.discoveryAreasPerRun"]);
+  }
+  const profiles = new Map<string, Awaited<ReturnType<typeof registryProfile>>>();
+  for (const j of jobs) {
+    const label = `${j.city}, ${j.state} (${j.professionCode})`;
+    if (!profiles.has(j.professionCode)) profiles.set(j.professionCode, await registryProfile(j.professionCode));
+    const profile = profiles.get(j.professionCode)!;
+    if (!profile.registrySearch || !profile.taxonomyCodes.length) {
+      out.errors.push(`${label}: no registry search set for this profession (Growth → Expansion)`);
+      continue;
+    }
     try {
-      const records = await fetchCity(s["growth.launchState"], city);
-      const practices = groupRegistryRecords(records, s["growth.launchState"]);
+      const records = await fetchCity(profile.registrySearch, j.state, j.city);
+      const practices = groupRegistryRecords(records, j.state, profile);
       out.records += records.length;
       out.practices += practices.length;
       for (const c of practices) {
-        const r = await upsertCandidate(c);
+        const r = await upsertCandidate(c, j.professionCode);
         if (r === "inserted") out.inserted++;
         if (r === "updated") out.updated++;
       }
-      state.cities[city] = now.toISOString();
-      out.cities.push(city);
+      state.cities[areaKey(j.professionCode, j.state, j.city)] = now.toISOString();
+      if (j.professionCode === "DC" && j.state === "FL") delete state.cities[j.city];
+      out.cities.push(label);
     } catch (e) {
-      out.errors.push(`${city}: ${(e as Error).message}`.slice(0, 200));
+      out.errors.push(`${label}: ${(e as Error).message}`.slice(0, 200));
     }
   }
   await saveState({ cities: state.cities, lastDiscovery: { at: now.toISOString(), out } });
-  if (cities.length) {
+  if (jobs.length) {
     await logAgent("clinicProspecting", "discovery", {
-      trigger: "nppes", contextRef: cities.join(", "), output: `${out.practices} practice locations from ${out.records} registry records; ${out.inserted} new, ${out.updated} updated`,
-      error: out.errors.length ? out.errors.join("; ") : null,
+      trigger: "nppes", contextRef: out.cities.join("; ").slice(0, 500), output: `${out.practices} practice locations from ${out.records} registry records; ${out.inserted} new, ${out.updated} updated`,
+      error: out.errors.length ? out.errors.join("; ").slice(0, 1000) : null,
     });
   }
   return out;
@@ -140,7 +178,7 @@ export async function discoverySweep(opts: { cities?: string[] } = {}) {
 
 // ---------------- web research ----------------
 
-const RESEARCH_SCHEMA = {
+const researchSchema = (person: string) => ({
   type: "object",
   properties: {
     found: { type: "boolean", description: "You found this practice (at this address) online." },
@@ -156,13 +194,13 @@ const RESEARCH_SCHEMA = {
     multidisciplinary: { type: ["boolean", "null"], description: "Also offers PT, massage, acupuncture or medical services." },
     franchiseName: { type: ["string", "null"] },
     locationsCount: { type: ["integer", "null"] },
-    providerCount: { type: ["integer", "null"], description: "Chiropractors at this location." },
-    doctors: { type: "array", items: { type: "string" }, description: "Chiropractors as listed on the practice's site, e.g. Dr. Jane Smith." },
+    providerCount: { type: ["integer", "null"], description: `${person}s at this location.` },
+    doctors: { type: "array", items: { type: "string" }, description: `${person}s as listed on the practice's site, e.g. Dr. Jane Smith.` },
     socialUrls: { type: "array", items: { type: "string" }, description: "The practice's official social profiles." },
     sources: { type: "array", items: { type: "string" }, description: "URLs you relied on." },
   },
   required: ["found", "closed", "confidence", "practiceName", "website", "email", "emailSourceUrl", "phone", "hasContactForm", "practiceType", "multidisciplinary", "franchiseName", "locationsCount", "providerCount", "doctors", "socialUrls", "sources"],
-};
+});
 
 const str = (v: unknown, max = 300) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
 const int = (v: unknown) => (typeof v === "number" && Number.isInteger(v) ? v : null);
@@ -179,10 +217,10 @@ export function toFindings(d: Record<string, unknown>): ResearchFindings {
   };
 }
 
-function researchSystem() {
+function researchSystem(practiceNoun: string) {
   return [
     aiRules(),
-    "You research chiropractic practices for a business-to-business CRM, using web search and by reading the practice's own web pages.",
+    `You research ${practiceNoun}s for a business-to-business CRM, using web search and by reading the practice's own web pages.`,
     "Collect only public business information about the practice: its website, its published business email and phone, services, size, locations and official social profiles.",
     "Never collect personal information: no personal or free-mail addresses of individuals, cell phones, home addresses, family details, or patient reviews.",
     "Only report an email you actually saw published by the practice (its website or its official profile), with the exact page URL in emailSourceUrl.",
@@ -191,13 +229,13 @@ function researchSystem() {
   ].join("\n");
 }
 
-function researchUser(p: ClinicProspect) {
+function researchUser(p: ClinicProspect, practiceNoun: string, person: string) {
   const facts = {
     name: p.nameFromRegistry ? `${p.clinicName} (a doctor's name from the NPI registry; the practice name is unknown)` : p.clinicName,
     address: [p.address, p.city, `${p.state} ${p.zip ?? ""}`.trim()].filter(Boolean).join(", "),
-    phone: p.phone, chiropractorsAtAddress: p.doctors.length ? p.doctors : null, website: p.website,
+    phone: p.phone, [`${person.replace(/\s+/g, "")}sAtAddress`]: p.doctors.length ? p.doctors : null, website: p.website,
   };
-  return `Research this chiropractic practice and report what you find.\n${JSON.stringify(facts, null, 1)}\nStart from the address and phone; keep searches focused (practice website first, then its contact page).`;
+  return `Research this ${practiceNoun} and report what you find.\n${JSON.stringify(facts, null, 1)}\nStart from the address and phone; keep searches focused (practice website first, then its contact page).`;
 }
 
 /** Spend on research today (tokens + searches), from AiUsage rows with task "research". */
@@ -221,13 +259,23 @@ async function claim(id: string) {
   return r.count === 1;
 }
 
+/** Cents per million tokens [input, output] for models a saved aiPricing setting may predate. */
+const KNOWN_PRICING: Record<string, [number, number]> = { "gpt-6-luna": [10, 50] };
+
+/** Research runs on growth.researchProvider/researchModel; without that key, on the general growth AI provider. */
+export function researchEngine(s: Awaited<ReturnType<typeof getSettings>>) {
+  const preferred = llmProvider(s["growth.researchProvider"]);
+  if (preferred.name !== "none" && preferred.research) return { provider: preferred, model: s["growth.researchModel"] };
+  return { provider: llmProvider(s["growth.aiProvider"]), model: s["growth.aiModels"].research };
+}
+
 /**
  * Research one prospect on the web. Returns the outcome; budget/AI problems
  * leave the prospect PENDING (nothing is lost), real failures count an attempt.
  */
 export async function researchProspect(id: string, opts: { force?: boolean } = {}): Promise<"done" | "not_found" | "failed" | "ai_unavailable" | "budget" | "skipped"> {
   const s = await getSettings();
-  const provider = llmProvider(s["growth.aiProvider"]);
+  const { provider, model } = researchEngine(s);
   if (provider.name === "none" || !provider.research) return "ai_unavailable";
   const dayStart = DateTime.fromJSDate(clock.now(), { zone: "America/New_York" }).startOf("day").toJSDate();
   if ((await researchSpendCents(dayStart)) >= s["growth.researchDailyBudgetCents"]) return "budget";
@@ -235,13 +283,15 @@ export async function researchProspect(id: string, opts: { force?: boolean } = {
   if (!(await claim(id))) return "skipped";
   const p = await prisma.clinicProspect.findUniqueOrThrow({ where: { id } });
 
-  const model = s["growth.aiModels"].research;
+  const professionCode = p.professionCodes[0] ?? "DC";
+  const [profile, profession] = await Promise.all([registryProfile(professionCode), prisma.profession.findUnique({ where: { code: professionCode } })]);
+  const person = profession?.displayName.toLowerCase() ?? "provider";
   const r = await provider.research({
-    model, system: researchSystem(), user: researchUser(p), schema: RESEARCH_SCHEMA, maxTokens: 4000,
+    model, system: researchSystem(profile.practiceNoun), user: researchUser(p, profile.practiceNoun, person), schema: researchSchema(person), maxTokens: 4000,
     maxSearches: s["growth.researchMaxSearches"], maxFetches: s["growth.researchMaxSearches"] + 2, effort: s["growth.aiEffort"],
   });
   const pricing = s["growth.aiPricing"];
-  const rate = pricing[r.model] ?? (provider.name === "gemini" ? (pricing.gemini ?? [0, 0]) : (Object.values(pricing)[0] ?? [0, 0]));
+  const rate = pricing[r.model] ?? KNOWN_PRICING[r.model] ?? (provider.name === "gemini" ? (pricing.gemini ?? [0, 0]) : (Object.values(pricing)[0] ?? [0, 0]));
   const tokenMicro = (r.inputTokens * rate[0] + r.outputTokens * rate[1]) / 100;
   const searchMicro = (r.searches * s["growth.webSearchCentsPer1000"] * 10_000) / 1000;
   await prisma.aiUsage.create({
@@ -344,13 +394,13 @@ export async function prospectingStatus() {
     prisma.clinicProspect.count({ where: { website: { not: null } } }),
   ]);
   const dayStart = DateTime.fromJSDate(clock.now(), { zone: "America/New_York" }).startOf("day").toJSDate();
-  const areas = s["growth.discoveryAreas"];
+  const areas = (await activeTargets()).flatMap((t) => t.cities.map((c) => ({ c, at: searchedAt(state.cities, t.professionCode, t.state, c) })));
   return {
     research: Object.fromEntries(byStatus.map((b) => [b.researchStatus, b._count._all])) as Record<string, number>,
     fromRegistry, withEmail, withWebsite,
-    citiesSearched: areas.filter((c) => state.cities[c]).length, citiesTotal: areas.length,
+    citiesSearched: areas.filter((a) => a.at).length, citiesTotal: areas.length,
     lastDiscovery: state.lastDiscovery ?? null, lastResearch: state.lastResearch ?? null,
     researchSpendTodayCents: await researchSpendCents(dayStart), researchBudgetCents: s["growth.researchDailyBudgetCents"],
-    model: s["growth.aiModels"].research, aiReady: llmProvider(s["growth.aiProvider"]).name !== "none",
+    model: researchEngine(s).model, researchProvider: researchEngine(s).provider.name, aiReady: researchEngine(s).provider.name !== "none",
   };
 }

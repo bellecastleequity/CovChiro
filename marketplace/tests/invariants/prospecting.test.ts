@@ -17,11 +17,11 @@ function registry(city: string, zipBase: string): (q: NppesQuery) => NppesRecord
   const loc = (line1: string, zip: string, state = "FL") => ({ line1, line2: null, city: city.toUpperCase(), state, zip, phone: "7275550100" });
   const n = () => String(1000000000 + Math.floor(Math.random() * 8_999_999_999)).slice(0, 10);
   const recs: NppesRecord[] = [
-    { npi: n(), kind: "organization", name: "GULF COAST FAMILY CHIROPRACTIC LLC", firstName: null, lastName: null, credential: null, isChiropractic: true, location: loc(`${street} Suite 4`, `${zipBase}1234`) },
-    { npi: n(), kind: "individual", name: "", firstName: "ANA", lastName: "RIVERA", credential: "D.C.", isChiropractic: true, location: loc(`${street} STE 4`, zipBase) },
-    { npi: n(), kind: "individual", name: "", firstName: "MARK", lastName: "HALE", credential: "DC", isChiropractic: true, location: loc(`${street}, Suite 4`, zipBase) },
-    { npi: n(), kind: "individual", name: "", firstName: "PRIYA", lastName: "NAIR", credential: "DC", isChiropractic: true, location: loc(`${street.replace("Gulf", "Bay")}`, zipBase) },
-    { npi: n(), kind: "individual", name: "", firstName: "OUT", lastName: "STATE", credential: "DC", isChiropractic: true, location: loc("1 Peachtree St", "30303", "GA") },
+    { npi: n(), kind: "organization", name: "GULF COAST FAMILY CHIROPRACTIC LLC", firstName: null, lastName: null, credential: null, taxonomyCodes: ["111N00000X"], location: loc(`${street} Suite 4`, `${zipBase}1234`) },
+    { npi: n(), kind: "individual", name: "", firstName: "ANA", lastName: "RIVERA", credential: "D.C.", taxonomyCodes: ["111N00000X"], location: loc(`${street} STE 4`, zipBase) },
+    { npi: n(), kind: "individual", name: "", firstName: "MARK", lastName: "HALE", credential: "DC", taxonomyCodes: ["111N00000X"], location: loc(`${street}, Suite 4`, zipBase) },
+    { npi: n(), kind: "individual", name: "", firstName: "PRIYA", lastName: "NAIR", credential: "DC", taxonomyCodes: ["111N00000X"], location: loc(`${street.replace("Gulf", "Bay")}`, zipBase) },
+    { npi: n(), kind: "individual", name: "", firstName: "OUT", lastName: "STATE", credential: "DC", taxonomyCodes: ["111N00000X"], location: loc("1 Peachtree St", "30303", "GA") },
   ];
   return (q) => (q.skip ? [] : recs.filter((r) => (q.enumerationType === "NPI-2" ? r.kind === "organization" : r.kind === "individual")));
 }
@@ -81,7 +81,7 @@ describe("automatic prospecting: registry discovery", () => {
   it("merges into a clinic someone entered by hand at the same address, without overwriting it", async () => {
     const city = `Mergeton${uid()}`;
     const fake = registry(city, "33701");
-    const orgAddress = fake({ state: "FL", city, enumerationType: "NPI-2" })[0].location!.line1;
+    const orgAddress = fake({ taxonomy: "Chiropractor", state: "FL", city, enumerationType: "NPI-2" })[0].location!.line1;
     const manual = await growth.saveProspect(admin, { clinicName: "Gulf Coast Chiro (my notes)", email: `front-${uid()}@gulf.example.com`, address: orgAddress.replace("Suite", "Ste"), city, zip: "33701" });
     setNppesProvider({ name: "fake", search: async (q) => fake(q) });
     await growth.discoverySweep({ cities: [city] });
