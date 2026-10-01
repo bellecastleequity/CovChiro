@@ -332,15 +332,19 @@ export const SETTINGS = {
   "growth.agents": def({
     group: "Growth",
     label: "Growth agents switched on",
-    help: "Clinic outreach is the campaign launch switch: off until you approve the first sends.",
+    help: "Clinic Outreach and Provider Recruitment Outreach are the launch switches: off until you approve the first sends.",
     schema: z.record(z.string(), z.boolean()),
     default: {
       clinicProspecting: true, clinicOutreach: false, clinicConversation: true, clinicOnboarding: true, providerRecruitment: true,
       providerCredentialing: true, providerActivation: true, signupRecovery: true, matching: true, leadScoring: true, escalation: true, analytics: true,
+      providerDiscovery: true, contactDiscovery: true, providerOutreach: false, providerReactivation: true, content: true,
     },
     flag: "OWNER_DECISION",
   }),
   "growth.outreachMode": def({ group: "Growth", label: "Clinic outreach: review (AI drafts wait for approval) or auto", schema: z.enum(["review", "auto"]), default: "review", flag: "OWNER_DECISION" }),
+  "growth.providerOutreachMode": def({ group: "Growth", label: "Provider recruitment outreach: review (drafts wait for approval) or auto", schema: z.enum(["review", "auto"]), default: "review", flag: "OWNER_DECISION" }),
+  "growth.providerOutreachGapDays": def({ group: "Growth", label: "Provider recruitment sequence: days before each step", schema: z.array(z.number().int().min(0)).max(6), default: [0, 7], flag: "OWNER_DECISION" }),
+  "growth.contactResearchPerRun": def({ group: "Growth", label: "Contact discovery: providers researched on the web per run (shares the research budget)", schema: z.number().int().min(0).max(100), default: 6, flag: null }),
   "growth.postalAddress": def({ group: "Growth", label: "Physical postal address shown in marketing email", help: "Required in commercial email; marketing sends are blocked while blank.", schema: z.string().max(300), default: "", flag: "ATTORNEY_REVIEW" }),
   "growth.aiProvider": def({ group: "Growth", label: "AI provider for growth agents (falls back to templates when its key is missing)", schema: z.enum(["anthropic", "gemini", "openai", "none"]), default: "anthropic", flag: "OWNER_DECISION" }),
   "growth.aiModels": def({

@@ -6,6 +6,7 @@ import { sendBookingDigests } from "./digests";
 import * as leads from "./leads";
 import { growthTick, supplyGapSweep, weeklyBriefing } from "./growth/agents";
 import { prospectingTick } from "./growth/prospecting";
+import { marketSupplySweep } from "./growth/supply";
 import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSweep, preShiftChecks, recomputeStats, revealExpiredRatings, startDueShifts } from "./lifecycle";
 import { releaseDuePayouts } from "./payouts";
 import { settleDueInvites } from "./shifts";
@@ -57,7 +58,8 @@ export const JOBS: Job[] = [
   { name: "growthAgents", schedule: { everySeconds: 900 }, run: () => growthTick() },
   // Automatic clinic prospecting: NPI registry discovery + AI web research (budget-capped, ~2 min per run max).
   { name: "growthProspecting", schedule: { everySeconds: 600 }, run: () => prospectingTick() },
-  { name: "growthSupplyGaps", schedule: { everySeconds: 3600 }, run: () => supplyGapSweep() },
+  // Supply Gap agent: open shifts with no eligible provider + every market's supply status.
+  { name: "growthSupplyGaps", schedule: { everySeconds: 3600 }, run: async () => ({ shifts: await supplyGapSweep(), markets: await marketSupplySweep() }) },
   // Blog: AI writes up to blog.autoDraftsPerWeek drafts for review (never publishes).
   { name: "blogAutoDraft", schedule: { cron: "40 9 * * *", tz: "America/New_York" }, run: () => autoDraftSweep() },
   // Daily schedule slot; the briefing itself only goes out on Mondays.

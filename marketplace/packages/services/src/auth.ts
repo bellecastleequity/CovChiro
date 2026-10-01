@@ -115,6 +115,7 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
         campaign: input.campaign ?? input.attribution?.campaign ?? null,
         graduationDate: input.student ? input.student.graduationDate.toISOString().slice(0, 10) : input.graduationDate,
         isStudent: !!input.student || !!input.isStudent,
+        prospectToken: input.prospectToken,
       });
     }
     if (clinicOrgId) await growthPublic.onClinicSignup(clinicOrgId, input.prospectToken);

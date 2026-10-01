@@ -10,6 +10,8 @@ import { AGENT_AUDIENCE, AGENTS, ai, aiRules, aiSpendCents, logAgent, newToken, 
 import { ensureGrowthDefaults } from "./defaults";
 import { advanceOutreach, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
 import { discoverySweep, prospectingStatus, researchProspect, researchSweep } from "./prospecting";
+import { marketSupplySweep } from "./supply";
+import { advanceProviderOutreach, handleProviderProspectReply, PROVIDER_OUTREACH_SEQUENCE } from "./providers";
 import { attribution, growthFunnels, growthKpis, liquidity, marketForPoint } from "./analytics";
 
 /** Admin side of the growth control center. Every human override is audit-logged. */
@@ -92,7 +94,7 @@ export async function researchNow(actor: Actor, prospectId: string) {
 export async function runNow(actor: Actor) {
   requireAdmin(actor);
   const out = await growthTick();
-  return { ...out, supplyGaps: await supplyGapSweep() };
+  return { ...out, supplyGaps: await supplyGapSweep(), markets: await marketSupplySweep() };
 }
 
 // ---------------- sales queue (spec §17) ----------------
@@ -136,6 +138,7 @@ export async function decideApproval(actor: Actor, id: string, decision: "approv
   if (decision === "reject" || !r) {
     await prisma.communication.update({ where: { id }, data: { status: "REJECTED", createdById: actor.userId } });
     if (m.entityType === "PROSPECT") await prisma.clinicProspect.update({ where: { id: m.entityId }, data: { outreachPaused: true } });
+    if (m.entityType === "PROVIDER_PROSPECT") await prisma.providerProspect.update({ where: { id: m.entityId }, data: { outreachPaused: true } });
     await logAgent(m.agent ?? "admin", "draft_rejected", { entityType: m.entityType, entityId: m.entityId, promptKey: m.promptKey, humanOverrideBy: actor.userId });
     return { status: "rejected" as const };
   }
@@ -146,6 +149,7 @@ export async function decideApproval(actor: Actor, id: string, decision: "approv
   const edited = subject !== m.subject || body !== (m.body ?? "").trim();
   await logAgent(m.agent ?? "admin", "draft_approved", { entityType: m.entityType, entityId: m.entityId, promptKey: m.promptKey, promptVersion: m.promptVersion, humanOverrideBy: `${actor.userId}${edited ? " (edited)" : ""}`, sendStatus: res.ok ? "sent" : res.blocked ? "blocked" : "failed", error: res.reason });
   if (res.ok && m.entityType === "PROSPECT" && m.promptKey && OUTREACH_SEQUENCE.includes(m.promptKey)) await advanceOutreach(m.entityId);
+  if (res.ok && m.entityType === "PROVIDER_PROSPECT" && m.promptKey && PROVIDER_OUTREACH_SEQUENCE.includes(m.promptKey)) await advanceProviderOutreach(m.entityId);
   if (!res.ok) throw new DomainError("VALIDATION", res.blocked ? `Not sent — blocked by compliance: ${res.reason}` : "The email failed to send.");
   return { status: "sent" as const };
 }
@@ -307,6 +311,13 @@ export async function logReply(actor: Actor, prospectId: string, text: string, s
   if (!text.trim()) throw new DomainError("VALIDATION", "Paste the reply text.");
   await prisma.communication.create({ data: { entityType: "PROSPECT", entityId: prospectId, channel: "EMAIL", direction: "IN", purpose: "CONVERSATIONAL", subject: subject?.slice(0, 255) || "Reply", body: text.slice(0, 20_000), status: "RECEIVED", createdById: actor.userId } });
   return handleProspectReply(prospectId, text);
+}
+
+export async function logProviderReply(actor: Actor, id: string, text: string, subject?: string) {
+  requireAdmin(actor);
+  if (!text.trim()) throw new DomainError("VALIDATION", "Paste the reply text.");
+  await prisma.communication.create({ data: { entityType: "PROVIDER_PROSPECT", entityId: id, channel: "EMAIL", direction: "IN", purpose: "CONVERSATIONAL", subject: subject?.slice(0, 255) || "Reply", body: text.slice(0, 20_000), status: "RECEIVED", createdById: actor.userId } });
+  return handleProviderProspectReply(id, text);
 }
 
 export async function logNote(actor: Actor, prospectId: string, channel: "PHONE" | "NOTE", direction: "IN" | "OUT", text: string) {
@@ -472,16 +483,26 @@ export async function campaigns(actor: Actor) {
   return attribution();
 }
 
-export async function saveCampaign(actor: Actor, raw: { code: string; name: string; audience: "CLINIC" | "PROVIDER"; kind: string; schoolName?: string; headline?: string; body?: string; spendCents?: number; active?: boolean }) {
+export async function saveCampaign(actor: Actor, raw: { code: string; name: string; audience: "CLINIC" | "PROVIDER"; kind: string; schoolName?: string; headline?: string; body?: string; spendCents?: number; active?: boolean; geography?: string | null; professionCode?: string | null }) {
   requireAdmin(actor);
   const code = raw.code.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
   if (code.length < 2 || !raw.name.trim()) throw new DomainError("VALIDATION", "A short code (letters, numbers, dashes) and a name are required.");
   // /join/<code> is shared with the student path's recruitment links, so codes must be unique across both.
   if (await prisma.recruitCampaign.count({ where: { slug: code } })) throw new DomainError("CONFLICT", `"${code}" is already a recruitment link (Admin → Recruitment). Pick another code.`);
-  const data = { name: raw.name.trim().slice(0, 150), audience: raw.audience, kind: raw.kind.slice(0, 20), schoolName: raw.schoolName?.trim() || null, headline: raw.headline?.trim() || null, body: raw.body?.trim() || null, spendCents: Math.max(0, Math.round(raw.spendCents ?? 0)), active: raw.active ?? true };
+  const data = { name: raw.name.trim().slice(0, 150), audience: raw.audience, kind: raw.kind.slice(0, 20), schoolName: raw.schoolName?.trim() || null, headline: raw.headline?.trim() || null, body: raw.body?.trim() || null, spendCents: Math.max(0, Math.round(raw.spendCents ?? 0)), active: raw.active ?? true, geography: raw.geography?.trim().slice(0, 120) || null, ...(raw.professionCode ? { professionCode: raw.professionCode } : {}) };
   await prisma.growthCampaign.upsert({ where: { code }, create: { code, ...data }, update: data });
   await audit(prisma, actor, "growth.campaign.saved", "GrowthCampaign", code, null, data);
   return code;
+}
+
+/** Attribute a market's not-yet-contacted provider prospects to a campaign (e.g. "Naples emergency supply build"). */
+export async function tagMarketProspects(actor: Actor, marketKey: string, campaignCode: string) {
+  requireAdmin(actor);
+  const c = await prisma.growthCampaign.findUnique({ where: { code: campaignCode.trim().toLowerCase() } });
+  if (!c) throw new DomainError("NOT_FOUND", "No campaign with that code (create it under Campaigns first).");
+  const r = await prisma.providerProspect.updateMany({ where: { marketKey, providerId: null, campaignCode: null, stage: { in: ["DISCOVERED", "CONTACT_FOUND", "CONTACT_VERIFIED"] } }, data: { campaignCode: c.code } });
+  await audit(prisma, actor, "growth.market.campaign", "GrowthMarket", marketKey, null, { campaign: c.code, tagged: r.count });
+  return r.count;
 }
 
 export async function markets(actor: Actor) {
@@ -490,11 +511,11 @@ export async function markets(actor: Actor) {
   return liquidity();
 }
 
-export async function saveMarket(actor: Actor, raw: { key: string; name: string; state: string; centerLat: number; centerLng: number; radiusMiles: number; targetProviders: number; priority: number; active: boolean }) {
+export async function saveMarket(actor: Actor, raw: { key: string; name: string; state: string; professionCode?: string; centerLat: number; centerLng: number; radiusMiles: number; targetProviders: number; priority: number; active: boolean }) {
   requireAdmin(actor);
-  const key = raw.key.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+  const key = raw.key.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
   if (!key || !raw.name.trim() || !Number.isFinite(raw.centerLat) || !Number.isFinite(raw.centerLng)) throw new DomainError("VALIDATION", "Key, name and center coordinates are required.");
-  const data = { name: raw.name.trim(), state: raw.state.toUpperCase().slice(0, 2), centerLat: raw.centerLat, centerLng: raw.centerLng, radiusMiles: Math.max(5, Math.round(raw.radiusMiles)), targetProviders: Math.max(0, Math.round(raw.targetProviders)), priority: Math.round(raw.priority), active: raw.active };
+  const data = { name: raw.name.trim(), state: raw.state.toUpperCase().slice(0, 2), ...(raw.professionCode ? { professionCode: raw.professionCode } : {}), centerLat: raw.centerLat, centerLng: raw.centerLng, radiusMiles: Math.max(5, Math.round(raw.radiusMiles)), targetProviders: Math.max(0, Math.round(raw.targetProviders)), priority: Math.round(raw.priority), active: raw.active };
   await prisma.growthMarket.upsert({ where: { key }, create: { key, ...data }, update: data });
   await audit(prisma, actor, "growth.market.saved", "GrowthMarket", key, null, data);
 }

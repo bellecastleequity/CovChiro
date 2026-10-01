@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { growth } from "@cm/services";
+import { admin, growth } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
 
@@ -204,6 +204,7 @@ export const saveCampaignAction = formAction(async (fd) => {
   const code = await growth.saveCampaign(actor, {
     code: str(fd, "code"), name: str(fd, "name"), audience: str(fd, "audience") === "CLINIC" ? "CLINIC" : "PROVIDER", kind: str(fd, "kind") || "other",
     schoolName: optStr(fd, "schoolName") ?? undefined, headline: optStr(fd, "headline") ?? undefined, body: optStr(fd, "body") ?? undefined, spendCents: dollarsToCents(str(fd, "spend")) ?? 0, active: fd.has("active") ? bool(fd, "active") : true,
+    geography: optStr(fd, "geography"), professionCode: optStr(fd, "professionCode"),
   });
   rv();
   return `Saved /join/${code}.`;
@@ -212,7 +213,7 @@ export const saveCampaignAction = formAction(async (fd) => {
 export const saveMarketAction = formAction(async (fd) => {
   const { actor } = await me();
   await growth.saveMarket(actor, {
-    key: str(fd, "key"), name: str(fd, "name"), state: str(fd, "state") || "FL", centerLat: Number(str(fd, "centerLat")), centerLng: Number(str(fd, "centerLng")),
+    key: str(fd, "key"), name: str(fd, "name"), state: str(fd, "state") || "FL", professionCode: str(fd, "professionCode") || undefined, centerLat: Number(str(fd, "centerLat")), centerLng: Number(str(fd, "centerLng")),
     radiusMiles: Number(str(fd, "radiusMiles") || 60), targetProviders: Number(str(fd, "targetProviders") || 5), priority: Number(str(fd, "priority") || 100), active: bool(fd, "active"),
   });
   rv();
@@ -253,4 +254,79 @@ export const starterDraftsAction = formAction(async (fd) => {
   const n = await growth.createStarterDrafts(actor, str(fd, "professionCode"));
   rv();
   return n ? `Created ${n} draft emails. Review and approve them under Prompts.` : "Nothing to create: drafts or approved versions already exist.";
+});
+
+// ---------- provider acquisition ----------
+export const providerProspectAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const id = str(fd, "id");
+  const op = str(fd, "op");
+  if (op === "research") {
+    const r = await growth.discoverContact(id, { force: true });
+    rv();
+    return `Contact discovery: ${String(r).replace(/_/g, " ")}.`;
+  }
+  if (op === "verify") {
+    const r = await growth.verifyContact(id);
+    rv();
+    return `Email check: ${String(r).replace(/_/g, " ")}.`;
+  }
+  if (op === "reply") {
+    const r = await growth.logProviderReply(actor, id, str(fd, "text"), optStr(fd, "subject") ?? undefined);
+    rv();
+    return `Logged. Outcome: ${String(r).replace(/[_:]/g, " ")}.`;
+  }
+  if (op === "merge") {
+    await growth.mergeProviderProspects(actor, id, str(fd, "dropId"));
+    rv();
+    return "Merged.";
+  }
+  await growth.updateProviderProspect(actor, id, {
+    ...(op === "email" ? { email: optStr(fd, "email") } : {}),
+    ...(op === "suppress" ? { doNotContact: true } : {}),
+    ...(op === "unsuppress" ? { doNotContact: false } : {}),
+    ...(op === "approve" ? { clearReview: true } : {}),
+    ...(op === "pause" ? { outreachPaused: true } : {}),
+    ...(op === "resume" ? { outreachPaused: false } : {}),
+    ...(op === "details" ? { notes: optStr(fd, "notes"), campaignCode: optStr(fd, "campaignCode"), practiceRole: str(fd, "practiceRole") || undefined } : {}),
+  });
+  rv();
+  return "Saved.";
+});
+
+export const costAction = formAction(async (fd) => {
+  const { actor } = await me();
+  if (str(fd, "op") === "delete") await growth.deleteCost(actor, str(fd, "id"));
+  else await growth.addCost(actor, { month: str(fd, "month"), category: str(fd, "category"), audience: str(fd, "audience"), amountCents: dollarsToCents(str(fd, "amount")) ?? 0, campaignCode: optStr(fd, "campaignCode"), notes: optStr(fd, "notes") });
+  rv();
+  return "Saved.";
+});
+
+export const repurposeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await growth.repurposePost(actor, str(fd, "postId"), str(fd, "target") as "kb" | "email" | "social");
+  rv();
+  return r.text;
+});
+
+export const outreachModeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const key = str(fd, "which") === "provider" ? "growth.providerOutreachMode" : "growth.outreachMode";
+  await admin.updateSetting(actor, key, str(fd, "mode") === "auto" ? "auto" : "review");
+  rv();
+  return "Saved.";
+});
+
+export const runContactDiscoveryAction = formAction(async () => {
+  await me();
+  const out = await growth.contactDiscoverySweep({ wallMs: 90_000 });
+  rv();
+  return `Checked ${out.checked}: ${out.found} contacts found (${out.verified} verified), ${out.notFound} without a usable email, ${out.ambiguous} to review.${out.stopped ? ` Stopped: ${out.stopped.replace(/_/g, " ")}.` : ""}`;
+});
+
+export const tagMarketAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const n = await growth.tagMarketProspects(actor, str(fd, "market"), str(fd, "campaign"));
+  rv();
+  return `Tagged ${n} prospect${n === 1 ? "" : "s"}.`;
 });

@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { env } from "@cm/config";
+import { defaultSettings, env } from "@cm/config";
 import { contactDecision, renderTemplate, validateAiCopy, type Channel, type Purpose } from "@cm/core";
 import { llmProvider } from "@cm/integrations";
 import { prisma, type PromptTemplate } from "@cm/db";
@@ -20,27 +20,32 @@ import { DateTime } from "luxon";
  */
 
 export const AGENTS = {
-  clinicProspecting: ["Clinic Prospecting", "Finds Florida chiropractic offices in the public NPI registry, researches each on the web (website, business email, size), classifies them and assigns markets."],
+  providerDiscovery: ["Provider Discovery", "Finds licensed providers who aren't on the platform yet in the public NPI registry, in every prelaunch/live market (Growth → Expansion)."],
+  contactDiscovery: ["Contact Discovery", "Finds and verifies a professional email that reaches each discovered provider themselves (never a group practice's shared inbox), neediest markets first."],
+  providerOutreach: ["Provider Recruitment Outreach", "Sends the recruitment email sequence to verified provider contacts (the provider launch switch; review mode drafts wait in Approvals)."],
+  clinicProspecting: ["Clinic Prospecting", "Finds practices in the public NPI registry in every prelaunch/live market, researches each on the web (website, business email, size), classifies them and assigns markets."],
   clinicOutreach: ["Clinic Outreach", "Sends the educational email sequence to contactable prospects (the launch switch)."],
   clinicConversation: ["Clinic Conversation", "Answers questions from the approved knowledge base and classifies replies."],
   clinicOnboarding: ["Clinic Onboarding", "Nudges new clinic accounts toward their next incomplete step."],
-  providerRecruitment: ["Provider Recruitment", "Welcomes registrations from school and campaign links."],
-  providerCredentialing: ["Provider Credentialing / Nurture", "State-aware license and malpractice follow-ups until a provider is coverage-ready."],
-  providerActivation: ["Provider Activation", "Encourages coverage-ready providers to set availability and travel."],
+  providerRecruitment: ["Provider Welcome", "Welcomes new registrations (school, campaign and recruitment links)."],
+  providerCredentialing: ["New Graduate Nurture / Credentials", "State-aware license and malpractice follow-ups until a provider is coverage-ready."],
+  providerActivation: ["Provider Activation", "Tells newly coverage-ready providers how to get their first shift (availability, travel)."],
+  providerReactivation: ["Provider Reactivation", "Nudges coverage-ready providers with no availability or no recent shifts."],
   signupRecovery: ["Signup Recovery", "Follows up on coverage requests that were started but not posted."],
-  matching: ["Marketplace Matching", "Flags open shifts with too few eligible providers (dispatch does the matching)."],
+  matching: ["Supply Gap", "Scores every market's provider supply against demand (hourly), flags open shifts with no eligible provider, and steers recruitment to the neediest markets."],
   leadScoring: ["Lead Scoring", "Scores clinic intent from meaningful actions."],
   escalation: ["Human Escalation", "Creates admin alerts with summaries when a person should step in."],
-  analytics: ["Marketing Analytics", "Weekly funnel briefing from aggregate numbers only."],
+  analytics: ["Analytics", "Weekly funnel briefing from aggregate numbers only."],
+  content: ["Content", "Drafts blog posts for review (Growth → Content); never publishes."],
 } as const;
 export type AgentKey = keyof typeof AGENTS;
 
 /** Which marketing switch covers each audience. */
 export type Audience = "provider" | "clinic";
-export const audienceOf = (type: GrowthEntityType): Audience => (type === "PROVIDER" ? "provider" : "clinic");
+export const audienceOf = (type: GrowthEntityType): Audience => (type === "PROVIDER" || type === "PROVIDER_PROSPECT" ? "provider" : "clinic");
 /** Agents whose messages the marketing switches cover (the rest are internal or answer people who wrote in). */
 export const AGENT_AUDIENCE: Partial<Record<AgentKey, Audience>> = {
-  providerRecruitment: "provider", providerCredentialing: "provider", providerActivation: "provider",
+  providerRecruitment: "provider", providerCredentialing: "provider", providerActivation: "provider", providerReactivation: "provider", providerOutreach: "provider",
   clinicOutreach: "clinic", clinicOnboarding: "clinic", signupRecovery: "clinic",
 };
 export async function marketingOn(audience: Audience) {
@@ -50,7 +55,8 @@ export async function marketingOn(audience: Audience) {
 
 export async function agentOn(agent: AgentKey) {
   const s = await getSettings();
-  return s["growth.agents"][agent] ?? false;
+  // Agents added after the switches were last saved start at their default.
+  return s["growth.agents"][agent] ?? defaultSettings()["growth.agents"][agent] ?? false;
 }
 
 // ---------------- AI ----------------
@@ -135,6 +141,7 @@ export async function suppress(channel: "EMAIL" | "SMS" | "ALL", address: string
   if (channel !== "SMS") {
     const emailStatus = reason === "BOUNCE" ? "BOUNCED" : reason === "COMPLAINT" ? "COMPLAINED" : "UNSUBSCRIBED";
     await prisma.clinicProspect.updateMany({ where: { email: addr }, data: { emailStatus, outreachPaused: true } });
+    await prisma.providerProspect.updateMany({ where: { email: addr }, data: { emailStatus, outreachPaused: true } });
   }
   await logAgent("compliance", "suppressed", { channel, output: `${reason} via ${source}` });
 }
@@ -154,9 +161,9 @@ export async function isSuppressed(channel: "EMAIL" | "SMS", address: string) {
 function sig(payload: string) {
   return createHmac("sha256", env().SESSION_SECRET ?? "dev-secret").update(`growth-unsub:${payload}`).digest("base64url").slice(0, 22);
 }
-/** "g.<P|R|C>.<id>.<sig>" — prospect, provider or clinic account. */
+/** "g.<P|R|C|L>.<id>.<sig>" — clinic prospect, provider, clinic account or provider prospect (L = lead). */
 export function unsubscribeToken(entityType: GrowthEntityType, id: string) {
-  const payload = `${entityType[0]}.${id}`;
+  const payload = `${entityType === "PROVIDER_PROSPECT" ? "L" : entityType[0]}.${id}`;
   return `g.${payload}.${sig(payload)}`;
 }
 export function unsubscribeUrl(entityType: GrowthEntityType, id: string) {
@@ -164,11 +171,11 @@ export function unsubscribeUrl(entityType: GrowthEntityType, id: string) {
 }
 /** Returns true when the token was a valid growth token (and the address is now suppressed). */
 export async function unsubscribeByToken(token: string): Promise<boolean> {
-  const m = /^g\.([PRC])\.([\w-]+)\.([\w-]+)$/.exec(token);
+  const m = /^g\.([PRCL])\.([\w-]+)\.([\w-]+)$/.exec(token);
   if (!m) return false;
   const a = Buffer.from(sig(`${m[1]}.${m[2]}`)), b = Buffer.from(m[3]);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
-  const type = ({ P: "PROSPECT", R: "PROVIDER", C: "CLINIC" } as const)[m[1] as "P" | "R" | "C"];
+  const type = ({ P: "PROSPECT", R: "PROVIDER", C: "CLINIC", L: "PROVIDER_PROSPECT" } as const)[m[1] as "P" | "R" | "C" | "L"];
   const r = await recipient(type, m[2]);
   if (r?.email) await suppress("EMAIL", r.email, "UNSUBSCRIBE", "unsubscribe link");
   return true;
@@ -176,7 +183,7 @@ export async function unsubscribeByToken(token: string): Promise<boolean> {
 
 // ---------------- recipients ----------------
 
-export type GrowthEntityType = "PROSPECT" | "PROVIDER" | "CLINIC";
+export type GrowthEntityType = "PROSPECT" | "PROVIDER" | "CLINIC" | "PROVIDER_PROSPECT";
 
 export interface Recipient {
   type: GrowthEntityType;
@@ -191,6 +198,14 @@ export interface Recipient {
   firstName: string;
 }
 
+const titled = (n: string) => n.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (_, a: string, b: string) => a + b.toUpperCase());
+/** "Dr. Rivera" for doctoral credentials (D.C., DPT, MD…), else their first name. */
+function prospectGreeting(p: { firstName: string | null; lastName: string | null; credential: string | null }) {
+  const doctor = /\b(d\.?c|dpt|m\.?d|d\.?o|ph\.?d|dacm|d\.?ac|dc)\b/i.test(p.credential ?? "");
+  if (doctor && p.lastName) return `Dr. ${titled(p.lastName)}`;
+  return p.firstName ? titled(p.firstName) : "there";
+}
+
 const first = (name: string | null | undefined) => (name ?? "").trim().split(/\s+/)[0] || "there";
 
 export async function recipient(type: GrowthEntityType, id: string): Promise<Recipient | null> {
@@ -199,6 +214,14 @@ export async function recipient(type: GrowthEntityType, id: string): Promise<Rec
     if (!p) return null;
     const surname = (p.ownerName ?? "").replace(/^(dr\.?|doctor)\s+/i, "").trim().split(/\s+/).pop();
     return { type, id, label: p.clinicName, email: p.email, phone: p.phone, smsConsent: !!p.smsConsentAt, doNotContact: p.doNotContact, emailStatus: p.emailStatus, timeZone: "America/New_York", firstName: surname ? `Dr. ${surname}` : "there" };
+  }
+  if (type === "PROVIDER_PROSPECT") {
+    const p = await prisma.providerProspect.findUnique({ where: { id } });
+    if (!p) return null;
+    return {
+      type, id, label: p.displayName, email: p.contactStatus === "VERIFIED" || p.contactStatus === "FOUND" ? p.email : null, phone: null, smsConsent: false,
+      doNotContact: p.doNotContact || !!p.providerId, emailStatus: p.emailStatus, timeZone: "America/New_York", firstName: prospectGreeting(p),
+    };
   }
   if (type === "PROVIDER") {
     const p = await prisma.provider.findUnique({ where: { id }, include: { user: true } });
@@ -235,7 +258,7 @@ export async function checkContact(r: Recipient, channel: Channel, purpose: Purp
   const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   return contactDecision({
     channel, purpose, automated, pausedOutbound: s["growth.pausedOutbound"],
-    audienceOff: !(r.type === "PROVIDER" ? s["growth.providerMarketing"] : s["growth.clinicMarketing"]), doNotContact: r.doNotContact, address,
+    audienceOff: !(audienceOf(r.type) === "provider" ? s["growth.providerMarketing"] : s["growth.clinicMarketing"]), doNotContact: r.doNotContact, address,
     emailStatus: r.emailStatus, suppression, smsConsent: r.smsConsent, postalAddress: s["growth.postalAddress"],
     lastAutomatedAt: last?.createdAt ?? null, commercialLast7Days: week, commercialToday: today, localMinutes: local.hour * 60 + local.minute,
     limits: {
@@ -334,6 +357,7 @@ export async function sendGrowthEmail(r: Recipient, msg: { subject: string; body
   });
   if (!ok) await prisma.communication.update({ where: { id: row.id }, data: { status: "FAILED", error: "email service rejected the message", dedupeKey: null } });
   if (ok && r.type === "PROSPECT") await prisma.clinicProspect.update({ where: { id: r.id }, data: { lastContactedAt: clock.now() } });
+  if (ok && r.type === "PROVIDER_PROSPECT") await prisma.providerProspect.update({ where: { id: r.id }, data: { lastContactedAt: clock.now() } });
   return { ok, blocked: false, reason: ok ? null : "send_failed", communicationId: row.id };
 }
 

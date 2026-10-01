@@ -26,7 +26,7 @@ export default async function Expansion({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Expansion"
-        description="Where the growth bots work, by profession and state. Prelaunch: they find practices in the NPI registry, research them on the web and build provider supply (welcome and credential emails), without contacting clinics. Live: clinic outreach runs too, but only while the marketplace has that profession turned on in that state."
+        description="Where the growth bots work, by profession and state. Prelaunch: they find practices and licensed providers in the NPI registry, research them on the web, find provider contacts and recruit providers (and send welcome and credential emails), without contacting clinics. Live: clinic outreach runs too, but only while the marketplace has that profession turned on in that state."
         actions={<Link className="text-sm text-brand-700" href={all ? "/admin/growth/expansion" : "/admin/growth/expansion?all=1"}>{all ? "Show active" : "Show all 51"}</Link>}
       />
       <GrowthTabs current="/admin/growth/expansion" />
@@ -85,6 +85,7 @@ export default async function Expansion({ searchParams }: { searchParams: Promis
                   <Badge tone={p.active ? "green" : "gray"}>{p.active ? "Live on platform" : "Not live"}</Badge>
                   <Badge tone={providerReady ? "green" : "amber"}>{providerReady ? "Provider emails ready" : `Provider emails: ${p.readiness.providerMissing.length} to approve`}</Badge>
                   <Badge tone={outreachReady ? "green" : "amber"}>{outreachReady ? "Clinic outreach ready" : `Outreach: ${p.readiness.outreachMissing.length} to approve`}</Badge>
+                  <Badge tone={p.readiness.recruitmentMissing.length ? "amber" : "green"}>{p.readiness.recruitmentMissing.length ? `Recruitment: ${p.readiness.recruitmentMissing.length} to approve` : "Provider recruitment ready"}</Badge>
                   <Link href="/admin/schools"><Badge tone={p.schools ? "blue" : "amber"}>{p.schools} schools</Badge></Link>
                 </div>
                 <ActionForm action={growthProfessionAction} className="grid gap-2 sm:grid-cols-[1.4fr_1fr_1.4fr_0.7fr_auto] sm:items-end">
@@ -96,7 +97,7 @@ export default async function Expansion({ searchParams }: { searchParams: Promis
                   <SubmitButton size="sm" variant="secondary">Save</SubmitButton>
                 </ActionForm>
                 {!p.registrySearch ? <p className="mt-2 text-xs text-amber-800">No registry search yet: prelaunch markets for {p.displayName} won&apos;t discover practices until this is filled in.</p> : null}
-                {p.code !== "DC" && (!providerReady || !outreachReady) ? (
+                {p.code !== "DC" && (!providerReady || !outreachReady || p.readiness.recruitmentMissing.length > 0) ? (
                   <ActionForm action={starterDraftsAction} className="mt-3">
                     <input type="hidden" name="professionCode" value={p.code} />
                     <div className="flex flex-wrap items-center gap-3">

@@ -10,6 +10,7 @@ import { dateLabel, dateTimeLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { importProspectsAction, runProspectingAction, saveProspectAction } from "../actions";
 import { Stat } from "@/components/ui/misc";
+import { ProspectSwitch } from "./switch";
 import { GrowthTabs, SEGMENTS, STAGES } from "../ui";
 
 export const metadata = { title: "Clinic prospects" };
@@ -30,8 +31,9 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
   const qs = (p: number) => new URLSearchParams({ ...Object.fromEntries(Object.entries(f).filter(([k, v]) => v && k !== "page")), page: String(p) }).toString();
   return (
     <>
-      <PageHeader title="Clinic prospects" description="Florida chiropractic offices, found automatically: the public NPI registry gives every practice location and its chiropractors; AI web research then finds each practice's website, public business email and size, citing its sources. Public business information only. AI segment guesses are labeled as guesses." />
+      <PageHeader title="Prospecting · clinics" description="Practices found automatically in every prelaunch/live market: the public NPI registry gives every practice location and its chiropractors; AI web research then finds each practice's website, public business email and size, citing its sources. Public business information only. AI segment guesses are labeled as guesses." />
       <GrowthTabs current="/admin/growth/prospects" />
+      <ProspectSwitch current="clinics" />
       <Card className="mb-6">
         <CardHeader
           title="Automatic discovery & web research"

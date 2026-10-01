@@ -1,5 +1,6 @@
 import { CHIROPRACTIC_PROFILE, DomainError, US_STATES, type RegistryProfile } from "@cm/core";
 import { prisma, type GrowthTarget } from "@cm/db";
+import { geoProvider } from "@cm/integrations";
 import { audit, requireAdmin, type Actor } from "../context";
 import { ensureSchools } from "../schools";
 import { STATE_CITIES } from "./cities";
@@ -22,6 +23,7 @@ export const TARGET_STATUSES: TargetStatus[] = ["OFF", "PRELAUNCH", "LIVE"];
 /** Message keys a profession needs before each kind of growth email can go out. */
 export const PROVIDER_PROMPT_KEYS = ["PROVIDER_WELCOME", "PROVIDER_LICENSE_REMINDER", "PROVIDER_MALPRACTICE_REMINDER", "PROVIDER_COVERAGE_READY", "PROVIDER_REACTIVATION"];
 export const OUTREACH_PROMPT_KEYS = ["CLINIC_FIRST_CONTACT", "CLINIC_VACATION_EDUCATION", "CLINIC_SICK_DAY_EDUCATION"];
+export const RECRUITMENT_PROMPT_KEYS = ["PROVIDER_RECRUIT_FIRST_CONTACT", "PROVIDER_RECRUIT_FOLLOW_UP"];
 
 export async function activeTargets(statuses: TargetStatus[] = ["PRELAUNCH", "LIVE"]) {
   return prisma.growthTarget.findMany({ where: { status: { in: statuses } }, orderBy: [{ createdAt: "asc" }] });
@@ -100,7 +102,7 @@ export async function promptReadiness(professionCode: string) {
     for (const k of keys) if (!(await livePrompts(k, professionCode)).length) missing.push(k);
     return missing;
   };
-  return { providerMissing: await ready(PROVIDER_PROMPT_KEYS), outreachMissing: await ready(OUTREACH_PROMPT_KEYS) };
+  return { providerMissing: await ready(PROVIDER_PROMPT_KEYS), outreachMissing: await ready(OUTREACH_PROMPT_KEYS), recruitmentMissing: await ready(RECRUITMENT_PROMPT_KEYS) };
 }
 
 // ---------------- admin ----------------
@@ -147,6 +149,27 @@ export async function expansionOverview(actor: Actor) {
   };
 }
 
+/**
+ * Supply & demand markets for a newly opened profession × state: the first few cities on its
+ * list become metros (geocoded centers, 35-mile radius). Existing markets are left alone.
+ */
+export async function ensureMarkets(professionCode: string, state: string, cities: string[], n = 6) {
+  if (await prisma.growthMarket.count({ where: { professionCode, state } })) return 0;
+  let made = 0;
+  for (const [i, city] of cities.slice(0, n).entries()) {
+    const g = await geoProvider().geocode(`${city}, ${state}`).catch(() => null);
+    if (!g) continue;
+    const key = `${professionCode}-${state}-${city}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    await prisma.growthMarket.upsert({
+      where: { key },
+      create: { key, name: `${city}, ${state}`, state, professionCode, centerLat: g.lat, centerLng: g.lng, radiusMiles: 35, targetProviders: 3, priority: 100 + i },
+      update: {},
+    });
+    made++;
+  }
+  return made;
+}
+
 const cleanCities = (cities: string[]) => [...new Set(cities.map((c) => c.trim().replace(/\s+/g, " ")).filter((c) => c.length >= 2 && c.length <= 60))].slice(0, 500);
 
 export async function setTargetStatus(actor: Actor, professionCode: string, state: string, status: TargetStatus) {
@@ -170,7 +193,10 @@ export async function setTargetStatus(actor: Actor, professionCode: string, stat
     create: { professionCode, state, status, cities, statusChangedAt: new Date() },
     update: { status, cities, ...(before?.status !== status ? { statusChangedAt: new Date() } : {}) },
   });
-  if (status !== "OFF") await ensureSchools([professionCode]);
+  if (status !== "OFF") {
+    await ensureSchools([professionCode]);
+    await ensureMarkets(professionCode, state, cities).catch((e) => console.error("market setup failed", e));
+  }
   await audit(prisma, actor, "growth.target.status", "GrowthTarget", row.id, { status: before?.status ?? "OFF" }, { professionCode, state, status });
   return row;
 }
@@ -217,7 +243,7 @@ export async function createStarterDrafts(actor: Actor, professionCode: string) 
       .replace(/\bDCs\b/g, `${profession.credentialSuffix}s`)
       .replace(/chiropractic/gi, person);
   let created = 0;
-  for (const key of [...PROVIDER_PROMPT_KEYS, ...OUTREACH_PROMPT_KEYS, "CLINIC_OBJECTION_COST"]) {
+  for (const key of [...PROVIDER_PROMPT_KEYS, ...RECRUITMENT_PROMPT_KEYS, ...OUTREACH_PROMPT_KEYS, "CLINIC_OBJECTION_COST"]) {
     if (await prisma.promptTemplate.count({ where: { key, professionCode, status: { in: ["DRAFT", "APPROVED"] } } })) continue;
     const src = (await livePrompts(key, "DC"))[0];
     if (!src) continue;

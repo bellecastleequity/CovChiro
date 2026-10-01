@@ -6,11 +6,12 @@ import { PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateTimeLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { GrowthTabs } from "../ui";
+import { ActivityFeed } from "../panels";
 
 export const metadata = { title: "Agent activity" };
 export const dynamic = "force-dynamic";
 
-export default async function Activity({ searchParams }: { searchParams: Promise<{ agent?: string; errors?: string; status?: string }> }) {
+export default async function Activity({ searchParams }: { searchParams: Promise<{ agent?: string; errors?: string; status?: string; feed?: string }> }) {
   const { actor } = await requireActor("admin");
   const f = await searchParams;
   const [act, comms] = await Promise.all([growth.activity(actor, { agent: f.agent, errors: f.errors === "1" }), growth.communications(actor, { status: f.status })]);
@@ -22,8 +23,10 @@ export default async function Activity({ searchParams }: { searchParams: Promise
       <div className="mb-3 flex flex-wrap gap-2">
         {chip("/admin/growth/activity", "All", !f.agent && !f.errors)}
         {chip("/admin/growth/activity?errors=1", "Errors only", f.errors === "1")}
+        {chip("/admin/growth/activity?feed=1", "Feed with milestones", f.feed === "1")}
         {Object.keys(growth.AGENTS).map((k) => chip(`/admin/growth/activity?agent=${k}`, humanize(k), f.agent === k))}
       </div>
+      {f.feed === "1" ? <div className="mb-6"><ActivityFeed limit={80} title="Feed: agent activity and marketplace milestones" /></div> : null}
       <Card>
         <Table>
           <thead><tr><Th>When</Th><Th>Agent</Th><Th>Action</Th><Th>Entity</Th><Th>Prompt · model</Th><Th>Result</Th></tr></thead>

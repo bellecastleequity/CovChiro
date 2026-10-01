@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptBusinessEmail, addressKey, applyResearch, detectFranchise, groupRegistryRecords, type RegistryRecord, type ResearchFindings } from "../src";
+import { acceptBusinessEmail, addressKey, applyResearch, detectFranchise, groupRegistryRecords, registryIndividuals, type RegistryRecord, type ResearchFindings } from "../src";
 
 const rec = (o: Partial<RegistryRecord>): RegistryRecord => ({
   npi: "1000000000", kind: "individual", name: "", firstName: null, lastName: null, credential: "DC", taxonomyCodes: ["111N00000X"],
@@ -36,6 +36,20 @@ describe("grouping registry records into clinics", () => {
       rec({ taxonomyCodes: ["225100000X"] }),
       rec({ location: null }),
     ], "FL")).toEqual([]);
+  });
+});
+
+describe("registry individuals for provider recruitment", () => {
+  it("one per NPI, with how many colleagues share the practice address", () => {
+    const out = registryIndividuals([
+      rec({ npi: "1", kind: "organization", name: "BAYSIDE FAMILY CHIROPRACTIC LLC" }),
+      rec({ npi: "2", firstName: "ANA", lastName: "RIVERA", credential: "D.C." }),
+      rec({ npi: "2", firstName: "ANA", lastName: "RIVERA", credential: "D.C." }),
+      rec({ npi: "3", firstName: "MARK", lastName: "HALE", location: { line1: "100 MAIN ST STE 200", line2: null, city: "TAMPA", state: "FL", zip: "33602", phone: null } }),
+      rec({ npi: "4", firstName: "SOLO", lastName: "DOC", location: { line1: "9 Bay Rd", line2: null, city: "TAMPA", state: "FL", zip: "33602", phone: null } }),
+      rec({ npi: "5", firstName: "OUT", lastName: "STATE", location: { line1: "1 A St", line2: null, city: "ATLANTA", state: "GA", zip: "30303", phone: null } }),
+    ], "FL");
+    expect(out.map((p) => [p.npi, p.displayName, p.providersAtPractice])).toEqual([["2", "Ana Rivera, D.C.", 2], ["3", "Mark Hale, DC", 2], ["4", "Solo Doc, DC", 1]]);
   });
 });
 

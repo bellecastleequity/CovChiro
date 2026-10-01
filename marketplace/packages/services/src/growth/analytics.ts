@@ -13,8 +13,11 @@ import { aiSpendCents } from "./engine";
 
 const DAY = 86_400_000;
 
-export async function marketForPoint(lat: number, lng: number) {
-  const markets = await prisma.growthMarket.findMany({ where: { active: true } });
+/** The nearest market whose radius covers the point (that profession's markets first, when given). */
+export async function marketForPoint(lat: number, lng: number, professionCode?: string) {
+  const all = await prisma.growthMarket.findMany({ where: { active: true } });
+  const own = professionCode ? all.filter((m) => m.professionCode === professionCode) : [];
+  const markets = own.length ? own : all;
   let best: (typeof markets)[number] | null = null, bestD = Infinity;
   for (const m of markets) {
     const d = haversineMiles({ lat, lng }, { lat: m.centerLat, lng: m.centerLng });
@@ -157,10 +160,24 @@ export async function attribution() {
   const readyIds = new Set((await coverageReadyProviders()).map((p) => p.id));
   const prospectRows = await prisma.clinicProspect.findMany({ where: { campaignCode: { not: null } }, select: { campaignCode: true, stage: true } });
   const booked = (st: string) => ["FIRST_SHIFT_BOOKED", "FIRST_SHIFT_COMPLETED", "REPEAT_CLINIC"].includes(st);
+  // Messages, replies and transactions per campaign (prospects and accounts carrying its code).
+  const ppRows = await prisma.providerProspect.findMany({ where: { campaignCode: { not: null } }, select: { id: true, campaignCode: true } });
+  const cpRows = await prisma.clinicProspect.findMany({ where: { campaignCode: { not: null } }, select: { id: true, campaignCode: true, clinicOrgId: true } });
+  const commRows = await prisma.communication.groupBy({ by: ["entityId", "direction"], where: { entityId: { in: [...ppRows.map((p) => p.id), ...cpRows.map((p) => p.id)] }, status: { in: ["SENT", "RECEIVED"] } }, _count: { _all: true } });
+  const completedBy = new Map((await prisma.assignment.groupBy({ by: ["providerId"], where: { status: "COMPLETED", providerId: { in: providerRows.map((p) => p.id) } }, _count: { _all: true } })).map((r) => [r.providerId, r._count._all]));
+  const orgShifts = await prisma.$queryRaw<{ org: string; posted: bigint; completed: bigint }[]>`SELECT l."clinicOrgId"::text AS org, COUNT(*) FILTER (WHERE s."postedAt" IS NOT NULL) AS posted, COUNT(*) FILTER (WHERE s.status = 'COMPLETED') AS completed FROM "Shift" s JOIN "ClinicLocation" l ON l.id = s."locationId" GROUP BY 1`;
   const byCampaign = campaigns.map((c) => {
     const ps = providerRows.filter((p) => p.campaignCode === c.code);
     const cs = prospectRows.filter((p) => p.campaignCode === c.code);
-    return { campaign: c, registered: ps.length, coverageReady: ps.filter((p) => readyIds.has(p.id)).length, firstShift: ps.filter((p) => (p.stats?.completedShifts ?? 0) >= 1).length, clinics: cs.length, clinicsBooked: cs.filter((p) => booked(p.stage)).length };
+    const ids = new Set([...ppRows.filter((p) => p.campaignCode === c.code).map((p) => p.id), ...cpRows.filter((p) => p.campaignCode === c.code).map((p) => p.id)]);
+    const msgs = commRows.filter((r) => ids.has(r.entityId));
+    const orgs = new Set(cpRows.filter((p) => p.campaignCode === c.code && p.clinicOrgId).map((p) => p.clinicOrgId!));
+    const os = orgShifts.filter((o) => orgs.has(o.org));
+    return {
+      campaign: c, registered: ps.length, coverageReady: ps.filter((p) => readyIds.has(p.id)).length, firstShift: ps.filter((p) => (p.stats?.completedShifts ?? 0) >= 1).length, clinics: cs.length, clinicsBooked: cs.filter((p) => booked(p.stage)).length,
+      messagesSent: msgs.filter((m) => m.direction === "OUT").reduce((a, m) => a + m._count._all, 0), replies: msgs.filter((m) => m.direction === "IN").reduce((a, m) => a + m._count._all, 0),
+      providerShifts: ps.reduce((a, p) => a + (completedBy.get(p.id) ?? 0), 0), clinicAccounts: orgs.size, coverageRequests: os.reduce((a, o) => a + Number(o.posted), 0), completedBookings: os.reduce((a, o) => a + Number(o.completed), 0),
+    };
   });
   const sent = await prisma.communication.groupBy({ by: ["entityType", "promptKey", "promptVersion", "entityId"], where: { status: "SENT", promptKey: { not: null }, direction: "OUT" } });
   const prospects = new Map((await prisma.clinicProspect.findMany({ select: { id: true, stage: true } })).map((p) => [p.id, p.stage as string]));

@@ -7,6 +7,7 @@ import { track } from "../analytics";
 import { answerQuestion } from "./agents";
 import { logAgent, signal } from "./engine";
 import { ensureGrowthDefaults } from "./defaults";
+import { onProviderProspectSignup, trackProviderProspect } from "./providers";
 
 /** Public-facing growth entry points: campaign links, tracked links, website questions, signup attribution. */
 
@@ -32,7 +33,10 @@ export async function trackProspect(token: string, kind: string, meta?: { days?:
   if (!/^[a-f0-9]{40}$/.test(token) || !TRACKED.has(kind)) return;
   if (ip) await checkRateLimit(`gtrack:${ip}`, 120, 3600);
   const p = await prisma.clinicProspect.findUnique({ where: { publicToken: token }, select: { id: true } });
-  if (!p) return;
+  if (!p) {
+    await trackProviderProspect(token, kind);
+    return;
+  }
   const dayStart = new Date(clock.now()); dayStart.setHours(0, 0, 0, 0);
   if (await prisma.leadSignal.count({ where: { entityType: "PROSPECT", entityId: p.id, kind, createdAt: { gte: dayStart } } })) return;
   await signal("PROSPECT", p.id, kind, meta?.days !== undefined ? { days: Math.max(0, Math.min(60, Math.round(meta.days))) } : undefined);
@@ -55,7 +59,7 @@ export async function askQuestion(raw: z.input<typeof QuestionInput>, ip?: strin
 }
 
 /** Provider registration extras (pre-licensure, campaign attribution). Called by auth.signup. */
-export async function onProviderSignup(providerId: string, extra: { campaign?: string | null; graduationDate?: string | null; isStudent?: boolean; source?: string | null }) {
+export async function onProviderSignup(providerId: string, extra: { campaign?: string | null; graduationDate?: string | null; isStudent?: boolean; source?: string | null; prospectToken?: string | null }) {
   const code = extra.campaign?.toLowerCase().replace(/[^a-z0-9-]/g, "") || null;
   const campaign = code ? await prisma.growthCampaign.findUnique({ where: { code } }) : null;
   const grad = extra.graduationDate && /^\d{4}-\d{2}(-\d{2})?$/.test(extra.graduationDate) ? new Date(`${extra.graduationDate.length === 7 ? `${extra.graduationDate}-01` : extra.graduationDate}T12:00:00Z`) : null;
@@ -72,6 +76,8 @@ export async function onProviderSignup(providerId: string, extra: { campaign?: s
     },
   });
   await logAgent("providerRecruitment", "registered", { entityType: "PROVIDER", entityId: providerId, contextRef: `campaign:${campaign?.code ?? "-"}${extra.isStudent ? " student" : ""}` });
+  // Someone we recruited (tracked link, or the same email / NPI as a discovered prospect).
+  await onProviderProspectSignup(providerId, extra.prospectToken);
 }
 
 /** A clinic that came from one of our emails (?c=<token>) links to its CRM row. */

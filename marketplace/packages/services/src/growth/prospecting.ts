@@ -1,4 +1,4 @@
-import { addressKey, applyResearch, groupRegistryRecords, type ClinicCandidate, type ResearchFindings } from "@cm/core";
+import { addressKey, applyResearch, groupRegistryRecords, registryIndividuals, type ClinicCandidate, type ResearchFindings } from "@cm/core";
 import { prisma, type ClinicProspect, type Prisma } from "@cm/db";
 import { geoProvider, llmProvider, nppesProvider } from "@cm/integrations";
 import { DateTime } from "luxon";
@@ -7,6 +7,7 @@ import { agentOn, aiRules, logAgent, newToken } from "./engine";
 import { classifyProspect, refreshProspect } from "./agents";
 import { marketForPoint } from "./analytics";
 import { activeTargets, registryProfile } from "./expansion";
+import { contactDiscoverySweep, upsertProviderProspects } from "./providers";
 
 /**
  * Automatic clinic prospecting (agent "clinicProspecting"):
@@ -119,8 +120,10 @@ async function upsertCandidate(c: ClinicCandidate, professionCode: string): Prom
  * professionCode/state alone limit the rotation to that market.
  */
 export async function discoverySweep(opts: { cities?: string[]; professionCode?: string; state?: string } = {}) {
-  const out = { cities: [] as string[], records: 0, practices: 0, inserted: 0, updated: 0, errors: [] as string[] };
-  if (!(await agentOn("clinicProspecting"))) return { ...out, skipped: "agent off" };
+  const out = { cities: [] as string[], records: 0, practices: 0, inserted: 0, updated: 0, providers: 0, providersNew: 0, errors: [] as string[] };
+  // One registry pass feeds both sides: practices (Clinic Prospecting) and licensed individuals (Provider Discovery).
+  const [clinicsOn, providersOn] = await Promise.all([agentOn("clinicProspecting"), agentOn("providerDiscovery")]);
+  if (!clinicsOn && !providersOn) return { ...out, skipped: "agent off" };
   const s = await getSettings();
   const state = await loadState();
   const now = clock.now();
@@ -151,13 +154,18 @@ export async function discoverySweep(opts: { cities?: string[]; professionCode?:
     }
     try {
       const records = await fetchCity(profile.registrySearch, j.state, j.city);
-      const practices = groupRegistryRecords(records, j.state, profile);
+      const practices = clinicsOn ? groupRegistryRecords(records, j.state, profile) : [];
       out.records += records.length;
       out.practices += practices.length;
       for (const c of practices) {
         const r = await upsertCandidate(c, j.professionCode);
         if (r === "inserted") out.inserted++;
         if (r === "updated") out.updated++;
+      }
+      if (providersOn) {
+        const r = await upsertProviderProspects(registryIndividuals(records, j.state, profile), j.professionCode);
+        out.providers += r.seen;
+        out.providersNew += r.inserted;
       }
       state.cities[areaKey(j.professionCode, j.state, j.city)] = now.toISOString();
       if (j.professionCode === "DC" && j.state === "FL") delete state.cities[j.city];
@@ -168,10 +176,18 @@ export async function discoverySweep(opts: { cities?: string[]; professionCode?:
   }
   await saveState({ cities: state.cities, lastDiscovery: { at: now.toISOString(), out } });
   if (jobs.length) {
-    await logAgent("clinicProspecting", "discovery", {
-      trigger: "nppes", contextRef: out.cities.join("; ").slice(0, 500), output: `${out.practices} practice locations from ${out.records} registry records; ${out.inserted} new, ${out.updated} updated`,
-      error: out.errors.length ? out.errors.join("; ").slice(0, 1000) : null,
-    });
+    if (clinicsOn) {
+      await logAgent("clinicProspecting", "discovery", {
+        trigger: "nppes", contextRef: out.cities.join("; ").slice(0, 500), output: `${out.practices} practice locations from ${out.records} registry records; ${out.inserted} new, ${out.updated} updated`,
+        error: out.errors.length ? out.errors.join("; ").slice(0, 1000) : null,
+      });
+    }
+    if (providersOn) {
+      await logAgent("providerDiscovery", "discovery", {
+        trigger: "nppes", contextRef: out.cities.join("; ").slice(0, 500), output: `${out.providersNew} new providers found (${out.providers} licensed individuals seen)`,
+        error: out.errors.length ? out.errors.join("; ").slice(0, 1000) : null,
+      });
+    }
   }
   return out;
 }
@@ -260,7 +276,7 @@ async function claim(id: string) {
 }
 
 /** Cents per million tokens [input, output] for models a saved aiPricing setting may predate. */
-const KNOWN_PRICING: Record<string, [number, number]> = { "gpt-6-luna": [10, 50] };
+export const KNOWN_PRICING: Record<string, [number, number]> = { "gpt-6-luna": [10, 50] };
 
 /** Research runs on growth.researchProvider/researchModel; without that key, on the general growth AI provider. */
 export function researchEngine(s: Awaited<ReturnType<typeof getSettings>>) {
@@ -380,7 +396,12 @@ export async function prospectingTick() {
     await logAgent("worker", "sweep_failed", { trigger: "research", error: (e as Error).message });
     return { error: (e as Error).message };
   });
-  return { discovery, research };
+  // Provider contacts are found after practices, so a researched solo practice's email is reused for free.
+  const contacts = await contactDiscoverySweep().catch(async (e) => {
+    await logAgent("worker", "sweep_failed", { trigger: "contactDiscovery", error: (e as Error).message });
+    return { error: (e as Error).message };
+  });
+  return { discovery, research, contacts };
 }
 
 /** Admin view: how far automatic prospecting has got. */

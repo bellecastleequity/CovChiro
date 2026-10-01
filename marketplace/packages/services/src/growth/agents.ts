@@ -14,6 +14,7 @@ import {
 } from "./engine";
 import { ensureGrowthDefaults } from "./defaults";
 import { growthFunnels, marketForPoint } from "./analytics";
+import { linkProviderProspects, providerOutreachSweep } from "./providers";
 import { activeTargets, outreachProfessionFor, primaryTarget, promptReadiness, providerTargetFrom } from "./expansion";
 
 /**
@@ -89,8 +90,8 @@ const providerUrls = () => ({ profile_url: absoluteUrl("/provider/profile"), cre
 
 export async function providerSweep(batchSize = 500) {
   const out = { welcomed: 0, nurtured: 0, activated: 0, deferred: 0 };
-  const [welcomeOn, nurtureOn, activateOn] = await Promise.all([agentOn("providerRecruitment"), agentOn("providerCredentialing"), agentOn("providerActivation")]);
-  if ((!welcomeOn && !nurtureOn && !activateOn) || !(await marketingOn("provider"))) return out;
+  const [welcomeOn, nurtureOn, activateOn, reactivateOn] = await Promise.all([agentOn("providerRecruitment"), agentOn("providerCredentialing"), agentOn("providerActivation"), agentOn("providerReactivation")]);
+  if ((!welcomeOn && !nurtureOn && !activateOn && !reactivateOn) || !(await marketingOn("provider"))) return out;
   const c = await cadence();
   const now = clock.now();
   const studentFollowupsOn = (await getSettings())["prelicensure.followupsEnabled"];
@@ -145,7 +146,7 @@ export async function providerSweep(batchSize = 500) {
       if (res.startsWith("deferred")) out.deferred++;
     }
 
-    let kind = activateOn ? activationDue({ coverageReady: snap.coverageReady, activationCount: p.activationCount, lastActivationAt: p.lastActivationAt, hasAvailability: snap.hasAvailability, availabilityUpdatedAt: null, lastShiftAt: p.stats?.lastShiftAt ?? null }, c, now) : null;
+    let kind = activateOn || reactivateOn ? activationDue({ coverageReady: snap.coverageReady, activationCount: p.activationCount, lastActivationAt: p.lastActivationAt, hasAvailability: snap.hasAvailability, availabilityUpdatedAt: null, lastShiftAt: p.stats?.lastShiftAt ?? null }, c, now) : null;
     // The platform already sends "You're all set to take shifts" when a provider becomes eligible
     // (onboarding.recomputeProviderStatus, DigestSend ready:<id>:<profession>). Count that as this
     // agent's "ready" message instead of sending a second one — including to everyone already
@@ -154,10 +155,12 @@ export async function providerSweep(batchSize = 500) {
       await prisma.provider.update({ where: { id }, data: { activationCount: { increment: 1 }, lastActivationAt: now } });
       kind = null;
     }
+    // "You're coverage-ready" is Provider Activation; nudges after that are Provider Reactivation.
+    if ((kind === "ready" && !activateOn) || (kind && kind !== "ready" && !reactivateOn)) kind = null;
     if (kind) {
       const market = p.homeLat != null && p.homeLng != null ? await marketForPoint(p.homeLat, p.homeLng) : null;
       const travel = `Your maximum drive is set to ${p.maxDriveMinutes} minutes; a longer drive can make more offices visible to you.`;
-      const res = await outcome(() => composeAndSend("providerActivation", r, kind === "ready" ? "PROVIDER_COVERAGE_READY" : "PROVIDER_REACTIVATION", { ...vars, travel_line: travel, market_name: market?.name },
+      const res = await outcome(() => composeAndSend(kind === "ready" ? "providerActivation" : "providerReactivation", r, kind === "ready" ? "PROVIDER_COVERAGE_READY" : "PROVIDER_REACTIVATION", { ...vars, travel_line: travel, market_name: market?.name },
         { purpose: "RELATIONSHIP", professionCode, dedupeKey: `activation:${id}:${p.activationCount}`, facts: { market_name: market?.name } }));
       if (res === "sent" || res === "blocked") await prisma.provider.update({ where: { id }, data: { activationCount: { increment: 1 }, lastActivationAt: now } });
       if (res === "sent") {
@@ -585,7 +588,11 @@ export async function weeklyBriefing() {
 export async function growthTick() {
   await ensureGrowthDefaults();
   const out: Record<string, unknown> = {};
-  for (const [name, fn] of [["providers", providerSweep], ["prospects", prospectSweep], ["outreach", outreachSweep], ["recovery", recoverySweep], ["onboarding", onboardingSweep]] as const) {
+  const sweeps: [string, () => Promise<unknown>][] = [
+    ["providers", providerSweep], ["prospects", prospectSweep], ["outreach", outreachSweep], ["recovery", recoverySweep], ["onboarding", onboardingSweep],
+    ["providerLinks", linkProviderProspects], ["providerOutreach", providerOutreachSweep],
+  ];
+  for (const [name, fn] of sweeps) {
     try {
       out[name] = await fn();
     } catch (e) {

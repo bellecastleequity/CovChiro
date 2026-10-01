@@ -1559,19 +1559,22 @@ model ProviderFeedback {
 
 /// Strategic launch regions; "ready" when enough coverage-ready providers sit inside the radius.
 model GrowthMarket {
-  id              String   @id @default(cuid())
-  key             String   @unique
+  id              String    @id @default(cuid())
+  key             String    @unique
   name            String
-  state           String   @db.Char(2)
-  professionCode  String   @default("DC")
+  state           String    @db.Char(2)
+  professionCode  String    @default("DC")
   centerLat       Float
   centerLng       Float
-  radiusMiles     Int      @default(60)
-  targetProviders Int      @default(5)
-  priority        Int      @default(100)
-  active          Boolean  @default(true)
+  radiusMiles     Int       @default(60)
+  targetProviders Int       @default(5)
+  priority        Int       @default(100)
+  active          Boolean   @default(true)
   notes           String?
-  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  /// Supply Gap agent: CRITICAL | LOW | BUILDING | HEALTHY | LIQUID (core supplyStatus), refreshed hourly.
+  supplyStatus    String?
+  supplyCheckedAt DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
 }
 
 enum ProspectStage {
@@ -1690,6 +1693,8 @@ model GrowthCampaign {
   headline       String?
   body           String?
   spendCents     Int       @default(0)
+  /// Where it runs, e.g. "Jacksonville, FL" (display and reporting).
+  geography      String?
   visits         Int       @default(0)
   active         Boolean   @default(true)
   createdAt      DateTime  @default(now()) @db.Timestamptz(3)
@@ -1965,4 +1970,92 @@ model BlogPost {
   updatedAt     DateTime   @updatedAt @db.Timestamptz(3)
 
   @@index([status, publishedAt])
+}
+
+/// A licensed provider found in the public NPI registry who isn't on the platform yet.
+/// Contact discovery looks for a professional email that reaches them (core acceptProviderEmail);
+/// recruitment emails go out only in PRELAUNCH/LIVE growth markets, through the compliance gate.
+model ProviderProspect {
+  id                   String    @id @default(cuid())
+  npi                  String    @unique
+  professionCode       String
+  firstName            String?
+  lastName             String?
+  credential           String?
+  displayName          String
+  address              String?
+  city                 String?
+  state                String    @db.Char(2)
+  zip                  String?
+  addressKey           String?
+  lat                  Float?
+  lng                  Float?
+  marketKey            String?
+  /// The practice location (clinic prospect) at the same address, if any.
+  clinicProspectId     String?
+  providersAtPractice  Int       @default(1)
+  /// OWNER | ASSOCIATE | UNKNOWN
+  practiceRole         String    @default("UNKNOWN")
+  source               String    @default("NPPES NPI registry")
+  collectedAt          DateTime  @default(now()) @db.Timestamptz(3)
+  /// PENDING | RUNNING | DONE | NOT_FOUND | AMBIGUOUS | FAILED | SKIPPED
+  researchStatus       String    @default("PENDING")
+  researchAttempts     Int       @default(0)
+  researchedAt         DateTime? @db.Timestamptz(3)
+  researchConfidence   Float?
+  researchCostMicroUsd Int       @default(0)
+  website              String?
+  email                String?   @db.Citext
+  emailSourceUrl       String?
+  /// How the email was found: practice (from the researched clinic) | research | manual
+  emailOrigin          String?
+  /// NONE | FOUND | VERIFIED | INVALID
+  contactStatus        String    @default("NONE")
+  emailVerifiedAt      DateTime? @db.Timestamptz(3)
+  emailCheck           String?
+  /// VALID | BOUNCED | COMPLAINED | UNSUBSCRIBED
+  emailStatus          String    @default("VALID")
+  sourceUrls           String[]  @default([])
+  /// DISCOVERED | CONTACT_FOUND | CONTACT_VERIFIED | CONTACTED | ENGAGED | REGISTERED | NOT_INTERESTED | DO_NOT_CONTACT
+  stage                String    @default("DISCOVERED")
+  needsReview          Boolean   @default(false)
+  reviewReason         String?
+  outreachStep         Int       @default(0)
+  lastContactedAt      DateTime? @db.Timestamptz(3)
+  lastInboundAt        DateTime? @db.Timestamptz(3)
+  outreachPaused       Boolean   @default(false)
+  doNotContact         Boolean   @default(false)
+  campaignCode         String?
+  /// Set when they register (tracked link, same email or same NPI).
+  providerId           String?   @unique
+  registeredAt         DateTime? @db.Timestamptz(3)
+  publicToken          String    @unique
+  notes                String?
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([stage])
+  @@index([professionCode, state])
+  @@index([researchStatus])
+  @@index([marketKey])
+  @@index([addressKey])
+}
+
+/// Acquisition costs other than AI (which is logged per call in AiUsage): search APIs, business data,
+/// email enrichment/verification/delivery, SMS, advertising, referral incentives. Entered by admins.
+model GrowthCost {
+  id           String   @id @default(cuid())
+  /// First day of the month the cost belongs to.
+  month        DateTime @db.Date
+  /// SEARCH_API | BUSINESS_DATA | EMAIL_ENRICHMENT | EMAIL_VERIFICATION | EMAIL_DELIVERY | SMS | ADVERTISING | AI_OTHER | REFERRAL_INCENTIVES | OTHER
+  category     String
+  /// PROVIDER | CLINIC | BOTH
+  audience     String   @default("BOTH")
+  amountCents  Int
+  campaignCode String?
+  notes        String?
+  createdById  String?
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([month])
 }

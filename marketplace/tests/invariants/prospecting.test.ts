@@ -159,8 +159,8 @@ describe("automatic prospecting: AI web research", () => {
     expect(await prisma.clinicProspect.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ outreachPaused: true });
   });
 
-  it("the Clinic Prospecting switch stops discovery and research", async () => {
-    await setting("growth.agents", { ...(await import("@cm/config")).defaultSettings()["growth.agents"], clinicProspecting: false });
+  it("the Clinic Prospecting switch (with Provider Discovery off too) stops the registry search and research", async () => {
+    await setting("growth.agents", { ...(await import("@cm/config")).defaultSettings()["growth.agents"], clinicProspecting: false, providerDiscovery: false });
     let called = false;
     setNppesProvider({ name: "fake", search: async () => { called = true; return []; } });
     expect(await growth.discoverySweep()).toMatchObject({ skipped: "agent off" });

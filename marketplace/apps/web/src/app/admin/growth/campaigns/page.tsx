@@ -15,15 +15,16 @@ export const dynamic = "force-dynamic";
 
 export default async function Campaigns() {
   const { actor } = await requireActor("admin");
-  const a = await growth.campaigns(actor);
+  const [a, schools] = await Promise.all([growth.campaigns(actor), growth.schoolFunnel()]);
   const base = env().APP_BASE_URL.replace(/\/$/, "");
   const qrs = Object.fromEntries(await Promise.all(a.byCampaign.filter((c) => c.campaign.audience === "PROVIDER").map(async ({ campaign: c }) => [c.code, await QRCode.toDataURL(`${base}/join/${c.code}?utm_source=qr`, { margin: 1, width: 600, color: { dark: "#282472", light: "#ffffff" } })])));
   return (
     <>
-      <PageHeader title="Campaigns & attribution" description="School and event links (/join/CODE) with print-ready QR codes. Success is measured to coverage-ready and first shift for providers, and to booked shifts for clinics. Sign-ups alone don't count." />
+      <PageHeader title="Campaigns" description="Provider and clinic campaigns: school and event links (/join/CODE) with print-ready QR codes, recruitment pushes in a metro (tag a market's prospects under Supply & Demand), and clinic campaigns. Success is measured to coverage-ready and first shift for providers, and to completed bookings for clinics. Sign-ups alone don't count." />
       <GrowthTabs current="/admin/growth/campaigns" />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {a.byCampaign.map(({ campaign: c, registered, coverageReady, firstShift, clinics, clinicsBooked }) => {
+        {a.byCampaign.map((m) => {
+          const { campaign: c, registered, coverageReady, firstShift, clinics, clinicsBooked } = m;
           const cac = c.audience === "PROVIDER" ? (coverageReady ? Math.round(c.spendCents / coverageReady) : null) : clinicsBooked ? Math.round(c.spendCents / clinicsBooked) : null;
           return (
             <Card key={c.id}>
@@ -37,7 +38,8 @@ export default async function Campaigns() {
                   <div><dt className="text-slate-500">{c.audience === "PROVIDER" ? "Registered" : "Prospects"}</dt><dd className="text-lg font-semibold tabular-nums">{c.audience === "PROVIDER" ? registered : clinics}</dd></div>
                   <div><dt className="text-slate-500">{c.audience === "PROVIDER" ? "Coverage-ready" : "Booked"}</dt><dd className="text-lg font-semibold tabular-nums">{c.audience === "PROVIDER" ? coverageReady : clinicsBooked}</dd></div>
                 </dl>
-                <p className="mt-2 text-xs text-slate-500">{c.audience === "PROVIDER" ? `${firstShift} first shift · ` : ""}spend {usd(c.spendCents)} · CAC {usd(cac)}</p>
+                <p className="mt-2 text-xs text-slate-500">{c.geography ? `${c.geography} · ` : ""}{c.professionCode} · {m.messagesSent} sent · {m.replies} replies</p>
+                <p className="text-xs text-slate-500">{c.audience === "PROVIDER" ? `${firstShift} first shift · ${m.providerShifts} completed shifts · ` : `${m.clinicAccounts} accounts · ${m.coverageRequests} requests · ${m.completedBookings} completed · `}spend {usd(c.spendCents)} · cost per conversion {usd(cac)}</p>
                 {qrs[c.code] ? (
                   <div className="mt-3 flex items-center gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -50,6 +52,16 @@ export default async function Campaigns() {
           );
         })}
       </div>
+
+      <Card className="mt-6">
+        <CardHeader title="School recruiting" description="Students and graduates by school, through to repeat provider. Connected to the student (pre-licensure) path: the school comes from their sign-up." />
+        <Table>
+          <thead><tr><Th>School</Th><Th className="text-right">Leads</Th><Th className="text-right">Graduates</Th><Th className="text-right">Licensed</Th><Th className="text-right">Malpractice</Th><Th className="text-right">Coverage-ready</Th><Th className="text-right">First shift</Th><Th className="text-right">Repeat</Th></tr></thead>
+          <tbody>
+            {schools.length ? schools.map((r) => <tr key={r.school}><Td>{r.school}</Td>{([r.leads, r.graduates, r.licensed, r.insured, r.coverageReady, r.firstShift, r.repeat]).map((n, i) => <Td key={i} className="text-right tabular-nums">{n}</Td>)}</tr>) : <tr><Td colSpan={8} className="text-slate-500">No providers with a school yet.</Td></tr>}
+          </tbody>
+        </Table>
+      </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card>
@@ -71,6 +83,8 @@ export default async function Campaigns() {
               <Field label="Audience"><Select name="audience"><option value="PROVIDER">Providers (/join link)</option><option value="CLINIC">Clinics</option></Select></Field>
               <Field label="Kind"><Select name="kind">{["school", "event", "ads", "social", "email", "referral", "other"].map((k) => <option key={k}>{k}</option>)}</Select></Field>
               <Field label="School name"><Input name="schoolName" /></Field>
+              <Field label="Geography"><Input name="geography" placeholder="Jacksonville, FL" /></Field>
+              <Field label="Profession code"><Input name="professionCode" defaultValue="DC" /></Field>
               <Field label="Spend to date ($)"><Input name="spend" inputMode="decimal" placeholder="0" /></Field>
               <Field label="Landing headline" className="sm:col-span-2"><Input name="headline" /></Field>
               <Field label="Landing text" className="sm:col-span-2"><Textarea name="body" /></Field>

@@ -90,6 +90,20 @@ export const DEFAULT_PROMPTS: Seed[] = [
     instructions: null,
     vars: ["first_name", "availability_url", "brand"],
   },
+  {
+    key: "PROVIDER_RECRUIT_FIRST_CONTACT", agent: "providerOutreach", purpose: "First recruitment email to a licensed chiropractor found in the public NPI registry.",
+    subject: "Coverage days for chiropractors in {{state_name}}",
+    body: "Hi {{greeting_name}},\n\nI'm reaching out because you're a licensed chiropractor in {{state_name}}. {{brand}} connects chiropractors with offices that need a doctor for a day or a few days, when the regular doctor is on vacation, at a seminar or out sick.\n\nYou choose the days you're available and how far you'll travel; offices book through the platform, and you're paid through it. There's no fee to join. To be matched, your license and malpractice insurance are verified first.\n\nIf that sounds useful, you can register here: {{signup_url}}\n\nThanks,\nThe {{brand}} team",
+    instructions: "Personalize lightly using only the facts given (city, market). Keep it short and respectful: they didn't ask to hear from us. No earnings figures, no number of shifts, no guarantees, no urgency tricks. 110-160 words.",
+    vars: ["greeting_name", "city", "state_name", "market_name", "profession", "signup_url", "site_url", "brand"],
+  },
+  {
+    key: "PROVIDER_RECRUIT_FOLLOW_UP", agent: "providerOutreach", purpose: "One follow-up to a licensed chiropractor who hasn't registered.",
+    subject: "Picking up coverage days",
+    body: "Hi {{greeting_name}},\n\nA quick follow-up to my last note. Chiropractors use {{brand}} to pick up coverage days around their own schedule, near home or wherever they're willing to travel.\n\nHow it works: {{site_url}}\nRegister: {{signup_url}}\n\nIf it's not for you, no problem; you won't hear from us again about it.\n\nThe {{brand}} team",
+    instructions: null,
+    vars: ["greeting_name", "city", "state_name", "market_name", "signup_url", "site_url", "brand"],
+  },
 ];
 
 const MARKETS = [

@@ -119,6 +119,42 @@ export function groupRegistryRecords(records: RegistryRecord[], state: string, p
   return out;
 }
 
+/** One licensed individual from the registry, for provider recruitment. */
+export interface ProviderCandidate {
+  npi: string;
+  firstName: string | null;
+  lastName: string | null;
+  credential: string | null;
+  displayName: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  addressKey: string;
+  /** Individuals of this profession at the same practice address in this batch. */
+  providersAtPractice: number;
+}
+
+/** Individual registry records of one profession practising in `state` (organizations and other states skipped). */
+export function registryIndividuals(records: RegistryRecord[], state: string, profile: RegistryProfile = CHIROPRACTIC_PROFILE): ProviderCandidate[] {
+  const people = [...new Map(records.filter((r) => r.kind === "individual" && matchesProfile(r, profile) && r.location && r.location.state.toUpperCase() === state.toUpperCase() && r.location.line1.trim()).map((r) => [r.npi, r])).values()];
+  const perAddress = new Map<string, number>();
+  for (const r of people) {
+    const k = addressKey(r.location!.line1, r.location!.zip);
+    perAddress.set(k, (perAddress.get(k) ?? 0) + 1);
+  }
+  return people.map((r) => {
+    const loc = r.location!;
+    const key = addressKey(loc.line1, loc.zip);
+    const name = titleCase(`${r.firstName ?? ""} ${r.lastName ?? ""}`);
+    return {
+      npi: r.npi, firstName: r.firstName ? titleCase(r.firstName) : null, lastName: r.lastName ? titleCase(r.lastName) : null, credential: r.credential?.trim() || null,
+      displayName: `${name}${r.credential?.trim() ? `, ${r.credential.trim()}` : ""}`, address: [loc.line1, loc.line2].filter(Boolean).join(", "), city: titleCase(loc.city), state: loc.state.toUpperCase(),
+      zip: loc.zip.replace(/\D/g, "").slice(0, 5), addressKey: key, providersAtPractice: perAddress.get(key) ?? 1,
+    };
+  });
+}
+
 const GENERIC_LOCAL = /^(info|office|contact|frontdesk|front\.desk|front|hello|admin|appointments?|appts|reception|team|care|clinic|chiro|chiropractic|scheduling|schedule|staff|mail|inquiries|wellness|help|billing)\d*$/;
 const NEVER = /^(no-?reply|donotreply|postmaster|webmaster|abuse|sentry|privacy|example)/;
 const PLATFORM_DOMAINS = /(wixpress\.com|sentry\.io|squarespace\.com|godaddy\.com|example\.(com|org)|domain\.com)$/;

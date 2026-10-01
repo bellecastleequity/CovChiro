@@ -12,3 +12,6 @@ export * from "./admin";
 export * from "./public";
 export { activeTargets, primaryTarget, marketplaceOpen, outreachAllowed, providerTargetFrom, promptReadiness, expansionOverview, setTargetStatus, saveTargetCities, saveGrowthProfession, createStarterDrafts, TARGET_STATUSES, type TargetStatus } from "./expansion";
 export { STATE_CITIES } from "./cities";
+export { upsertProviderProspects, discoverContact, verifyContact, contactDiscoverySweep, providerOutreachSweep, handleProviderProspectReply, onProviderProspectSignup, linkProviderProspects, trackProviderProspect, PROVIDER_OUTREACH_SEQUENCE, advanceProviderOutreach } from "./providers";
+export { marketSupply, marketSupplySweep, type MarketRow } from "./supply";
+export * from "./command";

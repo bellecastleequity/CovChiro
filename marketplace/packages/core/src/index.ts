@@ -18,3 +18,4 @@ export * from "./prelicensure";
 export * from "./growth";
 export * from "./prospecting";
 export * from "./blog";
+export * from "./providerAcquisition";
