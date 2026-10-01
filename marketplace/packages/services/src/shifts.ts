@@ -25,7 +25,8 @@ import { assertProviderEligibleForShift, eligibilityOptions, evaluateProviderFor
 import { logMatchRun, rankEvaluated } from "./matching";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
 import { depositPaidCents, refundAssignment } from "./payments";
-import { quoteShift } from "./pricing";
+import { quoteShift, validatePromoForClinic } from "./pricing";
+import { referralCreditFor } from "./referrals";
 
 // ======================================================================
 // Posting (clinic)
@@ -134,7 +135,7 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT) {
   const orgId = requireClinic(actor);
   const input = ShiftInput.parse(raw);
   await validateShiftInput(prisma, orgId, input, false);
-  const q = await quoteShift(prisma, { ...input, promoCode: input.promoCode });
+  const q = await quoteShift(prisma, { ...input, promoCode: input.promoCode?.trim() || (await autoCredit(prisma, orgId)) });
   // Estimated travel range from currently eligible providers (clinic never sees provider pay).
   let travel: { minCents: number; maxCents: number; candidates: number } | null = null;
   return {
@@ -148,6 +149,18 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT) {
     subtotalCents: q.base.clinicPriceCents - (q.promo?.discountCents ?? 0),
     travel,
   };
+}
+
+/** An unused referral credit the clinic can use now (applied when no other code is entered). */
+async function autoCredit(db: Db, orgId: string): Promise<string | null> {
+  const code = await referralCreditFor(orgId);
+  if (!code) return null;
+  try {
+    await validatePromoForClinic(db, code, orgId);
+    return code;
+  } catch {
+    return null;
+  }
 }
 
 /** Create (and optionally post) a shift. Price comes only from the rate engine (INV-7). */
@@ -165,7 +178,7 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
       throw new DomainError("FORBIDDEN", "Please sign the current Clinic Platform Agreement in Settings before posting shifts.");
     }
     const { supervisionRequired } = await validateShiftInput(db, orgId, input, opts.post);
-    const q = await quoteShift(db, input);
+    const q = await quoteShift(db, { ...input, promoCode: input.promoCode?.trim() || (await autoCredit(db, orgId)) });
     const shift = await db.shift.create({
       data: {
         locationId: input.locationId,
@@ -242,7 +255,7 @@ export async function updateDraftShift(actor: Actor, shiftId: string, raw: Shift
       throw new DomainError("VALIDATION", "This day is part of a multi-day booking; its location can't be changed.");
     }
     const { supervisionRequired } = await validateShiftInput(db, orgId, input, false);
-    const q = await quoteShift(db, input);
+    const q = await quoteShift(db, { ...input, promoCode: input.promoCode?.trim() || (await autoCredit(db, orgId)) });
     await db.shift.update({
       where: { id: shiftId },
       data: {

@@ -74,6 +74,7 @@ export const signupAction = formAction(async (fd) => {
       // Student details come from the student path (studentFromForm) above.
       campaign: str(fd, "campaign") || null,
       prospectToken: str(fd, "c") || (await cookies()).get("cm_pt")?.value || null,
+      referralCode: str(fd, "ref") || (await cookies()).get("cm_ref")?.value || null,
     },
     {
       ip: (await ip()) ?? "unknown",

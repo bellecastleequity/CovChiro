@@ -1,3 +1,4 @@
+import { GroundFloor } from "@/components/referrals/refer-page";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, Inbox, ShieldCheck, Wallet, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
@@ -13,8 +14,10 @@ import { requireActor } from "@/lib/session";
 import { CanTake } from "./can-take";
 import { onCallToggleAction } from "./actions";
 
-export default async function ProviderHome() {
+export default async function ProviderHome({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
   const { actor, user } = await requireActor("provider");
+  const { welcome } = await searchParams;
+  const rs = await getSettings();
   const [{ provider, checklist, canTake }, earnings, upcoming, offers, apps, settings] = await Promise.all([
     providerProfile(actor),
     earningsFor(actor.providerId!),
@@ -51,6 +54,7 @@ export default async function ProviderHome() {
   return (
     <>
       <PageHeader eyebrow={`Hi, ${firstName(user.name)}`} title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
+      {rs["referrals.enabled"] ? <GroundFloor kind="provider" referrerRewardCents={rs["referrals.referrerRewardCents"]} friendRewardCents={rs["referrals.refereeRewardCents"]} justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
       {readiness ? (
         <ReadinessCard
           summary={readiness}

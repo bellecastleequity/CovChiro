@@ -3,6 +3,7 @@ import { hash, verify } from "@node-rs/argon2";
 import { authenticator } from "otplib";
 import { z } from "zod";
 import { assessSender, checkHuman, type FormGuard } from "./spam";
+import { recordReferralSignup } from "./referrals";
 import { brand, env } from "@cm/config";
 import { DomainError } from "@cm/core";
 import { prisma, seedBase, type Prisma, type User } from "@cm/db";
@@ -55,6 +56,8 @@ export const SignupInput = z.object({
   graduationDate: z.string().trim().max(10).optional().nullable(),
   isStudent: z.boolean().optional(),
   prospectToken: z.string().trim().max(60).optional().nullable(),
+  /** Referral code from /r/<code> (link or cookie). */
+  referralCode: z.string().trim().max(40).optional().nullable(),
 });
 
 export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: string; visitorId?: string | null; guard?: FormGuard } = {}) {
@@ -112,6 +115,7 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
   await audit(prisma, { userId: user.id, role: user.role }, "user.signup", "User", user.id, null, { role: user.role });
   await sendVerificationEmail(user);
   await onUserSignup(user.id, user.email);
+  if (input.referralCode) await recordReferralSignup(user.id, input.referralCode);
   try {
     // The student path (input.student) is the source of truth; Growth only records attribution from it.
     if (providerId) {

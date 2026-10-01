@@ -38,11 +38,46 @@ model User {
   disabledAt      DateTime? @db.Timestamptz(3)
   createdAt       DateTime  @default(now()) @db.Timestamptz(3)
   lastLoginAt     DateTime? @db.Timestamptz(3)
+  /// Personal referral code (/r/<code>), made the first time it's needed.
+  referralCode    String?   @unique @db.Citext
 
   provider      Provider?
   clinicMembers ClinicMember[]
   sessions      Session[]
   notifications Notification[]
+  referralsMade Referral[]     @relation("ReferralsMade")
+  referredBy    Referral?      @relation("ReferredBy")
+}
+
+/// One per invited account: who invited them, and the two-sided reward once their first shift is done.
+model Referral {
+  id                     String    @id @default(cuid())
+  code                   String
+  referrerUserId         String
+  referrer               User      @relation("ReferralsMade", fields: [referrerUserId], references: [id], onDelete: Cascade)
+  refereeUserId          String    @unique
+  referee                User      @relation("ReferredBy", fields: [refereeUserId], references: [id], onDelete: Cascade)
+  /// PENDING | FLAGGED | REWARDED | REJECTED | EXPIRED
+  status                 String    @default("PENDING")
+  flagReasons            String[]  @default([])
+  qualifyingAssignmentId String?
+  qualifiedAt            DateTime? @db.Timestamptz(3)
+  rewardedAt             DateTime? @db.Timestamptz(3)
+  referrerRewardCents    Int       @default(0)
+  refereeRewardCents     Int       @default(0)
+  /// Provider rewards: Payout ids. Clinic rewards: one-time credit codes (PromoCode).
+  referrerPayoutId       String?
+  refereePayoutId        String?
+  referrerCreditCode     String?
+  refereeCreditCode      String?
+  decidedById            String?
+  note                   String?
+  expiresAt              DateTime  @db.Timestamptz(3)
+  createdAt              DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([status])
+  @@index([referrerUserId])
 }
 
 model Session {

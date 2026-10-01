@@ -155,6 +155,15 @@ export const SETTINGS = {
     flag: null,
   }),
 
+  // ---------- referrals ----------
+  "referrals.enabled": def({ group: "Referrals", label: "Referral program on", help: "Off hides the Refer & earn pages and stops new rewards; earned rewards still pay.", schema: z.boolean(), default: true, flag: null }),
+  "referrals.referrerRewardCents": def({ group: "Referrals", label: "Reward to the person who refers (cents)", help: "Providers get it as pay through Stripe; clinics as a credit toward their next shift.", schema: cents, default: 2000, flag: "OWNER_DECISION" }),
+  "referrals.refereeRewardCents": def({ group: "Referrals", label: "Bonus to the invited friend (cents)", help: "Paid the same way once their first shift is done. 0 = referrer only.", schema: cents, default: 1000, flag: "OWNER_DECISION" }),
+  "referrals.holdDays": def({ group: "Referrals", label: "Days after the first shift before rewards go out", help: "Gives time for disputes and refunds.", schema: z.number().int().min(0).max(60), default: 3, flag: null }),
+  "referrals.autoPayClean": def({ group: "Referrals", label: "Pay clean referrals automatically", help: "Off = every reward waits for your approval in Admin → Referrals. Flagged ones always wait.", schema: z.boolean(), default: true, flag: "OWNER_DECISION" }),
+  "referrals.expiryMonths": def({ group: "Referrals", label: "Months an invitation stays open for its first shift", help: "Long enough for students to graduate and get licensed.", schema: z.number().int().min(1).max(60), default: 18, flag: null }),
+  "referrals.creditExpiryDays": def({ group: "Referrals", label: "Days a clinic's referral credit stays usable", schema: z.number().int().min(30).max(1095), default: 365, flag: null }),
+
   // ---------- spam (public forms) ----------
   "spam.enabled": def({ group: "Spam", label: "Spam filter on public forms", help: "Ask a question, contact / offer / waitlist forms and signups. Off = everything goes through as before (the human check still runs when Turnstile keys are set).", schema: z.boolean(), default: true, flag: null }),
   "spam.threshold": def({ group: "Spam", label: "Spam score that files a message as spam (0-100)", help: "Lower catches more; raise it if real people land in Spam. Signups are only flagged in your new-signup email, never blocked.", schema: z.number().int().min(10).max(100), default: 50, flag: null }),

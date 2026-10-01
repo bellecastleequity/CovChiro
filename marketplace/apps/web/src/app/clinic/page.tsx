@@ -1,7 +1,8 @@
+import { GroundFloor } from "@/components/referrals/refer-page";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, PlusCircle, Users } from "lucide-react";
 import { prisma } from "@cm/db";
-import { clinicProfile } from "@cm/services";
+import { clinicProfile, getSettings } from "@cm/services";
 import { StatusBadge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -11,7 +12,8 @@ import { requireActor } from "@/lib/session";
 
 export default async function ClinicHome({ searchParams }: { searchParams: Promise<{ code?: string; welcome?: string }> }) {
   const { actor, user } = await requireActor("clinic");
-  const { code } = await searchParams;
+  const { code, welcome } = await searchParams;
+  const rs = await getSettings();
   const { org, checklist } = await clinicProfile(actor);
   const now = new Date();
   const [open, upcoming, spent] = await Promise.all([
@@ -28,6 +30,7 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
   return (
     <>
       <PageHeader eyebrow={org.displayName} title={`Welcome${org.status === "ONBOARDING" ? "" : " back"}, ${firstName(user.name)}`} actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
+      {rs["referrals.enabled"] ? <GroundFloor kind="clinic" referrerRewardCents={rs["referrals.referrerRewardCents"]} friendRewardCents={rs["referrals.refereeRewardCents"]} justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
       {code ? <Alert tone="success" className="mb-6" title={`Your code ${code} is ready`}>Enter it on the pricing step when you post your first shift.</Alert> : null}
       {needsSetup ? (
         <Card className="mb-6">

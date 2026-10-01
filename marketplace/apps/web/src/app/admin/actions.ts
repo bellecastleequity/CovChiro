@@ -8,7 +8,7 @@ import {
   schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold, prelicensure,
+  reviewLodgingReceipt, setHold, prelicensure, referrals,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -287,6 +287,19 @@ export const leadSpamAction = formAction(async (fd) => {
   rv("/admin/leads");
   if (!isSpam && r.leadId && r.leadId !== str(fd, "leadId")) redirect(`/admin/leads/${r.leadId}`);
   return isSpam ? "Marked as spam. No more emails go to this lead." : "Not spam: restored as a normal lead.";
+});
+
+export const referralDecisionAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const id = str(fd, "id");
+  if (str(fd, "decision") === "approve") {
+    await referrals.approveReferral(actor, id);
+    rv("/admin/referrals");
+    return "Approved: rewards issued to both sides.";
+  }
+  await referrals.rejectReferral(actor, id, str(fd, "note"));
+  rv("/admin/referrals");
+  return "Rejected. No rewards will be issued.";
 });
 
 export const deleteLeadAction = formAction(async (fd) => {
