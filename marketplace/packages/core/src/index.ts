@@ -15,3 +15,4 @@ export * from "./supervision";
 export * from "./badges";
 export * from "./dispatch";
 export * from "./growth";
+export * from "./prospecting";

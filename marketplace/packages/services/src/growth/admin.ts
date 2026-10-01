@@ -6,7 +6,7 @@ import { audit, clock, getSettings, invalidateSettings, requireAdmin, type Actor
 import { absoluteUrl } from "../notify";
 import { updateSetting } from "../admin";
 import { getEligibleProviders } from "../eligibility";
-import { AGENTS, ai, aiRules, aiSpendCents, logAgent, newToken, normEmail, recipient, sendGrowthEmail, suppress, type AgentKey, type GrowthEntityType } from "./engine";
+import { AGENT_AUDIENCE, AGENTS, ai, aiRules, aiSpendCents, logAgent, newToken, normEmail, recipient, sendGrowthEmail, suppress, type AgentKey, type Audience, type GrowthEntityType } from "./engine";
 import { ensureGrowthDefaults } from "./defaults";
 import { advanceOutreach, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
 import { attribution, growthFunnels, growthKpis, liquidity, marketForPoint } from "./analytics";
@@ -32,10 +32,10 @@ export async function overview(actor: Actor) {
   const blockReasons = await prisma.communication.groupBy({ by: ["blockReason"], where: { status: "BLOCKED", createdAt: { gte: new Date(+now - 7 * 86_400_000) } }, _count: { _all: true } });
   return {
     settings: {
-      paused: s["growth.pausedOutbound"], outreachMode: s["growth.outreachMode"], postalAddress: s["growth.postalAddress"], aiProvider: s["growth.aiProvider"],
+      paused: s["growth.pausedOutbound"], providerMarketing: s["growth.providerMarketing"], clinicMarketing: s["growth.clinicMarketing"], outreachMode: s["growth.outreachMode"], postalAddress: s["growth.postalAddress"], aiProvider: s["growth.aiProvider"],
       dailyBudgetCents: s["growth.aiDailyBudgetCents"], monthlyBudgetCents: s["growth.aiMonthlyBudgetCents"],
     },
-    agents: (Object.keys(AGENTS) as AgentKey[]).map((k) => ({ key: k, label: AGENTS[k][0], description: AGENTS[k][1], on: !!s["growth.agents"][k] })),
+    agents: (Object.keys(AGENTS) as AgentKey[]).map((k) => ({ key: k, label: AGENTS[k][0], description: AGENTS[k][1], on: !!s["growth.agents"][k], audience: AGENT_AUDIENCE[k] ?? null })),
     counts: { pendingApprovals, openEscalations, highIntent, sentToday, blockedToday },
     aiSpend: { todayCents: await aiSpendCents(dayStart), monthCents: await aiSpendCents(monthStart), usage: usage.map((u) => ({ agent: u.agent, task: u.task, model: u.model, calls: u._count._all, inputTokens: u._sum.inputTokens ?? 0, outputTokens: u._sum.outputTokens ?? 0, costCents: (u._sum.costMicroUsd ?? 0) / 10_000 })) },
     blockReasons: blockReasons.map((b) => ({ reason: b.blockReason ?? "?", n: b._count._all })),
@@ -48,6 +48,13 @@ export async function overview(actor: Actor) {
 export async function setPaused(actor: Actor, paused: boolean) {
   await updateSetting(actor, "growth.pausedOutbound", paused);
   await logAgent("admin", paused ? "outbound_paused" : "outbound_resumed", { humanOverrideBy: actor.userId });
+}
+
+/** Provider and clinic marketing switch on/off independently (e.g. build provider supply first). */
+export async function setMarketing(actor: Actor, audience: Audience, on: boolean) {
+  requireAdmin(actor);
+  await updateSetting(actor, audience === "provider" ? "growth.providerMarketing" : "growth.clinicMarketing", on);
+  await logAgent("admin", `${audience}_marketing_${on ? "on" : "off"}`, { humanOverrideBy: actor.userId });
 }
 
 export async function setAgent(actor: Actor, key: AgentKey, on: boolean) {

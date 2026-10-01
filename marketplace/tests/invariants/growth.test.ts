@@ -17,12 +17,15 @@ const sentTo = (email: string) => devOutbox.filter((m) => m.to === email && m.ch
 beforeAll(async () => {
   await growth.ensureGrowthDefaults();
   await setting("growth.postalAddress", "1 Main St, Orlando, FL 32801");
+  await setting("growth.clinicMarketing", true);
 });
 
 afterEach(async () => {
   setClock(null);
   setLlmProvider(null);
   await setting("growth.pausedOutbound", false);
+  await setting("growth.providerMarketing", true);
+  await setting("growth.clinicMarketing", true);
   await setting("growth.outreachMode", "review");
   await setting("growth.agents", { ...(await import("@cm/config")).defaultSettings()["growth.agents"] });
 });
@@ -79,6 +82,35 @@ describe("provider pipeline: pre-licensure → credentials → coverage-ready", 
     await setting("growth.pausedOutbound", false);
     await growth.growthTick();
     expect((await comms(p.id)).map((x) => x.status)).toEqual(["SENT"]);
+  });
+});
+
+describe("provider and clinic marketing switch independently", () => {
+  it("provider marketing first: providers hear from us, clinics wait until clinic marketing is on", async () => {
+    await setting("growth.clinicMarketing", false);
+    await setting("growth.agents", { ...(await import("@cm/config")).defaultSettings()["growth.agents"], clinicOutreach: true });
+    const p = await makeProvider({ licenses: [], malpractice: null, professions: [{ code: "DC", status: "ONBOARDING" }], status: "ONBOARDING" });
+    const pr = await growth.saveProspect(admin, { clinicName: "Supply First Chiro", email: `sf-${uid()}@clinic.dev`, city: "Tampa" });
+    await growth.growthTick();
+    expect((await comms(p.id)).map((x) => x.promptKey)).toEqual(["PROVIDER_WELCOME"]);
+    expect(await comms(pr.id)).toEqual([]);
+    // Even a direct automated send to a clinic-side recipient waits (engine gate, not just the sweeps).
+    const r = (await growth.recipient("PROSPECT", pr.id))!;
+    await expect(growth.sendGrowthEmail(r, { subject: "x", body: "y" }, { agent: "clinicOutreach", purpose: "COMMERCIAL" })).rejects.toThrow(/audience_marketing_off/);
+
+    await setting("growth.clinicMarketing", true);
+    await growth.growthTick();
+    expect((await comms(pr.id)).map((x) => x.status)).toEqual(["PENDING_APPROVAL"]);
+  });
+
+  it("clinic marketing alone: provider follow-ups wait", async () => {
+    await setting("growth.providerMarketing", false);
+    const p = await makeProvider({ licenses: [], malpractice: null, professions: [{ code: "DC", status: "ONBOARDING" }], status: "ONBOARDING" });
+    await growth.growthTick();
+    expect(await comms(p.id)).toEqual([]);
+    await setting("growth.providerMarketing", true);
+    await growth.growthTick();
+    expect((await comms(p.id)).map((x) => x.promptKey)).toEqual(["PROVIDER_WELCOME"]);
   });
 });
 

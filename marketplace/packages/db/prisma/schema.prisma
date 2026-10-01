@@ -1551,60 +1551,73 @@ enum IntentCategory {
 /// Clinic prospect CRM: one row per practice, public business information only.
 /// clinicOrgId links it once the practice has an account.
 model ClinicProspect {
-  id                String         @id @default(cuid())
-  clinicName        String
-  ownerName         String?
-  doctors           String[]       @default([])
-  email             String?        @db.Citext
-  phone             String?
-  website           String?
-  address           String?
-  city              String?
-  county            String?
-  state             String         @default("FL") @db.Char(2)
-  zip               String?
-  lat               Float?
-  lng               Float?
-  marketKey         String?
-  locationsCount    Int?
-  providerCount     Int?
-  practiceType      String?
+  id                 String         @id @default(cuid())
+  clinicName         String
+  ownerName          String?
+  doctors            String[]       @default([])
+  email              String?        @db.Citext
+  phone              String?
+  website            String?
+  address            String?
+  city               String?
+  county             String?
+  state              String         @default("FL") @db.Char(2)
+  zip                String?
+  lat                Float?
+  lng                Float?
+  marketKey          String?
+  locationsCount     Int?
+  providerCount      Int?
+  practiceType       String?
   /// independent | group | franchise | unknown
-  ownership         String?
-  multidisciplinary Boolean?
-  hasContactForm    Boolean?
-  socialUrls        String[]       @default([])
-  source            String?
-  collectedAt       DateTime?      @db.Timestamptz(3)
-  verifiedAt        DateTime?      @db.Timestamptz(3)
+  ownership          String?
+  multidisciplinary  Boolean?
+  hasContactForm     Boolean?
+  socialUrls         String[]       @default([])
+  source             String?
+  collectedAt        DateTime?      @db.Timestamptz(3)
+  verifiedAt         DateTime?      @db.Timestamptz(3)
   /// solo | multi_dc | multi_location | franchise | multidisciplinary | high_volume | specialty | unknown
-  segment           String         @default("unknown")
-  segmentConfidence Float?
+  segment            String         @default("unknown")
+  segmentConfidence  Float?
   /// NONE | RULE | AI | MANUAL — an AI guess is never shown as fact.
-  segmentBasis      String         @default("NONE")
-  segmentReason     String?
-  stage             ProspectStage  @default(PROSPECT)
-  intentScore       Int            @default(0)
-  intentCategory    IntentCategory @default(COLD)
-  clinicOrgId       String?        @unique
+  segmentBasis       String         @default("NONE")
+  segmentReason      String?
+  stage              ProspectStage  @default(PROSPECT)
+  intentScore        Int            @default(0)
+  intentCategory     IntentCategory @default(COLD)
+  clinicOrgId        String?        @unique
   /// UNKNOWN | VALID | BOUNCED | COMPLAINED | UNSUBSCRIBED
-  emailStatus       String         @default("UNKNOWN")
-  smsConsentAt      DateTime?      @db.Timestamptz(3)
-  doNotContact      Boolean        @default(false)
-  outreachStep      Int            @default(0)
-  outreachPaused    Boolean        @default(false)
-  lastContactedAt   DateTime?      @db.Timestamptz(3)
-  lastInboundAt     DateTime?      @db.Timestamptz(3)
-  objections        String[]       @default([])
-  aiSummary         String?
-  notes             String?
-  campaignCode      String?
+  emailStatus        String         @default("UNKNOWN")
+  smsConsentAt       DateTime?      @db.Timestamptz(3)
+  doNotContact       Boolean        @default(false)
+  outreachStep       Int            @default(0)
+  outreachPaused     Boolean        @default(false)
+  lastContactedAt    DateTime?      @db.Timestamptz(3)
+  lastInboundAt      DateTime?      @db.Timestamptz(3)
+  objections         String[]       @default([])
+  aiSummary          String?
+  notes              String?
+  campaignCode       String?
+  /// Automatic prospecting: normalized practice address (dedupe) and the NPPES NPIs seen there.
+  addressKey         String?        @unique
+  npis               String[]       @default([])
+  /// The name is a doctor's name from the registry; research may replace it with the practice name.
+  nameFromRegistry   Boolean        @default(false)
+  /// PENDING | DONE | NOT_FOUND | FAILED | SKIPPED
+  researchStatus     String         @default("PENDING")
+  researchAttempts   Int            @default(0)
+  researchedAt       DateTime?      @db.Timestamptz(3)
+  researchConfidence Float?
+  /// Pages the AI research cited for this record.
+  sourceUrls         String[]       @default([])
   /// Unsubscribe and tracked-link token.
-  publicToken       String         @unique
-  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+  publicToken        String         @unique
+  createdAt          DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(3)
 
   @@index([stage])
+  @@index([researchStatus])
   @@index([marketKey])
   @@index([intentScore])
   @@index([email])

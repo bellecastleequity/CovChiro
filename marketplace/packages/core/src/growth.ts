@@ -190,6 +190,8 @@ export interface ContactContext {
   /** false only for a message a person wrote or approved just now. */
   automated: boolean;
   pausedOutbound: boolean;
+  /** This audience's marketing switch is off (provider marketing or clinic marketing). */
+  audienceOff?: boolean;
   doNotContact: boolean;
   address: string;
   /** UNKNOWN | VALID | BOUNCED | COMPLAINED | UNSUBSCRIBED */
@@ -208,11 +210,12 @@ export interface ContactContext {
 }
 
 /** Reasons that clear on their own; the send waits rather than being dropped. */
-export const TRANSIENT_BLOCKS = new Set(["automation_paused", "postal_address_missing", "frequency_min_interval", "frequency_weekly_cap", "daily_outreach_cap", "sms_quiet_hours"]);
+export const TRANSIENT_BLOCKS = new Set(["automation_paused", "audience_marketing_off", "postal_address_missing", "frequency_min_interval", "frequency_weekly_cap", "daily_outreach_cap", "sms_quiet_hours"]);
 
 export function contactDecision(c: ContactContext): { ok: boolean; reason: string | null; transient: boolean } {
   const no = (reason: string) => ({ ok: false, reason, transient: TRANSIENT_BLOCKS.has(reason) });
   if (c.automated && c.pausedOutbound) return no("automation_paused");
+  if (c.automated && c.audienceOff) return no("audience_marketing_off");
   if (c.doNotContact) return no("do_not_contact");
   if (!c.address.trim()) return no("no_address");
   const hardSuppression = c.suppression !== null && ["BOUNCE", "COMPLAINT", "DO_NOT_CONTACT", "SMS_STOP"].includes(c.suppression);

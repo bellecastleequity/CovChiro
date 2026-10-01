@@ -5,7 +5,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Alert, PageHeader, Stat, Table, Td, Th } from "@/components/ui/misc";
 import { dateTimeLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { agentAction, pauseAction, runNowAction } from "./actions";
+import { agentAction, marketingAction, pauseAction, runNowAction } from "./actions";
 import { FunnelBars, GrowthTabs, pctLabel, usd } from "./ui";
 
 export const metadata = { title: "Growth control center" };
@@ -37,6 +37,28 @@ export default async function GrowthOverview() {
         {stale ? <Alert tone="warning" title="Growth agents haven't run recently">They run inside the worker / once-a-minute cron (job “growthAgents”, every 15 minutes). Last run: {o.lastTick ? dateTimeLabel(o.lastTick.at) : "never"}.</Alert> : null}
       </div>
 
+      <Card className="mb-6">
+        <CardHeader title="Marketing switches" description="Provider and clinic marketing run independently. Build provider supply first, then turn on clinic marketing once there are enough coverage-ready providers to fill the shifts clinics post." />
+        <div className="grid divide-y divide-slate-100 md:grid-cols-2 md:divide-x md:divide-y-0">
+          {([
+            ["provider", "Provider marketing", o.settings.providerMarketing, "Welcome, state-aware credential follow-ups and activation emails to providers.", `${k.supply.coverageReadyProviders} coverage-ready of ${k.supply.registeredProviders} registered`],
+            ["clinic", "Clinic marketing", o.settings.clinicMarketing, "Prospect outreach (with Clinic Outreach on), onboarding nudges and unposted-request follow-ups. Prospect discovery and research keep building the list while this is off.", `${k.demand.clinicProspects} clinic prospects · ${k.supply.coverageReadyProviders} coverage-ready providers`],
+          ] as const).map(([audience, label, on, help, hint]) => (
+            <ActionForm key={audience} action={marketingAction} successMessage={false} className="flex items-start justify-between gap-4 px-5 py-4"
+              confirm={on ? `Turn off ${label.toLowerCase()}? Queued automated messages wait until it's back on.` : audience === "clinic" ? `Turn on clinic marketing? You have ${k.supply.coverageReadyProviders} coverage-ready providers.` : undefined}>
+              <input type="hidden" name="audience" value={audience} />
+              <input type="hidden" name="on" value={on ? "false" : "true"} />
+              <div>
+                <div className="text-sm font-medium">{label} {on ? <Badge tone="green">On</Badge> : <Badge>Off</Badge>}</div>
+                <div className="text-xs text-slate-500">{help}</div>
+                <div className="mt-1 text-xs text-slate-400">{hint}</div>
+              </div>
+              <SubmitButton size="sm" variant={on ? "outline" : "primary"}>{on ? "Turn off" : "Turn on"}</SubmitButton>
+            </ActionForm>
+          ))}
+        </div>
+      </Card>
+
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Stat label="Pending approvals" value={o.counts.pendingApprovals} tone={o.counts.pendingApprovals ? "amber" : "default"} />
         <Stat label="Open escalations" value={o.counts.openEscalations} tone={o.counts.openEscalations ? "red" : "default"} />
@@ -59,7 +81,7 @@ export default async function GrowthOverview() {
               <input type="hidden" name="key" value={a.key} />
               <input type="hidden" name="on" value={a.on ? "false" : "true"} />
               <div>
-                <div className="text-sm font-medium">{a.label} {a.on ? <Badge tone="green">On</Badge> : <Badge>Off</Badge>}{a.key === "clinicOutreach" ? <Badge tone="brand" className="ml-1">{o.settings.outreachMode} mode</Badge> : null}</div>
+                <div className="text-sm font-medium">{a.label} {a.on ? <Badge tone="green">On</Badge> : <Badge>Off</Badge>}{a.audience ? <Badge className="ml-1">{a.audience} marketing{(a.audience === "provider" ? o.settings.providerMarketing : o.settings.clinicMarketing) ? "" : " (off)"}</Badge> : null}{a.key === "clinicOutreach" ? <Badge tone="brand" className="ml-1">{o.settings.outreachMode} mode</Badge> : null}</div>
                 <div className="text-xs text-slate-500">{a.description}</div>
               </div>
               <SubmitButton size="sm" variant="outline">{a.on ? "Turn off" : "Turn on"}</SubmitButton>

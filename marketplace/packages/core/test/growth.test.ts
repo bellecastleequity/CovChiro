@@ -151,6 +151,7 @@ describe("contact decision (spec §11): software, not AI, decides", () => {
   it("allows a clean commercial email", () => expect(contactDecision(ctx())).toEqual({ ok: true, reason: null, transient: false }));
   it.each([
     [{ pausedOutbound: true }, "automation_paused", true],
+    [{ audienceOff: true }, "audience_marketing_off", true],
     [{ doNotContact: true }, "do_not_contact", false],
     [{ address: "" }, "no_address", false],
     [{ emailStatus: "BOUNCED" }, "email_bounced", false],

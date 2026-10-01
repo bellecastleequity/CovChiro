@@ -35,6 +35,19 @@ export const AGENTS = {
 } as const;
 export type AgentKey = keyof typeof AGENTS;
 
+/** Which marketing switch covers each audience. */
+export type Audience = "provider" | "clinic";
+export const audienceOf = (type: GrowthEntityType): Audience => (type === "PROVIDER" ? "provider" : "clinic");
+/** Agents whose messages the marketing switches cover (the rest are internal or answer people who wrote in). */
+export const AGENT_AUDIENCE: Partial<Record<AgentKey, Audience>> = {
+  providerRecruitment: "provider", providerCredentialing: "provider", providerActivation: "provider",
+  clinicOutreach: "clinic", clinicOnboarding: "clinic", signupRecovery: "clinic",
+};
+export async function marketingOn(audience: Audience) {
+  const s = await getSettings();
+  return audience === "provider" ? s["growth.providerMarketing"] : s["growth.clinicMarketing"];
+}
+
 export async function agentOn(agent: AgentKey) {
   const s = await getSettings();
   return s["growth.agents"][agent] ?? false;
@@ -210,7 +223,8 @@ export async function checkContact(r: Recipient, channel: Channel, purpose: Purp
   const local = DateTime.fromJSDate(now, { zone: r.timeZone });
   const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   return contactDecision({
-    channel, purpose, automated, pausedOutbound: s["growth.pausedOutbound"], doNotContact: r.doNotContact, address,
+    channel, purpose, automated, pausedOutbound: s["growth.pausedOutbound"],
+    audienceOff: !(r.type === "PROVIDER" ? s["growth.providerMarketing"] : s["growth.clinicMarketing"]), doNotContact: r.doNotContact, address,
     emailStatus: r.emailStatus, suppression, smsConsent: r.smsConsent, postalAddress: s["growth.postalAddress"],
     lastAutomatedAt: last?.createdAt ?? null, commercialLast7Days: week, commercialToday: today, localMinutes: local.hour * 60 + local.minute,
     limits: {

@@ -20,6 +20,15 @@ export const pauseAction = formAction(async (fd) => {
   return paused ? "Outbound automation paused. Nothing automated will be sent until you resume." : "Outbound automation resumed.";
 });
 
+export const marketingAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const audience = str(fd, "audience") === "clinic" ? "clinic" : "provider";
+  const on = str(fd, "on") === "true";
+  await growth.setMarketing(actor, audience, on);
+  rv();
+  return `${audience === "clinic" ? "Clinic" : "Provider"} marketing ${on ? "on" : "off"}.`;
+});
+
 export const agentAction = formAction(async (fd) => {
   const { actor } = await me();
   const on = str(fd, "on") === "true";

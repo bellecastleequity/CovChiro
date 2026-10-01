@@ -10,7 +10,7 @@ import { getEligibleProviders } from "../eligibility";
 import { absoluteUrl } from "../notify";
 import { siteFaq } from "../faq";
 import {
-  agentOn, ai, aiRules, composeAndSend, Deferred, escalate, logAgent, newToken, normEmail, recipient, sendGrowthSms, signal, suppress,
+  agentOn, ai, marketingOn, aiRules, composeAndSend, Deferred, escalate, logAgent, newToken, normEmail, recipient, sendGrowthSms, signal, suppress,
 } from "./engine";
 import { ensureGrowthDefaults } from "./defaults";
 import { growthFunnels, marketForPoint } from "./analytics";
@@ -81,7 +81,7 @@ const providerUrls = () => ({ profile_url: absoluteUrl("/provider/profile"), cre
 export async function providerSweep(batchSize = 500) {
   const out = { welcomed: 0, nurtured: 0, activated: 0, deferred: 0 };
   const [welcomeOn, nurtureOn, activateOn] = await Promise.all([agentOn("providerRecruitment"), agentOn("providerCredentialing"), agentOn("providerActivation")]);
-  if (!welcomeOn && !nurtureOn && !activateOn) return out;
+  if ((!welcomeOn && !nurtureOn && !activateOn) || !(await marketingOn("provider"))) return out;
   const c = await cadence();
   const now = clock.now();
   // Walk every provider in id order, in batches (cheap checks; sends are what's rate-limited).
@@ -260,7 +260,7 @@ export async function advanceOutreach(prospectId: string) {
 
 export async function outreachSweep() {
   const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0 };
-  if (!(await agentOn("clinicOutreach"))) return out;
+  if (!(await agentOn("clinicOutreach")) || !(await marketingOn("clinic"))) return out;
   const s = await getSettings();
   const gaps = s["growth.outreachGapDays"];
   const now = clock.now();
@@ -308,7 +308,7 @@ export async function clinicChecklist(orgId: string) {
 
 export async function onboardingSweep() {
   const out = { sent: 0, deferred: 0 };
-  if (!(await agentOn("clinicOnboarding"))) return out;
+  if (!(await agentOn("clinicOnboarding")) || !(await marketingOn("clinic"))) return out;
   const s = await getSettings();
   const now = clock.now();
   const orgs = await prisma.clinicOrg.findMany({
@@ -338,7 +338,7 @@ export async function onboardingSweep() {
 /** DRAFT shifts (started, never posted) → helpful follow-up; long requests also go to the sales queue. */
 export async function recoverySweep() {
   const out = { sent: 0, escalated: 0, deferred: 0 };
-  if (!(await agentOn("signupRecovery"))) return out;
+  if (!(await agentOn("signupRecovery"))) return out; // with clinic marketing off the email waits (engine gate); the escalation still goes to a person
   const s = await getSettings();
   const now = clock.now();
   const drafts = await prisma.shift.findMany({

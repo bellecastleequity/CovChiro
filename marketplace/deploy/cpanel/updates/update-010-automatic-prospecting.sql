@@ -1,0 +1,4 @@
+-- This release: automatic clinic prospecting (NPI registry discovery + AI web research).
+-- Run AFTER update-009. Safe to run more than once.
+-- Run in Neon: SQL Editor → paste → Run.
+-- @migration 0011_prospecting
