@@ -113,9 +113,11 @@ export async function providerSweep(batchSize = 500) {
       if (res.startsWith("deferred")) out.deferred++;
     }
 
-    // Students on the student path get its own state-aware credential follow-ups; don't send a second set.
-    const studentFollowups = p.preLicensure && !p.credFollowupOptOut && studentFollowupsOn;
-    if (nurtureOn && !studentFollowups && nurtureDue(p, snap.message, c, now)) {
+    // One credential follow-up stream per person: students on the student path get its state-aware
+    // follow-ups (not a second set from here), and anyone who unsubscribed from credential follow-ups
+    // there gets none from here either.
+    const skipCredentialNurture = p.credFollowupOptOut || (p.preLicensure && studentFollowupsOn);
+    if (nurtureOn && !skipCredentialNurture && nurtureDue(p, snap.message, c, now)) {
       const key = snap.message === "license" ? "PROVIDER_LICENSE_REMINDER" : "PROVIDER_MALPRACTICE_REMINDER";
       const res = await outcome(() => composeAndSend("providerCredentialing", r, key, vars, { purpose: "RELATIONSHIP", dedupeKey: `nurture:${id}:${p.nurtureCount}`, facts: { school: p.school, state_name: vars.state_name } }));
       if (res === "sent" || res === "blocked") await prisma.provider.update({ where: { id }, data: { nurtureCount: { increment: 1 }, lastNurtureAt: now } });
@@ -123,7 +125,15 @@ export async function providerSweep(batchSize = 500) {
       if (res.startsWith("deferred")) out.deferred++;
     }
 
-    const kind = activateOn ? activationDue({ coverageReady: snap.coverageReady, activationCount: p.activationCount, lastActivationAt: p.lastActivationAt, hasAvailability: snap.hasAvailability, availabilityUpdatedAt: null, lastShiftAt: p.stats?.lastShiftAt ?? null }, c, now) : null;
+    let kind = activateOn ? activationDue({ coverageReady: snap.coverageReady, activationCount: p.activationCount, lastActivationAt: p.lastActivationAt, hasAvailability: snap.hasAvailability, availabilityUpdatedAt: null, lastShiftAt: p.stats?.lastShiftAt ?? null }, c, now) : null;
+    // The platform already sends "You're all set to take shifts" when a provider becomes eligible
+    // (onboarding.recomputeProviderStatus, DigestSend ready:<id>:<profession>). Count that as this
+    // agent's "ready" message instead of sending a second one — including to everyone already
+    // verified when Growth is first switched on.
+    if (kind === "ready" && (await prisma.digestSend.count({ where: { key: { startsWith: `ready:${id}:` } } }))) {
+      await prisma.provider.update({ where: { id }, data: { activationCount: { increment: 1 }, lastActivationAt: now } });
+      kind = null;
+    }
     if (kind) {
       const market = p.homeLat != null && p.homeLng != null ? await marketForPoint(p.homeLat, p.homeLng) : null;
       const travel = `Your maximum drive is set to ${p.maxDriveMinutes} minutes; a longer drive can make more offices visible to you.`;

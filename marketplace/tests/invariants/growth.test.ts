@@ -36,7 +36,8 @@ describe("provider pipeline: pre-licensure → credentials → coverage-ready", 
     const grad = new Date(Date.now() - 35 * DAY).toISOString().slice(0, 10);
     await auth.signup({ role: "provider", name: "Casey Grad", email, password: "a-long-password-1", professionCodes: ["DC"], acceptTerms: true, campaign: "palmer", graduationDate: grad, isStudent: true });
     const p = await prisma.provider.findFirstOrThrow({ where: { user: { email } } });
-    expect(p).toMatchObject({ campaignCode: "palmer", isStudent: true, growthSource: "school" });
+    // "palmer" is a student-path recruitment link (Admin → Recruitment), so Growth credits it as such.
+    expect(p).toMatchObject({ campaignCode: "palmer", isStudent: true, growthSource: "recruitment" });
 
     await growth.growthTick();
     let c = await comms(p.id);
@@ -224,5 +225,53 @@ describe("analytics", () => {
     expect(f.clinic[0].label).toBe("Clinics identified");
     const tampa = (await growth.liquidity()).find((m) => m.market.key === "tampa")!;
     expect(tampa.within[25]).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("student path × Growth: no overlaps", () => {
+  const credentialMail = async (id: string) => (await comms(id)).filter((x) => x.promptKey === "PROVIDER_LICENSE_REMINDER" || x.promptKey === "PROVIDER_MALPRACTICE_REMINDER");
+  const student = async (extra: Record<string, unknown> = {}) => {
+    const p = await makeProvider({ status: "ONBOARDING", licenses: [], malpractice: null, professions: [{ code: "DC", status: "ONBOARDING" }] });
+    await prisma.provider.update({ where: { id: p.id }, data: { preLicensure: true, preLicensureSince: new Date(Date.now() - 100 * DAY), graduationDate: new Date(Date.now() - 40 * DAY), ...extra } });
+    return p;
+  };
+
+  it("students on the student path never get Growth's credential reminders — opted out or not", async () => {
+    const a = await student();
+    const b = await student({ credFollowupOptOut: true });
+    for (const d of [1, 30, 70]) {
+      setClock(() => new Date(Date.now() + d * DAY));
+      await growth.growthTick();
+    }
+    expect(await credentialMail(a.id)).toHaveLength(0);
+    expect(await credentialMail(b.id)).toHaveLength(0);
+  });
+
+  it("unsubscribing from Growth email also stops the student follow-ups", async () => {
+    const { prelicensure } = await import("@cm/services");
+    const p = await student({ graduationDate: new Date(Date.now() - 45 * DAY) });
+    const u = await prisma.user.findUniqueOrThrow({ where: { id: (await prisma.provider.findUniqueOrThrow({ where: { id: p.id } })).userId } });
+    await growth.suppress("EMAIL", u.email, "UNSUBSCRIBED", "test");
+    const before = sentTo(u.email).length;
+    await prelicensure.runPreLicensureFollowups();
+    expect(sentTo(u.email).length).toBe(before);
+  });
+
+  it("a /join code can't exist in both campaign lists", async () => {
+    const { prelicensure } = await import("@cm/services");
+    await expect(growth.saveCampaign(admin, { code: "palmer", name: "Palmer again", audience: "PROVIDER", kind: "school" })).rejects.toThrow(/already a recruitment link/);
+    const code = `g-${uid()}`.toLowerCase().slice(0, 20);
+    await growth.saveCampaign(admin, { code, name: "A Growth link", audience: "PROVIDER", kind: "event" });
+    await expect(prelicensure.saveCampaign(admin, { slug: code, name: "Same code", kind: "EVENT" })).rejects.toThrow(/already a Growth campaign code/);
+    // Growth's starter school links never duplicate the student path's.
+    expect(await prisma.growthCampaign.count({ where: { code: { in: ["palmer", "keiser"] } } })).toBe(0);
+  });
+
+  it("no second 'you're ready' email when the platform already sent one", async () => {
+    const p = await makeProvider();
+    await prisma.digestSend.create({ data: { key: `ready:${p.id}:DC`, userId: p.userId } });
+    await growth.growthTick();
+    expect((await comms(p.id)).map((x) => x.promptKey)).not.toContain("PROVIDER_COVERAGE_READY");
+    expect((await prisma.provider.findUniqueOrThrow({ where: { id: p.id } })).activationCount).toBe(1);
   });
 });

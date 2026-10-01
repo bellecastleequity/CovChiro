@@ -474,6 +474,8 @@ export async function saveCampaign(actor: Actor, raw: { code: string; name: stri
   requireAdmin(actor);
   const code = raw.code.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
   if (code.length < 2 || !raw.name.trim()) throw new DomainError("VALIDATION", "A short code (letters, numbers, dashes) and a name are required.");
+  // /join/<code> is shared with the student path's recruitment links, so codes must be unique across both.
+  if (await prisma.recruitCampaign.count({ where: { slug: code } })) throw new DomainError("CONFLICT", `"${code}" is already a recruitment link (Admin → Recruitment). Pick another code.`);
   const data = { name: raw.name.trim().slice(0, 150), audience: raw.audience, kind: raw.kind.slice(0, 20), schoolName: raw.schoolName?.trim() || null, headline: raw.headline?.trim() || null, body: raw.body?.trim() || null, spendCents: Math.max(0, Math.round(raw.spendCents ?? 0)), active: raw.active ?? true };
   await prisma.growthCampaign.upsert({ where: { code }, create: { code, ...data }, update: data });
   await audit(prisma, actor, "growth.campaign.saved", "GrowthCampaign", code, null, data);
