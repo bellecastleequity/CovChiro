@@ -144,6 +144,19 @@ export const moderateAccountAction = formAction(async (fd) => {
   rv(kind === "provider" ? `/admin/providers/${id}` : `/admin/clinics/${id}`);
   return msg;
 });
+export const userSuspendAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const msg = await accounts.setUserSuspended(actor, str(fd, "userId"), str(fd, "suspend") === "true", str(fd, "reason"));
+  rv("/admin/users");
+  return msg;
+});
+export const userDeleteAction = formAction(async (fd) => {
+  const { actor } = await me();
+  if (str(fd, "confirmText").trim().toUpperCase() !== "DELETE") throw new DomainError("VALIDATION", "Type DELETE to confirm.");
+  const msg = await accounts.deleteUser(actor, str(fd, "userId"), str(fd, "reason"));
+  rv("/admin/users");
+  return msg;
+});
 export const deleteAccountAction = formAction(async (fd) => {
   const { actor } = await me();
   const kind = str(fd, "kind") as "provider" | "clinic";

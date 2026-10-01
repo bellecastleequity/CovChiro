@@ -168,3 +168,88 @@ export async function deleteAccount(actor: Actor, kind: AccountKind, id: string,
   await notifyAdmins(prisma, { template: "account_deleted", email: false, title: `${kind === "provider" ? "Provider" : "Clinic"} account deleted`, body: `Reason: ${reason}`, link: "/admin/audit" }).catch(() => undefined);
   return hard ? "Deleted." : "Deleted. Personal details were erased; past shifts and payments stay in the records (shown as a deleted account).";
 }
+
+// ---------------- individual logins (Admin → Users) ----------------
+
+/**
+ * Users: every login. Providers and clinics are moderated as accounts (above) from their own admin
+ * pages, so matching, posting and upcoming work follow. Here, any single login can also be:
+ *  - suspended: sign-in disabled and sessions ended (no ban list, nothing released) — e.g. a clinic's
+ *    former front-desk staff member, or another admin;
+ *  - unsuspended: sign-in works again;
+ *  - deleted: removed (or, with history attached, personal details erased).
+ * You can't act on your own login, and the last active admin can't be suspended or deleted.
+ */
+export type UserStatusFilter = "active" | "suspended" | "all";
+
+export async function listUsers(actor: Actor, f: { q?: string; role?: string; status?: UserStatusFilter } = {}) {
+  requireAdmin(actor);
+  const q = f.q?.trim();
+  const rows = await prisma.user.findMany({
+    where: {
+      email: { not: { endsWith: "@deleted.invalid" } },
+      ...(f.role ? { role: f.role as never } : {}),
+      ...(f.status === "suspended" ? { disabledAt: { not: null } } : f.status === "active" ? { disabledAt: null } : {}),
+      ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }, { phone: { contains: q } }] } : {}),
+    },
+    include: { provider: { select: { id: true, status: true } }, clinicMembers: { include: { clinicOrg: { select: { id: true, displayName: true, status: true } } } } },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  const banned = new Set((await prisma.bannedEmail.findMany({ where: { email: { in: rows.map((r) => r.email.toLowerCase()) } }, select: { email: true } })).map((b) => b.email));
+  return rows.map((u) => ({
+    id: u.id, name: u.name, email: u.email, phone: u.phone, role: u.role, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
+    suspended: !!u.disabledAt, banned: banned.has(u.email.toLowerCase()),
+    provider: u.provider, clinics: u.clinicMembers.map((m) => ({ ...m.clinicOrg, memberRole: m.role })),
+  }));
+}
+
+async function guardUserAction(actor: Actor, userId: string) {
+  requireAdmin(actor);
+  if (actor.userId === userId) throw new DomainError("VALIDATION", "You can't do that to your own login.");
+  const u = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  if (u.role === "PLATFORM_ADMIN" && (await prisma.user.count({ where: { role: "PLATFORM_ADMIN", disabledAt: null, id: { not: userId } } })) === 0) {
+    throw new DomainError("VALIDATION", "That's the last active admin login.");
+  }
+  return u;
+}
+
+export async function setUserSuspended(actor: Actor, userId: string, suspended: boolean, reason: string) {
+  const u = await guardUserAction(actor, userId);
+  if (suspended && reason.trim().length < 3) throw new DomainError("VALIDATION", "Add a short reason (kept in the audit log).");
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: userId }, data: { disabledAt: suspended ? clock.now() : null } }),
+    ...(suspended ? [prisma.session.deleteMany({ where: { userId } })] : []),
+  ]);
+  await audit(prisma, actor, suspended ? "user.suspended" : "user.unsuspended", "User", userId, null, { reason, email: u.email });
+  return suspended ? `${u.name} can't sign in until you unsuspend them.` : `${u.name} can sign in again.`;
+}
+
+export async function deleteUser(actor: Actor, userId: string, reason: string) {
+  const u = await guardUserAction(actor, userId);
+  if (reason.trim().length < 3) throw new DomainError("VALIDATION", "Add a short reason (kept in the audit log).");
+  // A provider, or a clinic's only member, is a whole account: delete it from its own page so its work is released.
+  if (u.role === "PROVIDER" && (await prisma.provider.findUnique({ where: { userId } }))) throw new DomainError("VALIDATION", "This is a provider account: delete it from the provider's page so their upcoming shifts are released.");
+  const memberships = await prisma.clinicMember.findMany({ where: { userId } });
+  for (const m of memberships) {
+    if ((await prisma.clinicMember.count({ where: { clinicOrgId: m.clinicOrgId } })) === 1) throw new DomainError("VALIDATION", "This is the clinic's only login: delete the clinic from its page instead.");
+    if (m.role === "CLINIC_OWNER" && (await prisma.clinicMember.count({ where: { clinicOrgId: m.clinicOrgId, role: "CLINIC_OWNER" } })) === 1) throw new DomainError("VALIDATION", "This is the clinic's only owner: make someone else the owner first, or delete the clinic.");
+  }
+  let hard = false;
+  try {
+    await prisma.$transaction(async (db) => {
+      await db.clinicMember.deleteMany({ where: { userId } });
+      await db.session.deleteMany({ where: { userId } });
+      await db.user.delete({ where: { id: userId } });
+    });
+    hard = true;
+  } catch {
+    await prisma.$transaction(async (db) => {
+      await db.clinicMember.deleteMany({ where: { userId } });
+      await db.session.deleteMany({ where: { userId } });
+      await db.user.update({ where: { id: userId }, data: { email: `deleted-${userId}@deleted.invalid`, name: "Deleted user", phone: null, passwordHash: null, totpSecret: null, mfaEnabled: false, disabledAt: clock.now() } });
+    });
+  }
+  await audit(prisma, actor, "user.deleted", "User", userId, null, { reason, hard, email: u.email });
+  return hard ? "Login deleted." : "Login deleted. Its name and email were erased; records it created stay (shown as a deleted user).";
+}

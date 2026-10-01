@@ -37,3 +37,4 @@ export * as schools from "./schools";
 export * as blog from "./blog";
 export * as spam from "./spam";
 export * as referrals from "./referrals";
+export * as search from "./search";

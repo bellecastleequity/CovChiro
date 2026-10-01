@@ -44,14 +44,14 @@ export default async function Settings() {
           </ActionForm>
         </Card>
         {groups.map((g) => (
-          <Card key={g}>
+          <Card key={g} id={`g-${g.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`} className="scroll-mt-20">
             <CardHeader title={g} />
             <div className="divide-y divide-slate-100">
               {rows.filter((r) => r.group === g).map((r) => {
                 const complex = typeof r.value === "object";
                 const unit = unitFor(r.key);
                 return (
-                  <ActionForm key={r.key} action={settingAction} className="grid gap-2 px-5 py-3 sm:grid-cols-[1fr_320px_auto] sm:items-center">
+                  <div key={r.key} id={`s-${r.key}`} className="scroll-mt-20 target:bg-accent-50"><ActionForm action={settingAction} className="grid gap-2 px-5 py-3 sm:grid-cols-[1fr_320px_auto] sm:items-center">
                     <input type="hidden" name="key" value={r.key} />
                     <div>
                       <div className="text-sm font-medium">{r.label} {r.flag ? <Badge tone={r.flag === "ATTORNEY_REVIEW" ? "red" : "amber"}>{r.flag === "ATTORNEY_REVIEW" ? "Attorney review" : "Owner decision"}</Badge> : null}</div>
@@ -79,7 +79,7 @@ export default async function Settings() {
                       </div>
                     )}
                     <SubmitButton size="sm" variant="outline">Save</SubmitButton>
-                  </ActionForm>
+                  </ActionForm></div>
                 );
               })}
             </div>

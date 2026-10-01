@@ -15,18 +15,18 @@ export async function AccountModeration({ kind, id, status }: { kind: "provider"
   return (
     <Card>
       <CardHeader
-        title={<>Suspend, ban or delete<InfoTip label="About account actions"><b>Suspend</b> is temporary: {kind === "provider" ? "they aren't matched or offered shifts" : "they can't post shifts and standing bookings pause"}, but can still sign in. <b>Ban</b> is permanent: sign-in is disabled, upcoming work is released and their email can&apos;t sign up again. <b>Delete</b> removes the account; if it has past shifts or payments, personal details are erased and the records kept. Everything is logged.</InfoTip></>}
+        title={<>Suspend, ban or delete<InfoTip label="About account actions"><b>Suspend</b> is temporary (undo with <b>Unsuspend</b>): {kind === "provider" ? "they aren't matched or offered shifts" : "they can't post shifts and standing bookings pause"}, but can still sign in. <b>Ban</b> is permanent: sign-in is disabled, upcoming work is released and their email can&apos;t sign up again. <b>Delete</b> removes the account; if it has past shifts or payments, personal details are erased and the records kept. Everything is logged.</InfoTip></>}
         action={impact.banned ? <Badge tone="red">Banned</Badge> : status === "SUSPENDED" ? <Badge tone="amber">Suspended</Badge> : null}
       />
       <CardBody className="space-y-4">
         <p className="text-xs text-slate-500">{upcomingLabel}.</p>
         {restricted ? (
-          <ActionForm action={moderateAccountAction} className="space-y-2" confirm={`Reinstate this ${who}?`}>
+          <ActionForm action={moderateAccountAction} className="space-y-2" confirm={`Unsuspend / reinstate this ${who}? They can sign in and use the platform again.`}>
             <input type="hidden" name="kind" value={kind} />
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="action" value="reinstate" />
             <Input name="reason" placeholder="Note (optional)" />
-            <SubmitButton size="sm" variant="secondary">Reinstate</SubmitButton>
+            <SubmitButton size="sm" variant="secondary">{status === "SUSPENDED" && !impact.banned ? "Unsuspend" : "Reinstate (unban)"}</SubmitButton>
           </ActionForm>
         ) : null}
         {!restricted ? (
