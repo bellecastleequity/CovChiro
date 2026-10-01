@@ -1,0 +1,6 @@
+-- This release: AI growth, marketing & marketplace activation system (clinic prospect CRM,
+-- provider pre-licensure registration and credential follow-ups, campaign links, suppression
+-- list, communications log, prompts, knowledge base, escalations, agent audit log, AI spend).
+-- Run AFTER update-008. Safe to run more than once.
+-- Run in Neon: SQL Editor → paste → Run.
+-- @migration 0010_growth
