@@ -4,7 +4,7 @@ import { env } from "@cm/config";
  * Structured-JSON text generation for the growth agents (classification,
  * personalization, summaries, knowledge-base answers). Same providers and
  * raw-fetch style as moderation.ts: Anthropic (ANTHROPIC_API_KEY) or Gemini
- * (GEMINI_API_KEY). With no key, or under test, the "none" provider answers
+ * (GEMINI_API_KEY), or OpenAI (OPENAI_API_KEY). With no key, or under test, the "none" provider answers
  * { ok: false } and every caller falls back to approved templates or a
  * human escalation, so the platform works without any AI at all.
  */
@@ -42,7 +42,7 @@ export type ResearchResult = (
 ) & { model: string; inputTokens: number; outputTokens: number; searches: number; fetches: number };
 
 export interface LlmProvider {
-  name: "anthropic" | "gemini" | "none";
+  name: "anthropic" | "gemini" | "openai" | "none";
   generate(req: LlmRequest): Promise<LlmResult>;
   /** Absent = this provider can't research (callers treat it as AI unavailable). */
   research?(req: ResearchRequest): Promise<ResearchResult>;
@@ -217,6 +217,46 @@ const gemini = (key: string): LlmProvider => ({
   },
 });
 
+/** OpenAI Chat Completions in JSON mode (structured text only; no research). */
+const openai = (key: string): LlmProvider => ({
+  name: "openai",
+  async generate(req) {
+    const model = req.model;
+    const fail = (error: string, i = 0, o = 0): LlmResult => ({ ok: false, error, model, inputTokens: i, outputTokens: o });
+    try {
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: req.system },
+            { role: "user", content: `${req.user}\n\nReply with only one JSON object matching this JSON Schema:\n${JSON.stringify(req.schema)}` },
+          ],
+          response_format: { type: "json_object" },
+          max_completion_tokens: req.maxTokens,
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_MS * 2),
+      });
+      const j = (await r.json().catch(() => ({}))) as {
+        model?: string;
+        choices?: { message?: { content?: string | null; refusal?: string | null }; finish_reason?: string }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+        error?: { message?: string };
+      };
+      const i = j.usage?.prompt_tokens ?? 0, o = j.usage?.completion_tokens ?? 0;
+      if (!r.ok) return fail(`HTTP ${r.status}${j.error?.message ? `: ${j.error.message.slice(0, 200)}` : ""}`, i, o);
+      const c = j.choices?.[0];
+      if (c?.message?.refusal) return fail(`refused: ${c.message.refusal.slice(0, 200)}`, i, o);
+      if (c?.finish_reason === "length") return fail("output cut off (raise the token limit)", i, o);
+      const data = parseObject(c?.message?.content ?? "");
+      return data ? { ok: true, data, model: j.model ?? model, inputTokens: i, outputTokens: o } : fail("unparseable output", i, o);
+    } catch (e) {
+      return fail((e as Error).message.slice(0, 240));
+    }
+  },
+});
+
 const none: LlmProvider = {
   name: "none",
   generate: async (req) => ({ ok: false, error: "ai_unavailable", model: req.model, inputTokens: 0, outputTokens: 0 }),
@@ -230,11 +270,12 @@ export function setLlmProvider(p: LlmProvider | null) {
 }
 
 /** `preferred` comes from the growth.aiProvider setting; a provider without a key is never used. */
-export function llmProvider(preferred: "anthropic" | "gemini" | "none"): LlmProvider {
+export function llmProvider(preferred: "anthropic" | "gemini" | "openai" | "none"): LlmProvider {
   if (override) return override;
   const e = env();
   if (e.NODE_ENV === "test" || preferred === "none") return none;
   if (preferred === "anthropic" && e.ANTHROPIC_API_KEY) return anthropic(e.ANTHROPIC_API_KEY);
   if (preferred === "gemini" && e.GEMINI_API_KEY) return gemini(e.GEMINI_API_KEY);
+  if (preferred === "openai" && e.OPENAI_API_KEY) return openai(e.OPENAI_API_KEY);
   return none;
 }

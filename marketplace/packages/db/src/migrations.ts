@@ -18,6 +18,7 @@ export const EXPECTED_MIGRATIONS = [
   "0010_pre_licensure",
   "0011_growth",
   "0012_prospecting",
+  "0013_blog",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */

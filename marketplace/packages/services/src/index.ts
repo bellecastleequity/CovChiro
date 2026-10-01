@@ -32,3 +32,4 @@ export * as hiring from "./hiring";
 export * as prelicensure from "./prelicensure";
 export { siteFaq } from "./faq";
 export * as growth from "./growth";
+export * as blog from "./blog";
