@@ -219,7 +219,9 @@ export const adminChargeAction = formAction(async (fd) => {
   const { actor } = await me();
   const p = await adminCharge(actor, str(fd, "clinicOrgId"), str(fd, "type") as "ADJUSTMENT", dollarsToCents(str(fd, "amount")) ?? 0, str(fd, "description"));
   rv("/admin/payments");
-  return p?.status === "SUCCEEDED" ? "Charged." : `Charge ${p?.status?.toLowerCase() ?? "not created"}: ${p?.failureReason ?? ""}`;
+  if (p?.status === "SUCCEEDED") return "Charged.";
+  if (p?.status === "PROCESSING") return "Charge submitted; the bank is still processing it.";
+  throw new DomainError("CONFLICT", `Charge failed: ${p?.failureReason ?? "not created"}`);
 });
 
 // ---------- promo ----------

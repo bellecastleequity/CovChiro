@@ -3,6 +3,7 @@ import { prisma } from "@cm/db";
 import { FakePayments, paymentsProvider } from "@cm/integrations";
 import {
   addAdjustment,
+  adminCharge,
   applyToShift,
   autoCompleteDue,
   createShift,
@@ -135,5 +136,16 @@ describe("provider pay is linked to the clinic's charges (Stripe source_transact
     expect(await prisma.payment.aggregate({ where: { assignmentId: assignment.id }, _sum: { transferredCents: true } })).toMatchObject({ _sum: { transferredCents: 0 } });
     const again = await issuePayment(admin, provider.id, { early: true });
     expect(again).toMatchObject({ status: "PAID", amountCents: assignment.providerTotalCents });
+  });
+});
+
+describe("admin manual charge", () => {
+  it("refuses amounts under Stripe's 50¢ minimum before contacting Stripe", async () => {
+    const clinic = await makeClinic();
+    const before = await prisma.payment.count({ where: { clinicOrgId: clinic.org.id } });
+    await expect(adminCharge(admin, clinic.org.id, "ADJUSTMENT", 2, "test")).rejects.toThrow(/\$0\.50/);
+    expect(await prisma.payment.count({ where: { clinicOrgId: clinic.org.id } })).toBe(before);
+    const ok = await adminCharge(admin, clinic.org.id, "ADJUSTMENT", 50, "test");
+    expect(ok?.status).toBe("SUCCEEDED");
   });
 });

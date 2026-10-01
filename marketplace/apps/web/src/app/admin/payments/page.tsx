@@ -70,7 +70,7 @@ export default async function Payments() {
                 {clinics.map((c) => <option key={c.id} value={c.id}>{c.displayName}{c.paymentMethodLabel ? ` — ${c.paymentMethodLabel}` : ""}</option>)}
               </Select>
               <Select name="type"><option value="ADJUSTMENT">Adjustment</option><option value="CANCELLATION_FEE">Cancellation fee</option>{s["features.conversionFeeEnabled"] ? <option value="CONVERSION_FEE">Conversion fee</option> : null}</Select>
-              <Input name="amount" placeholder="$ amount" required />
+              <Input name="amount" placeholder="$ amount (min $0.50)" required />
               <Input name="description" placeholder="Description" required />
               <div><SubmitButton size="sm" variant="outline">Charge</SubmitButton></div>
             </ActionForm>

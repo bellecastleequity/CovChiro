@@ -113,11 +113,15 @@ export async function depositPaidCents(assignmentId: string): Promise<number> {
   return agg._sum.amountCents ?? 0;
 }
 
+/** Stripe's minimum charge in USD. */
+export const MIN_CHARGE_CENTS = 50;
+
 /** Admin-only manual charges (conversion fee is ATTORNEY REVIEW → behind a feature flag). */
 export async function adminCharge(actor: Actor, clinicOrgId: string, type: "CONVERSION_FEE" | "ADJUSTMENT" | "CANCELLATION_FEE", amountCents: number, description: string) {
   const s = await getSettings();
   if (type === "CONVERSION_FEE" && !s["features.conversionFeeEnabled"]) throw new DomainError("FORBIDDEN", "Conversion fees are disabled until attorney review is complete.");
   if (!Number.isInteger(amountCents) || amountCents <= 0) throw new DomainError("VALIDATION", "Enter a positive amount.");
+  if (amountCents < MIN_CHARGE_CENTS) throw new DomainError("VALIDATION", `The smallest card charge Stripe allows is $${(MIN_CHARGE_CENTS / 100).toFixed(2)}.`);
   const p = await charge(null, clinicOrgId, type, amountCents, `${type.toLowerCase()}-${clinicOrgId}-${Date.now()}`, description);
   await audit(prisma, actor, "payment.admin_charge", "ClinicOrg", clinicOrgId, null, { type, amountCents, description, status: p?.status });
   return p;
