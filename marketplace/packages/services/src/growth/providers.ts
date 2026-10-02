@@ -316,7 +316,7 @@ export async function providerOutreachSweep() {
     const rk = `${p.professionCode}:${key}`;
     if (!ready.has(rk)) ready.set(rk, (await livePrompts(key, p.professionCode)).length > 0);
     if (!ready.get(rk)) { out.skippedNoPrompt++; continue; }
-    if (await prisma.communication.count({ where: { entityType: "PROVIDER_PROSPECT", entityId: p.id, status: "PENDING_APPROVAL" } })) continue;
+    if (await prisma.communication.count({ where: { entityType: "PROVIDER_PROSPECT", entityId: p.id, status: { in: ["PENDING_APPROVAL", "QUEUED"] } } })) continue;
     const r = await recipient("PROVIDER_PROSPECT", p.id);
     if (!r) continue;
     out.queued++;

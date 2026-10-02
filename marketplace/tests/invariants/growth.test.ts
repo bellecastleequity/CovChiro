@@ -145,6 +145,36 @@ describe("clinic outreach: review mode, compliance, unsubscribe", () => {
     await expect(growth.sendManual(admin, "PROSPECT", pr.id, "Hi", "A personal note", "RELATIONSHIP")).rejects.toThrow(/suppressed_unsubscribe|unsubscribed/);
   });
 
+  it("bulk approve queues drafts, sends them in the background and waits out a pause instead of dropping them", async () => {
+    await setting("growth.agents", { ...(await import("@cm/config")).defaultSettings()["growth.agents"], clinicOutreach: true });
+    const a = await growth.saveProspect(admin, { clinicName: "Bulk One Chiropractic", ownerName: "Dr. Lee One", email: `bulk1-${uid()}@clinic.dev`, city: "Tampa", zip: "33602", providerCount: 1 });
+    const b = await growth.saveProspect(admin, { clinicName: "Bulk Two Chiropractic", ownerName: "Dr. Lee Two", email: `bulk2-${uid()}@clinic.dev`, city: "Tampa", zip: "33602", providerCount: 1 });
+    await growth.growthTick();
+    const drafts = [(await comms(a.id))[0], (await comms(b.id))[0]];
+    expect(drafts.map((d) => d.status)).toEqual(["PENDING_APPROVAL", "PENDING_APPROVAL"]);
+    expect((await growth.approvals(admin)).filter((m) => drafts.some((d) => d.id === m.id)).map((m) => m.kind)).toEqual(["clinic", "clinic"]);
+
+    expect((await growth.bulkDecide(admin, drafts.map((d) => d.id), "approve")).count).toBe(2);
+    expect((await comms(a.id))[0].status).toBe("QUEUED");
+    // The outreach agent never drafts a second message while one is queued.
+    await growth.growthTick();
+    expect((await comms(a.id)).length).toBe(1);
+
+    await setting("growth.pausedOutbound", true);
+    const held = await growth.approvedQueueSweep();
+    expect(held.sent).toBe(0);
+    expect(held.held).toBeTruthy();
+    expect((await comms(a.id))[0].status).toBe("QUEUED");
+    expect((await growth.approvalQueue(admin)).heldReason).toBeTruthy();
+
+    await setting("growth.pausedOutbound", false);
+    await growth.approvedQueueSweep(500);
+    expect((await comms(a.id))[0].status).toBe("APPROVED");
+    expect((await comms(b.id))[0].status).toBe("APPROVED");
+    expect((await prisma.clinicProspect.findUniqueOrThrow({ where: { id: a.id } })).outreachStep).toBe(1);
+    expect(sentTo((await prisma.clinicProspect.findUniqueOrThrow({ where: { id: b.id } })).email!).length).toBe(1);
+  });
+
   it("marketing email is blocked without a postal address (and waits rather than being dropped)", async () => {
     await setting("growth.postalAddress", "");
     await setting("growth.outreachMode", "auto");

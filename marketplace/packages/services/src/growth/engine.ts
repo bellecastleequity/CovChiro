@@ -327,6 +327,8 @@ function paragraphs(text: string) {
  */
 export async function sendGrowthEmail(r: Recipient, msg: { subject: string; body: string }, o: {
   agent: string; purpose: Purpose; prompt?: { key: string; version: number } | null; dedupeKey?: string | null; createdById?: string | null; cta?: { label: string; url: string };
+  /** Bulk-approved sends: a transient block (pause, caps, quiet hours) throws Deferred so the draft waits instead of being dropped. */
+  deferTransient?: boolean;
 }): Promise<{ ok: boolean; blocked: boolean; reason: string | null; communicationId: string | null }> {
   const automated = !o.createdById;
   const d = await checkContact(r, "EMAIL", o.purpose, automated);
@@ -335,7 +337,7 @@ export async function sendGrowthEmail(r: Recipient, msg: { subject: string; body
     toAddress: normEmail(r.email), subject: msg.subject, body: msg.body, createdById: o.createdById ?? null,
   };
   if (!d.ok) {
-    if (d.transient && automated) throw new Deferred(d.reason!);
+    if (d.transient && (automated || o.deferTransient)) throw new Deferred(d.reason!);
     const row = await prisma.communication.create({ data: { ...base, status: "BLOCKED", blockReason: d.reason } });
     return { ok: false, blocked: true, reason: d.reason, communicationId: row.id };
   }

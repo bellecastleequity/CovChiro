@@ -313,7 +313,7 @@ export async function outreachSweep() {
     const professionCode = await outreachProfessionFor(c, allowed);
     if (!professionCode) continue;
     if (!outreachStepDue(c.outreachStep, c.lastContactedAt, gaps, now)) continue;
-    if (await prisma.communication.count({ where: { entityType: "PROSPECT", entityId: c.id, status: "PENDING_APPROVAL" } })) continue;
+    if (await prisma.communication.count({ where: { entityType: "PROSPECT", entityId: c.id, status: { in: ["PENDING_APPROVAL", "QUEUED"] } } })) continue;
     const r = await recipient("PROSPECT", c.id);
     if (!r) continue;
     out.queued++;

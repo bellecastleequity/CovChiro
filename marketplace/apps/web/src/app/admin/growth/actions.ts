@@ -53,6 +53,18 @@ export const approvalAction = formAction(async (fd) => {
   return decision === "approve" ? "Approved and sent." : "Rejected. Outreach to this clinic is paused.";
 });
 
+export const bulkApprovalAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const ids = fd.getAll("ids").map(String).filter(Boolean);
+  if (!ids.length) return "Nothing selected.";
+  const decision = str(fd, "decision") === "reject" ? "reject" : "approve";
+  const r = await growth.bulkDecide(actor, ids, decision);
+  rv();
+  return decision === "approve"
+    ? `Approved ${r.count}. They're sending now, a batch every minute (still checked against do-not-contact and your daily limits).`
+    : `Rejected ${r.count}. Outreach to those prospects is paused.`;
+});
+
 export const escalationAction = formAction(async (fd) => {
   const { actor } = await me();
   await growth.updateEscalation(actor, str(fd, "id"), str(fd, "status") as "OPEN" | "IN_PROGRESS" | "RESOLVED", optStr(fd, "resolution"));

@@ -6,7 +6,7 @@ import { audit, clock, getSettings, invalidateSettings, requireAdmin, type Actor
 import { absoluteUrl } from "../notify";
 import { updateSetting } from "../admin";
 import { getEligibleProviders } from "../eligibility";
-import { AGENT_AUDIENCE, AGENTS, ai, aiRules, aiSpendCents, logAgent, newToken, normEmail, recipient, sendGrowthEmail, suppress, type AgentKey, type Audience, type GrowthEntityType } from "./engine";
+import { AGENT_AUDIENCE, AGENTS, Deferred, ai, aiRules, aiSpendCents, logAgent, newToken, normEmail, recipient, sendGrowthEmail, suppress, type AgentKey, type Audience, type GrowthEntityType } from "./engine";
 import { ensureGrowthDefaults } from "./defaults";
 import { advanceOutreach, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
 import { discoverySweep, prospectingStatus, researchProspect, researchSweep } from "./prospecting";
@@ -124,10 +124,43 @@ export async function salesQueue(actor: Actor) {
 
 // ---------------- approvals ----------------
 
+/** Which pile a draft belongs to: first-contact/follow-up outreach (bulk-approvable) or a reply in a conversation (read each one). */
+function approvalKind(m: { entityType: string; promptKey: string | null }): "clinic" | "provider" | "reply" {
+  if (m.entityType === "PROSPECT" && m.promptKey && OUTREACH_SEQUENCE.includes(m.promptKey)) return "clinic";
+  if (m.entityType === "PROVIDER_PROSPECT" && m.promptKey && PROVIDER_OUTREACH_SEQUENCE.includes(m.promptKey)) return "provider";
+  return "reply";
+}
+
 export async function approvals(actor: Actor) {
   requireAdmin(actor);
   const rows = await prisma.communication.findMany({ where: { status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" }, take: 200 });
-  return Promise.all(rows.map(async (m) => ({ ...m, label: (await recipient(m.entityType as GrowthEntityType, m.entityId))?.label ?? m.entityId })));
+  return Promise.all(rows.map(async (m) => ({ ...m, kind: approvalKind(m), label: (await recipient(m.entityType as GrowthEntityType, m.entityId))?.label ?? m.entityId })));
+}
+
+/** Approved drafts still waiting to go out (bulk approvals send in the background). */
+export async function approvalQueue(actor: Actor) {
+  requireAdmin(actor);
+  const [queued, held] = await Promise.all([
+    prisma.communication.count({ where: { status: "QUEUED" } }),
+    prisma.setting.findUnique({ where: { key: "growth.approvedQueueHeld" } }),
+  ]);
+  return { queued, heldReason: queued ? ((held?.value as { reason?: string } | null)?.reason ?? null) : null };
+}
+
+/** Sends one approved draft (still through compliance) and advances that prospect's outreach. */
+async function sendApproved(m: Prisma.CommunicationGetPayload<object>, userId: string | null, subject: string, body: string, how: { bulk?: boolean; edited?: boolean } = {}) {
+  const r = await recipient(m.entityType as GrowthEntityType, m.entityId);
+  if (!r) {
+    await prisma.communication.update({ where: { id: m.id }, data: { status: "REJECTED" } });
+    return { ok: false, blocked: true, reason: "recipient no longer exists" };
+  }
+  // Bulk sends wait out pause/caps/quiet hours (Deferred) instead of failing.
+  const res = await sendGrowthEmail(r, { subject, body }, { agent: m.agent ?? "admin", purpose: m.purpose as "COMMERCIAL" | "RELATIONSHIP", prompt: m.promptKey ? { key: m.promptKey, version: m.promptVersion ?? 0 } : null, createdById: userId, deferTransient: how.bulk });
+  await prisma.communication.update({ where: { id: m.id }, data: { status: res.ok ? "APPROVED" : "REJECTED", createdById: userId } });
+  await logAgent(m.agent ?? "admin", "draft_approved", { entityType: m.entityType, entityId: m.entityId, promptKey: m.promptKey, promptVersion: m.promptVersion, humanOverrideBy: `${userId ?? "admin"}${how.edited ? " (edited)" : ""}${how.bulk ? " (bulk)" : ""}`, sendStatus: res.ok ? "sent" : res.blocked ? "blocked" : "failed", error: res.reason });
+  if (res.ok && m.entityType === "PROSPECT" && m.promptKey && OUTREACH_SEQUENCE.includes(m.promptKey)) await advanceOutreach(m.entityId);
+  if (res.ok && m.entityType === "PROVIDER_PROSPECT" && m.promptKey && PROVIDER_OUTREACH_SEQUENCE.includes(m.promptKey)) await advanceProviderOutreach(m.entityId);
+  return res;
 }
 
 /** Approve (optionally edited) → sent as a human-approved message, still through compliance. Reject → discarded, outreach paused. */
@@ -135,24 +168,61 @@ export async function decideApproval(actor: Actor, id: string, decision: "approv
   requireAdmin(actor);
   const m = await prisma.communication.findUnique({ where: { id } });
   if (!m || m.status !== "PENDING_APPROVAL") throw new DomainError("CONFLICT", "That draft is no longer waiting for approval.");
-  const r = await recipient(m.entityType as GrowthEntityType, m.entityId);
-  if (decision === "reject" || !r) {
-    await prisma.communication.update({ where: { id }, data: { status: "REJECTED", createdById: actor.userId } });
-    if (m.entityType === "PROSPECT") await prisma.clinicProspect.update({ where: { id: m.entityId }, data: { outreachPaused: true } });
-    if (m.entityType === "PROVIDER_PROSPECT") await prisma.providerProspect.update({ where: { id: m.entityId }, data: { outreachPaused: true } });
-    await logAgent(m.agent ?? "admin", "draft_rejected", { entityType: m.entityType, entityId: m.entityId, promptKey: m.promptKey, humanOverrideBy: actor.userId });
+  if (decision === "reject") {
+    await rejectDraft(m, actor.userId);
     return { status: "rejected" as const };
   }
   const subject = (edits.subject ?? m.subject ?? "").trim(), body = (edits.body ?? m.body ?? "").trim();
   if (!subject || !body) throw new DomainError("VALIDATION", "Subject and message are required.");
-  const res = await sendGrowthEmail(r, { subject, body }, { agent: m.agent ?? "admin", purpose: m.purpose as "COMMERCIAL" | "RELATIONSHIP", prompt: m.promptKey ? { key: m.promptKey, version: m.promptVersion ?? 0 } : null, createdById: actor.userId });
-  await prisma.communication.update({ where: { id }, data: { status: res.ok ? "APPROVED" : "REJECTED", createdById: actor.userId } });
   const edited = subject !== m.subject || body !== (m.body ?? "").trim();
-  await logAgent(m.agent ?? "admin", "draft_approved", { entityType: m.entityType, entityId: m.entityId, promptKey: m.promptKey, promptVersion: m.promptVersion, humanOverrideBy: `${actor.userId}${edited ? " (edited)" : ""}`, sendStatus: res.ok ? "sent" : res.blocked ? "blocked" : "failed", error: res.reason });
-  if (res.ok && m.entityType === "PROSPECT" && m.promptKey && OUTREACH_SEQUENCE.includes(m.promptKey)) await advanceOutreach(m.entityId);
-  if (res.ok && m.entityType === "PROVIDER_PROSPECT" && m.promptKey && PROVIDER_OUTREACH_SEQUENCE.includes(m.promptKey)) await advanceProviderOutreach(m.entityId);
+  const res = await sendApproved(m, actor.userId, subject, body, { edited });
   if (!res.ok) throw new DomainError("VALIDATION", res.blocked ? `Not sent — blocked by compliance: ${res.reason}` : "The email failed to send.");
   return { status: "sent" as const };
+}
+
+async function rejectDraft(m: { id: string; entityType: string; entityId: string; agent: string | null; promptKey: string | null }, userId: string | null) {
+  await prisma.communication.update({ where: { id: m.id }, data: { status: "REJECTED", createdById: userId } });
+  if (m.entityType === "PROSPECT") await prisma.clinicProspect.update({ where: { id: m.entityId }, data: { outreachPaused: true } }).catch(() => undefined);
+  if (m.entityType === "PROVIDER_PROSPECT") await prisma.providerProspect.update({ where: { id: m.entityId }, data: { outreachPaused: true } }).catch(() => undefined);
+  await logAgent(m.agent ?? "admin", "draft_rejected", { entityType: m.entityType, entityId: m.entityId, promptKey: m.promptKey, humanOverrideBy: userId });
+}
+
+/**
+ * Bulk approve / reject drafts exactly as written. Approved drafts are QUEUED and
+ * sent by approvedQueueSweep (every minute), so a big batch never times out and
+ * waits out pause, caps and quiet hours instead of being dropped.
+ */
+export async function bulkDecide(actor: Actor, ids: string[], decision: "approve" | "reject") {
+  requireAdmin(actor);
+  const rows = await prisma.communication.findMany({ where: { id: { in: [...new Set(ids)].slice(0, 500) }, status: "PENDING_APPROVAL" } });
+  if (decision === "reject") {
+    for (const m of rows) await rejectDraft(m, actor.userId);
+    return { count: rows.length };
+  }
+  const r = await prisma.communication.updateMany({ where: { id: { in: rows.map((m) => m.id) }, status: "PENDING_APPROVAL" }, data: { status: "QUEUED", createdById: actor.userId } });
+  await audit(prisma, actor, "growth.bulk_approve", "Communication", "bulk", null, { count: r.count });
+  return { count: r.count };
+}
+
+/** Sends QUEUED (bulk-approved) drafts oldest first. A transient block (pause, caps, quiet hours) stops the run; the rest wait for the next tick. */
+export async function approvedQueueSweep(limit = 40) {
+  const rows = await prisma.communication.findMany({ where: { status: "QUEUED" }, orderBy: { createdAt: "asc" }, take: limit });
+  let sent = 0, failed = 0;
+  for (const m of rows) {
+    try {
+      const res = await sendApproved(m, m.createdById, (m.subject ?? "").trim(), (m.body ?? "").trim(), { bulk: true });
+      if (res.ok) sent++; else failed++;
+    } catch (e) {
+      if (e instanceof Deferred) {
+        await prisma.setting.upsert({ where: { key: "growth.approvedQueueHeld" }, create: { key: "growth.approvedQueueHeld", value: { reason: e.message, at: clock.now().toISOString() } }, update: { value: { reason: e.message, at: clock.now().toISOString() } } });
+        return { sent, failed, held: e.message };
+      }
+      failed++;
+      await prisma.communication.update({ where: { id: m.id }, data: { status: "REJECTED", error: String((e as Error).message ?? e).slice(0, 300) } }).catch(() => undefined);
+    }
+  }
+  if (rows.length) await prisma.setting.deleteMany({ where: { key: "growth.approvedQueueHeld" } });
+  return { sent, failed, held: null };
 }
 
 // ---------------- escalations ----------------

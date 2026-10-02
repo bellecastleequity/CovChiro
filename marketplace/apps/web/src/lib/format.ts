@@ -76,6 +76,7 @@ export const STATUS_TONE: Record<string, "gray" | "green" | "amber" | "red" | "b
   APPROVED: "green",
   BLOCKED: "red",
   PENDING_APPROVAL: "amber",
+  QUEUED: "blue",
   RUNNING: "blue",
   DONE: "green",
   NOT_FOUND: "gray",
