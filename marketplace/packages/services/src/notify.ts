@@ -1,6 +1,6 @@
 import { brand, env } from "@cm/config";
 import { mailProvider, smsProvider, textingEnabled } from "@cm/integrations";
-import type { Db } from "./context";
+import { getSettings, type Db } from "./context";
 import { recordChannel } from "./healthstate";
 
 /**
@@ -63,7 +63,8 @@ export async function sendEmail(to: string, c: EmailContent): Promise<boolean> {
   const { html, text } = renderEmail(c);
   const mailer = mailProvider();
   try {
-    const ok = await mailer.send({ to, subject: c.subject, html, text, unsubscribeUrl: c.unsubscribeUrl });
+    const replyTo = (await getSettings().catch(() => null))?.["email.replyTo"] || undefined;
+    const ok = await mailer.send({ to, subject: c.subject, html, text, unsubscribeUrl: c.unsubscribeUrl, ...(replyTo && replyTo.toLowerCase() !== to.toLowerCase() ? { replyTo } : {}) });
     await recordChannel("email", ok, ok ? null : ((mailer as { lastError?: string | null }).lastError ?? "the email provider refused the message"));
     return ok;
   } catch (e) {
@@ -82,6 +83,8 @@ export interface NotifyInput {
   sms?: boolean;
   /** false = don't wake the person's phone (e.g. digests). Default: push to subscribed devices. */
   push?: boolean;
+  /** false = never email instead when a text can't be sent (admin alerts: the team inbox gets the email). */
+  emailFallback?: boolean;
   /** Extra paragraphs for the email body. */
   details?: string[];
   ctaLabel?: string;
@@ -113,7 +116,7 @@ export async function notify(db: Db, userId: string, n: NotifyInput) {
     if (ok) sent.push("sms");
   }
   // A text-worthy alert that couldn't go by text (texting off, no verified mobile, or it failed) goes by email instead.
-  if (n.sms && n.email === false && !sent.includes("sms")) {
+  if (n.sms && n.email === false && n.emailFallback !== false && !sent.includes("sms")) {
     const ok = await sendEmail(user.email, {
       subject: n.title,
       heading: n.title,
@@ -135,7 +138,40 @@ export async function notifyClinic(db: Db, clinicOrgId: string, n: NotifyInput) 
   for (const m of members) await notify(db, m.userId, n);
 }
 
+/**
+ * Which business mailbox an admin alert goes to (Settings → Email addresses).
+ * null = no email here (the sender already emails the right inbox, e.g. support).
+ */
+const INBOX: [RegExp, "admin" | "billing" | "info" | "privacy" | "support" | null][] = [
+  [/^support_(new|urgent)$/, null],
+  [/^support_/, "support"],
+  [/payout|transfer|charge|dispute|visits_disputed|hire_paid|refund|invoice|billing|deposit/, "billing"],
+  [/contact_lead|new_signup|growth_escalation|waitlist|lead/, "info"],
+  [/account_deleted|privacy/, "privacy"],
+];
+export async function adminInbox(template: string): Promise<string | null> {
+  const s = await getSettings();
+  const kind = INBOX.find(([re]) => re.test(template))?.[1];
+  if (kind === null) return null;
+  return {
+    admin: s["email.adminInbox"],
+    billing: s["email.billingInbox"],
+    info: s["email.infoInbox"],
+    privacy: s["email.privacyInbox"],
+    support: s["support.email"],
+  }[kind ?? "admin"];
+}
+
+/**
+ * Admin alerts: every admin gets it in the app (plus push and a text when asked); the
+ * email goes once to the business mailbox for that kind of alert, never to each admin's
+ * personal login address.
+ */
 export async function notifyAdmins(db: Db, n: NotifyInput) {
   const admins = await db.user.findMany({ where: { role: "PLATFORM_ADMIN", disabledAt: null } });
-  for (const a of admins) await notify(db, a.id, n);
+  for (const a of admins) await notify(db, a.id, { ...n, email: false, emailFallback: false });
+  if (n.email === false) return;
+  const to = await adminInbox(n.template);
+  if (!to) return;
+  await sendEmail(to, { subject: n.title, heading: n.title, paragraphs: [n.body, ...(n.details ?? [])], cta: n.link ? { label: n.ctaLabel ?? "Open", url: n.link } : undefined });
 }

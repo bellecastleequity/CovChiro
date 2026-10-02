@@ -44,7 +44,8 @@ describe("confirmation link page", () => {
 });
 
 describe("owner is told about new signups", () => {
-  it("emails every platform admin when a clinic or provider signs up", async () => {
+  it("tells every admin in the app and emails the info inbox (not personal logins) when someone signs up", async () => {
+    const before = devOutbox.filter((m) => m.to === "info@coverageoncall.com" && /signup/.test(m.subject ?? "")).length;
     const adminUser = await prisma.user.create({ data: { email: `admin-${uid()}@test.dev`, name: "Owner", role: "PLATFORM_ADMIN", emailVerifiedAt: new Date() } });
     await auth.signup({ role: "clinic", name: "Pat Lee", email: `c-${uid()}@test.dev`, password: "correct-horse-battery", organization: "Sunrise Chiropractic", acceptTerms: true });
     await auth.signup({ role: "provider", name: "Sam Diaz", email: `p-${uid()}@test.dev`, password: "correct-horse-battery", professionCodes: ["DC"], acceptTerms: true });
@@ -52,6 +53,7 @@ describe("owner is told about new signups", () => {
     expect(notes.map((n) => n.title)).toEqual(["New clinic signup: Sunrise Chiropractic", "New provider signup: Sam Diaz"]);
     expect(notes[0].link).toMatch(/^\/admin\/clinics\//);
     expect(notes[1].link).toMatch(/^\/admin\/providers\//);
-    expect(devOutbox.filter((m) => m.to === adminUser.email && /signup/.test(m.subject ?? ""))).toHaveLength(2);
+    expect(devOutbox.filter((m) => m.to === adminUser.email && /signup/.test(m.subject ?? ""))).toHaveLength(0);
+    expect(devOutbox.filter((m) => m.to === "info@coverageoncall.com" && /signup/.test(m.subject ?? "")).length).toBeGreaterThanOrEqual(before + 2);
   });
 });

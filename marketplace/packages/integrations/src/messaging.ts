@@ -9,6 +9,8 @@ export interface EmailMessage {
   text: string;
   /** For List-Unsubscribe on marketing mail. */
   unsubscribeUrl?: string;
+  /** Where replies go (e.g. the support inbox). */
+  replyTo?: string;
 }
 
 export interface Mailer {
@@ -56,6 +58,7 @@ class SendGridMailer implements Mailer {
       body: JSON.stringify({
         personalizations: [{ to: [{ email: m.to }] }],
         from: match ? { email: match[2].trim(), name: match[1].trim() } : { email: from },
+        ...(m.replyTo ? { reply_to: { email: m.replyTo } } : {}),
         subject: m.subject,
         content: [
           { type: "text/plain", value: m.text },

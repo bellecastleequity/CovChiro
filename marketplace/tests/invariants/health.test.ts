@@ -7,6 +7,7 @@ import { uid } from "../factories";
 const admin = { userId: null, role: "PLATFORM_ADMIN" as const };
 let adminEmail = "";
 const mailsTo = (to: string) => devOutbox.filter((m) => m.to === to && m.channel === "email");
+const INBOX = "admin@coverageoncall.com";
 
 beforeAll(async () => {
   adminEmail = `ops-${uid()}@test.dev`;
@@ -32,26 +33,30 @@ describe("system health monitor", () => {
     const t0 = new Date();
     await prisma.aiUsage.create({ data: { agent: "healthTest", task: "research", provider: "openai", model: "gpt", ok: false, error: "HTTP 429: You exceeded your current quota, please check your plan and billing details." } });
 
-    const before = mailsTo(adminEmail).length;
+    const before = mailsTo(INBOX).length;
     const r = await health.systemHealthSweep({ force: true });
     expect(r).toMatchObject({ fresh: 1 });
-    const mail = mailsTo(adminEmail).at(-1)!;
+    // Emailed to the admin inbox, never the admin's personal login; every admin sees it in the app.
+    expect(mailsTo(adminEmail).length).toBe(0);
+    const admin1 = await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } });
+    expect(await prisma.notification.count({ where: { userId: admin1.id, template: "system_health" } })).toBeGreaterThan(0);
+    const mail = mailsTo(INBOX).at(-1)!;
     expect(mail.subject).toMatch(/1 problem needs attention/);
     expect(mail.body).toMatch(/OpenAI: AI credits exhausted/);
     expect(mail.body).toMatch(/platform\.openai\.com/);
-    expect(mailsTo(adminEmail).length).toBe(before + 1);
+    expect(mailsTo(INBOX).length).toBe(before + 1);
 
     // Still broken a few minutes later: no duplicate email.
     setClock(() => new Date(+t0 + 10 * 60_000));
     await runJobs([]);
     expect(await health.systemHealthSweep({ force: true })).toMatchObject({ fresh: 0, repeat: 0 });
-    expect(mailsTo(adminEmail).length).toBe(before + 1);
+    expect(mailsTo(INBOX).length).toBe(before + 1);
 
     // Errors age out of the window (credits added) → one "resolved" email.
     setClock(() => new Date(+t0 + 7 * 3_600_000));
     await runJobs([]);
     expect(await health.systemHealthSweep({ force: true })).toMatchObject({ resolved: 1 });
-    expect(mailsTo(adminEmail).at(-1)!.subject).toMatch(/problem resolved/);
+    expect(mailsTo(INBOX).at(-1)!.subject).toMatch(/problem resolved/);
   });
 
   it("tracks failing jobs and email sending, and spots a stopped cron", async () => {
@@ -75,5 +80,19 @@ describe("system health monitor", () => {
     ({ issues } = await health.currentIssues());
     expect(issues[0]).toMatchObject({ key: "cron", severity: "critical" });
     expect((await health.healthSummary()).status).toBe("critical");
+  });
+});
+
+describe("admin email routing", () => {
+  it("sends each kind of admin alert to its business mailbox", async () => {
+    const { adminInbox } = await import("@cm/services");
+    expect(await adminInbox("backup_failed")).toBe("admin@coverageoncall.com");
+    expect(await adminInbox("payout_failed")).toBe("billing@coverageoncall.com");
+    expect(await adminInbox("dispute_opened")).toBe("billing@coverageoncall.com");
+    expect(await adminInbox("contact_lead")).toBe("info@coverageoncall.com");
+    expect(await adminInbox("admin_new_signup")).toBe("info@coverageoncall.com");
+    expect(await adminInbox("account_deleted")).toBe("privacy@coverageoncall.com");
+    expect(await adminInbox("support_reply")).toBe("support@coverageoncall.com");
+    expect(await adminInbox("support_urgent")).toBeNull(); // support.ts already emails the support inbox
   });
 });

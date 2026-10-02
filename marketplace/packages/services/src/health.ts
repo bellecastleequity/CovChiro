@@ -107,14 +107,14 @@ async function sendAlert(issues: { fresh: HealthIssue[]; repeat: HealthIssue[]; 
     "Live status: Admin → System health.",
   ];
   const body = all.length ? all.map((i) => i.title).join(" · ") : issues.resolved.map((r) => `Resolved: ${r.title}`).join(" · ") || "System health test";
-  const admins = await prisma.user.findMany({ where: { role: "PLATFORM_ADMIN", disabledAt: null }, select: { id: true, email: true } });
+  const admins = await prisma.user.findMany({ where: { role: "PLATFORM_ADMIN", disabledAt: null }, select: { id: true } });
+  // In the app (and by text when critical) for every admin; the email goes to the admin inbox, not personal logins.
   for (const a of admins) {
-    await notify(prisma, a.id, { template: "system_health", title, body, link: "/admin/health", details, ctaLabel: "Open System health", sms: critical && s["health.textCritical"], push: true });
+    await notify(prisma, a.id, { template: "system_health", title, body, link: "/admin/health", details, ctaLabel: "Open System health", email: false, emailFallback: false, sms: critical && s["health.textCritical"], push: true });
   }
-  const adminEmails = new Set(admins.map((a) => a.email.toLowerCase()));
-  for (const to of s["health.alertEmails"]) {
-    if (adminEmails.has(to.toLowerCase())) continue;
-    await sendEmail(to, { subject: title, heading: title, paragraphs: [body, ...details], cta: { label: "Open System health", url: absoluteUrl("/admin/health") } });
+  const to = [...new Map([s["email.adminInbox"], ...s["health.alertEmails"]].map((e) => [e.toLowerCase(), e])).values()];
+  for (const addr of to) {
+    await sendEmail(addr, { subject: title, heading: title, paragraphs: [body, ...details], cta: { label: "Open System health", url: absoluteUrl("/admin/health") } });
   }
 }
 
