@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { brand } from "@cm/config";
 import { organizationLd, websiteLd } from "@cm/core";
 import { getSettings } from "@cm/services";
@@ -5,6 +6,17 @@ import { SiteFooter, SiteHeader } from "@/components/site/header";
 import { JsonLd } from "@/components/site/json-ld";
 import { GoogleAnalytics } from "@/components/site/google-analytics";
 import { siteUrl } from "@/lib/seo";
+
+// Reads live Settings (analytics ID, social links, FAQ answers), so public pages render
+// per request instead of baking in whatever the build machine's database had.
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const s = await getSettings().catch(() => null);
+  const google = s?.["seo.googleSiteVerification"]?.trim();
+  const bing = s?.["seo.bingSiteVerification"]?.trim();
+  return google || bing ? { verification: { ...(google ? { google } : {}), ...(bing ? { other: { "msvalidate.01": bing } } : {}) } } : {};
+}
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const b = brand();
