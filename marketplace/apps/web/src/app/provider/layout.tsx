@@ -31,6 +31,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     { href: "/provider/availability", label: "Availability", icon: "availability" },
     { href: "/provider/payouts", label: "Payout setup", icon: "payments" },
     { href: "/provider/profile", label: "Profile", icon: "profile" },
+    { href: "/provider/academy", label: "Training", icon: "academy" },
   ];
   return (
     <AppShell items={items} root="/provider" userId={user.id} userName={user.name} subtitle="Provider">

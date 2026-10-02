@@ -95,6 +95,7 @@ const PROVIDER: SearchPage[] = [
   { label: "Profile", href: "/provider/profile", section: "Provider", keywords: "bio photo agreement travel distance" },
   { label: "Public profile", href: "/provider/profile/public", section: "Provider", keywords: "badges preview" },
   { label: "Standing bookings", href: "/provider/standing", section: "Provider", keywords: "recurring weekly" },
+  { label: "Training", href: "/provider/academy", section: "Provider", keywords: "academy how to lessons before after shift reconfirm time clock patient count pay" },
   { label: "Feedback", href: "/provider/feedback", section: "Provider", keywords: "ratings reviews" },
   { label: "Messages", href: "/provider/messages", section: "Provider", keywords: "chat inbox" },
   { label: "Notifications", href: "/provider/notifications", section: "Provider", keywords: "alerts" },

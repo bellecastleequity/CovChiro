@@ -62,6 +62,19 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
       <PageHeader eyebrow={`Hi, ${firstName(user.name)}`} title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
       {clock ? <div className="mb-6"><ClockCard v={clock} title="Today's time clock" /></div> : null}
       {visitView?.canSubmit ? <div className="mb-6"><ProviderVisitCard v={visitView} assignmentId={clock!.assignmentId} tz={clock!.timeZone} action={visitsAction} /></div> : null}
+      <Card className="mb-6 border-brand-200 bg-brand-50/40">
+        <CardBody className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1 basis-64">
+            <div className="font-semibold text-slate-900">Provider training</div>
+            <p className="text-sm text-slate-600">About 30 minutes. Start with the two that protect your bookings and pay: what to do before and after every shift.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <LinkButton href="/provider/academy/before-the-shift" size="sm">Before the shift</LinkButton>
+            <LinkButton href="/provider/academy/after-the-shift" size="sm" variant="outline">After the shift</LinkButton>
+            <LinkButton href="/provider/academy" size="sm" variant="ghost">All lessons</LinkButton>
+          </div>
+        </CardBody>
+      </Card>
       {rs["referrals.enabled"] ? <GroundFloor kind="provider" referrerRewardCents={rs["referrals.referrerRewardCents"]} friendRewardCents={rs["referrals.refereeRewardCents"]} justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
       {readiness ? (
         <ReadinessCard

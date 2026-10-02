@@ -152,10 +152,22 @@ const posting: Lesson = {
           { title: "Which location?" },
           { title: "What kind of coverage?", detail: "The profession you need covered" },
           { title: "When?", detail: "Date, start and end time. Add more days for a multi-day booking." },
-          { title: "Details", detail: "Skills, expected patients, minimum experience, travel budget, notes" },
+          { title: "Details", detail: "Patients the covering provider will see, skills, minimum experience, travel budget, notes" },
           { title: "Review and post", detail: "Price, travel estimate, promo code", tone: "accent" },
         ]}
       />
+      <H>Patients the covering provider will see</H>
+      <P>
+        Enter how many patients <b>this provider</b> will treat, not your whole clinic&apos;s volume. It sets the price: up to {s["pricing.volumeLightVisitsFullDay"]} on a full day (
+        {s["pricing.volumeLightVisitsHalfDay"]} on a half day) is a <b>Light day</b>; more is a <b>Busy day</b>. If the provider ends up seeing more than the day covers plus{" "}
+        {s["pricing.volumeGraceVisits"]} grace visits, each extra visit is {money(s["pricing.volumeOverageClinicCents"])}. After the shift you see their count and have{" "}
+        {hrs(s["pricing.volumeDisputeHours"])} to confirm it or send yours before anything extra is charged. The price never goes below the day you booked.
+      </P>
+      <H>Need more than one provider?</H>
+      <P>
+        Choose <b>Providers needed</b> on the When step. Each provider is a separate booking with its own price, patient count and confirmation, and one provider can never take two of them. You
+        can also post another booking for the same time later.
+      </P>
       <H>Choosing skills</H>
       <P>
         Tap a skill once to make it <b>preferred</b> (providers with it rank higher). Tap again to make it <b>required</b> (only providers with it are matched). Every required skill shrinks the
@@ -175,7 +187,8 @@ const posting: Lesson = {
             a flat ${(s["pricing.lodgingNightlyCents"] / 100).toFixed(0)} a night is added (no receipts); nearby providers cost nothing extra.
           </>,
           <>
-            <b>Instant book</b>: the first applicant who is a strong match is confirmed automatically, so you don&apos;t have to choose. Leave it off to review applicants yourself.
+            <b>Instant book</b> (off by default): the first applicant who is a strong match is confirmed automatically. Leave it off to review applicants yourself; if you don&apos;t choose by
+            the deadline, we confirm the best one for you.
           </>,
           <>
             <b>Notes for providers</b>: practice style, a typical day, the techniques you use. Never include phone numbers, emails, or anything about a patient.
@@ -393,6 +406,14 @@ const dayOf: Lesson = {
             tone: "amber",
           },
           { when: "Shift start", what: "Tap “Provider arrived” on the shift page", detail: "Or “My provider didn't show” (see the next lesson).", tone: "green" },
+        ]}
+      />
+      <H>After the shift</H>
+      <Ul
+        items={[
+          "Your provider punches out on our time clock, and you get a one-tap link to sign off the timesheet (a manager can also sign on their phone before they leave).",
+          `They enter how many patients they saw. You have ${hrs(s["pricing.volumeDisputeHours"])} to confirm it or send your own count; a small difference is split, a big one goes to our team.`,
+          `The shift completes ${hrs(s["payments.autoCompleteHours"])} after the end and the balance is charged. Then rate your provider.`,
         ]}
       />
       <H>Helping your provider have a great day</H>
