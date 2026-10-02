@@ -380,3 +380,11 @@ export const privateFeedbackAction = formAction(async (fd) => {
   revalidatePath("/clinic/shifts");
   return r;
 });
+
+export const bookAgainAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await bookings.bookAgain(actor, str(fd, "assignmentId"), str(fd, "date"));
+  revalidatePath("/clinic", "layout");
+  if (!r.invited) return { ok: `Posted, but ${r.providerName} couldn't be invited: ${r.reason} The shift is open to other providers.`, data: { shiftId: r.shiftId } };
+  redirect(`/clinic/shifts/${r.shiftId}?rebooked=1`);
+});

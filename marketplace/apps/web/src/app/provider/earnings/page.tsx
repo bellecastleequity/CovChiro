@@ -15,7 +15,7 @@ export default async function Earnings() {
   const s = e.summary;
   return (
     <>
-      <PageHeader title="Earnings" description="Every dollar you're owed, when it's released, and what's been paid." actions={<a href="/api/exports/earnings" className={buttonClass("outline", "sm")}><Download className="size-4" />Export CSV</a>} />
+      <PageHeader title="Earnings" description="Every dollar you're owed, when it's released, and what's been paid." actions={<div className="flex gap-2"><a href="/provider/earnings/statement" className={buttonClass("outline", "sm")}>Year-end summary</a><a href="/api/exports/earnings" className={buttonClass("outline", "sm")}><Download className="size-4" />Export CSV</a></div>} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Upcoming (booked)" value={money(s.upcomingCents)} hint="Confirmed shifts not yet worked" />
         <Stat label="In hold period" value={money(s.scheduledCents + s.readyCents)} hint="Released automatically after the hold" tone="brand" />

@@ -3,6 +3,7 @@ import { Bell, LogOut, MailWarning } from "lucide-react";
 import { brand, SETTINGS } from "@cm/config";
 import { searchPagesFor } from "@/lib/search-pages";
 import { GlobalSearch, type SearchEntry } from "./global-search";
+import { AppInstall } from "./app-install";
 import { prisma } from "@cm/db";
 import { Logo } from "@/components/site/header";
 import { getSession } from "@/lib/session";
@@ -26,7 +27,7 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
   const placeholder = root === "/admin" ? "Search pages, settings, providers, clinics, shifts, leads…" : root === "/clinic" ? "Search pages, shifts, providers, locations…" : "Search pages and your shifts…";
   return (
     <div className="min-h-dvh bg-slate-50">
-      <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-slate-200 bg-white px-3 py-4 lg:flex">
+      <aside className="fixed inset-y-0 left-0 hidden w-64 print:!hidden flex-col border-r border-slate-200 bg-white px-3 py-4 lg:flex">
         <Link href={root} className="px-3 pb-5">
           <Logo name={b.name} />
         </Link>
@@ -43,8 +44,8 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
           </form>
         </div>
       </aside>
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-slate-200 bg-white/90 px-4 backdrop-blur sm:px-6">
+      <div className="lg:pl-64 print:pl-0">
+        <header className="sticky top-0 z-30 flex h-14 print:hidden items-center justify-between gap-2 border-b border-slate-200 bg-white/90 px-4 backdrop-blur sm:px-6">
           <Link href={root} className="shrink-0 lg:hidden">
             <Logo name={b.name} />
           </Link>
@@ -75,7 +76,10 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
             </div>
           </div>
         ) : null}
-        <main className="mx-auto max-w-6xl px-4 pb-28 pt-6 sm:px-6 lg:pb-12">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 pb-28 pt-6 sm:px-6 lg:pb-12">
+          {root !== "/admin" ? <div className="print:hidden"><AppInstall compact /></div> : null}
+          {children}
+        </main>
       </div>
       <BottomNav items={items} root={root} />
     </div>

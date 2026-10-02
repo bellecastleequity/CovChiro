@@ -1,3 +1,4 @@
+import { CalendarSync } from "@/components/account/calendar-sync";
 import Link from "next/link";
 import { CalendarDays } from "lucide-react";
 import { prisma } from "@cm/db";
@@ -10,7 +11,7 @@ import { requireActor } from "@/lib/session";
 export const metadata = { title: "My shifts" };
 
 export default async function MyShifts() {
-  const { actor } = await requireActor("provider");
+  const { actor, user } = await requireActor("provider");
   const [assignments, apps] = await Promise.all([
     prisma.assignment.findMany({ where: { providerId: actor.providerId! }, include: { shift: { include: { location: { include: { clinicOrg: true } } } } }, orderBy: { startsAt: "desc" }, take: 100 }),
     prisma.application.findMany({ where: { providerId: actor.providerId!, status: "ACTIVE" }, include: { shift: { include: { location: { include: { clinicOrg: true } } } } }, orderBy: { createdAt: "desc" } }),
@@ -33,6 +34,7 @@ export default async function MyShifts() {
   return (
     <>
       <PageHeader title="My shifts" />
+      <CalendarSync userId={user.id} who="provider" />
       <div className="space-y-6">
         <Card>
           <CardHeader title="Upcoming" />

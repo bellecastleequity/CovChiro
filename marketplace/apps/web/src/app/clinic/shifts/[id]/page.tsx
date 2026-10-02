@@ -6,6 +6,8 @@ import { clinicView } from "@cm/core";
 import { dispatch, getSettings, shiftCandidates, timeclock } from "@cm/services";
 import { clinicApproveAction, clinicReportAction } from "@/app/timeclock-actions";
 import { SignOffForm } from "@/components/timeclock/signoff-form";
+import { TrustPanel } from "@/components/clinic/trust-panel";
+import { bookAgainAction } from "../../actions";
 import { TimesheetPanel, TimesheetStatus } from "@/components/timeclock/timesheet-panel";
 import { AutoRefresh, Countdown } from "@/components/countdown";
 import { BadgeList } from "@/components/provider-profile";
@@ -13,7 +15,7 @@ import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Field, PhiNotice, Select, Textarea } from "@/components/ui/form";
+import { Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form";
 import { Alert, Empty, PageHeader } from "@/components/ui/misc";
 import { dateLabel, money, pct, relative, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
@@ -84,7 +86,7 @@ function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; ap
   );
 }
 
-export default async function ClinicShift({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ posted?: string; saved?: string }> }) {
+export default async function ClinicShift({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ posted?: string; saved?: string; rebooked?: string }> }) {
   const { actor, user } = await requireActor("clinic");
   const { id } = await params;
   const sp = await searchParams;
@@ -146,6 +148,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
       />
       {sp.posted ? <Alert tone="success" className="mb-5" title="Shift posted">We're notifying eligible providers now. Applicants will appear below.</Alert> : null}
       {sp.saved ? <Alert tone="info" className="mb-5">Draft saved.</Alert> : null}
+      {sp.rebooked ? <Alert tone="success" className="mb-5" title="Booked again">We posted the shift and invited your provider. You&apos;ll hear from us as soon as they accept.</Alert> : null}
       {shift.emergencyAt && selectable ? (
         <Alert tone="warning" className="mb-5" title={shift.rescueOfShiftId ? "Emergency replacement — we're on it" : "We've had a cancellation — we're on it"}>
           No need to worry: we're finding a replacement urgently as we speak, texting every eligible provider nearby. We'll email you the moment your new provider is confirmed.
@@ -286,6 +289,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                     <div className="text-sm text-slate-500">{live.provider.homeCity}, {live.provider.homeState} · {live.driveMinutes} min drive</div>
                   </div>
                 </div>
+                <TrustPanel providerId={live.providerId} professionCode={shift.professionCode} state={shift.location.state} tz={tz} />
                 <div className="flex flex-wrap gap-2">
                   <ActionForm action={openThreadAction} successMessage={false}>
                     <input type="hidden" name="shiftId" value={shift.id} />
@@ -306,6 +310,16 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                     </ActionForm>
                   ) : null}
                 </div>
+                {live.status === "COMPLETED" ? (
+                  <ActionForm action={bookAgainAction} id="book-again" className="space-y-2 rounded-xl border border-brand-100 bg-brand-50/50 p-3">
+                    <input type="hidden" name="assignmentId" value={live.id} />
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="text-xs text-slate-600">Book {live.provider.displayName} again on<Input name="date" type="date" required min={new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)} className="mt-1 w-44" /></label>
+                      <SubmitButton size="sm">Book again</SubmitButton>
+                    </div>
+                    <p className="text-xs text-slate-500">Same location and hours. We post the shift and invite {live.provider.displayName} first.</p>
+                  </ActionForm>
+                ) : null}
                 {live.status === "CONFIRMED" ? (
                   <p className="text-sm text-slate-600">
                     {live.onMyWayAt ? "✓ Your provider is on the way." : live.reconfirmedAt ? "✓ Your provider has reconfirmed they're coming." : live.reconfirmRequestedAt ? "We've asked your provider to reconfirm; you'll hear from us if they don't." : null}

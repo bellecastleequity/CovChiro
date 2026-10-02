@@ -146,3 +146,42 @@ export async function maybeSendBookingCovered(shiftId: string) {
     ctaLabel: "See your booking",
   });
 }
+
+/**
+ * "Book again": post the same shift (location, profession, hours, preferences) on a new date and
+ * invite the provider who worked it. The invitation is a normal clinic invite: rank-protected, and
+ * the provider must still be eligible on the new date (INV-1); if they can't be invited, the shift
+ * stays posted for others and the reason is returned.
+ */
+export async function bookAgain(actor: Actor, assignmentId: string, dateIso: string) {
+  const orgId = requireClinic(actor);
+  const a = await prisma.assignment.findFirst({ where: { id: assignmentId, shift: { location: { clinicOrgId: orgId } } }, include: { shift: { include: { location: true } }, provider: { select: { id: true, displayName: true } } } });
+  if (!a) throw new DomainError("NOT_FOUND", "Shift not found");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) throw new DomainError("VALIDATION", "Pick a date.");
+  const tz = a.shift.location.timeZone;
+  const { DateTime } = await import("luxon");
+  const oldStart = DateTime.fromJSDate(a.shift.startsAt, { zone: tz });
+  const oldEnd = DateTime.fromJSDate(a.shift.endsAt, { zone: tz });
+  const day = DateTime.fromISO(dateIso, { zone: tz });
+  const startsAt = day.set({ hour: oldStart.hour, minute: oldStart.minute, second: 0, millisecond: 0 });
+  const endsAt = startsAt.plus(oldEnd.diff(oldStart));
+  const s = a.shift;
+  const { shiftId } = await createShift(
+    actor,
+    {
+      locationId: s.locationId, professionCode: s.professionCode, startsAt: startsAt.toJSDate(), endsAt: endsAt.toJSDate(),
+      requiredSkillIds: s.requiredSkillIds, preferredSkillIds: s.preferredSkillIds, expectedPatients: s.expectedPatients, minYearsExperience: s.minYearsExperience ?? undefined,
+      notes: s.notes, instantBook: false, maxTravelBudgetCents: s.maxTravelBudgetCents, lodgingAllowed: s.lodgingAllowed, lodgingCapCentsPerNight: s.lodgingCapCentsPerNight,
+      supervisionAttestation: (s.supervisionAttestation as never) ?? null,
+    },
+    { post: true },
+  );
+  await audit(prisma, actor, "shift.book_again", "Shift", shiftId, null, { fromAssignmentId: assignmentId, providerId: a.providerId });
+  const { inviteProviders } = await import("./shifts");
+  try {
+    await inviteProviders(actor, shiftId, [a.providerId]);
+    return { shiftId, invited: true as const, providerName: a.provider.displayName };
+  } catch (e) {
+    return { shiftId, invited: false as const, providerName: a.provider.displayName, reason: e instanceof Error ? e.message : String(e) };
+  }
+}

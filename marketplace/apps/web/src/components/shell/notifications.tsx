@@ -1,6 +1,7 @@
+import { AppInstall } from "./app-install";
 import Link from "next/link";
 import { prisma } from "@cm/db";
-import { Card } from "@/components/ui/card";
+import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { relative } from "@/lib/format";
 
@@ -11,6 +12,7 @@ export async function NotificationsPage({ userId }: { userId: string }) {
   return (
     <>
       <PageHeader title="Notifications" />
+      <Card className="mb-6"><CardHeader title="Phone & browser notifications" /><CardBody><AppInstall /></CardBody></Card>
       {rows.length ? (
         <Card className="divide-y divide-slate-100">
           {rows.map((n) => (

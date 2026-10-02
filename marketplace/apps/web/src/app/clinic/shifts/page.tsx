@@ -1,3 +1,4 @@
+import { CalendarSync } from "@/components/account/calendar-sync";
 import Link from "next/link";
 import { CalendarDays, PlusCircle } from "lucide-react";
 import { prisma } from "@cm/db";
@@ -11,7 +12,7 @@ import { requireActor } from "@/lib/session";
 export const metadata = { title: "Shifts" };
 
 export default async function Shifts() {
-  const { actor } = await requireActor("clinic");
+  const { actor, user } = await requireActor("clinic");
   const shifts = await prisma.shift.findMany({
     where: { location: { clinicOrgId: actor.clinicOrgId! } },
     include: { location: true, assignments: { where: { status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"] } }, include: { provider: true } }, _count: { select: { applications: { where: { status: "ACTIVE" } } } } },
@@ -21,6 +22,7 @@ export default async function Shifts() {
   return (
     <>
       <PageHeader title="Shifts" actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
+      <CalendarSync userId={user.id} who="clinic" />
       {shifts.length ? (
         <Card>
           <Table>

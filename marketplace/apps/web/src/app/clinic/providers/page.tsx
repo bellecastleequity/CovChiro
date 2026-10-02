@@ -1,3 +1,4 @@
+import { prisma } from "@cm/db";
 import Link from "next/link";
 import { Ban, Heart } from "lucide-react";
 import { clinicRelationships } from "@cm/services";
@@ -14,6 +15,12 @@ export const dynamic = "force-dynamic";
 export default async function MyProviders() {
   const { actor } = await requireActor("clinic");
   const { favorites, blocked } = await clinicRelationships(actor);
+  // "Book again" opens the most recent completed shift with each favorite.
+  const lastShift = new Map(
+    (await prisma.assignment.findMany({ where: { status: "COMPLETED", providerId: { in: favorites.map((f) => f.id) }, shift: { location: { clinicOrgId: actor.clinicOrgId! } } }, orderBy: { startsAt: "desc" }, select: { providerId: true, shiftId: true } }))
+      .reverse()
+      .map((a) => [a.providerId, a.shiftId]),
+  );
   const who = (p: { id: string; displayName: string; homeCity: string | null; homeState: string | null }) => (
     <div>
       <Link href={`/clinic/providers/${p.id}`} className="font-medium hover:text-brand-700">{p.displayName}</Link>
@@ -32,6 +39,7 @@ export default async function MyProviders() {
                 {who(p)}
                 <div className="flex items-center gap-3 text-xs text-slate-500">
                   {p.shiftsTogether} shift{p.shiftsTogether === 1 ? "" : "s"} together
+                  {lastShift.get(p.id) ? <Link href={`/clinic/shifts/${lastShift.get(p.id)}#book-again`} className="font-medium text-brand-700 hover:underline">Book again</Link> : null}
                   <Link href={`/clinic/standing?provider=${p.id}`} className="font-medium text-brand-700 hover:underline">Standing booking</Link>
                   <Link href={`/clinic/providers/${p.id}#hire`} className="font-medium text-brand-700 hover:underline">Request to hire</Link>
                   <ActionForm action={favoriteAction} successMessage={false}>

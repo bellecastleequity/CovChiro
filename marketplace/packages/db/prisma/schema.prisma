@@ -40,13 +40,16 @@ model User {
   lastLoginAt     DateTime? @db.Timestamptz(3)
   /// Personal referral code (/r/<code>), made the first time it's needed.
   referralCode    String?   @unique @db.Citext
+  /// Secret token for the private calendar feed (/api/calendar/<token>); reset = new token.
+  calendarToken   String?   @unique
 
-  provider      Provider?
-  clinicMembers ClinicMember[]
-  sessions      Session[]
-  notifications Notification[]
-  referralsMade Referral[]     @relation("ReferralsMade")
-  referredBy    Referral?      @relation("ReferredBy")
+  provider          Provider?
+  clinicMembers     ClinicMember[]
+  sessions          Session[]
+  notifications     Notification[]
+  referralsMade     Referral[]         @relation("ReferralsMade")
+  pushSubscriptions PushSubscription[]
+  referredBy        Referral?          @relation("ReferredBy")
 }
 
 /// One per invited account: who invited them, and the two-sided reward once their first shift is done.
@@ -2216,4 +2219,19 @@ model BackupRun {
   finishedAt   DateTime? @db.Timestamptz(3)
 
   @@index([kind, startedAt])
+}
+
+/// Browser / phone push subscription (Web Push). Pushes carry no data: the device fetches its latest notification.
+model PushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  lastUsedAt DateTime? @db.Timestamptz(3)
+
+  @@index([userId])
 }

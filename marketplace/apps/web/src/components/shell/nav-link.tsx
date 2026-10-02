@@ -99,7 +99,7 @@ export function BottomNav({ items, root }: { items: NavItem[]; root: string }) {
           </div>
         </div>
       ) : null}
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" style={{ gridTemplateColumns: `repeat(${main.length + 1}, minmax(0, 1fr))` }}>
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid border-t print:hidden border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" style={{ gridTemplateColumns: `repeat(${main.length + 1}, minmax(0, 1fr))` }}>
         {main.map((i) => {
           const Icon = ICONS[i.icon];
           const active = isActive(path, i.href, root);

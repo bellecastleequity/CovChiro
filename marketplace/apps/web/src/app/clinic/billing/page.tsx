@@ -1,3 +1,5 @@
+import { buttonClass } from "@/components/ui/button";
+import Link from "next/link";
 import { CreditCard } from "lucide-react";
 import { prisma } from "@cm/db";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
@@ -20,7 +22,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
   ]);
   return (
     <>
-      <PageHeader title="Billing" description="Payments run through Stripe. We never store your card or bank numbers." />
+      <PageHeader title="Billing" description="Payments run through Stripe. We never store your card or bank numbers." actions={<Link href="/clinic/billing/statement" className={buttonClass("outline", "sm")}>Monthly statements</Link>} />
       {sp.stripe || sp.setup === "done" ? <Alert tone="success" className="mb-5">Payment method saved.</Alert> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>

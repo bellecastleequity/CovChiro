@@ -75,6 +75,8 @@ export interface NotifyInput {
   link?: string;
   email?: boolean;
   sms?: boolean;
+  /** false = don't wake the person's phone (e.g. digests). Default: push to subscribed devices. */
+  push?: boolean;
   /** Extra paragraphs for the email body. */
   details?: string[];
   ctaLabel?: string;
@@ -112,6 +114,11 @@ export async function notify(db: Db, userId: string, n: NotifyInput) {
       cta: n.link ? { label: n.ctaLabel ?? "Open", url: n.link } : undefined,
     });
     if (ok) sent.push("email");
+  }
+  // Phones / browsers that turned on notifications (empty push; the device fetches this notification).
+  if (n.push !== false) {
+    const { pushToUser } = await import("./push");
+    if ((await pushToUser(userId)) > 0) sent.push("push");
   }
   if (sent.length) await db.notification.update({ where: { id: row.id }, data: { sentAt: new Date(), payload: { sent } } });
 }
