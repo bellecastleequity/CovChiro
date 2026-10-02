@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowRight, BookOpen, ExternalLink, GraduationCap, LifeBuoy, MessageCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, ExternalLink, GraduationCap, LifeBuoy, MessageCircle, Siren } from "lucide-react";
 import { brand } from "@cm/config";
 import { prisma } from "@cm/db";
 import { getSettings, support, type Actor } from "@cm/services";
@@ -40,6 +40,14 @@ export async function HelpHome({ center, actor }: { center: HelpCenter; actor: A
   return (
     <>
       <PageHeader eyebrow="Help center" title="How can we help?" description="Search the answers, browse by topic, or ask our team." />
+      <Link href={`${center.base}/urgent`} className="mb-5 flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 hover:border-red-300">
+        <Siren className="size-6 shrink-0 text-red-600" />
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-red-900">Need help now?</div>
+          <div className="text-sm text-red-800">A no-show, a problem at the clinic, something that can&apos;t wait: we&apos;ll call, text or email you within minutes.</div>
+        </div>
+        <ArrowRight className="size-5 shrink-0 text-red-600" />
+      </Link>
       <div className="mb-6">
         <HelpSearch items={items} contactHref={`${center.base}/contact`} />
       </div>

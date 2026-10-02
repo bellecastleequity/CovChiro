@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, LifeBuoy, LogOut, MailWarning } from "lucide-react";
+import { Bell, LifeBuoy, LogOut, MailWarning, Siren } from "lucide-react";
 import { clinicHelp } from "@/lib/help/clinic";
 import { providerHelp } from "@/lib/help/provider";
 import { brand, SETTINGS } from "@cm/config";
@@ -61,6 +61,12 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
             <GlobalSearch entries={entries} placeholder={placeholder} />
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {help ? (
+              <Link href={`${help.base}/urgent`} className="mr-1 hidden items-center gap-1.5 rounded-lg border border-red-200 px-2.5 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 md:inline-flex">
+                <Siren className="size-4" />
+                Need help now?
+              </Link>
+            ) : null}
             {help ? (
               <Link href={help.base} className="grid size-10 place-items-center rounded-lg text-slate-600 hover:bg-slate-100" aria-label="Help center" title="Help">
                 <LifeBuoy className="size-5" />

@@ -1,5 +1,7 @@
 import { missingMigrations, prisma } from "@cm/db";
-import { emergency, hiring } from "@cm/services";
+import { emergency, hiring, support } from "@cm/services";
+import Link from "next/link";
+import { phoneLabel } from "@/lib/format";
 import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-link";
@@ -49,11 +51,26 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/support", label: "Support", icon: "help", badge: supportOpen },
     { href: "/admin/audit", label: "Audit log", icon: "audit" },
   ];
+  const urgent = await support.urgentWaiting().catch(() => []);
   return (
     <AppShell items={items} root="/admin" userId={user.id} userName={user.name} subtitle="Platform admin">
       {missing.length ? (
         <Alert tone="error" className="mb-6" title="Database update needed">
           This version of the site expects database updates that haven't been run yet: {missing.join(", ")}. Run the matching update-NNN SQL file(s) from this release in Neon&apos;s SQL Editor, in number order. Until then, some pages (for example the provider dashboard) won&apos;t load.
+        </Alert>
+      ) : null}
+      {urgent.length ? (
+        <Alert tone="error" className="mb-6" title={`Urgent help requested: ${urgent.length} waiting for a call, text or email`}>
+          <ul className="mt-1 space-y-0.5">
+            {urgent.map((u) => (
+              <li key={u.id}>
+                <Link href={`/admin/support/${u.id}`} className="font-medium underline">
+                  {u.user.name}: {u.contactMethod === "EMAIL" ? `email ${u.contactEmail}` : `${u.contactMethod === "TEXT" ? "text" : "call"} ${phoneLabel(u.contactPhone)}`}
+                </Link>{" "}
+                · waiting {Math.max(1, Math.round((Date.now() - +u.createdAt) / 60_000))} min
+              </li>
+            ))}
+          </ul>
         </Alert>
       ) : null}
       {children}

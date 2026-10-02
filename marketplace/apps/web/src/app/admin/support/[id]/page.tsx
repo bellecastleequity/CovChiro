@@ -3,13 +3,13 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@cm/db";
 import { support } from "@cm/services";
-import { adminSupportReplyAction, adminSupportStatusAction } from "@/app/help-actions";
+import { adminContactedAction, adminSupportReplyAction, adminSupportStatusAction } from "@/app/help-actions";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Textarea } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/misc";
-import { dateLabel, relative } from "@/lib/format";
+import { dateLabel, phoneLabel, relative } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 
 export const metadata = { title: "Support request" };
@@ -28,6 +28,26 @@ export default async function AdminSupportRequest({ params }: { params: Promise<
     <div className="mx-auto max-w-3xl">
       <Link href="/admin/support" className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900"><ArrowLeft className="size-4" />Support</Link>
       <PageHeader title={r.subject} description={`${r.topic} · opened ${dateLabel(r.createdAt)}`} actions={<Badge tone={r.status === "OPEN" ? "amber" : r.status === "ANSWERED" ? "green" : "gray"}>{r.status}</Badge>} />
+      {r.urgent ? (
+        <Card className={r.contactedAt ? "mb-4" : "mb-4 border-red-300 ring-2 ring-red-100"}>
+          <CardBody className="space-y-2 text-sm">
+            <div className="font-semibold text-red-800">Urgent: they asked for {r.contactMethod === "EMAIL" ? "an email" : r.contactMethod === "TEXT" ? "a text" : "a phone call"} within minutes</div>
+            <div className="flex flex-wrap gap-2">
+              {r.contactPhone ? <a href={`tel:${r.contactPhone}`} className="rounded-xl bg-brand-600 px-3 py-2 font-medium text-white">Call {phoneLabel(r.contactPhone)}</a> : null}
+              {r.contactPhone ? <a href={`sms:${r.contactPhone}`} className="rounded-xl border border-slate-300 px-3 py-2 font-medium text-slate-800">Text {phoneLabel(r.contactPhone)}</a> : null}
+              {r.contactEmail ? <a href={`mailto:${r.contactEmail}?subject=${encodeURIComponent("Re: your urgent request")}`} className="rounded-xl border border-slate-300 px-3 py-2 font-medium text-slate-800">Email {r.contactEmail}</a> : null}
+            </div>
+            {r.contactedAt ? (
+              <div className="text-emerald-700">Contacted {relative(r.contactedAt)}.</div>
+            ) : (
+              <ActionForm action={adminContactedAction}>
+                <input type="hidden" name="id" value={r.id} />
+                <SubmitButton size="sm" variant="danger">I&apos;ve reached them: mark contacted</SubmitButton>
+              </ActionForm>
+            )}
+          </CardBody>
+        </Card>
+      ) : null}
       <Card className="mb-4">
         <CardBody className="space-y-1 text-sm">
           <div><b>{r.user.name}</b> · {r.user.email}{r.user.phone ? ` · ${r.user.phone}` : ""}</div>

@@ -43,4 +43,21 @@ describe("help center support requests", () => {
     expect(r).toMatchObject({ topic: "Other", shiftId: null, audience: "PROVIDER" });
     await expect(support.createRequest(admin, { topic: "Other", subject: "x".repeat(5), body: "hello world" })).rejects.toThrow();
   });
+
+  it("Need help now: needs a reachable number or email, alerts admins and emails the support inbox", async () => {
+    const { devOutbox } = await import("@cm/integrations");
+    const clinic = await makeClinic();
+    await expect(support.escalate(clinic.actor, { body: "Our provider hasn't arrived", method: "CALLBACK", phone: "" })).rejects.toThrow(/phone number/i);
+    await expect(support.escalate(clinic.actor, { body: "Our provider hasn't arrived", method: "EMAIL", email: "nope" })).rejects.toThrow(/email/i);
+    const r = await support.escalate(clinic.actor, { body: "Our provider hasn't arrived and patients are waiting", method: "CALLBACK", phone: "1 (407) 555-0142", email: "office@example.com" });
+    expect(r).toMatchObject({ method: "CALLBACK", reach: "(407) 555-0142" });
+    const row = await prisma.supportRequest.findUniqueOrThrow({ where: { id: r.id } });
+    expect(row).toMatchObject({ urgent: true, contactPhone: "+14075550142", contactEmail: "office@example.com", status: "OPEN" });
+    expect(devOutbox.some((m) => m.to === "support@coverageoncall.com" && /URGENT/.test(m.subject ?? "") && m.body.includes("(407) 555-0142"))).toBe(true);
+    expect((await support.urgentWaiting()).map((x) => x.id)).toContain(r.id);
+    await support.adminMarkContacted(admin, r.id);
+    expect((await support.urgentWaiting()).map((x) => x.id)).not.toContain(r.id);
+    expect(support.cleanPhone("407.555.0142")).toBe("+14075550142");
+    expect(support.cleanPhone("555-0142")).toBeNull();
+  });
 });

@@ -591,12 +591,13 @@ export async function shiftCandidates(actor: Actor, shiftId: string) {
       ratingCount: r.ratingCount,
       reliability: r.reliability,
       skills: skills.filter((k) => k.providerId === r.providerId).map((k) => k.skill.name),
-      badges: [r.favorite && "Favorite", r.workedHereBefore && "Worked here before", r.newToPlatform && "New to platform"].filter(Boolean) as string[],
+      // No "New to platform" for clinics: how long a provider has been a member is never shown to them.
+      badges: [r.favorite && "Favorite", r.workedHereBefore && "Worked here before"].filter(Boolean) as string[],
       note: appBy.get(r.providerId)?.note ?? null,
       appliedAt: appBy.get(r.providerId)?.createdAt ?? null,
       pendingOffer: offers.some((o) => o.providerId === r.providerId),
       acceptedPending: offers.some((o) => o.providerId === r.providerId && o.status === "ACCEPTED_PENDING"),
-      earnedBadges: (badges.get(r.providerId) ?? []).filter((b) => b.kind === "earned" || b.key === "oncall"),
+      earnedBadges: (badges.get(r.providerId) ?? []).filter((b) => (b.kind === "earned" || b.key === "oncall") && b.key !== "new"),
       instantConfirm: instant.has(r.providerId),
     };
   };

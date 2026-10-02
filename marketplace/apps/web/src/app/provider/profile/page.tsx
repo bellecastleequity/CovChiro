@@ -35,6 +35,7 @@ export default async function Profile() {
   };
   return (
     <>
+      <p className="mb-1 text-sm font-medium text-accent-700">Member since {dateLabel(p.createdAt, "UTC", { month: "long", year: "numeric" })} · only you see this</p>
       <PageHeader title="Profile" description="Clinics see your photo, name, headline, About me, credentials, skills, ratings and badges — never your home address or phone." actions={<a href={`/provider/profile/public`} className="text-sm font-medium text-brand-700">Preview public profile →</a>} />
       <div className="space-y-6">
         <Card>

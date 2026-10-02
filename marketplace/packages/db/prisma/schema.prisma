@@ -2316,6 +2316,15 @@ model SupportRequest {
   subject       String
   /// Optional shift this is about (id only; shown as a link for admins).
   shiftId       String?
+  /// "Need help now?" escalation: alerts admins by text/push and emails the support inbox.
+  urgent        Boolean          @default(false)
+  /// CALLBACK | TEXT | EMAIL: how they want us to reach them (urgent requests).
+  contactMethod String?
+  contactPhone  String?
+  contactEmail  String?
+  /// When our team reached them (urgent requests).
+  contactedAt   DateTime?        @db.Timestamptz(3)
+  contactedById String?
   /// OPEN (waiting on us) | ANSWERED (waiting on them) | CLOSED
   status        String           @default("OPEN")
   lastMessageAt DateTime         @default(now()) @db.Timestamptz(3)
@@ -2326,6 +2335,7 @@ model SupportRequest {
 
   @@index([status, lastMessageAt])
   @@index([userId, lastMessageAt])
+  @@index([urgent, contactedAt])
 }
 
 model SupportMessage {

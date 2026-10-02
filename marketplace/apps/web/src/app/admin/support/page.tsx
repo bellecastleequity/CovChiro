@@ -32,7 +32,7 @@ export default async function AdminSupport({ searchParams }: { searchParams: Pro
           <tbody>
             {rows.length ? rows.map((r) => (
               <tr key={r.id} className="hover:bg-slate-50">
-                <Td><Link href={`/admin/support/${r.id}`} className="font-medium text-slate-900 hover:text-brand-700">{r.subject}</Link><div className="text-xs text-slate-500">{r._count.messages} message{r._count.messages === 1 ? "" : "s"}</div></Td>
+                <Td>{r.urgent && !r.contactedAt ? <Badge tone="red">Urgent · not contacted</Badge> : r.urgent ? <Badge tone="gray">Urgent · contacted</Badge> : null} <Link href={`/admin/support/${r.id}`} className="font-medium text-slate-900 hover:text-brand-700">{r.subject}</Link><div className="text-xs text-slate-500">{r._count.messages} message{r._count.messages === 1 ? "" : "s"}</div></Td>
                 <Td>{r.user.name}<div className="text-xs text-slate-500">{r.audience === "PROVIDER" ? "Provider" : "Clinic"} · {r.user.email}</div></Td>
                 <Td className="text-sm">{r.topic}</Td>
                 <Td className="text-sm">{relative(r.lastMessageAt)} {r.status === "OPEN" ? <Badge tone="amber">needs reply</Badge> : null}</Td>

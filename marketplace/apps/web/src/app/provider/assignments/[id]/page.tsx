@@ -46,6 +46,12 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
         <div className="space-y-6 lg:col-span-2">
           {clock ? <ClockCard v={clock} /> : null}
           {visitView ? <ProviderVisitCard v={visitView} assignmentId={a.id} tz={tz} action={visitsAction} /> : null}
+          {["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"].includes(a.status) ? (
+            <a href={`/provider/help/urgent?shift=${a.shiftId}`} className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 hover:border-red-300">
+              <span><b>Problem with this shift?</b> Reach our team now. We&apos;ll call, text or email you within minutes.</span>
+              <span className="shrink-0 font-semibold">Get help now →</span>
+            </a>
+          ) : null}
           {live && a.reconfirmRequestedAt && !a.reconfirmedAt ? (
             <Alert tone="warning" title="Please confirm you're still coming">
               <p>If you don't confirm by {dateLabel(new Date(+a.startsAt - s["reconfirm.deadlineBeforeHours"] * 3_600_000), tz, { weekday: "short", hour: "numeric", minute: "2-digit" })}, this shift goes to another provider.</p>

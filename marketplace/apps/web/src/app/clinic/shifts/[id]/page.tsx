@@ -35,7 +35,7 @@ function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; ap
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Link href={`/clinic/providers/${c.providerId}`} className="font-semibold hover:text-brand-700">{c.displayName}, {c.credentialTitle}</Link>
-            {c.badges.map((b) => <Badge key={b} tone={b === "Favorite" ? "brand" : b === "New to platform" ? "blue" : "green"}>{b}</Badge>)}
+            {c.badges.map((b) => <Badge key={b} tone={b === "Favorite" ? "brand" : "green"}>{b}</Badge>)}
             {c.instantConfirm ? <Badge tone="brand"><Zap className="size-3" />Instant confirm available</Badge> : null}
             {c.acceptedPending ? <Badge tone="green">Accepted — waiting</Badge> : null}
           </div>
@@ -279,6 +279,12 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                 {sheet.status === "SUBMITTED" ? <SignOffForm approve={clinicApproveAction} report={clinicReportAction} hidden={{ assignmentId: sheet.assignmentId }} defaultName={user.name} /> : null}
               </CardBody>
             </Card>
+          ) : null}
+          {!["DRAFT", "CANCELLED"].includes(shift.status) ? (
+            <a href={`/clinic/help/urgent?shift=${shift.id}`} className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 hover:border-red-300">
+              <span><b>Problem with this shift?</b> Reach our team now. We&apos;ll call, text or email you within minutes.</span>
+              <span className="shrink-0 font-semibold">Get help now →</span>
+            </a>
           ) : null}
           {visitView && live ? (
             <Card id="visits" className={visitView.canRespond ? "border-amber-300 ring-2 ring-amber-100" : undefined}>

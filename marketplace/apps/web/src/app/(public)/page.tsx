@@ -63,7 +63,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
                 {[
                   { n: "Dr. Jane Rivera, DC", d: "18 min away · 4.9 ★ · Diversified, Activator", pick: true },
                   { n: "Dr. Marcus Hale, DC", d: "32 min away · 4.8 ★ · Gonstead" },
-                  { n: "Dr. Priya Nair, DC", d: "41 min away · New to platform" },
+                  { n: "Dr. Priya Nair, DC", d: "41 min away · License verified" },
                 ].map((c) => (
                   <div key={c.n} className={`flex items-center gap-3 rounded-xl border p-3 ${c.pick ? "border-brand-300 bg-brand-50" : "border-slate-200"}`}>
                     <div className="grid size-10 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">{c.n.split(" ")[1][0]}</div>

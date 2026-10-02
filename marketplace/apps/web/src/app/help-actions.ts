@@ -51,3 +51,17 @@ export const adminSupportStatusAction = formAction(async (fd) => {
   revalidatePath("/admin/support", "layout");
   return "Status updated.";
 });
+
+export const escalateAction = formAction(async (fd) => {
+  const { actor } = await member();
+  const r = await support.escalate(actor, { body: str(fd, "body"), method: str(fd, "method"), phone: str(fd, "phone"), email: str(fd, "email"), shiftId: str(fd, "shiftId") || null });
+  revalidatePath(`${areaOf(actor.role)}/help`, "layout");
+  redirect(`${areaOf(actor.role)}/help/urgent?sent=${r.id}`);
+});
+
+export const adminContactedAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  await support.adminMarkContacted(actor, str(fd, "id"));
+  revalidatePath("/admin", "layout");
+  return "Marked as contacted.";
+});

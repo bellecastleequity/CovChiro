@@ -108,3 +108,6 @@ export function firstName(name: string): string {
   const rest = parts.filter((p) => !/^(dr|mr|mrs|ms|mx|prof)\.?$/i.test(p));
   return rest[0] ?? parts[0] ?? "";
 }
+
+/** +14075550142 → (407) 555-0142 (other formats unchanged). */
+export const phoneLabel = (p: string | null | undefined) => (p ?? "").replace(/^\+1(\d{3})(\d{3})(\d{4})$/, "($1) $2-$3");

@@ -1,4 +1,4 @@
--- Help center: support requests from signed-in clinics and providers, with a message thread. Re-runnable.
+-- Help center: support requests (and urgent "Need help now?" escalations) from signed-in clinics and providers, with a message thread. Re-runnable.
 CREATE TABLE IF NOT EXISTS "SupportRequest" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -24,6 +24,13 @@ CREATE TABLE IF NOT EXISTS "SupportMessage" (
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "SupportMessage_pkey" PRIMARY KEY ("id")
 );
+ALTER TABLE "SupportRequest" ADD COLUMN IF NOT EXISTS "urgent" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "SupportRequest" ADD COLUMN IF NOT EXISTS "contactMethod" TEXT;
+ALTER TABLE "SupportRequest" ADD COLUMN IF NOT EXISTS "contactPhone" TEXT;
+ALTER TABLE "SupportRequest" ADD COLUMN IF NOT EXISTS "contactEmail" TEXT;
+ALTER TABLE "SupportRequest" ADD COLUMN IF NOT EXISTS "contactedAt" TIMESTAMPTZ(3);
+ALTER TABLE "SupportRequest" ADD COLUMN IF NOT EXISTS "contactedById" TEXT;
+CREATE INDEX IF NOT EXISTS "SupportRequest_urgent_contactedAt_idx" ON "SupportRequest"("urgent", "contactedAt");
 CREATE INDEX IF NOT EXISTS "SupportRequest_status_lastMessageAt_idx" ON "SupportRequest"("status", "lastMessageAt");
 CREATE INDEX IF NOT EXISTS "SupportRequest_userId_lastMessageAt_idx" ON "SupportRequest"("userId", "lastMessageAt");
 CREATE INDEX IF NOT EXISTS "SupportMessage_requestId_createdAt_idx" ON "SupportMessage"("requestId", "createdAt");

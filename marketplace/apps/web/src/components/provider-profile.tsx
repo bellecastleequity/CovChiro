@@ -55,7 +55,7 @@ export function ProviderProfileView({ p }: { p: Awaited<ReturnType<typeof provid
               {p.city ? <span className="flex items-center gap-1"><MapPin className="size-4" />{p.city}, {p.state}</span> : null}
               {p.rating ? <span className="flex items-center gap-1"><Star className="size-4 text-amber-500" />{p.rating.avg.toFixed(1)} ({p.rating.count} ratings)</span> : null}
               <span>{p.completedShifts} shifts completed</span>
-              <span>Member since {dateLabel(p.memberSince, "UTC", { month: "short", year: "numeric" })}</span>
+              {p.memberSince ? <span>Member since {dateLabel(p.memberSince, "UTC", { month: "short", year: "numeric" })}</span> : null}
               {p.linkedinUrl ? (
                 <a href={p.linkedinUrl} target="_blank" rel="noopener noreferrer nofollow" className="flex items-center gap-1 font-medium text-[#0a66c2]"><Link2 className="size-4" />LinkedIn</a>
               ) : p.linkedinHidden ? (

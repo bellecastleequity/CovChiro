@@ -104,7 +104,9 @@ export async function providerPublicProfile(viewer: Actor, providerId: string) {
     state: p.homeState,
     linkedinUrl: linkedinVisible ? p.linkedinUrl : null,
     linkedinHidden: !linkedinVisible && !!p.linkedinUrl,
-    memberSince: p.createdAt,
+    // How long someone's been a member (and the "New to platform" badge) is never shown to clinics;
+    // the public profile and its preview match what clinics see. Admins still see it.
+    memberSince: isAdmin ? p.createdAt : null,
     school: p.school,
     graduationYear: p.graduationYear,
     languages: p.languages,
@@ -113,7 +115,7 @@ export async function providerPublicProfile(viewer: Actor, providerId: string) {
     professions: p.professions.map((x) => ({ code: x.professionCode, name: x.profession.displayName, yearsInPractice: x.yearsInPractice, status: x.status })),
     credentials: p.licenses.map((l) => ({ professionCode: l.professionCode, state: l.state, title: l.credentialTitle ?? l.professionCode })),
     skills: p.skills.filter((k) => !k.skill.requiresCertification || k.certificationStatus === "VERIFIED").map((k) => ({ name: k.skill.name, proficiency: k.proficiency, certified: k.certificationStatus === "VERIFIED" })),
-    badges: badges.get(providerId) ?? [],
+    badges: (badges.get(providerId) ?? []).filter((b) => isAdmin || b.key !== "new"),
     completedShifts: completed,
     rating: ratings.length ? { avg: ratings.reduce((x, r) => x + r.stars, 0) / ratings.length, count: ratings.length } : null,
     reviews: ratings.filter((r) => r.comment).slice(0, 6).map((r) => ({ stars: r.stars, comment: r.comment!, professionCode: r.assignment.professionCode, date: r.submittedAt })),

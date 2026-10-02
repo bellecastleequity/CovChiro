@@ -2,7 +2,7 @@ import { DomainError, looksLikePhi } from "@cm/core";
 import { prisma } from "@cm/db";
 import { checkRateLimit } from "./auth";
 import { audit, clock, getSettings, requireAdmin, type Actor } from "./context";
-import { notify, notifyAdmins } from "./notify";
+import { absoluteUrl, notify, notifyAdmins, sendEmail } from "./notify";
 
 /**
  * Help center → Contact support. A signed-in clinic or provider opens a request; it becomes a
@@ -62,6 +62,12 @@ export async function createRequest(actor: Actor, input: { topic: string; subjec
     link: `/admin/support/${req.id}`,
     ctaLabel: "Open request",
   }).catch(() => undefined);
+  await sendEmail(s["support.email"], {
+    subject: `Support request: ${subject}`,
+    heading: subject,
+    paragraphs: [`From ${who?.name ?? "a user"} (${audience.toLowerCase()}, ${who?.email ?? ""}) · ${topic}`, body],
+    cta: { label: "Open in the support inbox", url: absoluteUrl(`/admin/support/${req.id}`) },
+  }).catch(() => false);
   return req;
 }
 
@@ -109,7 +115,7 @@ export async function adminList(actor: Actor, status?: string) {
   const [rows, counts] = await Promise.all([
     prisma.supportRequest.findMany({
       where: status ? { status } : {},
-      orderBy: { lastMessageAt: "desc" },
+      orderBy: [{ urgent: "desc" }, { lastMessageAt: "desc" }],
       take: 200,
       include: { user: { select: { name: true, email: true } }, _count: { select: { messages: true } } },
     }),
@@ -159,4 +165,96 @@ export async function adminSetStatus(actor: Actor, id: string, status: "OPEN" | 
 
 export async function openCount() {
   return prisma.supportRequest.count({ where: { status: "OPEN" } });
+}
+
+// ---------------- "Need help now?" (urgent escalation) ----------------
+
+export type ContactMethod = "CALLBACK" | "TEXT" | "EMAIL";
+const METHOD_LABEL: Record<ContactMethod, string> = { CALLBACK: "Phone call", TEXT: "Text message", EMAIL: "Email" };
+
+/** US numbers: 10 digits (a leading 1 is dropped). Returns +1XXXXXXXXXX or null. */
+export function cleanPhone(raw: string | null | undefined): string | null {
+  const d = (raw ?? "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+  return /^\d{10}$/.test(d) ? `+1${d}` : null;
+}
+const prettyPhone = (p: string) => p.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, "($1) $2-$3");
+
+/**
+ * Urgent help: a clinic or provider needs someone now. Creates an urgent request, alerts every
+ * admin (in-app, push and text where possible), and emails the support inbox (support.email) with
+ * how and where to reach them. They're told to stand by for a call, text or email within minutes.
+ */
+export async function escalate(actor: Actor, input: { body: string; method: string; phone?: string | null; email?: string | null; shiftId?: string | null }) {
+  const audience = audienceOf(actor);
+  const method = (["CALLBACK", "TEXT", "EMAIL"].includes(input.method) ? input.method : "CALLBACK") as ContactMethod;
+  const body = cleanBody(input.body);
+  const phone = cleanPhone(input.phone);
+  const email = (input.email ?? "").trim().toLowerCase();
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if ((method === "CALLBACK" || method === "TEXT") && !phone) throw new DomainError("VALIDATION", "Enter the best phone number to reach you (10 digits).");
+  if (method === "EMAIL" && !emailOk) throw new DomainError("VALIDATION", "Enter the best email to reach you.");
+  if (input.phone && input.phone.trim() && !phone) throw new DomainError("VALIDATION", "That phone number doesn't look right (10 digits).");
+  await checkRateLimit(`support-urgent:${actor.userId}`, 5, 3600);
+  const s = await getSettings();
+  let shiftId: string | null = null;
+  let shiftLabel = "";
+  if (input.shiftId) {
+    const sh = await prisma.shift.findFirst({
+      where: { id: input.shiftId, ...(audience === "CLINIC" ? { location: { clinicOrgId: actor.clinicOrgId! } } : { assignments: { some: { providerId: actor.providerId! } } }) },
+      include: { location: { select: { name: true, timeZone: true } } },
+    });
+    if (sh) {
+      shiftId = sh.id;
+      shiftLabel = `${sh.startsAt.toLocaleString("en-US", { timeZone: sh.location.timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${sh.location.name}`;
+    }
+  }
+  const who = await prisma.user.findUnique({ where: { id: actor.userId! }, select: { name: true, email: true } });
+  const org = actor.clinicOrgId ? await prisma.clinicOrg.findUnique({ where: { id: actor.clinicOrgId }, select: { displayName: true } }) : null;
+  const now = clock.now();
+  const subject = `URGENT: ${body.replace(/\s+/g, " ").slice(0, 80)}`;
+  const req = await prisma.supportRequest.create({
+    data: {
+      userId: actor.userId!, audience, clinicOrgId: actor.clinicOrgId ?? null, providerId: actor.providerId ?? null, topic: "Urgent help", subject, shiftId, lastMessageAt: now,
+      urgent: true, contactMethod: method, contactPhone: phone, contactEmail: emailOk ? email : null,
+      messages: { create: { authorUserId: actor.userId, body, createdAt: now } },
+    },
+  });
+  await audit(prisma, actor, "support.urgent", "SupportRequest", req.id, null, { method });
+  const reach = method === "EMAIL" ? email : prettyPhone(phone!);
+  const lines = [
+    `${who?.name ?? "Someone"} · ${audience === "CLINIC" ? `clinic${org ? ` (${org.displayName})` : ""}` : "provider"} · account email ${who?.email ?? ""}`,
+    `Wants: ${METHOD_LABEL[method]} at ${reach}`,
+    ...(phone && method === "EMAIL" ? [`Phone: ${prettyPhone(phone)}`] : []),
+    ...(emailOk && method !== "EMAIL" ? [`Email: ${email}`] : []),
+    ...(shiftLabel ? [`About the shift: ${shiftLabel}`] : []),
+    `Message: ${body}`,
+  ];
+  await notifyAdmins(prisma, {
+    template: "support_urgent",
+    title: `URGENT: ${METHOD_LABEL[method].toLowerCase()} ${reach}`,
+    body: lines.join("\n"),
+    link: `/admin/support/${req.id}`,
+    ctaLabel: "Open and mark contacted",
+    sms: true,
+  }).catch(() => undefined);
+  await sendEmail(s["support.email"], {
+    subject: `URGENT ${METHOD_LABEL[method]} requested: ${who?.name ?? "user"} (${reach})`,
+    heading: `Urgent help requested: ${METHOD_LABEL[method]}`,
+    paragraphs: lines,
+    cta: { label: "Open in the support inbox", url: absoluteUrl(`/admin/support/${req.id}`) },
+  }).catch(() => false);
+  return { id: req.id, method, reach };
+}
+
+export async function adminMarkContacted(actor: Actor, id: string) {
+  requireAdmin(actor);
+  const r = await prisma.supportRequest.findUnique({ where: { id } });
+  if (!r) throw new DomainError("NOT_FOUND", "Request not found");
+  await prisma.supportRequest.update({ where: { id }, data: { contactedAt: clock.now(), contactedById: actor.userId ?? null, status: r.status === "OPEN" ? "ANSWERED" : r.status } });
+  await audit(prisma, actor, "support.contacted", "SupportRequest", id, null, { method: r.contactMethod });
+}
+
+/** Urgent requests nobody has reached yet (admin dashboard banner). */
+export async function urgentWaiting() {
+  return prisma.supportRequest.findMany({ where: { urgent: true, contactedAt: null, status: { not: "CLOSED" } }, orderBy: { createdAt: "asc" }, include: { user: { select: { name: true } } }, take: 20 });
 }
