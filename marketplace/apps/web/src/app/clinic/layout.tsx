@@ -1,6 +1,6 @@
 import { prisma } from "@cm/db";
 import Link from "next/link";
-import { agreementCurrent } from "@cm/services";
+import { agreementCurrent, support } from "@cm/services";
 import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-link";
@@ -28,6 +28,7 @@ export default async function ClinicLayout({ children }: { children: React.React
     { href: "/clinic/team", label: "Team", icon: "team" },
     { href: "/clinic/settings", label: "Settings", icon: "settings" },
     { href: "/clinic/academy", label: "Training", icon: "academy" },
+    { href: "/clinic/help", label: "Help", icon: "help", badge: await support.answeredCount(user.id).catch(() => 0) },
   ];
   return (
     <AppShell items={items} root="/clinic" userId={user.id} userName={user.name} subtitle={org.displayName}>

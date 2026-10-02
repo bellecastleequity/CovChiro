@@ -12,6 +12,7 @@ export interface SearchPage {
 
 const ADMIN: SearchPage[] = [
   { label: "Dashboard", href: "/admin", section: "Admin", keywords: "home overview today" },
+  { label: "Support inbox", href: "/admin/support", section: "Admin", keywords: "help requests tickets questions reply customers" },
   { label: "Verification queue", href: "/admin/verification", section: "Admin", keywords: "licenses credentials malpractice review approve documents" },
   { label: "Shifts", href: "/admin/shifts", section: "Admin", keywords: "bookings coverage assignments schedule" },
   { label: "Provider pay", href: "/admin/payouts", section: "Money", keywords: "payouts stripe transfers holds adjustments bonus pay providers issue payment" },
@@ -76,6 +77,7 @@ const CLINIC: SearchPage[] = [
   { label: "Team", href: "/clinic/team", section: "Clinic", keywords: "staff users invite" },
   { label: "Settings", href: "/clinic/settings", section: "Clinic", keywords: "agreement experience preferences" },
   { label: "Training", href: "/clinic/academy", section: "Clinic", keywords: "academy how to lessons" },
+  { label: "Contact support", href: "/clinic/help/contact", section: "Clinic", keywords: "help support question problem ticket contact us email team" },
   { label: "Messages", href: "/clinic/messages", section: "Clinic", keywords: "chat inbox" },
   { label: "Notifications", href: "/clinic/notifications", section: "Clinic", keywords: "alerts" },
 ];
@@ -96,6 +98,7 @@ const PROVIDER: SearchPage[] = [
   { label: "Public profile", href: "/provider/profile/public", section: "Provider", keywords: "badges preview" },
   { label: "Standing bookings", href: "/provider/standing", section: "Provider", keywords: "recurring weekly" },
   { label: "Training", href: "/provider/academy", section: "Provider", keywords: "academy how to lessons before after shift reconfirm time clock patient count pay" },
+  { label: "Contact support", href: "/provider/help/contact", section: "Provider", keywords: "help support question problem ticket contact us email team" },
   { label: "Feedback", href: "/provider/feedback", section: "Provider", keywords: "ratings reviews" },
   { label: "Messages", href: "/provider/messages", section: "Provider", keywords: "chat inbox" },
   { label: "Notifications", href: "/provider/notifications", section: "Provider", keywords: "alerts" },

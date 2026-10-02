@@ -1,5 +1,5 @@
 import { prisma } from "@cm/db";
-import { agreementCurrent, feedback } from "@cm/services";
+import { agreementCurrent, feedback, support } from "@cm/services";
 import Link from "next/link";
 import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
@@ -32,6 +32,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     { href: "/provider/payouts", label: "Payout setup", icon: "payments" },
     { href: "/provider/profile", label: "Profile", icon: "profile" },
     { href: "/provider/academy", label: "Training", icon: "academy" },
+    { href: "/provider/help", label: "Help", icon: "help", badge: await support.answeredCount(user.id).catch(() => 0) },
   ];
   return (
     <AppShell items={items} root="/provider" userId={user.id} userName={user.name} subtitle="Provider">

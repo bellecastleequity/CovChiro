@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { Bell, LogOut, MailWarning } from "lucide-react";
+import { Bell, LifeBuoy, LogOut, MailWarning } from "lucide-react";
+import { clinicHelp } from "@/lib/help/clinic";
+import { providerHelp } from "@/lib/help/provider";
 import { brand, SETTINGS } from "@cm/config";
 import { orderNav } from "@cm/core";
 import { navprefs } from "@cm/services";
@@ -20,8 +22,10 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
   // Search: the menu + extra pages for this area (+ every setting for admins).
   const extra = searchPagesFor(root);
   const seen = new Set(extra.map((e) => e.href));
+  const help = root === "/clinic" ? clinicHelp : root === "/provider" ? providerHelp : null;
   const entries: SearchEntry[] = [
     ...extra,
+    ...(help ? help.articles.map((a) => ({ label: a.title, href: `${help.base}/${a.slug}`, section: "Help", keywords: `${a.keywords} ${a.summary}` })) : []),
     ...items.filter((i) => !seen.has(i.href)).map((i) => ({ label: i.label, href: i.href, section: "Menu" })),
     ...(root === "/admin"
       ? Object.entries(SETTINGS).map(([key, d]) => ({ label: d.label, href: `/admin/settings#s-${key}`, section: `Settings · ${d.group}`, keywords: `${key} ${(d.help ?? "").slice(0, 160)}`, kind: "setting" as const }))
@@ -57,6 +61,11 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
             <GlobalSearch entries={entries} placeholder={placeholder} />
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {help ? (
+              <Link href={help.base} className="grid size-10 place-items-center rounded-lg text-slate-600 hover:bg-slate-100" aria-label="Help center" title="Help">
+                <LifeBuoy className="size-5" />
+              </Link>
+            ) : null}
             <Link href={`${root}/notifications`} className="relative grid size-10 place-items-center rounded-lg text-slate-600 hover:bg-slate-100" aria-label={`Notifications (${unread} unread)`}>
               <Bell className="size-5" />
               {unread ? <span className="absolute right-1.5 top-1.5 grid min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{unread > 9 ? "9+" : unread}</span> : null}

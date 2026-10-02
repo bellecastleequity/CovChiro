@@ -49,6 +49,7 @@ model User {
   notifications     Notification[]
   referralsMade     Referral[]         @relation("ReferralsMade")
   pushSubscriptions PushSubscription[]
+  supportRequests   SupportRequest[]
   referredBy        Referral?          @relation("ReferredBy")
 }
 
@@ -2298,4 +2299,43 @@ model ProviderPayFloor {
   updatedAt       DateTime @updatedAt @db.Timestamptz(3)
 
   @@id([providerId, professionCode])
+}
+
+// ============================ help center / support ============================
+
+/// A signed-in clinic or provider asking us for help (Help center → Contact support).
+model SupportRequest {
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// CLINIC | PROVIDER
+  audience      String
+  clinicOrgId   String?
+  providerId    String?
+  topic         String
+  subject       String
+  /// Optional shift this is about (id only; shown as a link for admins).
+  shiftId       String?
+  /// OPEN (waiting on us) | ANSWERED (waiting on them) | CLOSED
+  status        String           @default("OPEN")
+  lastMessageAt DateTime         @default(now()) @db.Timestamptz(3)
+  closedAt      DateTime?        @db.Timestamptz(3)
+  createdAt     DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime         @updatedAt @db.Timestamptz(3)
+  messages      SupportMessage[]
+
+  @@index([status, lastMessageAt])
+  @@index([userId, lastMessageAt])
+}
+
+model SupportMessage {
+  id           String         @id @default(cuid())
+  requestId    String
+  request      SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  authorUserId String?
+  fromStaff    Boolean        @default(false)
+  body         String
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@index([requestId, createdAt])
 }

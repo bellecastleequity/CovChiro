@@ -7,7 +7,7 @@ import { requireActor } from "@/lib/session";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user } = await requireActor("admin");
-  const [pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts] = await Promise.all([
+  const [pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen] = await Promise.all([
     prisma.license.count({ where: { status: "PENDING_VERIFICATION" } }).then(async (n) => n + (await prisma.malpracticePolicy.count({ where: { status: "PENDING_VERIFICATION" } }))),
     prisma.adminTask.count({ where: { resolvedAt: null } }),
     prisma.dispute.count({ where: { status: "OPEN" } }),
@@ -16,6 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     hiring.openHireCount().catch(() => 0),
     Promise.all([prisma.communication.count({ where: { status: "PENDING_APPROVAL" } }), prisma.escalation.count({ where: { status: { not: "RESOLVED" } } })]).then(([a, b]) => a + b).catch(() => 0),
     prisma.blogPost.count({ where: { status: "DRAFT", aiGenerated: true, createdById: null } }).catch(() => 0),
+    prisma.supportRequest.count({ where: { status: "OPEN" } }).catch(() => 0),
   ]);
   const items: NavItem[] = [
     { href: "/admin", label: "Dashboard", icon: "dashboard", mobile: true },
@@ -45,6 +46,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/hire", label: "Hire requests", icon: "providers", badge: hires },
     { href: "/admin/messages", label: "Blocked messages", icon: "messages" },
     { href: "/admin/tasks", label: "Tasks", icon: "tasks", badge: tasks },
+    { href: "/admin/support", label: "Support", icon: "help", badge: supportOpen },
     { href: "/admin/audit", label: "Audit log", icon: "audit" },
   ];
   return (
