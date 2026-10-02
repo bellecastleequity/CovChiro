@@ -118,6 +118,19 @@ export const SETTINGS = {
   "pricing.premiumWeekendPercent": def({ group: "Pricing", label: "Weekend premium %", schema: percent, default: 10, flag: "OWNER_DECISION" }),
   "pricing.premiumHolidayPercent": def({ group: "Pricing", label: "Federal holiday premium %", schema: percent, default: 25, flag: "OWNER_DECISION" }),
   "pricing.boostPercent": def({ group: "Pricing", label: "Clinic urgent boost %", schema: percent, default: 15, flag: "OWNER_DECISION" }),
+  // Volume pricing (Addendum 03): the clinic's expected visits pick Light or Busy; visits past the
+  // booked tier's limit + grace are billed per visit. Each shift keeps the terms in force when posted.
+  "pricing.volumeLightVisitsFullDay": def({ group: "Pricing", label: "Light day: visits included (full day)", help: "Expected visits up to this number are priced as a Light day; more = Busy.", schema: z.number().int().min(1).max(200), default: 12, flag: "OWNER_DECISION" }),
+  "pricing.volumeBusyVisitsFullDay": def({ group: "Pricing", label: "Busy day: visits included (full day)", help: "Must be higher than the Light limit. Visits past the booked tier's limit (plus grace) are billed per visit.", schema: z.number().int().min(2).max(300), default: 30, flag: "OWNER_DECISION" }),
+  "pricing.volumeLightVisitsHalfDay": def({ group: "Pricing", label: "Light day: visits included (half day)", schema: z.number().int().min(1).max(200), default: 6, flag: "OWNER_DECISION" }),
+  "pricing.volumeBusyVisitsHalfDay": def({ group: "Pricing", label: "Busy day: visits included (half day)", schema: z.number().int().min(2).max(300), default: 15, flag: "OWNER_DECISION" }),
+  "pricing.volumeGraceVisits": def({ group: "Pricing", label: "Grace visits before extra visits are billed", help: "Free buffer past the booked tier's limit. 0 = bill from the first visit over.", schema: z.number().int().min(0).max(50), default: 5, flag: "OWNER_DECISION" }),
+  "pricing.volumeOverageClinicCents": def({ group: "Pricing", label: "Extra visit: clinic price per visit", schema: cents, default: 1000, flag: "OWNER_DECISION" }),
+  "pricing.volumeOverageProviderCents": def({ group: "Pricing", label: "Extra visit: provider pay per visit", help: "Never more than the clinic's per-visit price. Premiums never apply to extra visits.", schema: cents, default: 800, flag: "OWNER_DECISION" }),
+  "pricing.countTolerance": def({ group: "Pricing", label: "Visit counts: difference split automatically", help: "If the clinic's count and the provider's differ by this many visits or fewer, the average (rounded down) is used. More = admin review (the lower count is billed meanwhile).", schema: z.number().int().min(0).max(20), default: 2, flag: "OWNER_DECISION" }),
+  "pricing.volumeDisputeHours": def({ group: "Pricing", label: "Hours the clinic has to dispute extra visits before the card is charged", help: "Counted from when the booking completes or the provider's count arrives, whichever is later.", schema: z.number().min(0).max(72), default: 2, flag: "OWNER_DECISION" }),
+  "pricing.volumeLateClaimHours": def({ group: "Pricing", label: "Hours after the shift a provider can still enter the visit count", schema: z.number().int().min(1).max(336), default: 72, flag: null }),
+  "pricing.underDeclareWarningShifts": def({ group: "Pricing", label: "Posting hint: recent days compared with the expected visits", help: "Warn (never block) when this many recent days at the location all beat the tier being booked.", schema: z.number().int().min(1).max(10), default: 3, flag: null }),
 
   // ---------- payments (§9) ----------
   "payments.depositPercent": def({ group: "Payments", label: "Deposit charged at confirmation %", schema: percent, default: 10, flag: null }),

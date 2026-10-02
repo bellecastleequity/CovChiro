@@ -1,6 +1,6 @@
 # Addendum 03 plan: volume pricing, provider minimum pay, post-shift closing sidebar
 
-Status: **waiting for owner approval** (no code changed yet). Spec: `SPEC_ADDENDUM_03_VOLUME_PRICING.md`.
+Status: **approved Oct 2026 with the owner decisions below** (they override the spec where they differ). Spec: `SPEC_ADDENDUM_03_VOLUME_PRICING.md`.
 
 ## 1. Audit: what exists today and where the addendum collides with it
 
@@ -111,3 +111,29 @@ On `/clinic/shifts/new`, a sticky panel next to the wizard (desktop) and a colla
 | Major cities | $500 / $420 | $625 / $500 | $275 / $235 | $375 / $295 |
 
 (clinic / provider). All of these are rate-card data, editable later under Admin → Rates.
+
+## 8. Owner decisions (approved; these override the spec)
+
+- **Two tiers, chosen from the expected visits:** LIGHT (full day up to 12, half day up to 6) and BUSY (full day up to 30, half day up to 15). There is no surge tier.
+- **No re-tiering and no new-patient weighting.** The price never goes below the declared tier.
+- **Extra visits:** visits past the DECLARED tier's ceiling plus a grace of 5 (`pricing.volumeGraceVisits`) cost **$10 per visit to the clinic and $8 to the doctor** (the same 80% split as the spec's $15/$12). Premiums never multiply this charge.
+  - Example: declared LIGHT, 20 actual visits → 20 − (12 + 5) = 3 extra visits → +$30 / +$24.
+  - Example: declared BUSY, 45 actual visits → 10 extra visits → +$100 / +$80.
+- **Prices (clinic / doctor):**
+
+  | Region | Full LIGHT | Full BUSY | Half LIGHT | Half BUSY |
+  |---|---|---|---|---|
+  | Smaller cities | $450 / $390 | $575 / $465 | $250 / $215 | $325 / $265 |
+  | Major cities | $500 / $420 | $625 / $500 | $275 / $235 | $375 / $295 |
+
+- **Counts:**
+  - When the two counts differ by no more than 2 (`pricing.countTolerance`), use the average, rounded down.
+  - When they differ by more, the extra visits at the lower count are charged and the rest waits for an admin.
+- **Charging:**
+  - The clinic has **2 hours** (`pricing.volumeDisputeHours`) after the booking completes (or after the doctor's count arrives, whichever is later) to dispute the extra-visit fee before the card on file is charged.
+  - Extra visits are charged separately (Payment type VOLUME) and paid to the doctor separately (Payout kind VOLUME), released after that charge succeeds.
+  - No count from the doctor = the declared tier, no extra charge. A late count within 72h starts a new 2-hour window.
+- **No booking fee.**
+- **Wording:** the posting confirmation and the Clinic Agreement say final visit counts may raise the final booking price, with the 2-hour dispute window. AGREEMENT_VERSION is bumped (no clinic has signed yet).
+- **Release:** everything ships together.
+- **Pay floor:** filter **F12**.

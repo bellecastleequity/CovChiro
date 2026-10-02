@@ -67,8 +67,9 @@ const SCOPE_SENSITIVE: [string, string][] = [
  * towns (lower rate). The public pricing page groups regions by tier.
  */
 export const FL_REGIONS = [
-  { name: "FL-Major cities", tier: 1, zip3List: ["320", "322", "327", "328", "330", "331", "332", "333", "334", "335", "336", "337", "347"], half: [37500, 24000], full: [62500, 42500] },
-  { name: "FL-Smaller cities", tier: 2, zip3List: ["321", "323", "324", "325", "326", "329", "338", "339", "341", "342", "344", "346", "349"], half: [32500, 20000], full: [57500, 37500] },
+  // [clinic, provider] cents per volume tier (Addendum 03, owner-approved Oct 2026).
+  { name: "FL-Major cities", tier: 1, zip3List: ["320", "322", "327", "328", "330", "331", "332", "333", "334", "335", "336", "337", "347"], half: { LIGHT: [27500, 23500], BUSY: [37500, 29500] }, full: { LIGHT: [50000, 42000], BUSY: [62500, 50000] } },
+  { name: "FL-Smaller cities", tier: 2, zip3List: ["321", "323", "324", "325", "326", "329", "338", "339", "341", "342", "344", "346", "349"], half: { LIGHT: [25000, 21500], BUSY: [32500, 26500] }, full: { LIGHT: [45000, 39000], BUSY: [57500, 46500] } },
 ];
 
 /** Sonography in a state that doesn't license it: accept the national registries (A5). */
@@ -93,6 +94,7 @@ export async function seedBase(prisma: PrismaClient) {
       defaultSupervisingProfessionCodes: [...p.supervising],
       active: p.active,
       sortOrder: p.sortOrder,
+      volumePricingEnabled: p.code === "DC",
     };
     await prisma.profession.upsert({ where: { code: p.code }, create: { code: p.code, ...data }, update: {} });
   }
@@ -142,15 +144,18 @@ export async function seedBase(prisma: PrismaClient) {
       update: {},
     });
     regionIds[r.name] = region.id;
-    for (const [durationTier, [clinic, provider]] of [
+    for (const [durationTier, tiers] of [
       ["HALF_DAY", r.half],
       ["FULL_DAY", r.full],
     ] as const) {
-      const exists = await prisma.rateCard.findFirst({ where: { rateRegionId: region.id, professionCode: "DC", durationTier } });
-      if (!exists) {
-        await prisma.rateCard.create({
-          data: { rateRegionId: region.id, professionCode: "DC", durationTier, clinicPriceCents: clinic, providerPayCents: provider, effectiveFrom: new Date("2026-01-01T00:00:00Z") },
-        });
+      for (const volumeTier of ["LIGHT", "BUSY"] as const) {
+        const [clinic, provider] = tiers[volumeTier];
+        const exists = await prisma.rateCard.findFirst({ where: { rateRegionId: region.id, professionCode: "DC", durationTier, volumeTier } });
+        if (!exists) {
+          await prisma.rateCard.create({
+            data: { rateRegionId: region.id, professionCode: "DC", durationTier, volumeTier, clinicPriceCents: clinic, providerPayCents: provider, effectiveFrom: new Date("2026-01-01T00:00:00Z") },
+          });
+        }
       }
     }
   }

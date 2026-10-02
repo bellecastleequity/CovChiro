@@ -136,6 +136,8 @@ model Profession {
   defaultSupervisingProfessionCodes    String[]     @default([])
   active                               Boolean      @default(false)
   sortOrder                            Int
+  /// Addendum 03: TIERED shifts priced by declared visits (LIGHT / BUSY rate cards + per-visit overage).
+  volumePricingEnabled                 Boolean      @default(false)
 
   stateConfigs ProfessionStateConfig[]
   providers    ProviderProfession[]
@@ -302,6 +304,7 @@ model Provider {
   activationCount      Int                      @default(0)
   lastActivationAt     DateTime?                @db.Timestamptz(3)
   onCallRules          OnCallRule[]
+  payFloors            ProviderPayFloor[]
   responsiveness       ProviderResponsiveness[]
   standby              StandbyEntry[]
   professions          ProviderProfession[]
@@ -703,6 +706,10 @@ model Shift {
   clinicPriceCents        Int
   providerPayCents        Int
   premiumsApplied         Json             @default("[]")
+  /// Volume tier from expectedPatients at posting (Addendum 03); null = not volume priced.
+  declaredTier            VolumeTier?
+  /// Terms in force at posting: { ceiling, grace, overageClinicCents, overageProviderCents }.
+  volumeTerms             Json?
   boosted                 Boolean          @default(false)
   /// Emergency cover (no-show / late cancel): broadcast to everyone at once, wider radius, rescue bonus from margin.
   emergencyAt             DateTime?        @db.Timestamptz(3)
@@ -916,6 +923,7 @@ model Assignment {
   disputes        Dispute[]
   punches         TimePunch[]
   timesheet       Timesheet?
+  visitCount      VisitCount?
 
   @@index([providerId, status, startsAt])
   @@index([shiftId])
@@ -1019,6 +1027,7 @@ model BlockedMessage {
 // ============================ money ============================
 
 enum PaymentType {
+  VOLUME
   DEPOSIT
   BALANCE
   LODGING
@@ -1062,6 +1071,7 @@ model Payment {
 }
 
 enum PayoutKind {
+  VOLUME
   SHIFT
   LODGING
   LATE_CANCEL
@@ -1290,6 +1300,9 @@ model RateCard {
   providerPayCents Int
   /// HOURLY only: minimum billable hours (falls back to pricing.hourlyMinHours).
   minHours         Float?
+  /// Volume pricing (Addendum 03): LIGHT / BUSY price for the tier; null = flat card (HOURLY / non-volume).
+  /// Visit limits, grace and per-visit amounts are Settings (pricing.volume*).
+  volumeTier       VolumeTier?
   effectiveFrom    DateTime     @db.Timestamptz(3)
   effectiveTo      DateTime?    @db.Timestamptz(3)
 
@@ -2234,4 +2247,55 @@ model PushSubscription {
   lastUsedAt DateTime? @db.Timestamptz(3)
 
   @@index([userId])
+}
+
+// ============================ volume pricing (Addendum 03) ============================
+
+enum VolumeTier {
+  LIGHT
+  BUSY
+}
+
+/// Visits seen on a volume-priced booking: counts only, never patient details (INV-4).
+model VisitCount {
+  assignmentId         String     @id
+  assignment           Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  providerVisits       Int?
+  providerAt           DateTime?  @db.Timestamptz(3)
+  clinicVisits         Int?
+  clinicAt             DateTime?  @db.Timestamptz(3)
+  clinicUserId         String?
+  clinicReason         String?
+  /// OPEN (waiting for the clinic's window) | DISPUTED (admin review) | FINAL
+  status               String     @default("OPEN")
+  /// PROVIDER | AGREED | SPLIT | DISPUTED | ADMIN | DECLARED (no provider count)
+  outcome              String?
+  finalVisits          Int?
+  overageVisits        Int        @default(0)
+  overageClinicCents   Int        @default(0)
+  overageProviderCents Int        @default(0)
+  /// When the extra-visit fee may be charged (clinic's dispute window end).
+  chargeDueAt          DateTime?  @db.Timestamptz(3)
+  chargedAt            DateTime?  @db.Timestamptz(3)
+  resolvedById         String?
+  resolutionNote       String?
+  reconciliation       Json?
+  createdAt            DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime   @updatedAt @db.Timestamptz(3)
+
+  @@index([status, chargeDueAt])
+}
+
+/// Lowest pay a provider accepts per profession (filter F12). Never shown to clinics.
+model ProviderPayFloor {
+  providerId      String
+  provider        Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  professionCode  String
+  minHalfDayCents Int?
+  minFullDayCents Int?
+  minHourlyCents  Int?
+  includeMileage  Boolean  @default(false)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  @@id([providerId, professionCode])
 }

@@ -2,6 +2,7 @@ import type { ErrorCode } from "./errors";
 import { DomainError } from "./errors";
 import { supervisionProblem, type SupervisionAttestation } from "./supervision";
 import { NATIONAL_CREDENTIAL } from "./credentials";
+import { payFloorProblem, type PayFloor } from "./volume";
 import { containedInUnion, expandWeeklyRules, iv, MINUTE, overlaps, type Interval, type WeeklyRule } from "./time";
 
 /**
@@ -59,6 +60,8 @@ export interface ProviderFacts {
   blackouts: Interval[];
   /** Buffered ranges of this provider's CONFIRMED / IN_PROGRESS assignments on other shifts, any profession (INV-2). */
   busy: Interval[];
+  /** Lowest pay the provider accepts, per profession (F12). Never shown to clinics. */
+  payFloors?: PayFloor[];
 }
 
 /** ProfessionStateConfig for the shift's (profession, state), with profession defaults already resolved. */
@@ -100,6 +103,8 @@ export interface ShiftFacts {
   config: ProfessionStateFacts;
   /** Catalog facts for every skill the shift requires. */
   skills: SkillFact[];
+  /** Quoted provider pay (tier base with premiums, no overage) for F12. Absent = F12 skipped. */
+  pay?: { durationTier: "HALF_DAY" | "FULL_DAY" | "HOURLY"; providerPayCents: number; billableHours: number };
 }
 
 /** Facts about this particular provider/shift pair. */
@@ -107,6 +112,8 @@ export interface PairFacts {
   driveMinutes: number | null;
   /** Estimated mileage + lodging for this provider, from pricing.travelEstimate. */
   travelEstimateCents: number;
+  /** Estimated mileage only (F12 when the provider counts mileage); falls back to travelEstimateCents. */
+  mileageCents?: number;
   blocked: boolean;
   previouslyDeclined: boolean;
 }
@@ -121,7 +128,7 @@ export interface EligibilityOptions {
   credentialsOnly?: boolean;
 }
 
-export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11";
+export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12";
 
 export interface EligibilityFailure {
   filter: FilterId;
@@ -288,6 +295,12 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   const minYears = shift.minYearsExperience ?? 0;
   if (minYears > 0 && (prof?.yearsInPractice ?? 0) < minYears) {
     fail("F11", "INSUFFICIENT_EXPERIENCE", `The clinic asks for ${minYears}+ years of ${shift.professionCode} experience`);
+  }
+
+  // F12 — provider's minimum pay (Addendum 03 §7). Overage never counts; mileage only if they opted in.
+  if (shift.pay) {
+    const why = payFloorProblem(provider.payFloors, { professionCode: shift.professionCode, ...shift.pay }, pair.mileageCents ?? pair.travelEstimateCents);
+    if (why) fail("F12", "BELOW_PAY_FLOOR", why);
   }
 
   // F10 — declined an offer for this shift already.

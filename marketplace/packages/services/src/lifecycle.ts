@@ -55,6 +55,7 @@ export async function completeAssignment(assignmentId: string, now = new Date())
   });
   await recomputeStats(a.providerId);
   await chargeBalance(a.id);
+  if (a.shift.declaredTier) await import("./volume").then((v) => v.remindVisitCount(a.id)).catch(() => undefined);
   await notify(prisma, a.provider.userId, {
     template: "rate_shift",
     title: "How was your shift?",

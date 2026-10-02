@@ -6,6 +6,8 @@ import {
   evaluateEligibility,
   favoritesWindowEnd,
   looksLikePhi,
+  medianVisits,
+  underDeclareWarning,
   NATIONAL_CREDENTIAL,
   minPostingLeadOk,
   parseAttestation,
@@ -16,7 +18,7 @@ import {
   skillScopeProblem,
   supervisionProblem,
 } from "@cm/core";
-import { isInvariantViolation, prisma, type Prisma } from "@cm/db";
+import { isInvariantViolation, prisma, Prisma } from "@cm/db";
 import { agreementAccepted } from "./agreements";
 import { audit, clock, getSettings, lockShift, SYSTEM, requireAdmin, requireClinic, requireProvider, tx, type Actor, type Db } from "./context";
 import { confirmInTx, confirmProvider } from "./confirm";
@@ -148,6 +150,32 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT) {
     billableHours: q.base.billableHours,
     subtotalCents: q.base.clinicPriceCents - (q.promo?.discountCents ?? 0),
     travel,
+    volume: q.volume ? await clinicVolumeView(q.volume, input.locationId, input.expectedPatients ?? null) : null,
+  };
+}
+
+/**
+ * Clinic-facing volume facts for the posting screen: the tier booked, both tier prices (never
+ * provider pay), the extra-visit rule, the location's recent visit counts and the under-declare hint.
+ */
+async function clinicVolumeView(v: NonNullable<Awaited<ReturnType<typeof quoteShift>>["volume"]>, locationId: string, expected: number | null) {
+  const s = await getSettings();
+  const n = s["pricing.underDeclareWarningShifts"];
+  const recent = await prisma.visitCount.findMany({
+    where: { finalVisits: { not: null }, assignment: { shift: { locationId } } },
+    orderBy: { assignment: { startsAt: "desc" } },
+    take: Math.max(3, n),
+    select: { finalVisits: true },
+  });
+  const counts = recent.map((r) => r.finalVisits!);
+  return {
+    tier: v.tier,
+    terms: v.terms,
+    ceilings: v.ceilings,
+    clinicPrices: v.clinicPrices,
+    recentCounts: counts.slice(0, 3),
+    suggested: counts.length >= 3 ? medianVisits(counts.slice(0, 3)) : null,
+    warning: expected != null ? underDeclareWarning(expected, v.terms.ceiling, counts, n) : null,
   };
 }
 
@@ -200,6 +228,8 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
         clinicPriceCents: q.base.clinicPriceCents,
         providerPayCents: q.base.providerPayCents,
         premiumsApplied: q.base.premiums as unknown as Prisma.InputJsonValue,
+        declaredTier: q.volume?.tier ?? null,
+        volumeTerms: q.volume ? (q.volume.terms as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
         promoCodeId: q.promo?.id ?? null,
         promoDiscountCents: q.promo?.discountCents ?? 0,
         ...(supervisionRequired && input.supervisionAttestation
@@ -277,6 +307,8 @@ export async function updateDraftShift(actor: Actor, shiftId: string, raw: Shift
         clinicPriceCents: q.base.clinicPriceCents,
         providerPayCents: q.base.providerPayCents,
         premiumsApplied: q.base.premiums as unknown as Prisma.InputJsonValue,
+        declaredTier: q.volume?.tier ?? null,
+        volumeTerms: q.volume ? (q.volume.terms as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
         promoCodeId: q.promo?.id ?? null,
         promoDiscountCents: q.promo?.discountCents ?? 0,
         ...(supervisionRequired && input.supervisionAttestation

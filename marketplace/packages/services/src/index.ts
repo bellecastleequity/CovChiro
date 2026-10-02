@@ -45,3 +45,5 @@ export * as calendar from "./calendar";
 export * as trust from "./trust";
 export * as statements from "./statements";
 export * as navprefs from "./navprefs";
+export * as volume from "./volume";
+export * as payfloors from "./payfloors";

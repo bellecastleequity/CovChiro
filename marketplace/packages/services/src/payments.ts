@@ -74,7 +74,7 @@ export async function chargeLodging(assignmentId: string, receiptId: string, amo
 export async function refundAssignment(actor: Actor, assignmentId: string, amountCents: number, reason: string) {
   let remaining = amountCents;
   const payments = await prisma.payment.findMany({
-    where: { assignmentId, status: "SUCCEEDED", type: { in: ["DEPOSIT", "BALANCE", "LODGING"] } },
+    where: { assignmentId, status: "SUCCEEDED", type: { in: ["DEPOSIT", "BALANCE", "LODGING", "VOLUME"] } },
     orderBy: { createdAt: "desc" },
   });
   for (const p of payments) {
@@ -189,4 +189,10 @@ export async function activateClinicIfReady(clinicOrgId: string) {
     await prisma.clinicOrg.update({ where: { id: clinicOrgId }, data: { status: "ACTIVE" } });
     await audit(prisma, SYSTEM, "clinic.activated", "ClinicOrg", clinicOrgId, { status: "ONBOARDING" }, { status: "ACTIVE" });
   }
+}
+
+/** Extra-visit fee (Addendum 03). `seq` lets an admin-raised count charge the remainder separately. */
+export async function chargeVolume(assignmentId: string, amountCents: number, seq: number, description: string) {
+  const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId }, include: { shift: { include: { location: true } } } });
+  return charge(assignmentId, a.shift.location.clinicOrgId, "VOLUME", amountCents, `volume-${assignmentId}-${seq}`, description);
 }

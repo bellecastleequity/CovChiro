@@ -120,7 +120,7 @@ export async function issuePayment(actor: Actor, providerId: string, opts: { pay
   return sendTransfer(actor, reserved.transfer.id);
 }
 
-const CHARGE_TYPES = ["DEPOSIT", "BALANCE", "LODGING", "CANCELLATION_FEE"] as const;
+const CHARGE_TYPES = ["DEPOSIT", "BALANCE", "LODGING", "CANCELLATION_FEE", "VOLUME"] as const;
 
 /** Clinic charges that can still fund this provider's transfers, oldest first (deposit, then balance). */
 async function chargeSources(assignmentIds: string[]): Promise<(ChargeSource & { paymentIntentId: string })[]> {

@@ -27,6 +27,7 @@ export const EXPECTED_MIGRATIONS = [
   "0019_timeclock",
   "0020_backups",
   "0021_push_calendar",
+  "0022_volume_pricing",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */

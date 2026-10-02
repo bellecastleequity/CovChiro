@@ -63,6 +63,7 @@ export async function loadShift(db: Db, shiftId: string): Promise<LoadedShift> {
       minYearsExperience: s.minYearsExperience,
       lodgingAllowed: s.lodgingAllowed,
       maxTravelBudgetCents: s.maxTravelBudgetCents,
+      pay: s.durationTier ? { durationTier: s.durationTier, providerPayCents: s.providerPayCents, billableHours: Math.max(0.01, (+s.endsAt - +s.startsAt) / 3_600_000) } : undefined,
       supervisionAttestation: s.supervisionAttestedAt ? parseAttestation(s.supervisionAttestation) : null,
       config: {
         enabled: !!psc?.enabled,
@@ -103,6 +104,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
       availability: true,
       blackouts: true,
       openDates: true,
+      payFloors: true,
       assignments: {
         where: { status: { in: ["CONFIRMED", "IN_PROGRESS"] }, ...(excludeShiftId ? { shiftId: { not: excludeShiftId } } : {}) },
         select: { startsAt: true, endsAt: true, bufferMinutes: true },
@@ -137,6 +139,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
         openDates: p.openDates.map((o) => ({ start: +o.startsAt, end: +o.endsAt })),
         blackouts: p.blackouts.map((b) => ({ start: +b.startsAt, end: +b.endsAt })),
         busy: p.assignments.map((a) => ({ start: +a.startsAt - a.bufferMinutes * 60_000, end: +a.endsAt + a.bufferMinutes * 60_000 })),
+        payFloors: p.payFloors.map((f) => ({ professionCode: f.professionCode, minHalfDayCents: f.minHalfDayCents, minFullDayCents: f.minFullDayCents, minHourlyCents: f.minHourlyCents, includeMileage: f.includeMileage })),
       },
     });
   }
@@ -204,7 +207,7 @@ async function pairFactsFor(db: Db, shift: LoadedShift, providerIds: string[], d
     const travel = drive
       ? travelEstimate(drive, { lodgingAllowed: shift.facts.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s)
       : { totalCents: 0, mileageCents: 0, lodgingEstimateCents: 0, nights: 0 };
-    out.set(id, { driveMinutes: drive?.minutes ?? null, travelEstimateCents: travel.totalCents, blocked: blocked.has(id), previouslyDeclined: declined.has(id) });
+    out.set(id, { driveMinutes: drive?.minutes ?? null, travelEstimateCents: travel.totalCents, mileageCents: travel.mileageCents, blocked: blocked.has(id), previouslyDeclined: declined.has(id) });
   }
   return out;
 }

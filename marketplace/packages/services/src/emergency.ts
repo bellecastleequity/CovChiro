@@ -142,6 +142,8 @@ async function createReplacementShift(originalId: string, startsAt: Date, actor:
       clinicPriceCents: Math.round(o.clinicPriceCents * ratio),
       providerPayCents: Math.round(basePay * ratio),
       premiumsApplied: o.premiumsApplied as Prisma.InputJsonValue,
+      declaredTier: o.declaredTier,
+      volumeTerms: (o.volumeTerms ?? undefined) as Prisma.InputJsonValue | undefined,
       supervisionAttestation: (o.supervisionAttestation ?? undefined) as Prisma.InputJsonValue | undefined,
       supervisionAttestedById: o.supervisionAttestedById,
       supervisionAttestedAt: o.supervisionAttestedAt,

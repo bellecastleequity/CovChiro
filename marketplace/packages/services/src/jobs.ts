@@ -2,6 +2,7 @@ import { purgeSpam } from "./spam";
 import { nightlyBackup } from "./backups";
 import { referralSweep } from "./referrals";
 import { timeclockSweep } from "./timeclock";
+import { volumeSweep } from "./volume";
 import { prisma } from "@cm/db";
 import { DateTime } from "luxon";
 import * as dispatch from "./dispatch";
@@ -65,6 +66,7 @@ export const JOBS: Job[] = [
   // Referral rewards: both sides once the invited person's first shift is done (+ hold).
   // Time clock: close forgotten punch-outs, remind clinics, auto-approve timesheets.
   { name: "timeclockSweep", schedule: { everySeconds: 900 }, run: () => timeclockSweep() },
+  { name: "volumeSweep", schedule: { everySeconds: 300 }, run: () => volumeSweep() },
   { name: "referralSweep", schedule: { everySeconds: 3600 }, run: () => referralSweep() },
   // Backups: encrypted export + Neon restore point + pruning, nightly at 3:10 ET.
   { name: "dbBackup", schedule: { cron: "10 3 * * *", tz: "America/New_York" }, run: () => nightlyBackup(), leaseMinutes: 30, long: true },

@@ -6,9 +6,14 @@ import {
   promoRejection,
   quoteBase,
   tierFor,
+  tierForVisits,
+  volumeCeilings,
+  volumeTermsFor,
   type BaseQuote,
   type PricingModel,
   type PromoFacts,
+  type VolumeTerms,
+  type VolumeTier,
 } from "@cm/core";
 import type { PromoCode } from "@cm/db";
 import { getSettings, type Db } from "./context";
@@ -26,11 +31,13 @@ export async function resolveRateRegion(db: Db, state: string, zip: string): Pro
   return cfg?.defaultRateRegionId ?? null;
 }
 
-export async function findRateCard(db: Db, professionCode: string, rateRegionId: string, tier: string, at: Date) {
+/** The card in force at `at`; volumeTier null = the flat (non-volume) card. */
+export async function findRateCard(db: Db, professionCode: string, rateRegionId: string, tier: string, at: Date, volumeTier: VolumeTier | null = null) {
   return db.rateCard.findFirst({
     where: {
       professionCode,
       rateRegionId,
+      volumeTier,
       durationTier: tier as "HALF_DAY" | "FULL_DAY" | "HOURLY",
       effectiveFrom: { lte: at },
       OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }],
@@ -83,11 +90,31 @@ export interface ShiftQuote {
   rateCardId: string;
   rateRegionId: string;
   promo: { id: string; code: string; discountCents: number } | null;
+  /** Volume-priced (Addendum 03): the tier booked, its terms, and both tier prices for the clinic. */
+  volume: {
+    tier: VolumeTier;
+    terms: VolumeTerms;
+    ceilings: Record<VolumeTier, number>;
+    clinicPrices: Record<VolumeTier, number>;
+    providerPays: Record<VolumeTier, number>;
+  } | null;
 }
 
 export async function quoteShift(
   db: Db,
-  input: { locationId: string; professionCode: string; startsAt: Date; endsAt: Date; boosted?: boolean; promoCode?: string | null; pricedAt?: Date },
+  input: {
+    locationId: string;
+    professionCode: string;
+    startsAt: Date;
+    endsAt: Date;
+    boosted?: boolean;
+    promoCode?: string | null;
+    pricedAt?: Date;
+    /** Clinic's expected visits: picks the volume tier (none = Busy). */
+    expectedPatients?: number | null;
+    /** Re-pricing a posted shift keeps its declared tier. */
+    volumeTier?: VolumeTier | null;
+  },
 ): Promise<ShiftQuote> {
   const s = await getSettings(db);
   const pricedAt = input.pricedAt ?? new Date();
@@ -100,7 +127,28 @@ export async function quoteShift(
   if (!rateRegionId) throw new DomainError("VALIDATION", `Pricing isn't set up for ${location.state} yet.`);
   const hours = hoursBetween(input.startsAt, input.endsAt);
   const tier = tierFor(profession.pricingModel, hours);
-  const card = await findRateCard(db, input.professionCode, rateRegionId, tier, pricedAt);
+  // Volume pricing: both tier cards must exist for the region, else the flat card is used.
+  let volume: ShiftQuote["volume"] = null;
+  let card = null as Awaited<ReturnType<typeof findRateCard>>;
+  if (profession.volumePricingEnabled && tier !== "HOURLY") {
+    const [light, busy] = await Promise.all([
+      findRateCard(db, input.professionCode, rateRegionId, tier, pricedAt, "LIGHT"),
+      findRateCard(db, input.professionCode, rateRegionId, tier, pricedAt, "BUSY"),
+    ]);
+    if (light && busy) {
+      const ceilings = volumeCeilings(s, tier);
+      const vt: VolumeTier = input.volumeTier ?? (input.expectedPatients != null ? tierForVisits(input.expectedPatients, [{ tier: "LIGHT", visitCeiling: ceilings.LIGHT }, { tier: "BUSY", visitCeiling: ceilings.BUSY }]) : "BUSY");
+      card = vt === "LIGHT" ? light : busy;
+      volume = {
+        tier: vt,
+        terms: volumeTermsFor(s, tier, vt),
+        ceilings,
+        clinicPrices: { LIGHT: light.clinicPriceCents, BUSY: busy.clinicPriceCents },
+        providerPays: { LIGHT: light.providerPayCents, BUSY: busy.providerPayCents },
+      };
+    }
+  }
+  card ??= await findRateCard(db, input.professionCode, rateRegionId, tier, pricedAt);
   if (!card) throw new DomainError("VALIDATION", `No ${profession.displayName} rate card for this area yet.`);
   const base = quoteBase(
     { startsAt: input.startsAt, endsAt: input.endsAt },
@@ -114,5 +162,5 @@ export async function quoteShift(
     const p = await validatePromoForClinic(db, input.promoCode, location.clinicOrgId, pricedAt);
     promo = { id: p.id, code: p.code, discountCents: promoDiscountCents(p, base, s["promo.maxShareOfMarginPercent"]) };
   }
-  return { base, pricingModel: profession.pricingModel, rateCardId: card.id, rateRegionId, promo };
+  return { base, pricingModel: profession.pricingModel, rateCardId: card.id, rateRegionId, promo, volume };
 }

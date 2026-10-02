@@ -7,11 +7,12 @@ import { HOUR } from "./time";
  *   LODGING       approved lodging receipt (100% pass-through)
  *   LATE_CANCEL   provider's share of a clinic's forfeited deposit
  *   ADJUSTMENT    admin bonus (+) or correction (−), always audit-logged
+ *   VOLUME        extra visits past the booked tier (Addendum 03), after the clinic is charged
  * A row becomes payable at releaseAt (completion + hold) unless a dispute or
  * admin hold is open, and is paid by a Stripe Connect transfer (INV-5).
  */
 
-export type PayoutKind = "SHIFT" | "LODGING" | "LATE_CANCEL" | "ADJUSTMENT";
+export type PayoutKind = "SHIFT" | "LODGING" | "LATE_CANCEL" | "ADJUSTMENT" | "VOLUME";
 
 export interface PayoutFacts {
   kind: PayoutKind;

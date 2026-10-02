@@ -6,7 +6,7 @@ import {
 import { config, d, FAR, lic, OPTS, pair, policy, provider, shift } from "./fixtures";
 
 const codes = (r: ReturnType<typeof evaluateEligibility>) => r.failures.map((f) => f.code);
-const ok = (p = provider(), s = shift()) => evaluateEligibility(p, s, pair(), OPTS).eligible;
+const ok = (p = provider(), s = shift(), pr = pair()) => evaluateEligibility(p, s, pr, OPTS).eligible;
 
 // Everything a dual-profession provider needs to pass operational filters
 const multi = (licenses: ReturnType<typeof lic>[], codes: string[]) =>
@@ -213,6 +213,28 @@ describe("other hard filters", () => {
     expect(ok(years(5), shift({ minYearsExperience: 5 }))).toBe(true);
     // A credentials-only check (nightly sweep) never looks at preferences.
     expect(evaluateEligibility(years(0), shift({ minYearsExperience: 10 }), pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
+  });
+
+  it("F12 provider minimum pay: base pay only, mileage only when opted in, per duration", () => {
+    const floor = (over: Partial<{ minHalfDayCents: number | null; minFullDayCents: number | null; minHourlyCents: number | null; includeMileage: boolean }> = {}) =>
+      provider({ payFloors: [{ professionCode: "DC", minHalfDayCents: null, minFullDayCents: 45000, minHourlyCents: null, includeMileage: false, ...over }] });
+    const light = shift({ pay: { durationTier: "FULL_DAY", providerPayCents: 39000, billableHours: 8 } });
+    expect(codes(evaluateEligibility(floor(), light, pair(), OPTS))).toEqual(["BELOW_PAY_FLOOR"]);
+    // A rush/boost that lifts pay over the floor makes them eligible.
+    expect(ok(floor(), shift({ pay: { durationTier: "FULL_DAY", providerPayCents: 48750, billableHours: 8 } }))).toBe(true);
+    // Mileage counts only when they asked for it.
+    expect(ok(floor({ includeMileage: true }), light, pair({ mileageCents: 6000 }))).toBe(true);
+    expect(ok(floor(), light, pair({ mileageCents: 6000 }))).toBe(false);
+    // No floor for this duration / profession / no pay facts = pass.
+    expect(ok(floor(), shift({ pay: { durationTier: "HALF_DAY", providerPayCents: 100, billableHours: 3 } }))).toBe(true);
+    expect(ok(provider(), light)).toBe(true);
+    expect(ok(floor(), shift())).toBe(true);
+    // Hourly compares the hourly rate.
+    const hourly = provider({ payFloors: [{ professionCode: "DC", minHalfDayCents: null, minFullDayCents: null, minHourlyCents: 6000, includeMileage: false }] });
+    expect(ok(hourly, shift({ pay: { durationTier: "HOURLY", providerPayCents: 20000, billableHours: 4 } }))).toBe(false);
+    expect(ok(hourly, shift({ pay: { durationTier: "HOURLY", providerPayCents: 24000, billableHours: 4 } }))).toBe(true);
+    // Credentials-only checks never look at it.
+    expect(evaluateEligibility(floor(), light, pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
   });
 
   it("F3 a provider must have signed the current agreement — even if otherwise active", () => {
