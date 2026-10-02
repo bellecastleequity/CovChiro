@@ -1,3 +1,4 @@
+import { brand } from "@cm/config";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { DomainError, licensedPairs, scanContactInfo, NATIONAL_CREDENTIAL, normalizeLinkedIn, US_STATES } from "@cm/core";
@@ -354,11 +355,20 @@ export async function removeAvailabilityException(actor: Actor, kind: "blackout"
 
 export async function providerStripeLink(actor: Actor) {
   const providerId = requireProvider(actor);
-  const p = await prisma.provider.findUniqueOrThrow({ where: { id: providerId }, include: { user: true } });
+  const p = await prisma.provider.findUniqueOrThrow({ where: { id: providerId }, include: { user: true, professions: { include: { profession: true } } } });
   const pay = paymentsProvider();
   let accountId = p.stripeAccountId;
   if (!accountId) {
-    accountId = await pay.createConnectedAccount({ email: p.user.email, providerId });
+    const parts = p.user.name.replace(/^(dr|mr|mrs|ms)\.?\s+/i, "").trim().split(/\s+/);
+    const codes = p.professions.map((x) => x.professionCode);
+    const what = p.professions.map((x) => x.profession.displayName.toLowerCase()).join(" / ") || "healthcare";
+    accountId = await pay.createConnectedAccount({
+      email: p.user.email, providerId,
+      firstName: parts.length > 1 ? parts[0] : undefined, lastName: parts.length > 1 ? parts.slice(1).join(" ") : undefined,
+      siteUrl: absoluteUrl("/"),
+      mcc: codes.length === 1 && codes[0] === "DC" ? "8041" : "8099",
+      productDescription: `Licensed ${what} provider paid for temporary clinic coverage shifts booked through ${brand().name}.`,
+    });
     await prisma.provider.update({ where: { id: providerId }, data: { stripeAccountId: accountId } });
   }
   if (p.stripePayoutsEnabled) {

@@ -9,6 +9,19 @@ import { env } from "@cm/config";
  * changes only from these server-side responses or verified webhooks.
  */
 
+/** A provider's Stripe Express account: prefilled so onboarding asks only for identity, tax and bank details. */
+export interface ConnectedAccountInput {
+  email: string;
+  providerId: string;
+  firstName?: string;
+  lastName?: string;
+  /** The platform's site (providers have no website of their own). */
+  siteUrl: string;
+  /** Merchant category, e.g. 8041 chiropractors, 8099 other health services. */
+  mcc: string;
+  productDescription: string;
+}
+
 export interface ChargeResult {
   id: string;
   status: "succeeded" | "processing" | "requires_action" | "failed";
@@ -20,7 +33,7 @@ export interface PaymentsProvider {
   createCustomer(input: { name: string; email: string; clinicOrgId: string }): Promise<string>;
   /** Hosted page where the clinic saves a card or bank account. */
   paymentMethodSetupUrl(input: { customerId: string; clinicOrgId: string; returnUrl: string }): Promise<string>;
-  createConnectedAccount(input: { email: string; providerId: string }): Promise<string>;
+  createConnectedAccount(input: ConnectedAccountInput): Promise<string>;
   connectOnboardingUrl(input: { accountId: string; providerId: string; returnUrl: string; refreshUrl: string }): Promise<string>;
   connectDashboardUrl(accountId: string): Promise<string | null>;
   accountStatus(accountId: string): Promise<{ payoutsEnabled: boolean; detailsSubmitted: boolean }>;
@@ -69,9 +82,14 @@ class StripePayments implements PaymentsProvider {
     });
     return session.url!;
   }
-  async createConnectedAccount(i: { email: string; providerId: string }) {
+  async createConnectedAccount(i: ConnectedAccountInput) {
     const a = await this.s.accounts.create(
-      { type: "express", country: "US", email: i.email, capabilities: { transfers: { requested: true } }, business_type: "individual", metadata: { providerId: i.providerId } },
+      {
+        type: "express", country: "US", email: i.email, capabilities: { transfers: { requested: true } }, business_type: "individual", metadata: { providerId: i.providerId },
+        // Prefilled so providers aren't asked for a website or what they sell (they can still edit it).
+        business_profile: { url: i.siteUrl, mcc: i.mcc, product_description: i.productDescription },
+        individual: { email: i.email, ...(i.firstName ? { first_name: i.firstName } : {}), ...(i.lastName ? { last_name: i.lastName } : {}) },
+      },
       { idempotencyKey: onceKey("acct", i.providerId) },
     );
     return a.id;
@@ -176,7 +194,7 @@ export class FakePayments implements PaymentsProvider {
   async paymentMethodSetupUrl(i: { clinicOrgId: string; returnUrl: string }) {
     return `${this.baseUrl}/api/dev/fake-stripe?kind=setup&org=${encodeURIComponent(i.clinicOrgId)}&return=${encodeURIComponent(i.returnUrl)}`;
   }
-  async createConnectedAccount(i: { providerId: string }) {
+  async createConnectedAccount(i: Pick<ConnectedAccountInput, "providerId">) {
     return this.id("acct", i.providerId);
   }
   async connectOnboardingUrl(i: { providerId: string; returnUrl: string }) {

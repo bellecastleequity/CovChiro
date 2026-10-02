@@ -53,16 +53,37 @@ const A: HelpArticle[] = [
     slug: "payouts-setup",
     category: "start",
     title: "Setting up payouts (Stripe)",
-    summary: "Connect your bank through Stripe so we can pay you.",
-    keywords: "stripe bank direct deposit payout setup account connect tax",
+    summary: "Step by step: what Stripe asks and how to answer. About 5 minutes.",
+    keywords: "stripe bank direct deposit payout setup account connect tax w-9 ssn independent contractor business type product description website",
     links: [{ href: "/provider/payouts", label: "Open Payout setup" }],
-    body: () => (
-      <P>
-        Payout setup opens Stripe, our payment partner, to confirm your identity and bank account. You can&apos;t be matched until it&apos;s finished. We never pay outside Stripe, and we never
-        see your full bank details.
-      </P>
+    body: (_s, brand) => (
+      <>
+        <P>
+          Payout setup opens Stripe, our payment partner, to confirm your identity and bank account. You can&apos;t be matched until it&apos;s finished. We never pay outside Stripe, and we
+          never see your full bank or tax numbers. Have your Social Security number (or EIN) and your bank login or routing and account numbers handy.
+        </P>
+        <Flow
+          caption="What Stripe asks, in order"
+          steps={[
+            { title: "Email and phone", detail: "Stripe texts you a code. This also becomes your Stripe sign-in for viewing payouts later." },
+            { title: "Business type: Individual / sole proprietorship", detail: "You're paid as an independent contractor (1099), not as an employee. Choose Company only if you're paid through your own LLC or corporation.", tone: "accent" },
+            { title: "Your details", detail: "Legal name, date of birth, home address and SSN, exactly as on your tax records." },
+            { title: "Professional details", detail: `Usually filled in for you. If Stripe asks for a website or description, use our website or: "Independent contractor providing clinic coverage shifts through ${brand}."` },
+            { title: "Bank account", detail: "Sign in to your bank or type the routing and account numbers. Payouts go here." },
+            { title: "Review and submit", detail: "Every section must show complete. You come back here when you're done.", tone: "green" },
+          ]}
+        />
+        <KeyFacts
+          rows={[
+            ["Taxes", "Stripe collects your W-9 and sends your 1099 each January."],
+            ["Change bank later", "Payout setup → Open Stripe dashboard."],
+            ["Stuck on \"Almost there\"?", "Click Continue Stripe setup; Stripe shows exactly what's missing."],
+          ]}
+        />
+      </>
     ),
   },
+
   {
     slug: "availability",
     category: "start",

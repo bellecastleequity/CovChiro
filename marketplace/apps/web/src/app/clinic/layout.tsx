@@ -5,6 +5,7 @@ import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-link";
 import { requireActor } from "@/lib/session";
+import { clinicSetupStatus } from "@/lib/setup";
 
 export default async function ClinicLayout({ children }: { children: React.ReactNode }) {
   const { actor, user } = await requireActor("clinic");
@@ -14,6 +15,7 @@ export default async function ClinicLayout({ children }: { children: React.React
     prisma.application.count({ where: { status: "ACTIVE", shift: { location: { clinicOrgId: actor.clinicOrgId! }, status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] } } } }),
     prisma.timesheet.count({ where: { status: "SUBMITTED", assignment: { shift: { location: { clinicOrgId: actor.clinicOrgId! } } } } }),
   ]);
+  const setup = await clinicSetupStatus(actor.clinicOrgId!).catch(() => null);
   const items: NavItem[] = [
     { href: "/clinic", label: "Home", icon: "dashboard", mobile: true },
     { href: "/clinic/shifts/new", label: "Post shift", icon: "post", mobile: true },
@@ -31,7 +33,7 @@ export default async function ClinicLayout({ children }: { children: React.React
     { href: "/clinic/help", label: "Help", icon: "help", badge: await support.answeredCount(user.id).catch(() => 0) },
   ];
   return (
-    <AppShell items={items} root="/clinic" userId={user.id} userName={user.name} subtitle={org.displayName}>
+    <AppShell items={items} root="/clinic" userId={user.id} userName={user.name} subtitle={org.displayName} setup={setup}>
       {!agreementCurrent("CLINIC", org.agreementSignedAt, org.agreementVersion) ? (
         <Alert tone="warning" className="mb-6" title={org.agreementSignedAt ? "Sign the updated Clinic Platform Agreement to keep posting shifts" : "Sign the Clinic Platform Agreement to post shifts"}>
           Until it&apos;s signed you can save drafts, but you can&apos;t post shifts and standing bookings pause. Shifts already booked stay booked. <Link href="/clinic/settings#agreement" className="font-medium underline">Review &amp; sign →</Link>

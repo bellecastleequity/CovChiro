@@ -5,6 +5,7 @@ import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-link";
 import { requireActor } from "@/lib/session";
+import { providerSetupStatus } from "@/lib/setup";
 
 export default async function ProviderLayout({ children }: { children: React.ReactNode }) {
   const { actor, user } = await requireActor("provider");
@@ -15,6 +16,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     prisma.provider.findUnique({ where: { id: actor.providerId! }, select: { agreementSignedAt: true, agreementVersion: true, photoUrl: true } }),
     prisma.standingBooking.count({ where: { providerId: actor.providerId!, status: "PROPOSED" } }).catch(() => 0),
   ]);
+  const setup = await providerSetupStatus(actor.providerId!, user.email).catch(() => null);
   const needsAgreement = !agreementCurrent("PROVIDER", me?.agreementSignedAt ?? null, me?.agreementVersion ?? null);
   const items: NavItem[] = [
     { href: "/provider", label: "Home", icon: "dashboard", mobile: true },
@@ -35,7 +37,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     { href: "/provider/help", label: "Help", icon: "help", badge: await support.answeredCount(user.id).catch(() => 0) },
   ];
   return (
-    <AppShell items={items} root="/provider" userId={user.id} userName={user.name} userPhoto={me?.photoUrl ?? null} subtitle="Provider">
+    <AppShell items={items} root="/provider" userId={user.id} userName={user.name} userPhoto={me?.photoUrl ?? null} subtitle="Provider" setup={setup}>
       {needsAgreement ? (
         <Alert tone="warning" className="mb-6" title={me?.agreementSignedAt ? "Sign the updated Provider Agreement to keep getting shifts" : "Sign the Provider Agreement to start getting shifts"}>
           Until you do, you won&apos;t be matched, offered or able to apply for shifts. Shifts you&apos;re already booked on stay booked. <Link href="/provider/profile#agreement" className="font-medium underline">Review &amp; sign →</Link>

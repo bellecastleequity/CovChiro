@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
+import { brand } from "@cm/config";
 import { prisma } from "@cm/db";
-import { refreshProviderStripe } from "@cm/services";
+import { absoluteUrl, refreshProviderStripe } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody } from "@/components/ui/card";
 import { Alert, PageHeader } from "@/components/ui/misc";
@@ -13,6 +15,7 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
   const { actor } = await requireActor("provider");
   if ((await searchParams).stripe) await refreshProviderStripe(actor.providerId!).catch(() => null);
   const p = await prisma.provider.findUniqueOrThrow({ where: { id: actor.providerId! } });
+  const site = absoluteUrl("/").replace(/^https?:\/\//, "").replace(/\/$/, "");
   return (
     <>
       <PageHeader title="Payout setup" description="We pay you through Stripe Connect. Stripe securely collects your bank details and tax information (W-9) and issues your 1099 — we never see your account numbers." />
@@ -31,6 +34,19 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
           <ActionForm action={stripeAction} successMessage={false}>
             <SubmitButton size="lg">{p.stripePayoutsEnabled ? "Open Stripe dashboard" : p.stripeAccountId ? "Continue Stripe setup" : "Set up payouts with Stripe"}</SubmitButton>
           </ActionForm>
+          {!p.stripePayoutsEnabled ? (
+            <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+              <div className="font-medium text-slate-800">Before you start</div>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                <li>Have your SSN and bank details ready.</li>
+                <li>Business type: <b>Individual / sole proprietorship</b> (you&apos;re an independent contractor), unless you&apos;re paid through your own company.</li>
+                <li>If asked for a website or description: <b>{site}</b> or &ldquo;Independent contractor providing clinic coverage shifts through {brand().name}.&rdquo;</li>
+              </ul>
+              <Link href="/provider/help/payouts-setup" className="mt-2 inline-block font-medium text-brand-700 hover:underline">Step-by-step guide →</Link>
+            </div>
+          ) : (
+            <Link href="/provider/help/payouts-setup" className="inline-block text-sm text-brand-700 hover:underline">Payout setup guide</Link>
+          )}
         </CardBody>
       </Card>
     </>

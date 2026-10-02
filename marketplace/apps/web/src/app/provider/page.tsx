@@ -1,6 +1,7 @@
 import { GroundFloor } from "@/components/referrals/refer-page";
 import Link from "next/link";
 import { greetingName } from "@cm/core";
+import { providerSetupItems } from "@/lib/setup";
 import { ArrowRight, CalendarDays, Inbox, ShieldCheck, Wallet, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
 import { earningsFor, getSettings, oncall, prelicensure, providerProfile, shiftRecruit, timeclock, volume } from "@cm/services";
@@ -37,18 +38,7 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
   ]);
   const onCall = settings["features.onCallEnabled"] && provider.status === "ACTIVE" ? await oncall.onCallOverview(actor) : null;
   const c = checklist.common;
-  const items = [
-    { label: "Confirm your email", done: c.emailVerified, hint: `We sent a link to ${user.email}. Not there? Check spam, or tap “Resend confirmation email” at the top of the page.` },
-    { label: "Complete your profile, phone & home base", done: c.profile && c.homeBase, href: "/provider/profile" },
-    { label: "Add a profile photo", done: c.photo, href: "/provider/profile" },
-    { label: "Add your NPI", done: c.npi, href: "/provider/profile" },
-    ...checklist.perProfession.flatMap((p) => [
-      { label: `${p.displayName}: verified license`, done: p.license, href: "/provider/credentials", hint: p.licensePending ? "Submitted — verification in progress." : undefined },
-      { label: `${p.displayName}: malpractice coverage`, done: p.malpractice, href: "/provider/credentials" },
-    ]),
-    { label: "Set up payouts (Stripe)", done: c.payouts, href: "/provider/payouts" },
-    { label: "Sign the Provider Platform Agreement", done: c.agreement, href: "/provider/profile#agreement" },
-  ];
+  const items = providerSetupItems(checklist, user.email);
   const remaining = items.filter((i) => !i.done).length;
   // Student path: readiness card instead of the setup checklist; profile-type
   // steps move under "After you're licensed" (credentials are still required).

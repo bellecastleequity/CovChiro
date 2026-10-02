@@ -10,11 +10,14 @@ import { GlobalSearch, type SearchEntry } from "./global-search";
 import { AppInstall } from "./app-install";
 import { prisma } from "@cm/db";
 import { Logo } from "@/components/site/header";
+import { LogoMark } from "@/components/site/logo";
+import { SetupStatus } from "./setup-status";
+import type { SetupStatus as SetupStatusData } from "@/lib/setup";
 import { getSession } from "@/lib/session";
 import { BottomNav, SideNav, type NavItem } from "./nav-link";
 import { ResendVerification } from "./resend-verification";
 
-export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; children: React.ReactNode }) {
+export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, setup, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; setup?: SetupStatusData | null; children: React.ReactNode }) {
   const b = brand();
   const [unread, session, savedOrder] = await Promise.all([prisma.notification.count({ where: { userId, readAt: null } }), getSession(), navprefs.getNavOrder(userId, root)]);
   const ordered = orderNav(items, root, savedOrder);
@@ -56,14 +59,17 @@ export async function AppShell({ items, root, userId, userName, userPhoto, subti
       </aside>
       <div className="min-w-0 overflow-x-clip lg:pl-64 print:pl-0">
         <header className="sticky top-0 z-30 flex h-14 print:hidden items-center justify-between gap-2 border-b border-slate-200 bg-white/90 px-4 backdrop-blur sm:px-6">
-          <Link href={root} className="shrink-0 lg:hidden">
-            <Logo name={b.name} />
+          <Link href={root} className="shrink-0 lg:hidden" aria-label={b.name}>
+            {/* Phones: the mark only, so the setup chip, help and alerts fit. */}
+            <LogoMark className="size-8 sm:hidden" />
+            <span className="hidden sm:block"><Logo name={b.name} /></span>
           </Link>
           <div className="hidden min-w-0 max-w-48 shrink truncate text-sm text-slate-500 xl:block">{subtitle}</div>
           <div className="flex min-w-0 flex-1 justify-end md:justify-center md:px-4">
             <GlobalSearch entries={entries} placeholder={placeholder} />
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {setup ? <SetupStatus status={setup} /> : null}
             {help ? (
               <Link href={`${help.base}/urgent`} className="mr-1 hidden items-center gap-1.5 rounded-lg border border-red-200 px-2.5 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 md:inline-flex">
                 <Siren className="size-4" />
