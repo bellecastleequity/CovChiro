@@ -8,6 +8,7 @@ import { getSettings, referrals, schools } from "@cm/services";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { SOURCE_OPTIONS, StudentFields } from "@/components/provider/student-fields";
 import { cn } from "@/lib/cn";
+import { GoogleAnalytics } from "@/components/site/google-analytics";
 import { signupAction } from "../actions";
 
 export const metadata = { title: "Create your account" };
@@ -16,7 +17,8 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
   const { role: r, code, profession, student: st, campaign, c, ref: refParam } = await searchParams;
   const inv = await referrals.invitation(refParam ?? (await cookies()).get("cm_ref")?.value);
   const role = r === "provider" ? "provider" : "clinic";
-  const studentEnabled = (await getSettings())["features.preLicensureEnabled"];
+  const settings = await getSettings();
+  const studentEnabled = settings["features.preLicensureEnabled"];
   const student = role === "provider" && studentEnabled && st === "1";
   const professions = await prisma.profession.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
   const schoolGroups = await schools.schoolOptions();
@@ -24,6 +26,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
   const keep = `${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}${profession ? `&profession=${encodeURIComponent(profession)}` : ""}${inv ? `&ref=${inv.code}` : ""}`;
   return (
     <>
+      {settings["seo.gaMeasurementId"] ? <GoogleAnalytics id={settings["seo.gaMeasurementId"]} /> : null}
       <h1 className="text-xl font-semibold">Create your account</h1>
       {inv ? (
         <p className="mt-3 rounded-xl bg-accent-50 px-4 py-3 text-sm text-slate-800">
