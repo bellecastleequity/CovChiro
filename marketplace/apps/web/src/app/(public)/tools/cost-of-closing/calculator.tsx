@@ -1,25 +1,36 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { CalendarCheck, DoorClosed, DoorOpen, HeartHandshake, Users } from "lucide-react";
+import { closingComparison } from "@cm/core";
 import { Field, Input } from "@/components/ui/form";
 import { trackProspect } from "@/components/site/analytics";
 
-const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
+const money = (n: number) => `${n < 0 ? "−" : ""}$${Math.abs(Math.round(n)).toLocaleString("en-US")}`;
+const num = (s: string) => Math.max(0, parseFloat(s) || 0);
 
 /**
- * Educational comparison only (spec §9): normal collections associated with
- * the days away vs. an estimated coverage cost. No ROI, profit or savings.
+ * Cost of closing vs. staying open with coverage, on the clinic's own numbers (core closingComparison).
+ * Coverage defaults to our current full-day price × days (editable). A comparison, not a promise.
  */
-export function CostOfClosing() {
+export function CostOfClosing({ prices }: { prices: { low: number; high: number; typical: number } | null }) {
   const search = useSearchParams();
   const [daily, setDaily] = useState("");
   const [days, setDays] = useState("2");
   const [cost, setCost] = useState("");
+  const [costEdited, setCostEdited] = useState(false);
+  const [recovered, setRecovered] = useState("0");
   const tracked = useRef(false);
-  const d = Math.max(0, parseFloat(daily) || 0);
-  const n = Math.max(0, Math.min(60, parseFloat(days) || 0));
-  const c = Math.max(0, parseFloat(cost) || 0);
+  const d = num(daily);
+  const n = Math.min(60, num(days));
+  // Until they type their own quote, coverage follows days × our typical full-day price.
+  const estimate = prices ? Math.round(prices.typical * n) : 0;
+  const c = costEdited ? num(cost) : estimate;
+  const r = closingComparison({ dailyCollections: d, days: n, coverageCost: c, recoveredPercent: num(recovered) });
+  const ready = d > 0 && n > 0 && c > 0;
+
   useEffect(() => {
     const token = search.get("c");
     if (!tracked.current && d > 0 && n > 0 && token && /^[a-f0-9]{40}$/.test(token)) {
@@ -27,31 +38,86 @@ export function CostOfClosing() {
       trackProspect(token, "calculator_used", n);
     }
   }, [d, n, search]);
+
   return (
     <div className="rounded-2xl border border-slate-200 p-6 shadow-card">
       <div className="space-y-4">
-        <Field label="Average daily collections" htmlFor="daily" hint="What a typical open day has brought in. Use your own records.">
+        <Field label="Average daily collections" htmlFor="daily" hint="What a typical open day brings in. Use your own records.">
           <Input id="daily" inputMode="decimal" placeholder="e.g. 2500" value={daily} onChange={(e) => setDaily(e.target.value.replace(/[^0-9.]/g, ""))} />
         </Field>
-        <Field label="Number of days away" htmlFor="days">
+        <Field label="Days you'll be away" htmlFor="days">
           <Input id="days" inputMode="decimal" value={days} onChange={(e) => setDays(e.target.value.replace(/[^0-9.]/g, ""))} />
         </Field>
-        <Field label="Expected coverage cost (total)" htmlFor="cost" hint="Get an exact quote by starting a coverage request. Prices depend on region and shift length.">
-          <Input id="cost" inputMode="decimal" placeholder="Your quote" value={cost} onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ""))} />
+        <Field
+          label="Coverage cost (total)"
+          htmlFor="cost"
+          hint={prices ? (costEdited ? "Your figure." : `Estimated at $${Math.round(prices.typical).toLocaleString("en-US")} per full day (our current rates run $${Math.round(prices.low).toLocaleString("en-US")}–$${Math.round(prices.high).toLocaleString("en-US")}, before weekend, holiday or short-notice premiums and mileage). Type your quote to replace it.`) : "Get an exact quote by starting a coverage request."}
+        >
+          <Input id="cost" inputMode="decimal" placeholder="Your quote" value={costEdited ? cost : estimate ? String(estimate) : ""} onChange={(e) => (setCostEdited(true), setCost(e.target.value.replace(/[^0-9.]/g, "")))} />
+        </Field>
+        <Field label="Visits you'd get back by rescheduling (%)" htmlFor="recovered" hint="If you close, some patients rebook for later. Leave at 0 if they'd mostly be lost or go elsewhere.">
+          <div className="flex items-center gap-3">
+            <input id="recovered" type="range" min={0} max={100} step={5} value={num(recovered)} onChange={(e) => setRecovered(e.target.value)} className="flex-1 accent-brand-600" />
+            <span className="w-12 text-right text-sm font-semibold tabular-nums">{num(recovered)}%</span>
+          </div>
         </Field>
       </div>
-      <dl className="mt-6 space-y-3" aria-live="polite">
-        <div className="flex items-baseline justify-between gap-4 rounded-xl bg-slate-50 px-4 py-3">
-          <dt className="text-sm text-slate-600">Normal collections associated with those days</dt>
-          <dd className="text-2xl font-semibold tabular-nums">{d && n ? money(d * n) : "—"}</dd>
+
+      <div className="mt-6 grid gap-3 sm:grid-cols-2" aria-live="polite">
+        <div className="rounded-xl border border-red-100 bg-red-50/60 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-red-800"><DoorClosed className="size-4" /> If you close</div>
+          <div className="mt-2 text-xs text-slate-600">Collections not brought in</div>
+          <div className="text-2xl font-semibold tabular-nums text-red-800">{d && n ? money(r.closingCost) : "—"}</div>
+          {r.recovered > 0 ? <div className="mt-1 text-xs text-slate-500">after {money(r.recovered)} back from rescheduled visits</div> : null}
         </div>
-        <div className="flex items-baseline justify-between gap-4 rounded-xl bg-brand-50 px-4 py-3">
-          <dt className="text-sm text-brand-800">Estimated coverage cost</dt>
-          <dd className="text-2xl font-semibold tabular-nums text-brand-800">{c ? money(c) : "—"}</dd>
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800"><DoorOpen className="size-4" /> If you stay open</div>
+          <div className="mt-2 text-xs text-slate-600">Collections after paying for coverage</div>
+          <div className="text-2xl font-semibold tabular-nums text-emerald-800">{ready ? money(r.openAfterCoverage) : "—"}</div>
+          {ready ? <div className="mt-1 text-xs text-slate-500">{money(r.atStake)} in collections − {money(c)} coverage</div> : null}
         </div>
-      </dl>
-      <p className="mt-4 rounded-xl border-l-4 border-amber-400 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-        <strong>An educational comparison, not a guarantee.</strong> Historical or typical collections don&apos;t guarantee future collections. Actual results depend on your schedule, patient attendance, payer mix and other factors. This tool doesn&apos;t estimate profit, savings or return on investment.
+      </div>
+
+      {ready ? (
+        <div className={`mt-3 rounded-xl p-4 ${r.difference > 0 ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-800"}`}>
+          {r.difference > 0 ? (
+            <>
+              <div className="text-sm text-brand-100">With your numbers, staying open keeps</div>
+              <div className="text-3xl font-semibold tabular-nums">{money(r.difference)} more</div>
+              <div className="mt-1 text-sm text-brand-100">than closing for {n} day{n === 1 ? "" : "s"}. Coverage is {Math.round((r.coverageShare ?? 0) * 100)}% of what those days normally bring in.</div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm">With these numbers, closing comes out about {money(-r.difference)} ahead on collections alone.</div>
+              <div className="mt-1 text-xs text-slate-600">Patient continuity and your team&apos;s hours below may still matter more to you.</div>
+            </>
+          )}
+          {r.breakEvenDaily != null ? (
+            <div className={`mt-3 border-t pt-3 text-sm ${r.difference > 0 ? "border-white/20 text-white" : "border-slate-200"}`}>
+              <b>Break-even:</b> coverage pays for itself on days that bring in at least <b>{money(r.breakEvenDaily)}</b>.
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">Enter your average daily collections to see the comparison.</p>
+      )}
+
+      <div className="mt-5">
+        <div className="text-sm font-semibold text-slate-900">What staying open keeps that numbers don&apos;t show</div>
+        <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
+          <li className="flex gap-2"><HeartHandshake className="mt-0.5 size-4 shrink-0 text-accent-600" />Patients keep their visits and their care plans stay on track.</li>
+          <li className="flex gap-2"><Users className="mt-0.5 size-4 shrink-0 text-accent-600" />Your team keeps its hours instead of a week of reschedule calls.</li>
+          <li className="flex gap-2"><CalendarCheck className="mt-0.5 size-4 shrink-0 text-accent-600" />New patients find you open, not a closed sign.</li>
+        </ul>
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <Link href="/signup?role=clinic" className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Get an exact quote</Link>
+        <Link href="/for-clinics" className="text-sm font-medium text-brand-700 hover:underline">See pricing</Link>
+      </div>
+
+      <p className="mt-5 text-xs text-slate-500">
+        Based only on the numbers you enter; past or typical collections don&apos;t guarantee future ones. Costs that continue either way (rent, salaries, utilities) are left out because they&apos;re the same whether you close or stay open.
       </p>
     </div>
   );

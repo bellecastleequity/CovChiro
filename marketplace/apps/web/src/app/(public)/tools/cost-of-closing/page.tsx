@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { prisma } from "@cm/db";
 import { LinkButton } from "@/components/ui/button";
 import { CostOfClosing } from "./calculator";
 
@@ -7,7 +8,22 @@ export const metadata = {
   description: "Compare what your office normally brings in on the days you're away with what temporary coverage would cost. An educational comparison, not a guarantee.",
 };
 
-export default function CostOfClosingPage() {
+export const dynamic = "force-dynamic";
+
+/** Current full-day clinic prices (live professions, open states), for the calculator's estimate. */
+async function fullDayPrices() {
+  const states = (await prisma.stateConfig.findMany({ where: { enabled: true }, select: { state: true } })).map((x) => x.state);
+  const cards = await prisma.rateCard.findMany({
+    where: { durationTier: "FULL_DAY", effectiveTo: null, profession: { active: true }, rateRegion: { state: { in: states } } },
+    select: { clinicPriceCents: true },
+  });
+  const p = cards.map((c) => c.clinicPriceCents).sort((a, b) => a - b);
+  if (!p.length) return null;
+  return { low: p[0] / 100, high: p[p.length - 1] / 100, typical: p[Math.floor((p.length - 1) / 2)] / 100 };
+}
+
+export default async function CostOfClosingPage() {
+  const prices = await fullDayPrices();
   return (
     <div className="container-page grid max-w-6xl gap-10 py-16 lg:grid-cols-2">
       <div>
@@ -25,7 +41,7 @@ export default function CostOfClosingPage() {
         </div>
       </div>
       <Suspense fallback={null}>
-        <CostOfClosing />
+        <CostOfClosing prices={prices} />
       </Suspense>
     </div>
   );
