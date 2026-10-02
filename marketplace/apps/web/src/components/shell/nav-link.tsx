@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { saveNavOrderAction } from "@/app/account-actions";
 import { useEffect, useState } from "react";
 import {
-  AlertTriangle, BadgeCheck, Clock, DatabaseBackup, BarChart3, Bell, Briefcase, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Gauge, GraduationCap, Inbox, LayoutDashboard, ListChecks,
+  AlertTriangle, ArrowUpDown, BadgeCheck, ChevronDown, ChevronUp, Clock, DatabaseBackup, GripVertical, BarChart3, Bell, Briefcase, Building2, CalendarDays, ClipboardList, CreditCard, FileText, Gauge, GraduationCap, Inbox, LayoutDashboard, ListChecks,
   LogOut, Map, MapPin, Menu, Megaphone, MessageSquare, PlusCircle, Repeat, ScrollText, Search, Settings, ShieldCheck, Gift, Tag, UserRound, Users, Wallet, X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -29,8 +30,72 @@ function isActive(path: string, href: string, root: string) {
   return href === root ? path === root : path === href || path.startsWith(href + "/");
 }
 
-export function SideNav({ items, root }: { items: NavItem[]; root: string }) {
+export function SideNav({ items, root, customized }: { items: NavItem[]; root: string; customized?: boolean }) {
   const path = usePathname();
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [order, setOrder] = useState(items);
+  const [drag, setDrag] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!editing) setOrder(items);
+  }, [items, editing]);
+
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= order.length || from === to) return;
+    const next = [...order];
+    const [it] = next.splice(from, 1);
+    next.splice(to, 0, it);
+    setOrder(next);
+  };
+  const save = async (hrefs: string[] | null) => {
+    setBusy(true);
+    const r = await saveNavOrderAction(root, hrefs);
+    setBusy(false);
+    setMsg("error" in r ? (r.error ?? null) : (r.ok ?? null));
+    setEditing(false);
+    router.refresh();
+    setTimeout(() => setMsg(null), 3000);
+  };
+
+  if (editing) {
+    return (
+      <div>
+        <p className="mb-2 px-3 text-xs text-slate-500">Drag items, or use the arrows. Then save.</p>
+        <ul className="space-y-0.5">
+          {order.map((i, n) => {
+            const Icon = ICONS[i.icon];
+            return (
+              <li
+                key={i.href}
+                draggable
+                onDragStart={() => setDrag(n)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (drag !== null && drag !== n) (move(drag, n), setDrag(n));
+                }}
+                onDragEnd={() => setDrag(null)}
+                className={cn("flex cursor-grab items-center gap-2 rounded-xl border px-2 py-1.5 text-sm font-medium text-slate-700 active:cursor-grabbing", drag === n ? "border-brand-300 bg-brand-50" : "border-slate-200 bg-white")}
+              >
+                <GripVertical className="size-4 shrink-0 text-slate-300" />
+                <Icon className="size-4 shrink-0 text-slate-400" />
+                <span className="min-w-0 flex-1 truncate">{i.label}</span>
+                <button type="button" onClick={() => move(n, n - 1)} disabled={n === 0} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30" aria-label={`Move ${i.label} up`}><ChevronUp className="size-4" /></button>
+                <button type="button" onClick={() => move(n, n + 1)} disabled={n === order.length - 1} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30" aria-label={`Move ${i.label} down`}><ChevronDown className="size-4" /></button>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-3 flex flex-wrap gap-2 px-1">
+          <button type="button" disabled={busy} onClick={() => save(order.map((i) => i.href))} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60">Save order</button>
+          <button type="button" disabled={busy} onClick={() => (setOrder(items), setEditing(false))} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100">Cancel</button>
+          <button type="button" disabled={busy} onClick={() => save(null)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100">Reset to default</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <nav className="space-y-0.5">
       {items.map((i) => {
@@ -44,6 +109,12 @@ export function SideNav({ items, root }: { items: NavItem[]; root: string }) {
           </Link>
         );
       })}
+      <div className="pt-2">
+        <button type="button" onClick={() => setEditing(true)} className="flex w-full items-center gap-2 rounded-xl px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-50 hover:text-slate-600">
+          <ArrowUpDown className="size-3.5" /> Reorder menu{customized ? " (custom)" : ""}
+        </button>
+        {msg ? <p className="px-3 text-xs text-emerald-700">{msg}</p> : null}
+      </div>
     </nav>
   );
 }
@@ -52,7 +123,7 @@ export function SideNav({ items, root }: { items: NavItem[]; root: string }) {
  * Phone / narrow-window navigation: the four main items plus "More", which opens the full menu
  * (every item the desktop sidebar has, with badges). Closes on navigation or Escape.
  */
-export function BottomNav({ items, root }: { items: NavItem[]; root: string }) {
+export function BottomNav({ items, ordered, root }: { items: NavItem[]; ordered?: NavItem[]; root: string }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [path]);
@@ -81,7 +152,7 @@ export function BottomNav({ items, root }: { items: NavItem[]; root: string }) {
               <button onClick={() => setOpen(false)} className="grid size-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Close menu"><X className="size-5" /></button>
             </div>
             <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-2">
-              {items.map((i) => {
+              {(ordered ?? items).map((i) => {
                 const Icon = ICONS[i.icon];
                 const active = isActive(path, i.href, root);
                 return (

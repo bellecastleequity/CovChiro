@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Bell, LogOut, MailWarning } from "lucide-react";
 import { brand, SETTINGS } from "@cm/config";
+import { orderNav } from "@cm/core";
+import { navprefs } from "@cm/services";
 import { searchPagesFor } from "@/lib/search-pages";
 import { GlobalSearch, type SearchEntry } from "./global-search";
 import { AppInstall } from "./app-install";
@@ -12,7 +14,8 @@ import { ResendVerification } from "./resend-verification";
 
 export async function AppShell({ items, root, userId, userName, subtitle, children }: { items: NavItem[]; root: string; userId: string; userName: string; subtitle?: string; children: React.ReactNode }) {
   const b = brand();
-  const [unread, session] = await Promise.all([prisma.notification.count({ where: { userId, readAt: null } }), getSession()]);
+  const [unread, session, savedOrder] = await Promise.all([prisma.notification.count({ where: { userId, readAt: null } }), getSession(), navprefs.getNavOrder(userId, root)]);
+  const ordered = orderNav(items, root, savedOrder);
   const unconfirmedEmail = session && !session.user.emailVerifiedAt ? session.user.email : null;
   // Search: the menu + extra pages for this area (+ every setting for admins).
   const extra = searchPagesFor(root);
@@ -32,7 +35,7 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
           <Logo name={b.name} />
         </Link>
         <div className="flex-1 overflow-y-auto">
-          <SideNav items={items} root={root} />
+          <SideNav items={ordered} root={root} customized={!!savedOrder?.length} />
         </div>
         <div className="border-t border-slate-100 px-3 pt-3">
           <div className="truncate text-sm font-medium text-slate-900">{userName}</div>
@@ -81,7 +84,7 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
           {children}
         </main>
       </div>
-      <BottomNav items={items} root={root} />
+      <BottomNav items={items} ordered={ordered} root={root} />
     </div>
   );
 }

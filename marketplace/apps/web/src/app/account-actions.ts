@@ -11,3 +11,13 @@ export const resetCalendarAction = formAction(async () => {
   revalidatePath("/", "layout");
   return "New calendar link made. Calendars using the old link stop updating; subscribe again with the new one.";
 });
+
+export const saveNavOrderAction = async (root: string, hrefs: string[] | null) => {
+  const { user } = await requireActor("any");
+  const { navprefs } = await import("@cm/services");
+  if (!["/admin", "/clinic", "/provider"].includes(root)) return { error: "Unknown menu." };
+  if (hrefs === null) await navprefs.resetNavOrder(user.id, root);
+  else await navprefs.saveNavOrder(user.id, root, hrefs);
+  revalidatePath(root, "layout");
+  return { ok: hrefs === null ? "Menu reset to the default order." : "Menu order saved." };
+};

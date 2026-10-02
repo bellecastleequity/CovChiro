@@ -44,3 +44,4 @@ export * as push from "./push";
 export * as calendar from "./calendar";
 export * as trust from "./trust";
 export * as statements from "./statements";
+export * as navprefs from "./navprefs";
