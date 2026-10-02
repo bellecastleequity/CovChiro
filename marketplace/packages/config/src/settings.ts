@@ -493,6 +493,8 @@ export const SETTINGS = {
   // ---------- feature flags (ATTORNEY REVIEW items ship OFF) ----------
   "features.preLicensureEnabled": def({ group: "Features", label: "Student / not-yet-licensed signup path and /join recruitment pages", schema: z.boolean(), default: true, flag: null }),
   "features.onCallEnabled": def({ group: "Features", label: "On Call auto-accept (requires On Call Terms in the Provider Agreement)", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
+  "site.instagramUrl": def({ group: "Help & support", label: "Instagram link (website footer)", help: "Leave blank to hide the icon.", schema: z.union([z.literal(""), z.string().url()]), default: "https://www.instagram.com/coverageoncall", flag: null }),
+  "site.youtubeUrl": def({ group: "Help & support", label: "YouTube link (website footer)", help: "Leave blank to hide the icon.", schema: z.union([z.literal(""), z.string().url()]), default: "https://www.youtube.com/@coverageoncall", flag: null }),
   "support.email": def({ group: "Help & support", label: "Support inbox email", help: "Every \"Need help now?\" escalation is emailed here (and new support requests are copied here).", schema: z.string().email(), default: "support@coverageoncall.com", flag: null }),
   "support.urgentPromise": def({ group: "Help & support", label: "Urgent help promise shown to clinics and providers", schema: z.string().min(3).max(160), default: "Someone from our team will contact you within minutes.", flag: null }),
   "support.replyTime": def({ group: "Help & support", label: "Reply time shown on Contact support", help: "Shown to clinics and providers when they send a request.", schema: z.string().min(3).max(120), default: "We usually reply within one business day.", flag: null }),

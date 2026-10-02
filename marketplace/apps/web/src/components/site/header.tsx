@@ -8,6 +8,7 @@ import QRCode from "qrcode";
 import { env } from "@cm/config";
 import { GetTheApp } from "./get-the-app";
 import { TrustBadges } from "./trust-badges";
+import { getSettings } from "@cm/services";
 
 const NAV = [
   { href: "/for-clinics", label: "For clinics" },
@@ -61,6 +62,11 @@ export async function SiteHeader() {
 export async function SiteFooter() {
   const b = brand();
   const qr = await QRCode.toDataURL(env().APP_BASE_URL || "https://coverageoncall.com", { margin: 1, width: 200 });
+  const st = await getSettings();
+  const socials = [
+    { href: st["site.instagramUrl"], label: "Instagram", icon: <InstagramIcon /> },
+    { href: st["site.youtubeUrl"], label: "YouTube", icon: <YouTubeIcon /> },
+  ].filter((x) => x.href);
   return (
     <footer className="mt-24 border-t border-slate-200 bg-white">
       <div className="border-b border-slate-100 bg-slate-50/70">
@@ -72,6 +78,15 @@ export async function SiteFooter() {
         <div>
           <Logo name={b.name} />
           <p className="mt-3 text-sm text-slate-500">{b.tagline}</p>
+          {socials.length ? (
+            <div className="mt-4 flex items-center gap-2">
+              {socials.map((x) => (
+                <a key={x.label} href={x.href} target="_blank" rel="noopener noreferrer" aria-label={`${b.name} on ${x.label}`} title={`@coverageoncall on ${x.label}`} className="grid size-9 place-items-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-brand-600 hover:text-white">
+                  {x.icon}
+                </a>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="text-sm">
           <div className="mb-2 font-semibold text-slate-900">Clinics</div>
@@ -108,5 +123,23 @@ export async function SiteFooter() {
       </div>
       <div className="border-t border-slate-100 py-5 text-center text-xs text-slate-400">© {new Date().getFullYear()} {b.name}. No patient information is collected or stored on this platform.</div>
     </footer>
+  );
+}
+
+/** Brand marks drawn inline (lucide no longer ships brand logos). */
+function InstagramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.5" cy="6.5" r="0.6" fill="currentColor" />
+    </svg>
+  );
+}
+function YouTubeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-[18px]" fill="currentColor" aria-hidden>
+      <path d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12 31 31 0 0 0 1 16.8a3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1c.4-1.6.5-4.8.5-4.8s0-3.2-.5-4.8zM9.75 15.02V8.98L15.5 12l-5.75 3.02z" />
+    </svg>
   );
 }
