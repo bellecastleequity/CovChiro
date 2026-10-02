@@ -1,5 +1,6 @@
 import { missingMigrations, prisma } from "@cm/db";
 import { emergency, hiring, support } from "@cm/services";
+import type { AlertState } from "@cm/core";
 import Link from "next/link";
 import { phoneLabel } from "@/lib/format";
 import { Alert } from "@/components/ui/misc";
@@ -20,6 +21,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     prisma.blogPost.count({ where: { status: "DRAFT", aiGenerated: true, createdById: null } }).catch(() => 0),
     prisma.supportRequest.count({ where: { status: "OPEN" } }).catch(() => 0),
   ]);
+  // Open system-health problems (from the monitor's last run; cheap single row).
+  const healthState = ((await prisma.setting.findUnique({ where: { key: "health.alertState" } }).catch(() => null))?.value as AlertState | null) ?? {};
+  const healthOpen = Object.values(healthState);
+  const healthCritical = healthOpen.filter((h) => h.severity === "critical");
   const items: NavItem[] = [
     { href: "/admin", label: "Dashboard", icon: "dashboard", mobile: true },
     { href: "/admin/emergencies", label: "Emergencies", icon: "emergency", badge: emergencies, mobile: emergencies > 0 },
@@ -41,6 +46,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/referrals", label: "Referrals", icon: "refer" },
     { href: "/admin/users", label: "Users & logins", icon: "team" },
     { href: "/admin/backups", label: "Backups & restore", icon: "backup" },
+    { href: "/admin/health", label: "System health", icon: "health", badge: healthOpen.length },
     { href: "/admin/analytics", label: "Analytics", icon: "analytics" },
     { href: "/admin/states", label: "States & professions", icon: "states" },
     { href: "/admin/rates", label: "Rates", icon: "rates" },
@@ -57,6 +63,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       {missing.length ? (
         <Alert tone="error" className="mb-6" title="Database update needed">
           This version of the site expects database updates that haven't been run yet: {missing.join(", ")}. Run the matching update-NNN SQL file(s) from this release in Neon&apos;s SQL Editor, in number order. Until then, some pages (for example the provider dashboard) won&apos;t load.
+        </Alert>
+      ) : null}
+      {healthCritical.length ? (
+        <Alert tone="error" className="mb-6" title={`System problem${healthCritical.length === 1 ? "" : "s"}: ${healthCritical.map((h) => h.title).join(" · ")}`}>
+          <Link href="/admin/health" className="font-medium underline">See what&apos;s wrong and how to fix it →</Link>
         </Alert>
       ) : null}
       {urgent.length ? (

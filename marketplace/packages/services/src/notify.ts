@@ -1,6 +1,7 @@
 import { brand, env } from "@cm/config";
 import { mailProvider, smsProvider, textingEnabled } from "@cm/integrations";
 import type { Db } from "./context";
+import { recordChannel } from "./healthstate";
 
 /**
  * In-app + email (+ SMS) notifications. Brand name/domain come from config
@@ -60,10 +61,14 @@ ${cta}
 
 export async function sendEmail(to: string, c: EmailContent): Promise<boolean> {
   const { html, text } = renderEmail(c);
+  const mailer = mailProvider();
   try {
-    return await mailProvider().send({ to, subject: c.subject, html, text, unsubscribeUrl: c.unsubscribeUrl });
+    const ok = await mailer.send({ to, subject: c.subject, html, text, unsubscribeUrl: c.unsubscribeUrl });
+    await recordChannel("email", ok, ok ? null : ((mailer as { lastError?: string | null }).lastError ?? "the email provider refused the message"));
+    return ok;
   } catch (e) {
     console.error("email send failed", e);
+    await recordChannel("email", false, (e as Error).message);
     return false;
   }
 }
@@ -100,9 +105,11 @@ export async function notify(db: Db, userId: string, n: NotifyInput) {
     if (ok) sent.push("email");
   }
   if (n.sms && user.phone && user.phoneVerifiedAt && textingEnabled()) {
-    const ok = await smsProvider()
+    const texter = smsProvider();
+    const ok = await texter
       .send(user.phone, `${brand().name}: ${n.title}${n.link ? ` ${absoluteUrl(n.link)}` : ""}`)
-      .catch(() => false);
+      .catch((e: Error) => ((texter as { lastError?: string | null }).lastError = e.message, false));
+    await recordChannel("sms", ok, ok ? null : ((texter as { lastError?: string | null }).lastError ?? "the text provider refused the message"));
     if (ok) sent.push("sms");
   }
   // A text-worthy alert that couldn't go by text (texting off, no verified mobile, or it failed) goes by email instead.

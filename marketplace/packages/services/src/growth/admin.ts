@@ -214,7 +214,9 @@ export async function approvedQueueSweep(limit = 40) {
       if (res.ok) sent++; else failed++;
     } catch (e) {
       if (e instanceof Deferred) {
-        await prisma.setting.upsert({ where: { key: "growth.approvedQueueHeld" }, create: { key: "growth.approvedQueueHeld", value: { reason: e.message, at: clock.now().toISOString() } }, update: { value: { reason: e.message, at: clock.now().toISOString() } } });
+        const prevHold = (await prisma.setting.findUnique({ where: { key: "growth.approvedQueueHeld" } }))?.value as { since?: string } | null;
+        const hold = { reason: e.message, at: clock.now().toISOString(), since: prevHold?.since ?? clock.now().toISOString() };
+        await prisma.setting.upsert({ where: { key: "growth.approvedQueueHeld" }, create: { key: "growth.approvedQueueHeld", value: hold }, update: { value: hold } });
         return { sent, failed, held: e.message };
       }
       failed++;

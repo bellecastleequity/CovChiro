@@ -15,6 +15,8 @@ import { prospectingTick } from "./growth/prospecting";
 import { marketSupplySweep } from "./growth/supply";
 import { approvedQueueSweep } from "./growth/admin";
 import { instagramSweep } from "./growth/instagram";
+import { recordJobResult, recordTick } from "./healthstate";
+import { systemHealthSweep } from "./health";
 import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSweep, preShiftChecks, recomputeStats, revealExpiredRatings, startDueShifts } from "./lifecycle";
 import { releaseDuePayouts } from "./payouts";
 import { settleDueInvites } from "./shifts";
@@ -78,6 +80,7 @@ export const JOBS: Job[] = [
   // Students: one state-aware credential follow-up when due (30/60/90 days after graduation, then every 60).
   { name: "preLicensureFollowups", schedule: { cron: "15 10 * * *", tz: "America/New_York" }, run: () => runPreLicensureFollowups() },
   // Growth agents (services/src/growth): event-driven sweeps; nothing calls AI unless something is due.
+  { name: "systemHealth", schedule: { everySeconds: 300 }, run: () => systemHealthSweep() },
   { name: "growthApprovedQueue", schedule: { everySeconds: 60 }, run: () => approvedQueueSweep(), leaseMinutes: 5 },
   { name: "growthInstagram", schedule: { everySeconds: 600 }, run: () => instagramSweep() },
   { name: "growthAgents", schedule: { everySeconds: 900 }, run: () => growthTick(), leaseMinutes: 20, long: true },
@@ -137,6 +140,7 @@ export async function releaseLease(name: string) {
  * still going is skipped. With `background`, long jobs are started and not awaited (cron ticks).
  */
 export async function runJobs(jobs: Job[], opts: { background?: boolean } = {}) {
+  await recordTick();
   const out: { job: string; ok: boolean; ms: number; result?: unknown; error?: string; skipped?: string; started?: boolean }[] = [];
   for (const j of jobs) {
     const t = Date.now();
@@ -154,11 +158,15 @@ export async function runJobs(jobs: Job[], opts: { background?: boolean } = {}) 
       }
     };
     if (opts.background && j.long) {
-      void exec().then((r) => { if (!r.ok) console.error(JSON.stringify({ msg: "job.failed", job: j.name, error: r.error })); });
+      void exec().then((r) => {
+        if (!r.ok) console.error(JSON.stringify({ msg: "job.failed", job: j.name, error: r.error }));
+        return recordJobResult(j.name, r.ok, r.ok ? null : r.error);
+      });
       out.push({ job: j.name, ok: true, ms: 0, started: true });
       continue;
     }
     const r = await exec();
+    await recordJobResult(j.name, r.ok, r.ok ? null : r.error);
     out.push({ job: j.name, ok: r.ok, ms: Date.now() - t, ...(r.ok ? { result: r.result } : { error: r.error }) });
   }
   return out;

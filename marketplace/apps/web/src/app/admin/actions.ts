@@ -9,7 +9,7 @@ import {
   schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold, prelicensure, referrals, backups,
+  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -470,4 +470,21 @@ export const saveCampaignAction = formAction(async (fd) => {
   );
   rv("/admin/recruitment");
   return "Saved.";
+});
+
+export const healthAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const what = str(fd, "what");
+  if (what === "test") {
+    await health.sendTestAlert(actor);
+    return "Test alert sent to every admin (and any extra addresses in Settings). Check your inbox.";
+  }
+  if (what === "clear") {
+    await health.clearJobHealth(actor, str(fd, "job"));
+    revalidatePath("/admin/health");
+    return "Cleared. It will only alert again if the job fails again.";
+  }
+  const r = await health.runHealthNow(actor);
+  revalidatePath("/admin", "layout");
+  return "issues" in r ? `Checked. ${r.issues ? `${r.issues} open problem${r.issues === 1 ? "" : "s"}` : "Everything looks good."}${r.fresh ? ` · ${r.fresh} new alert${r.fresh === 1 ? "" : "s"} emailed` : ""}${r.resolved ? ` · ${r.resolved} resolved` : ""}` : "Checked.";
 });

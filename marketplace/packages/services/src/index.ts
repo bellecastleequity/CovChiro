@@ -49,3 +49,5 @@ export * as volume from "./volume";
 export * as payfloors from "./payfloors";
 export * as support from "./support";
 export * as shiftRecruit from "./shiftRecruit";
+export * as health from "./health";
+export { recordChannel, recordJobResult, recordTick } from "./healthstate";
