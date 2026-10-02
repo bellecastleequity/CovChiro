@@ -1,5 +1,6 @@
 import { prisma } from "@cm/db";
-import { admin } from "@cm/services";
+import { admin, getSettings } from "@cm/services";
+import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/form";
@@ -12,10 +13,13 @@ export const metadata = { title: "Rates" };
 
 export default async function Rates() {
   const { actor } = await requireActor("admin");
-  const [regions, professions] = await Promise.all([admin.ratesOverview(actor), prisma.profession.findMany({ orderBy: { sortOrder: "asc" } })]);
+  const [regions, professions, s] = await Promise.all([admin.ratesOverview(actor), prisma.profession.findMany({ orderBy: { sortOrder: "asc" } }), getSettings()]);
   return (
     <>
       <PageHeader title="Rates" description="Clinic price and provider pay per profession × region × tier. New cards are effective-dated; posted shifts keep their original price (INV-7)." />
+      <p className="mb-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+        Volume pricing ({professions.filter((p) => p.volumePricingEnabled).map((p) => p.code).join(", ") || "none"}): a Light card and a Busy card per region and length. Light covers up to {s["pricing.volumeLightVisitsFullDay"]} visits (half day {s["pricing.volumeLightVisitsHalfDay"]}), Busy up to {s["pricing.volumeBusyVisitsFullDay"]} ({s["pricing.volumeBusyVisitsHalfDay"]}); +{s["pricing.volumeGraceVisits"]} grace, then {money(s["pricing.volumeOverageClinicCents"])} clinic / {money(s["pricing.volumeOverageProviderCents"])} provider per extra visit. Change those in <Link href="/admin/settings#s-pricing.volumeLightVisitsFullDay" className="font-medium underline">Settings → Pricing</Link>.
+      </p>
       <div className="space-y-6">
         {regions.map((r) => {
           const current = r.rateCards.filter((c) => !c.effectiveTo || c.effectiveTo > new Date());
@@ -26,7 +30,7 @@ export default async function Rates() {
                 <thead><tr><Th>Profession</Th><Th>Tier</Th><Th className="text-right">Clinic price</Th><Th className="text-right">Provider pay</Th><Th className="text-right">Margin</Th><Th>Effective</Th></tr></thead>
                 <tbody>
                   {current.map((c) => (
-                    <tr key={c.id}><Td>{c.professionCode}</Td><Td>{c.durationTier}{c.minHours ? ` (min ${c.minHours}h)` : ""}</Td><Td className="text-right">{money(c.clinicPriceCents)}</Td><Td className="text-right">{money(c.providerPayCents)}</Td><Td className="text-right">{money(c.clinicPriceCents - c.providerPayCents)}</Td><Td className="text-xs">{dateLabel(c.effectiveFrom, "UTC", { month: "short", day: "numeric", year: "numeric" })}{c.effectiveTo ? ` → ${dateLabel(c.effectiveTo)}` : ""}</Td></tr>
+                    <tr key={c.id}><Td>{c.professionCode}</Td><Td>{c.durationTier}{c.volumeTier ? ` · ${c.volumeTier === "LIGHT" ? "Light" : "Busy"}` : ""}{c.minHours ? ` (min ${c.minHours}h)` : ""}</Td><Td className="text-right">{money(c.clinicPriceCents)}</Td><Td className="text-right">{money(c.providerPayCents)}</Td><Td className="text-right">{money(c.clinicPriceCents - c.providerPayCents)}</Td><Td className="text-xs">{dateLabel(c.effectiveFrom, "UTC", { month: "short", day: "numeric", year: "numeric" })}{c.effectiveTo ? ` → ${dateLabel(c.effectiveTo)}` : ""}</Td></tr>
                   ))}
                 </tbody>
               </Table>
@@ -35,6 +39,7 @@ export default async function Rates() {
                   <input type="hidden" name="rateRegionId" value={r.id} />
                   <Select name="professionCode" className="h-9 w-40">{professions.map((p) => <option key={p.code} value={p.code}>{p.code} ({p.pricingModel.toLowerCase()})</option>)}</Select>
                   <Select name="durationTier" className="h-9 w-32"><option value="HALF_DAY">Half day</option><option value="FULL_DAY">Full day</option><option value="HOURLY">Hourly</option></Select>
+                  <Select name="volumeTier" className="h-9 w-32" defaultValue="BUSY"><option value="LIGHT">Light day</option><option value="BUSY">Busy day</option><option value="">No tier (flat)</option></Select>
                   <Input name="clinicPrice" placeholder="Clinic $" className="h-9 w-24" required />
                   <Input name="providerPay" placeholder="Provider $" className="h-9 w-24" required />
                   <Input name="minHours" placeholder="Min h (hourly)" className="h-9 w-28" />

@@ -63,7 +63,7 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                   <span>{s.city}, {s.state}</span>
                   {s.driveMinutes !== null ? <span className="flex items-center gap-1"><Car className="size-3.5" />{s.driveMinutes} min</span> : null}
-                  {s.expectedPatients ? <span className="flex items-center gap-1"><Users className="size-3.5" />~{s.expectedPatients} patients</span> : null}
+                  {s.expectedPatients ? <span className="flex items-center gap-1"><Users className="size-3.5" />{s.declaredTier ? `${s.declaredTier === "LIGHT" ? "Light" : "Busy"} day · ` : ""}~{s.expectedPatients} patients</span> : s.declaredTier ? <span className="flex items-center gap-1"><Users className="size-3.5" />{s.declaredTier === "LIGHT" ? "Light" : "Busy"} day</span> : null}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   <Badge tone="brand">{s.professionCode}</Badge>

@@ -39,6 +39,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
             <h1 className="mt-5 text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
               Licensed coverage for your clinic, <span className="text-accent-600">on call.</span>
             </h1>
+            {s["features.comparisonClaim"] ? <p className="mt-4 text-xl font-semibold text-brand-700">We charge our clinics less and get our doctors paid more.</p> : null}
             <p className="mt-5 max-w-xl text-lg text-slate-600">
               Post the days you need covered. We match licensed, verified providers in your state, handle the paperwork, and run payment through the platform. No phone trees, no chasing invoices.
             </p>

@@ -491,6 +491,7 @@ export const SETTINGS = {
   // ---------- feature flags (ATTORNEY REVIEW items ship OFF) ----------
   "features.preLicensureEnabled": def({ group: "Features", label: "Student / not-yet-licensed signup path and /join recruitment pages", schema: z.boolean(), default: true, flag: null }),
   "features.onCallEnabled": def({ group: "Features", label: "On Call auto-accept (requires On Call Terms in the Provider Agreement)", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
+  "features.comparisonClaim": def({ group: "Features", label: "Show \"We charge our clinics less and get our doctors paid more\" on the public site", help: "A comparison with competitors: keep proof on file (competitor offers to doctors and their clinic prices). Turn off if you can't back it up.", schema: z.boolean(), default: true, flag: "OWNER_DECISION" }),
   "features.conversionFeeEnabled": def({ group: "Features", label: "Allow charging conversion fees", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
 } as const;
 

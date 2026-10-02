@@ -49,7 +49,7 @@ describe("volume pricing (Light / Busy + extra visits)", () => {
     const { startsAt, endsAt } = futureWeekday(63);
     const q = await quoteForClinic(clinic.actor, { locationId: clinic.location.id, professionCode: "DC", startsAt, endsAt, expectedPatients: 8 });
     expect(q.volume).toMatchObject({ tier: "LIGHT", clinicPrices: { LIGHT: 50000, BUSY: 62500 }, ceilings: { LIGHT: 12, BUSY: 30 } });
-    expect(JSON.stringify(q)).not.toMatch(/42000|providerPay/);
+    expect(JSON.stringify(q)).not.toMatch(/42000|providerPay|overageProvider/);
 
     // Provider sees the tier and expected visits on the board with their pay.
     const provider = await makeProvider();

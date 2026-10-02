@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { MapPin, Phone, User } from "lucide-react";
 import { prisma } from "@cm/db";
-import { getSettings, timeclock } from "@cm/services";
+import { getSettings, timeclock, volume } from "@cm/services";
+import { visitsAction } from "@/app/timeclock-actions";
+import { ProviderVisitCard } from "@/components/timeclock/visit-count";
 import { ClockCard } from "@/components/timeclock/clock-card";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { StatusBadge } from "@/components/ui/badge";
@@ -30,6 +32,7 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
   const disputeOpen = Date.now() - +a.endsAt < s["payments.disputeWindowHours"] * 3_600_000;
   const clockOpen = s["timeclock.enabled"] && ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"].includes(a.status) && +a.startsAt - Date.now() < s["timeclock.earliestInMinutes"] * 60_000;
   const clock = clockOpen ? await timeclock.timesheetForProvider(actor, a.id) : null;
+  const visitView = +a.startsAt <= Date.now() ? await volume.visitViewForProvider(actor, a.id) : null;
   // Multi-day booking: this provider's remaining confirmed days (this one included).
   const remainingDays = a.shift.shiftGroupId
     ? await prisma.assignment.count({ where: { providerId: actor.providerId!, status: { in: ["CONFIRMED", "IN_PROGRESS"] }, startsAt: { gte: a.startsAt }, shift: { shiftGroupId: a.shift.shiftGroupId } } })
@@ -40,6 +43,7 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {clock ? <ClockCard v={clock} /> : null}
+          {visitView ? <ProviderVisitCard v={visitView} assignmentId={a.id} tz={tz} action={visitsAction} /> : null}
           {live && a.reconfirmRequestedAt && !a.reconfirmedAt ? (
             <Alert tone="warning" title="Please confirm you're still coming">
               <p>If you don't confirm by {dateLabel(new Date(+a.startsAt - s["reconfirm.deadlineBeforeHours"] * 3_600_000), tz, { weekday: "short", hour: "numeric", minute: "2-digit" })}, this shift goes to another provider.</p>

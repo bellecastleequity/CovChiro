@@ -170,7 +170,9 @@ async function clinicVolumeView(v: NonNullable<Awaited<ReturnType<typeof quoteSh
   const counts = recent.map((r) => r.finalVisits!);
   return {
     tier: v.tier,
-    terms: v.terms,
+    // Clinic sees its own per-visit price only, never the provider's share.
+    terms: { ceiling: v.terms.ceiling, grace: v.terms.grace, overageClinicCents: v.terms.overageClinicCents },
+    disputeHours: s["pricing.volumeDisputeHours"],
     ceilings: v.ceilings,
     clinicPrices: v.clinicPrices,
     recentCounts: counts.slice(0, 3),
@@ -456,6 +458,7 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
       instantBook: sh.instantBook,
       urgent: +sh.startsAt - Date.now() < 48 * 3_600_000,
       expectedPatients: sh.expectedPatients,
+      declaredTier: sh.declaredTier,
     });
   }
   return out;

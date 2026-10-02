@@ -378,6 +378,7 @@ export const rateCardAction = formAction(async (fd) => {
     rateRegionId: str(fd, "rateRegionId"),
     professionCode: str(fd, "professionCode"),
     durationTier: str(fd, "durationTier") as "FULL_DAY",
+    volumeTier: str(fd, "volumeTier") === "LIGHT" || str(fd, "volumeTier") === "BUSY" ? (str(fd, "volumeTier") as "LIGHT" | "BUSY") : null,
     clinicPriceCents: dollarsToCents(str(fd, "clinicPrice"))!,
     providerPayCents: dollarsToCents(str(fd, "providerPay"))!,
     minHours: optStr(fd, "minHours") ? Number(str(fd, "minHours")) : null,

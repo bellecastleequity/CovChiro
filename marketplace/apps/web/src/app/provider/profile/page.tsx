@@ -11,8 +11,8 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { agreementAction, passwordAction, profileAction, studentModeAction } from "../actions";
-import { getSettings, schools } from "@cm/services";
+import { agreementAction, passwordAction, payFloorAction, profileAction, studentModeAction } from "../actions";
+import { getSettings, payfloors, schools } from "@cm/services";
 import { StudentFields } from "@/components/provider/student-fields";
 
 export const metadata = { title: "Profile" };
@@ -25,6 +25,10 @@ export default async function Profile() {
   const studentEnabled = (await getSettings())["features.preLicensureEnabled"];
   const hasVerifiedLicense = (await prisma.license.count({ where: { providerId: p.id, status: "VERIFIED", expiresAt: { gt: new Date() } } })) > 0;
   const schoolGroups = await schools.schoolOptions(p.professions.map((pp) => pp.professionCode));
+  const floors = await payfloors.myPayFloors(actor);
+  const licStates = [...new Set((await prisma.license.findMany({ where: { providerId: p.id, status: "VERIFIED" }, select: { state: true } })).map((l) => l.state).filter((x) => x !== "US"))];
+  const guidance = await Promise.all(p.professions.map(async (pp) => ({ code: pp.professionCode, g: await payfloors.payGuidance(pp.professionCode, licStates) })));
+  const dollars = (c: number | null | undefined) => (c ? String(c / 100) : "");
   const studentDefaults = {
     school: p.school, graduationDate: p.graduationDate?.toISOString().slice(0, 10) ?? null, intendedStates: p.intendedStates, licensureApplied: p.licensureApplied,
     expectedLicensure: p.expectedLicensure, homeZip: p.homeZip, maxDriveMinutes: p.maxDriveMinutes, preferredArea: p.preferredArea, smsConsent: !!p.smsConsentAt,
@@ -109,6 +113,38 @@ export default async function Profile() {
             </CardBody>
           </Card>
         ) : null}
+        <Card id="min-pay">
+          <CardHeader title="My minimum pay" description="Shifts paying less than this won't be shown or offered to you. Clinics never see it." />
+          <CardBody className="space-y-6">
+            {p.professions.map((pp) => {
+              const f = floors.find((x) => x.professionCode === pp.professionCode);
+              const g = guidance.find((x) => x.code === pp.professionCode)?.g;
+              const hourly = pp.profession.pricingModel === "HOURLY";
+              return (
+                <ActionForm key={pp.professionCode} action={payFloorAction} className="space-y-3">
+                  <input type="hidden" name="professionCode" value={pp.professionCode} />
+                  {p.professions.length > 1 ? <div className="text-sm font-semibold text-slate-800">{pp.profession.displayName}</div> : null}
+                  {g && (g.fullDay || g.halfDay || g.hourly) ? (
+                    <p className="text-sm text-slate-600">Right now {pp.profession.displayName.toLowerCase()} shifts pay {hourly ? `${g.hourly} an hour` : [g.fullDay ? `${g.fullDay} for a full day` : null, g.halfDay ? `${g.halfDay} for a half day` : null].filter(Boolean).join(" and ")}, before extra visits and premiums.</p>
+                  ) : null}
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {hourly ? (
+                      <Field label="Per hour ($)"><Input name="minHourly" inputMode="decimal" defaultValue={dollars(f?.minHourlyCents)} placeholder="No minimum" /></Field>
+                    ) : (
+                      <>
+                        <Field label="Full day ($)"><Input name="minFullDay" inputMode="decimal" defaultValue={dollars(f?.minFullDayCents)} placeholder="No minimum" /></Field>
+                        <Field label="Half day ($)"><Input name="minHalfDay" inputMode="decimal" defaultValue={dollars(f?.minHalfDayCents)} placeholder="No minimum" /></Field>
+                      </>
+                    )}
+                  </div>
+                  <Checkbox name="includeMileage" defaultChecked={f?.includeMileage ?? false} label="Count mileage toward my minimum" />
+                  <SubmitButton variant="outline" size="sm">Save minimum pay</SubmitButton>
+                </ActionForm>
+              );
+            })}
+            <p className="text-xs text-slate-500">A higher minimum means fewer shifts. Shifts you&apos;re already booked on stay booked if you raise it.</p>
+          </CardBody>
+        </Card>
         <Card id="agreement">
           <CardHeader title="Provider Platform Agreement" />
           <CardBody>

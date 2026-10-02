@@ -1,14 +1,18 @@
 import { Banknote, CalendarCheck, Car, ShieldCheck } from "lucide-react";
+import { getSettings } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
 
 export const metadata = { title: "For providers" };
+export const dynamic = "force-dynamic";
 
-export default function ForProviders() {
+export default async function ForProviders() {
+  const s = await getSettings();
   return (
     <div className="container-page py-16">
       <div className="max-w-2xl">
         <div className="text-sm font-semibold uppercase tracking-wider text-brand-700">For providers</div>
         <h1 className="mt-2 text-4xl font-semibold">Fill your open days with coverage shifts</h1>
+        {s["features.comparisonClaim"] ? <p className="mt-3 text-xl font-semibold text-accent-700">We charge our clinics less and get our doctors paid more.</p> : null}
         <p className="mt-4 text-lg text-slate-600">Set your availability and how far you'll drive. See pay and mileage up front, apply in a tap, and get paid to your bank after every shift.</p>
         <div className="mt-8 flex gap-3">
           <LinkButton href="/signup?role=provider" size="lg">

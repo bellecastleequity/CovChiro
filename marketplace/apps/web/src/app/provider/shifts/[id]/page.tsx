@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Car, Clock, MapPin, Shirt, Star, Users } from "lucide-react";
 import { prisma } from "@cm/db";
 import { evaluateProviderForShift, getSettings } from "@cm/services";
-import { providerView } from "@cm/core";
+import { parseVolumeTerms, providerView } from "@cm/core";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -27,6 +27,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
   const skills = await prisma.skill.findMany({ where: { id: { in: [...shift.requiredSkillIds, ...shift.preferredSkillIds] } } });
   const clinicRating = await prisma.rating.aggregate({ where: { raterType: "PROVIDER", revealedAt: { not: null }, assignment: { shift: { location: { clinicOrgId: shift.location.clinicOrgId } } } }, _avg: { stars: true }, _count: true });
   const tz = shift.location.timeZone;
+  const volTerms = parseVolumeTerms(shift.volumeTerms);
   // Multi-day booking: the other days, and which of them this provider already applied to / works.
   const groupDays = shift.shiftGroupId
     ? await prisma.shift.findMany({
@@ -51,7 +52,9 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
               {ev.drive ? <div className="flex items-center gap-2"><Car className="size-4 text-slate-400" />About {ev.drive.minutes} min drive ({ev.drive.miles} mi)</div> : null}
               {shift.location.dressCode ? <div className="flex items-center gap-2"><Shirt className="size-4 text-slate-400" />Attire: {shift.location.dressCode}</div> : null}
               {shift.minYearsExperience ? <div className="flex items-center gap-2"><Star className="size-4 text-slate-400" />Clinic asks for {shift.minYearsExperience}+ years&apos; experience</div> : null}
-              {shift.expectedPatients ? <div className="flex items-center gap-2"><Users className="size-4 text-slate-400" />About {shift.expectedPatients} patients</div> : shift.location.patientsPerDay ? <div className="flex items-center gap-2"><Users className="size-4 text-slate-400" />Usually about {shift.location.patientsPerDay} patients a day</div> : null}
+              {shift.declaredTier && volTerms ? (
+                <div className="flex items-start gap-2"><Users className="mt-0.5 size-4 shrink-0 text-slate-400" /><span><b>{shift.declaredTier === "LIGHT" ? "Light" : "Busy"} day</b>{shift.expectedPatients ? ` · about ${shift.expectedPatients} patients` : ""}. If you see more than {volTerms.ceiling + volTerms.grace}, each extra visit pays you {money(volTerms.overageProviderCents)}: enter the count when you clock out.</span></div>
+              ) : shift.expectedPatients ? <div className="flex items-center gap-2"><Users className="size-4 text-slate-400" />About {shift.expectedPatients} patients</div> : shift.location.patientsPerDay ? <div className="flex items-center gap-2"><Users className="size-4 text-slate-400" />Usually about {shift.location.patientsPerDay} patients a day</div> : null}
               {clinicRating._count ? <div className="flex items-center gap-2"><Star className="size-4 text-amber-500" />{clinicRating._avg.stars?.toFixed(1)} from {clinicRating._count} provider rating{clinicRating._count === 1 ? "" : "s"}</div> : null}
               {skills.length ? (
                 <div className="flex flex-wrap gap-1.5 pt-1">

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { DateTime } from "luxon";
 import { DomainError, type PunchKind } from "@cm/core";
-import { timeclock } from "@cm/services";
+import { timeclock, volume } from "@cm/services";
 import { formAction, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
 
@@ -85,4 +85,52 @@ export const adminApproveAction = formAction(async (fd) => {
   await timeclock.approveAsAdmin(actor, str(fd, "assignmentId"), str(fd, "note"));
   rv();
   return "Approved.";
+});
+
+// ---------------- visit counts (volume pricing) ----------------
+
+const visits = (fd: FormData) => {
+  const n = Number(str(fd, "visits"));
+  if (str(fd, "visits") === "" || !Number.isInteger(n)) throw new DomainError("VALIDATION", "Enter the number of visits.");
+  return n;
+};
+
+export const visitsAction = formAction(async (fd) => {
+  const { actor } = await requireActor("provider");
+  const r = await volume.submitVisits(actor, str(fd, "assignmentId"), visits(fd));
+  rv();
+  return r.overageVisits ? `Saved: ${r.visits} visits, ${r.overageVisits} past your tier. The clinic can check it, then the extra pay is added to your next payout.` : `Saved: ${r.visits} visits. Thanks!`;
+});
+
+export const clinicConfirmVisitsAction = formAction(async (fd) => {
+  const { actor } = await requireActor("clinic");
+  await volume.confirmVisitsAsClinic(actor, str(fd, "assignmentId"));
+  rv();
+  return "Count confirmed. Thank you!";
+});
+
+export const clinicReportVisitsAction = formAction(async (fd) => {
+  const { actor } = await requireActor("clinic");
+  await volume.reportVisitsAsClinic(actor, str(fd, "assignmentId"), visits(fd), str(fd, "reason"));
+  rv();
+  return "Thanks. We've recorded your count; if the two are far apart we'll review them before anything extra is charged.";
+});
+
+export const tokenConfirmVisitsAction = formAction(async (fd) => {
+  await volume.confirmVisitsByToken(str(fd, "token"));
+  rv();
+  return "Count confirmed. Thank you!";
+});
+
+export const tokenReportVisitsAction = formAction(async (fd) => {
+  await volume.reportVisitsByToken(str(fd, "token"), visits(fd), str(fd, "reason"));
+  rv();
+  return "Thanks. We've recorded your count; if the two are far apart we'll review them before anything extra is charged.";
+});
+
+export const adminSetVisitsAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  await volume.adminSetVisits(actor, str(fd, "assignmentId"), visits(fd), str(fd, "note"));
+  rv();
+  return "Final count saved and settled.";
 });

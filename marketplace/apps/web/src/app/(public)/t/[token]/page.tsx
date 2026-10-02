@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { brand } from "@cm/config";
-import { timeclock } from "@cm/services";
-import { tokenApproveAction, tokenReportAction } from "@/app/timeclock-actions";
+import { timeclock, volume } from "@cm/services";
+import { tokenApproveAction, tokenConfirmVisitsAction, tokenReportAction, tokenReportVisitsAction } from "@/app/timeclock-actions";
+import { ClinicVisitPanel } from "@/components/timeclock/visit-count";
 import { SignOffForm } from "@/components/timeclock/signoff-form";
 import { TimesheetPanel, TimesheetStatus } from "@/components/timeclock/timesheet-panel";
 
@@ -13,6 +14,7 @@ export default async function TimesheetLink({ params }: { params: Promise<{ toke
   const { token } = await params;
   const v = await timeclock.timesheetByToken(token);
   if (!v) notFound();
+  const visits = await volume.visitViewByToken(token);
   const b = brand();
   const day = v.startsAt.toLocaleDateString("en-US", { timeZone: v.timeZone, weekday: "long", month: "long", day: "numeric" });
   return (
@@ -20,7 +22,14 @@ export default async function TimesheetLink({ params }: { params: Promise<{ toke
       <p className="text-sm font-semibold uppercase tracking-wide text-accent-700">{b.name} timesheet</p>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight">{v.providerName}</h1>
       <p className="mt-1 text-slate-600">{v.locationName} · {day}</p>
-      <div className="mt-2"><TimesheetStatus status={v.status} /></div>
+      {v.punches.length || !visits ? <div className="mt-2"><TimesheetStatus status={v.status} /></div> : null}
+      {visits ? (
+        <div className={`mt-6 rounded-2xl border bg-white p-5 shadow-card ${visits.canRespond ? "border-amber-300 ring-2 ring-amber-100" : "border-slate-200"}`}>
+          <h2 className="mb-3 font-semibold">Patient visits</h2>
+          <ClinicVisitPanel v={visits} tz={v.timeZone} hidden={{ token }} confirm={tokenConfirmVisitsAction} report={tokenReportVisitsAction} />
+        </div>
+      ) : null}
+      {v.punches.length || !visits ? (
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
         <TimesheetPanel v={v} />
         {v.status === "SUBMITTED" ? (
@@ -35,6 +44,7 @@ export default async function TimesheetLink({ params }: { params: Promise<{ toke
           </details>
         ) : v.status === "OPEN" ? <p className="mt-4 text-sm text-slate-500">The provider hasn&apos;t punched out yet. You&apos;ll get an email when it&apos;s ready to sign off.</p> : null}
       </div>
+      ) : null}
     </section>
   );
 }

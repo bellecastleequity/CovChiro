@@ -15,11 +15,14 @@ async function fullDayPrices() {
   const states = (await prisma.stateConfig.findMany({ where: { enabled: true }, select: { state: true } })).map((x) => x.state);
   const cards = await prisma.rateCard.findMany({
     where: { durationTier: "FULL_DAY", effectiveTo: null, profession: { active: true }, rateRegion: { state: { in: states } } },
-    select: { clinicPriceCents: true },
+    select: { clinicPriceCents: true, volumeTier: true },
   });
   const p = cards.map((c) => c.clinicPriceCents).sort((a, b) => a - b);
   if (!p.length) return null;
-  return { low: p[0] / 100, high: p[p.length - 1] / 100, typical: p[Math.floor((p.length - 1) / 2)] / 100 };
+  // Typical = a Busy (standard) day; Light days are the low end of the range.
+  const busy = cards.filter((c) => c.volumeTier !== "LIGHT").map((c) => c.clinicPriceCents).sort((a, b) => a - b);
+  const mid = busy.length ? busy : p;
+  return { low: p[0] / 100, high: p[p.length - 1] / 100, typical: mid[Math.floor((mid.length - 1) / 2)] / 100 };
 }
 
 export default async function CostOfClosingPage() {

@@ -12,7 +12,7 @@ import {
   oncall,
   addBlackout, addMalpractice, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
   removeAvailabilityException, requestAgreement, respondToOffer, setAvailability, setProviderPhoto, setSkills, submitLodgingReceipt, submitRating,
-  updateProviderProfile, upsertLicense, withdrawApplication, prelicensure,
+  updateProviderProfile, upsertLicense, withdrawApplication, prelicensure, payfloors,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -381,4 +381,17 @@ export const studentModeAction = formAction(async (fd) => {
   });
   revalidatePath("/provider");
   return "Saved.";
+});
+
+export const payFloorAction = formAction(async (fd) => {
+  const { actor } = await requireActor("provider");
+  await payfloors.savePayFloor(actor, {
+    professionCode: str(fd, "professionCode"),
+    minFullDayCents: dollarsToCents(str(fd, "minFullDay")),
+    minHalfDayCents: dollarsToCents(str(fd, "minHalfDay")),
+    minHourlyCents: dollarsToCents(str(fd, "minHourly")),
+    includeMileage: fd.get("includeMileage") === "on",
+  });
+  revalidatePath("/provider", "layout");
+  return "Saved. Your shift list now only shows shifts at or above it.";
 });

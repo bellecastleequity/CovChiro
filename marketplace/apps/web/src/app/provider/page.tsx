@@ -2,7 +2,9 @@ import { GroundFloor } from "@/components/referrals/refer-page";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, Inbox, ShieldCheck, Wallet, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
-import { earningsFor, getSettings, oncall, prelicensure, providerProfile, timeclock } from "@cm/services";
+import { earningsFor, getSettings, oncall, prelicensure, providerProfile, timeclock, volume } from "@cm/services";
+import { visitsAction } from "@/app/timeclock-actions";
+import { ProviderVisitCard } from "@/components/timeclock/visit-count";
 import { ClockCard } from "@/components/timeclock/clock-card";
 import { ReadinessCard } from "@/components/provider/readiness-card";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
@@ -20,6 +22,8 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
   const { welcome } = await searchParams;
   const rs = await getSettings();
   const clock = actor.providerId ? await timeclock.currentShiftForClock(actor.providerId) : null;
+  // After punching out, ask for the day's visit count right here (volume-priced shifts).
+  const visitView = clock && clock.status !== "OPEN" ? await volume.visitViewForProvider(actor, clock.assignmentId) : null;
   const [{ provider, checklist, canTake }, earnings, upcoming, offers, apps, settings] = await Promise.all([
     providerProfile(actor),
     earningsFor(actor.providerId!),
@@ -57,6 +61,7 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
     <>
       <PageHeader eyebrow={`Hi, ${firstName(user.name)}`} title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
       {clock ? <div className="mb-6"><ClockCard v={clock} title="Today's time clock" /></div> : null}
+      {visitView?.canSubmit ? <div className="mb-6"><ProviderVisitCard v={visitView} assignmentId={clock!.assignmentId} tz={clock!.timeZone} action={visitsAction} /></div> : null}
       {rs["referrals.enabled"] ? <GroundFloor kind="provider" referrerRewardCents={rs["referrals.referrerRewardCents"]} friendRewardCents={rs["referrals.refereeRewardCents"]} justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
       {readiness ? (
         <ReadinessCard

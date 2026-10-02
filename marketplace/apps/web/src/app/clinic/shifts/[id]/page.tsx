@@ -3,8 +3,9 @@ import Link from "next/link";
 import { Ban, Car, Heart, MessageSquare, Radar, Star, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
 import { clinicView } from "@cm/core";
-import { dispatch, getSettings, shiftCandidates, timeclock } from "@cm/services";
-import { clinicApproveAction, clinicReportAction } from "@/app/timeclock-actions";
+import { dispatch, getSettings, shiftCandidates, timeclock, volume } from "@cm/services";
+import { clinicApproveAction, clinicConfirmVisitsAction, clinicReportAction, clinicReportVisitsAction } from "@/app/timeclock-actions";
+import { ClinicVisitPanel } from "@/components/timeclock/visit-count";
 import { SignOffForm } from "@/components/timeclock/signoff-form";
 import { TrustPanel } from "@/components/clinic/trust-panel";
 import { bookAgainAction } from "../../actions";
@@ -102,6 +103,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
   const s = await getSettings();
   const tz = shift.location.timeZone;
   const live = shift.assignments.find((a) => ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"].includes(a.status));
+  const visitView = live && +live.startsAt <= Date.now() ? await volume.visitViewForClinic(actor, live.id) : null;
   const sheet = live && s["timeclock.enabled"] && +live.startsAt - Date.now() < s["timeclock.earliestInMinutes"] * 60_000 ? await timeclock.timesheetForClinic(actor, live.id) : null;
   const selectable = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"].includes(shift.status);
   const cands = selectable ? await shiftCandidates(actor, id) : null;
@@ -276,6 +278,12 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                 <TimesheetPanel v={sheet} />
                 {sheet.status === "SUBMITTED" ? <SignOffForm approve={clinicApproveAction} report={clinicReportAction} hidden={{ assignmentId: sheet.assignmentId }} defaultName={user.name} /> : null}
               </CardBody>
+            </Card>
+          ) : null}
+          {visitView && live ? (
+            <Card id="visits" className={visitView.canRespond ? "border-amber-300 ring-2 ring-amber-100" : undefined}>
+              <CardHeader title="Patient visits" description={visitView.canRespond ? "Check the provider's count. If you don't respond, it stands when the window closes." : "Counts only, never patient details."} />
+              <CardBody><ClinicVisitPanel v={visitView} tz={shift.location.timeZone} hidden={{ assignmentId: live.id }} confirm={clinicConfirmVisitsAction} report={clinicReportVisitsAction} /></CardBody>
             </Card>
           ) : null}
           {live ? (

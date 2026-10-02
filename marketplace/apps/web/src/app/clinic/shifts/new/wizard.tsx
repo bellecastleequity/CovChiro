@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { AlertTriangle, CalendarDays, Check, ChevronLeft, MapPin, ShieldCheck, Stethoscope } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { AlertTriangle, CalendarDays, Check, ChevronLeft, MapPin, ShieldCheck, Stethoscope, Users } from "lucide-react";
 import { ActionForm, SubmitButton, type ActionState } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+import { ClosingPanel, usePerVisit } from "@/components/clinic/closing-panel";
 import { Checkbox, Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
@@ -45,7 +46,19 @@ interface Quote {
   hours: number;
   billableHours: number;
   subtotalCents: number;
+  volume?: {
+    tier: "LIGHT" | "BUSY";
+    terms: { ceiling: number; grace: number; overageClinicCents: number };
+    disputeHours: number;
+    ceilings: { LIGHT: number; BUSY: number };
+    clinicPrices: { LIGHT: number; BUSY: number };
+    recentCounts: number[];
+    suggested: number | null;
+    warning: string | null;
+  } | null;
 }
+
+const TIER_LABEL = { LIGHT: "Light day", BUSY: "Busy day" } as const;
 
 const STEPS = ["Where", "What", "When", "Details", "Review"] as const;
 
@@ -70,7 +83,7 @@ export interface DraftInit {
   sup: { supervisorName: string; supervisorProfessionCode: string; supervisorLicenseNumber: string; onSiteEntireShift: boolean } | null;
 }
 
-export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit }) {
+export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft, volumeCodes = [] }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit; volumeCodes?: string[] }) {
   const [step, setStep] = useState(0);
   const [locationId, setLocationId] = useState(draft && locations.some((l) => l.id === draft.locationId) ? draft.locationId : locations[0].id);
   const loc = locations.find((l) => l.id === locationId)!;
@@ -103,6 +116,10 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [perVisit, setPerVisit] = usePerVisit(locationId);
+  const [volumeAck, setVolumeAck] = useState(false);
+  const volumePriced = !!prof && prof.pricingModel !== "HOURLY" && volumeCodes.includes(prof.code);
+  const visitsNum = expectedPatients === "" ? null : Math.max(0, Math.floor(Number(expectedPatients) || 0));
 
   const payload = useMemo(
     () =>
@@ -146,7 +163,19 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const toggle = (list: string[], set: (v: string[]) => void, id: string) => set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   const supOk = !prof?.supervisionRequired || (sup.supervisorName.length > 1 && sup.supervisorLicenseNumber.length > 2 && sup.onSiteEntireShift && !!sup.supervisorProfessionCode);
   const daysOk = days.every((d) => d.date && d.start && d.end) && new Set(days.map((d) => d.date)).size === days.length;
-  const canNext = [!!locationId, !!prof?.enabled && supOk, daysOk, true, true][step];
+  const canNext = [!!locationId, !!prof?.enabled && supOk, daysOk, !volumePriced || visitsNum != null, true][step];
+  // Re-price as the expected visits change (they pick Light or Busy).
+  useEffect(() => {
+    if (step < 3) return;
+    const t = setTimeout(refreshQuote, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expectedPatients]);
+  const v = quote?.volume ?? null;
+  const coverageTotal = quote ? (quote.days && quote.days.length > 1 ? (quote.totalCents ?? 0) : quote.subtotalCents) : null;
+  const closing = (collapsible: boolean) => (
+    <ClosingPanel visits={visitsNum} days={days.length} coverageCents={coverageTotal} perVisit={perVisit} onPerVisit={setPerVisit} collapsible={collapsible} />
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -237,6 +266,25 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
 
             {step === 3 && prof ? (
               <div className="space-y-5">
+                {volumePriced ? (
+                  <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-4">
+                    <Field
+                      label={<><Users className="mr-1 inline size-4 text-accent-600" />Expected patient visits{days.length > 1 ? " per day" : ""}<InfoTip label="About expected visits">Your price depends on how busy the day is. A Light day is cheaper; a Busy day covers more visits. If the day turns out busier than the tier you book, each visit past its limit (plus a small grace) is billed per visit after the shift, and you can check the count first.</InfoTip></>}
+                      hint={v ? `Light: up to ${v.ceilings.LIGHT} visits · Busy: up to ${v.ceilings.BUSY}.` : undefined}
+                    >
+                      <Input type="number" min={0} max={300} inputMode="numeric" value={expectedPatients} onChange={(e) => setExpectedPatients(e.target.value)} placeholder="e.g. 18" className="max-w-40 text-lg font-semibold" />
+                    </Field>
+                    {v?.suggested != null && expectedPatients === "" ? (
+                      <button type="button" onClick={() => setExpectedPatients(String(v.suggested))} className="mt-2 text-sm font-medium text-brand-700 underline">Your last {v.recentCounts.length} coverage days averaged {v.suggested} visits. Use {v.suggested}</button>
+                    ) : null}
+                    {v && visitsNum != null && !pending ? (
+                      <p className="mt-3 text-sm text-slate-700">
+                        <b>{TIER_LABEL[v.tier]}</b> · {money(quote!.coverageCents)}{days.length > 1 ? " a day" : ""}. Covers up to {v.terms.ceiling + v.terms.grace} visits; each visit past that adds {money(v.terms.overageClinicCents)}.
+                      </p>
+                    ) : null}
+                    {v?.warning ? <p className="mt-2 flex gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="mt-0.5 size-4 shrink-0" />{v.warning}</p> : null}
+                  </div>
+                ) : null}
                 <div>
                   <h2 className="font-semibold">Skills<InfoTip label="About skills">Tap a skill once for <b>preferred</b> (providers who have it rank higher) and again for <b>required</b> (only providers with it, and any certification it needs, are matched). Tap a third time to clear it. Requiring many skills means fewer providers qualify.</InfoTip></h2>
                   <p className="text-xs text-slate-500">Required skills filter providers; preferred skills improve their match score.</p>
@@ -263,7 +311,9 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label={<>Expected patients<InfoTip label="About expected patients">Roughly how many patients the provider will see. It helps them judge the pace of the day; it doesn't change the price.</InfoTip></>}><Input type="number" min={0} value={expectedPatients} onChange={(e) => setExpectedPatients(e.target.value)} /></Field>
+                  {!volumePriced ? (
+                    <Field label={<>Expected patients<InfoTip label="About expected patients">Roughly how many patients the provider will see. It helps them judge the pace of the day; it doesn't change the price.</InfoTip></>}><Input type="number" min={0} value={expectedPatients} onChange={(e) => setExpectedPatients(e.target.value)} /></Field>
+                  ) : null}
                   <Field label={<>Minimum experience<InfoTip label="About minimum experience">Uses the years practicing providers enter on their profile (it can't exceed the years since they graduated). Higher minimums mean fewer providers qualify, so the shift may take longer to fill. Your default is in Settings, where you can also let emergency cover ignore it.</InfoTip></>} hint="Higher minimums mean fewer providers can take it.">
                     <Select value={minYears} onChange={(e) => setMinYears(e.target.value)}>
                       <option value="0">Any experience</option>
@@ -311,13 +361,22 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                   <Input value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="Promo code" className="font-mono" />
                   <Button type="button" variant="outline" onClick={refreshQuote} disabled={pending}>Apply</Button>
                 </div>
+                {volumePriced && v ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                    <p>
+                      <b>{TIER_LABEL[v.tier]}</b> for about {visitsNum} visits{days.length > 1 ? " a day" : ""}. Final visit counts may affect the final booking price: visits past {v.terms.ceiling + v.terms.grace} are billed at {money(v.terms.overageClinicCents)} each. The price never goes below the tier you book.
+                    </p>
+                    <p className="mt-1">After the shift you&apos;ll see the provider&apos;s count, and you have {v.disputeHours} hour{v.disputeHours === 1 ? "" : "s"} after the booking completes to dispute it before your card on file is charged.</p>
+                    <Checkbox className="mt-3" checked={volumeAck} onChange={(e) => setVolumeAck(e.target.checked)} label="I understand the final price may go up if the day is busier than booked." />
+                  </div>
+                ) : null}
                 {!canPost ? <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="size-4 shrink-0" /><span>Finish setup to post: a payment method and the current Clinic Platform Agreement (<a href="/clinic/settings#agreement" className="font-medium underline">sign in Settings</a>). You can save a draft now.</span></p> : null}
                 <div className="flex flex-wrap gap-2">
                   <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
                     <input type="hidden" name="payload" value={payload} />
                     <input type="hidden" name="mode" value="post" />
-                    <SubmitButton size="lg" pendingText="Posting…">{days.length > 1 ? `Post ${days.length}-day booking` : "Post shift"}</SubmitButton>
+                    <SubmitButton size="lg" pendingText="Posting…" disabled={volumePriced && !volumeAck}>{days.length > 1 ? `Post ${days.length}-day booking` : "Post shift"}</SubmitButton>
                   </ActionForm>
                   <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
@@ -329,6 +388,8 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
               </div>
             ) : null}
 
+            {step >= 3 && volumePriced ? <div className="lg:hidden">{closing(true)}</div> : null}
+
             <div className="flex justify-between border-t border-slate-100 pt-4">
               <Button type="button" variant="ghost" onClick={() => setStep(step - 1)} disabled={step === 0}><ChevronLeft className="size-4" />Back</Button>
               {step < STEPS.length - 1 ? (
@@ -339,7 +400,8 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
         </Card>
       </div>
       <div>
-        <Card className="lg:sticky lg:top-20">
+        <div className="lg:sticky lg:top-20">
+        <Card>
           <CardBody className="space-y-3 py-5">
             <h3 className="font-semibold">Price</h3>
             {pending ? <p className="text-sm text-slate-400">Calculating…</p> : null}
@@ -347,6 +409,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
             {quote && !pending ? (
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between"><span>Coverage ({quote.tier === "HOURLY" ? `${quote.billableHours}h` : quote.tier === "HALF_DAY" ? "half day" : `full day${quote.hours > 8 ? ` + ${Math.round((quote.hours - 8) * 100) / 100}h OT` : ""}`})</span><span className="tabular-nums">{money(quote.coverageCents)}</span></div>
+                {v ? <div className="flex justify-between text-xs text-slate-500"><span>{TIER_LABEL[v.tier]} · up to {v.terms.ceiling + v.terms.grace} visits</span><span>+{money(v.terms.overageClinicCents)}/visit after</span></div> : null}
                 {quote.premiums.map((p) => <div key={p.kind} className="flex justify-between text-xs text-slate-500"><span>incl. {p.kind.toLowerCase()} premium</span><span>+{p.percent}%</span></div>)}
                 {quote.discountCents ? <div className="flex justify-between text-emerald-700"><span>Promo {quote.promoCode}</span><span className="tabular-nums">−{money(quote.discountCents)}</span></div> : null}
                 {quote.days && quote.days.length > 1 ? (
@@ -362,8 +425,21 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
             ) : !quoteError && !pending ? (
               <p className="text-sm text-slate-500">Choose a date and time to see the price.</p>
             ) : null}
+            {v ? (
+              <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-xs">
+                {(["LIGHT", "BUSY"] as const).map((t) => (
+                  <div key={t} className={cn("rounded-lg border p-2", v.tier === t ? "border-brand-500 bg-brand-50" : "border-slate-200")}>
+                    <div className="font-semibold text-slate-800">{TIER_LABEL[t]}</div>
+                    <div className="text-slate-500">up to {v.ceilings[t]} visits</div>
+                    <div className="mt-0.5 font-medium tabular-nums text-slate-900">from {money(v.clinicPrices[t])}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </CardBody>
         </Card>
+        {volumePriced && step >= 3 ? <div className="mt-4 hidden lg:block">{closing(false)}</div> : null}
+        </div>
       </div>
     </div>
   );

@@ -14,14 +14,16 @@ export default async function ForClinics() {
     include: { rateCards: { where: { effectiveTo: null, profession: { active: true } }, include: { profession: true } } },
     orderBy: [{ state: "asc" }, { tier: "asc" }],
   });
-  const tiers = priceTiers(regions);
+  const visits = { FULL_DAY: { LIGHT: s["pricing.volumeLightVisitsFullDay"], BUSY: s["pricing.volumeBusyVisitsFullDay"] }, HALF_DAY: { LIGHT: s["pricing.volumeLightVisitsHalfDay"], BUSY: s["pricing.volumeBusyVisitsHalfDay"] } };
+  const tiers = priceTiers(regions, visits);
   return (
     <div className="container-page py-16">
       <div className="max-w-2xl">
         <div className="text-sm font-semibold uppercase tracking-wider text-brand-700">For clinics</div>
         <h1 className="mt-2 text-4xl font-semibold">Simple per-shift pricing</h1>
+        {s["features.comparisonClaim"] ? <p className="mt-3 text-xl font-semibold text-accent-700">We charge our clinics less and get our doctors paid more.</p> : null}
         <p className="mt-4 text-lg text-slate-600">
-          Prices are set by region and shift length — no negotiating, no surprises. Mileage (and lodging, if you allow it) passes straight through to your provider at cost.
+          Prices are set by region, shift length and how busy the day is: a Light day costs less, a Busy day covers more visits. No negotiating, no surprises. Mileage (and lodging, if you allow it) passes straight through to your provider at cost.
         </p>
       </div>
       <div className="mt-10 grid gap-5 md:grid-cols-2">
@@ -73,6 +75,7 @@ export default async function ForClinics() {
           <dl className="mt-4 space-y-2.5">
             <div className="flex justify-between gap-4"><dt>Deposit at confirmation</dt><dd className="font-medium">{s["payments.depositPercent"]}%</dd></div>
             <div className="flex justify-between gap-4"><dt>Free cancellation</dt><dd className="font-medium">{s["payments.clinicFreeCancelHours"]}h+ before start</dd></div>
+            <div className="flex justify-between gap-4"><dt>Extra visits past your tier (+{s["pricing.volumeGraceVisits"]} free)</dt><dd className="font-medium">{money(s["pricing.volumeOverageClinicCents"])}/visit</dd></div>
             <div className="flex justify-between gap-4"><dt>Overtime beyond 8 hours</dt><dd className="font-medium">{money(s["pricing.overtimeClinicCentsPerHour"])}/hr</dd></div>
             <div className="flex justify-between gap-4"><dt>Mileage</dt><dd className="font-medium">{money(s["pricing.mileageRateCentsPerMile"], { exact: true })}/mile {s["pricing.mileageRoundTrip"] ? "round-trip" : "one-way"}</dd></div>
             <div className="flex justify-between gap-4"><dt>Weekend / holiday / &lt;48h</dt><dd className="font-medium">+{s["pricing.premiumWeekendPercent"]}% / +{s["pricing.premiumHolidayPercent"]}% / +{s["pricing.premiumUrgentPercent"]}%</dd></div>
@@ -98,10 +101,11 @@ const TIER_COPY: Record<number, { intro: string; cities: string[] }> = {
   2: { intro: "Smaller cities & towns, like", cities: ["Gainesville", "Ocala", "Tallahassee", "Pensacola", "Savannah", "Chattanooga"] },
 };
 
-type Region = { tier: number; name: string; rateCards: { clinicPriceCents: number; durationTier: string; professionCode: string; profession: { displayName: string; sortOrder: number } }[] };
+type Region = { tier: number; name: string; rateCards: { clinicPriceCents: number; durationTier: string; volumeTier: string | null; professionCode: string; profession: { displayName: string; sortOrder: number } }[] };
+type Visits = Record<"FULL_DAY" | "HALF_DAY", Record<"LIGHT" | "BUSY", number>>;
 
 /** One card per tier: the lowest current price per profession and shift length across that tier's regions. */
-function priceTiers(regions: Region[]) {
+function priceTiers(regions: Region[], visits: Visits) {
   const byTier = new Map<number, Region[]>();
   for (const r of regions) if (r.rateCards.length) byTier.set(r.tier, [...(byTier.get(r.tier) ?? []), r]);
   const order = { HALF_DAY: 0, FULL_DAY: 1, HOURLY: 2 } as Record<string, number>;
@@ -110,10 +114,13 @@ function priceTiers(regions: Region[]) {
     .map(([tier, rs]) => {
       const cells = new Map<string, { key: string; label: string; cents: number; from: boolean; sort: number }>();
       for (const c of rs.flatMap((r) => r.rateCards)) {
-        const key = `${c.professionCode}:${c.durationTier}`;
-        const label = `${c.profession.displayName} · ${c.durationTier === "HALF_DAY" ? "Half day (under 4h)" : c.durationTier === "FULL_DAY" ? "Full day (4–8h)" : "Per hour"}`;
+        const key = `${c.professionCode}:${c.durationTier}:${c.volumeTier ?? ""}`;
+        const vt = c.volumeTier as "LIGHT" | "BUSY" | null;
+        const dur = c.durationTier as "HALF_DAY" | "FULL_DAY";
+        const volume = vt && visits[dur] ? ` · ${vt === "LIGHT" ? "Light" : "Busy"}, up to ${visits[dur][vt]} visits` : "";
+        const label = `${c.profession.displayName} · ${c.durationTier === "HALF_DAY" ? "Half day (under 4h)" : c.durationTier === "FULL_DAY" ? "Full day (4–8h)" : "Per hour"}${volume}`;
         const prev = cells.get(key);
-        if (!prev) cells.set(key, { key, label, cents: c.clinicPriceCents, from: false, sort: c.profession.sortOrder * 10 + (order[c.durationTier] ?? 9) });
+        if (!prev) cells.set(key, { key, label, cents: c.clinicPriceCents, from: false, sort: c.profession.sortOrder * 100 + (order[c.durationTier] ?? 9) * 10 + (vt === "BUSY" ? 1 : 0) });
         else if (prev.cents !== c.clinicPriceCents) cells.set(key, { ...prev, cents: Math.min(prev.cents, c.clinicPriceCents), from: true });
       }
       const copy = TIER_COPY[tier] ?? { intro: "Areas like", cities: rs.map((r) => r.name) };

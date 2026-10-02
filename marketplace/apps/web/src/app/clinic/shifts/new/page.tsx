@@ -52,18 +52,20 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
     );
   }
   const settings = await getSettings();
+  const volumeCodes = (await prisma.profession.findMany({ where: { volumePricingEnabled: true }, select: { code: true } })).map((p) => p.code);
   const options = await Promise.all(locations.map((l) => postingOptions(actor, l.id)));
   const redemptions = await prisma.promoRedemption.count({ where: { clinicOrgId: org.id, voidedAt: null } });
   const welcome = redemptions === 0 ? await prisma.promoCode.findFirst({ where: { assignedEmail: org.billingEmail ?? "", active: true, usedCount: 0, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, orderBy: { createdAt: "desc" } }) : null;
   return (
     <>
-      <PageHeader title={draft ? "Edit draft shift" : "Post a shift"} description={draft ? "Change anything, then save the draft or post it. Prices are recalculated from our regional rate card." : "Prices come from our regional rate card. You'll see the total before posting."} />
+      <PageHeader title={draft ? "Edit draft shift" : "Post a shift"} description={draft ? "Change anything, then save the draft or post it. Prices are recalculated from our regional rate card." : "Prices come from our regional rate card and how busy the day is. You'll see the total, and what closing would cost instead, before posting."} />
       <PostShiftWizard
         canPost={org.status === "ACTIVE" && org.hasPaymentMethod && agreementCurrent("CLINIC", org.agreementSignedAt, org.agreementVersion)}
         defaultMinYears={org.minYearsExperience}
         mileage={{ rateLabel: `$${(settings["pricing.mileageRateCentsPerMile"] / 100).toFixed(2)}`, roundTrip: settings["pricing.mileageRoundTrip"] }}
         defaultCode={code ?? welcome?.code ?? ""}
         draft={draft}
+        volumeCodes={volumeCodes}
         locations={options.map((o) => ({
           id: o.location.id,
           name: o.location.name,

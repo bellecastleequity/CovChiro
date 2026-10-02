@@ -349,18 +349,29 @@ export async function saveRateRegion(actor: Actor, input: { id?: string; state: 
 }
 
 /** New effective-dated card; closes the previous one. Existing shifts keep their priced snapshot. */
-export async function setRateCard(actor: Actor, input: { rateRegionId: string; professionCode: string; durationTier: "HALF_DAY" | "FULL_DAY" | "HOURLY"; clinicPriceCents: number; providerPayCents: number; minHours?: number | null; effectiveFrom?: Date }) {
+export async function setRateCard(actor: Actor, input: { rateRegionId: string; professionCode: string; durationTier: "HALF_DAY" | "FULL_DAY" | "HOURLY"; volumeTier?: "LIGHT" | "BUSY" | null; clinicPriceCents: number; providerPayCents: number; minHours?: number | null; effectiveFrom?: Date }) {
   requireAdmin(actor);
   if (input.providerPayCents > input.clinicPriceCents) throw new DomainError("VALIDATION", "Provider pay can't exceed the clinic price.");
   if (input.clinicPriceCents <= 0 || input.providerPayCents <= 0) throw new DomainError("VALIDATION", "Enter positive amounts.");
   const prof = await prisma.profession.findUniqueOrThrow({ where: { code: input.professionCode } });
   if ((prof.pricingModel === "HOURLY") !== (input.durationTier === "HOURLY")) throw new DomainError("VALIDATION", `${prof.displayName} is priced ${prof.pricingModel.toLowerCase()}.`);
+  const volumeTier = input.volumeTier ?? null;
+  if (volumeTier && input.durationTier === "HOURLY") throw new DomainError("VALIDATION", "Light / Busy tiers apply to half and full days only.");
   const from = input.effectiveFrom ?? new Date();
   const card = await prisma.$transaction(async (db) => {
-    await db.rateCard.updateMany({ where: { rateRegionId: input.rateRegionId, professionCode: input.professionCode, durationTier: input.durationTier, effectiveTo: null }, data: { effectiveTo: from } });
-    return db.rateCard.create({
-      data: { rateRegionId: input.rateRegionId, professionCode: input.professionCode, durationTier: input.durationTier, clinicPriceCents: input.clinicPriceCents, providerPayCents: input.providerPayCents, minHours: input.minHours ?? null, effectiveFrom: from },
+    await db.rateCard.updateMany({ where: { rateRegionId: input.rateRegionId, professionCode: input.professionCode, durationTier: input.durationTier, volumeTier, effectiveTo: null }, data: { effectiveTo: from } });
+    const created = await db.rateCard.create({
+      data: { rateRegionId: input.rateRegionId, professionCode: input.professionCode, durationTier: input.durationTier, volumeTier, clinicPriceCents: input.clinicPriceCents, providerPayCents: input.providerPayCents, minHours: input.minHours ?? null, effectiveFrom: from },
     });
+    // A Light day must stay cheaper than a Busy day in the same region and length.
+    if (volumeTier) {
+      const other = await db.rateCard.findFirst({ where: { rateRegionId: input.rateRegionId, professionCode: input.professionCode, durationTier: input.durationTier, volumeTier: volumeTier === "LIGHT" ? "BUSY" : "LIGHT", effectiveTo: null } });
+      if (other) {
+        const [light, busy] = volumeTier === "LIGHT" ? [created, other] : [other, created];
+        if (light.clinicPriceCents >= busy.clinicPriceCents) throw new DomainError("VALIDATION", "A Light day must cost the clinic less than a Busy day.");
+      }
+    }
+    return created;
   });
   await audit(prisma, actor, "rate_card.set", "RateCard", card.id, null, card);
   return card;
