@@ -79,7 +79,7 @@ export function ClosingPanel({
       </label>
 
       {!visits ? (
-        <p className="rounded-xl bg-slate-50 p-3 text-slate-600">Enter the expected patient visits in the form to compare closing with staying open.</p>
+        <p className="rounded-xl bg-slate-50 p-3 text-slate-600">Enter the patients the covering provider will see to compare closing with staying open.</p>
       ) : !pv ? (
         <p className="rounded-xl bg-slate-50 p-3 text-slate-600">Add your average collected per visit to see the comparison.</p>
       ) : !coverage ? (
@@ -108,7 +108,7 @@ export function ClosingPanel({
               <div className="text-xs text-brand-100">Staying open keeps</div>
               <div className="text-2xl font-semibold tabular-nums">{dollars(r.difference)} more</div>
               <div className="text-xs text-brand-100">
-                {visits} visits × {dollars(pv)} × {n} day{n === 1 ? "" : "s"} = {dollars(r.atStake)}; coverage {dollars(coverage)}.
+                {visits} patients × {dollars(pv)} × {n} day{n === 1 ? "" : "s"} = {dollars(r.atStake)}; coverage {dollars(coverage)}.
               </div>
             </>
           ) : (
@@ -135,7 +135,7 @@ export function ClosingPanel({
       >
         <span>
           <span className="block font-semibold text-slate-900">Cost of closing</span>
-          {ready && !open ? <span className="text-xs text-slate-500">Staying open keeps {dollars(r.difference)} {r.difference >= 0 ? "more" : "less"}</span> : <span className="text-xs text-slate-500">Close for the day, or stay open with coverage?</span>}
+          {ready && !open ? <span className="text-xs text-slate-500">Staying open keeps {dollars(r.difference)} {r.difference >= 0 ? "more" : "less"}</span> : <span className="text-xs text-slate-500">Lose this provider&apos;s patients, or keep them with coverage?</span>}
         </span>
         {collapsible ? <ChevronDown className={cn("size-4 shrink-0 text-slate-400 transition-transform", open && "rotate-180")} /> : null}
       </button>

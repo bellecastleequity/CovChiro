@@ -5,14 +5,16 @@ import { prisma } from "@cm/db";
 import { StatusBadge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Empty, PageHeader, Table, Td, Th } from "@/components/ui/misc";
+import { Alert, Empty, PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateLabel, money, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 
 export const metadata = { title: "Shifts" };
 
-export default async function Shifts() {
+export default async function Shifts({ searchParams }: { searchParams: Promise<{ posted?: string; saved?: string }> }) {
   const { actor, user } = await requireActor("clinic");
+  const { posted, saved } = await searchParams;
+  const n = Number(posted ?? saved) || 0;
   const shifts = await prisma.shift.findMany({
     where: { location: { clinicOrgId: actor.clinicOrgId! } },
     include: { location: true, assignments: { where: { status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"] } }, include: { provider: true } }, _count: { select: { applications: { where: { status: "ACTIVE" } } } } },
@@ -22,6 +24,7 @@ export default async function Shifts() {
   return (
     <>
       <PageHeader title="Shifts" actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
+      {n > 1 ? <div className="mb-4"><Alert tone="success">{posted ? `Posted ${n} separate bookings, one per provider.` : `Saved ${n} draft bookings, one per provider.`} Each one is filled, confirmed and priced on its own.</Alert></div> : null}
       <CalendarSync userId={user.id} who="clinic" />
       {shifts.length ? (
         <Card>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "@cm/db";
-import { applyToShift, autoCompleteDue, createShift, getEligibleProviders, payfloors, quoteForClinic, selectApplicant, shiftBoard, startDueShifts, volume } from "@cm/services";
+import { applyToShift, autoCompleteDue, bookings, createShift, getEligibleProviders, payfloors, quoteForClinic, selectApplicant, shiftBoard, startDueShifts, volume } from "@cm/services";
 import { futureWeekday, makeClinic, makeProvider } from "../factories";
 
 type Clinic = Awaited<ReturnType<typeof makeClinic>>;
@@ -132,5 +132,29 @@ describe("volume pricing (Light / Busy + extra visits)", () => {
     // Clearing the floor brings them back.
     await payfloors.savePayFloor(provider.actor, { professionCode: "DC", minFullDayCents: null });
     expect(await ids(light.id)).toContain(provider.id);
+  });
+
+  it("several providers at once = one separate booking each; one provider can't take two", async () => {
+    const clinic = await makeClinic();
+    const { startsAt, endsAt } = futureWeekday(70);
+    const r = await bookings.createForProviders(clinic.actor, [{ locationId: clinic.location.id, professionCode: "DC", startsAt, endsAt, expectedPatients: 15 }], 2, { post: true });
+    expect(r.bookings).toBe(2);
+    expect(r.shiftIds).toHaveLength(2);
+    const [s1, s2] = await Promise.all(r.shiftIds.map((id) => prisma.shift.findUniqueOrThrow({ where: { id } })));
+    expect(s1).toMatchObject({ declaredTier: "BUSY", status: "OPEN" });
+    expect(s2.startsAt).toEqual(s1.startsAt);
+    // The clinic quote mentions the overlap; it's allowed.
+    const q = await quoteForClinic(clinic.actor, { locationId: clinic.location.id, professionCode: "DC", startsAt, endsAt, expectedPatients: 15 });
+    expect(q.overlapping).toBe(2);
+
+    const p1 = await makeProvider();
+    const p2 = await makeProvider();
+    await applyToShift(p1.actor, s1.id, { commit: true });
+    await selectApplicant(clinic.actor, s1.id, p1.id);
+    // Same provider is now busy at that time for the second booking.
+    await expect(applyToShift(p1.actor, s2.id, { commit: true })).rejects.toThrow();
+    await applyToShift(p2.actor, s2.id, { commit: true });
+    await selectApplicant(clinic.actor, s2.id, p2.id);
+    await expect(bookings.createForProviders(clinic.actor, [{ locationId: clinic.location.id, professionCode: "DC", startsAt, endsAt }], 9, { post: true })).rejects.toThrow(/1 to 5/);
   });
 });

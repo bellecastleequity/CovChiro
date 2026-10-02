@@ -81,9 +81,10 @@ export const createShiftAction = formAction(async (fd) => {
   const { actor } = await me();
   const post = str(fd, "mode") !== "draft";
   const inputs = await shiftPayloads(fd);
-  const { shiftIds } = await bookings.createMultiDay(actor, inputs, { post });
+  const raw = JSON.parse(str(fd, "payload") || "{}");
+  const { shiftIds, bookings: n } = await bookings.createForProviders(actor, inputs, Number(raw.providersNeeded) || 1, { post });
   revalidatePath("/clinic", "layout");
-  redirect(`/clinic/shifts/${shiftIds[0]}?${post ? "posted" : "saved"}=1`);
+  redirect(n > 1 ? `/clinic/shifts?${post ? "posted" : "saved"}=${n}` : `/clinic/shifts/${shiftIds[0]}?${post ? "posted" : "saved"}=1`);
 });
 
 export const updateDraftAction = formAction(async (fd) => {

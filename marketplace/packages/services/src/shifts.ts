@@ -151,6 +151,10 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT) {
     subtotalCents: q.base.clinicPriceCents - (q.promo?.discountCents ?? 0),
     travel,
     volume: q.volume ? await clinicVolumeView(q.volume, input.locationId, input.expectedPatients ?? null) : null,
+    // Other live bookings at this location overlapping this time (fine when more providers are needed).
+    overlapping: await prisma.shift.count({
+      where: { locationId: input.locationId, status: { notIn: ["DRAFT", "CANCELLED", "UNFILLED", "COMPLETED"] }, startsAt: { lt: input.endsAt }, endsAt: { gt: input.startsAt } },
+    }),
   };
 }
 

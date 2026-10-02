@@ -71,7 +71,7 @@ export async function submitVisits(actor: Actor, assignmentId: string, visits: n
   const tz = a.shift.location.timeZone;
   await notifyClinic(prisma, a.shift.location.clinicOrgId, {
     template: "visits_submitted",
-    title: `${a.provider.displayName} reported ${n} visits on ${dayLabel(a)}`,
+    title: `${a.provider.displayName} saw ${n} patients on ${dayLabel(a)}`,
     body: o.overageVisits
       ? `Your ${VOLUME_TIER_LABEL[v.tier]} day covers up to ${v.terms.ceiling + v.terms.grace} visits, so ${o.overageVisits} extra visit${o.overageVisits === 1 ? "" : "s"} add ${formatCents(o.clinicCents)}. It will be charged to your card on file at ${timeLabel(due, tz)} unless you report a different count before then.`
       : `That's within your ${VOLUME_TIER_LABEL[v.tier]} day (up to ${v.terms.ceiling + v.terms.grace} visits), so there's nothing extra to pay. If the count is wrong, tell us before ${timeLabel(due, tz)}.`,
@@ -90,8 +90,8 @@ export async function remindVisitCount(assignmentId: string) {
   const s = await getSettings();
   await notify(prisma, a.provider.userId, {
     template: "visits_reminder",
-    title: "How many visits did you see?",
-    body: `Enter the visit count for ${a.shift.location.name} on ${dayLabel(a)} (within ${s["pricing.volumeLateClaimHours"]} hours). Busy days past the booked tier pay extra per visit.`,
+    title: "How many patients did you see?",
+    body: `Enter how many patients you saw at ${a.shift.location.name} on ${dayLabel(a)} (within ${s["pricing.volumeLateClaimHours"]} hours). Busy days past the booked tier pay extra per visit.`,
     link: `/provider/assignments/${a.id}`,
     ctaLabel: "Enter visits",
   }).catch(() => undefined);

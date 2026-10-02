@@ -42,7 +42,7 @@ export function ProviderVisitCard({ v, assignmentId, tz, action }: { v: View; as
       {v.canSubmit ? (
         <ActionForm action={action} className="mt-4 flex flex-wrap items-end gap-3">
           <input type="hidden" name="assignmentId" value={assignmentId} />
-          <Field label="Total patient visits" hint="A number only: never names or patient details.">
+          <Field label="Patients you saw" hint="Only your own patients, not the whole clinic. A number only: never names or patient details.">
             <Input name="visits" type="number" min={0} max={300} inputMode="numeric" defaultValue={v.providerVisits ?? ""} required className="max-w-32" />
           </Field>
           <SubmitButton>{v.providerVisits != null ? "Update count" : "Save count"}</SubmitButton>
@@ -58,7 +58,7 @@ export function ClinicVisitPanel({ v, tz, hidden, confirm, report }: { v: View; 
   return (
     <div className="space-y-4">
       <Summary v={v} tz={tz} side="CLINIC" />
-      {v.providerVisits == null && !v.status ? <p className="text-sm text-slate-500">The provider enters the visit count after the shift. You&apos;ll get a message to check it.</p> : null}
+      {v.providerVisits == null && !v.status ? <p className="text-sm text-slate-500">The provider enters how many patients they saw after the shift. You&apos;ll get a message to check it.</p> : null}
       {v.canRespond ? (
         <div className="space-y-3">
           <ActionForm action={confirm}>{fields}<SubmitButton>Confirm {v.providerVisits} visits</SubmitButton></ActionForm>
@@ -66,7 +66,7 @@ export function ClinicVisitPanel({ v, tz, hidden, confirm, report }: { v: View; 
             <summary className="cursor-pointer text-sm font-medium text-slate-700">Report a different count</summary>
             <ActionForm action={report} className="mt-3 space-y-3">
               {fields}
-              <Field label="Your count of visits"><Input name="visits" type="number" min={0} max={300} inputMode="numeric" required className="max-w-32" /></Field>
+              <Field label="Patients this provider saw" hint="Only the covering provider's patients."><Input name="visits" type="number" min={0} max={300} inputMode="numeric" required className="max-w-32" /></Field>
               <Field label="Why is it different?" hint="Numbers and reasons only: no patient names or details."><Textarea name="reason" required maxLength={300} placeholder="e.g. two patients cancelled; our sign-in sheet shows 20" /></Field>
               <SubmitButton variant="outline">Send my count</SubmitButton>
             </ActionForm>

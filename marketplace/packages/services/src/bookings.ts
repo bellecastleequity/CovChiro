@@ -40,6 +40,23 @@ export async function createMultiDay(actor: Actor, days: ShiftInputT[], opts: { 
   return { groupId: group.id, shiftIds };
 }
 
+/**
+ * Several providers for the same time: one separate booking per provider (each its own shift or
+ * multi-day group, price, visit count and confirmation). The DB already stops one provider from
+ * holding two overlapping bookings. A promo code applies to the first booking only.
+ */
+export const MAX_PROVIDERS_AT_ONCE = 5;
+export async function createForProviders(actor: Actor, days: ShiftInputT[], providers: number, opts: { post: boolean }) {
+  const n = Math.floor(providers);
+  if (!(n >= 1 && n <= MAX_PROVIDERS_AT_ONCE)) throw new DomainError("VALIDATION", `Choose 1 to ${MAX_PROVIDERS_AT_ONCE} providers.`);
+  const shiftIds: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const r = await createMultiDay(actor, i === 0 ? days : days.map((d) => ({ ...d, promoCode: null })), opts);
+    shiftIds.push(...r.shiftIds);
+  }
+  return { shiftIds, bookings: n };
+}
+
 /** The days of a booking, with who covers each. */
 export async function bookingDays(shiftGroupId: string) {
   return prisma.shift.findMany({

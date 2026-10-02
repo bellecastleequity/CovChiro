@@ -46,6 +46,7 @@ interface Quote {
   hours: number;
   billableHours: number;
   subtotalCents: number;
+  overlapping?: number;
   volume?: {
     tier: "LIGHT" | "BUSY";
     terms: { ceiling: number; grace: number; overageClinicCents: number };
@@ -118,6 +119,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const [pending, startTransition] = useTransition();
   const [perVisit, setPerVisit] = usePerVisit(locationId);
   const [volumeAck, setVolumeAck] = useState(false);
+  const [providersNeeded, setProvidersNeeded] = useState(1);
   const volumePriced = !!prof && prof.pricingModel !== "HOURLY" && volumeCodes.includes(prof.code);
   const visitsNum = expectedPatients === "" ? null : Math.max(0, Math.floor(Number(expectedPatients) || 0));
 
@@ -141,8 +143,9 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
         maxTravelBudget: maxTravelBudget || null,
         promoCode: promoCode.trim() || null,
         supervisionAttestation: prof?.supervisionRequired ? sup : null,
+        providersNeeded: draft ? 1 : providersNeeded,
       }),
-    [locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, lodgingCap, maxTravelBudget, promoCode, sup, prof],
+    [providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, lodgingCap, maxTravelBudget, promoCode, sup, prof],
   );
 
   function refreshQuote() {
@@ -256,6 +259,16 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                   ))}
                 </div>
                 {days.length < 14 && !draft ? <Button type="button" variant="outline" size="sm" onClick={addDay}>+ Add another day</Button> : null}
+                {!draft ? (
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <Field label={<>Providers needed at the same time<InfoTip label="About several providers">Need two or more providers on the same day? Each provider is a separate booking with its own price, patient count and confirmation, and one provider can never take two of them. Choose the number here and we&apos;ll create one booking per provider, or post another booking later for the same time.</InfoTip></>}>
+                      <Select value={String(providersNeeded)} onChange={(e) => setProvidersNeeded(Number(e.target.value))} className="max-w-48">
+                        {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n === 1 ? "1 provider" : `${n} providers`}</option>)}
+                      </Select>
+                    </Field>
+                    {providersNeeded > 1 ? <p className="mt-2 text-sm text-slate-600">We&apos;ll post <b>{providersNeeded} separate bookings</b> for {days.length > 1 ? "these days" : "this time"}, one per provider. Enter the patients <i>one</i> provider will see; each booking is priced on its own.</p> : null}
+                  </div>
+                ) : null}
                 {new Set(days.map((d) => d.date)).size !== days.length ? <p className="text-sm text-red-700">Two rows have the same date.</p> : null}
                 <p className="text-xs text-slate-500">
                   Times are local to {loc.name} ({loc.timeZone.replace("America/", "").replace("_", " ")}).
@@ -269,13 +282,13 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 {volumePriced ? (
                   <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-4">
                     <Field
-                      label={<><Users className="mr-1 inline size-4 text-accent-600" />Expected patient visits{days.length > 1 ? " per day" : ""}<InfoTip label="About expected visits">Your price depends on how busy the day is. A Light day is cheaper; a Busy day covers more visits. If the day turns out busier than the tier you book, each visit past its limit (plus a small grace) is billed per visit after the shift, and you can check the count first.</InfoTip></>}
-                      hint={v ? `Light: up to ${v.ceilings.LIGHT} visits · Busy: up to ${v.ceilings.BUSY}.` : undefined}
+                      label={<><Users className="mr-1 inline size-4 text-accent-600" />Patients the covering provider will see{days.length > 1 ? " (per day)" : ""}<InfoTip label="About expected patients">Count only the patients this provider will treat, not your whole clinic&apos;s volume: if other doctors are working that day, leave their patients out. The price depends on it: a Light day is cheaper, a Busy day covers more patients. If the provider ends up seeing more than the tier you book (plus a small grace), each extra visit is billed after the shift, and you can check the count first.</InfoTip></>}
+                      hint={v ? `Only this provider's patients, not the whole clinic. Light: up to ${v.ceilings.LIGHT} · Busy: up to ${v.ceilings.BUSY}.` : "Only this provider's patients, not the whole clinic."}
                     >
                       <Input type="number" min={0} max={300} inputMode="numeric" value={expectedPatients} onChange={(e) => setExpectedPatients(e.target.value)} placeholder="e.g. 18" className="max-w-40 text-lg font-semibold" />
                     </Field>
                     {v?.suggested != null && expectedPatients === "" ? (
-                      <button type="button" onClick={() => setExpectedPatients(String(v.suggested))} className="mt-2 text-sm font-medium text-brand-700 underline">Your last {v.recentCounts.length} coverage days averaged {v.suggested} visits. Use {v.suggested}</button>
+                      <button type="button" onClick={() => setExpectedPatients(String(v.suggested))} className="mt-2 text-sm font-medium text-brand-700 underline">Your last {v.recentCounts.length} coverage providers here saw {v.suggested} patients on average. Use {v.suggested}</button>
                     ) : null}
                     {v && visitsNum != null && !pending ? (
                       <p className="mt-3 text-sm text-slate-700">
@@ -364,7 +377,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 {volumePriced && v ? (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                     <p>
-                      <b>{TIER_LABEL[v.tier]}</b> for about {visitsNum} visits{days.length > 1 ? " a day" : ""}. Final visit counts may affect the final booking price: visits past {v.terms.ceiling + v.terms.grace} are billed at {money(v.terms.overageClinicCents)} each. The price never goes below the tier you book.
+                      <b>{TIER_LABEL[v.tier]}</b> for about {visitsNum} patients seen by the covering provider{days.length > 1 ? " each day" : ""}. Final visit counts may affect the final booking price: visits past {v.terms.ceiling + v.terms.grace} are billed at {money(v.terms.overageClinicCents)} each. The price never goes below the tier you book.
                     </p>
                     <p className="mt-1">After the shift you&apos;ll see the provider&apos;s count, and you have {v.disputeHours} hour{v.disputeHours === 1 ? "" : "s"} after the booking completes to dispute it before your card on file is charged.</p>
                     <Checkbox className="mt-3" checked={volumeAck} onChange={(e) => setVolumeAck(e.target.checked)} label="I understand the final price may go up if the day is busier than booked." />
@@ -376,7 +389,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
                     <input type="hidden" name="payload" value={payload} />
                     <input type="hidden" name="mode" value="post" />
-                    <SubmitButton size="lg" pendingText="Posting…" disabled={volumePriced && !volumeAck}>{days.length > 1 ? `Post ${days.length}-day booking` : "Post shift"}</SubmitButton>
+                    <SubmitButton size="lg" pendingText="Posting…" disabled={volumePriced && !volumeAck}>{providersNeeded > 1 && !draft ? `Post ${providersNeeded} bookings` : days.length > 1 ? `Post ${days.length}-day booking` : "Post shift"}</SubmitButton>
                   </ActionForm>
                   <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
@@ -420,6 +433,8 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 ) : (
                   <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold"><span>Subtotal</span><span className="tabular-nums">{money(quote.subtotalCents)}</span></div>
                 )}
+                {providersNeeded > 1 && !draft ? <div className="flex justify-between rounded-lg bg-brand-50 px-2 py-1.5 font-semibold text-brand-800"><span>{providersNeeded} providers</span><span className="tabular-nums">{money(((quote.days && quote.days.length > 1 ? quote.totalCents : quote.subtotalCents) ?? 0) * providersNeeded + (quote.discountCents ?? 0) * (providersNeeded - 1))}</span></div> : null}
+                {quote.overlapping ? <p className="rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600">You already have {quote.overlapping} booking{quote.overlapping === 1 ? "" : "s"} here at this time. That&apos;s fine if you need another provider: each booking is filled by a different provider.</p> : null}
                 <p className="text-xs text-slate-500">Plus mileage at cost for the provider you confirm{lodgingAllowed ? " and any approved lodging" : ""}. A deposit is charged at confirmation; the balance after the shift.</p>
               </div>
             ) : !quoteError && !pending ? (
