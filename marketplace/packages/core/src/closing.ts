@@ -47,3 +47,25 @@ export function closingComparison(i: ClosingInput): ClosingResult {
     breakEvenDaily: n > 0 && r < 1 ? c / (n * (1 - r)) : null,
   };
 }
+
+/**
+ * Estimated coverage price for the public calculator: a full day per day away at the
+ * Light or Busy price the visit count falls in (same rule as posting), plus extra visits
+ * past the Busy ceiling + grace at the clinic's per-visit price. Before premiums and mileage.
+ */
+export function coverageEstimate(i: {
+  visitsPerDay: number;
+  days: number;
+  lightCents: number;
+  busyCents: number;
+  lightCeiling: number;
+  busyCeiling: number;
+  graceVisits: number;
+  overagePerVisitCents: number;
+}): { tier: "LIGHT" | "BUSY"; perDayCents: number; extraVisitsPerDay: number; totalCents: number } {
+  const v = Math.max(0, Math.floor(i.visitsPerDay));
+  const tier = v <= i.lightCeiling ? "LIGHT" : "BUSY";
+  const extra = Math.max(0, v - i.busyCeiling - i.graceVisits);
+  const perDay = (tier === "LIGHT" ? i.lightCents : i.busyCents) + extra * i.overagePerVisitCents;
+  return { tier, perDayCents: perDay, extraVisitsPerDay: extra, totalCents: perDay * Math.max(0, i.days) };
+}

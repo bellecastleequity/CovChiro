@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closingComparison } from "../src/closing";
+import { closingComparison, coverageEstimate } from "../src/closing";
 
 describe("cost of closing", () => {
   it("compares closing with staying open on the clinic's own numbers", () => {
@@ -15,5 +15,17 @@ describe("cost of closing", () => {
     expect(closingComparison({ dailyCollections: 500, days: 1, coverageCost: 600, recoveredPercent: 0 }).difference).toBe(-100);
     const z = closingComparison({ dailyCollections: 0, days: 0, coverageCost: 0, recoveredPercent: 100 });
     expect(z).toMatchObject({ coverageShare: null, breakEvenDaily: null, difference: 0 });
+  });
+});
+
+describe("coverage estimate for the public calculator", () => {
+  const base = { lightCents: 50000, busyCents: 62500, lightCeiling: 12, busyCeiling: 30, graceVisits: 5, overagePerVisitCents: 1000 };
+  it("picks Light or Busy from the visit count, like posting does", () => {
+    expect(coverageEstimate({ ...base, visitsPerDay: 12, days: 2 })).toEqual({ tier: "LIGHT", perDayCents: 50000, extraVisitsPerDay: 0, totalCents: 100000 });
+    expect(coverageEstimate({ ...base, visitsPerDay: 13, days: 1 }).tier).toBe("BUSY");
+  });
+  it("adds extra visits only past the Busy ceiling plus grace", () => {
+    expect(coverageEstimate({ ...base, visitsPerDay: 35, days: 1 }).extraVisitsPerDay).toBe(0);
+    expect(coverageEstimate({ ...base, visitsPerDay: 40, days: 3 })).toEqual({ tier: "BUSY", perDayCents: 67500, extraVisitsPerDay: 5, totalCents: 202500 });
   });
 });
