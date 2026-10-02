@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@cm/db";
 import { getSettings } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
+import { ManualChargeForm } from "@/components/admin/manual-charge-form";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
@@ -64,16 +65,11 @@ export default async function Payments() {
           <CardHeader title="Manual charge" description={`Charge a clinic's saved payment method for an adjustment or fee.${s["features.conversionFeeEnabled"] ? "" : " Conversion fees are disabled until attorney review."}`} />
           <CardBody>
             {clinics.length ? (
-            <ActionForm action={adminChargeAction} className="grid gap-2 sm:grid-cols-5" resetOnSuccess confirm="Charge this clinic's saved payment method?">
-              <Select name="clinicOrgId" required className="sm:col-span-2" defaultValue="">
-                <option value="" disabled>Choose a clinic…</option>
-                {clinics.map((c) => <option key={c.id} value={c.id}>{c.displayName}{c.paymentMethodLabel ? ` — ${c.paymentMethodLabel}` : ""}</option>)}
-              </Select>
-              <Select name="type"><option value="ADJUSTMENT">Adjustment</option><option value="CANCELLATION_FEE">Cancellation fee</option>{s["features.conversionFeeEnabled"] ? <option value="CONVERSION_FEE">Conversion fee</option> : null}</Select>
-              <Input name="amount" placeholder="$ amount (min $0.50)" required />
-              <Input name="description" placeholder="Description" required />
-              <div><SubmitButton size="sm" variant="outline">Charge</SubmitButton></div>
-            </ActionForm>
+            <ManualChargeForm
+              action={adminChargeAction}
+              clinics={clinics.map((c) => ({ id: c.id, label: `${c.displayName}${c.paymentMethodLabel ? ` — ${c.paymentMethodLabel}` : ""}` }))}
+              types={[{ value: "ADJUSTMENT", label: "Adjustment" }, { value: "CANCELLATION_FEE", label: "Cancellation fee" }, ...(s["features.conversionFeeEnabled"] ? [{ value: "CONVERSION_FEE", label: "Conversion fee" }] : [])]}
+            />
             ) : (
               <p className="text-sm text-slate-500">No clinics have a saved card or bank account yet. Clinics appear here once they add one in their Billing page.</p>
             )}

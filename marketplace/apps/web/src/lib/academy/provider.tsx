@@ -44,7 +44,7 @@ const welcome: Lesson = {
       <H>What we never do</H>
       <Ul
         items={[
-          "Award a shift to whoever clicks first. The best-matched provider wins, so speed alone never beats a better match.",
+          "Turn an offer into a race. Offers go to a small group of the best-matched providers at once. If you accept and nobody better matched in that group is still deciding, you're booked right away; otherwise the best match who accepts before the window closes gets it.",
           "Let anyone negotiate your pay down. Pay comes from our rate card and is shown before you commit.",
           "Store patient information. You never enter patient details anywhere on the platform.",
         ]}
@@ -59,10 +59,10 @@ const welcome: Lesson = {
       why: "Only a verified license in the clinic's state matters. Home address never makes you eligible or ineligible.",
     },
     {
-      q: "Two providers accept the same offer. Who gets the shift?",
-      options: ["Whoever accepted first", "The better-matched provider", "The one closer to the clinic, always"],
+      q: "An offer goes to you and two other providers at the same time. You accept first, then a better-matched provider in that group accepts a few minutes later, before the offer window closes. Who gets the shift?",
+      options: ["You, because you accepted first", "The better-matched provider", "The one closer to the clinic, always"],
       answer: 1,
-      why: "Shifts are never awarded on speed alone; the higher match score wins.",
+      why: "Offers go to a small group at once, and the award isn't a race. If nobody better matched in your group is still deciding, you're confirmed the moment you accept. If someone is, you wait until they answer or the window closes, and the best-matched provider who accepted gets it.",
     },
   ],
 };

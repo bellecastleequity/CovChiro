@@ -233,8 +233,8 @@ export const adminChargeAction = formAction(async (fd) => {
   const { actor } = await me();
   const p = await adminCharge(actor, str(fd, "clinicOrgId"), str(fd, "type") as "ADJUSTMENT", dollarsToCents(str(fd, "amount")) ?? 0, str(fd, "description"));
   rv("/admin/payments");
-  if (p?.status === "SUCCEEDED") return "Charged.";
-  if (p?.status === "PROCESSING") return "Charge submitted; the bank is still processing it.";
+  if (p?.status === "SUCCEEDED") return `Charged ${(p.amountCents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}.`;
+  if (p?.status === "PROCESSING") return `Charge of ${(p.amountCents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })} submitted; the bank is still processing it.`;
   throw new DomainError("CONFLICT", `Charge failed: ${p?.failureReason ?? "not created"}`);
 });
 
