@@ -47,7 +47,7 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
           </form>
         </div>
       </aside>
-      <div className="lg:pl-64 print:pl-0">
+      <div className="min-w-0 overflow-x-clip lg:pl-64 print:pl-0">
         <header className="sticky top-0 z-30 flex h-14 print:hidden items-center justify-between gap-2 border-b border-slate-200 bg-white/90 px-4 backdrop-blur sm:px-6">
           <Link href={root} className="shrink-0 lg:hidden">
             <Logo name={b.name} />
@@ -79,7 +79,7 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
             </div>
           </div>
         ) : null}
-        <main className="mx-auto max-w-6xl px-4 pb-28 pt-6 sm:px-6 lg:pb-12">
+        <main className="app-main mx-auto max-w-6xl px-4 pb-28 pt-6 sm:px-6 lg:pb-12">
           {root !== "/admin" ? <div className="print:hidden"><AppInstall compact /></div> : null}
           {children}
         </main>

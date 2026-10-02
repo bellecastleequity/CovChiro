@@ -85,7 +85,7 @@ export default async function Credentials() {
           <CardHeader title="Add another profession" description="Dual-licensed? Add each profession you practice." />
           <CardBody>
             <ActionForm action={addProfessionAction} className="flex flex-wrap gap-2">
-              <Select name="professionCode" className="w-auto" required defaultValue="">
+              <Select name="professionCode" className="w-auto max-w-full" required defaultValue="">
                 <option value="" disabled>Choose…</option>
                 {allProfessions.filter((p) => !myCodes.includes(p.code)).map((p) => <option key={p.code} value={p.code}>{p.displayName}{p.active ? "" : " (coming soon)"}</option>)}
               </Select>

@@ -38,6 +38,10 @@
   body { @apply bg-slate-50 text-slate-900 antialiased; }
   :focus-visible { @apply outline-2 outline-offset-2 outline-brand-500; }
   h1, h2 { @apply tracking-tight; }
+  /* Backend pages on phones: a grid column never grows past the screen because of a wide child
+     (charts, long headings, nowrap rows), and form controls never poke out of their card. */
+  .app-main .grid > * { min-width: 0; }
+  .app-main :is(select, input, textarea) { max-width: 100%; }
   /* Brand display face for page-level headings; small card titles stay in Inter. */
   h1, h2 { font-family: var(--font-display); }
 }

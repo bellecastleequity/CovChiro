@@ -101,7 +101,7 @@ export default async function Expansion({ searchParams }: { searchParams: Promis
                   <ActionForm action={starterDraftsAction} className="mt-3">
                     <input type="hidden" name="professionCode" value={p.code} />
                     <div className="flex flex-wrap items-center gap-3">
-                      <SubmitButton size="sm" variant="outline">Create starter drafts for {p.displayName}</SubmitButton>
+                      <SubmitButton size="sm" variant="outline" className="h-auto min-h-8 whitespace-normal py-1.5 text-left">Create starter drafts for {p.displayName}</SubmitButton>
                       <span className="text-xs text-slate-500">Copies the chiropractic emails as drafts with the wording swapped; review and approve them under <Link href="/admin/growth/prompts" className="underline">Prompts</Link>.</span>
                     </div>
                   </ActionForm>

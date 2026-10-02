@@ -44,7 +44,7 @@ export default async function Activity({ searchParams }: { searchParams: Promise
         </Table>
       </Card>
       <Card className="mt-6">
-        <CardHeader title="Communications" action={<div className="flex gap-1">{["", "SENT", "BLOCKED", "FAILED", "PENDING_APPROVAL", "RECEIVED"].map((s) => chip(`/admin/growth/activity${s ? `?status=${s}` : ""}`, s ? humanize(s) : "All", (f.status ?? "") === s))}</div>} />
+        <CardHeader title="Communications" action={<div className="flex flex-wrap gap-1">{["", "SENT", "BLOCKED", "FAILED", "PENDING_APPROVAL", "RECEIVED"].map((s) => chip(`/admin/growth/activity${s ? `?status=${s}` : ""}`, s ? humanize(s) : "All", (f.status ?? "") === s))}</div>} />
         <Table>
           <thead><tr><Th>When</Th><Th>To</Th><Th>Message</Th><Th>Agent</Th><Th>Status</Th></tr></thead>
           <tbody>

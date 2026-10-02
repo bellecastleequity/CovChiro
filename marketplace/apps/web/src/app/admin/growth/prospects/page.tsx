@@ -40,7 +40,7 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
           title="Automatic discovery & web research"
           description={`Runs every 10 minutes (job “growthProspecting”) while the Clinic Prospecting agent is on. It builds the list even while clinic marketing is off. Research: ${st.researchProvider} · ${st.model} · up to the research budget each day.`}
           action={
-            <ActionForm action={runProspectingAction} successMessage className="flex gap-2">
+            <ActionForm action={runProspectingAction} successMessage className="flex flex-wrap gap-2">
               <Input name="cities" placeholder="Cities (optional), e.g. Tampa, Naples" className="w-64" />
               <SubmitButton size="sm">Find clinics now</SubmitButton>
             </ActionForm>
