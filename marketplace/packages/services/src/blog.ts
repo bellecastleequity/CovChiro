@@ -282,6 +282,8 @@ export async function publishPost(actor: Actor, id: string) {
     data: { status: "PUBLISHED", publishedAt: post.publishedAt ?? clock.now(), publishedById: actor.userId, authorName: s["blog.authorName"].trim() || `The ${brand().name} team` },
   });
   await audit(prisma, actor, "blog.published", "BlogPost", id, { status: post.status }, { status: "PUBLISHED" });
+  // Tell Bing / AI search right away (best effort).
+  void import("./seo").then((m) => m.pingIndexNow([`/blog/${post.slug}`, "/blog"])).catch(() => undefined);
   return updated;
 }
 

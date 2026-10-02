@@ -1,7 +1,7 @@
 import { US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
 
-export const metadata = { title: "Where we're available" };
+export const metadata = { title: "Where we're available", description: "States and professions where you can book coverage today, and where we're launching next.", alternates: { canonical: "/states" } };
 export const dynamic = "force-dynamic";
 
 export default async function States() {

@@ -11,3 +11,4 @@ export * from "./emailcheck";
 export * from "./turnstile";
 export * from "./neon";
 export * from "./webpush";
+export * from "./indexnow";

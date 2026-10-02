@@ -28,3 +28,4 @@ export * from "./volume";
 export * from "./names";
 export * from "./instagram";
 export * from "./health";
+export * from "./seo";

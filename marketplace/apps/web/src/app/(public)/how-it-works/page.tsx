@@ -1,4 +1,4 @@
-export const metadata = { title: "How it works" };
+export const metadata = { title: "How it works", description: "Post the day, get matched with a licensed, verified provider, and keep your practice open. How booking, verification, the time clock and payment work.", alternates: { canonical: "/how-it-works" } };
 
 const CLINIC = [
   ["Post the day", "Choose the location, profession, date and hours. Pricing is shown instantly."],

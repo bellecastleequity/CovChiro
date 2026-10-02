@@ -3,12 +3,23 @@ import { US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
 import { LinkButton } from "@/components/ui/button";
 import { LeadForm } from "@/components/site/lead-form";
+import Link from "next/link";
+import { stateAreasByCode } from "@cm/core";
+import { serviceWord } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const p = await prisma.profession.findUnique({ where: { slug: (await params).slug } });
-  return p ? { title: `${p.displayName} coverage` } : {};
+  if (!p) return {};
+  const service = serviceWord(p.slug);
+  return {
+    title: p.active ? `${service} Coverage | Temporary & Locum ${p.displayName}s` : `${service} coverage (coming soon)`,
+    description: p.active
+      ? `Book a licensed, insured ${p.displayName.toLowerCase()} to cover your practice for a half day, a day or longer. Every ${p.credentialSuffix}'s state license and malpractice are verified.`
+      : `${service} coverage is coming soon. Join the waitlist.`,
+    alternates: { canonical: `/${p.slug}` },
+  };
 }
 
 /** SEO landing page per profession (Addendum 01 §12). Inactive → waitlist. */
@@ -33,6 +44,13 @@ export default async function ProfessionPage({ params }: { params: Promise<{ slu
         {p.active ? (
           <>
             <p className="mt-4 text-sm text-slate-500">Available in: {states.map((s) => US_STATES[s]).join(", ") || "coming soon"}</p>
+            {states.map((code) => stateAreasByCode(code)).filter((x) => !!x).map((st) => (
+              <p key={st!.code} className="mt-2 text-sm">
+                <Link href={`/${p.slug}/${st!.slug}`} className="font-medium text-brand-700 hover:underline">{serviceWord(p.slug)} coverage in {st!.name}</Link>
+                {": "}
+                {st!.areas.map((a, i) => <span key={a.slug}>{i ? " · " : ""}<Link href={`/${p.slug}/${st!.slug}/${a.slug}`} className="text-brand-700 hover:underline">{a.name}</Link></span>)}
+              </p>
+            ))}
             <div className="mt-8 flex flex-wrap gap-3">
               <LinkButton href="/signup?role=clinic" size="lg">
                 Post a shift

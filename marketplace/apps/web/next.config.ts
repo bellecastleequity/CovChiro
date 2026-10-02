@@ -17,6 +17,21 @@ const config: NextConfig = {
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-neon", "@neondatabase/serverless", "@node-rs/argon2", "stripe"],
   poweredByHeader: false,
   experimental: { serverActions: { bodySizeLimit: "12mb" } },
+  // The old coveragechiropractor.com site 301s here with its paths kept (cPanel wildcard redirect).
+  // Send each old page to its closest new page so its search ranking carries over.
+  async redirects() {
+    return [
+      { source: "/index.html", destination: "/", statusCode: 301 },
+      { source: "/articles.html", destination: "/blog", statusCode: 301 },
+      { source: "/help-center.html", destination: "/faq", statusCode: 301 },
+      { source: "/ime-services.html", destination: "/contact", statusCode: 301 },
+      { source: "/offer.html", destination: "/for-clinics", statusCode: 301 },
+      { source: "/dashboard.html", destination: "/login", statusCode: 301 },
+      { source: "/admin.html", destination: "/login", statusCode: 301 },
+      { source: "/documents/:path*", destination: "/how-it-works", statusCode: 301 },
+      { source: "/assets/logo:rest(.*)", destination: "/brand/logo.png", statusCode: 301 },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

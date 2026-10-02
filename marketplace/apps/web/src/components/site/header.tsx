@@ -9,6 +9,7 @@ import { env } from "@cm/config";
 import { GetTheApp } from "./get-the-app";
 import { TrustBadges } from "./trust-badges";
 import { getSettings } from "@cm/services";
+import { liveMarket, serviceWord } from "@/lib/seo";
 
 const NAV = [
   { href: "/for-clinics", label: "For clinics" },
@@ -63,6 +64,7 @@ export async function SiteFooter() {
   const b = brand();
   const qr = await QRCode.toDataURL(env().APP_BASE_URL || "https://coverageoncall.com", { margin: 1, width: 200 });
   const st = await getSettings();
+  const live = await liveMarket().catch(() => []);
   const socials = [
     { href: st["site.instagramUrl"], label: "Instagram", icon: <InstagramIcon /> },
     { href: st["site.youtubeUrl"], label: "YouTube", icon: <YouTubeIcon /> },
@@ -94,6 +96,9 @@ export async function SiteFooter() {
             <li><Link href="/for-clinics">Pricing</Link></li>
             <li><Link href="/signup?role=clinic">Post a shift</Link></li>
             <li><Link href="/how-it-works">How it works</Link></li>
+            {live.map(({ profession: p, state: s }) => (
+              <li key={`${p.slug}/${s.slug}`}><Link href={`/${p.slug}/${s.slug}`}>{serviceWord(p.slug)} coverage in {s.name}</Link></li>
+            ))}
           </ul>
         </div>
         <div className="text-sm">

@@ -6,6 +6,7 @@ import { CostOfClosing } from "./calculator";
 export const metadata = {
   title: "Cost of closing calculator",
   description: "Compare what your office normally brings in on the days you're away with what temporary coverage would cost. An educational comparison, not a guarantee.",
+  alternates: { canonical: "/tools/cost-of-closing" },
 };
 
 export const dynamic = "force-dynamic";

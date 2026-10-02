@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, CalendarClock, CreditCard, MapPin, ShieldCheck, Stethoscope, Users } from "lucide-react";
+import type { Metadata } from "next";
 import { brand } from "@cm/config";
+import { marketWords } from "@/lib/seo";
 import { prisma } from "@cm/db";
 import { getSettings } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
@@ -11,6 +13,17 @@ import { env } from "@cm/config";
 import { GetTheApp, PhoneMockup } from "@/components/site/get-the-app";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const w = await marketWords();
+  const where = w.state ? ` in ${w.state}` : "";
+  return {
+    // Same wording as the old site's #1-ranking title, so its ranking carries over cleanly.
+    title: { absolute: `${w.service} Coverage${w.state ? ` ${w.state}` : ""} | Temporary Office Coverage · ${brand().name}` },
+    description: `Keep your practice open when you're away. Licensed, insured ${w.nounLower}s for half days, full days and longer${where}: vacations, holidays, sick days and leave. Verified licenses, set prices, book online.`,
+    alternates: { canonical: "/" },
+  };
+}
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ signedout?: string }> }) {
   const appQr = await QRCode.toDataURL(env().APP_BASE_URL || "https://coverageoncall.com", { margin: 1, width: 200 });

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { blog } from "@cm/services";
+import { blog, seo } from "@cm/services";
 import { formAction as baseFormAction, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
 
@@ -63,4 +63,11 @@ export const deletePostAction = formAction(async (fd) => {
   await blog.deletePost(actor, str(fd, "id"));
   rv();
   redirect("/admin/blog");
+});
+
+export const seoTopicsAction = formAction(async () => {
+  const { actor } = await me();
+  const r = await seo.addSeoTopics(actor);
+  rv();
+  return r.added ? `Added ${r.added} search-keyword topics to the draft queue. The daily auto-draft writes them one at a time; you still review and publish each one.` : "Those topics are already in the queue.";
 });

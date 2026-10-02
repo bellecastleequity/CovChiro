@@ -2,7 +2,7 @@ import { brand } from "@cm/config";
 import { AskForm } from "@/components/site/ask-form";
 import { LeadForm } from "@/components/site/lead-form";
 
-export const metadata = { title: "Contact" };
+export const metadata = { title: "Contact", description: "Questions about coverage, pricing or joining as a provider? Ask us anything.", alternates: { canonical: "/contact" } };
 
 export default function Contact() {
   const b = brand();

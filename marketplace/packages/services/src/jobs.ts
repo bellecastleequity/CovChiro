@@ -17,6 +17,7 @@ import { approvedQueueSweep } from "./growth/admin";
 import { instagramSweep } from "./growth/instagram";
 import { recordJobResult, recordTick } from "./healthstate";
 import { systemHealthSweep } from "./health";
+import { indexNowSweep, reviewRequestSweep } from "./seo";
 import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSweep, preShiftChecks, recomputeStats, revealExpiredRatings, startDueShifts } from "./lifecycle";
 import { releaseDuePayouts } from "./payouts";
 import { settleDueInvites } from "./shifts";
@@ -76,6 +77,8 @@ export const JOBS: Job[] = [
   { name: "referralSweep", schedule: { everySeconds: 3600 }, run: () => referralSweep() },
   // Backups: encrypted export + Neon restore point + pruning, nightly at 3:10 ET.
   { name: "dbBackup", schedule: { cron: "10 3 * * *", tz: "America/New_York" }, run: () => nightlyBackup(), leaseMinutes: 30, long: true },
+  { name: "indexNow", schedule: { cron: "20 6 * * *", tz: "America/New_York" }, run: () => indexNowSweep() },
+  { name: "reviewRequests", schedule: { cron: "20 10 * * *", tz: "America/New_York" }, run: () => reviewRequestSweep() },
   { name: "spamCleanup", schedule: { cron: "20 4 * * *", tz: "America/New_York" }, run: () => purgeSpam() },
   // Students: one state-aware credential follow-up when due (30/60/90 days after graduation, then every 60).
   { name: "preLicensureFollowups", schedule: { cron: "15 10 * * *", tz: "America/New_York" }, run: () => runPreLicensureFollowups() },

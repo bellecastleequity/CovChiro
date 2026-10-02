@@ -9,7 +9,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Empty, PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateTimeLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { draftAction, newPostAction, suggestAction } from "./actions";
+import { draftAction, newPostAction, seoTopicsAction, suggestAction } from "./actions";
 
 export const metadata = { title: "Blog" };
 export const dynamic = "force-dynamic";
@@ -24,7 +24,12 @@ export default async function AdminBlog() {
       <PageHeader
         title="Blog"
         description="AI writes drafts from our approved FAQ and knowledge base; you review, edit and publish. Nothing is published automatically, and a post can't go live until it passes the content checks."
-        actions={<Link href="/blog" className="text-sm font-medium text-brand-700" target="_blank">View the blog →</Link>}
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            <ActionForm action={seoTopicsAction}><SubmitButton size="sm" variant="outline">Add search-keyword topics</SubmitButton></ActionForm>
+            <Link href="/blog" className="text-sm font-medium text-brand-700" target="_blank">View the blog →</Link>
+          </div>
+        }
       />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

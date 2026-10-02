@@ -1,8 +1,18 @@
+import type { Metadata } from "next";
 import { Banknote, CalendarCheck, Car, ShieldCheck } from "lucide-react";
+import { marketWords } from "@/lib/seo";
 import { getSettings } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
 
-export const metadata = { title: "For providers" };
+export async function generateMetadata(): Promise<Metadata> {
+  const w = await marketWords();
+  const where = w.state ? ` in ${w.state}` : "";
+  return {
+    title: `Per Diem & Locum ${w.noun} Shifts${where}`,
+    description: `Pick up per diem and locum ${w.nounLower} coverage shifts${where} on your schedule. Pay shown up front, mileage and lodging included, paid to your bank after each shift.`,
+    alternates: { canonical: "/for-providers" },
+  };
+}
 export const dynamic = "force-dynamic";
 
 export default async function ForProviders() {

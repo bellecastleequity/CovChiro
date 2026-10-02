@@ -1,11 +1,14 @@
+import { faqLd } from "@cm/core";
 import { getSettings, siteFaq } from "@cm/services";
+import { JsonLd } from "@/components/site/json-ld";
 
-export const metadata = { title: "FAQ" };
+export const metadata = { title: "FAQ", description: "Answers about booking coverage, provider verification, pricing, payment and cancellations.", alternates: { canonical: "/faq" } };
 
 export default async function Faq() {
   const qa = siteFaq(await getSettings());
   return (
     <div className="container-page max-w-3xl py-16">
+      <JsonLd data={faqLd(qa)} />
       <h1 className="text-4xl font-semibold">Frequently asked questions</h1>
       <div className="mt-8 divide-y divide-slate-200 rounded-2xl border border-slate-200">
         {qa.map(([q, a]) => (
