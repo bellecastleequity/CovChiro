@@ -84,7 +84,7 @@ export interface DraftInit {
   sup: { supervisorName: string; supervisorProfessionCode: string; supervisorLicenseNumber: string; onSiteEntireShift: boolean } | null;
 }
 
-export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft, volumeCodes = [] }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit; volumeCodes?: string[] }) {
+export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft, volumeCodes = [], lodging }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit; volumeCodes?: string[]; lodging: { nightlyCents: number; overMinutes: number; maxMinutes: number } }) {
   const [step, setStep] = useState(0);
   const [locationId, setLocationId] = useState(draft && locations.some((l) => l.id === draft.locationId) ? draft.locationId : locations[0].id);
   const loc = locations.find((l) => l.id === locationId)!;
@@ -109,8 +109,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const [minYears, setMinYears] = useState(draft?.minYears ?? String(defaultMinYears));
   const [notes, setNotes] = useState(draft?.notes ?? "");
   const [instantBook, setInstantBook] = useState(draft?.instantBook ?? false);
-  const [lodgingAllowed, setLodgingAllowed] = useState(draft?.lodgingAllowed ?? false);
-  const [lodgingCap, setLodgingCap] = useState(draft?.lodgingCap || "150");
+  const [lodgingAllowed, setLodgingAllowed] = useState(draft?.lodgingAllowed ?? true);
   const [maxTravelBudget, setMaxTravelBudget] = useState(draft?.maxTravelBudget ?? "");
   const [promoCode, setPromoCode] = useState(defaultCode);
   const [sup, setSup] = useState(draft?.sup ?? { supervisorName: "", supervisorProfessionCode: prof?.supervisingProfessionCodes[0] ?? "", supervisorLicenseNumber: "", onSiteEntireShift: false });
@@ -139,13 +138,12 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
         notes,
         instantBook,
         lodgingAllowed,
-        lodgingCap: lodgingAllowed ? lodgingCap : null,
         maxTravelBudget: maxTravelBudget || null,
         promoCode: promoCode.trim() || null,
         supervisionAttestation: prof?.supervisionRequired ? sup : null,
         providersNeeded: draft ? 1 : providersNeeded,
       }),
-    [providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, lodgingCap, maxTravelBudget, promoCode, sup, prof],
+    [providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, maxTravelBudget, promoCode, sup, prof],
   );
 
   function refreshQuote() {
@@ -354,9 +352,14 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                   <PhiNotice />
                 </Field>
                 <div className="space-y-2">
-                  <Checkbox checked={instantBook} onChange={(e) => setInstantBook(e.target.checked)} label={<>Instant book — confirm the first well-matched applicant automatically<InfoTip label="About instant book">The first applicant who is a strong match (license, skills, distance, reliability) is confirmed right away and the deposit is charged, so you don&apos;t have to choose. Leave it off to review applicants and pick yourself.</InfoTip></>} />
-                  <Checkbox checked={lodgingAllowed} onChange={(e) => setLodgingAllowed(e.target.checked)} label={<>Allow lodging for distant providers (reimbursed at cost)<InfoTip label="About lodging">Lets us offer the shift to providers who live too far to drive in that morning. They book their own room and upload the receipt, and you reimburse the actual cost up to your nightly cap. Without it, only providers within their usual drive time are matched.</InfoTip></>} />
-                  {lodgingAllowed ? <Field label={<>Nightly lodging cap ($)<InfoTip label="About the lodging cap">The most you&apos;ll reimburse per night. Receipts above it are reimbursed up to the cap.</InfoTip></>} className="max-w-xs"><Input inputMode="decimal" value={lodgingCap} onChange={(e) => setLodgingCap(e.target.value)} /></Field> : null}
+                  <div>
+                    <Checkbox checked={instantBook} onChange={(e) => setInstantBook(e.target.checked)} label={<>Instant book <span className="font-normal text-slate-500">(optional)</span><InfoTip label="About instant book">On: the first applicant who is a strong match (license, skills, distance, reliability) is confirmed right away and the deposit is charged. Off: you review applicants and pick; if you don&apos;t pick by the decision deadline, we confirm the best-ranked applicant for you, or start reaching out to providers.</InfoTip></>} />
+                    <p className="ml-7 text-xs text-slate-500">Fills fastest: the first strong match is confirmed right away. Leave it off to choose from applicants yourself; if you don&apos;t choose in time, we confirm the best one for you.</p>
+                  </div>
+                  <div>
+                    <Checkbox checked={lodgingAllowed} onChange={(e) => setLodgingAllowed(e.target.checked)} label={<>Allow lodging for providers who live further away <span className="font-normal text-slate-500">(optional, recommended)</span><InfoTip label="About lodging">With lodging on, providers who&apos;ll stay overnight can be offered this shift from up to {Math.round(lodging.maxMinutes / 60)} hours away. If the provider you get lives more than {Math.round(lodging.overMinutes / 60)} hours away, a flat {money(lodging.nightlyCents)} per night is added (no receipts). Nearby providers cost nothing extra. With it off, only providers within their own drive limit are offered the shift.</InfoTip></>} />
+                    <p className="ml-7 text-xs text-slate-500">Reaches more providers, so rural, multi-day and short-notice shifts fill faster. Adds {money(lodging.nightlyCents)} per night only if your provider needs to stay over.</p>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -435,7 +438,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 )}
                 {providersNeeded > 1 && !draft ? <div className="flex justify-between rounded-lg bg-brand-50 px-2 py-1.5 font-semibold text-brand-800"><span>{providersNeeded} providers</span><span className="tabular-nums">{money(((quote.days && quote.days.length > 1 ? quote.totalCents : quote.subtotalCents) ?? 0) * providersNeeded + (quote.discountCents ?? 0) * (providersNeeded - 1))}</span></div> : null}
                 {quote.overlapping ? <p className="rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600">You already have {quote.overlapping} booking{quote.overlapping === 1 ? "" : "s"} here at this time. That&apos;s fine if you need another provider: each booking is filled by a different provider.</p> : null}
-                <p className="text-xs text-slate-500">Plus mileage at cost for the provider you confirm{lodgingAllowed ? " and any approved lodging" : ""}. A deposit is charged at confirmation; the balance after the shift.</p>
+                <p className="text-xs text-slate-500">Plus mileage at cost for the provider you confirm{lodgingAllowed ? `, and ${money(lodging.nightlyCents)} a night lodging if they need to stay over` : ""}. A deposit is charged at confirmation; the balance after the shift.</p>
               </div>
             ) : !quoteError && !pending ? (
               <p className="text-sm text-slate-500">Choose a date and time to see the price.</p>

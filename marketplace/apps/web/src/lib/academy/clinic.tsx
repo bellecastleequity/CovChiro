@@ -171,8 +171,8 @@ const posting: Lesson = {
             <b>Travel budget</b>: the most you&apos;re willing to pay in mileage. Providers whose mileage would cost more aren&apos;t matched.
           </>,
           <>
-            <b>Allow lodging</b>: lets us offer the shift to providers who live farther away. They book their own room, you reimburse the actual cost up to your nightly cap, and lodging becomes
-            possible when the one-way drive is over {mins(s["pricing.lodgingTriggerMinutes"])}.
+            <b>Allow lodging</b> (on by default): lets us offer the shift to providers who&apos;ll stay overnight, from up to {mins(s["pricing.lodgingMaxDriveMinutes"])} away. If your provider&apos;s one-way drive is over {mins(s["pricing.lodgingTriggerMinutes"])},
+            a flat ${(s["pricing.lodgingNightlyCents"] / 100).toFixed(0)} a night is added (no receipts); nearby providers cost nothing extra.
           </>,
           <>
             <b>Instant book</b>: the first applicant who is a strong match is confirmed automatically, so you don&apos;t have to choose. Leave it off to review applicants yourself.
@@ -329,8 +329,8 @@ const money_: Lesson = {
           { title: "Provider confirmed", detail: `Deposit of ${s["payments.depositPercent"]}% of the total is charged`, tone: "brand" },
           { title: "Shift ends" },
           { title: `${hrs(s["payments.autoCompleteHours"])} later, the shift auto-completes`, detail: "Unless you've reported a problem" },
-          { title: "Balance charged", detail: "Including final mileage", tone: "green" },
-          { title: "Lodging, if any", detail: "Charged when we approve the provider's receipt (up to your cap)" },
+          { title: "Balance charged", detail: "Including final mileage and any lodging", tone: "green" },
+          { title: "Lodging, if any", detail: `A flat $${(s["pricing.lodgingNightlyCents"] / 100).toFixed(0)} a night, included in the booking total` },
         ]}
       />
       <KeyFacts

@@ -91,7 +91,8 @@ export async function confirmInTx(
     providerPayCents: shift.providerPayCents,
     promoDiscountCents: discount,
     mileageCents: travel.mileageCents,
-    lodgingCents: 0,
+    // Flat nightly lodging allowance (no receipts): charged to the clinic and paid to the provider.
+    lodgingCents: travel.lodgingEstimateCents,
   };
   const clinicTotal = clinicTotalCents(breakdown);
   const providerTotal = providerTotalCents(breakdown);

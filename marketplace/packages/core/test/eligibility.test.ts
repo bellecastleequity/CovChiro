@@ -237,6 +237,17 @@ describe("other hard filters", () => {
     expect(evaluateEligibility(floor(), light, pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
   });
 
+  it("F7 lodging: overnight-willing providers can come from further, up to the lodging maximum", () => {
+    const far = provider({ willingOvernight: true, maxDriveMinutes: 90, availabilityRules: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, startMin: 0, endMin: 1440, timeZone: "America/New_York" })) });
+    const lodging = shift({ lodgingAllowed: true });
+    const opts = { ...OPTS, lodgingMaxDriveMinutes: 240 };
+    expect(evaluateEligibility(far, lodging, pair({ driveMinutes: 200 }), opts).eligible).toBe(true);
+    expect(codes(evaluateEligibility(far, lodging, pair({ driveMinutes: 260 }), opts))).toEqual(["TOO_FAR"]);
+    // Lodging off: only within their own drive limit.
+    expect(codes(evaluateEligibility(far, shift({ lodgingAllowed: false }), pair({ driveMinutes: 200 }), opts))).toEqual(["TOO_FAR"]);
+    expect(evaluateEligibility(far, shift({ lodgingAllowed: false }), pair({ driveMinutes: 60 }), opts).eligible).toBe(true);
+  });
+
   it("F3 a provider must have signed the current agreement — even if otherwise active", () => {
     expect(codes(evaluateEligibility(provider({ agreementCurrent: false }), shift(), pair(), OPTS))).toEqual(["AGREEMENT_NOT_SIGNED"]);
     // Nightly credential sweeps don't touch it (they only re-check licenses/malpractice of booked shifts).

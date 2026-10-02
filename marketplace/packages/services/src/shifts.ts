@@ -17,6 +17,7 @@ import {
   shiftIsCancellable,
   skillScopeProblem,
   supervisionProblem,
+  travelEstimate,
 } from "@cm/core";
 import { isInvariantViolation, prisma, Prisma } from "@cm/db";
 import { agreementAccepted } from "./agreements";
@@ -129,7 +130,6 @@ export async function validateShiftInput(db: Db, orgId: string, input: z.output<
       if (why) throw new DomainError("SUPERVISION_NOT_ATTESTED", why);
     }
   }
-  if (input.lodgingAllowed && !input.lodgingCapCentsPerNight) throw new DomainError("VALIDATION", "Set a nightly lodging cap, or turn lodging off.");
   return { loc, supervisionRequired };
 }
 
@@ -228,7 +228,8 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
         instantBook: input.instantBook,
         maxTravelBudgetCents: input.maxTravelBudgetCents ?? null,
         lodgingAllowed: input.lodgingAllowed,
-        lodgingCapCentsPerNight: input.lodgingAllowed ? (input.lodgingCapCentsPerNight ?? null) : null,
+        // Flat nightly allowance from Settings (no receipts), kept with the shift.
+        lodgingCapCentsPerNight: input.lodgingAllowed ? (await getSettings(db))["pricing.lodgingNightlyCents"] : null,
         rateCardId: q.rateCardId,
         durationTier: q.base.tier,
         clinicPriceCents: q.base.clinicPriceCents,
@@ -307,7 +308,8 @@ export async function updateDraftShift(actor: Actor, shiftId: string, raw: Shift
         instantBook: input.instantBook,
         maxTravelBudgetCents: input.maxTravelBudgetCents ?? null,
         lodgingAllowed: input.lodgingAllowed,
-        lodgingCapCentsPerNight: input.lodgingAllowed ? (input.lodgingCapCentsPerNight ?? null) : null,
+        // Flat nightly allowance from Settings (no receipts), kept with the shift.
+        lodgingCapCentsPerNight: input.lodgingAllowed ? (await getSettings(db))["pricing.lodgingNightlyCents"] : null,
         rateCardId: q.rateCardId,
         durationTier: q.base.tier,
         clinicPriceCents: q.base.clinicPriceCents,
@@ -445,7 +447,8 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
     if (sh.status === "FAVORITES_ONLY" && !favoritedBy.has(sh.location.clinicOrgId)) continue;
     const ev = await evaluateProviderForShift(prisma, providerId, sh.id);
     if (!ev.result.eligible) continue;
-    const mileage = ev.drive ? Math.round((s["pricing.mileageRoundTrip"] ? 2 : 1) * ev.drive.miles * s["pricing.mileageRateCentsPerMile"]) : 0;
+    const trip = ev.drive ? travelEstimate(ev.drive, { lodgingAllowed: sh.lodgingAllowed, lodgingCapCentsPerNight: sh.lodgingCapCentsPerNight }, s) : { mileageCents: 0, lodgingEstimateCents: 0 };
+    const mileage = trip.mileageCents;
     out.push({
       id: sh.id,
       professionCode: sh.professionCode,
@@ -457,7 +460,7 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
       clinicName: sh.location.clinicOrg.displayName,
       clinicOrgId: sh.location.clinicOrgId,
       driveMinutes: ev.drive?.minutes ?? null,
-      pay: providerView({ clinicPriceCents: 0, providerPayCents: sh.providerPayCents, promoDiscountCents: 0, mileageCents: mileage, lodgingCents: 0 }),
+      pay: providerView({ clinicPriceCents: 0, providerPayCents: sh.providerPayCents, promoDiscountCents: 0, mileageCents: mileage, lodgingCents: trip.lodgingEstimateCents }),
       applied: sh.applications.some((a) => a.status === "ACTIVE"),
       instantBook: sh.instantBook,
       urgent: +sh.startsAt - Date.now() < 48 * 3_600_000,

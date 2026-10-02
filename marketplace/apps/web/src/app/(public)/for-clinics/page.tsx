@@ -23,7 +23,7 @@ export default async function ForClinics() {
         <h1 className="mt-2 text-4xl font-semibold">Simple per-shift pricing</h1>
         {s["features.comparisonClaim"] ? <p className="mt-3 text-xl font-semibold text-accent-700">We charge our clinics less and get our doctors paid more.</p> : null}
         <p className="mt-4 text-lg text-slate-600">
-          Prices are set by region, shift length and how busy the day is: a Light day costs less, a Busy day covers more visits. No negotiating, no surprises. Mileage (and lodging, if you allow it) passes straight through to your provider at cost.
+          Prices are set by region, shift length and how busy the day is: a Light day costs less, a Busy day covers more visits. No negotiating, no surprises. Mileage passes straight through to your provider at cost, and if you allow lodging, providers who stay over get a flat {money(s["pricing.lodgingNightlyCents"])} a night.
         </p>
       </div>
       <div className="mt-10 grid gap-5 md:grid-cols-2">
@@ -76,6 +76,7 @@ export default async function ForClinics() {
             <div className="flex justify-between gap-4"><dt>Deposit at confirmation</dt><dd className="font-medium">{s["payments.depositPercent"]}%</dd></div>
             <div className="flex justify-between gap-4"><dt>Free cancellation</dt><dd className="font-medium">{s["payments.clinicFreeCancelHours"]}h+ before start</dd></div>
             <div className="flex justify-between gap-4"><dt>Extra visits past your tier (+{s["pricing.volumeGraceVisits"]} free)</dt><dd className="font-medium">{money(s["pricing.volumeOverageClinicCents"])}/visit</dd></div>
+            <div className="flex justify-between gap-4"><dt>Lodging (only when your provider stays over)</dt><dd className="font-medium">{money(s["pricing.lodgingNightlyCents"])}/night</dd></div>
             <div className="flex justify-between gap-4"><dt>Overtime beyond 8 hours</dt><dd className="font-medium">{money(s["pricing.overtimeClinicCentsPerHour"])}/hr</dd></div>
             <div className="flex justify-between gap-4"><dt>Mileage</dt><dd className="font-medium">{money(s["pricing.mileageRateCentsPerMile"], { exact: true })}/mile {s["pricing.mileageRoundTrip"] ? "round-trip" : "one-way"}</dd></div>
             <div className="flex justify-between gap-4"><dt>Weekend / holiday / &lt;48h</dt><dd className="font-medium">+{s["pricing.premiumWeekendPercent"]}% / +{s["pricing.premiumHolidayPercent"]}% / +{s["pricing.premiumUrgentPercent"]}%</dd></div>

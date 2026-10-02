@@ -25,6 +25,8 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
   const s = await getSettings();
   const tz = a.shift.location.timeZone;
   const loc = a.shift.location;
+  // Bookings since the flat nightly allowance include lodging in the total (no receipts).
+  const lodgingIncluded = a.lodgingEstimateCents > 0 && a.clinicTotalCents >= a.clinicPriceCents - a.promoDiscountCents + a.mileageCents + a.lodgingEstimateCents;
   const live = a.status === "CONFIRMED" || a.status === "IN_PROGRESS";
   const hoursToStart = (+a.startsAt - Date.now()) / 3_600_000;
   const myRating = a.ratings.find((r) => r.raterType === "PROVIDER");
@@ -123,7 +125,7 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
               </CardBody>
             </Card>
           ) : null}
-          {a.shift.lodgingAllowed && ["IN_PROGRESS", "COMPLETED"].includes(a.status) ? (
+          {a.shift.lodgingAllowed && !lodgingIncluded && ["IN_PROGRESS", "COMPLETED"].includes(a.status) ? (
             <Card>
               <CardHeader title="Lodging receipt" description={`Reimbursed up to ${money(a.shift.lodgingCapCentsPerNight)} per night.`} />
               <CardBody>
@@ -145,6 +147,7 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
             <CardBody className="space-y-2 text-sm">
               <div className="flex justify-between"><span>Shift pay</span><span>{money(a.providerPayCents)}</span></div>
               <div className="flex justify-between"><span>Mileage ({a.driveMiles} mi)</span><span>{money(a.mileageCents)}</span></div>
+              {lodgingIncluded ? <div className="flex justify-between"><span>Lodging ({Math.round(a.lodgingEstimateCents / (a.shift.lodgingCapCentsPerNight || a.lodgingEstimateCents))} night{a.lodgingEstimateCents > (a.shift.lodgingCapCentsPerNight ?? 0) ? "s" : ""} at {money(a.shift.lodgingCapCentsPerNight)}, no receipt needed)</span><span>{money(a.lodgingEstimateCents)}</span></div> : null}
               {a.lodgingApprovedCents ? <div className="flex justify-between"><span>Lodging</span><span>{money(a.lodgingApprovedCents)}</span></div> : null}
               <div className="flex justify-between border-t border-slate-100 pt-2 font-semibold"><span>Total</span><span>{money(a.providerTotalCents)}</span></div>
               {a.payouts.map((p) => <div key={p.id} className="flex justify-between text-xs text-slate-500"><span>{p.description}</span><StatusBadge status={p.onHold ? "ON_HOLD" : p.status} /></div>)}

@@ -111,6 +111,8 @@ export const SETTINGS = {
     default: {},
     flag: "OWNER_DECISION",
   }),
+  "pricing.lodgingNightlyCents": def({ group: "Pricing", label: "Lodging allowance per night", help: "Flat amount per night, no receipts. Added to the clinic's total and the provider's pay when a provider needs to stay over. Each shift keeps the amount in force when it was posted.", schema: cents, default: 11500, flag: "OWNER_DECISION" }),
+  "pricing.lodgingMaxDriveMinutes": def({ group: "Pricing", label: "Furthest one-way drive for providers taking lodging (minutes)", help: "With lodging on, providers who'll stay overnight can be offered shifts beyond their own drive limit, up to this.", schema: z.number().int().min(30).max(720), default: 240, flag: "OWNER_DECISION" }),
   "pricing.lodgingTriggerMinutes": def({ group: "Pricing", label: "Lodging eligible above one-way drive (minutes)", schema: z.number().int().positive(), default: 120, flag: null }),
   "pricing.premiumUrgentPercent": def({ group: "Pricing", label: "Urgent premium (<48h at posting) %", schema: percent, default: 15, flag: "OWNER_DECISION" }),
   "pricing.premiumRushPercent": def({ group: "Pricing", label: "Rush premium % (posted within the rush window)", help: "Replaces the urgent premium for the shortest notice; like every premium it raises the clinic price and the provider's pay by the same percent, so short-notice shifts fill. 0 = off.", schema: percent, default: 25, flag: "OWNER_DECISION" }),

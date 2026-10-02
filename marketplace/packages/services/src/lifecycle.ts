@@ -230,6 +230,10 @@ export async function submitLodgingReceipt(actor: Actor, assignmentId: string, i
   const a = await prisma.assignment.findFirst({ where: { id: assignmentId, providerId }, include: { shift: true } });
   if (!a) throw new DomainError("NOT_FOUND", "Assignment not found");
   if (!a.shift.lodgingAllowed) throw new DomainError("VALIDATION", "Lodging isn't covered for this shift.");
+  // Bookings made since the flat nightly allowance already include lodging in the pay: no receipts.
+  if (a.lodgingEstimateCents > 0 && a.clinicTotalCents >= a.clinicPriceCents - a.promoDiscountCents + a.mileageCents + a.lodgingEstimateCents) {
+    throw new DomainError("VALIDATION", "Lodging is a flat nightly allowance that's already included in your pay. No receipt needed.");
+  }
   const r = await prisma.lodgingReceipt.create({ data: { assignmentId, amountCents: input.amountCents, nights: input.nights, fileUrl: input.fileUrl } });
   await prisma.adminTask.create({ data: { kind: "LODGING_RECEIPT", title: "Lodging receipt to review", entityType: "LodgingReceipt", entityId: r.id } });
   return r;

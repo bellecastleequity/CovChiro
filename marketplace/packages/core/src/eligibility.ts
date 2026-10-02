@@ -124,6 +124,8 @@ export interface EligibilityOptions {
   distanceMultiplier?: number;
   /** Emergency cover widens every provider's drive limit (only offered; they can say no). Never touches F0–F2. */
   distanceMultiplierAll?: number;
+  /** Furthest one-way drive for providers taking lodging (pricing.lodgingMaxDriveMinutes); undefined = no limit. */
+  lodgingMaxDriveMinutes?: number;
   /** Credential-only checks (nightly sweep, pre-shift check): F0, F1, F1b, F2 only. */
   credentialsOnly?: boolean;
 }
@@ -277,7 +279,9 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   }
 
   // F7 — distance.
-  const overnightOk = provider.willingOvernight && shift.lodgingAllowed;
+  // Lodging lets overnight-willing providers come from beyond their own drive limit, up to the lodging maximum.
+  const overnightOk =
+    provider.willingOvernight && shift.lodgingAllowed && (opts.lodgingMaxDriveMinutes === undefined || (pair.driveMinutes !== null && pair.driveMinutes <= opts.lodgingMaxDriveMinutes));
   const limit = provider.maxDriveMinutes * Math.max(provider.willingOvernight ? (opts.distanceMultiplier ?? 1) : 1, opts.distanceMultiplierAll ?? 1);
   if (!overnightOk) {
     if (pair.driveMinutes === null) fail("F7", "TOO_FAR", "Drive time unavailable");

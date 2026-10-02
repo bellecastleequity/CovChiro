@@ -184,7 +184,7 @@ export async function driveTimes(
 // ---------------- pair facts ----------------
 
 export function eligibilityOptions(s: SettingsMap, extra: Partial<EligibilityOptions> = {}): EligibilityOptions {
-  return { travelBufferExtraMinutes: s["matching.travelBufferExtraMinutes"], ...extra };
+  return { travelBufferExtraMinutes: s["matching.travelBufferExtraMinutes"], lodgingMaxDriveMinutes: s["pricing.lodgingMaxDriveMinutes"], ...extra };
 }
 
 async function pairFactsFor(db: Db, shift: LoadedShift, providerIds: string[], drives: Map<string, DriveResult | null>, s: SettingsMap) {
@@ -271,7 +271,7 @@ export async function nationalCredentialStates(db: Db): Promise<Record<string, s
  * as the pure function defines them, then a straight-line distance bound
  * (maxDriveMinutes × 1.2 miles) for providers who can't take lodging.
  */
-async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: number, distanceMultiplierAll = 1): Promise<string[]> {
+async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: number, distanceMultiplierAll = 1, lodgingMaxDriveMinutes = 240): Promise<string[]> {
   const f = shift.facts;
   if (!f.config.enabled || !f.config.stateEnabled) return []; // F0 fails for everyone
   const rows = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
@@ -290,7 +290,10 @@ async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: numb
         AND m."aggregateCents" >= ${f.config.malpracticeMinAggregateCents}
     )
     AND (
-      (p."willingOvernight" AND ${f.lodgingAllowed})
+      (p."willingOvernight" AND ${f.lodgingAllowed} AND p."homeGeo" IS NOT NULL AND ST_DWithin(
+            p."homeGeo",
+            ST_SetSRID(ST_MakePoint(${shift.location.lng}, ${shift.location.lat}), 4326)::geography,
+            ${lodgingMaxDriveMinutes}::float8 * 1.2 * 1609.344))
       OR (p."homeGeo" IS NOT NULL AND ST_DWithin(
             p."homeGeo",
             ST_SetSRID(ST_MakePoint(${shift.location.lng}, ${shift.location.lat}), 4326)::geography,
@@ -310,7 +313,7 @@ export interface EligibleSet {
 export async function getEligibleProviders(db: Db, shiftOrId: string | LoadedShift, extra: Partial<EligibilityOptions> = {}): Promise<EligibleSet> {
   const s = await getSettings(db);
   const shift = typeof shiftOrId === "string" ? await loadShift(db, shiftOrId) : shiftOrId;
-  const ids = await prefilterIds(db, shift, extra.distanceMultiplier ?? 1, extra.distanceMultiplierAll ?? 1);
+  const ids = await prefilterIds(db, shift, extra.distanceMultiplier ?? 1, extra.distanceMultiplierAll ?? 1, extra.lodgingMaxDriveMinutes ?? s["pricing.lodgingMaxDriveMinutes"]);
   const totalWithAnyLicense = await db.provider.count({ where: { licenses: { some: { professionCode: shift.facts.professionCode } } } });
   const providers = await loadProviders(db, ids, shift.facts.id);
   const drives = await driveTimes(

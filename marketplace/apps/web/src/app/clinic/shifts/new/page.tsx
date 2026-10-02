@@ -66,6 +66,7 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
         defaultCode={code ?? welcome?.code ?? ""}
         draft={draft}
         volumeCodes={volumeCodes}
+        lodging={{ nightlyCents: settings["pricing.lodgingNightlyCents"], overMinutes: settings["pricing.lodgingTriggerMinutes"], maxMinutes: settings["pricing.lodgingMaxDriveMinutes"] }}
         locations={options.map((o) => ({
           id: o.location.id,
           name: o.location.name,

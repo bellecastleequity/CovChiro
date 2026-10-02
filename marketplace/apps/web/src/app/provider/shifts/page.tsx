@@ -56,7 +56,7 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-semibold tabular-nums text-brand-700">{money(s.pay.totalCents)}</div>
-                    <div className="text-xs text-slate-500">incl. {money(s.pay.mileageCents)} mileage</div>
+                    <div className="text-xs text-slate-500">incl. {money(s.pay.mileageCents)} mileage{s.pay.lodgingCents ? ` + ${money(s.pay.lodgingCents)} lodging` : ""}</div>
                   </div>
                 </div>
                 <div className="mt-3 text-sm font-medium">{s.clinicName}</div>
