@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Check, Share, Smartphone } from "lucide-react";
+import { BatteryFull, Check, Share, Signal, Smartphone, Wifi } from "lucide-react";
 
 type Prompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
@@ -36,7 +36,7 @@ export function PhoneMockup() {
       <div className="rounded-[2.6rem] bg-slate-900 p-2.5 shadow-2xl ring-1 ring-slate-700">
         <div className="relative overflow-hidden rounded-[2.1rem] bg-gradient-to-b from-brand-600 to-brand-800 pb-6">
           <div className="mx-auto mt-2 h-5 w-24 rounded-full bg-slate-900" />
-          <div className="mt-3 flex items-center justify-between px-5 text-[10px] font-medium text-white/80"><span>9:41</span><span>▮▮▮ ◔</span></div>
+          <div className="mt-3 flex items-center justify-between px-5 text-[10px] font-medium text-white/80"><span>9:41</span><span className="flex items-center gap-1"><Signal className="size-3" /><Wifi className="size-3" /><BatteryFull className="size-3.5" /></span></div>
           <div className="mx-3 mt-4 rounded-2xl bg-white/95 p-3 shadow-lg">
             <div className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -65,9 +65,6 @@ export function PhoneMockup() {
             )}
           </div>
         </div>
-      </div>
-      <div className="absolute -right-6 top-24 hidden rotate-6 items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-lg ring-1 ring-slate-200 sm:flex">
-        <Bell className="size-3.5 text-accent-600" /> Instant alerts
       </div>
     </div>
   );
