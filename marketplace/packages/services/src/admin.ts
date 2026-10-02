@@ -166,6 +166,8 @@ export async function updateStateConfig(
     data: { ...patch, ...(patch.enabled === true && !before.enabled ? { enabledAt: new Date(), enabledById: actor.userId } : {}) },
   });
   await audit(prisma, actor, patch.enabled !== undefined && patch.enabled !== before.enabled ? (patch.enabled ? "state.enabled" : "state.disabled") : "state.updated", "StateConfig", state, before, updated);
+  // Opening a state: tell its waitlist now (the hourly sweep is the backstop).
+  if (patch.enabled && !before.enabled) void import("./waitlist").then((m) => m.waitlistOpeningSweep()).catch(() => undefined);
   let affected: { id: string }[] = [];
   if (patch.enabled === false && before.enabled) {
     // Disabling blocks new postings but does not cancel confirmed work; give the admin the list.
@@ -308,6 +310,8 @@ export async function updateProfessionState(
   }
   // Turning a profession on adds its built-in school list to the student sign-up dropdown.
   if (patch.enabled) await ensureSchools([professionCode]);
+  // Opening a profession in a state: tell its waitlist now (the hourly sweep is the backstop).
+  if (patch.enabled && !before?.enabled) void import("./waitlist").then((m) => m.waitlistOpeningSweep()).catch(() => undefined);
   await audit(prisma, actor, patch.enabled !== undefined && patch.enabled !== before?.enabled ? (patch.enabled ? "profession_state.enabled" : "profession_state.disabled") : "profession_state.updated", "ProfessionStateConfig", `${professionCode}:${state}`, before, updated);
   return updated;
 }

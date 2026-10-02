@@ -14,6 +14,8 @@ export function LeadForm({
   campaign,
   professionCode,
   states,
+  professions,
+  askAudience,
   cta = "Get my code",
   compact,
 }: {
@@ -22,12 +24,16 @@ export function LeadForm({
   campaign?: string;
   professionCode?: string;
   states?: { code: string; name: string }[];
+  /** Waitlist: let the visitor pick a profession (blank = any). */
+  professions?: { code: string; name: string }[];
+  /** Waitlist: ask "I'm a clinic / I'm a provider". */
+  askAudience?: boolean;
   cta?: string;
   compact?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ code: string | null; offer: string | null; expiresAt: string | null } | null>(null);
+  const [done, setDone] = useState<{ code: string | null; offer: string | null; expiresAt: string | null; alreadyOpen?: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -43,9 +49,9 @@ export function LeadForm({
       phone: fd.get("phone") || undefined,
       state: fd.get("state") || undefined,
       message: fd.get("message") || undefined,
-      professionCode,
+      professionCode: professionCode ?? (fd.get("professionCode") || undefined),
       source,
-      audience,
+      audience: askAudience ? fd.get("audience") || audience : audience,
       campaign,
       landingPath: location.pathname,
       utm: { source: params.get("utm_source") ?? undefined, medium: params.get("utm_medium") ?? undefined, campaign: params.get("utm_campaign") ?? undefined },
@@ -55,7 +61,7 @@ export function LeadForm({
       const r = await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const j = await r.json();
       if (!r.ok) setError(j.error ?? "Something went wrong.");
-      else setDone({ code: j.code, offer: j.offer, expiresAt: j.expiresAt });
+      else setDone({ code: j.code, offer: j.offer, expiresAt: j.expiresAt, alreadyOpen: !!j.alreadyOpen });
     } catch {
       setError("Network error — please try again.");
     } finally {
@@ -68,7 +74,7 @@ export function LeadForm({
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900">
         <div className="flex items-center gap-2 font-semibold">
           <CheckCircle2 className="size-5" />
-          {done.code ? "Here's your code" : source === "waitlist" ? "You're on the list" : "Thanks — we'll be in touch"}
+          {done.code ? "Here's your code" : done.alreadyOpen ? "Good news: we're already open there" : source === "waitlist" ? "You're on the list" : "Thanks — we'll be in touch"}
         </div>
         {done.code ? (
           <>
@@ -93,7 +99,7 @@ export function LeadForm({
             </a>
           </>
         ) : (
-          <p className="mt-2 text-sm">Check your inbox for a confirmation.</p>
+          <p className="mt-2 text-sm">{done.alreadyOpen ? "We've emailed you a link to get started." : source === "waitlist" ? "We'll email you the day we open in your area." : "Check your inbox for a confirmation."}</p>
         )}
       </div>
     );
@@ -108,6 +114,20 @@ export function LeadForm({
       {source === "contact" || source === "waitlist" ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {source === "contact" ? <Input name="organization" placeholder="Clinic or practice (optional)" aria-label="Organization" /> : null}
+          {askAudience ? (
+            <Select name="audience" defaultValue="CLINIC" aria-label="I'm a">
+              <option value="CLINIC">I&apos;m a clinic</option>
+              <option value="PROVIDER">I&apos;m a provider</option>
+            </Select>
+          ) : null}
+          {professions ? (
+            <Select name="professionCode" defaultValue="" aria-label="Profession">
+              <option value="">Any profession</option>
+              {professions.map((p) => (
+                <option key={p.code} value={p.code}>{p.name}</option>
+              ))}
+            </Select>
+          ) : null}
           {states ? (
             <Select name="state" defaultValue="" aria-label="State" required={source === "waitlist"}>
               <option value="" disabled>

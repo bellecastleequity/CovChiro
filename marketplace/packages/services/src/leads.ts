@@ -127,13 +127,20 @@ export async function captureLead(raw: z.input<typeof CaptureInput>, meta: { ip?
   await prisma.lead.updateMany({ where: { email: input.email, id: { not: lead.id }, status: "NURTURING" }, data: { status: "SUPERSEDED", nextDripAt: null } });
   await track({ type: "LEAD_CAPTURED", visitorId: input.visitorId ?? null, path: input.landingPath ?? null, props: { source: input.source, campaign: campaignCode, audience } });
 
+  // Waitlist for a state + profession that's already open: send the "we're open" email instead.
+  let alreadyOpen = false;
+  if (input.source === "waitlist") {
+    const { notifyIfOpen } = await import("./waitlist");
+    alreadyOpen = await notifyIfOpen(lead.id);
+    if (alreadyOpen) lead = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+  }
   // First email goes out immediately (the drip job handles the rest).
   if (lead.status === "NURTURING" && lead.dripStep === 0) await sendDripStep(lead.id);
   if (input.source === "contact") {
     const { notifyAdmins } = await import("./notify");
     await notifyAdmins(prisma, { template: "contact_lead", title: `New inquiry from ${input.name}`, body: (input.message ?? "").slice(0, 300), link: `/admin/leads/${lead.id}` });
   }
-  return { leadId: lead.id, code: promo?.code ?? null, offer: promo ? promoLabel(promo) : null, expiresAt: promo?.expiresAt ?? null, alreadySignedUp, dripDays: s["leads.dripScheduleDays"].length };
+  return { leadId: lead.id, code: promo?.code ?? null, offer: promo ? promoLabel(promo) : null, expiresAt: promo?.expiresAt ?? null, alreadySignedUp, alreadyOpen, dripDays: s["leads.dripScheduleDays"].length };
 }
 
 // ---------------- follow-up sequence ----------------
