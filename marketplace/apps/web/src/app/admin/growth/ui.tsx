@@ -7,6 +7,7 @@ const TABS = [
   ["/admin/growth/clinics", "Clinics"],
   ["/admin/growth/prospects", "Prospecting"],
   ["/admin/growth/campaigns", "Campaigns"],
+  ["/admin/growth/instagram", "Instagram"],
   ["/admin/growth/agents", "AI Agents"],
   ["/admin/growth/markets", "Supply & Demand"],
   ["/admin/growth/content", "Content"],

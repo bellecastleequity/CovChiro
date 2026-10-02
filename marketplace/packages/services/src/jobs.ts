@@ -14,6 +14,7 @@ import { growthTick, supplyGapSweep, weeklyBriefing } from "./growth/agents";
 import { prospectingTick } from "./growth/prospecting";
 import { marketSupplySweep } from "./growth/supply";
 import { approvedQueueSweep } from "./growth/admin";
+import { instagramSweep } from "./growth/instagram";
 import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSweep, preShiftChecks, recomputeStats, revealExpiredRatings, startDueShifts } from "./lifecycle";
 import { releaseDuePayouts } from "./payouts";
 import { settleDueInvites } from "./shifts";
@@ -78,6 +79,7 @@ export const JOBS: Job[] = [
   { name: "preLicensureFollowups", schedule: { cron: "15 10 * * *", tz: "America/New_York" }, run: () => runPreLicensureFollowups() },
   // Growth agents (services/src/growth): event-driven sweeps; nothing calls AI unless something is due.
   { name: "growthApprovedQueue", schedule: { everySeconds: 60 }, run: () => approvedQueueSweep(), leaseMinutes: 5 },
+  { name: "growthInstagram", schedule: { everySeconds: 600 }, run: () => instagramSweep() },
   { name: "growthAgents", schedule: { everySeconds: 900 }, run: () => growthTick(), leaseMinutes: 20, long: true },
   // Automatic clinic prospecting: NPI registry discovery + AI web research (budget-capped, ~2 min per run max).
   { name: "growthProspecting", schedule: { everySeconds: 600 }, run: () => prospectingTick(), leaseMinutes: 15, long: true },

@@ -9,7 +9,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Checklist, PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateTimeLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { manualEmailAction, noteAction, overrideProspectAction, replyAction, researchProspectAction, saveProspectAction } from "../../actions";
+import { manualEmailAction, noteAction, overrideProspectAction, replyAction, researchProspectAction, saveProspectAction, instagramHandleAction } from "../../actions";
 import { GrowthTabs, SEGMENTS, STAGES } from "../../ui";
 
 export const metadata = { title: "Clinic prospect" };
@@ -106,6 +106,14 @@ export default async function ProspectDetail({ params }: { params: Promise<{ id:
                 </details>
               ) : null}
               {p.npis.length ? <div className="text-xs text-slate-500">NPI registry: {p.npis.join(", ")}</div> : null}
+              <ActionForm action={instagramHandleAction} className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
+                <input type="hidden" name="prospectId" value={p.id} />
+                <Field label={<>Instagram{p.igStatus !== "NONE" && p.igStatus !== "NO_HANDLE" ? <span className="ml-1 font-normal text-slate-500">· {humanize(p.igStatus)}</span> : null}</>}>
+                  <Input name="handle" defaultValue={p.instagramHandle ? `@${p.instagramHandle}` : ""} placeholder="@handle or profile link" className="w-56" />
+                </Field>
+                <SubmitButton size="sm" variant="outline">Save</SubmitButton>
+                <Link href="/admin/growth/instagram" className="text-xs text-brand-700 hover:underline">Follow list</Link>
+              </ActionForm>
             </CardBody>
           </Card>
           {d.checklist ? <Card><CardHeader title="Onboarding" /><CardBody><Checklist items={d.checklist.map((s) => ({ label: s.label, done: s.done }))} /></CardBody></Card> : null}

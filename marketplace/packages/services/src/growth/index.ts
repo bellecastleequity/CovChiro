@@ -16,3 +16,4 @@ export { upsertProviderProspects, discoverContact, verifyContact, contactDiscove
 export { marketSupply, marketSupplySweep, type MarketRow } from "./supply";
 export * from "./command";
 export { classifyAiError, researchPause, researchRequestsToday, retryAfterMs, withRateLimitRetry } from "./aihealth";
+export { syncInstagramHandles, autoApproveInstagram, instagramSweep, instagramBoard, instagramDecide, setInstagramHandle } from "./instagram";

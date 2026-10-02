@@ -1784,6 +1784,13 @@ model ClinicProspect {
   researchConfidence Float?
   /// Pages the AI research cited for this record.
   sourceUrls         String[]       @default([])
+  /// Instagram follow list: handle from the practice's own social links (or set by an admin).
+  instagramHandle    String?
+  /// NONE (not checked) | NO_HANDLE | FOUND (to review) | APPROVED (in the follow queue) | FOLLOWED | SKIPPED
+  igStatus           String         @default("NONE")
+  igApprovedAt       DateTime?      @db.Timestamptz(3)
+  igAutoApproved     Boolean        @default(false)
+  igFollowedAt       DateTime?      @db.Timestamptz(3)
   /// Unsubscribe and tracked-link token.
   publicToken        String         @unique
   createdAt          DateTime       @default(now()) @db.Timestamptz(3)
@@ -1794,6 +1801,7 @@ model ClinicProspect {
   @@index([marketKey])
   @@index([intentScore])
   @@index([email])
+  @@index([igStatus])
 }
 
 /// Campaign links: /join/<code> (providers, e.g. schools) and clinic campaigns. QR codes encode the link.

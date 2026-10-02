@@ -65,6 +65,25 @@ export const bulkApprovalAction = formAction(async (fd) => {
     : `Rejected ${r.count}. Outreach to those prospects is paused.`;
 });
 
+export const instagramAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const ids = fd.getAll("ids").map(String).filter(Boolean);
+  if (!ids.length) return "Nothing selected.";
+  const d = str(fd, "decision");
+  const decision = d === "skip" || d === "followed" || d === "review" ? d : "approve";
+  const r = await growth.instagramDecide(actor, ids, decision);
+  rv();
+  return { approve: `Added ${r.count} to the follow queue.`, skip: `Skipped ${r.count}.`, followed: `Marked ${r.count} as followed.`, review: `Moved ${r.count} back to review.` }[decision];
+});
+
+export const instagramHandleAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const h = await growth.setInstagramHandle(actor, str(fd, "prospectId"), str(fd, "handle"));
+  rv();
+  revalidatePath(`/admin/growth/prospects/${str(fd, "prospectId")}`);
+  return h ? `Instagram set to @${h}.` : "Instagram handle cleared.";
+});
+
 export const escalationAction = formAction(async (fd) => {
   const { actor } = await me();
   await growth.updateEscalation(actor, str(fd, "id"), str(fd, "status") as "OPEN" | "IN_PROGRESS" | "RESOLVED", optStr(fd, "resolution"));
