@@ -125,12 +125,18 @@ shopt -u nullglob
   && zip -qr -9 ../coverageoncall-cpanel-part1.zip . -x "$APP_DIR/node_modules/@prisma/*" "$APP_DIR/node_modules/.prisma/*" \
   && zip -qr -9 ../coverageoncall-cpanel-part2.zip "$APP_DIR/node_modules/@prisma" \
   && zip -qr -9 ../coverageoncall-cpanel-part3.zip "$APP_DIR/node_modules/.prisma")
-# Update package for an installed site: the code, including the generated
-# Prisma client in node_modules/.prisma (it changes with every schema change),
-# but not the ~20 MB query engine or @prisma/* runtime, which only change
-# with the Prisma version (then ship the full package). public/ and uploads/
-# are left alone.
-(cd "$OUT" && rm -f ../coverageoncall-update.zip \
-  && zip -qr -9 ../coverageoncall-update.zip "$APP_DIR/app" "$APP_DIR/node_modules" -x "$APP_DIR/node_modules/@prisma/*" "$APP_DIR/node_modules/.prisma/client/*.so.node")
-echo "Built dist/coverageoncall-update.zip ($(du -h dist/coverageoncall-update.zip | cut -f1)); database updates: $(ls "$UPD" | tr '\n' ' ' | sed 's/ $//' || true)"
+# Update packages for an installed site, extracted INSIDE coverageoncall.com:
+#   part1 = app/ (every release)
+#   part2 = node_modules/ minus .prisma, part3 = node_modules/.prisma (engines
+#   included) — only when the schema or dependencies change. Together part2 +
+#   part3 are a COMPLETE node_modules, so the install is the same as for app:
+#   rename node_modules → node_modules-previous, extract both. (The old part 2
+#   left the Prisma engine out and had to be extracted over the old folder;
+#   renaming instead of copying caused two outages in Oct 2026.)
+# Each part stays under 30 MB. public/ and uploads/ are left alone.
+(cd "$OUT/$APP_DIR" && rm -f "$ROOT"/dist/coverageoncall-update*.zip \
+  && zip -qr -9 "$ROOT/dist/coverageoncall-update-part1.zip" app \
+  && zip -qr -9 "$ROOT/dist/coverageoncall-update-part2.zip" node_modules -x "node_modules/.prisma/*" \
+  && zip -qr -9 "$ROOT/dist/coverageoncall-update-part3.zip" node_modules/.prisma)
+echo "Built dist/coverageoncall-update-part1.zip (app, $(du -h dist/coverageoncall-update-part1.zip | cut -f1)), part2 + part3 (complete node_modules, $(du -h dist/coverageoncall-update-part2.zip | cut -f1) + $(du -h dist/coverageoncall-update-part3.zip | cut -f1)); database updates: $(ls "$UPD" | tr '\n' ' ' | sed 's/ $//' || true)"
 echo "Built dist/coverageoncall-cpanel.zip ($(du -h dist/coverageoncall-cpanel.zip | cut -f1), $(find "$SITE" -type f | wc -l) files)"

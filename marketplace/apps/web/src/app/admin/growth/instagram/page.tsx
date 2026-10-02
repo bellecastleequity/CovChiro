@@ -3,6 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { growth } from "@cm/services";
 import { BulkSelect } from "@/components/admin/bulk-select";
 import { RefreshAt } from "@/components/admin/refresh-at";
+import { IgFollowPrompt, IgOpenButton } from "@/components/admin/instagram-assist";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -37,6 +38,7 @@ export default async function Instagram() {
         description="Florida clinics' Instagram accounts, taken only from links on the clinic's own website. You approve who goes in the queue, then follow them yourself in Instagram. This page paces you so the account stays safe; it never logs in to Instagram or follows for you."
       />
       <GrowthTabs current="/admin/growth/instagram" />
+      <IgFollowPrompt action={instagramAction} />
 
       <div className="mb-6 grid gap-3 sm:grid-cols-4">
         <Stat label="Followed today" value={`${pace.today} / ${rules.perDay}`} tone={pace.today >= rules.perDay ? "green" : "brand"} />
@@ -48,7 +50,7 @@ export default async function Instagram() {
       <Card className="mb-6">
         <CardHeader
           title="Follow now"
-          description={`Tap Open, follow the clinic in Instagram, then tap Followed. Limits: ${rules.perDay} a day, ${rules.perWindow} every ${rules.windowMinutes} minutes, ${rules.start}–${rules.end}. Auto-approve: ${rules.autoPerDay ? `${rules.autoPerDay} a day` : "off"}.`}
+          description={`Tap Open: on a computer the clinic opens in an Instagram window beside this page, on a phone in the Instagram app. Follow them, come back, and answer "Did you follow?". Limits: ${rules.perDay} a day, ${rules.perWindow} every ${rules.windowMinutes} minutes, ${rules.start}–${rules.end}. Auto-approve: ${rules.autoPerDay ? `${rules.autoPerDay} a day` : "off"}.`}
           action={<Link href="/admin/settings#s-growth.instagram.followsPerDay" className="text-xs font-medium text-brand-700 hover:underline">Change limits</Link>}
         />
         <CardBody>
@@ -80,9 +82,7 @@ export default async function Instagram() {
                       </div>
                       {isReady ? (
                         <>
-                          <a href={ig(p.instagramHandle!)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700">
-                            Open <ExternalLink className="size-3.5" />
-                          </a>
+                          <IgOpenButton id={p.id} handle={p.instagramHandle!} name={p.clinicName} />
                           <ActionForm action={instagramAction} successMessage={false}>
                             <input type="hidden" name="ids" value={p.id} />
                             <input type="hidden" name="decision" value="followed" />

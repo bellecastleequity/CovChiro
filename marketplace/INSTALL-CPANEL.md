@@ -213,17 +213,19 @@ If coveragechiropractor.com is on the same cPanel:
 
 ## Updating to a new version
 
-Each release comes as **`coverageoncall-update.zip`** (the code only) plus any **`update-NNN-….sql`** files that are new in that release. SQL files from earlier releases are never sent again.
+Each release comes as **`coverageoncall-update-part1.zip`** (the `app` folder) plus, when the database layout or libraries change, **`-part2.zip`** and **`-part3.zip`** (together a complete `node_modules` folder) and any **`update-NNN-….sql`** files that are new in that release. SQL files from earlier releases are never sent again.
 
 0. **Make a restore point:** Admin → **Backups & restore** → **Create restore point** (or **Back up now** if Neon isn't connected yet).
 1. **Stop the app:** Setup Node.js App → **Stop App**.
-2. **Keep the old version for rollback:** in File Manager, open `coverageoncall.com`, delete any old **`app-previous`** folder, then **rename `app` to `app-previous`**. If the release includes part 2, delete any old `node_modules-previous` and **copy** (don't rename) `node_modules` → `node_modules-previous`. Part 2 is extracted *over* `node_modules`: it leaves out the large Prisma engine and runtime files (`node_modules/@prisma` and the `.so.node` engine), which stay from the installed version. Renaming `node_modules` away would remove them and the site shows *Internal Server Error*. Leave `public` and `uploads` alone.
-3. **Add the new code:** upload the zip(s) to your home folder and **Extract** them there (say yes to overwriting files).
+2. **Keep the old version for rollback:** in File Manager, open `coverageoncall.com`, delete any old **`app-previous`** folder, then **rename `app` to `app-previous`**. If the release includes parts 2 and 3, also delete any old `node_modules-previous` and **rename `node_modules` to `node_modules-previous`**. Leave `public`, `tmp` and `uploads` alone.
+3. **Add the new code:** upload the zips **into `coverageoncall.com`** and **Extract** each one there, in any order. Part 1 creates `app`; parts 2 and 3 together create `node_modules`. If you see `app/app` or `node_modules/node_modules`, it was extracted one level too deep.
 4. **Update the database, if the release includes SQL files:** run each one in number order in Neon's SQL Editor. They're safe to run again if you aren't sure.
 5. **Start the app:** **Start App**, then check the site. Your environment variables are kept.
-6. **Clean up:** delete the uploaded zips from your home folder.
+6. **Clean up:** delete the uploaded zips.
 
-**Something wrong after an update?** Roll back the code: Stop App → rename `app` to `app-broken` and `app-previous` to `app` (and, if part 2 was installed, `node_modules` → `node_modules-broken` and `node_modules-previous` → `node_modules`) → Start App. Database updates only add tables and columns, so the previous code runs on the newer database. If data itself went wrong, rewind it in Admin → **Backups & restore** (or Neon console → Branches → main → **Restore**).
+Releases before October 3, 2026 shipped a smaller part 2 that had to be extracted *over* the old `node_modules`. Those packages are no longer sent; parts 2 + 3 are always complete now.
+
+**Something wrong after an update?** Roll back the code: Stop App → rename `app` to `app-broken` and `app-previous` to `app` (and, if parts 2 and 3 were installed, `node_modules` → `node_modules-broken` and `node_modules-previous` → `node_modules`) → Start App. Database updates only add tables and columns, so the previous code runs on the newer database. If data itself went wrong, rewind it in Admin → **Backups & restore** (or Neon console → Branches → main → **Restore**).
 
 ### Backups
 

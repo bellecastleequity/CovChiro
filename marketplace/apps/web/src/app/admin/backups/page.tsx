@@ -93,7 +93,7 @@ export default async function Backups() {
       <Card className="mt-6">
         <CardHeader title="Roll back the app (code)" description={`Installed: ${rel.version}${rel.latestMigration ? ` · database schema ${rel.latestMigration}` : ""}`} />
         <CardBody className="space-y-2 text-sm text-slate-700">
-          <p>When you install a release, <b>rename</b> the old <code>app</code> folder to <code>app-previous</code> instead of deleting it (and <code>node_modules</code> to <code>node_modules-previous</code> when the release includes part 2). To go back:</p>
+          <p>When you install a release, <b>rename</b> the old <code>app</code> folder to <code>app-previous</code> instead of deleting it (and <code>node_modules</code> to <code>node_modules-previous</code> when the release includes parts 2 and 3). To go back:</p>
           <ol className="list-decimal space-y-1 pl-5">
             <li>Setup Node.js App → <b>Stop App</b>.</li>
             <li>File Manager: rename <code>app</code> → <code>app-broken</code>, then <code>app-previous</code> → <code>app</code> (same for <code>node_modules</code> if you swapped it).</li>
