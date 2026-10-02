@@ -306,6 +306,7 @@ model Provider {
   lastActivationAt     DateTime?                @db.Timestamptz(3)
   onCallRules          OnCallRule[]
   payFloors            ProviderPayFloor[]
+  recruitClaims        ShiftRecruitClaim[]
   responsiveness       ProviderResponsiveness[]
   standby              StandbyEntry[]
   professions          ProviderProfession[]
@@ -741,6 +742,7 @@ model Shift {
   standby      StandbyEntry[]
   matchRuns    MatchRun[]
   threads      MessageThread[]
+  recruitLinks ShiftRecruitLink[]
 
   @@index([professionCode, state, status, startsAt])
   @@index([locationId, startsAt])
@@ -2348,4 +2350,38 @@ model SupportMessage {
   createdAt    DateTime       @default(now()) @db.Timestamptz(3)
 
   @@index([requestId, createdAt])
+}
+
+// ============================ recruit a colleague for a shift ============================
+
+/// Admin "Recruit a colleague" link for one shift (/s/<token>). Anyone can open the summary; signing
+/// up (or signing in) as a provider claims it, and once eligible they get an invitation to the shift.
+model ShiftRecruitLink {
+  id          String              @id @default(cuid())
+  token       String              @unique
+  shiftId     String
+  shift       Shift               @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  createdById String?
+  /// Who it was sent to (admin's note), e.g. "Dr. Lee".
+  label       String?
+  views       Int                 @default(0)
+  createdAt   DateTime            @default(now()) @db.Timestamptz(3)
+  claims      ShiftRecruitClaim[]
+
+  @@index([shiftId])
+}
+
+model ShiftRecruitClaim {
+  id         String           @id @default(cuid())
+  linkId     String
+  link       ShiftRecruitLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  /// When the invitation (Offer, source ADMIN) was sent once they became eligible.
+  invitedAt  DateTime?        @db.Timestamptz(3)
+  offerId    String?
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@unique([linkId, providerId])
+  @@index([providerId])
 }

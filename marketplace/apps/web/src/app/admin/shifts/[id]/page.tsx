@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@cm/db";
-import { getEligibleProviders, loadShift, rankEvaluated } from "@cm/services";
+import { getEligibleProviders, loadShift, rankEvaluated, shiftRecruit } from "@cm/services";
+import { createRecruitLinkAction } from "@/app/recruit-actions";
+import { CopyText } from "@/components/account/copy-text";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -11,7 +13,7 @@ import { requireActor } from "@/lib/session";
 import { findCoverAction, adminAssignAction, adminCancelShiftAction, adminDispatchAction, adminStopDispatchAction, adminInviteAction, removeProviderAction, repriceAction } from "../../actions";
 
 export default async function AdminShift({ params }: { params: Promise<{ id: string }> }) {
-  await requireActor("admin");
+  const { actor } = await requireActor("admin");
   const { id } = await params;
   const shift = await prisma.shift.findUnique({
     where: { id },
@@ -37,6 +39,8 @@ export default async function AdminShift({ params }: { params: Promise<{ id: str
   const ranked = set ? await rankEvaluated(prisma, loaded, set.eligible) : [];
   const activeDispatch = shift.dispatches.find((d) => d.status === "ACTIVE");
   const live = shift.assignments.find((a) => ["CONFIRMED", "IN_PROGRESS"].includes(a.status));
+  const recruitLinks = await shiftRecruit.linksForShift(actor, id);
+  const recruitMessages = selectable ? await Promise.all(recruitLinks.slice(0, 5).map((l) => shiftRecruit.shareMessage(l.token))) : [];
   const names = new Map((await prisma.provider.findMany({ where: { id: { in: [...(set?.excluded.map((e) => e.providerId) ?? []), ...ranked.map((r) => r.providerId)] } }, select: { id: true, displayName: true } })).map((p) => [p.id, p.displayName]));
   return (
     <>
@@ -57,6 +61,39 @@ export default async function AdminShift({ params }: { params: Promise<{ id: str
                 <SubmitButton variant="danger">Find cover now</SubmitButton>
               </ActionForm>
             )}
+          </CardBody>
+        </Card>
+      ) : null}
+      {selectable || recruitLinks.length ? (
+        <Card className="mb-6 border-accent-300">
+          <CardHeader title="Recruit a provider" description="Send a colleague a link to this shift. They see the date, hours, city and pay (not the clinic), sign up, and once verified the shift waits in their account to accept. It stays open to everyone else until someone is confirmed." />
+          <CardBody className="space-y-4">
+            {selectable ? (
+              <ActionForm action={createRecruitLinkAction} className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="shiftId" value={id} />
+                <Field label="Who's it for? (optional, for your records)"><Input name="label" placeholder="e.g. Dr. Lee" className="w-56" /></Field>
+                <SubmitButton>Make a link</SubmitButton>
+              </ActionForm>
+            ) : <p className="text-sm text-slate-500">This shift is no longer open, so links now show it as filled.</p>}
+            {recruitLinks.map((l, i) => (
+              <div key={l.id} className="space-y-2 rounded-xl border border-slate-200 p-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-slate-900">{l.label || "Link"} · {l.views} view{l.views === 1 ? "" : "s"} · {l.claims.length} signed up</span>
+                  <span className="text-xs text-slate-500">made {dateLabel(l.createdAt, tz)}</span>
+                </div>
+                <CopyText text={l.url} label="Copy link" />
+                {recruitMessages[i] ? <CopyText text={recruitMessages[i]!} label="Copy message" /> : null}
+                {l.claims.length ? (
+                  <ul className="space-y-0.5 text-xs text-slate-600">
+                    {l.claims.map((c) => (
+                      <li key={c.id}>
+                        <a href={`/admin/providers/${c.provider.id}`} className="font-medium text-brand-700 underline">{c.provider.displayName}</a> · {c.provider.status.toLowerCase()} · {c.invitedAt ? `invited ${dateLabel(c.invitedAt, tz)}` : "waiting on verification or availability"}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))}
           </CardBody>
         </Card>
       ) : null}

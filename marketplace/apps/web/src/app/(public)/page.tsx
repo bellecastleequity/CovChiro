@@ -56,17 +56,17 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
           <div className="relative">
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-xl">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold">Coverage request · Tue, Oct 20</div>
+                <div className="text-sm font-semibold">Coverage requests · Tue, Oct 20</div>
                 <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">Confirmed</span>
               </div>
               <div className="mt-4 space-y-3">
                 {[
-                  { n: "Dr. Jane Rivera, DC", d: "18 min away · 4.9 ★ · Diversified, Activator", pick: true },
-                  { n: "Dr. Marcus Hale, DC", d: "32 min away · 4.8 ★ · Gonstead" },
-                  { n: "Dr. Priya Nair, DC", d: "41 min away · License verified" },
+                  { n: "Dr. Jane Rivera, DC", d: "Chiropractic · 18 min away · 4.9 ★ · Diversified", pick: true },
+                  { n: "Marcus Hale, RN", d: "Nursing · 32 min away · 4.8 ★ · IV therapy" },
+                  { n: "Priya Nair, RDMS", d: "Ultrasound · 41 min away · Registry verified" },
                 ].map((c) => (
                   <div key={c.n} className={`flex items-center gap-3 rounded-xl border p-3 ${c.pick ? "border-brand-300 bg-brand-50" : "border-slate-200"}`}>
-                    <div className="grid size-10 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">{c.n.split(" ")[1][0]}</div>
+                    <div className="grid size-10 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">{c.n.replace(/^Dr\. /, "")[0]}</div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium">{c.n}</div>
                       <div className="truncate text-xs text-slate-500">{c.d}</div>
@@ -76,7 +76,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
                 ))}
               </div>
               <div className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                <ShieldCheck className="size-4 text-accent-600" /> Every candidate holds a verified state license valid through the shift.
+                <ShieldCheck className="size-4 text-accent-600" /> Every provider holds a verified license or registry credential valid through the shift.
               </div>
             </div>
           </div>

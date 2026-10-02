@@ -2,7 +2,7 @@
 
 import { headers, cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth } from "@cm/services";
+import { auth, shiftRecruit } from "@cm/services";
 import { formAction, str } from "@/lib/action";
 import { getSession, homeFor, SESSION_COOKIE, setSessionCookie } from "@/lib/session";
 
@@ -84,8 +84,11 @@ export const signupAction = formAction(async (fd) => {
   );
   const token = await auth.createSession(user.id, true);
   await setSessionCookie(token);
+  // Came through a "Recruit a provider" shift link: claim that shift for the new profile.
+  const shiftLink = role === "provider" ? (await cookies()).get("cm_shift")?.value : null;
+  if (shiftLink) await shiftRecruit.claimForUser(user.id, shiftLink);
   const code = str(fd, "code");
-  redirect(role === "provider" ? "/provider?welcome=1" : `/clinic?welcome=1${code ? `&code=${encodeURIComponent(code)}` : ""}`);
+  redirect(role === "provider" ? `/provider?welcome=1${shiftLink ? "&recruit=1#recruited" : ""}` : `/clinic?welcome=1${code ? `&code=${encodeURIComponent(code)}` : ""}`);
 });
 
 export const mfaVerifyAction = formAction(async (fd) => {

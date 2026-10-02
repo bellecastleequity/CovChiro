@@ -112,6 +112,12 @@ export async function recomputeProviderStatus(providerId: string) {
       ctaLabel: "Find shifts",
     });
   }
+  // A shift a colleague was recruited for: invite them now they're ready.
+  const claims = await prisma.shiftRecruitClaim.findMany({ where: { providerId, invitedAt: null }, select: { id: true } });
+  if (claims.length) {
+    const { tryInvite } = await import("./shiftRecruit");
+    for (const c of claims) await tryInvite(c.id).catch(() => undefined);
+  }
 }
 
 export const ProviderProfileInput = z.object({

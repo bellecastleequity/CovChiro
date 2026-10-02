@@ -25,3 +25,4 @@ export * from "./timeclock";
 export * from "./navorder";
 export * from "./closing";
 export * from "./volume";
+export * from "./names";

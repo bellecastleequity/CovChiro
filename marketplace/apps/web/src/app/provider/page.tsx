@@ -1,8 +1,10 @@
 import { GroundFloor } from "@/components/referrals/refer-page";
 import Link from "next/link";
+import { greetingName } from "@cm/core";
 import { ArrowRight, CalendarDays, Inbox, ShieldCheck, Wallet, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
-import { earningsFor, getSettings, oncall, prelicensure, providerProfile, timeclock, volume } from "@cm/services";
+import { earningsFor, getSettings, oncall, prelicensure, providerProfile, shiftRecruit, timeclock, volume } from "@cm/services";
+import { markAvailableForRecruitAction } from "@/app/recruit-actions";
 import { visitsAction } from "@/app/timeclock-actions";
 import { ProviderVisitCard } from "@/components/timeclock/visit-count";
 import { ClockCard } from "@/components/timeclock/clock-card";
@@ -22,6 +24,7 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
   const { welcome } = await searchParams;
   const rs = await getSettings();
   const clock = actor.providerId ? await timeclock.currentShiftForClock(actor.providerId) : null;
+  const recruited = await shiftRecruit.myClaims(actor).catch(() => []);
   // After punching out, ask for the day's visit count right here (volume-priced shifts).
   const visitView = clock && clock.status !== "OPEN" ? await volume.visitViewForProvider(actor, clock.assignmentId) : null;
   const [{ provider, checklist, canTake }, earnings, upcoming, offers, apps, settings] = await Promise.all([
@@ -59,9 +62,50 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
   ];
   return (
     <>
-      <PageHeader eyebrow={`Hi, ${firstName(user.name)}`} title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
+      <PageHeader
+        eyebrow={
+          <span className="flex items-center gap-2">
+            {provider.photoUrl ? <img src={`/api/files/${provider.photoUrl}`} alt="" className="size-8 rounded-full object-cover ring-2 ring-white" /> : null}
+            <span>Hi, {greetingName(user.name, provider.professions.map((p) => p.professionCode)) || firstName(user.name)}</span>
+          </span>
+        } title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
       {clock ? <div className="mb-6"><ClockCard v={clock} title="Today's time clock" /></div> : null}
       {visitView?.canSubmit ? <div className="mb-6"><ProviderVisitCard v={visitView} assignmentId={clock!.assignmentId} tz={clock!.timeZone} action={visitsAction} /></div> : null}
+      {recruited.length ? (
+        <Card id="recruited" className="mb-6 border-accent-300 ring-2 ring-accent-100">
+          <CardHeader title={recruited.length === 1 ? "A shift was sent to you" : "Shifts sent to you"} description="Open to other providers too, so finish any steps soon." />
+          <CardBody className="space-y-4">
+            {recruited.map((r) => (
+              <div key={r.claimId} className="rounded-xl border border-slate-200 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="font-semibold text-slate-900">{r.profession} · {dateLabel(r.when, r.timeZone, { weekday: "short", month: "short", day: "numeric" })}</div>
+                    <div className="text-sm text-slate-600">{timeRange(r.when, r.endsAt, r.timeZone)} · {r.city}, {r.state} · {money(r.payCents)}</div>
+                  </div>
+                  {r.state_ === "BOOKED" ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800">Booked</span> : r.state_ === "CLOSED" ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">Filled or closed</span> : r.state_ === "INVITED" ? <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800">Ready to accept</span> : <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">A few steps left</span>}
+                </div>
+                {r.state_ === "INVITED" ? (
+                  <div className="mt-3"><LinkButton href="/provider/offers" size="sm">{r.offerStatus === "ACCEPTED_PENDING" ? "You accepted: see status" : "Review and accept"}</LinkButton></div>
+                ) : r.state_ === "BOOKED" && r.assignmentId ? (
+                  <div className="mt-3"><LinkButton href={`/provider/assignments/${r.assignmentId}`} size="sm" variant="outline">Open the shift</LinkButton></div>
+                ) : r.state_ === "WAITING" ? (
+                  <ul className="mt-3 space-y-2 text-sm">
+                    {r.steps.map((st) => (
+                      <li key={st.label} className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-slate-700">• {st.label}</span>
+                        {st.href ? <Link href={st.href} className="font-medium text-brand-700 underline">Do it now</Link> : st.label.startsWith("Mark yourself available") ? (
+                          <ActionForm action={markAvailableForRecruitAction}><input type="hidden" name="claimId" value={r.claimId} /><SubmitButton size="sm" variant="outline">I&apos;m available</SubmitButton></ActionForm>
+                        ) : null}
+                      </li>
+                    ))}
+                    <li className="text-xs text-slate-500">Once everything is verified, the shift appears in Offers for you to accept. We&apos;ll text and email you.</li>
+                  </ul>
+                ) : null}
+              </div>
+            ))}
+          </CardBody>
+        </Card>
+      ) : null}
       <Card className="mb-6 border-brand-200 bg-brand-50/40">
         <CardBody className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1 basis-64">

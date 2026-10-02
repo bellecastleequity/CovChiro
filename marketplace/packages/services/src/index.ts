@@ -48,3 +48,4 @@ export * as navprefs from "./navprefs";
 export * as volume from "./volume";
 export * as payfloors from "./payfloors";
 export * as support from "./support";
+export * as shiftRecruit from "./shiftRecruit";

@@ -14,7 +14,7 @@ import { getSession } from "@/lib/session";
 import { BottomNav, SideNav, type NavItem } from "./nav-link";
 import { ResendVerification } from "./resend-verification";
 
-export async function AppShell({ items, root, userId, userName, subtitle, children }: { items: NavItem[]; root: string; userId: string; userName: string; subtitle?: string; children: React.ReactNode }) {
+export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; children: React.ReactNode }) {
   const b = brand();
   const [unread, session, savedOrder] = await Promise.all([prisma.notification.count({ where: { userId, readAt: null } }), getSession(), navprefs.getNavOrder(userId, root)]);
   const ordered = orderNav(items, root, savedOrder);
@@ -42,7 +42,10 @@ export async function AppShell({ items, root, userId, userName, subtitle, childr
           <SideNav items={ordered} root={root} customized={!!savedOrder?.length} />
         </div>
         <div className="border-t border-slate-100 px-3 pt-3">
-          <div className="truncate text-sm font-medium text-slate-900">{userName}</div>
+          <div className="flex items-center gap-2">
+            {userPhoto ? <img src={`/api/files/${userPhoto}`} alt="" className="size-7 shrink-0 rounded-full object-cover" /> : null}
+            <div className="truncate text-sm font-medium text-slate-900">{userName}</div>
+          </div>
           {subtitle ? <div className="truncate text-xs text-slate-500">{subtitle}</div> : null}
           <form action="/api/auth/logout" method="post" className="mt-2">
             <button className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900">

@@ -12,7 +12,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     prisma.offer.count({ where: { providerId: actor.providerId!, status: { in: ["PENDING", "ACCEPTED_PENDING"] }, expiresAt: { gt: new Date() } } }),
     prisma.message.count({ where: { readAt: null, senderType: "CLINIC", thread: { providerId: actor.providerId! } } }),
     feedback.unreadFeedbackCount(actor.providerId!).catch(() => 0),
-    prisma.provider.findUnique({ where: { id: actor.providerId! }, select: { agreementSignedAt: true, agreementVersion: true } }),
+    prisma.provider.findUnique({ where: { id: actor.providerId! }, select: { agreementSignedAt: true, agreementVersion: true, photoUrl: true } }),
     prisma.standingBooking.count({ where: { providerId: actor.providerId!, status: "PROPOSED" } }).catch(() => 0),
   ]);
   const needsAgreement = !agreementCurrent("PROVIDER", me?.agreementSignedAt ?? null, me?.agreementVersion ?? null);
@@ -35,7 +35,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     { href: "/provider/help", label: "Help", icon: "help", badge: await support.answeredCount(user.id).catch(() => 0) },
   ];
   return (
-    <AppShell items={items} root="/provider" userId={user.id} userName={user.name} subtitle="Provider">
+    <AppShell items={items} root="/provider" userId={user.id} userName={user.name} userPhoto={me?.photoUrl ?? null} subtitle="Provider">
       {needsAgreement ? (
         <Alert tone="warning" className="mb-6" title={me?.agreementSignedAt ? "Sign the updated Provider Agreement to keep getting shifts" : "Sign the Provider Agreement to start getting shifts"}>
           Until you do, you won&apos;t be matched, offered or able to apply for shifts. Shifts you&apos;re already booked on stay booked. <Link href="/provider/profile#agreement" className="font-medium underline">Review &amp; sign →</Link>
