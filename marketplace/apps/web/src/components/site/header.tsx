@@ -4,6 +4,10 @@ import { LinkButton } from "@/components/ui/button";
 import { getSession, homeFor } from "@/lib/session";
 import { Logo } from "./logo";
 import { MobileMenu } from "./mobile-menu";
+import QRCode from "qrcode";
+import { env } from "@cm/config";
+import { GetTheApp } from "./get-the-app";
+import { TrustBadges } from "./trust-badges";
 
 const NAV = [
   { href: "/for-clinics", label: "For clinics" },
@@ -54,10 +58,16 @@ export async function SiteHeader() {
   );
 }
 
-export function SiteFooter() {
+export async function SiteFooter() {
   const b = brand();
+  const qr = await QRCode.toDataURL(env().APP_BASE_URL || "https://coverageoncall.com", { margin: 1, width: 200 });
   return (
     <footer className="mt-24 border-t border-slate-200 bg-white">
+      <div className="border-b border-slate-100 bg-slate-50/70">
+        <div className="container-page py-10">
+          <TrustBadges />
+        </div>
+      </div>
       <div className="container-page grid gap-8 py-12 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <Logo name={b.name} />
@@ -88,6 +98,13 @@ export function SiteFooter() {
             <li><a href={`mailto:${b.supportEmail}`}>{b.supportEmail}</a></li>
           </ul>
         </div>
+      </div>
+      <div className="container-page flex flex-col items-start justify-between gap-4 border-t border-slate-100 py-6 sm:flex-row sm:items-center">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">Get the app</div>
+          <div className="text-xs text-slate-500">Offers, time clock and alerts on your phone.</div>
+        </div>
+        <GetTheApp qr={qr} compact />
       </div>
       <div className="border-t border-slate-100 py-5 text-center text-xs text-slate-400">© {new Date().getFullYear()} {b.name}. No patient information is collected or stored on this platform.</div>
     </footer>

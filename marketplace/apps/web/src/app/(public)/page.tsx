@@ -6,10 +6,14 @@ import { getSettings } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
 import { Alert } from "@/components/ui/misc";
 import { WelcomePopup } from "@/components/site/welcome-popup";
+import QRCode from "qrcode";
+import { env } from "@cm/config";
+import { GetTheApp, PhoneMockup } from "@/components/site/get-the-app";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ signedout?: string }> }) {
+  const appQr = await QRCode.toDataURL(env().APP_BASE_URL || "https://coverageoncall.com", { margin: 1, width: 200 });
   const { signedout } = await searchParams;
   const b = brand();
   const [professions, s, enabledPairs] = await Promise.all([
@@ -115,6 +119,25 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
               </Link>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section id="get-the-app" className="overflow-hidden bg-gradient-to-br from-accent-50 via-white to-brand-50 py-16">
+        <div className="container-page grid items-center gap-12 lg:grid-cols-2">
+          <div className="text-center lg:text-left">
+            <p className="text-sm font-semibold uppercase tracking-wide text-accent-700">The {b.name} app</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Coverage in your pocket.</h2>
+            <p className="mx-auto mt-3 max-w-xl text-slate-600 lg:mx-0">
+              Get shift offers the moment they&apos;re posted, accept in one tap, punch in and out from the clinic, and sign off timesheets on the spot. Clinics see who&apos;s coming and when they arrive.
+            </p>
+            <ul className="mx-auto mt-5 grid max-w-md gap-2 text-left text-sm text-slate-700 sm:grid-cols-2 lg:mx-0">
+              {["Instant offer alerts", "One-tap accept", "Time clock & sign-off", "Calendar sync"].map((t) => (
+                <li key={t} className="flex items-center gap-2"><BadgeCheck className="size-4 text-accent-600" />{t}</li>
+              ))}
+            </ul>
+            <div className="mt-7"><GetTheApp qr={appQr} /></div>
+          </div>
+          <PhoneMockup />
         </div>
       </section>
 
