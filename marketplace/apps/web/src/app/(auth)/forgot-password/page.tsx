@@ -1,5 +1,6 @@
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Field, Input } from "@/components/ui/form";
+import { FormGuard } from "@/components/site/form-guard";
 import { forgotAction } from "../actions";
 
 export const metadata = { title: "Reset password" };
@@ -13,6 +14,7 @@ export default function Forgot() {
         <Field label="Email" htmlFor="email">
           <Input id="email" name="email" type="email" required autoComplete="email" />
         </Field>
+        <FormGuard />
         <SubmitButton className="w-full">Send reset link</SubmitButton>
       </ActionForm>
     </>

@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { env } from "@cm/config";
+import { brand, env } from "@cm/config";
 
 /**
  * Payments go only through Stripe Connect (INV-5). Providers get Express
@@ -78,6 +78,8 @@ class StripePayments implements PaymentsProvider {
       payment_method_types: ["card", "us_bank_account"],
       success_url: `${i.returnUrl}?setup=done`,
       cancel_url: `${i.returnUrl}?setup=cancelled`,
+      // The page's header name and logo come from the Stripe account's Public details and Branding settings.
+      custom_text: { submit: { message: `${brand().name} saves this payment method securely with Stripe to bill the coverage shifts your clinic books.` } },
       metadata: { clinicOrgId: i.clinicOrgId },
     });
     return session.url!;

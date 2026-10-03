@@ -37,6 +37,16 @@ export async function checkHuman(g: FormGuard): Promise<"ok" | "bot"> {
   return "ok";
 }
 
+/**
+ * The Turnstile check alone, plus the hidden honeypot when given (no too-fast rule: sign-in and
+ * reset forms are often filled instantly by password managers). Throws when the check fails.
+ */
+export async function requireHuman(g: FormGuard): Promise<void> {
+  if ((g.honeypot ?? "").trim()) throw new DomainError("VALIDATION", HUMAN_CHECK_FAILED);
+  const v = await humanVerifier().verify(g.token ?? null, g.ip ?? null);
+  if (!v.ok) throw new DomainError("VALIDATION", HUMAN_CHECK_FAILED);
+}
+
 export interface SpamVerdict {
   /** null = not spam. */
   category: SpamCategory | null;

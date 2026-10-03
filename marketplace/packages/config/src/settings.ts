@@ -206,6 +206,7 @@ export const SETTINGS = {
   "spam.aiCheck": def({ group: "Spam", label: "Let the question-answering AI also flag sales pitches and spam", help: "Uses the call that already answers website questions, so it costs nothing extra.", schema: z.boolean(), default: true, flag: null }),
   "spam.checkEmailDomain": def({ group: "Spam", label: "Treat addresses whose domain can't receive email as spam", schema: z.boolean(), default: true, flag: null }),
   "spam.minSubmitSeconds": def({ group: "Spam", label: "Fastest a person can fill in a form (seconds)", help: "Faster submissions are treated as bots and quietly dropped. 0 turns this off.", schema: z.number().int().min(0).max(30), default: 3, flag: null }),
+  "spam.loginChallengeAfter": def({ group: "Spam", label: "Failed sign-ins before the \u201cverify you're human\u201d check is required", help: "Counted per email and per internet address over 15 minutes; a successful sign-in resets the email's count. 0 = always check. Needs the Turnstile keys; without them sign-in works as before.", schema: z.number().int().min(0).max(20), default: 3, flag: null }),
   "spam.retentionDays": def({ group: "Spam", label: "Days to keep spam before it's deleted", schema: z.number().int().min(1).max(365), default: 30, flag: "OWNER_DECISION" }),
 
   // ---------- provider booking emails ----------

@@ -18,10 +18,13 @@ export const resendVerificationAction = formAction(async () => {
   return auth.resendVerificationEmail(s.user.id);
 });
 
-export const resendFromLinkAction = formAction(async (fd) => auth.resendVerificationFromLink(str(fd, "token")));
+/** The human-check fields from FormGuard. */
+const guardOf = (fd: FormData) => ({ honeypot: str(fd, "website"), startedAt: str(fd, "startedAt") || null, token: str(fd, "cf-turnstile-response") || null });
+
+export const resendFromLinkAction = formAction(async (fd) => auth.resendVerificationFromLink(str(fd, "token"), { ...guardOf(fd), ip: await ip() }));
 
 export const loginAction = formAction(async (fd) => {
-  const r = await auth.login(str(fd, "email"), str(fd, "password"), await ip());
+  const r = await auth.login(str(fd, "email"), str(fd, "password"), await ip(), { humanToken: str(fd, "cf-turnstile-response") || null });
   await setSessionCookie(r.token);
   if (r.mfaEnrollRequired) redirect("/mfa/setup");
   if (r.mfaRequired) redirect("/mfa");
@@ -79,7 +82,7 @@ export const signupAction = formAction(async (fd) => {
     {
       ip: (await ip()) ?? "unknown",
       visitorId: (await cookies()).get("cm_vid")?.value ?? null,
-      guard: { honeypot: str(fd, "website"), startedAt: str(fd, "startedAt") || null, token: str(fd, "cf-turnstile-response") || null },
+      guard: guardOf(fd),
     },
   );
   const token = await auth.createSession(user.id, true);
@@ -99,7 +102,7 @@ export const mfaVerifyAction = formAction(async (fd) => {
 });
 
 export const forgotAction = formAction(async (fd) => {
-  await auth.requestPasswordReset(str(fd, "email"), await ip());
+  await auth.requestPasswordReset(str(fd, "email"), await ip(), guardOf(fd));
   return "If that email has an account, a reset link is on its way.";
 });
 

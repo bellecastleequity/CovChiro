@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Field, Input } from "@/components/ui/form";
+import { FormGuard } from "@/components/site/form-guard";
 import { Alert } from "@/components/ui/misc";
 import { getSession, homeFor } from "@/lib/session";
 import { loginAction } from "../actions";
@@ -25,6 +26,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
         <Field label="Password" htmlFor="password">
           <Input id="password" name="password" type="password" autoComplete="current-password" required />
         </Field>
+        <FormGuard />
         <SubmitButton className="w-full" size="lg">
           Sign in
         </SubmitButton>

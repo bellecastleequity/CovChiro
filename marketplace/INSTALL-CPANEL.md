@@ -185,7 +185,7 @@ cPanel → **Cron Jobs**:
   | `GOOGLE_MAPS_BROWSER_KEY` | **Websites**: `https://coverageoncall.com/*` and `https://www.coverageoncall.com/*` | Maps JavaScript API, Places API (New) |
 
   The browser key is visible in the page, which is why it's locked to your domain. Without it, address fields still work, just without suggestions.
-- **Cloudflare Turnstile (spam protection, optional):** dash.cloudflare.com → Turnstile → Add widget (hostnames `coverageoncall.com` and `www.coverageoncall.com`, mode Managed). Put the Site Key in `TURNSTILE_SITE_KEY` and the Secret Key in `TURNSTILE_SECRET_KEY`, then restart. Without them the public forms still work; the spam rules still run.
+- **Cloudflare Turnstile (spam protection, optional):** dash.cloudflare.com → Turnstile → Add widget (hostnames `coverageoncall.com` and `www.coverageoncall.com`, mode Managed). Put the Site Key in `TURNSTILE_SITE_KEY` and the Secret Key in `TURNSTILE_SECRET_KEY`, then restart. Without them the public forms still work; the spam rules still run. With them, Forgot password and the new-confirmation-link button also check, and Sign in asks only after 3 failed attempts (Settings → Spam).
 - **SendGrid:** Settings → Sender Authentication → authenticate `coverageoncall.com`. Add the DNS records it gives you in Namecheap → Advanced DNS.
 
 ## Step 10 — Set up the business in Admin

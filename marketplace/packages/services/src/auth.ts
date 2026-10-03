@@ -2,9 +2,10 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
 import { authenticator } from "otplib";
 import { z } from "zod";
-import { assessSender, checkHuman, type FormGuard } from "./spam";
+import { assessSender, checkHuman, requireHuman, type FormGuard } from "./spam";
 import { recordReferralSignup } from "./referrals";
 import { brand, env } from "@cm/config";
+import { humanVerifier } from "@cm/integrations";
 import { DomainError } from "@cm/core";
 import { prisma, seedBase, type Prisma, type User } from "@cm/db";
 import { audit, getSettings, SYSTEM, type Actor } from "./context";
@@ -27,15 +28,27 @@ export async function hashPassword(pw: string) {
   return hash(pw);
 }
 
-export async function checkRateLimit(key: string, max: number, windowSeconds: number) {
+/** Adds one to a counter that resets after windowSeconds; returns the count before this one. */
+async function bump(key: string, windowSeconds: number) {
   const now = new Date();
   const row = await prisma.rateLimit.findUnique({ where: { key } });
   if (!row || row.windowEnd < now) {
     await prisma.rateLimit.upsert({ where: { key }, create: { key, count: 1, windowEnd: new Date(+now + windowSeconds * 1000) }, update: { count: 1, windowEnd: new Date(+now + windowSeconds * 1000) } });
-    return;
+    return 0;
   }
-  if (row.count >= max) throw new DomainError("FORBIDDEN", "Too many attempts. Please wait a few minutes and try again.", undefined, 429);
   await prisma.rateLimit.update({ where: { key }, data: { count: { increment: 1 } } });
+  return row.count;
+}
+
+async function currentCount(key: string) {
+  const row = await prisma.rateLimit.findUnique({ where: { key } });
+  return row && row.windowEnd >= new Date() ? row.count : 0;
+}
+
+export async function checkRateLimit(key: string, max: number, windowSeconds: number) {
+  const row = await prisma.rateLimit.findUnique({ where: { key } });
+  if (row && row.windowEnd >= new Date() && row.count >= max) throw new DomainError("FORBIDDEN", "Too many attempts. Please wait a few minutes and try again.", undefined, 429);
+  await bump(key, windowSeconds);
 }
 
 export const SignupInput = z.object({
@@ -210,13 +223,16 @@ export async function confirmEmailLink(token: string): Promise<EmailLinkResult> 
 }
 
 /** "Email me a new link" from an expired confirmation link (no sign-in needed; same rate limit). */
-export async function resendVerificationFromLink(token: string) {
+export async function resendVerificationFromLink(token: string, guard?: FormGuard) {
+  if (guard) await requireHuman(guard);
   const row = token ? await prisma.authToken.findUnique({ where: { tokenHash: sha256(token) } }) : null;
   if (!row || row.purpose !== "EMAIL_VERIFY") throw new DomainError("VALIDATION", "Sign in, then use \"Resend confirmation email\" at the top of the page.");
   return resendVerificationEmail(row.userId);
 }
 
-export async function requestPasswordReset(email: string, ip?: string) {
+/** guard: the public "Forgot password" form (an admin-sent reset has none). */
+export async function requestPasswordReset(email: string, ip?: string, guard?: FormGuard) {
+  if (guard) await requireHuman({ ...guard, ip });
   if (ip) await checkRateLimit(`reset:${ip}`, 5, 3600);
   const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   // Same response either way — no account enumeration.
@@ -241,14 +257,34 @@ export async function resetPassword(token: string, password: string) {
 // A fixed hash so a login for an unknown email takes the same time as a wrong password.
 let dummyHash: string | null = null;
 
-export async function login(emailRaw: string, password: string, ip?: string) {
+/** Thrown when sign-in needs the human check; the form then shows the check (SignInGuard). */
+export const LOGIN_CHALLENGE = "For your security, please complete the \u201cverify you're human\u201d check, then sign in again.";
+const FAIL_WINDOW = 900;
+
+/**
+ * humanToken: the Turnstile token from the sign-in form. It's only required after
+ * spam.loginChallengeAfter failed sign-ins for this email or from this address
+ * (password guessing spread over many accounts or addresses), and only when Turnstile keys are set.
+ */
+export async function login(emailRaw: string, password: string, ip?: string, opts: { humanToken?: string | null } = {}) {
   const email = emailRaw.trim().toLowerCase();
-  if (ip) await checkRateLimit(`login:${ip}`, 20, 900);
-  await checkRateLimit(`login-email:${email}`, 10, 900);
+  if (ip) await checkRateLimit(`login:${ip}`, 20, FAIL_WINDOW);
+  await checkRateLimit(`login-email:${email}`, 10, FAIL_WINDOW);
+  const after = (await getSettings())["spam.loginChallengeAfter"];
+  const failures = Math.max(await currentCount(`login-fail:${email}`), ip ? await currentCount(`login-fail-ip:${ip}`) : 0);
+  if (failures >= after) {
+    const v = await humanVerifier().verify(opts.humanToken ?? null, ip ?? null);
+    if (!v.ok) throw new DomainError("VALIDATION", LOGIN_CHALLENGE);
+  }
   const user = await prisma.user.findUnique({ where: { email } });
   dummyHash ??= await hash("not-a-real-password");
   const ok = await verify(user?.passwordHash ?? dummyHash, password).catch(() => false);
-  if (!user || !ok || user.disabledAt) throw new DomainError("UNAUTHENTICATED", "That email and password don't match.");
+  if (!user || !ok || user.disabledAt) {
+    await bump(`login-fail:${email}`, FAIL_WINDOW);
+    if (ip) await bump(`login-fail-ip:${ip}`, FAIL_WINDOW);
+    throw new DomainError("UNAUTHENTICATED", "That email and password don't match.");
+  }
+  await prisma.rateLimit.deleteMany({ where: { key: `login-fail:${email}` } });
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   const needsMfa = user.mfaEnabled;
   const mustEnroll = user.role === "PLATFORM_ADMIN" && !user.mfaEnabled;

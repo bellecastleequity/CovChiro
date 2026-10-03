@@ -145,3 +145,42 @@ describe("retention", () => {
     expect(await prisma.escalation.findUnique({ where: { id: keep.id } })).toBeTruthy();
   });
 });
+
+describe("Human check on sign-in, forgot password and resend confirmation", () => {
+  const strict = () => setHumanVerifier({ name: "test", verify: async (t) => (t === "good" ? { ok: true, result: "pass" } : { ok: false, result: t ? "fail" : "missing" }) });
+
+  it("sign-in needs the check only after repeated failures; success resets the count", async () => {
+    strict();
+    const email = `login-${uid()}@test.dev`;
+    const ip = `ip-${uid()}`;
+    await prisma.user.create({ data: { email, name: "Front Desk", role: "CLINIC_STAFF", passwordHash: await auth.hashPassword("correct-horse-battery"), emailVerifiedAt: new Date() } });
+    await expect(auth.login(email, "correct-horse-battery", ip)).resolves.toBeTruthy();
+    for (let n = 0; n < 3; n++) await expect(auth.login(email, "wrong-password-1", ip)).rejects.toThrow(/don't match/);
+    // Now even the right password needs the check.
+    await expect(auth.login(email, "correct-horse-battery", ip)).rejects.toThrow(auth.LOGIN_CHALLENGE);
+    await expect(auth.login(email, "correct-horse-battery", ip, { humanToken: "bad" })).rejects.toThrow(auth.LOGIN_CHALLENGE);
+    await expect(auth.login(email, "correct-horse-battery", ip, { humanToken: "good" })).resolves.toBeTruthy();
+    // The email's count was reset; a new address gets straight in.
+    await expect(auth.login(email, "correct-horse-battery", `${ip}9`)).resolves.toBeTruthy();
+    // The guessing address itself still has to pass the check.
+    await expect(auth.login(email, "correct-horse-battery", ip)).rejects.toThrow(auth.LOGIN_CHALLENGE);
+  });
+
+  it("forgot password from the public form needs the check; an admin-sent reset doesn't", async () => {
+    strict();
+    const email = `reset-${uid()}@test.dev`;
+    await prisma.user.create({ data: { email, name: "Front Desk", role: "CLINIC_STAFF", emailVerifiedAt: new Date() } });
+    const sent = () => devOutbox.filter((m) => m.to === email).length;
+    await expect(auth.requestPasswordReset(email, `ip-${uid()}`, { token: null })).rejects.toThrow(/verify you're human/);
+    await expect(auth.requestPasswordReset(email, `ip-${uid()}`, { token: "good", honeypot: "http://spam" })).rejects.toThrow(/verify you're human/);
+    expect(sent()).toBe(0);
+    await auth.requestPasswordReset(email, `ip-${uid()}`, { token: "good" });
+    await auth.requestPasswordReset(email);
+    expect(sent()).toBe(2);
+  });
+
+  it("“Email me a new link” on an expired confirmation link needs the check", async () => {
+    strict();
+    await expect(auth.resendVerificationFromLink("anything", { token: "bad" })).rejects.toThrow(/verify you're human/);
+  });
+});
