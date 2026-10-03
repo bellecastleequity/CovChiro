@@ -101,6 +101,14 @@ export const mfaVerifyAction = formAction(async (fd) => {
   redirect(homeFor(s?.user.role ?? ""));
 });
 
+/** Test site: email a new sign-in code. */
+export const mfaResendAction = formAction(async () => {
+  const s = await getSession();
+  if (!s) redirect("/login");
+  await auth.sendEmailCode(s.user.id);
+  return `New code sent to ${s.user.email}.`;
+});
+
 export const forgotAction = formAction(async (fd) => {
   await auth.requestPasswordReset(str(fd, "email"), await ip(), guardOf(fd));
   return "If that email has an account, a reset link is on its way.";

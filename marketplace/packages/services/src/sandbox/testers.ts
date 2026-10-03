@@ -46,7 +46,7 @@ export async function listTesters(actor: Actor) {
   return prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true, disabledAt: true, lastLoginAt: true, mfaEnabled: true, createdAt: true }, orderBy: { createdAt: "asc" } });
 }
 
-/** Owner: add a tester (a new admin login with a temporary password; two-step sign-in is set up at first login). */
+/** Owner: add a tester (a new admin login with a temporary password; sign-in codes arrive by email). */
 export async function addTester(actor: Actor, input: { name: string; email: string; password: string }) {
   assertSandbox();
   await requireOwner(actor);
@@ -69,7 +69,7 @@ export async function addTester(actor: Actor, input: { name: string; email: stri
   }
   if (!ids.includes(userId)) await saveTesterIds([...ids, userId]);
   await audit(prisma, actor, "sandbox.tester_added", "User", userId, null, { email });
-  return `${name} can now sign in at the test site with ${email} and the temporary password. They'll set up two-step sign-in the first time.`;
+  return `${name} can now sign in at the test site with ${email} and the temporary password. Each sign-in emails them a 6-digit code.`;
 }
 
 /** Owner: remove a tester (their login is switched off and signed out). */

@@ -24,7 +24,8 @@ export async function requireActor(area: Area): Promise<{ actor: Actor; user: No
   const s = await getSession();
   if (!s) redirect("/login");
   const needsMfa = s.user.role === "PLATFORM_ADMIN" || s.user.mfaEnabled;
-  if (needsMfa && !s.mfaVerified) redirect(s.user.mfaEnabled ? "/mfa" : "/mfa/setup");
+  // Test site: 2-step is an emailed code, so there's nothing to set up first.
+  if (needsMfa && !s.mfaVerified) redirect(s.user.mfaEnabled || auth.emailCodeMfa() ? "/mfa" : "/mfa/setup");
   const ok =
     area === "any" ||
     (area === "provider" && s.actor.role === "PROVIDER") ||

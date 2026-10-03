@@ -12,6 +12,8 @@ export const metadata = { title: "Set up two-step verification" };
 export default async function MfaSetup() {
   const s = await getSession();
   if (!s) redirect("/login");
+  // Test site: 2-step is an emailed code; there's no app to set up.
+  if (auth.emailCodeMfa()) redirect("/mfa");
   if (s.user.mfaEnabled && s.mfaVerified) redirect("/");
   if (s.user.mfaEnabled) redirect("/mfa");
   const { secret, otpauthUrl } = await auth.beginMfaEnrollment(s.user.id);

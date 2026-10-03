@@ -11,6 +11,8 @@ export interface EmailMessage {
   unsubscribeUrl?: string;
   /** Where replies go (e.g. the support inbox). */
   replyTo?: string;
+  /** Test site: deliver for real anyway (sign-in codes), not only to the Test outbox. */
+  essential?: boolean;
 }
 
 export interface Mailer {
@@ -188,7 +190,7 @@ class SandboxMailer implements Mailer {
     return this.real?.lastError ?? null;
   }
   async send(m: EmailMessage) {
-    const deliver = !!this.real && onAllowList(env().SANDBOX_EMAIL_ALLOW, m.to);
+    const deliver = !!this.real && (m.essential || onAllowList(env().SANDBOX_EMAIL_ALLOW, m.to));
     const delivered = deliver ? await this.real!.send({ ...m, subject: `[TEST] ${m.subject}` }) : false;
     devOutbox.push({ channel: "email", to: m.to, subject: m.subject, body: m.text, at: new Date() });
     await outboxSink?.({ channel: "email", to: m.to, subject: m.subject, body: m.text, html: m.html, delivered }).catch((e) => console.error("[outbox]", e));

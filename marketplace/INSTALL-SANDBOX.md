@@ -74,7 +74,7 @@ Then click **Create** and **Start App**.
 
 ## 4. Admin account, background jobs, demo data
 
-1. Visit `https://dev.coverageoncall.com/setup` and create your admin with the test site's `SETUP_TOKEN`. You can use the same email as on the live site; they're separate databases. Set up two-step sign-in, then remove `SETUP_TOKEN` and restart.
+1. Visit `https://dev.coverageoncall.com/setup` and create your admin with the test site's `SETUP_TOKEN`. You can use the same email as on the live site; they're separate databases. Enter the sign-in code emailed to you, then remove `SETUP_TOKEN` and restart.
 2. In **Cron Jobs**, add a second job like the live one (every 5 minutes), with the test site's address and `CRON_SECRET`:
    ```
    curl -fsS -m 55 -H "Authorization: Bearer TEST_SITE_CRON_SECRET" https://dev.coverageoncall.com/api/cron > /dev/null 2>&1
@@ -109,6 +109,7 @@ On **Admin → Test site → Testers**, add each person with a name, email and t
 - **They can't:** rebuild, reset or stop the demo data, add or remove testers, or change your login.
 - **They have no access to the live site,** which is a separate database.
 - **Removing a tester** signs them out and switches their login off.
+- **Two-step sign-in on the test site is an emailed code** (no authenticator app). Every sign-in sends a 6-digit code that works for 10 minutes; "Email me a new code" sends another. These codes are really emailed even though other test-site email stays in the outbox, so the test app needs `SENDGRID_API_KEY` (the same key as live is fine).
 
 ## Updating the test site
 

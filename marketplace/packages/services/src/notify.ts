@@ -25,6 +25,8 @@ export interface EmailContent {
   items?: { title: string; lines: string[]; links: { label: string; url: string }[] }[];
   footerNote?: string;
   unsubscribeUrl?: string;
+  /** Test site: deliver for real (sign-in codes) instead of only keeping it in the Test outbox. */
+  essential?: boolean;
 }
 
 export function renderEmail(c: EmailContent): { html: string; text: string } {
@@ -64,7 +66,7 @@ export async function sendEmail(to: string, c: EmailContent): Promise<boolean> {
   const mailer = mailProvider();
   try {
     const replyTo = (await getSettings().catch(() => null))?.["email.replyTo"] || undefined;
-    const ok = await mailer.send({ to, subject: c.subject, html, text, unsubscribeUrl: c.unsubscribeUrl, ...(replyTo && replyTo.toLowerCase() !== to.toLowerCase() ? { replyTo } : {}) });
+    const ok = await mailer.send({ to, subject: c.subject, html, text, unsubscribeUrl: c.unsubscribeUrl, ...(c.essential ? { essential: true } : {}), ...(replyTo && replyTo.toLowerCase() !== to.toLowerCase() ? { replyTo } : {}) });
     await recordChannel("email", ok, ok ? null : ((mailer as { lastError?: string | null }).lastError ?? "the email provider refused the message"));
     return ok;
   } catch (e) {

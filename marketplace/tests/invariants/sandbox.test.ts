@@ -162,6 +162,17 @@ describe("test site (sandbox)", () => {
     // Everything else an admin does still works for a tester, e.g. opening a demo login.
     const demo = await prisma.user.findUniqueOrThrow({ where: { email: "clinic.yours@sandbox.test" } });
     expect((await sandbox.actAs(tester, demo.id)).role).toBe("CLINIC_OWNER");
+    // Two-step on the test site is an emailed code: no authenticator app to set up.
+    const r = await auth.login("tess@example.com", "temporary-pass-123");
+    expect(r.mfaRequired).toBe(true);
+    expect(r.mfaEnrollRequired).toBe(false);
+    const mail = await prisma.sandboxMessage.findFirstOrThrow({ where: { to: "tess@example.com", subject: { contains: "sign-in code" } }, orderBy: { createdAt: "desc" } });
+    const code = mail.subject!.match(/(\d{6})/)![1];
+    await expect(auth.completeMfa(r.token, "000000", { enrolling: false })).rejects.toThrow(/didn't match/);
+    await auth.completeMfa(r.token, code, { enrolling: false });
+    expect((await auth.sessionFromToken(r.token))?.mfaVerified).toBe(true);
+    // A code works once.
+    await expect(auth.completeMfa(r.token, code, { enrolling: false })).rejects.toThrow(/didn't match/);
     await sandbox.removeTester(admin, t.id);
     expect((await prisma.user.findUniqueOrThrow({ where: { id: t.id } })).disabledAt).not.toBeNull();
   });
@@ -169,8 +180,12 @@ describe("test site (sandbox)", () => {
   it("a reset keeps the admin and the configuration", async () => {
     await sandbox.startBuild(admin);
     // Only the wipe + config + cast, then stop: enough to prove the reset.
-    await sandbox.runQueue(1);
-    await sandbox.runQueue(1);
+    // The click starts the build in the background: wait for the wipe, config and cast steps.
+    for (let i = 0; i < 400; i++) {
+      const q = (await prisma.setting.findUnique({ where: { key: "sandbox.queue" } }))?.value as { done: number } | undefined;
+      if (q && q.done >= 3) break;
+      await new Promise((ok) => setTimeout(ok, 250));
+    }
     await sandbox.cancelQueue(admin);
     expect(await prisma.user.count({ where: { role: "PLATFORM_ADMIN", disabledAt: null } })).toBe(1);
     expect(await prisma.rateCard.count()).toBeGreaterThan(0);

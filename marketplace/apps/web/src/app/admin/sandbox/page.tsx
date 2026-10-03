@@ -123,7 +123,7 @@ export default async function SandboxPage({ searchParams }: { searchParams: Prom
 
       {o.owner ? (
         <Card className="mt-6">
-          <CardHeader title="Testers" description="People helping you evaluate the site. Each gets an admin login on the test site only (never the live site), with full admin access and Act as, but they can't rebuild or reset the demo data, manage testers, or change your login. They set up two-step sign-in the first time they sign in." />
+          <CardHeader title="Testers" description="People helping you evaluate the site. Each gets an admin login on the test site only (never the live site), with full admin access and Act as, but they can't rebuild or reset the demo data, manage testers, or change your login. They get a 6-digit sign-in code by email each time they sign in (no app needed)." />
           <CardBody className="space-y-4">
             <ActionForm action={addTesterAction} resetOnSuccess className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
               <Input name="name" placeholder="Name" autoComplete="off" />

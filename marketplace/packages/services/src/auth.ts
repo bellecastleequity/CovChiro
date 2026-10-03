@@ -1,10 +1,10 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
 import { authenticator } from "otplib";
 import { z } from "zod";
 import { assessSender, checkHuman, requireHuman, type FormGuard } from "./spam";
 import { recordReferralSignup } from "./referrals";
-import { brand, env } from "@cm/config";
+import { brand, env, isSandbox } from "@cm/config";
 import { humanVerifier } from "@cm/integrations";
 import { DomainError } from "@cm/core";
 import { prisma, seedBase, type Prisma, type User } from "@cm/db";
@@ -305,6 +305,12 @@ export async function login(emailRaw: string, password: string, ip?: string, opt
   }
   await prisma.rateLimit.deleteMany({ where: { key: `login-fail:${email}` } });
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+  // Test site: 2-step is an emailed code for everyone who needs one (no authenticator app).
+  if (isSandbox() && (user.role === "PLATFORM_ADMIN" || user.mfaEnabled)) {
+    const token = await createSession(user.id, false);
+    await sendEmailCode(user.id).catch((e) => console.error("mfa email code failed", e));
+    return { user, token, mfaRequired: true, mfaEnrollRequired: false };
+  }
   const needsMfa = user.mfaEnabled;
   const mustEnroll = user.role === "PLATFORM_ADMIN" && !user.mfaEnabled;
   const token = await createSession(user.id, !needsMfa && !mustEnroll);
@@ -355,10 +361,47 @@ export async function beginMfaEnrollment(userId: string) {
   return { secret, otpauthUrl: authenticator.keyuri(user.email, brand().name, secret) };
 }
 
+// ---------------- emailed sign-in code (test site) ----------------
+
+const MFA_EMAIL = "MFA_EMAIL";
+const emailCodeHash = (userId: string, code: string) => sha256(`mfa-email:${userId}:${code}`);
+
+/** True when 2-step uses an emailed code instead of an authenticator app (the test site). */
+export const emailCodeMfa = () => isSandbox();
+
+/** Emails a fresh 6-digit sign-in code (valid 10 minutes; replaces any earlier one). */
+export async function sendEmailCode(userId: string) {
+  await checkRateLimit(`mfa-email:${userId}`, 5, 900);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const code = String(randomInt(100000, 1000000));
+  await prisma.authToken.deleteMany({ where: { userId, purpose: MFA_EMAIL } });
+  await prisma.authToken.create({ data: { userId, purpose: MFA_EMAIL, tokenHash: emailCodeHash(userId, code), expiresAt: new Date(Date.now() + 10 * 60_000) } });
+  await sendEmail(user.email, {
+    subject: `${brand().name} sign-in code: ${code}`,
+    heading: "Your sign-in code",
+    paragraphs: [`Enter this code to finish signing in: ${code}`, "It works for 10 minutes. If you didn't try to sign in, you can ignore this email and consider changing your password."],
+    essential: true,
+  });
+}
+
+/** Is there an unexpired emailed code waiting? (The 2-step page sends one if not.) */
+export async function hasPendingEmailCode(userId: string) {
+  return (await prisma.authToken.count({ where: { userId, purpose: MFA_EMAIL, expiresAt: { gt: new Date() } } })) > 0;
+}
+
 export async function completeMfa(sessionToken: string, code: string, opts: { enrolling: boolean }) {
   const info = await sessionFromToken(sessionToken);
   if (!info) throw new DomainError("UNAUTHENTICATED", "Please sign in again.");
   await checkRateLimit(`mfa:${info.user.id}`, 8, 900);
+  if (emailCodeMfa()) {
+    const row = await prisma.authToken.findUnique({ where: { tokenHash: emailCodeHash(info.user.id, code.replace(/\s/g, "")) } });
+    if (!row || row.userId !== info.user.id || row.purpose !== MFA_EMAIL || row.expiresAt < new Date()) {
+      throw new DomainError("VALIDATION", "That code didn't match or has expired. Use the newest email, or send a new code.");
+    }
+    await prisma.authToken.delete({ where: { id: row.id } });
+    await prisma.session.update({ where: { id: info.sessionId }, data: { mfaVerified: true } });
+    return;
+  }
   const secret = info.user.totpSecret;
   if (!secret || !authenticator.check(code.replace(/\s/g, ""), secret)) throw new DomainError("VALIDATION", "That code didn't match. Try the newest code in your app.");
   if (opts.enrolling) {
