@@ -14,7 +14,7 @@ export default function Forgot() {
         <Field label="Email" htmlFor="email">
           <Input id="email" name="email" type="email" required autoComplete="email" />
         </Field>
-        <FormGuard />
+        <FormGuard visible />
         <SubmitButton className="w-full">Send reset link</SubmitButton>
       </ActionForm>
     </>

@@ -155,7 +155,11 @@ describe("Human check on sign-in, forgot password and resend confirmation", () =
     const ip = `ip-${uid()}`;
     await prisma.user.create({ data: { email, name: "Front Desk", role: "CLINIC_STAFF", passwordHash: await auth.hashPassword("correct-horse-battery"), emailVerifiedAt: new Date() } });
     await expect(auth.login(email, "correct-horse-battery", ip)).resolves.toBeTruthy();
-    for (let n = 0; n < 3; n++) await expect(auth.login(email, "wrong-password-1", ip)).rejects.toThrow(/don't match/);
+    expect(await auth.loginChallengeNeeded(ip)).toBe(false);
+    for (let n = 0; n < 2; n++) await expect(auth.login(email, "wrong-password-1", ip)).rejects.toThrow("That email and password don't match.");
+    // The 3rd failure tells the form to show the check.
+    await expect(auth.login(email, "wrong-password-1", ip)).rejects.toThrow(auth.LOGIN_MISMATCH_CHECK);
+    expect(await auth.loginChallengeNeeded(ip)).toBe(true);
     // Now even the right password needs the check.
     await expect(auth.login(email, "correct-horse-battery", ip)).rejects.toThrow(auth.LOGIN_CHALLENGE);
     await expect(auth.login(email, "correct-horse-battery", ip, { humanToken: "bad" })).rejects.toThrow(auth.LOGIN_CHALLENGE);
@@ -164,6 +168,20 @@ describe("Human check on sign-in, forgot password and resend confirmation", () =
     await expect(auth.login(email, "correct-horse-battery", `${ip}9`)).resolves.toBeTruthy();
     // The guessing address itself still has to pass the check.
     await expect(auth.login(email, "correct-horse-battery", ip)).rejects.toThrow(auth.LOGIN_CHALLENGE);
+  });
+
+  it("locks an email after 5 wrong passwords; a password reset unlocks it", async () => {
+    const email = `lock-${uid()}@test.dev`;
+    const user = await prisma.user.create({ data: { email, name: "Front Desk", role: "CLINIC_STAFF", passwordHash: await auth.hashPassword("correct-horse-battery"), emailVerifiedAt: new Date() } });
+    for (let n = 0; n < 4; n++) await expect(auth.login(email, "wrong-password-1", `ip-${uid()}`)).rejects.toThrow(/don't match/);
+    await expect(auth.login(email, "wrong-password-1", `ip-${uid()}`)).rejects.toThrow(auth.LOGIN_LOCKED);
+    // Even the right password waits, from any address.
+    await expect(auth.login(email, "correct-horse-battery", `ip-${uid()}`)).rejects.toThrow(auth.LOGIN_LOCKED);
+    await auth.requestPasswordReset(email);
+    const link = devOutbox.filter((m) => m.to === email).at(-1)!.body.match(/token=([\w-]+)/)![1];
+    await auth.resetPassword(link, "brand-new-password-2");
+    await expect(auth.login(email, "brand-new-password-2", `ip-${uid()}`)).resolves.toBeTruthy();
+    expect(user.id).toBeTruthy();
   });
 
   it("forgot password from the public form needs the check; an admin-sent reset doesn't", async () => {

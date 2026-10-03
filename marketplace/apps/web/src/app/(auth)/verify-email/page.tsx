@@ -26,7 +26,7 @@ export default async function VerifyEmail({ searchParams }: { searchParams: Prom
       {result === "expired" ? (
         <ActionForm action={resendFromLinkAction} className="mt-4">
           <input type="hidden" name="token" value={token} />
-          <FormGuard />
+          <FormGuard visible />
           <SubmitButton size="sm" variant="outline" pendingText="Sending…">Email me a new link</SubmitButton>
         </ActionForm>
       ) : null}

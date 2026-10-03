@@ -251,6 +251,9 @@ export async function resetPassword(token: string, password: string) {
   const userId = await consumeToken(token, "PASSWORD_RESET");
   await prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(password) } });
   await prisma.session.deleteMany({ where: { userId } });
+  // A fresh password ends any sign-in lockout for this email.
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (u) await prisma.rateLimit.deleteMany({ where: { key: { in: [`login-fail:${u.email}`, `login-email:${u.email}`] } } });
   await audit(prisma, { userId, role: "SYSTEM" }, "user.password_reset", "User", userId);
 }
 
@@ -259,7 +262,16 @@ let dummyHash: string | null = null;
 
 /** Thrown when sign-in needs the human check; the form then shows the check (SignInGuard). */
 export const LOGIN_CHALLENGE = "For your security, please complete the \u201cverify you're human\u201d check, then sign in again.";
+export const LOGIN_MISMATCH_CHECK = "That email and password don't match. Please complete the \u201cverify you're human\u201d check, then try again.";
+export const LOGIN_LOCKED = "Too many wrong passwords. For your security, sign-in for this email is paused for 15 minutes. Use \u201cForgot password?\u201d below to reset it now.";
 const FAIL_WINDOW = 900;
+
+/** True when sign-in from this address already needs the human check (the page shows it up front). */
+export async function loginChallengeNeeded(ip?: string | null) {
+  if (humanVerifier().name === "off") return false;
+  const after = (await getSettings())["spam.loginChallengeAfter"];
+  return after === 0 || (!!ip && (await currentCount(`login-fail-ip:${ip}`)) >= after);
+}
 
 /**
  * humanToken: the Turnstile token from the sign-in form. It's only required after
@@ -270,7 +282,11 @@ export async function login(emailRaw: string, password: string, ip?: string, opt
   const email = emailRaw.trim().toLowerCase();
   if (ip) await checkRateLimit(`login:${ip}`, 20, FAIL_WINDOW);
   await checkRateLimit(`login-email:${email}`, 10, FAIL_WINDOW);
-  const after = (await getSettings())["spam.loginChallengeAfter"];
+  const settings = await getSettings();
+  const after = settings["spam.loginChallengeAfter"];
+  if ((await currentCount(`login-fail:${email}`)) >= settings["spam.loginLockoutAfter"]) {
+    throw new DomainError("FORBIDDEN", LOGIN_LOCKED, undefined, 429);
+  }
   const failures = Math.max(await currentCount(`login-fail:${email}`), ip ? await currentCount(`login-fail-ip:${ip}`) : 0);
   if (failures >= after) {
     const v = await humanVerifier().verify(opts.humanToken ?? null, ip ?? null);
@@ -280,8 +296,11 @@ export async function login(emailRaw: string, password: string, ip?: string, opt
   dummyHash ??= await hash("not-a-real-password");
   const ok = await verify(user?.passwordHash ?? dummyHash, password).catch(() => false);
   if (!user || !ok || user.disabledAt) {
-    await bump(`login-fail:${email}`, FAIL_WINDOW);
-    if (ip) await bump(`login-fail-ip:${ip}`, FAIL_WINDOW);
+    const byEmail = (await bump(`login-fail:${email}`, FAIL_WINDOW)) + 1;
+    const byIp = ip ? (await bump(`login-fail-ip:${ip}`, FAIL_WINDOW)) + 1 : 0;
+    if (byEmail >= settings["spam.loginLockoutAfter"]) throw new DomainError("FORBIDDEN", LOGIN_LOCKED, undefined, 429);
+    // From now on the form shows the check (the page looks for "verify you're human").
+    if (Math.max(byEmail, byIp) >= after && humanVerifier().name !== "off") throw new DomainError("UNAUTHENTICATED", LOGIN_MISMATCH_CHECK);
     throw new DomainError("UNAUTHENTICATED", "That email and password don't match.");
   }
   await prisma.rateLimit.deleteMany({ where: { key: `login-fail:${email}` } });
