@@ -34,7 +34,7 @@ export default async function SandboxPage({ searchParams }: { searchParams: Prom
   const running = !!o.queue;
   return (
     <>
-      {running ? <AutoRefresh seconds={5} /> : null}
+      {running ? <AutoRefresh seconds={20} /> : null}
       <PageHeader
         title="Test site"
         description="A full copy of the marketplace with demo clinics, providers and shifts. Nothing here is real: no money moves, and emails and texts land in the Test outbox below. Your two test accounts are yours to drive; every other demo account is a bot that answers like a person would, a few minutes later."

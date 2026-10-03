@@ -66,6 +66,8 @@ Go to **Setup Node.js App → Create Application**. Use the same values as the l
 | `SANDBOX_EMAIL_ALLOW` | optional: your own address(es), comma separated. Emails to them are really delivered, with "[TEST]" in the subject. Everything else stays in the Test outbox. |
 | `SANDBOX_SMS_ALLOW` | optional: your mobile number (+1…) to receive real texts (needs the Twilio keys) |
 
+Make sure `TOKIO_WORKER_THREADS` = `1` and `UV_THREADPOOL_SIZE` = `2` are set (on the live app too). Two apps on one hosting account share its process limit, and these keep each app's thread count low. When you're not using the test site for a while, **Stop App** it in Setup Node.js App (its cron job then just fails quietly); start it again when you need it.
+
 Delete `NEON_API_KEY`, `NEON_PROJECT_ID` and `NEON_BRANCH_ID` if you copied them. The test site ignores them anyway, so its restore buttons can never touch the live database.
 
 Then click **Create** and **Start App**.
