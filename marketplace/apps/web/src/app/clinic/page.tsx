@@ -31,7 +31,7 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
   return (
     <>
       <PageHeader eyebrow={org.displayName} title={`Welcome${org.status === "ONBOARDING" ? "" : " back"}, ${firstName(user.name)}`} actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
-      {rs["referrals.enabled"] ? <GroundFloor kind="clinic" referrerRewardCents={rs["referrals.referrerRewardCents"]} friendRewardCents={rs["referrals.refereeRewardCents"]} justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
+      {rs["referrals.enabled"] ? <GroundFloor userId={user.id} kind="clinic" justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
       {sheets.length ? (
         <Alert tone="warning" className="mb-6" title={`${sheets.length} timesheet${sheets.length === 1 ? "" : "s"} to sign off`}>
           Check your provider&apos;s punches and sign off, or tell us if something&apos;s not right. <Link href="/clinic/timesheets" className="font-medium underline">Review timesheets →</Link>

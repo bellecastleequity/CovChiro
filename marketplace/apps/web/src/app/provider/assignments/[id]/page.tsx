@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
+import { PendingChanges } from "@/components/provider/pending-changes";
 import { dateLabel, money, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { cancelAssignmentAction, disputeAction, graceCancelAction, lodgingAction, onMyWayAction, openThreadAction, ratingAction, reconfirmAction } from "../../actions";
@@ -42,6 +43,7 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
   return (
     <>
       <PageHeader eyebrow={loc.clinicOrg.displayName} title={dateLabel(a.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })} description={timeRange(a.startsAt, a.endsAt, tz)} actions={<StatusBadge status={a.status} />} />
+      <PendingChanges providerId={actor.providerId!} assignmentId={a.id} />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {clock ? <ClockCard v={clock} /> : null}

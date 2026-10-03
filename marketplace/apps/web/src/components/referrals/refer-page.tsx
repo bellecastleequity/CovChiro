@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Alert, PageHeader, Stat } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
+import { ReferralBanner } from "./referral-banner";
 import { SharePanel } from "./share-panel";
 
 const STATUS: Record<string, { label: string; tone: "gray" | "amber" | "green" | "red" }> = {
@@ -84,27 +85,23 @@ export async function ReferPage({ userId, kind }: { userId: string; kind: "provi
   );
 }
 
-/** Dashboard welcome for new accounts: the ground-floor note plus the referral invite. */
-export function GroundFloor({ kind, referrerRewardCents, friendRewardCents, justJoined }: { kind: "provider" | "clinic"; referrerRewardCents: number; friendRewardCents: number; justJoined: boolean }) {
+/** Dashboard referral banner (one line; opens to the ground-floor note, the reward and the person's link). */
+export async function GroundFloor({ userId, kind, justJoined }: { userId: string; kind: "provider" | "clinic"; justJoined: boolean }) {
   const b = brand();
-  const href = kind === "clinic" ? "/clinic/refer" : "/provider/refer";
+  const r = await referrals.myReferrals(userId);
+  const friend = dollars(r.friendRewardCents);
   return (
-    <Card className="mb-6 overflow-hidden border-brand-100">
-      <div className="bg-gradient-to-r from-brand-600 to-brand-700 px-5 py-4 text-white">
-        <div className="text-xs font-semibold uppercase tracking-wide text-accent-200">{justJoined ? "Welcome aboard" : "Refer & earn"}</div>
-        <div className="mt-1 text-lg font-semibold">{justJoined ? "You're in on the ground floor." : `Earn ${dollars(referrerRewardCents)} for every colleague you bring.`}</div>
-      </div>
-      <CardBody className="space-y-3 text-sm text-slate-700">
-        {justJoined ? (
-          <p>
-            {b.name} is just getting started, and the elevator is going up. We&apos;re opening market by market, adding states and professions as we grow, and the people who join early are first in line as each door opens. There&apos;s a lot ahead, and we&apos;re glad you&apos;re on board for the ride.
-          </p>
-        ) : null}
-        <p>
-          Know a {kind === "clinic" ? "clinic owner or a provider" : "colleague, classmate or clinic"} who should be here too? Share your link: when they complete their first shift, you get <b>{dollars(referrerRewardCents)}</b>{kind === "clinic" ? " off your next shift" : ""} and they get a <b>{dollars(friendRewardCents)}</b> bonus. No limit.
-        </p>
-        <a href={href} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline">Get your referral link →</a>
-      </CardBody>
-    </Card>
+    <ReferralBanner
+      kind={kind}
+      you={dollars(r.referrerRewardCents)}
+      friend={friend}
+      link={r.link}
+      brandName={b.name}
+      message={`I'm on ${b.name}, where licensed providers and clinics connect for coverage shifts. Create your free profile with my link so you're ready when the need arises. After your first shift you get a ${friend} bonus.`}
+      justJoined={justJoined}
+      joined={r.joined}
+      earned={r.earnedCents ? dollars(r.earnedCents) : null}
+      referHref={kind === "clinic" ? "/clinic/refer" : "/provider/refer"}
+    />
   );
 }

@@ -7,6 +7,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { dateLabel, money, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
+import { PendingChanges } from "@/components/provider/pending-changes";
 
 export const metadata = { title: "My shifts" };
 
@@ -34,6 +35,7 @@ export default async function MyShifts() {
   return (
     <>
       <PageHeader title="My shifts" />
+      <PendingChanges providerId={actor.providerId!} />
       <CalendarSync userId={user.id} who="provider" />
       <div className="space-y-6">
         <Card>

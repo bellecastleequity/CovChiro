@@ -174,15 +174,19 @@ const A: HelpArticle[] = [
     slug: "edit-draft",
     category: "posting",
     title: "Editing or changing a shift",
-    summary: "Drafts can be edited; a posted shift can be cancelled and reposted.",
-    keywords: "edit change modify draft time date wrong update",
+    summary: "Change the date, hours, expected visits or notes of a posted shift; a booked provider accepts or declines.",
+    keywords: "edit change modify draft time date wrong update reschedule move hours",
     links: [{ href: "/clinic/shifts", label: "Open Shifts" }],
     body: (s) => (
       <Ul
         items={[
           "Drafts: open the shift and choose Edit draft. It's re-priced when you save.",
-          "Posted but not filled: cancel it from the shift page (no charge) and post a new one.",
-          `Booked: cancelling ${hrs(s["payments.clinicFreeCancelHours"])} or more before the start refunds the deposit; later forfeits it.`,
+          "Posted: open the shift and choose Change shift. You see the new time and price before anything is sent.",
+          "Not filled yet: the change applies right away and anyone who applied is told.",
+          `Provider booked: they're asked to accept within ${hrs(s["matching.changeResponseHours"])} (sooner for shifts coming up). Until then the shift stays as booked, and you can withdraw the change.`,
+          "If they decline or don't answer, they're released with no penalty, your deposit is refunded and we offer the shift with its new details to other providers.",
+          `Booked shifts can be changed up to ${hrs(s["matching.changeMinLeadHours"])} before they start. Location, profession and skills can't be changed; cancel and post again for those.`,
+          `Cancelling a booked shift ${hrs(s["payments.clinicFreeCancelHours"])} or more before the start refunds the deposit; later forfeits it.`,
           "Need the same provider again on another date? Use Book again on a past shift.",
         ]}
       />

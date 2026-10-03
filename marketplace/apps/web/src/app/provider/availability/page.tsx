@@ -24,7 +24,10 @@ export default async function Availability() {
       <PageHeader title="Availability" description={`Times are in your home time zone (${tz.replace("America/", "").replace("_", " ")}). Include travel time — we add your drive plus a buffer before and after each shift.`} />
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
-          <CardHeader title={<>Weekly schedule<InfoTip label="About your schedule">We only offer shifts that fit inside these hours, including your drive there and back. Shifts outside them never reach you, so keep this current.</InfoTip></>} />
+          <CardHeader
+            title={<>Weekly schedule<InfoTip label="About your schedule">We only offer shifts whose clinic hours fit inside these hours. Shifts outside them never reach you, so keep this current.</InfoTip></>}
+            description="Enter the hours you can be at the clinic. Your drive there and back doesn't need to fit inside them; we only make sure you have travel time between shifts and around time off."
+          />
           <CardBody>
             <ActionForm action={availabilityAction} className="space-y-2">
               {DAYS.map((d, i) => {

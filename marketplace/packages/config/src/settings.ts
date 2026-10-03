@@ -79,6 +79,8 @@ export const SETTINGS = {
     flag: null,
   }),
   "matching.maxDriveMinutes": def({ group: "Matching", label: "Platform max one-way drive (minutes)", schema: z.number().int().positive(), default: 180, flag: null }),
+  "matching.changeResponseHours": def({ group: "Matching", label: "Hours a provider has to accept a clinic's change to a confirmed shift", help: "Also ends 2 hours before the shift. No answer counts as a decline: the provider is released without penalty and the shift reopens.", schema: z.number().int().min(1).max(168), default: 24, flag: null }),
+  "matching.changeMinLeadHours": def({ group: "Matching", label: "Latest a clinic can change a confirmed shift (hours before it starts)", help: "Closer than this, the clinic messages the provider or cancels instead.", schema: z.number().int().min(1).max(72), default: 4, flag: null }),
   "matching.travelBufferExtraMinutes": def({ group: "Matching", label: "Travel buffer added to drive time (minutes)", schema: z.number().int().min(0), default: 30, flag: null }),
   "matching.favoritesWindowHours": def({ group: "Matching", label: "Favorites-only window (hours)", schema: z.number().positive(), default: 2, flag: null }),
   "matching.instantBookMinScore": def({ group: "Matching", label: "Instant-book minimum score", schema: z.number().min(0).max(1), default: 0.55, flag: null }),

@@ -12,7 +12,7 @@ import {
   oncall,
   addBlackout, addMalpractice, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
   removeAvailabilityException, requestAgreement, respondToOffer, setAvailability, setProviderPhoto, setSkills, submitLodgingReceipt, submitRating,
-  updateProviderProfile, upsertLicense, withdrawApplication, prelicensure, payfloors,
+  updateProviderProfile, upsertLicense, withdrawApplication, prelicensure, payfloors, shiftChanges,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -394,4 +394,12 @@ export const payFloorAction = formAction(async (fd) => {
   });
   revalidatePath("/provider", "layout");
   return "Saved. Your shift list now only shows shifts at or above it.";
+});
+
+export const respondShiftChangeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const accept = str(fd, "answer") === "accept";
+  await shiftChanges.respondToShiftChange(actor, str(fd, "changeId"), accept);
+  revalidatePath("/provider", "layout");
+  return accept ? "Accepted. Your shift has been updated." : "Declined. You've been released from this shift with no penalty.";
 });

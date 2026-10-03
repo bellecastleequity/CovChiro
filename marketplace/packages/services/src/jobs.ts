@@ -4,6 +4,7 @@ import { referralSweep } from "./referrals";
 import { timeclockSweep } from "./timeclock";
 import { volumeSweep } from "./volume";
 import { recruitSweep } from "./shiftRecruit";
+import { expireShiftChanges } from "./shiftChanges";
 import { prisma } from "@cm/db";
 import { DateTime } from "luxon";
 import * as dispatch from "./dispatch";
@@ -78,6 +79,8 @@ export const JOBS: Job[] = [
   { name: "referralSweep", schedule: { everySeconds: 3600 }, run: () => referralSweep() },
   // Backups: encrypted export + Neon restore point + pruning, nightly at 3:10 ET.
   { name: "dbBackup", schedule: { cron: "10 3 * * *", tz: "America/New_York" }, run: () => nightlyBackup(), leaseMinutes: 30, long: true },
+  // Clinic changes to confirmed shifts not answered in time: provider released (no penalty), shift reopens.
+  { name: "shiftChangeExpiry", schedule: { everySeconds: 300 }, run: () => expireShiftChanges() },
   { name: "waitlistOpenings", schedule: { everySeconds: 3600 }, run: () => waitlistOpeningSweep() },
   { name: "indexNow", schedule: { cron: "20 6 * * *", tz: "America/New_York" }, run: () => indexNowSweep() },
   { name: "reviewRequests", schedule: { cron: "20 10 * * *", tz: "America/New_York" }, run: () => reviewRequestSweep() },

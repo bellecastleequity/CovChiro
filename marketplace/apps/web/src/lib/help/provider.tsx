@@ -98,6 +98,7 @@ const A: HelpArticle[] = [
       <Ul
         items={[
           "Weekly hours, extra open dates and blackout dates decide which shifts fit you.",
+          "Enter the hours you can be at the clinic. Your drive doesn't have to fit inside them; we just keep travel time clear between your shifts and around blackouts.",
           "Your drive limit (on your profile) is the longest one-way drive you'll take.",
           `Willing to stay overnight? When a clinic allows lodging you can be offered shifts up to ${Math.round(s["pricing.lodgingMaxDriveMinutes"] / 60)} hours away, with ${money(s["pricing.lodgingNightlyCents"])} a night added to your pay when the drive is over ${Math.round(s["pricing.lodgingTriggerMinutes"] / 60)} hours. No receipts.`,
         ]}
@@ -191,6 +192,7 @@ const A: HelpArticle[] = [
           `Within ${hrs(s["payments.providerLateCancelHours"])} of the start it's a late cancellation and lowers your reliability.`,
           "Not showing up without cancelling can lead to suspension.",
           "Booked by On Call by mistake? Use the no-penalty release on the shift page while it's offered.",
+          "If a clinic changes a shift you're booked on (date, hours or details), we ask you to accept or decline. Declining, or not answering in time, releases you with no penalty.",
         ]}
       />
     ),

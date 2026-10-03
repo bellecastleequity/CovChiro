@@ -12,6 +12,7 @@ import {
   bookings,
   emergency,
   feedback,
+  shiftChanges,
   archiveLocation, auth, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
@@ -388,4 +389,47 @@ export const bookAgainAction = formAction(async (fd) => {
   revalidatePath("/clinic", "layout");
   if (!r.invited) return { ok: `Posted, but ${r.providerName} couldn't be invited: ${r.reason} The shift is open to other providers.`, data: { shiftId: r.shiftId } };
   redirect(`/clinic/shifts/${r.shiftId}?rebooked=1`);
+});
+
+/** Change-shift form: date and times are local to the location. */
+async function changePayload(fd: FormData) {
+  const shiftId = str(fd, "shiftId");
+  const shift = await prisma.shift.findUnique({ where: { id: shiftId }, select: { location: { select: { timeZone: true } } } });
+  const zone = shift?.location.timeZone ?? "America/New_York";
+  const start = DateTime.fromISO(`${str(fd, "date")}T${str(fd, "start")}`, { zone });
+  let end = DateTime.fromISO(`${str(fd, "date")}T${str(fd, "end")}`, { zone });
+  if (end <= start) end = end.plus({ days: 1 });
+  const patients = str(fd, "expectedPatients");
+  return {
+    shiftId,
+    input: {
+      startsAt: start.isValid ? start.toJSDate() : new Date(NaN),
+      endsAt: end.isValid ? end.toJSDate() : new Date(NaN),
+      expectedPatients: fd.has("expectedPatients") ? (patients === "" ? null : Number(patients)) : undefined,
+      minYearsExperience: fd.has("minYearsExperience") ? Number(str(fd, "minYearsExperience")) || 0 : undefined,
+      notes: fd.has("notes") ? str(fd, "notes") || null : undefined,
+      message: str(fd, "message") || null,
+    },
+  };
+}
+
+export const previewShiftChangeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const { shiftId, input } = await changePayload(fd);
+  return { ok: "", data: await shiftChanges.previewShiftChange(actor, shiftId, input) };
+});
+
+export const changeShiftAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const { shiftId, input } = await changePayload(fd);
+  const r = await shiftChanges.changeShift(actor, shiftId, input);
+  revalidatePath("/clinic", "layout");
+  redirect(`/clinic/shifts/${shiftId}?changed=${r.status}`);
+});
+
+export const withdrawShiftChangeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await shiftChanges.withdrawShiftChange(actor, str(fd, "changeId"));
+  revalidatePath("/clinic", "layout");
+  return "Withdrawn. The shift stays as it was booked.";
 });

@@ -270,11 +270,22 @@ describe("other hard filters", () => {
     expect(codes(evaluateEligibility(unlicensed, shift(), far, { ...OPTS, distanceMultiplierAll: 1.5 }))).toContain("LICENSE_STATE_MISMATCH");
   });
 
-  it("F4 availability window includes travel buffer", () => {
-    const rules = [{ weekday: 3, startMin: 9 * 60, endMin: 17 * 60, timeZone: "America/New_York" }];
-    expect(codes(evaluateEligibility(provider({ availabilityRules: rules }), shift(), pair(), OPTS))).toContain("OUTSIDE_AVAILABILITY");
-    const wide = [{ weekday: 3, startMin: 7 * 60, endMin: 19 * 60, timeZone: "America/New_York" }];
-    expect(ok(provider({ availabilityRules: wide }))).toBe(true);
+  it("F4 checks the shift's own hours against availability (travel time doesn't count against them)", () => {
+    const s = shift();
+    const local = (d: Date) => { const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "numeric", hourCycle: "h23", weekday: "short" }).formatToParts(d); const g = (k: string) => p.find((x) => x.type === k)!.value; return { min: +g("hour") * 60 + +g("minute"), weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(g("weekday")) }; };
+    const a = local(s.startsAt), b = local(s.endsAt);
+    // Exactly the shift's hours: fits, even with a long drive.
+    const exact = [{ weekday: a.weekday, startMin: a.min, endMin: b.min, timeZone: "America/New_York" }];
+    expect(ok(provider({ availabilityRules: exact }), s)).toBe(true);
+    expect(codes(evaluateEligibility(provider({ availabilityRules: exact }), s, pair({ driveMinutes: 80 }), OPTS))).not.toContain("OUTSIDE_AVAILABILITY");
+    // Ends an hour early: outside, and the reason names the day and both windows.
+    const short = [{ weekday: a.weekday, startMin: a.min, endMin: b.min - 60, timeZone: "America/New_York" }];
+    const r = evaluateEligibility(provider({ availabilityRules: short }), s, pair(), OPTS);
+    expect(codes(r)).toContain("OUTSIDE_AVAILABILITY");
+    expect(JSON.stringify(r)).toMatch(/outside the provider's \w+day hours/);
+    // No hours that day at all.
+    const otherDay = [{ weekday: (a.weekday + 1) % 7, startMin: 0, endMin: 1440, timeZone: "America/New_York" }];
+    expect(JSON.stringify(evaluateEligibility(provider({ availabilityRules: otherDay }), s, pair(), OPTS))).toMatch(/Not available on \w+days/);
   });
 
   it("F4 open dates add availability; blackouts remove it", () => {

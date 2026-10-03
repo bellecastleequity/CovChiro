@@ -14,6 +14,7 @@ import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Alert, Checklist, Empty, PageHeader, Stat } from "@/components/ui/misc";
+import { PendingChanges } from "@/components/provider/pending-changes";
 import { StatusBadge } from "@/components/ui/badge";
 import { dateLabel, money, relative, timeRange, firstName } from "@/lib/format";
 import { requireActor } from "@/lib/session";
@@ -59,6 +60,7 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
             <span>Hi, {greetingName(user.name, provider.professions.map((p) => p.professionCode)) || firstName(user.name)}</span>
           </span>
         } title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
+      <PendingChanges providerId={actor.providerId!} />
       {clock ? <div className="mb-6"><ClockCard v={clock} title="Today's time clock" /></div> : null}
       {visitView?.canSubmit ? <div className="mb-6"><ProviderVisitCard v={visitView} assignmentId={clock!.assignmentId} tz={clock!.timeZone} action={visitsAction} /></div> : null}
       {recruited.length ? (
@@ -109,7 +111,7 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
           </div>
         </CardBody>
       </Card>
-      {rs["referrals.enabled"] ? <GroundFloor kind="provider" referrerRewardCents={rs["referrals.referrerRewardCents"]} friendRewardCents={rs["referrals.refereeRewardCents"]} justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
+      {rs["referrals.enabled"] ? <GroundFloor userId={user.id} kind="provider" justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
       {readiness ? (
         <ReadinessCard
           summary={readiness}

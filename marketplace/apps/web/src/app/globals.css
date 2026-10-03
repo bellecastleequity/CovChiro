@@ -31,6 +31,12 @@
   --radius-xl: 0.9rem;
   --radius-2xl: 1.25rem;
   --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 16px rgb(15 23 42 / 0.05);
+  /* A light sweep across a banner every few seconds (referral banner). Use with motion-safe:. */
+  --animate-shine: shine 4.5s ease-in-out infinite;
+  @keyframes shine {
+    0%, 60% { transform: translateX(-120%) skewX(-12deg); }
+    100% { transform: translateX(420%) skewX(-12deg); }
+  }
 }
 
 @layer base {

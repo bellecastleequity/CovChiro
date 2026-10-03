@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import type { ErrorCode } from "./errors";
 import { DomainError } from "./errors";
 import { supervisionProblem, type SupervisionAttestation } from "./supervision";
@@ -190,6 +191,20 @@ export function licensedPairs(licenses: LicenseFact[], at: Date = new Date(), na
   return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v].sort()]));
 }
 
+/** Why a shift falls outside weekly hours, in the provider's own time zone. */
+function availabilityGap(rules: WeeklyRule[], shift: Interval): string {
+  const zone = rules[0]?.timeZone ?? "America/New_York";
+  const start = DateTime.fromMillis(shift.start, { zone });
+  const end = DateTime.fromMillis(shift.end, { zone });
+  const t = (d: DateTime) => d.toFormat("h:mm a");
+  const hm = (min: number) => DateTime.fromObject({ hour: Math.floor(min / 60) % 24, minute: min % 60 }).toFormat("h:mm a");
+  const dayName = start.toFormat("cccc");
+  const that = rules.filter((r) => r.weekday === start.weekday % 7);
+  const want = `${dayName} ${t(start)}–${t(end)}`;
+  if (!that.length) return `Not available on ${dayName}s (shift ${want})`;
+  return `Shift ${want} is outside the provider's ${dayName} hours (${that.map((r) => `${hm(r.startMin)}–${hm(r.endMin)}`).join(", ")}, ${zone.replace("America/", "").replace("_", " ")} time)`;
+}
+
 export function bufferedRange(startsAt: Date, endsAt: Date, bufferMinutes: number): Interval {
   return iv(startsAt.getTime() - bufferMinutes * MINUTE, endsAt.getTime() + bufferMinutes * MINUTE);
 }
@@ -272,10 +287,16 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   // F5 — no overlapping active assignment in any profession (INV-2 is also a DB constraint).
   if (provider.busy.some((b) => overlaps(b, range))) fail("F5", "SCHEDULE_CONFLICT", "Overlaps another confirmed shift");
 
-  // F4 — the buffered shift window sits inside availability and outside blackouts.
-  const available = [...expandWeeklyRules(provider.availabilityRules, range), ...provider.openDates];
-  if (!containedInUnion(range, available) || provider.blackouts.some((b) => overlaps(b, range))) {
-    fail("F4", "OUTSIDE_AVAILABILITY", "Outside the provider's availability");
+  // F4 — the shift's own hours sit inside availability (weekly hours mean "when I can work";
+  // travel time is not counted against them), and the buffered window misses every blackout.
+  const onSite = iv(shift.startsAt, shift.endsAt);
+  const available = [...expandWeeklyRules(provider.availabilityRules, onSite), ...provider.openDates];
+  // Overnight stays (lodging allowed, provider willing) travel the day before, so only the clinic hours meet blackouts.
+  const blackoutWindow = provider.willingOvernight && shift.lodgingAllowed ? onSite : range;
+  if (provider.blackouts.some((b) => overlaps(b, blackoutWindow))) {
+    fail("F4", "OUTSIDE_AVAILABILITY", buffer && blackoutWindow === range ? `Overlaps time off the provider blocked (including ${buffer} min travel either side)` : "Overlaps time off the provider blocked");
+  } else if (!containedInUnion(onSite, available)) {
+    fail("F4", "OUTSIDE_AVAILABILITY", availabilityGap(provider.availabilityRules, onSite));
   }
 
   // F7 — distance.

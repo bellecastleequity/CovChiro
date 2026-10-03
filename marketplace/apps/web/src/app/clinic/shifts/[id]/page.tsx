@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Ban, Car, Heart, MessageSquare, Radar, Star, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
 import { clinicView } from "@cm/core";
-import { dispatch, getSettings, shiftCandidates, timeclock, volume } from "@cm/services";
+import { dispatch, getSettings, shiftCandidates, shiftChanges, timeclock, volume } from "@cm/services";
 import { clinicApproveAction, clinicConfirmVisitsAction, clinicReportAction, clinicReportVisitsAction } from "@/app/timeclock-actions";
 import { ClinicVisitPanel } from "@/components/timeclock/visit-count";
 import { SignOffForm } from "@/components/timeclock/signoff-form";
@@ -22,7 +22,7 @@ import { dateLabel, money, pct, relative, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import {
   blockAction, boostAction, cancelDispatchAction, confirmAllDaysAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
-  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, reportNoShowAction, selectAction,
+  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, reportNoShowAction, selectAction, withdrawShiftChangeAction,
 } from "../../actions";
 
 type Cand = Awaited<ReturnType<typeof shiftCandidates>>["applicants"][number];
@@ -87,7 +87,7 @@ function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; ap
   );
 }
 
-export default async function ClinicShift({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ posted?: string; saved?: string; rebooked?: string }> }) {
+export default async function ClinicShift({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ posted?: string; saved?: string; rebooked?: string; changed?: string }> }) {
   const { actor, user } = await requireActor("clinic");
   const { id } = await params;
   const sp = await searchParams;
@@ -139,6 +139,9 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
         }, {}),
       ).filter((x) => x.days > 1)
     : [];
+  const pendingChange = await prisma.shiftChange.findFirst({ where: { shiftId: id, status: "PENDING" } });
+  const lastAnswer = pendingChange ? null : await prisma.shiftChange.findFirst({ where: { shiftId: id, status: { in: ["ACCEPTED", "DECLINED", "EXPIRED"] }, respondedAt: { gt: new Date(Date.now() - 3 * 86_400_000) } }, orderBy: { respondedAt: "desc" } });
+  const changeable = shiftChanges.canChange(shift) && !pendingChange;
   const dayNo = groupDays.findIndex((d) => d.id === shift.id) + 1;
   return (
     <>
@@ -146,8 +149,37 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
         eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} · ${shift.location.name} · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} · ${shift.location.name}`}
         title={dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}
         description={`${timeRange(shift.startsAt, shift.endsAt, tz)}${shift.minYearsExperience ? ` · ${shift.minYearsExperience}+ years' experience` : ""}`}
-        actions={<StatusBadge status={shift.status} />}
+        actions={
+          <div className="flex items-center gap-2">
+            {changeable ? <LinkButton href={`/clinic/shifts/${shift.id}/change`} size="sm" variant="outline">Change shift</LinkButton> : null}
+            <StatusBadge status={shift.status} />
+          </div>
+        }
       />
+      {sp.changed === "applied" ? <Alert tone="success" className="mb-5" title="Shift updated">Anyone who applied has been told about the change.</Alert> : null}
+      {sp.changed === "pending" && pendingChange ? <Alert tone="success" className="mb-5" title="Change sent">We've asked your provider to accept it. We'll let you know as soon as they answer.</Alert> : null}
+      {pendingChange ? (
+        <Card className="mb-5 border-amber-300 ring-2 ring-amber-100">
+          <CardBody className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div>
+              <div className="font-semibold">Waiting for your provider to accept your change</div>
+              <div className="text-slate-600">
+                New time: {timeRange((pendingChange.after as { shift: { startsAt: string } }).shift.startsAt, (pendingChange.after as { shift: { endsAt: string } }).shift.endsAt, tz)} on {dateLabel((pendingChange.after as { shift: { startsAt: string } }).shift.startsAt, tz)}. They have until {dateLabel(pendingChange.respondBy, tz, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}; until then the shift stays as booked. If they decline or don't answer, we refund your deposit and find someone for the new time.
+              </div>
+            </div>
+            <ActionForm action={withdrawShiftChangeAction} confirm="Withdraw the change? The shift stays as booked.">
+              <input type="hidden" name="changeId" value={pendingChange.id} />
+              <SubmitButton size="sm" variant="outline">Withdraw change</SubmitButton>
+            </ActionForm>
+          </CardBody>
+        </Card>
+      ) : null}
+      {lastAnswer?.status === "ACCEPTED" ? <Alert tone="success" className="mb-5">Your provider accepted your change.</Alert> : null}
+      {lastAnswer && lastAnswer.status !== "ACCEPTED" && selectable ? (
+        <Alert tone="info" className="mb-5" title={lastAnswer.status === "DECLINED" ? "Your provider couldn't make the change" : "Your provider didn't answer in time"}>
+          They've been released and your deposit refunded. We're offering the shift with its new details to other providers now.
+        </Alert>
+      ) : null}
       {sp.posted ? <Alert tone="success" className="mb-5" title="Shift posted">We're notifying eligible providers now. Applicants will appear below.</Alert> : null}
       {sp.saved ? <Alert tone="info" className="mb-5">Draft saved.</Alert> : null}
       {sp.rebooked ? <Alert tone="success" className="mb-5" title="Booked again">We posted the shift and invited your provider. You&apos;ll hear from us as soon as they accept.</Alert> : null}

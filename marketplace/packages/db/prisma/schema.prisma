@@ -743,6 +743,7 @@ model Shift {
   matchRuns    MatchRun[]
   threads      MessageThread[]
   recruitLinks ShiftRecruitLink[]
+  changes      ShiftChange[]
 
   @@index([professionCode, state, status, startsAt])
   @@index([locationId, startsAt])
@@ -863,6 +864,37 @@ enum SelectionMethod {
   DISPATCH_BROADCAST
   STANDBY
   STANDING
+}
+
+enum ShiftChangeStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  WITHDRAWN
+}
+
+/// A clinic's change to a confirmed shift, waiting for the provider. Accepted = applied to the
+/// shift and assignment; declined or expired = applied to the shift, the provider is released
+/// without penalty and the shift reopens. At most one PENDING per shift (partial unique index).
+model ShiftChange {
+  id            String            @id @default(cuid())
+  shiftId       String
+  shift         Shift             @relation(fields: [shiftId], references: [id])
+  assignmentId  String
+  providerId    String
+  requestedById String
+  /// { startsAt, endsAt, expectedPatients, notes, minYearsExperience, clinicPriceCents, providerPayCents, clinicTotalCents, providerTotalCents }
+  before        Json
+  after         Json
+  message       String?
+  status        ShiftChangeStatus @default(PENDING)
+  respondBy     DateTime          @db.Timestamptz(3)
+  respondedAt   DateTime?         @db.Timestamptz(3)
+  createdAt     DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@index([shiftId, status])
+  @@index([status, respondBy])
 }
 
 enum CancelParty {
