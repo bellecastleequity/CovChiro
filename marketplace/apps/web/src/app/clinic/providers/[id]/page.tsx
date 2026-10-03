@@ -36,9 +36,9 @@ export default async function ClinicProviderProfile({ params }: { params: Promis
             <SubmitButton size="sm" variant="outline"><Ban className="size-4" />Blocked — unblock</SubmitButton>
           </ActionForm>
         ) : (
-          <ActionForm action={blockAction} confirm="Block this provider from your future bookings? Only you will know." className="flex gap-2">
+          <ActionForm action={blockAction} confirm="Block this provider from your future bookings? Only you will know." className="flex flex-wrap justify-end gap-2">
             <input type="hidden" name="providerId" value={id} />
-            <Input name="reason" placeholder="Private note (optional)" className="h-9 w-52" />
+            <Input name="reason" placeholder="Private note (optional)" className="h-9 w-full sm:w-52" />
             <SubmitButton size="sm" variant="outline"><Ban className="size-4" />Block from future bookings</SubmitButton>
           </ActionForm>
         )}
