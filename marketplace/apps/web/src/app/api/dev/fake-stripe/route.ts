@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { env } from "@cm/config";
+import { env, isSandbox } from "@cm/config";
 import { prisma } from "@cm/db";
 import { paymentsProvider } from "@cm/integrations";
 import { activateClinicIfReady, refreshProviderStripe } from "@cm/services";
@@ -7,10 +7,11 @@ import { getSession } from "@/lib/session";
 
 /**
  * Development stand-in for Stripe's hosted pages (Checkout setup and Connect
- * onboarding) when no Stripe key is configured. Disabled in production.
+ * onboarding) when no Stripe key is configured. Disabled in production (the
+ * test site keeps it: its demo accounts use fake Stripe ids).
  */
 export async function GET(req: NextRequest) {
-  if (env().NODE_ENV === "production" || paymentsProvider().name !== "fake") return new NextResponse("Not found", { status: 404 });
+  if ((env().NODE_ENV === "production" && !isSandbox()) || paymentsProvider().name === "stripe") return new NextResponse("Not found", { status: 404 });
   const s = await getSession();
   const kind = req.nextUrl.searchParams.get("kind");
   const back = req.nextUrl.searchParams.get("return") ?? "/";

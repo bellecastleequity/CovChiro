@@ -2438,3 +2438,20 @@ model ShiftRecruitClaim {
   @@unique([linkId, providerId])
   @@index([providerId])
 }
+
+/// Test site only (SANDBOX_MODE): every email and text, captured instead of sent
+/// (Admin → Test site → Outbox). Allow-listed ones are also really delivered.
+model SandboxMessage {
+  id        String   @id @default(cuid())
+  /// email | sms
+  channel   String
+  to        String
+  subject   String?
+  body      String
+  html      String?
+  delivered Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([to])
+}

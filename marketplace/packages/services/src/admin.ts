@@ -1,7 +1,7 @@
 import { brand, env, validateSetting, SETTINGS } from "@cm/config";
 import { DomainError, NATIONAL_CREDENTIAL, nextReverifyAt, US_STATES } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
-import { checkGoogleServerKey, mailProvider, smsProvider, TWILIO_ERROR_HELP } from "@cm/integrations";
+import { checkGoogleServerKey, mailProvider, onAllowList, smsProvider, TWILIO_ERROR_HELP } from "@cm/integrations";
 import { audit, getSettings, invalidateSettings, requireAdmin, type Actor } from "./context";
 import { notify, sendEmail } from "./notify";
 import { recomputeProviderStatus } from "./onboarding";
@@ -247,6 +247,10 @@ export async function sendTestEmail(actor: Actor, to: string) {
     heading: "Email is working",
     paragraphs: [`This test was sent from ${brand().domain} via ${mailer.name}. Signup confirmations, booking emails and notifications use the same path.`],
   });
+  if (mailer.name === "sandbox") {
+    if (!ok) throw new DomainError("VALIDATION", mailer.lastError ?? "The email service rejected the message.");
+    return `Test site: the email is in Admin → Test site → Outbox.${onAllowList(env().SANDBOX_EMAIL_ALLOW, to) ? " It was also sent for real (the address is on SANDBOX_EMAIL_ALLOW)." : " Add the address to SANDBOX_EMAIL_ALLOW to have it delivered for real."}`;
+  }
   if (mailer.name !== "sendgrid") {
     throw new DomainError("VALIDATION", "SENDGRID_API_KEY isn't set, so email is only written to the server's outbox log. Add the key in Setup Node.js App → Environment variables and restart.");
   }

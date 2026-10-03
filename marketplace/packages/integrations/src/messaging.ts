@@ -1,6 +1,6 @@
 import { mkdir, appendFile } from "node:fs/promises";
 import path from "node:path";
-import { brand, env } from "@cm/config";
+import { brand, env, isSandbox } from "@cm/config";
 
 export interface EmailMessage {
   to: string;
@@ -152,6 +152,72 @@ class DevTexter implements Texter {
   }
 }
 
+/** One captured message on the test site (Admin → Test site → Outbox). */
+export interface OutboxEntry {
+  channel: "email" | "sms";
+  to: string;
+  subject?: string | null;
+  body: string;
+  html?: string | null;
+  /** Really delivered (the address/number is on the test site's allow list). */
+  delivered: boolean;
+}
+let outboxSink: ((e: OutboxEntry) => Promise<unknown>) | null = null;
+/** The services layer stores captured test-site messages in the database. */
+export function setOutboxSink(f: ((e: OutboxEntry) => Promise<unknown>) | null) {
+  outboxSink = f;
+}
+
+/** Is `to` on a comma-separated allow list of addresses, @domains or phone numbers? */
+export function onAllowList(list: string | undefined, to: string) {
+  const t = to.trim().toLowerCase();
+  const digits = (x: string) => x.replace(/[^0-9]/g, "").replace(/^1(?=\d{10}$)/, "");
+  return (list ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).some((x) =>
+    x.startsWith("@") ? t.endsWith(x) : x.includes("@") ? t === x : digits(x).length >= 10 && digits(x) === digits(t),
+  );
+}
+
+/**
+ * Test site: every email is kept in the Test outbox; only allow-listed addresses
+ * (SANDBOX_EMAIL_ALLOW) are really sent, with "[TEST]" in front of the subject.
+ */
+class SandboxMailer implements Mailer {
+  name = "sandbox";
+  constructor(private real: Mailer | null) {}
+  get lastError() {
+    return this.real?.lastError ?? null;
+  }
+  async send(m: EmailMessage) {
+    const deliver = !!this.real && onAllowList(env().SANDBOX_EMAIL_ALLOW, m.to);
+    const delivered = deliver ? await this.real!.send({ ...m, subject: `[TEST] ${m.subject}` }) : false;
+    devOutbox.push({ channel: "email", to: m.to, subject: m.subject, body: m.text, at: new Date() });
+    await outboxSink?.({ channel: "email", to: m.to, subject: m.subject, body: m.text, html: m.html, delivered }).catch((e) => console.error("[outbox]", e));
+    return deliver ? delivered : true;
+  }
+}
+
+/** Test site texts: kept in the Test outbox; only SANDBOX_SMS_ALLOW numbers are really sent (Twilio keys needed). */
+class SandboxTexter implements Texter {
+  name = "sandbox";
+  constructor(private real: Texter | null) {}
+  get lastError() {
+    return this.real?.lastError ?? null;
+  }
+  get lastErrorCode() {
+    return this.real?.lastErrorCode ?? null;
+  }
+  get lastId() {
+    return this.real?.lastId ?? null;
+  }
+  async send(to: string, body: string) {
+    const deliver = !!this.real && onAllowList(env().SANDBOX_SMS_ALLOW, to);
+    const delivered = deliver ? await this.real!.send(to, `[TEST] ${body}`) : false;
+    devOutbox.push({ channel: "sms", to, body, at: new Date() });
+    await outboxSink?.({ channel: "sms", to, body, delivered }).catch((e) => console.error("[outbox]", e));
+    return deliver ? delivered : true;
+  }
+}
+
 /** Twilio error codes people actually hit, in plain words with the fix. */
 export const TWILIO_ERROR_HELP: Record<number, string> = {
   20003: "Twilio rejected the Account SID / Auth Token. Copy both again from the Twilio Console home page (the SID starts with AC).",
@@ -179,21 +245,26 @@ export const TWILIO_ERROR_HELP: Record<number, string> = {
  */
 export function textingEnabled() {
   // Tests run with the fake texter standing in for Twilio, so text paths stay covered.
-  return smsProvider().name === "twilio" || env().NODE_ENV === "test";
+  // The test site "texts" into its outbox (codes included), so text paths can be walked through there too.
+  return smsProvider().name === "twilio" || isSandbox() || env().NODE_ENV === "test";
 }
 
 let mailer: Mailer | null = null;
 let texter: Texter | null = null;
 export function mailProvider(): Mailer {
-  if (!mailer) mailer = env().SENDGRID_API_KEY ? new SendGridMailer(env().SENDGRID_API_KEY!) : new DevMailer();
+  if (!mailer) {
+    const real = env().SENDGRID_API_KEY ? new SendGridMailer(env().SENDGRID_API_KEY!) : null;
+    mailer = isSandbox() ? new SandboxMailer(real) : (real ?? new DevMailer());
+  }
   return mailer;
 }
 export function smsProvider(): Texter {
   if (!texter) {
     const e = env();
-    texter = e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && (e.TWILIO_MESSAGING_SERVICE_SID || e.TWILIO_FROM_NUMBER)
+    const real = e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && (e.TWILIO_MESSAGING_SERVICE_SID || e.TWILIO_FROM_NUMBER)
       ? new TwilioTexter(e.TWILIO_ACCOUNT_SID, e.TWILIO_AUTH_TOKEN, { service: e.TWILIO_MESSAGING_SERVICE_SID, from: e.TWILIO_FROM_NUMBER })
-      : new DevTexter();
+      : null;
+    texter = isSandbox() ? new SandboxTexter(real) : (real ?? new DevTexter());
   }
   return texter;
 }

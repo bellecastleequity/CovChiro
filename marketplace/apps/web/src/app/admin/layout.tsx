@@ -1,3 +1,4 @@
+import { isSandbox } from "@cm/config";
 import { missingMigrations, prisma } from "@cm/db";
 import { emergency, hiring, support } from "@cm/services";
 import type { AlertState } from "@cm/core";
@@ -56,6 +57,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/tasks", label: "Tasks", icon: "tasks", badge: tasks },
     { href: "/admin/support", label: "Support", icon: "help", badge: supportOpen },
     { href: "/admin/audit", label: "Audit log", icon: "audit" },
+    // Test site only: demo data, act as a demo account, the captured outbox.
+    ...(isSandbox() ? [{ href: "/admin/sandbox", label: "Test site", icon: "sandbox" as const, mobile: true }] : []),
   ];
   const urgent = await support.urgentWaiting().catch(() => []);
   return (

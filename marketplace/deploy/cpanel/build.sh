@@ -89,6 +89,7 @@ SQL=$OUT/database-setup.sql
 } > "$SQL"
 
 cp INSTALL-CPANEL.md "$OUT/INSTALL-CPANEL.md"
+cp INSTALL-SANDBOX.md "$OUT/INSTALL-SANDBOX.md"
 cp deploy/cpanel/env.template "$OUT/environment-variables.txt"
 # Database updates new in this release, for sites already installed (each
 # safe to re-run). Updates from earlier releases live in updates/archive and
@@ -138,5 +139,8 @@ shopt -u nullglob
   && zip -qr -9 "$ROOT/dist/coverageoncall-update-part1.zip" app \
   && zip -qr -9 "$ROOT/dist/coverageoncall-update-part2.zip" node_modules -x "node_modules/.prisma/*" \
   && zip -qr -9 "$ROOT/dist/coverageoncall-update-part3.zip" node_modules/.prisma)
+# Fresh-install database script on its own too (e.g. for the test site's empty database).
+cp "$SQL" "$ROOT/dist/database-setup.sql"
+cp INSTALL-SANDBOX.md "$ROOT/dist/INSTALL-SANDBOX.md"
 echo "Built dist/coverageoncall-update-part1.zip (app, $(du -h dist/coverageoncall-update-part1.zip | cut -f1)), part2 + part3 (complete node_modules, $(du -h dist/coverageoncall-update-part2.zip | cut -f1) + $(du -h dist/coverageoncall-update-part3.zip | cut -f1)); database updates: $(ls "$UPD" | tr '\n' ' ' | sed 's/ $//' || true)"
 echo "Built dist/coverageoncall-cpanel.zip ($(du -h dist/coverageoncall-cpanel.zip | cut -f1), $(find "$SITE" -type f | wc -l) files)"

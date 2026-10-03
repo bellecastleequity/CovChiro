@@ -5,6 +5,7 @@ import { FormGuard } from "@/components/site/form-guard";
 import { cookies } from "next/headers";
 import { dollars } from "@cm/core";
 import { getSettings, referrals, schools } from "@cm/services";
+import { isSandbox } from "@cm/config";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { SOURCE_OPTIONS, StudentFields } from "@/components/provider/student-fields";
 import { cn } from "@/lib/cn";
@@ -26,7 +27,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
   const keep = `${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}${profession ? `&profession=${encodeURIComponent(profession)}` : ""}${inv ? `&ref=${inv.code}` : ""}`;
   return (
     <>
-      {settings["seo.gaMeasurementId"] ? <GoogleAnalytics id={settings["seo.gaMeasurementId"]} /> : null}
+      {settings["seo.gaMeasurementId"] && !isSandbox() ? <GoogleAnalytics id={settings["seo.gaMeasurementId"]} /> : null}
       <h1 className="text-xl font-semibold">Create your account</h1>
       {inv ? (
         <p className="mt-3 rounded-xl bg-accent-50 px-4 py-3 text-sm text-slate-800">

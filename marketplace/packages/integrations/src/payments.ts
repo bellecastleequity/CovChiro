@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { brand, env } from "@cm/config";
+import { brand, env, isSandbox } from "@cm/config";
 
 /**
  * Payments go only through Stripe Connect (INV-5). Providers get Express
@@ -29,7 +29,7 @@ export interface ChargeResult {
 }
 
 export interface PaymentsProvider {
-  name: "stripe" | "fake";
+  name: "stripe" | "fake" | "sandbox";
   createCustomer(input: { name: string; email: string; clinicOrgId: string }): Promise<string>;
   /** Hosted page where the clinic saves a card or bank account. */
   paymentMethodSetupUrl(input: { customerId: string; clinicOrgId: string; returnUrl: string }): Promise<string>;
@@ -233,8 +233,54 @@ export class FakePayments implements PaymentsProvider {
     return { id: this.id("tr", i.idempotencyKey) };
   }
   parseWebhook(rawBody: string): Stripe.Event {
-    if (env().NODE_ENV === "production") throw new Error("Fake payments cannot accept webhooks in production");
+    if (env().NODE_ENV === "production" && !isSandbox()) throw new Error("Fake payments cannot accept webhooks in production");
     return JSON.parse(rawBody);
+  }
+}
+
+/**
+ * Test site with a Stripe TEST key: the demo clinics and providers hold fake ids
+ * (cus_fake_…, acct_fake_…, pi_fake_…) and are charged/paid by the fake, while
+ * accounts you create yourself get real Stripe test-mode customers and Express
+ * accounts (card 4242 4242 4242 4242), so both work side by side.
+ */
+export class SandboxPayments implements PaymentsProvider {
+  name = "sandbox" as const;
+  constructor(private real: PaymentsProvider, private fake: FakePayments) {}
+  private by(id: string | null | undefined) {
+    return id && id.includes("_fake_") ? this.fake : this.real;
+  }
+  createCustomer(i: { name: string; email: string; clinicOrgId: string }) {
+    return this.real.createCustomer(i);
+  }
+  paymentMethodSetupUrl(i: { customerId: string; clinicOrgId: string; returnUrl: string }) {
+    return this.by(i.customerId).paymentMethodSetupUrl(i);
+  }
+  createConnectedAccount(i: ConnectedAccountInput) {
+    return this.real.createConnectedAccount(i);
+  }
+  connectOnboardingUrl(i: { accountId: string; providerId: string; returnUrl: string; refreshUrl: string }) {
+    return this.by(i.accountId).connectOnboardingUrl(i);
+  }
+  connectDashboardUrl(accountId: string) {
+    return this.by(accountId).connectDashboardUrl(accountId);
+  }
+  accountStatus(accountId: string) {
+    return this.by(accountId).accountStatus(accountId);
+  }
+  chargeOffSession(i: { customerId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string> }) {
+    return this.by(i.customerId).chargeOffSession(i);
+  }
+  refund(i: { paymentIntentId: string; amountCents: number; idempotencyKey: string }) {
+    return this.by(i.paymentIntentId).refund(i);
+  }
+  transfer(i: { accountId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string>; sourcePaymentIntentId?: string | null }) {
+    // A fake account is paid by the fake; a real test account from a fake charge goes unlinked.
+    if (this.by(i.accountId) === this.fake) return this.fake.transfer(i);
+    return this.real.transfer({ ...i, sourcePaymentIntentId: i.sourcePaymentIntentId?.includes("_fake_") ? null : i.sourcePaymentIntentId });
+  }
+  parseWebhook(rawBody: string, signature: string | null) {
+    return this.real.parseWebhook(rawBody, signature);
   }
 }
 
@@ -242,7 +288,14 @@ let payments: PaymentsProvider | null = null;
 export function paymentsProvider(): PaymentsProvider {
   if (!payments) {
     const e = env();
-    payments = e.STRIPE_SECRET_KEY ? new StripePayments(e.STRIPE_SECRET_KEY, e.STRIPE_WEBHOOK_SECRET) : new FakePayments(e.APP_BASE_URL);
+    const real = e.STRIPE_SECRET_KEY ? new StripePayments(e.STRIPE_SECRET_KEY, e.STRIPE_WEBHOOK_SECRET) : null;
+    if (isSandbox(e)) {
+      // Live keys are refused at boot (assertSandboxEnv); checked again here in case boot checks were skipped.
+      if (e.STRIPE_SECRET_KEY && !/^(sk|rk)_test_/.test(e.STRIPE_SECRET_KEY)) throw new Error("Test site: Stripe live keys are not allowed.");
+      payments = real ? new SandboxPayments(real, new FakePayments(e.APP_BASE_URL)) : new FakePayments(e.APP_BASE_URL);
+    } else {
+      payments = real ?? new FakePayments(e.APP_BASE_URL);
+    }
   }
   return payments;
 }

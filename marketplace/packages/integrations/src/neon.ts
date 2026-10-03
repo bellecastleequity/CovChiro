@@ -1,4 +1,4 @@
-import { env } from "@cm/config";
+import { env, isSandbox } from "@cm/config";
 
 /**
  * Neon (the hosted Postgres) management API, for restore points and point-in-time restore.
@@ -122,5 +122,7 @@ export function setNeonApi(n: NeonApi | null | undefined) {
 export function neonApi(): NeonApi | null {
   if (override !== undefined) return override;
   const e = env();
+  // The test site never gets restore controls: copied keys would point at production's database.
+  if (isSandbox(e)) return null;
   return e.NEON_API_KEY && e.NEON_PROJECT_ID ? new NeonHttp(e.NEON_API_KEY, e.NEON_PROJECT_ID, e.NEON_BRANCH_ID || undefined) : null;
 }

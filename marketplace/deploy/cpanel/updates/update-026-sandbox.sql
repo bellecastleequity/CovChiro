@@ -1,0 +1,2 @@
+-- Update 026: the test site's outbox table (used only when SANDBOX_MODE=1; harmless on the live site). Safe to re-run.
+-- @migration 0028_sandbox

@@ -27,6 +27,9 @@ import { settleDueInvites } from "./shifts";
 import { standingSweep } from "./standing";
 import { runPreLicensureFollowups } from "./prelicensure";
 import { autoDraftSweep } from "./blog";
+import { isSandbox } from "@cm/config";
+import { botsTick } from "./sandbox/bots";
+import { runQueue, sandboxBusy, weeklyTopUp } from "./sandbox/runner";
 
 /**
  * Every background job is an idempotent sweep over due rows (SPEC.md §16):
@@ -108,6 +111,14 @@ export const JOBS: Job[] = [
   { name: "statsRecompute", schedule: { everySeconds: 3600 }, run: () => forActiveProviders((id) => recomputeStats(id)) },
   { name: "responsivenessRecompute", schedule: { everySeconds: 3600 }, run: () => forActiveProviders((id) => dispatch.recomputeResponsiveness(id)) },
   { name: "nightlyCredentialSweep", schedule: { cron: "0 2 * * *", tz: "America/New_York" }, run: () => nightlyCredentialSweep() },
+  // Test site only (SANDBOX_MODE): build/top-up queue, the demo "bots", and the Sunday-evening top-up.
+  ...(isSandbox()
+    ? ([
+      { name: "sandboxBuild", schedule: { everySeconds: 60 }, run: () => runQueue(4 * 60_000), leaseMinutes: 5, long: true },
+      { name: "sandboxBots", schedule: { everySeconds: 60 }, run: () => botsTick(), leaseMinutes: 5 },
+      { name: "sandboxWeekly", schedule: { everySeconds: 3600 }, run: () => weeklyTopUp(), leaseMinutes: 10, long: true },
+    ] satisfies Job[])
+    : []),
 ];
 
 export const jobByName = new Map(JOBS.map((j) => [j.name, j]));
@@ -152,6 +163,8 @@ export async function releaseLease(name: string) {
  */
 export async function runJobs(jobs: Job[], opts: { background?: boolean } = {}) {
   await recordTick();
+  // Test site: while demo data is being built, only the builder runs (the rest would act on half-made history).
+  if (isSandbox() && (await sandboxBusy())) jobs = jobs.filter((j) => j.name === "sandboxBuild");
   const out: { job: string; ok: boolean; ms: number; result?: unknown; error?: string; skipped?: string; started?: boolean }[] = [];
   for (const j of jobs) {
     const t = Date.now();

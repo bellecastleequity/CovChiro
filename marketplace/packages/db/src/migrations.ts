@@ -33,6 +33,7 @@ export const EXPECTED_MIGRATIONS = [
   "0025_instagram_follow",
   "0026_shift_changes",
   "0027_clinic_set_rate",
+  "0028_sandbox",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */

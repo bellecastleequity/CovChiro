@@ -1,4 +1,4 @@
-import { env } from "@cm/config";
+import { env, isSandbox } from "@cm/config";
 
 /**
  * IndexNow: tells Bing (which also feeds ChatGPT and Copilot search), Yandex and
@@ -10,7 +10,7 @@ export const indexNowSent: { host: string; urls: string[]; at: Date }[] = [];
 
 export async function submitIndexNow(i: { host: string; key: string; keyLocation: string; urls: string[] }): Promise<{ ok: boolean; status: number | null; error?: string }> {
   if (!i.urls.length) return { ok: true, status: null };
-  if (env().NODE_ENV !== "production") {
+  if (env().NODE_ENV !== "production" || isSandbox()) {
     indexNowSent.push({ host: i.host, urls: i.urls, at: new Date() });
     return { ok: true, status: 200 };
   }

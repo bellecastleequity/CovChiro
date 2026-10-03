@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { brand, env } from "@cm/config";
+import { brand, env, isSandbox } from "@cm/config";
 import { Inter, Outfit } from "next/font/google";
 import { Analytics } from "@/components/site/analytics";
+import { SandboxBar } from "@/components/site/sandbox-bar";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -11,6 +12,8 @@ export async function generateMetadata(): Promise<Metadata> {
     title: { default: `${b.name} — ${b.tagline}`, template: `%s · ${b.name}` },
     description: "On-demand coverage for clinics from licensed, verified chiropractors and other providers — matched by state license, paid through the platform.",
     openGraph: { siteName: b.name, type: "website" },
+    // The test site is never indexed.
+    ...(isSandbox() ? { robots: { index: false, follow: false } } : {}),
   };
 }
 
@@ -24,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${outfit.variable}`}>
       <body className="min-h-dvh">
+        {isSandbox() ? <SandboxBar /> : null}
         {children}
         <Analytics />
       </body>

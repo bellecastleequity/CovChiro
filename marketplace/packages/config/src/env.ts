@@ -63,6 +63,12 @@ const EnvSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   MODERATION_MODEL: z.string().optional(),
   NPPES_API_BASE: z.string().default("https://npiregistry.cms.hhs.gov/api/"),
+  /** "1" = this install is the test site (sandbox): demo data, captured email/SMS, Stripe test keys only, no restore controls, not indexed. */
+  SANDBOX_MODE: z.string().optional(),
+  /** Test site: addresses (or @domains) whose email is really delivered, comma separated. Everything else only lands in the Test outbox. */
+  SANDBOX_EMAIL_ALLOW: z.string().optional(),
+  /** Test site: mobile numbers (+1…) whose texts are really sent, comma separated. */
+  SANDBOX_SMS_ALLOW: z.string().optional(),
 });
 export type Env = z.infer<typeof EnvSchema>;
 
@@ -90,8 +96,26 @@ export function brand(e: Env = env()): Brand {
   };
 }
 
+/** True on the test site (SANDBOX_MODE=1). */
+export function isSandbox(e: Env = env()) {
+  return e.SANDBOX_MODE === "1" || e.SANDBOX_MODE === "true";
+}
+
+/** The test site refuses live payment keys: nothing there may move real money. */
+export function assertSandboxEnv(e: Env = env()) {
+  if (!isSandbox(e)) return;
+  if (e.STRIPE_SECRET_KEY && !/^(sk|rk)_test_/.test(e.STRIPE_SECRET_KEY)) throw new Error("SANDBOX_MODE: STRIPE_SECRET_KEY must be a Stripe TEST key (sk_test_… or rk_test_…), or left blank.");
+  if (e.STRIPE_PUBLISHABLE_KEY && !e.STRIPE_PUBLISHABLE_KEY.startsWith("pk_test_")) throw new Error("SANDBOX_MODE: STRIPE_PUBLISHABLE_KEY must be a Stripe TEST key (pk_test_…), or left blank.");
+}
+
 export function assertProductionEnv(e: Env = env(), opts: { worker?: boolean } = {}) {
+  assertSandboxEnv(e);
   if (e.NODE_ENV !== "production") return;
+  // The test site runs with fakes wherever a key is missing.
+  if (isSandbox(e)) {
+    if (!e.SESSION_SECRET) throw new Error("Missing required env var: SESSION_SECRET");
+    return;
+  }
   const required: (keyof Env)[] = ["SESSION_SECRET", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "SENDGRID_API_KEY", "GOOGLE_MAPS_API_KEY"];
   // The BullMQ worker needs Redis; the web app (and cron-driven hosting) does not.
   if (opts.worker) required.push("REDIS_URL");
