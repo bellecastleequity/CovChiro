@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Alert, Checklist, Empty, PageHeader, Stat } from "@/components/ui/misc";
-import { dateLabel, money, relative, timeRange, firstName } from "@/lib/format";
+import { dateLabel, money, timeRange, firstName } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 
 export default async function ClinicHome({ searchParams }: { searchParams: Promise<{ code?: string; welcome?: string }> }) {
