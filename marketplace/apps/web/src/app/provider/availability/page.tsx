@@ -21,7 +21,7 @@ export default async function Availability() {
   const tz = p.homeTimeZone;
   return (
     <>
-      <PageHeader title="Availability" description={`Times are in your home time zone (${tz.replace("America/", "").replace("_", " ")}). Include travel time — we add your drive plus a buffer before and after each shift.`} />
+      <PageHeader title="Availability" description={`Times are in your home time zone (${tz.replace("America/", "").replace("_", " ")}). Your weekly hours are when you can be at the clinic.`} />
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader
