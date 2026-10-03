@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { prisma, type LicenseStatus } from "@cm/db";
-import { evaluateProviderForShift, getEligibleProviders } from "@cm/services";
-import { enablePair, futureWeekday, makeClinic, makeProvider, makeShift } from "../factories";
+import { evaluateProviderForShift, evaluateProviderForShifts, getEligibleProviders } from "@cm/services";
+import { enablePair, futureWeekday, insertAssignment, makeClinic, makeProvider, makeShift } from "../factories";
 
 /**
  * SPEC §20.1 #10 / Addendum 01 §13.2 #12: the set-based query
@@ -103,6 +103,65 @@ describe("eligibility: set-based query ≡ single check", () => {
     expect(eligibleCount).toBeGreaterThan(0);
     expect(eligibleCount).toBeLessThan(cases);
     console.log(`property test: ${cases} cases, ${eligibleCount} eligible`);
+  });
+});
+
+describe("eligibility: provider board batch ≡ single check", () => {
+  it("evaluateProviderForShifts gives the same result and reasons as evaluateProviderForShift for every shift", async () => {
+    const [ds] = fc.sample(datasetArb, { seed: 20261003, numRuns: 1 });
+    const providers = [];
+    for (const p of ds.providers) {
+      const c = CENTER[p.homeState];
+      providers.push(
+        await makeProvider({
+          licenses: p.licenses.map((l) => ({ professionCode: l.professionCode, state: l.state, status: l.status, expiresAt: new Date(Date.now() + l.expiresInDays * 86_400_000) })),
+          professions: PROFS.map((code) => ({ code, status: p.active ? "ACTIVE" : "ONBOARDING" })),
+          malpractice: p.covered.length ? [{ covered: [...p.covered], status: p.malpracticeStatus, perOccurrenceCents: p.perOccurrence }] : null,
+          home: { lat: c.lat + p.jitterLat, lng: c.lng + p.jitterLng, state: p.homeState },
+          maxDriveMinutes: p.maxDriveMinutes,
+          willingOvernight: p.willingOvernight,
+        }),
+      );
+    }
+    const shifts = [];
+    for (const s of ds.shifts) shifts.push(await makeShift(clinics[s.state].location.id, { professionCode: s.professionCode, days: s.days, lodgingAllowed: s.lodgingAllowed, status: "DRAFT" }));
+    // A booked provider: their own shift must not count as busy, a second shift at the same time must.
+    let booked: { providerId: string; shiftId: string; twinId: string } | null = null;
+    for (const sh of shifts) {
+      for (const p of providers) {
+        if ((await evaluateProviderForShift(prisma, p.id, sh.id)).result.eligible) {
+          await insertAssignment(sh.id, p.id);
+          const twin = await makeShift(sh.locationId, { professionCode: sh.professionCode, days: ds.shifts[shifts.indexOf(sh)].days, status: "DRAFT" });
+          booked = { providerId: p.id, shiftId: sh.id, twinId: twin.id };
+          shifts.push(twin);
+          break;
+        }
+      }
+      if (booked) break;
+    }
+    expect(booked).not.toBeNull();
+    const ids = shifts.map((sh) => sh.id);
+    let cases = 0;
+    let eligible = 0;
+    for (const p of providers) {
+      const batch = await evaluateProviderForShifts(prisma, p.id, ids);
+      for (const id of ids) {
+        const single = await evaluateProviderForShift(prisma, p.id, id);
+        const b = batch.get(id)!;
+        expect(b.result.eligible, `provider ${p.id} shift ${id}`).toBe(single.result.eligible);
+        expect(b.result.failures.map((f) => f.code)).toEqual(single.result.failures.map((f) => f.code));
+        expect(b.pair).toEqual(single.pair);
+        cases++;
+        if (single.result.eligible) eligible++;
+      }
+    }
+    const own = (await evaluateProviderForShifts(prisma, booked!.providerId, [booked!.shiftId, booked!.twinId]));
+    expect(own.get(booked!.shiftId)!.result.eligible).toBe(true);
+    expect(own.get(booked!.twinId)!.result.eligible).toBe(false);
+    expect(eligible).toBeGreaterThan(0);
+    expect(eligible).toBeLessThan(cases);
+    await prisma.assignment.deleteMany({ where: { shiftId: { in: ids } } });
+    await prisma.shift.deleteMany({ where: { id: { in: ids } } });
   });
 });
 

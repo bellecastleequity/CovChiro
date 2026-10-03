@@ -36,52 +36,71 @@ export interface LoadedShift {
 }
 
 export async function loadShift(db: Db, shiftId: string): Promise<LoadedShift> {
-  const s = await db.shift.findUnique({ where: { id: shiftId }, include: { location: true } });
+  const s = (await loadShifts(db, [shiftId])).get(shiftId);
   if (!s) throw new DomainError("NOT_FOUND", "Shift not found");
-  const [psc, stateCfg, profession] = await Promise.all([
-    db.professionStateConfig.findUnique({ where: { professionCode_state: { professionCode: s.professionCode, state: s.state } } }),
-    db.stateConfig.findUnique({ where: { state: s.state } }),
-    db.profession.findUnique({ where: { code: s.professionCode } }),
+  return s;
+}
+
+/** Several shifts in a handful of queries (config and skills fetched once per profession + state). */
+export async function loadShifts(db: Db, shiftIds: string[]): Promise<Map<string, LoadedShift>> {
+  const out = new Map<string, LoadedShift>();
+  if (!shiftIds.length) return out;
+  const rows = await db.shift.findMany({ where: { id: { in: shiftIds } }, include: { location: true } });
+  if (!rows.length) return out;
+  const combos = [...new Map(rows.map((r) => [`${r.professionCode}|${r.state}`, { professionCode: r.professionCode, state: r.state }])).values()];
+  const professionCodes = [...new Set(rows.map((r) => r.professionCode))];
+  const states = [...new Set(rows.map((r) => r.state))];
+  const skillIds = [...new Set(rows.flatMap((r) => [...r.requiredSkillIds, ...r.preferredSkillIds]))];
+  const [pscs, stateCfgs, professions, skills] = await Promise.all([
+    db.professionStateConfig.findMany({ where: { OR: combos } }),
+    db.stateConfig.findMany({ where: { state: { in: states } } }),
+    db.profession.findMany({ where: { code: { in: professionCodes } } }),
+    skillIds.length ? db.skill.findMany({ where: { id: { in: skillIds } }, include: { stateRules: { where: { OR: combos } } } }) : Promise.resolve([]),
   ]);
-  const skillIds = [...new Set([...s.requiredSkillIds, ...s.preferredSkillIds])];
-  const skills = skillIds.length
-    ? await db.skill.findMany({ where: { id: { in: skillIds } }, include: { stateRules: { where: { professionCode: s.professionCode, state: s.state } } } })
-    : [];
-  return {
-    clinicOrgId: s.location.clinicOrgId,
-    locationId: s.locationId,
-    location: { lat: s.location.lat, lng: s.location.lng, timeZone: s.location.timeZone },
-    lodgingCapCentsPerNight: s.lodgingCapCentsPerNight,
-    status: s.status,
-    facts: {
-      id: s.id,
-      professionCode: s.professionCode,
-      state: s.state,
-      startsAt: s.startsAt,
-      endsAt: s.endsAt,
-      requiredSkillIds: s.requiredSkillIds,
-      minYearsExperience: s.minYearsExperience,
-      lodgingAllowed: s.lodgingAllowed,
-      maxTravelBudgetCents: s.maxTravelBudgetCents,
-      pay: s.durationTier ? { durationTier: s.durationTier, providerPayCents: s.providerPayCents, billableHours: Math.max(0.01, (+s.endsAt - +s.startsAt) / 3_600_000) } : undefined,
-      supervisionAttestation: s.supervisionAttestedAt ? parseAttestation(s.supervisionAttestation) : null,
-      config: {
-        enabled: !!psc?.enabled,
-        stateEnabled: !!stateCfg?.enabled,
-        nationalCredentialAccepted: !!psc && psc.alternativeCredentialAllowed && !psc.licensedAtStateLevel,
-        supervisionRequired: psc?.supervisionRequired ?? profession?.requiresSupervisionDefault ?? false,
-        supervisingProfessionCodes: psc?.supervisingProfessionCodes?.length ? psc.supervisingProfessionCodes : (profession?.defaultSupervisingProfessionCodes ?? []),
-        malpracticeMinOccurrenceCents: psc?.malpracticeMinOccurrenceCents ?? profession?.defaultMalpracticeMinOccurrenceCents ?? 0,
-        malpracticeMinAggregateCents: psc?.malpracticeMinAggregateCents ?? profession?.defaultMalpracticeMinAggregateCents ?? 0,
+  for (const s of rows) {
+    const psc = pscs.find((x) => x.professionCode === s.professionCode && x.state === s.state);
+    const stateCfg = stateCfgs.find((x) => x.state === s.state);
+    const profession = professions.find((x) => x.code === s.professionCode);
+    const mine = new Set([...s.requiredSkillIds, ...s.preferredSkillIds]);
+    out.set(s.id, {
+      clinicOrgId: s.location.clinicOrgId,
+      locationId: s.locationId,
+      location: { lat: s.location.lat, lng: s.location.lng, timeZone: s.location.timeZone },
+      lodgingCapCentsPerNight: s.lodgingCapCentsPerNight,
+      status: s.status,
+      facts: {
+        id: s.id,
+        professionCode: s.professionCode,
+        state: s.state,
+        startsAt: s.startsAt,
+        endsAt: s.endsAt,
+        requiredSkillIds: s.requiredSkillIds,
+        minYearsExperience: s.minYearsExperience,
+        lodgingAllowed: s.lodgingAllowed,
+        maxTravelBudgetCents: s.maxTravelBudgetCents,
+        pay: s.durationTier ? { durationTier: s.durationTier, providerPayCents: s.providerPayCents, billableHours: Math.max(0.01, (+s.endsAt - +s.startsAt) / 3_600_000) } : undefined,
+        supervisionAttestation: s.supervisionAttestedAt ? parseAttestation(s.supervisionAttestation) : null,
+        config: {
+          enabled: !!psc?.enabled,
+          stateEnabled: !!stateCfg?.enabled,
+          nationalCredentialAccepted: !!psc && psc.alternativeCredentialAllowed && !psc.licensedAtStateLevel,
+          supervisionRequired: psc?.supervisionRequired ?? profession?.requiresSupervisionDefault ?? false,
+          supervisingProfessionCodes: psc?.supervisingProfessionCodes?.length ? psc.supervisingProfessionCodes : (profession?.defaultSupervisingProfessionCodes ?? []),
+          malpracticeMinOccurrenceCents: psc?.malpracticeMinOccurrenceCents ?? profession?.defaultMalpracticeMinOccurrenceCents ?? 0,
+          malpracticeMinAggregateCents: psc?.malpracticeMinAggregateCents ?? profession?.defaultMalpracticeMinAggregateCents ?? 0,
+        },
+        skills: skills
+          .filter((k) => mine.has(k.id))
+          .map((k) => ({
+            id: k.id,
+            requiresCertification: k.requiresCertification,
+            scopeSensitive: k.scopeSensitive,
+            allowedInScope: k.stateRules.some((r) => r.professionCode === s.professionCode && r.state === s.state && r.allowed),
+          })),
       },
-      skills: skills.map((k) => ({
-        id: k.id,
-        requiresCertification: k.requiresCertification,
-        scopeSensitive: k.scopeSensitive,
-        allowedInScope: k.stateRules.some((r) => r.allowed),
-      })),
-    },
-  };
+    });
+  }
+  return out;
 }
 
 export interface LoadedProvider {
@@ -90,6 +109,8 @@ export interface LoadedProvider {
   homeLng: number | null;
   userId: string;
   displayName: string;
+  /** The shift behind each `facts.busy` entry (same order). */
+  busyShiftIds: string[];
 }
 
 export async function loadProviders(db: Db, providerIds: string[], excludeShiftId?: string): Promise<Map<string, LoadedProvider>> {
@@ -107,7 +128,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
       payFloors: true,
       assignments: {
         where: { status: { in: ["CONFIRMED", "IN_PROGRESS"] }, ...(excludeShiftId ? { shiftId: { not: excludeShiftId } } : {}) },
-        select: { startsAt: true, endsAt: true, bufferMinutes: true },
+        select: { shiftId: true, startsAt: true, endsAt: true, bufferMinutes: true },
       },
     },
   });
@@ -118,6 +139,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
       displayName: p.displayName,
       homeLat: p.homeLat,
       homeLng: p.homeLng,
+      busyShiftIds: p.assignments.map((a) => a.shiftId),
       facts: {
         id: p.id,
         status: p.status,
@@ -240,6 +262,68 @@ export async function evaluateProviderForShift(
   const pair = (await pairFactsFor(db, shift, [providerId], drives, s)).get(providerId)!;
   const result = evaluateEligibility(provider.facts, shift.facts, pair, eligibilityOptions(s, extra));
   return { providerId, provider, pair, drive: drives.get(providerId) ?? null, result, shift };
+}
+
+/**
+ * One provider against many shifts (the provider board): the same inputs and the
+ * same pure evaluation as `evaluateProviderForShift` for each shift, loaded in a
+ * few queries instead of a dozen per shift. tests/invariants asserts they agree.
+ */
+export async function evaluateProviderForShifts(
+  db: Db,
+  providerId: string,
+  shiftIds: string[],
+  extra: Partial<EligibilityOptions> = {},
+): Promise<Map<string, Evaluated & { shift: LoadedShift }>> {
+  const out = new Map<string, Evaluated & { shift: LoadedShift }>();
+  if (!shiftIds.length) return out;
+  const s = await getSettings(db);
+  const [shifts, providers] = await Promise.all([loadShifts(db, shiftIds), loadProviders(db, [providerId])]);
+  const provider = providers.get(providerId);
+  if (!provider) throw new DomainError("NOT_FOUND", "Provider not found");
+  const list = shiftIds.map((id) => shifts.get(id)).filter((x): x is LoadedShift => !!x);
+  const origin = [{ key: providerId, lat: provider.homeLat, lng: provider.homeLng }];
+  const drives = new Map<string, DriveResult | null>();
+  if (!extra.credentialsOnly) {
+    for (let i = 0; i < list.length; i += 8) {
+      const chunk = list.slice(i, i + 8);
+      const res = await Promise.all(chunk.map((sh) => driveTimes(origin, { locationId: sh.locationId, ...sh.location }, sh.facts.startsAt)));
+      chunk.forEach((sh, j) => drives.set(sh.facts.id, res[j].get(providerId) ?? null));
+    }
+  }
+  const clinicIds = [...new Set(list.map((sh) => sh.clinicOrgId))];
+  const [blocks, declines] = await Promise.all([
+    db.block.findMany({
+      where: {
+        OR: [
+          { fromType: "CLINIC", fromId: { in: clinicIds }, toType: "PROVIDER", toId: providerId },
+          { fromType: "PROVIDER", fromId: providerId, toType: "CLINIC", toId: { in: clinicIds } },
+        ],
+      },
+    }),
+    db.offer.findMany({ where: { shiftId: { in: list.map((sh) => sh.facts.id) }, providerId, status: "DECLINED" }, select: { shiftId: true } }),
+  ]);
+  const blockedClinics = new Set(blocks.map((b) => (b.fromType === "CLINIC" ? b.fromId : b.toId)));
+  const declined = new Set(declines.map((d) => d.shiftId));
+  const opts = eligibilityOptions(s, extra);
+  for (const shift of list) {
+    const drive = drives.get(shift.facts.id) ?? null;
+    const travel = drive
+      ? travelEstimate(drive, { lodgingAllowed: shift.facts.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s)
+      : { totalCents: 0, mileageCents: 0, lodgingEstimateCents: 0, nights: 0 };
+    const pair: PairFacts = {
+      driveMinutes: drive?.minutes ?? null,
+      travelEstimateCents: travel.totalCents,
+      mileageCents: travel.mileageCents,
+      blocked: blockedClinics.has(shift.clinicOrgId),
+      previouslyDeclined: declined.has(shift.facts.id),
+    };
+    // As in the single check, the provider's own booking on this shift doesn't make them busy for it.
+    const facts = { ...provider.facts, busy: provider.facts.busy.filter((_, i) => provider.busyShiftIds[i] !== shift.facts.id) };
+    const result = evaluateEligibility(facts, shift.facts, pair, opts);
+    out.set(shift.facts.id, { providerId, provider: { ...provider, facts }, pair, drive, result, shift });
+  }
+  return out;
 }
 
 /** Throws DomainError (LICENSE_STATE_MISMATCH, LICENSE_PROFESSION_MISMATCH, …) when not eligible. */

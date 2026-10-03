@@ -24,7 +24,7 @@ import { agreementAccepted } from "./agreements";
 import { audit, clock, getSettings, lockShift, SYSTEM, requireAdmin, requireClinic, requireProvider, tx, type Actor, type Db } from "./context";
 import { confirmInTx, confirmProvider } from "./confirm";
 import { Effects } from "./effects";
-import { assertProviderEligibleForShift, eligibilityOptions, evaluateProviderForShift, getEligibleProviders, loadProviders, loadShift, nationalCredentialStates } from "./eligibility";
+import { assertProviderEligibleForShift, eligibilityOptions, evaluateProviderForShifts, getEligibleProviders, loadProviders, loadShift, nationalCredentialStates } from "./eligibility";
 import { logMatchRun, rankEvaluated } from "./matching";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
 import { depositPaidCents, refundAssignment } from "./payments";
@@ -415,10 +415,11 @@ export async function notifyEligibleProvidersOfShift(shiftId: string, reason: "p
   const group = shift.shiftGroupId && reason === "posted"
     ? await prisma.shift.findMany({ where: { shiftGroupId: shift.shiftGroupId }, select: { id: true, startsAt: true }, orderBy: { startsAt: "asc" } })
     : null;
-  for (const t of targets) {
+  // Each message is independent: send a few at a time so posting doesn't wait on them one by one.
+  const send = async (t: (typeof targets)[number]) => {
     if (group && group.length > 1) {
       const claimed = await prisma.digestSend.createMany({ data: [{ key: `groupnotice:${shift.shiftGroupId}:${t.providerId}`, userId: t.evaluated.provider.userId }], skipDuplicates: true });
-      if (!claimed.count) continue;
+      if (!claimed.count) return;
       const d = (x: Date) => x.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric" });
       await notify(prisma, t.evaluated.provider.userId, {
         template: "booking_available",
@@ -428,7 +429,7 @@ export async function notifyEligibleProvidersOfShift(shiftId: string, reason: "p
         ctaLabel: "View booking",
         sms: urgent || favoritesOnly,
       });
-      continue;
+      return;
     }
     await notify(prisma, t.evaluated.provider.userId, {
       template: "shift_available",
@@ -438,7 +439,8 @@ export async function notifyEligibleProvidersOfShift(shiftId: string, reason: "p
       ctaLabel: "View shift",
       sms: urgent || favoritesOnly,
     });
-  }
+  };
+  for (let i = 0; i < targets.length; i += 5) await Promise.all(targets.slice(i, i + 5).map(send));
   return targets.length;
 }
 
@@ -482,16 +484,12 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
     return milesBetween(me.homeLat, me.homeLng, sh.location.lat, sh.location.lng) <= limitMin * 1.2;
   };
   const toCheck = candidates.filter((sh) => (sh.status !== "FAVORITES_ONLY" || favoritedBy.has(sh.location.clinicOrgId)) && reachable(sh));
-  // The shared evaluator decides; a few at a time so a long list doesn't take minutes over a remote database.
-  const evaluated: Awaited<ReturnType<typeof evaluateProviderForShift>>[] = new Array(toCheck.length);
-  for (let i = 0; i < toCheck.length; i += 4) {
-    const batch = await Promise.all(toCheck.slice(i, i + 4).map((sh) => evaluateProviderForShift(prisma, providerId, sh.id)));
-    batch.forEach((ev, j) => (evaluated[i + j] = ev));
-  }
+  // The shared evaluator decides, with this provider's facts loaded once for all the shifts.
+  const evaluated = await evaluateProviderForShifts(prisma, providerId, toCheck.map((sh) => sh.id));
   const out = [];
-  for (const [k, sh] of toCheck.entries()) {
-    const ev = evaluated[k];
-    if (!ev.result.eligible) continue;
+  for (const sh of toCheck) {
+    const ev = evaluated.get(sh.id);
+    if (!ev?.result.eligible) continue;
     const trip = ev.drive ? travelEstimate(ev.drive, { lodgingAllowed: sh.lodgingAllowed, lodgingCapCentsPerNight: sh.lodgingCapCentsPerNight }, s) : { mileageCents: 0, lodgingEstimateCents: 0 };
     const mileage = trip.mileageCents;
     out.push({
