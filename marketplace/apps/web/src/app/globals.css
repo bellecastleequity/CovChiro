@@ -55,3 +55,8 @@
 @utility container-page {
   @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
 }
+
+/* Test site: the amber TEST SITE bar sits above the fixed side menu. */
+html[data-sandbox] aside.fixed {
+  top: 1.75rem;
+}

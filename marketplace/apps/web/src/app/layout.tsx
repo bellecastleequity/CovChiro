@@ -25,7 +25,7 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, them
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${outfit.variable}`}>
+    <html lang="en" className={`${inter.variable} ${outfit.variable}`} data-sandbox={isSandbox() ? "" : undefined}>
       <body className="min-h-dvh">
         {isSandbox() ? <SandboxBar /> : null}
         {children}

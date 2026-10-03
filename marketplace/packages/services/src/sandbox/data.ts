@@ -39,7 +39,7 @@ export interface DemoClinic {
 
 export const CLINICS: DemoClinic[] = [
   {
-    key: "yours", yours: true, name: "Sandbox Family Chiropractic", legal: "Sandbox Family Chiropractic LLC", owner: "Your Test Clinic", perWeek: 2, staff: "Jordan Front-Desk",
+    key: "yours", yours: true, name: "Sandbox Family Chiropractic", legal: "Sandbox Family Chiropractic LLC", owner: "Taylor Tester", perWeek: 2, staff: "Jordan Front-Desk",
     locations: [{ name: "Downtown Orlando", address: "100 N Orange Ave", city: "Orlando", zip: "32801", lat: 28.5421, lng: -81.379, patientsPerDay: 40, ehr: "ChiroTouch", arrival: "Park in the garage on Pine St (we validate). Staff entrance is the blue door off the lobby." }],
   },
   {
