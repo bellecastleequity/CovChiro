@@ -88,6 +88,8 @@ You need three long random strings: `SESSION_SECRET`, `CRON_SECRET` and `SETUP_T
 - **Password manager:** generate 64-character passwords with letters and digits only.
 - **cPanel Terminal**, if your plan has it: run `openssl rand -hex 32` three times.
 
+Use **letters and digits only**. A `$`, `%`, `^`, `{` or quote in `CRON_SECRET` gets changed by the cron shell, so the secret it sends no longer matches.
+
 Keep them somewhere safe.
 
 ## Step 5 — Create the Node.js app

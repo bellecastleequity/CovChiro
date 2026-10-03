@@ -60,7 +60,7 @@ Go to **Setup Node.js App → Create Application**. Use the same values as the l
 | `APP_BASE_URL` | `https://dev.coverageoncall.com` |
 | `UPLOAD_DIR` | `/home/YOUR_CPANEL_USER/dev.coverageoncall.com/uploads` |
 | `PRISMA_QUERY_ENGINE_LIBRARY` | same as live, with `dev.coverageoncall.com` in the path |
-| `SESSION_SECRET`, `CRON_SECRET`, `SETUP_TOKEN` | **new** random values, not the live ones |
+| `SESSION_SECRET`, `CRON_SECRET`, `SETUP_TOKEN` | **new** random values, not the live ones. Letters and digits only: a `$` or `%` in the cron line gets changed by the shell. |
 | `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` | your Stripe **test** keys (`sk_test_…` / `pk_test_…`), or delete both to use the built-in stand-in. The test site refuses to start with live keys. |
 | `STRIPE_WEBHOOK_SECRET` | delete it, or use a test-mode webhook pointing at `https://dev.coverageoncall.com/api/webhooks/stripe` |
 | `SANDBOX_EMAIL_ALLOW` | optional: your own address(es), comma separated. Emails to them are really delivered, with "[TEST]" in the subject. Everything else stays in the Test outbox. |
@@ -82,6 +82,7 @@ Then click **Create** and **Start App**.
 3. Optional third-party keys:
    - **Cloudflare Turnstile:** add `dev.coverageoncall.com` to the widget's hostnames.
    - **Google Maps browser key:** add `dev.coverageoncall.com/*` to its allowed websites.
+   Check it: open `https://dev.coverageoncall.com/api/cron` in a browser. **Unauthorized** = ready. **Not found** = `CRON_SECRET` is missing on the test app (or shorter than 16 characters), and the demo build will stall.
 4. Sign in and open **Admin → Test site**. Type `RESET` and click **Build demo data**. The page shows progress, and it takes 15 to 30 minutes. While it runs, the test site's other background jobs wait.
 
 ## Using it
