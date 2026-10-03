@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { isSandbox } from "@cm/config";
+import { env, isSandbox } from "@cm/config";
 import { sandbox } from "@cm/services";
 import { AutoRefresh } from "@/components/countdown";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/form";
 import { Alert, PageHeader, Stat, Table, Td, Th } from "@/components/ui/misc";
 import { dateLabel, dateTimeLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { actAsAction, buildDemoAction, clearOutboxAction, stopBuildAction, topUpAction } from "./actions";
+import { actAsAction, addTesterAction, buildDemoAction, clearOutboxAction, removeTesterAction, stopBuildAction, topUpAction } from "./actions";
 
 export const metadata = { title: "Test site" };
 export const dynamic = "force-dynamic";
@@ -87,6 +87,7 @@ export default async function SandboxPage({ searchParams }: { searchParams: Prom
             <ActionForm action={topUpAction}>
               <SubmitButton variant="outline" disabled={running || !o.builtAt}>Top up shifts now</SubmitButton>
             </ActionForm>
+            {o.owner ? (
             <ActionForm action={buildDemoAction} className="space-y-2" confirm="Replace everything on the test site with fresh demo data? Admin logins and settings stay.">
               <p className="text-sm text-slate-600">{o.builtAt ? "Start over: clears every clinic, provider, shift, payment and message on the test site, then builds three weeks of history and the next 37 days again." : "Builds 12 clinics, 34 providers, three weeks of worked and paid shifts, and the next 37 days."} Admin logins and Settings stay.</p>
               <div className="flex flex-wrap items-center gap-2">
@@ -94,7 +95,10 @@ export default async function SandboxPage({ searchParams }: { searchParams: Prom
                 <SubmitButton variant={o.builtAt ? "danger" : "primary"} disabled={running} pendingText="Starting…">{o.builtAt ? "Rebuild demo data" : "Build demo data"}</SubmitButton>
               </div>
             </ActionForm>
-            {running ? (
+            ) : (
+              <p className="text-sm text-slate-600">Only the test site&apos;s owner can rebuild or reset the demo data.</p>
+            )}
+            {running && o.owner ? (
               <ActionForm action={stopBuildAction} confirm="Stop the build? What's already made stays.">
                 <SubmitButton variant="ghost" size="sm">Stop</SubmitButton>
               </ActionForm>
@@ -116,6 +120,40 @@ export default async function SandboxPage({ searchParams }: { searchParams: Prom
           </CardBody>
         </Card>
       </div>
+
+      {o.owner ? (
+        <Card className="mt-6">
+          <CardHeader title="Testers" description="People helping you evaluate the site. Each gets an admin login on the test site only (never the live site), with full admin access and Act as, but they can't rebuild or reset the demo data, manage testers, or change your login. They set up two-step sign-in the first time they sign in." />
+          <CardBody className="space-y-4">
+            <ActionForm action={addTesterAction} resetOnSuccess className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+              <Input name="name" placeholder="Name" autoComplete="off" />
+              <Input name="email" type="email" placeholder="Email" autoComplete="off" />
+              <Input name="password" placeholder="Temporary password (12+)" autoComplete="new-password" />
+              <SubmitButton pendingText="Adding…">Add tester</SubmitButton>
+            </ActionForm>
+            {o.testers.length ? (
+              <ul className="divide-y divide-slate-100">
+                {o.testers.map((t) => (
+                  <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
+                    <span>
+                      <span className="font-medium">{t.name}</span> <span className="text-xs text-slate-500">{t.email}</span>{" "}
+                      {t.disabledAt ? <Badge tone="gray">Removed</Badge> : t.lastLoginAt ? <Badge tone="green">Last in {dateLabel(t.lastLoginAt)}</Badge> : <Badge tone="amber">Hasn&apos;t signed in yet</Badge>}
+                    </span>
+                    {t.disabledAt ? null : (
+                      <ActionForm action={removeTesterAction} confirm={`Remove ${t.name}? They're signed out and can't sign in.`}>
+                        <input type="hidden" name="userId" value={t.id} />
+                        <SubmitButton size="sm" variant="ghost">Remove</SubmitButton>
+                      </ActionForm>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-500">No testers yet. Send them {env().APP_BASE_URL.replace(/\/$/, "")}/login, their email and the temporary password.</p>
+            )}
+          </CardBody>
+        </Card>
+      ) : null}
 
       <Card className="mt-6">
         <CardHeader title="All demo logins" description={`Password for every one: ${o.password}`} />

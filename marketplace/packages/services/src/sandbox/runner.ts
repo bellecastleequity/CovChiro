@@ -4,6 +4,7 @@ import { DomainError } from "@cm/core";
 import { prisma } from "@cm/db";
 import { requireAdmin, type Actor } from "../context";
 import { assertSafeDatabase, assertSandbox } from "./cast";
+import { requireOwner } from "./testers";
 import { initialPlan, topUpPlan } from "./plan";
 import { runSpec, SPEC_LABEL, ZONE, type Spec } from "./steps";
 
@@ -119,7 +120,7 @@ function kick() {
 
 /** Admin: (re)build the whole demo: wipe, people, three weeks of history, special cases, the next 37 days. */
 export async function startBuild(actor: Actor) {
-  requireAdmin(actor);
+  await requireOwner(actor);
   await assertSafeDatabase();
   const q = await queueState();
   if (q && q.done < q.specs.length) throw new DomainError("CONFLICT", "A build is already running. Watch its progress below.");
@@ -140,7 +141,7 @@ export async function startTopUp(actor: Actor) {
 
 /** Admin: stop a stuck build (what's done stays). */
 export async function cancelQueue(actor: Actor) {
-  requireAdmin(actor);
+  await requireOwner(actor);
   assertSandbox();
   const q = await queueState();
   if (q) await write(LAST_KEY, { ...q, specs: [], total: q.specs.length, finishedAt: new Date().toISOString(), cancelled: true });

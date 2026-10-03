@@ -147,13 +147,32 @@ describe("test site (sandbox)", () => {
     await expect(sandbox.actAs(admin, admin.userId)).rejects.toThrow(/Only demo accounts/);
   });
 
+  it("testers get admin access but can't rebuild, manage testers or touch the owner's login", async () => {
+    const msg = await sandbox.addTester(admin, { name: "Tess Tester", email: "tess@example.com", password: "temporary-pass-123" });
+    expect(msg).toMatch(/can now sign in/);
+    const t = await prisma.user.findUniqueOrThrow({ where: { email: "tess@example.com" } });
+    expect(t.role).toBe("PLATFORM_ADMIN");
+    const tester = { userId: t.id, role: "PLATFORM_ADMIN" as const, providerId: null, clinicOrgId: null };
+    expect((await sandbox.overview(tester)).owner).toBe(false);
+    await expect(sandbox.startBuild(tester)).rejects.toThrow(/Only the test site's owner/);
+    await expect(sandbox.cancelQueue(tester)).rejects.toThrow(/Only the test site's owner/);
+    await expect(sandbox.addTester(tester, { name: "X Y", email: "x@example.com", password: "temporary-pass-123" })).rejects.toThrow(/owner/);
+    const { accounts } = await import("@cm/services");
+    await expect(accounts.setUserSuspended(tester, admin.userId, true, "testing")).rejects.toThrow(/owner's login/);
+    // Everything else an admin does still works for a tester, e.g. opening a demo login.
+    const demo = await prisma.user.findUniqueOrThrow({ where: { email: "clinic.yours@sandbox.test" } });
+    expect((await sandbox.actAs(tester, demo.id)).role).toBe("CLINIC_OWNER");
+    await sandbox.removeTester(admin, t.id);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: t.id } })).disabledAt).not.toBeNull();
+  });
+
   it("a reset keeps the admin and the configuration", async () => {
     await sandbox.startBuild(admin);
     // Only the wipe + config + cast, then stop: enough to prove the reset.
     await sandbox.runQueue(1);
     await sandbox.runQueue(1);
     await sandbox.cancelQueue(admin);
-    expect(await prisma.user.count({ where: { role: "PLATFORM_ADMIN" } })).toBe(1);
+    expect(await prisma.user.count({ where: { role: "PLATFORM_ADMIN", disabledAt: null } })).toBe(1);
     expect(await prisma.rateCard.count()).toBeGreaterThan(0);
     expect(await prisma.assignment.count()).toBe(0);
   }, 300_000);

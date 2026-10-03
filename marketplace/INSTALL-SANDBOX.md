@@ -101,6 +101,15 @@ Then click **Create** and **Start App**.
 - **Shifts ahead:** every Sunday from 6 PM Eastern, the site adds shifts so there are always 37 days ahead. Each clinic gets its usual weekly need, and your two accounts get new bookings and invitations. **Top up shifts now** does the same at any time.
 - **Start over:** use **Rebuild demo data** (type `RESET`). Admin logins and Settings stay.
 
+## Letting other people test
+
+On **Admin → Test site → Testers**, add each person with a name, email and temporary password, then send them the login address and password.
+
+- **They get:** full admin access on the test site and Act as.
+- **They can't:** rebuild, reset or stop the demo data, add or remove testers, or change your login.
+- **They have no access to the live site,** which is a separate database.
+- **Removing a tester** signs them out and switches their login off.
+
 ## Updating the test site
 
 When a release ships, install it here first, the same way as on the live site:

@@ -54,3 +54,17 @@ export const actAsAction = formAction(async (fd) => {
   await setSessionCookie(token);
   redirect(homeFor(role));
 });
+
+export const addTesterAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await sandbox.addTester(actor, { name: str(fd, "name"), email: str(fd, "email"), password: String(fd.get("password") ?? "") });
+  rv();
+  return r;
+});
+
+export const removeTesterAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await sandbox.removeTester(actor, str(fd, "userId"));
+  rv();
+  return r;
+});

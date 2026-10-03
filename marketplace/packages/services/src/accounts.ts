@@ -1,3 +1,5 @@
+import { isSandbox } from "@cm/config";
+import { assertMayManageUser } from "./sandbox/testers";
 import { DomainError } from "@cm/core";
 import { prisma } from "@cm/db";
 import { audit, clock, requireAdmin, type Actor } from "./context";
@@ -208,6 +210,8 @@ async function guardUserAction(actor: Actor, userId: string) {
   requireAdmin(actor);
   if (actor.userId === userId) throw new DomainError("VALIDATION", "You can't do that to your own login.");
   const u = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  // Test site: testers can't suspend or delete the owner's login.
+  if (isSandbox()) await assertMayManageUser(actor, u);
   if (u.role === "PLATFORM_ADMIN" && (await prisma.user.count({ where: { role: "PLATFORM_ADMIN", disabledAt: null, id: { not: userId } } })) === 0) {
     throw new DomainError("VALIDATION", "That's the last active admin login.");
   }

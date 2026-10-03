@@ -9,11 +9,13 @@ import { DEMO_DOMAIN, DEMO_PASSWORD, CLINICS, PROVIDERS } from "./data";
 import { HORIZON_DAYS } from "./plan";
 import { lastRun, queueState, stepLabel } from "./runner";
 import { etDay } from "./steps";
+import { isTester, listTesters } from "./testers";
 
 export { botsTick } from "./bots";
 export { cancelQueue, runQueue, sandboxBusy, startBuild, startTopUp, weeklyTopUp } from "./runner";
 export { atTime, realNow, travel } from "./time";
 export { DEMO_PASSWORD } from "./data";
+export { addTester, isTester, listTesters, removeTester } from "./testers";
 
 // Test site: keep every email and text in the database (Admin → Test site → Outbox).
 if (isSandbox()) {
@@ -69,6 +71,9 @@ export async function overview(actor: Actor) {
     emailAllow: env().SANDBOX_EMAIL_ALLOW ?? "",
     smsAllow: env().SANDBOX_SMS_ALLOW ?? "",
     stripe: env().STRIPE_SECRET_KEY ? "test" : "fake",
+    /** Owner (not a tester): may build/rebuild/stop and manage testers. */
+    owner: !(await isTester(actor.userId)),
+    testers: await listTesters(actor),
   };
 }
 
