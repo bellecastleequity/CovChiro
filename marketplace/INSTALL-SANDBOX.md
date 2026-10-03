@@ -111,6 +111,12 @@ On **Admin → Test site → Testers**, add each person with a name, email and t
 - **Removing a tester** signs them out and switches their login off.
 - **Two-step sign-in on the test site is an emailed code** (no authenticator app). Every sign-in sends a 6-digit code that works for 10 minutes; "Email me a new code" sends another. These codes are really emailed even though other test-site email stays in the outbox, so the test app needs `SENDGRID_API_KEY` (the same key as live is fine).
 
+## Catching problems
+
+- **Report a problem** (amber bar, every page): testers describe what went wrong; the page, their login (and the demo login they were using), browser and any errors around that moment are attached. Admin → Test site → Problem reports; "Copy for fixing" gives text to paste to Claude.
+- **Errors**: every server error, failed background job, unexpected bot failure and browser error, grouped with a count. Mark them fixed after a release; any that happen again come back.
+- **Nightly self-check** (2:35 AM Eastern): one shift goes from posting to payout through the whole app; you get one email with the result (sent for real, like sign-in codes). "Run now" on Admin → Test site runs it any time. If it fails after you install a release on the test site, hold the release from the live site.
+
 ## Updating the test site
 
 When a release ships, install it here first, the same way as on the live site:

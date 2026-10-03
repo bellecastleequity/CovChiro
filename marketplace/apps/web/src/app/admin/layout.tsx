@@ -58,7 +58,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/support", label: "Support", icon: "help", badge: supportOpen },
     { href: "/admin/audit", label: "Audit log", icon: "audit" },
     // Test site only: demo data, act as a demo account, the captured outbox.
-    ...(isSandbox() ? [{ href: "/admin/sandbox", label: "Test site", icon: "sandbox" as const, mobile: true }] : []),
+    ...(isSandbox()
+      ? [{ href: "/admin/sandbox", label: "Test site", icon: "sandbox" as const, mobile: true, badge: await Promise.all([prisma.sandboxReport.count({ where: { status: "OPEN" } }), prisma.sandboxError.count({ where: { resolvedAt: null } })]).then(([a, b]) => a + b).catch(() => 0) }]
+      : []),
   ];
   const urgent = await support.urgentWaiting().catch(() => []);
   return (

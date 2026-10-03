@@ -137,6 +137,38 @@ describe("test site (sandbox)", () => {
     expect(await sandbox.weeklyTopUp(new Date("2026-10-04T23:45:00Z"))).toBe("already done this week");
   }, 300_000);
 
+  it("the nightly self-check takes a shift from posting to payout, and every step passes", async () => {
+    const msg = await sandbox.runSelfCheckNow(admin);
+    const { last } = await sandbox.selfCheckState();
+    if (!last!.ok) console.log(last!.results.filter((r) => !r.ok));
+    expect(msg).toMatch(/^All \d+ checks passed/);
+    expect(last!.results.length).toBeGreaterThanOrEqual(15);
+    // A second run picks another free day and passes too.
+    expect(await sandbox.runSelfCheckNow(admin)).toMatch(/^All/);
+  }, 300_000);
+
+  it("errors are grouped with a count, and problem reports carry context", async () => {
+    await sandbox.recordError({ source: "server", message: "Cannot read properties of undefined (reading 'id') at shift cmabcdefghijklmnopqrstuvwx", path: "/clinic/shifts/cmabcdefghijklmnopqrstuvwx" });
+    await sandbox.recordError({ source: "server", message: "Cannot read properties of undefined (reading 'id') at shift cmzyxwvutsrqponmlkjihgfedc", path: "/clinic/shifts/cmzyxwvutsrqponmlkjihgfedc" });
+    const errs = await sandbox.listErrors(admin);
+    const e = errs.find((x) => x.message.startsWith("Cannot read properties"))!;
+    expect(e.count).toBe(2);
+    await sandbox.resolveError(admin, e.id);
+    expect((await sandbox.listErrors(admin)).some((x) => x.id === e.id)).toBe(false);
+    // Happens again: it comes back.
+    await sandbox.recordError({ source: "server", message: "Cannot read properties of undefined (reading 'id') at shift cmqqqqqqqqqqqqqqqqqqqqqqqqq", path: "/clinic/shifts/cmqqqqqqqqqqqqqqqqqqqqqqqqq" });
+    expect((await sandbox.listErrors(admin)).find((x) => x.id === e.id)?.count).toBe(3);
+
+    const demo = await prisma.user.findUniqueOrThrow({ where: { email: "provider.you@sandbox.test" } });
+    await sandbox.createReport({ userId: demo.id, name: demo.name, email: demo.email, adminUserId: admin.userId }, { note: "Apply button did nothing", path: "/provider/shifts", client: { userAgent: "test", viewport: "390×844", browserErrors: ["TypeError: x is undefined"] } });
+    const [r] = await sandbox.listReports(admin);
+    expect(r.reporterName).toBe("Owner");
+    expect(r.actingAs).toMatch(/provider.you@sandbox.test/);
+    expect((r.context as { serverErrors: unknown[] }).serverErrors.length).toBeGreaterThan(0);
+    await sandbox.setReportStatus(admin, r.id, true);
+    expect(await sandbox.listReports(admin)).toHaveLength(0);
+  });
+
   it("admins can open any demo login (and only demo logins)", async () => {
     const ov = await sandbox.overview(admin);
     const yourProvider = ov.logins.find((l) => l.email === "provider.you@sandbox.test")!;

@@ -68,3 +68,24 @@ export const removeTesterAction = formAction(async (fd) => {
   rv();
   return r;
 });
+
+export const runSelfCheckAction = formAction(async () => {
+  const { actor } = await me();
+  const r = await sandbox.runSelfCheckNow(actor);
+  rv();
+  return r;
+});
+
+export const resolveErrorAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await sandbox.resolveError(actor, str(fd, "id"));
+  rv();
+  return r;
+});
+
+export const reportStatusAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await sandbox.setReportStatus(actor, str(fd, "id"), str(fd, "done") === "1");
+  rv();
+  return r;
+});

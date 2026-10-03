@@ -5,6 +5,7 @@ import { prisma } from "@cm/db";
 import { requireAdmin, type Actor } from "../context";
 import { assertSafeDatabase, assertSandbox } from "./cast";
 import { requireOwner } from "./testers";
+import { recordError } from "./errors";
 import { initialPlan, topUpPlan } from "./plan";
 import { runSpec, SPEC_LABEL, ZONE, type Spec } from "./steps";
 
@@ -92,6 +93,7 @@ export async function runQueue(budgetMs = 45_000) {
           await runSpec(spec, i * 7 + 3, admin);
         } catch (e) {
           q.errors.push({ step: i, kind: spec.k, message: (e as Error).message.slice(0, 300) });
+          await recordError({ source: "build", message: `${spec.k}: ${(e as Error).message}`, detail: `${JSON.stringify(spec)}\n${(e as Error).stack ?? ""}` });
           console.error(`[sandbox] step ${i} (${spec.k}) failed:`, (e as Error).message);
         }
       }

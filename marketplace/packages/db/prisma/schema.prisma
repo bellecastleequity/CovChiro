@@ -2455,3 +2455,42 @@ model SandboxMessage {
   @@index([createdAt])
   @@index([to])
 }
+
+/// Test site only: server, job, bot, browser and self-check errors, one row per
+/// distinct problem (fingerprint) with a count. Admin → Test site → Errors.
+model SandboxError {
+  id          String    @id @default(cuid())
+  fingerprint String    @unique
+  /// server | job | bot | browser | build | selfcheck
+  source      String
+  message     String
+  detail      String?
+  path        String?
+  userId      String?
+  count       Int       @default(1)
+  firstAt     DateTime  @default(now()) @db.Timestamptz(3)
+  lastAt      DateTime  @default(now()) @db.Timestamptz(3)
+  resolvedAt  DateTime? @db.Timestamptz(3)
+
+  @@index([lastAt])
+}
+
+/// Test site only: "Report a problem" from a tester (page, who, note, recent errors).
+model SandboxReport {
+  id            String    @id @default(cuid())
+  userId        String?
+  reporterName  String
+  reporterEmail String?
+  /// The demo login they were using, when it differs from the reporter (Act as).
+  actingAs      String?
+  path          String?
+  note          String
+  /// Browser, screen size, recent browser errors, recent server errors.
+  context       Json?
+  /// OPEN | DONE
+  status        String    @default("OPEN")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  resolvedAt    DateTime? @db.Timestamptz(3)
+
+  @@index([status, createdAt])
+}

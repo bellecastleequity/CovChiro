@@ -1,0 +1,2 @@
+-- Update 027: the test site's error log and problem reports (used only when SANDBOX_MODE=1; harmless on the live site). Safe to re-run.
+-- @migration 0029_sandbox_reports

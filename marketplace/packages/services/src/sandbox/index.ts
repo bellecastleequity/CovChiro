@@ -16,6 +16,9 @@ export { cancelQueue, runQueue, sandboxBusy, startBuild, startTopUp, weeklyTopUp
 export { atTime, realNow, travel } from "./time";
 export { DEMO_PASSWORD } from "./data";
 export { addTester, isTester, listTesters, removeTester } from "./testers";
+export { listErrors, recordError, resolveError } from "./errors";
+export { createReport, listReports, setReportStatus } from "./reports";
+export { nightlySelfCheck, runSelfCheckNow, selfCheckState } from "./selfcheck";
 
 // Test site: keep every email and text in the database (Admin → Test site → Outbox).
 if (isSandbox()) {
@@ -45,6 +48,7 @@ export async function overview(actor: Actor) {
   });
   const describe = (email: string) => {
     const [kind, key] = email.split("@")[0].split(".");
+    if (key === "selfcheck") return { yours: false, group: kind === "provider" ? ("provider" as const) : ("clinic" as const), note: "used by the nightly self-check (leave it alone)" };
     if (kind === "provider") {
       const p = PROVIDERS.find((x) => x.key === key);
       return { yours: !!p?.yours, group: "provider" as const, note: p ? `${p.city} · ${({ active: "verified", pendingLicense: "license waiting for review", pendingMalpractice: "malpractice waiting for review", expiringLicense: "license expiring soon", student: "student", noPayouts: "payout setup unfinished", suspended: "suspended" } as const)[p.kind]}` : "" };

@@ -12,6 +12,7 @@ import { confirmVisitsAsClinic, submitVisits } from "../volume";
 import { loadCast } from "./cast";
 import { APPLY_NOTES, CLINIC_REVIEWS, PROVIDER_REVIEWS } from "./data";
 import { sandboxBusy } from "./runner";
+import { isUnexpected, recordError } from "./errors";
 import { etDay, runSpec } from "./steps";
 
 /**
@@ -45,6 +46,8 @@ export async function botsTick(now = new Date()) {
       await fn();
       done.push(label);
     } catch (e) {
+      // Refusals are normal (someone else was picked, a window closed); anything else is a bug worth seeing.
+      if (isUnexpected(e)) await recordError({ source: "bot", message: `${label.replace(/\s\S+$/, "")}: ${(e as Error).message}`, detail: (e as Error).stack ?? null });
       // Bots give up quietly: the state moved on (someone else was picked, a window closed).
       if (process.env.NODE_ENV !== "test" || process.env.BOT_DEBUG) console.log(`[sandbox bot] ${label}: ${(e as Error).message}`);
     }

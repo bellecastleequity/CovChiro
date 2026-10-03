@@ -30,6 +30,8 @@ import { autoDraftSweep } from "./blog";
 import { isSandbox } from "@cm/config";
 import { botsTick } from "./sandbox/bots";
 import { runQueue, sandboxBusy, weeklyTopUp } from "./sandbox/runner";
+import { recordError } from "./sandbox/errors";
+import { nightlySelfCheck } from "./sandbox/selfcheck";
 
 /**
  * Every background job is an idempotent sweep over due rows (SPEC.md §16):
@@ -117,6 +119,7 @@ export const JOBS: Job[] = [
       { name: "sandboxBuild", schedule: { everySeconds: 60 }, run: () => runQueue(4 * 60_000), leaseMinutes: 5, long: true },
       { name: "sandboxBots", schedule: { everySeconds: 60 }, run: () => botsTick(), leaseMinutes: 5 },
       { name: "sandboxWeekly", schedule: { everySeconds: 3600 }, run: () => weeklyTopUp(), leaseMinutes: 10, long: true },
+      { name: "sandboxSelfCheck", schedule: { cron: "35 2 * * *", tz: "America/New_York" }, run: () => nightlySelfCheck(), leaseMinutes: 15, long: true },
     ] satisfies Job[])
     : []),
 ];
@@ -176,6 +179,8 @@ export async function runJobs(jobs: Job[], opts: { background?: boolean } = {}) 
       try {
         return { ok: true as const, result: await j.run() };
       } catch (e) {
+        // Test site: keep it in the error log (no-op on the live site).
+        await recordError({ source: "job", message: `${j.name}: ${(e as Error).message}`, detail: (e as Error).stack ?? null });
         return { ok: false as const, error: (e as Error).message };
       } finally {
         await releaseLease(j.name).catch(() => undefined);

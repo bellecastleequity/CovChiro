@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/form";
 import { Alert, PageHeader, Stat, Table, Td, Th } from "@/components/ui/misc";
 import { dateLabel, dateTimeLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { actAsAction, addTesterAction, buildDemoAction, clearOutboxAction, removeTesterAction, stopBuildAction, topUpAction } from "./actions";
+import { actAsAction, addTesterAction, buildDemoAction, clearOutboxAction, removeTesterAction, reportStatusAction, resolveErrorAction, runSelfCheckAction, stopBuildAction, topUpAction } from "./actions";
 
 export const metadata = { title: "Test site" };
 export const dynamic = "force-dynamic";
@@ -29,6 +29,19 @@ export default async function SandboxPage({ searchParams }: { searchParams: Prom
   const { to } = await searchParams;
   const o = await sandbox.overview(actor);
   const mail = await sandbox.outbox(actor, { to: to ?? null, take: 60 });
+  const [check, reports, errors] = await Promise.all([sandbox.selfCheckState(), sandbox.listReports(actor), sandbox.listErrors(actor, { take: 40 })]);
+  /** A report as plain text, ready to paste to Claude (or anyone fixing it). */
+  const reportText = (r: (typeof reports)[number]) => {
+    const c = (r.context ?? {}) as { userAgent?: string; viewport?: string; browserErrors?: string[]; serverErrors?: { source: string; message: string; path: string | null; at: string }[] };
+    return [
+      `Problem report from ${r.reporterName}${r.actingAs ? ` (acting as ${r.actingAs})` : ""}, ${r.createdAt.toISOString()}`,
+      `Page: ${r.path ?? "?"}`,
+      `What happened: ${r.note}`,
+      `Browser: ${c.userAgent ?? "?"} · ${c.viewport ?? "?"}`,
+      ...(c.browserErrors?.length ? ["Browser errors:", ...c.browserErrors.map((e) => `- ${e}`)] : []),
+      ...(c.serverErrors?.length ? ["Errors around that time:", ...c.serverErrors.map((e) => `- [${e.source}] ${e.message}${e.path ? ` (${e.path})` : ""}`)] : []),
+    ].join("\n");
+  };
   const yours = o.logins.filter((l) => l.yours && l.group !== "staff");
   const others = o.logins.filter((l) => !l.yours || l.group === "staff");
   const running = !!o.queue;
@@ -59,6 +72,124 @@ export default async function SandboxPage({ searchParams }: { searchParams: Prom
         <Stat label="Furthest shift" value={o.furthestShift ? dateLabel(o.furthestShift) : "—"} hint={`Goal: through ${dateLabel(o.horizon)}`} />
         <Stat label="Test outbox" value={o.counts.outbox} hint="emails + texts" />
       </div>
+
+      <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        <Card>
+          <div id="selfcheck" className="scroll-mt-24" />
+          <CardHeader
+            title="Nightly self-check"
+            description="Every night at 2:35 AM Eastern, one shift goes all the way through the app (post, book, clock in and out, sign off, charge, pay). You get one email with the result."
+            action={
+              <ActionForm action={runSelfCheckAction}>
+                <SubmitButton size="sm" variant="outline" pendingText="Running…">Run now</SubmitButton>
+              </ActionForm>
+            }
+          />
+          <CardBody>
+            {check.last ? (
+              <>
+                <p className="mb-3 text-sm">
+                  {check.last.ok ? <Badge tone="green">All {check.last.results.length} passed</Badge> : <Badge tone="red">{check.last.results.filter((r) => !r.ok).length} failed</Badge>}{" "}
+                  <span className="text-slate-500">{check.last.trigger === "manual" ? "Run by hand" : "Nightly run"}, {dateTimeLabel(new Date(check.last.finishedAt))}</span>
+                </p>
+                <ul className="space-y-1 text-sm">
+                  {check.last.results.map((r) => (
+                    <li key={r.name} className={r.ok ? "text-slate-700" : "text-red-700"}>
+                      {r.ok ? "✓" : "✗"} {r.name} <span className="text-xs text-slate-400">{r.ms} ms</span>
+                      {r.detail ? <span className="block pl-4 text-xs">{r.detail}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+                {check.history.length > 1 ? (
+                  <p className="mt-3 text-xs text-slate-500">
+                    Last {check.history.length} runs: {check.history.map((h) => (h.ok ? "✓" : "✗")).join(" ")}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">Hasn&apos;t run yet. Click Run now (about a minute), or wait for tonight.</p>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <div id="reports" className="scroll-mt-24" />
+          <CardHeader title={`Problem reports${reports.length ? ` (${reports.length})` : ""}`} description={'Sent with "Report a problem" in the amber bar. Each one includes the page, who sent it (and which demo login they were using), their browser and any errors around that moment. "Copy" gives you text to paste to Claude.'} />
+          <CardBody>
+            {reports.length ? (
+              <ul className="divide-y divide-slate-100">
+                {reports.map((r) => (
+                  <li key={r.id} className="py-2 text-sm">
+                    <p className="font-medium">{r.note.length > 140 ? `${r.note.slice(0, 140)}…` : r.note}</p>
+                    <p className="text-xs text-slate-500">{r.reporterName}{r.actingAs ? ` as ${r.actingAs}` : ""} · {r.path ?? ""} · {dateTimeLabel(r.createdAt)}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <details className="text-xs">
+                        <summary className="cursor-pointer text-brand-700">Copy for fixing</summary>
+                        <textarea readOnly rows={8} defaultValue={reportText(r)} className="mt-1 w-full rounded border border-slate-300 p-2 font-mono text-xs" />
+                      </details>
+                      <ActionForm action={reportStatusAction} successMessage={false}>
+                        <input type="hidden" name="id" value={r.id} />
+                        <input type="hidden" name="done" value="1" />
+                        <SubmitButton size="sm" variant="ghost">Mark done</SubmitButton>
+                      </ActionForm>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-500">No open reports.</p>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
+      <Card className="mb-6">
+        <div id="errors" className="scroll-mt-24" />
+        <CardHeader
+          title={`Errors${errors.length ? ` (${errors.length})` : ""}`}
+          description="Every server error, failed background job, unexpected bot failure, browser error and failed self-check step, grouped so the same problem shows once with a count. Mark one fixed after a release; if it happens again it comes back."
+          action={errors.length ? (
+            <ActionForm action={resolveErrorAction} confirm="Mark every error fixed? Any that happen again will reappear.">
+              <input type="hidden" name="id" value="all" />
+              <SubmitButton size="sm" variant="ghost">Mark all fixed</SubmitButton>
+            </ActionForm>
+          ) : null}
+        />
+        {errors.length ? (
+          <Table>
+            <thead>
+              <tr><Th>What</Th><Th>Where</Th><Th>Times</Th><Th>Last</Th><Th /></tr>
+            </thead>
+            <tbody>
+              {errors.map((e) => (
+                <tr key={e.id}>
+                  <Td>
+                    <Badge tone={e.source === "selfcheck" || e.source === "server" ? "red" : e.source === "browser" ? "amber" : "gray"}>{e.source}</Badge>{" "}
+                    <span className="text-sm">{e.message}</span>
+                    {e.detail ? (
+                      <details className="mt-1 text-xs">
+                        <summary className="cursor-pointer text-slate-500">Details</summary>
+                        <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2">{e.detail}</pre>
+                      </details>
+                    ) : null}
+                  </Td>
+                  <Td className="text-xs text-slate-600">{e.path ?? "—"}</Td>
+                  <Td className="text-sm">{e.count}</Td>
+                  <Td className="text-xs text-slate-600">{dateTimeLabel(e.lastAt)}</Td>
+                  <Td className="text-right">
+                    <ActionForm action={resolveErrorAction} successMessage={false}>
+                      <input type="hidden" name="id" value={e.id} />
+                      <SubmitButton size="sm" variant="ghost">Fixed</SubmitButton>
+                    </ActionForm>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : (
+          <CardBody className="text-sm text-slate-500">No errors. 🎉</CardBody>
+        )}
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
