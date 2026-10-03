@@ -3,6 +3,7 @@ import { isSandbox } from "@cm/config";
 import { DomainError } from "@cm/core";
 import { prisma } from "@cm/db";
 import { requireAdmin, type Actor } from "../context";
+import { realNow } from "./time";
 
 /**
  * Test site error log: every server error, failed job, unexpected bot failure,
@@ -29,7 +30,8 @@ export async function recordError(e: { source: ErrorSource; message: string; det
   try {
     const message = (e.message || "Unknown error").split("\n").find((l) => l.trim())?.trim().slice(0, 500) ?? "Unknown error";
     const fingerprint = createHash("sha256").update(`${e.source}|${shape(message)}|${pathShape(e.path)}`).digest("hex").slice(0, 40);
-    const now = new Date();
+    // Real time even inside the self-check's time travel.
+    const now = new Date(realNow());
     await prisma.sandboxError.upsert({
       where: { fingerprint },
       create: { fingerprint, source: e.source, message, detail: e.detail?.slice(0, 8000) ?? null, path: e.path?.slice(0, 500) ?? null, userId: e.userId ?? null, firstAt: now, lastAt: now },
@@ -57,7 +59,7 @@ export async function resolveError(actor: Actor, id: string | "all") {
 
 /** Errors around a moment (for a problem report): this person's, plus server errors from the last few minutes. */
 export async function recentErrors(userId: string | null, minutes = 15) {
-  const since = new Date(Date.now() - minutes * 60_000);
+  const since = new Date(realNow() - minutes * 60_000);
   return prisma.sandboxError.findMany({
     where: { lastAt: { gte: since }, OR: [...(userId ? [{ userId }] : []), { source: { in: ["server", "job"] } }] },
     orderBy: { lastAt: "desc" },

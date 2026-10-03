@@ -71,6 +71,18 @@ async function freeDay(providerId: string) {
 }
 
 export async function runSelfCheck(trigger: "nightly" | "manual" = "manual"): Promise<SelfCheckRun> {
+  // Pause the site's other background jobs while it runs (they'd act on the check's past-dated shift).
+  const flag = "sandbox.selfcheckRunning";
+  const until = { until: new Date(realNow() + 15 * MIN).toISOString() };
+  await prisma.setting.upsert({ where: { key: flag }, create: { key: flag, value: until, updatedAt: new Date(realNow()) }, update: { value: until, updatedAt: new Date(realNow()) } });
+  try {
+    return await runChecks(trigger);
+  } finally {
+    await prisma.setting.deleteMany({ where: { key: flag } });
+  }
+}
+
+async function runChecks(trigger: "nightly" | "manual"): Promise<SelfCheckRun> {
   const startedAt = new Date(realNow()).toISOString();
   const results: CheckResult[] = [];
   /** One named step: passes unless it throws (or its own assertion fails). */

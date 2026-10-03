@@ -74,6 +74,13 @@ export const ShiftInput = z.object({
 });
 export type ShiftInputT = z.input<typeof ShiftInput>;
 
+/** Straight-line miles between two points (haversine). */
+function milesBetween(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const r = (d: number) => (d * Math.PI) / 180;
+  const h = Math.sin(r(bLat - aLat) / 2) ** 2 + Math.cos(r(aLat)) * Math.cos(r(bLat)) * Math.sin(r(bLng - aLng) / 2) ** 2;
+  return 2 * 3959 * Math.asin(Math.sqrt(h));
+}
+
 /** What the posting wizard needs for a location: professions (enabled or "not yet available"), skills, supervision. */
 export async function postingOptions(actor: Actor, locationId: string) {
   const orgId = requireClinic(actor);
@@ -466,10 +473,24 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
   const favoritedBy = new Set(
     (await prisma.favorite.findMany({ where: { fromType: "CLINIC", toType: "PROVIDER", toId: providerId } })).map((f) => f.fromId),
   );
+  // Same straight-line narrowing as the matching prefilter (max drive × 1.2 miles, or the lodging limit
+  // for overnight-willing providers on lodging shifts): a clinic farther than that can never pass the
+  // drive-time rule, so it isn't worth a full evaluation (drive time lookup included).
+  const reachable = (sh: (typeof candidates)[number]) => {
+    if (me.homeLat === null || me.homeLng === null) return true;
+    const limitMin = me.willingOvernight && sh.lodgingAllowed ? Math.max(me.maxDriveMinutes, s["pricing.lodgingMaxDriveMinutes"]) : me.maxDriveMinutes;
+    return milesBetween(me.homeLat, me.homeLng, sh.location.lat, sh.location.lng) <= limitMin * 1.2;
+  };
+  const toCheck = candidates.filter((sh) => (sh.status !== "FAVORITES_ONLY" || favoritedBy.has(sh.location.clinicOrgId)) && reachable(sh));
+  // The shared evaluator decides; a few at a time so a long list doesn't take minutes over a remote database.
+  const evaluated: Awaited<ReturnType<typeof evaluateProviderForShift>>[] = new Array(toCheck.length);
+  for (let i = 0; i < toCheck.length; i += 4) {
+    const batch = await Promise.all(toCheck.slice(i, i + 4).map((sh) => evaluateProviderForShift(prisma, providerId, sh.id)));
+    batch.forEach((ev, j) => (evaluated[i + j] = ev));
+  }
   const out = [];
-  for (const sh of candidates) {
-    if (sh.status === "FAVORITES_ONLY" && !favoritedBy.has(sh.location.clinicOrgId)) continue;
-    const ev = await evaluateProviderForShift(prisma, providerId, sh.id);
+  for (const [k, sh] of toCheck.entries()) {
+    const ev = evaluated[k];
     if (!ev.result.eligible) continue;
     const trip = ev.drive ? travelEstimate(ev.drive, { lodgingAllowed: sh.lodgingAllowed, lodgingCapCentsPerNight: sh.lodgingCapCentsPerNight }, s) : { mileageCents: 0, lodgingEstimateCents: 0 };
     const mileage = trip.mileageCents;

@@ -51,7 +51,10 @@ export async function lastRun(): Promise<QueueState | null> {
 export async function sandboxBusy() {
   if (!isSandbox()) return false;
   const q = await queueState().catch(() => null);
-  return !!q && q.done < q.specs.length;
+  if (q && q.done < q.specs.length) return true;
+  // The self-check works a shift "in the past": background jobs would close it mid-check.
+  const sc = (await prisma.setting.findUnique({ where: { key: "sandbox.selfcheckRunning" } }).catch(() => null))?.value as { until?: string } | undefined;
+  return !!sc?.until && new Date(sc.until) > new Date();
 }
 
 async function enqueue(label: string, specs: Spec[], adminUserId: string | null, replace = false) {

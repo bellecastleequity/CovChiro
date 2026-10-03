@@ -143,6 +143,11 @@ describe("test site (sandbox)", () => {
     if (!last!.ok) console.log(last!.results.filter((r) => !r.ok));
     expect(msg).toMatch(/^All \d+ checks passed/);
     expect(last!.results.length).toBeGreaterThanOrEqual(15);
+    // While it runs, the site's other background jobs pause (they'd close its past-dated shift).
+    await prisma.setting.create({ data: { key: "sandbox.selfcheckRunning", value: { until: new Date(Date.now() + 60_000).toISOString() }, updatedAt: new Date() } });
+    expect(await sandbox.sandboxBusy()).toBe(true);
+    await prisma.setting.delete({ where: { key: "sandbox.selfcheckRunning" } });
+    expect(await sandbox.sandboxBusy()).toBe(false);
     // A second run picks another free day and passes too.
     expect(await sandbox.runSelfCheckNow(admin)).toMatch(/^All/);
   }, 300_000);
