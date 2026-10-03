@@ -10,6 +10,7 @@ import { Checkbox, Field, Input, PhiNotice, Select, Textarea } from "@/component
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
+import { clinicRatePrice, clinicRateTerms } from "@cm/core";
 import { createShiftAction, quoteAction, updateDraftAction } from "../../actions";
 
 interface Prof {
@@ -35,7 +36,21 @@ interface DayQuote {
   subtotalCents: number;
   premiums: { kind: string; percent: number }[];
 }
+interface ClinicRateInfo {
+  available: boolean;
+  unavailableReason: string | null;
+  marketCents: number;
+  minPercent: number;
+  floorCents: number;
+  releaseHours: number;
+  releaseAt: string;
+  message: string;
+  brandName: string;
+  timeZone: string;
+}
+
 interface Quote {
+  clinicRate?: ClinicRateInfo | null;
   days?: DayQuote[];
   totalCents?: number;
   coverageCents: number;
@@ -119,9 +134,21 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const [perVisit, setPerVisit] = usePerVisit(locationId);
   const [volumeAck, setVolumeAck] = useState(false);
   const [providersNeeded, setProvidersNeeded] = useState(1);
+  // Clinic-set rate (beta)
+  const [rateOn, setRateOn] = useState(false);
+  const [rateDollars, setRateDollars] = useState("");
+  const [rateRelease, setRateRelease] = useState(true);
+  const [rateAck, setRateAck] = useState(false);
   const volumePriced = !!prof && prof.pricingModel !== "HOURLY" && volumeCodes.includes(prof.code);
   const visitsNum = expectedPatients === "" ? null : Math.max(0, Math.floor(Number(expectedPatients) || 0));
 
+  const cr = quote?.clinicRate ?? null;
+  const rateEligible = !!cr && !draft && days.length === 1 && providersNeeded === 1;
+  const rateActive = rateEligible && cr!.available && rateOn;
+  const ratePrice = rateActive ? clinicRatePrice({ clinicPriceCents: cr!.marketCents, providerPayCents: 1 }, Math.round(Number(rateDollars) * 100), cr!.minPercent) : null;
+  const rateTermsText = rateActive && ratePrice?.ok
+    ? clinicRateTerms({ brandName: cr!.brandName, clinicPriceCents: ratePrice.clinicPriceCents, marketPriceCents: cr!.marketCents, floorPercent: cr!.minPercent, release: rateRelease, releaseAt: rateRelease ? new Date(cr!.releaseAt) : null, releaseHours: cr!.releaseHours, timeZone: cr!.timeZone, message: cr!.message })
+    : null;
   const payload = useMemo(
     () =>
       JSON.stringify({
@@ -142,8 +169,11 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
         promoCode: promoCode.trim() || null,
         supervisionAttestation: prof?.supervisionRequired ? sup : null,
         providersNeeded: draft ? 1 : providersNeeded,
+        clinicRate: rateActive
+          ? { priceCents: Math.round(Number(rateDollars) * 100), release: rateRelease, releaseAt: rateRelease ? cr!.releaseAt : null, releaseHours: cr!.releaseHours, accepted: rateAck }
+          : null,
       }),
-    [providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, maxTravelBudget, promoCode, sup, prof],
+    [rateActive, rateDollars, rateRelease, rateAck, cr, providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, maxTravelBudget, promoCode, sup, prof],
   );
 
   function refreshQuote() {
@@ -374,9 +404,47 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                   <div><dt className="text-slate-500">Booking</dt><dd className="font-medium">{instantBook ? "Instant book" : "You choose from applicants"}</dd></div>
                 </dl>
                 <div className="flex gap-2">
-                  <Input value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="Promo code" className="font-mono" />
+                  <Input value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder={rateActive ? "Not with a clinic-set rate" : "Promo code"} disabled={rateActive} className="font-mono" />
                   <Button type="button" variant="outline" onClick={refreshQuote} disabled={pending}>Apply</Button>
                 </div>
+                {rateEligible ? (
+                  <div className={cn("rounded-xl border p-4 text-sm", rateOn ? "border-amber-300 bg-amber-50/60" : "border-slate-200")}>
+                    <Checkbox
+                      checked={rateOn}
+                      disabled={!cr!.available}
+                      onChange={(e) => { setRateOn(e.target.checked); setRateAck(false); if (e.target.checked) setPromoCode(""); }}
+                      label={<><b>Set your own rate</b> <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800">Beta</span></>}
+                    />
+                    {!cr!.available ? (
+                      <p className="ml-7 mt-1 text-xs text-slate-500">{cr!.unavailableReason}</p>
+                    ) : !rateOn ? (
+                      <p className="ml-7 mt-1 text-xs text-slate-500">Post below the market price of {money(cr!.marketCents)} (down to {money(cr!.floorCents)}). Providers apply and you choose; it isn&apos;t filled automatically.</p>
+                    ) : (
+                      <div className="ml-7 mt-3 space-y-3">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label="Your rate for coverage ($)" hint={`Market ${money(cr!.marketCents)} · lowest ${money(cr!.floorCents)} (${cr!.minPercent}%)`}>
+                            <Input inputMode="numeric" value={rateDollars} onChange={(e) => { setRateDollars(e.target.value.replace(/[^0-9]/g, "")); setRateAck(false); }} placeholder={String(Math.round(cr!.floorCents / 100))} />
+                          </Field>
+                        </div>
+                        {rateDollars && ratePrice && !ratePrice.ok ? <p className="text-xs text-red-700">{ratePrice.reason}</p> : null}
+                        <div className="space-y-2">
+                          <label className="flex items-start gap-2"><input type="radio" className="mt-1" checked={rateRelease} onChange={() => { setRateRelease(true); setRateAck(false); }} /><span><b>Release to {cr!.brandName} at market rates if not filled</b> by <b>{new Date(cr!.releaseAt).toLocaleString("en-US", { timeZone: cr!.timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</b> ({cr!.releaseHours} hours before the start). Priced at that time, including any short-notice premium.</span></label>
+                          <label className="flex items-start gap-2"><input type="radio" className="mt-1" checked={!rateRelease} onChange={() => { setRateRelease(false); setRateAck(false); }} /><span><b>Don&apos;t release.</b> If no one is confirmed at my rate, the shift may go unfilled.</span></label>
+                        </div>
+                        {cr!.message ? <p className="rounded-lg bg-white px-3 py-2 text-xs text-slate-600">{cr!.message}</p> : null}
+                        {rateTermsText ? (
+                          <>
+                            <details className="rounded-lg bg-white px-3 py-2 text-xs text-slate-600">
+                              <summary className="cursor-pointer font-medium text-slate-800">Terms you&apos;re agreeing to (saved with this shift and emailed to you)</summary>
+                              <div className="mt-2 whitespace-pre-line">{rateTermsText}</div>
+                            </details>
+                            <Checkbox checked={rateAck} onChange={(e) => setRateAck(e.target.checked)} label="I agree to these clinic-set rate terms, including the release time shown." />
+                          </>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
                 {volumePriced && v ? (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                     <p>
@@ -392,7 +460,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
                     <input type="hidden" name="payload" value={payload} />
                     <input type="hidden" name="mode" value="post" />
-                    <SubmitButton size="lg" pendingText="Posting…" disabled={volumePriced && !volumeAck}>{providersNeeded > 1 && !draft ? `Post ${providersNeeded} bookings` : days.length > 1 ? `Post ${days.length}-day booking` : "Post shift"}</SubmitButton>
+                    <SubmitButton size="lg" pendingText="Posting…" disabled={(volumePriced && !volumeAck) || (rateActive && !(ratePrice?.ok && rateAck))}>{providersNeeded > 1 && !draft ? `Post ${providersNeeded} bookings` : days.length > 1 ? `Post ${days.length}-day booking` : rateActive && ratePrice?.ok ? `Post at ${money(ratePrice.clinicPriceCents)}` : "Post shift"}</SubmitButton>
                   </ActionForm>
                   <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
@@ -427,6 +495,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 <div className="flex justify-between"><span>Coverage ({quote.tier === "HOURLY" ? `${quote.billableHours}h` : quote.tier === "HALF_DAY" ? "half day" : `full day${quote.hours > 8 ? ` + ${Math.round((quote.hours - 8) * 100) / 100}h OT` : ""}`})</span><span className="tabular-nums">{money(quote.coverageCents)}</span></div>
                 {v ? <div className="flex justify-between text-xs text-slate-500"><span>{TIER_LABEL[v.tier]} · up to {v.terms.ceiling + v.terms.grace} visits</span><span>+{money(v.terms.overageClinicCents)}/visit after</span></div> : null}
                 {quote.premiums.map((p) => <div key={p.kind} className="flex justify-between text-xs text-slate-500"><span>incl. {p.kind.toLowerCase()} premium</span><span>+{p.percent}%</span></div>)}
+                {rateActive && ratePrice?.ok ? <div className="flex justify-between rounded-lg bg-amber-50 px-2 py-1.5 font-semibold text-amber-900"><span>Your rate (clinic-set)</span><span className="tabular-nums">{money(ratePrice.clinicPriceCents)}</span></div> : null}
                 {quote.discountCents ? <div className="flex justify-between text-emerald-700"><span>Promo {quote.promoCode}</span><span className="tabular-nums">−{money(quote.discountCents)}</span></div> : null}
                 {quote.days && quote.days.length > 1 ? (
                   <>

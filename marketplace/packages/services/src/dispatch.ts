@@ -70,6 +70,8 @@ export async function startDispatch(shiftId: string, trigger: DispatchTrigger, a
     const shift = await db.shift.findUniqueOrThrow({ where: { id: shiftId } });
     if (!SELECTABLE.includes(shift.status as never)) return { dispatchId: null, state: `shift ${shift.status.toLowerCase()}` };
     if (shift.startsAt <= now) return { dispatchId: null, state: "shift started" };
+    // Clinic-set rate (beta): not auto-filled until released to market.
+    if (shift.rateMode === "CLINIC" && !shift.releasedAt) return { dispatchId: null, state: "clinic-set rate: release to market first" };
     const active = await db.dispatch.findFirst({ where: { shiftId, status: "ACTIVE" } });
     if (active) return { dispatchId: active.id, state: "already active" };
     const hasStandby = trigger === "BACKFILL" && (await db.standbyEntry.count({ where: { shiftId } })) > 0;
@@ -875,6 +877,7 @@ export async function boostAndRedispatch(actor: Actor, shiftId: string) {
   const orgId = actor.role === "PLATFORM_ADMIN" ? null : requireClinic(actor);
   const shift = await prisma.shift.findFirstOrThrow({ where: { id: shiftId, ...(orgId ? { location: { clinicOrgId: orgId } } : {}) } });
   if (shift.boosted) throw new DomainError("CONFLICT", "This shift is already boosted.");
+  if (shift.rateMode === "CLINIC" && !shift.releasedAt) throw new DomainError("CONFLICT", "This shift is at your own rate. Release it to market first.");
   const { quoteShift } = await import("./pricing");
   const q = await quoteShift(prisma, { locationId: shift.locationId, professionCode: shift.professionCode, startsAt: shift.startsAt, endsAt: shift.endsAt, boosted: true, pricedAt: shift.postedAt ?? clock.now(), expectedPatients: shift.expectedPatients, volumeTier: shift.declaredTier });
   const discount = Math.min(shift.promoDiscountCents, Math.max(0, q.base.clinicPriceCents - q.base.providerPayCents));

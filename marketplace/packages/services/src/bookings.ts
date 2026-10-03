@@ -18,6 +18,7 @@ const LIVE = ["CONFIRMED", "IN_PROGRESS"] as const;
 export async function createMultiDay(actor: Actor, days: ShiftInputT[], opts: { post: boolean }) {
   const orgId = requireClinic(actor);
   if (days.length === 1) return { groupId: null, shiftIds: [(await createShift(actor, days[0], opts)).shiftId] };
+  if (days.some((d) => d.clinicRate)) throw new DomainError("VALIDATION", "A clinic-set rate is available for single-day shifts only.");
   if (days.length > MAX_DAYS) throw new DomainError("VALIDATION", `Up to ${MAX_DAYS} days per booking.`);
   const parsed = days.map((d) => ShiftInput.parse(d)).sort((a, b) => +a.startsAt - +b.startsAt);
   for (let i = 1; i < parsed.length; i++) {
@@ -49,6 +50,7 @@ export const MAX_PROVIDERS_AT_ONCE = 5;
 export async function createForProviders(actor: Actor, days: ShiftInputT[], providers: number, opts: { post: boolean }) {
   const n = Math.floor(providers);
   if (!(n >= 1 && n <= MAX_PROVIDERS_AT_ONCE)) throw new DomainError("VALIDATION", `Choose 1 to ${MAX_PROVIDERS_AT_ONCE} providers.`);
+  if (n > 1 && days.some((d) => d.clinicRate)) throw new DomainError("VALIDATION", "A clinic-set rate is available for one provider at a time.");
   const shiftIds: string[] = [];
   for (let i = 0; i < n; i++) {
     const r = await createMultiDay(actor, i === 0 ? days : days.map((d) => ({ ...d, promoCode: null })), opts);

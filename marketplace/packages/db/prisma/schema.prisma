@@ -724,6 +724,18 @@ model Shift {
   promoCodeId             String?
   promoCode               PromoCode?       @relation(fields: [promoCodeId], references: [id])
   promoDiscountCents      Int              @default(0)
+  /// Clinic-set rate (beta): "MARKET" (rate engine) or "CLINIC" (clinic's own lower price, not auto-filled).
+  rateMode                String           @default("MARKET")
+  /// Market price/pay for this shift when the clinic set its own rate (for the floor, reports and release).
+  marketClinicPriceCents  Int?
+  marketProviderPayCents  Int?
+  /// The clinic chose to release to market if unfilled; releaseAt = start − releaseHours (as shown at posting).
+  releaseOnUnfilled       Boolean?
+  releaseHours            Int?
+  releaseAt               DateTime?        @db.Timestamptz(3)
+  releasedAt              DateTime?        @db.Timestamptz(3)
+  /// Receipt: { text, acceptedAt, acceptedById, acceptedByName, ip, floorPercent, ... } exactly as shown.
+  rateTerms               Json?
   // Matching timeline
   postedAt                DateTime?        @db.Timestamptz(3)
   favoritesWindowEndsAt   DateTime?        @db.Timestamptz(3)
@@ -747,6 +759,7 @@ model Shift {
 
   @@index([professionCode, state, status, startsAt])
   @@index([locationId, startsAt])
+  @@index([rateMode, releaseAt])
 }
 
 enum ApplicationStatus {

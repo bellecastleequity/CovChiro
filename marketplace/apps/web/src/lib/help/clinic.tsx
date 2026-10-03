@@ -194,6 +194,29 @@ const A: HelpArticle[] = [
   },
   // ---------------- providers ----------------
   {
+    slug: "own-rate",
+    category: "posting",
+    title: "Setting your own rate (beta)",
+    summary: "Post a shift below the market price; providers apply and you choose.",
+    keywords: "own rate set price lower budget discount manual price cheaper release market beta",
+    links: [{ href: "/clinic/shifts/new", label: "Post a shift" }],
+    body: (s, brand) =>
+      s["clinicRate.enabled"] ? (
+        <Ul
+          items={[
+            `On the Review step, tick "Set your own rate" and enter your price: below the market price, and at least ${s["clinicRate.minPercent"]}% of it.`,
+            "It isn't filled automatically: providers who are happy with your rate apply, and you choose who to confirm.",
+            `Choose what happens if no one is confirmed: release it to ${brand} at market rates at the time shown (currently ${s["clinicRate.releaseHours"]} hours before the start), or don't release and accept it may go unfilled.`,
+            `The release window is set by ${brand} between 72 and 168 hours before the start and can change with the season; the exact time for your shift is shown before you post, saved with the shift and emailed to you.`,
+            `Available for single-day shifts starting more than ${s["clinicRate.releaseHours"]} hours away. Promo codes can't be combined with your own rate.`,
+            'Changed your mind? Tap "Release to market now" on the shift page at any time.',
+          ]}
+        />
+      ) : (
+        <p>Setting your own rate isn&apos;t available right now. Shifts are priced at the market rate.</p>
+      ),
+  },
+  {
     slug: "choosing-provider",
     category: "providers",
     title: "Choosing a provider (and what happens if I don't)",

@@ -22,7 +22,7 @@ import { dateLabel, money, pct, relative, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import {
   blockAction, boostAction, cancelDispatchAction, confirmAllDaysAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
-  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, reportNoShowAction, selectAction, withdrawShiftChangeAction,
+  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, releaseClinicRateAction, reportNoShowAction, selectAction, withdrawShiftChangeAction,
 } from "../../actions";
 
 type Cand = Awaited<ReturnType<typeof shiftCandidates>>["applicants"][number];
@@ -139,6 +139,8 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
         }, {}),
       ).filter((x) => x.days > 1)
     : [];
+  const heldAtRate = shift.rateMode === "CLINIC" && !shift.releasedAt;
+  const rateTerms = shift.rateTerms as { text?: string; acceptedByName?: string; acceptedAt?: string } | null;
   const pendingChange = await prisma.shiftChange.findFirst({ where: { shiftId: id, status: "PENDING" } });
   const lastAnswer = pendingChange ? null : await prisma.shiftChange.findFirst({ where: { shiftId: id, status: { in: ["ACCEPTED", "DECLINED", "EXPIRED"] }, respondedAt: { gt: new Date(Date.now() - 3 * 86_400_000) } }, orderBy: { respondedAt: "desc" } });
   const changeable = shiftChanges.canChange(shift) && !pendingChange;
@@ -174,6 +176,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
           </CardBody>
         </Card>
       ) : null}
+      {shift.rateMode === "CLINIC" && shift.releasedAt && selectable ? <Alert tone="info" className="mb-5" title="Released to market">This shift was posted at your own rate and released to the market price on {dateLabel(shift.releasedAt, tz, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}. We&apos;re filling it the usual way.</Alert> : null}
       {lastAnswer?.status === "ACCEPTED" ? <Alert tone="success" className="mb-5">Your provider accepted your change.</Alert> : null}
       {lastAnswer && lastAnswer.status !== "ACCEPTED" && selectable ? (
         <Alert tone="info" className="mb-5" title={lastAnswer.status === "DECLINED" ? "Your provider couldn't make the change" : "Your provider didn't answer in time"}>
@@ -285,6 +288,32 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                     </ActionForm>
                   ) : null}
                 </div>
+              </CardBody>
+            </Card>
+          ) : heldAtRate && selectable ? (
+            <Card className="border-amber-300 ring-2 ring-amber-100">
+              <CardBody className="space-y-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">Your rate: {money(shift.clinicPriceCents)} <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800">Clinic-set · beta</span></div>
+                    <div className="text-slate-600">
+                      Not filled automatically: choose from applicants below.{" "}
+                      {shift.releaseOnUnfilled && shift.releaseAt
+                        ? <>If no one is confirmed by <b>{dateLabel(shift.releaseAt, tz, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</b>, we release it at the market price{shift.marketClinicPriceCents ? ` (about ${money(shift.marketClinicPriceCents)} today)` : ""}.</>
+                        : <>You chose not to release it, so it may go unfilled.</>}
+                    </div>
+                  </div>
+                  <ActionForm action={releaseClinicRateAction} confirm="Release this shift to the market price now? We'll start filling it the usual way.">
+                    <input type="hidden" name="shiftId" value={shift.id} />
+                    <SubmitButton variant="outline" size="sm">Release to market now</SubmitButton>
+                  </ActionForm>
+                </div>
+                {rateTerms?.text ? (
+                  <details className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <summary className="cursor-pointer font-medium text-slate-800">Your clinic-set rate terms{rateTerms.acceptedByName ? `, accepted by ${rateTerms.acceptedByName}` : ""}{rateTerms.acceptedAt ? ` on ${dateLabel(rateTerms.acceptedAt, tz, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}` : ""}</summary>
+                    <div className="mt-2 whitespace-pre-line">{rateTerms.text}</div>
+                  </details>
+                ) : null}
               </CardBody>
             </Card>
           ) : selectable && shift.status !== "DRAFT" ? (

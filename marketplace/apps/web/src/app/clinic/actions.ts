@@ -13,6 +13,7 @@ import {
   emergency,
   feedback,
   shiftChanges,
+  clinicRate,
   archiveLocation, auth, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
@@ -57,6 +58,7 @@ async function shiftPayloadFrom(raw: any) {
     lodgingCapCentsPerNight: raw.lodgingCap ? Math.round(Number(raw.lodgingCap) * 100) : null,
     promoCode: raw.promoCode || null,
     supervisionAttestation: raw.supervisionAttestation ?? null,
+    clinicRate: raw.clinicRate ?? null,
   };
 }
 
@@ -432,4 +434,11 @@ export const withdrawShiftChangeAction = formAction(async (fd) => {
   await shiftChanges.withdrawShiftChange(actor, str(fd, "changeId"));
   revalidatePath("/clinic", "layout");
   return "Withdrawn. The shift stays as it was booked.";
+});
+
+export const releaseClinicRateAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await clinicRate.releaseNow(actor, str(fd, "shiftId"));
+  revalidatePath("/clinic", "layout");
+  return `Released at the market price of $${(r.clinicPriceCents / 100).toFixed(2)}. We're filling it now.`;
 });

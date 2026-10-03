@@ -154,7 +154,8 @@ async function propose(db: Db, shift: Awaited<ReturnType<typeof loadForClinic>>,
 const changed = (a: ShiftData, b: ShiftData) =>
   a.startsAt !== b.startsAt || a.endsAt !== b.endsAt || a.expectedPatients !== b.expectedPatients || a.minYearsExperience !== b.minYearsExperience || (a.notes ?? "") !== (b.notes ?? "");
 
-function editable(shift: { status: string; emergencyAt: Date | null; rescueOfShiftId: string | null }) {
+function editable(shift: { status: string; emergencyAt: Date | null; rescueOfShiftId: string | null; rateMode?: string; releasedAt?: Date | null }) {
+  if (shift.rateMode === "CLINIC" && !shift.releasedAt) throw new DomainError("VALIDATION", "Shifts at your own rate can't be changed. Cancel it (free while no one is confirmed) and post again, or release it to market first.");
   if (shift.status === "DRAFT") throw new DomainError("VALIDATION", "This is a draft: edit it from Post a shift.");
   if (![...UNFILLED, "CONFIRMED"].includes(shift.status as never)) throw new DomainError("VALIDATION", "This shift can no longer be changed.");
   // Emergency cover carries a rescue bonus and is being filled right now: don't re-price it mid-search.
@@ -164,7 +165,7 @@ function editable(shift: { status: string; emergencyAt: Date | null; rescueOfShi
 }
 
 /** Whether the clinic's Change shift button applies (same rules as editable, without throwing). */
-export function canChange(shift: { status: string; emergencyAt: Date | null; rescueOfShiftId: string | null }) {
+export function canChange(shift: { status: string; emergencyAt: Date | null; rescueOfShiftId: string | null; rateMode?: string; releasedAt?: Date | null }) {
   try {
     editable(shift);
     return true;

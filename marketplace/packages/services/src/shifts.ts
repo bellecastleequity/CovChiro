@@ -60,6 +60,17 @@ export const ShiftInput = z.object({
     })
     .nullable()
     .optional(),
+  /** Clinic-set rate (beta): the clinic's own lower price and its release choice, as shown at posting. */
+  clinicRate: z
+    .object({
+      priceCents: z.coerce.number().int().min(0),
+      release: z.boolean(),
+      releaseAt: z.string().nullable(),
+      releaseHours: z.coerce.number().int(),
+      accepted: z.boolean(),
+    })
+    .nullable()
+    .optional(),
 });
 export type ShiftInputT = z.input<typeof ShiftInput>;
 
@@ -140,7 +151,11 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT) {
   const q = await quoteShift(prisma, { ...input, promoCode: input.promoCode?.trim() || (await autoCredit(prisma, orgId)) });
   // Estimated travel range from currently eligible providers (clinic never sees provider pay).
   let travel: { minCents: number; maxCents: number; candidates: number } | null = null;
+  const { clinicRatePreview } = await import("./clinicRate");
+  const loc = await prisma.clinicLocation.findUniqueOrThrow({ where: { id: input.locationId }, select: { timeZone: true } });
+  const clinicRate = await clinicRatePreview(prisma, { startsAt: input.startsAt, marketClinicPriceCents: q.base.clinicPriceCents, timeZone: loc.timeZone, days: 1 });
   return {
+    clinicRate,
     coverageCents: q.base.clinicPriceCents,
     discountCents: q.promo?.discountCents ?? 0,
     promoCode: q.promo?.code ?? null,
@@ -211,8 +226,12 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
     if (opts.post && !(await agreementAccepted("CLINIC", org.agreementSignedAt, org.agreementVersion))) {
       throw new DomainError("FORBIDDEN", "Please sign the current Clinic Platform Agreement in Settings before posting shifts.");
     }
-    const { supervisionRequired } = await validateShiftInput(db, orgId, input, opts.post);
-    const q = await quoteShift(db, { ...input, promoCode: input.promoCode?.trim() || (await autoCredit(db, orgId)) });
+    const { supervisionRequired, loc } = await validateShiftInput(db, orgId, input, opts.post);
+    if (input.clinicRate && !opts.post) throw new DomainError("VALIDATION", "A clinic-set rate is applied when you post. Post the shift now, or switch back to the market price to save a draft.");
+    const q = await quoteShift(db, { ...input, promoCode: input.clinicRate ? null : input.promoCode?.trim() || (await autoCredit(db, orgId)) });
+    const rate = input.clinicRate
+      ? await (await import("./clinicRate")).prepareClinicRate(db, actor, input.clinicRate, { startsAt: input.startsAt, timeZone: loc.timeZone, promoCode: input.promoCode }, q.base)
+      : null;
     const shift = await db.shift.create({
       data: {
         locationId: input.locationId,
@@ -242,10 +261,12 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
         ...(supervisionRequired && input.supervisionAttestation
           ? { supervisionAttestation: parseAttestation(input.supervisionAttestation) as unknown as Prisma.InputJsonValue, supervisionAttestedById: actor.userId, supervisionAttestedAt: new Date() }
           : {}),
+        ...(rate?.data ?? {}),
         createdById: actor.userId!,
       },
     });
-    await audit(db, actor, "shift.created", "Shift", shift.id, null, { status: "DRAFT", clinicPriceCents: q.base.clinicPriceCents, providerPayCents: q.base.providerPayCents });
+    await audit(db, actor, "shift.created", "Shift", shift.id, null, { status: "DRAFT", clinicPriceCents: shift.clinicPriceCents, providerPayCents: shift.providerPayCents, rateMode: shift.rateMode });
+    if (rate) effects.add(async () => (await import("./clinicRate")).sendClinicRateReceipt(shift.id));
     if (opts.post) await postInTx(db, actor, shift.id, effects);
     return shift.id;
   });
@@ -286,6 +307,7 @@ export async function updateDraftShift(actor: Actor, shiftId: string, raw: Shift
     const shift = await db.shift.findFirst({ where: { id: shiftId, location: { clinicOrgId: orgId } } });
     if (!shift) throw new DomainError("NOT_FOUND", "Shift not found");
     if (shift.status !== "DRAFT") throw new DomainError("VALIDATION", "Only drafts can be edited. This shift has already been posted.");
+    if (input.clinicRate) throw new DomainError("VALIDATION", "A clinic-set rate can be used on a new shift only. Post this draft at the market price, or start a new shift to set your own rate.");
     const loc = await db.clinicLocation.findFirst({ where: { id: input.locationId, clinicOrgId: orgId } });
     if (!loc) throw new DomainError("NOT_FOUND", "Location not found");
     if (shift.shiftGroupId && input.locationId !== shift.locationId) {
@@ -352,13 +374,15 @@ async function postInTx(db: Db, actor: Actor, shiftId: string, effects: Effects)
   const favEnd = favoritesWindowEnd(now, shift.startsAt, eligibleFavorites, s["matching.favoritesWindowHours"]);
   const { deadline } = selectionDeadline(s["matching.deadlineTiers"], now, shift.startsAt);
   const status = favEnd ? "FAVORITES_ONLY" : "OPEN";
-  await db.shift.update({ where: { id: shiftId }, data: { status, postedAt: now, favoritesWindowEndsAt: favEnd, selectionDeadline: deadline } });
+  // Clinic-set rate: never auto-selected or dispatched until released to market.
+  const held = shift.rateMode === "CLINIC" && !shift.releasedAt;
+  await db.shift.update({ where: { id: shiftId }, data: { status, postedAt: now, favoritesWindowEndsAt: favEnd, selectionDeadline: held ? null : deadline } });
   await audit(db, actor, "shift.posted", "Shift", shiftId, { status: shift.status }, { status, selectionDeadline: deadline });
   // Same-day / short-notice shifts start Smart Dispatch right away (On Call check, then waves);
   // planned shifts go through the normal application + selection window (Addendum 02 §3).
   const { urgencyTier } = await import("@cm/core");
   const tier = urgencyTier(now, shift.startsAt);
-  if (tier === "SAME_DAY" || tier === "SHORT") {
+  if (!held && (tier === "SAME_DAY" || tier === "SHORT")) {
     effects.add(async () => {
       const { startDispatch } = await import("./dispatch");
       await startDispatch(shiftId, "URGENT_POST", actor);
@@ -463,6 +487,8 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
       pay: providerView({ clinicPriceCents: 0, providerPayCents: sh.providerPayCents, promoDiscountCents: 0, mileageCents: mileage, lodgingCents: trip.lodgingEstimateCents }),
       applied: sh.applications.some((a) => a.status === "ACTIVE"),
       instantBook: sh.instantBook,
+      /** Clinic-set rate (beta): the clinic's own price, chosen from applicants (never auto-filled). */
+      clinicSetRate: sh.rateMode === "CLINIC" && !sh.releasedAt,
       urgent: +sh.startsAt - Date.now() < 48 * 3_600_000,
       expectedPatients: sh.expectedPatients,
       declaredTier: sh.declaredTier,
@@ -571,7 +597,8 @@ export async function shiftCandidates(actor: Actor, shiftId: string) {
   const { badgesFor } = await import("./profiles");
   const { onCallMatches } = await import("./dispatch");
   const [badges, onCall] = await Promise.all([badgesFor(ids), onCallMatches(prisma, shiftId).catch(() => [])]);
-  const instant = new Set(onCall.map((m) => m.providerId));
+  const held = await prisma.shift.findUniqueOrThrow({ where: { id: shiftId }, select: { rateMode: true, releasedAt: true } });
+  const instant = new Set(held.rateMode === "CLINIC" && !held.releasedAt ? [] : onCall.map((m) => m.providerId));
   const card = (r: (typeof ranked)[number]) => {
     const p = prof.get(r.providerId)!;
     const lic = licenses.find((l) => l.providerId === r.providerId);

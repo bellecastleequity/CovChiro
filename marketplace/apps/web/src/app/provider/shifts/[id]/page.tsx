@@ -42,6 +42,9 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
   return (
     <>
       <PageHeader eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} coverage · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} coverage`} title={`${dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}`} description={`${timeRange(shift.startsAt, shift.endsAt, tz)} · ${shift.location.clinicOrg.displayName}`} />
+      {shift.rateMode === "CLINIC" && !shift.releasedAt ? (
+        <Alert tone="info" className="mb-5" title="Clinic-set rate">The clinic set its own rate for this shift. It isn't filled automatically: apply if the pay works for you and the clinic chooses who to confirm.</Alert>
+      ) : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>

@@ -69,6 +69,7 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
                   <Badge tone="brand">{s.professionCode}</Badge>
                   {s.urgent ? <Badge tone="amber"><Clock className="size-3" />Urgent</Badge> : null}
                   {s.instantBook ? <Badge tone="blue"><Zap className="size-3" />Instant book</Badge> : null}
+                  {s.clinicSetRate ? <Badge tone="amber">Clinic-set rate</Badge> : null}
                   {s.applied ? <Badge tone="green">Applied</Badge> : null}
                 </div>
               </Card>

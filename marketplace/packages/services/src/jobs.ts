@@ -5,6 +5,7 @@ import { timeclockSweep } from "./timeclock";
 import { volumeSweep } from "./volume";
 import { recruitSweep } from "./shiftRecruit";
 import { expireShiftChanges } from "./shiftChanges";
+import { releaseDueClinicRates } from "./clinicRate";
 import { prisma } from "@cm/db";
 import { DateTime } from "luxon";
 import * as dispatch from "./dispatch";
@@ -80,6 +81,8 @@ export const JOBS: Job[] = [
   // Backups: encrypted export + Neon restore point + pruning, nightly at 3:10 ET.
   { name: "dbBackup", schedule: { cron: "10 3 * * *", tz: "America/New_York" }, run: () => nightlyBackup(), leaseMinutes: 30, long: true },
   // Clinic changes to confirmed shifts not answered in time: provider released (no penalty), shift reopens.
+  // Clinic-set rate (beta): unfilled shifts whose clinic chose release go to market at their release time.
+  { name: "clinicRateRelease", schedule: { everySeconds: 300 }, run: () => releaseDueClinicRates() },
   { name: "shiftChangeExpiry", schedule: { everySeconds: 300 }, run: () => expireShiftChanges() },
   { name: "waitlistOpenings", schedule: { everySeconds: 3600 }, run: () => waitlistOpeningSweep() },
   { name: "indexNow", schedule: { cron: "20 6 * * *", tz: "America/New_York" }, run: () => indexNowSweep() },
