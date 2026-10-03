@@ -70,7 +70,7 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
                     <div className="text-sm font-medium">{dateLabel(s.startsAt, s.location.timeZone)} · {s.professionCode}</div>
                     <div className="text-xs text-slate-500">
                       {s.location.name}
-                      {s.selectionDeadline && s.status !== "DRAFT" ? ` · pick by ${relative(s.selectionDeadline)}` : ""}
+                      {s.selectionDeadline && s.status !== "DRAFT" ? ` · pick an applicant ${+s.selectionDeadline > Date.now() ? `by ${dateLabel(s.selectionDeadline, s.location.timeZone, { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "now"}` : ""}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

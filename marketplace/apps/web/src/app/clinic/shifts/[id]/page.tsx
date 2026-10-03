@@ -442,7 +442,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
           {cands ? (
             <>
               <Card>
-                <CardHeader title={`Applicants (${cands.applicants.length})`} description={shift.selectionDeadline ? `Choose by ${relative(shift.selectionDeadline)}.` : undefined} />
+                <CardHeader title={`Applicants (${cands.applicants.length})`} description={shift.selectionDeadline ? (+shift.selectionDeadline > Date.now() ? `Choose by ${dateLabel(shift.selectionDeadline, tz, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} (${relative(shift.selectionDeadline)}). If you don’t, we pick the best applicant for you or start inviting providers.` : "Choose now: we’ll pick the best applicant for you shortly.") : undefined} />
                 <CardBody className="space-y-3">
                   {cands.applicants.length ? cands.applicants.map((c) => <CandidateCard key={c.providerId} c={c} shiftId={shift.id} applicant />) : <Empty title="No applicants yet">We've notified matching providers. You can also invite recommended providers below.</Empty>}
                   {cands.recommended.filter((c) => acceptedIds.has(c.providerId)).map((c) => <CandidateCard key={c.providerId} c={{ ...c, acceptedPending: true }} shiftId={shift.id} applicant={false} />)}
