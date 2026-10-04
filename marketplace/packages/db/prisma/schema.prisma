@@ -327,6 +327,8 @@ model Provider {
   /// Taking a break: no new shifts starting from breakStartsAt until breakEndsAt (null = until they resume). core eligibility F4.
   breakStartsAt        DateTime?                @db.Timestamptz(3)
   breakEndsAt          DateTime?                @db.Timestamptz(3)
+  /// Last time the provider confirmed their malpractice coverage is active and unchanged (when applying or accepting).
+  coverageAttestedAt   DateTime?                @db.Timestamptz(3)
 }
 
 /// A recruitment link: coverageoncall.com/join/<slug> (school, event or
@@ -375,6 +377,9 @@ model License {
   documentUrl             String?
   rejectionReason         String?
   nextReverifyAt          DateTime?     @db.Timestamptz(3)
+  /// Last check against the state's own license data (Admin → State license check) and the status it showed.
+  boardCheckedAt          DateTime?     @db.Timestamptz(3)
+  boardStatus             String?
   createdAt               DateTime      @default(now()) @db.Timestamptz(3)
 
   @@unique([providerId, professionCode, state])
@@ -398,6 +403,8 @@ model MalpracticePolicy {
   verifiedById           String?
   verifiedAt             DateTime?     @db.Timestamptz(3)
   rejectionReason        String?
+  /// Re-verify with the carrier by then (admin task); earlier of verification + 90 days and expiry − 30 days.
+  nextReverifyAt         DateTime?     @db.Timestamptz(3)
   createdAt              DateTime      @default(now()) @db.Timestamptz(3)
 
   @@index([providerId, status, expiresAt])

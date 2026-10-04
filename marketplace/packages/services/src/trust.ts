@@ -7,18 +7,19 @@ import { prisma } from "@cm/db";
  */
 export async function providerTrust(providerId: string, professionCode: string, state: string) {
   const now = new Date();
-  const [license, nationalCredential, malpractice, stats, sheets] = await Promise.all([
+  const [license, nationalCredential, malpractice, stats, sheets, provider] = await Promise.all([
     prisma.license.findFirst({ where: { providerId, professionCode, state, status: "VERIFIED" }, orderBy: { expiresAt: "desc" } }),
     prisma.license.findFirst({ where: { providerId, professionCode, state: "US", status: "VERIFIED" }, orderBy: { expiresAt: "desc" } }),
     prisma.malpracticePolicy.findFirst({ where: { providerId, status: "VERIFIED", coveredProfessionCodes: { has: professionCode } }, orderBy: { expiresAt: "desc" } }),
     prisma.providerStats.findUnique({ where: { providerId } }),
     prisma.timesheet.findMany({ where: { assignment: { providerId }, status: { in: ["SUBMITTED", "APPROVED"] } }, select: { flags: true }, orderBy: { createdAt: "desc" }, take: 50 }),
+    prisma.provider.findUnique({ where: { id: providerId }, select: { coverageAttestedAt: true } }),
   ]);
   const lic = license ?? nationalCredential;
   const onTime = sheets.filter((t) => !t.flags.some((f) => /late|no punch-in|no punches/.test(f))).length;
   return {
-    license: lic ? { state: lic.state, title: lic.credentialTitle, verifiedAt: lic.verifiedAt, expiresAt: lic.expiresAt, current: lic.expiresAt > now } : null,
-    malpractice: malpractice ? { carrier: malpractice.carrier, verifiedAt: malpractice.verifiedAt, expiresAt: malpractice.expiresAt, current: malpractice.expiresAt > now } : null,
+    license: lic ? { state: lic.state, title: lic.credentialTitle, verifiedAt: lic.verifiedAt, expiresAt: lic.expiresAt, current: lic.expiresAt > now, boardCheckedAt: lic.boardCheckedAt, boardStatus: lic.boardStatus } : null,
+    malpractice: malpractice ? { carrier: malpractice.carrier, verifiedAt: malpractice.verifiedAt, expiresAt: malpractice.expiresAt, current: malpractice.expiresAt > now, attestedAt: provider?.coverageAttestedAt ?? null } : null,
     completedShifts: stats?.completedShifts ?? 0,
     rating: stats && stats.ratingCount ? Math.round((stats.ratingSum / stats.ratingCount) * 10) / 10 : null,
     ratingCount: stats?.ratingCount ?? 0,

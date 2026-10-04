@@ -716,3 +716,8 @@ export async function inviteStaff(actor: Actor, input: { name: string; email: st
   await audit(prisma, actor, "clinic.staff_invited", "User", user.id);
   return user;
 }
+
+/** The provider confirmed their malpractice coverage is active and unchanged (applying to or accepting a shift). */
+export async function attestCoverage(providerId: string) {
+  await prisma.provider.update({ where: { id: providerId }, data: { coverageAttestedAt: new Date() } });
+}

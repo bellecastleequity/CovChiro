@@ -3,6 +3,7 @@ import { Car, Clock, MapPin, Star } from "lucide-react";
 import { brand } from "@cm/config";
 import { prisma } from "@cm/db";
 import { dispatch, getSettings } from "@cm/services";
+import { Checkbox } from "@/components/ui/form";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Countdown } from "@/components/countdown";
 import { Logo } from "@/components/site/header";
@@ -59,6 +60,7 @@ export default async function OfferLink({ params }: { params: Promise<{ token: s
                 <ActionForm action={tokenRespondAction} successMessage>
                   <input type="hidden" name="token" value={token} />
                   <input type="hidden" name="decision" value="accept" />
+                  <Checkbox name="coverage" required className="mb-2" label="My malpractice insurance is active and unchanged." />
                   <SubmitButton size="lg" className="w-full">Accept</SubmitButton>
                 </ActionForm>
               </div>

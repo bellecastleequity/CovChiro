@@ -23,11 +23,17 @@ export async function TrustPanel({ providerId, professionCode, state, tz }: { pr
           {t.license ? (
             <>
               {t.license.title ?? professionCode} license{t.license.state === "US" ? " (national registry)" : `, ${t.license.state}`}: verified{t.license.verifiedAt ? ` ${dateLabel(t.license.verifiedAt, tz)}` : ""}, valid through {dateLabel(t.license.expiresAt, tz, long)}
+              {t.license.boardCheckedAt ? <span className="block text-xs text-slate-500">Checked against the state's license records {dateLabel(t.license.boardCheckedAt, tz, long)}{t.license.boardStatus ? `: ${t.license.boardStatus}` : ""}</span> : null}
             </>
           ) : "License verification pending"}
         </Row>
         <Row icon={ShieldCheck} ok={!!t.malpractice?.current}>
-          {t.malpractice ? <>Malpractice coverage ({t.malpractice.carrier}) verified, valid through {dateLabel(t.malpractice.expiresAt, tz, long)}</> : "Malpractice verification pending"}
+          {t.malpractice ? (
+            <>
+              Malpractice coverage ({t.malpractice.carrier}) verified{t.malpractice.verifiedAt ? ` ${dateLabel(t.malpractice.verifiedAt, tz, long)}` : ""}, valid through {dateLabel(t.malpractice.expiresAt, tz, long)}
+              {t.malpractice.attestedAt ? <span className="block text-xs text-slate-500">Provider confirmed it's active and unchanged {dateLabel(t.malpractice.attestedAt, tz, long)}</span> : null}
+            </>
+          ) : "Malpractice verification pending"}
         </Row>
         <Row icon={Star} ok>
           {t.completedShifts} shift{t.completedShifts === 1 ? "" : "s"} completed on the platform

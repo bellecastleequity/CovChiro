@@ -82,9 +82,13 @@ export async function reviewMalpractice(actor: Actor, id: string, input: { appro
   const m = await prisma.malpracticePolicy.findUniqueOrThrow({ where: { id }, include: { provider: true } });
   await prisma.malpracticePolicy.update({
     where: { id },
-    data: input.approve ? { status: "VERIFIED", verifiedAt: new Date(), verifiedById: actor.userId, rejectionReason: null } : { status: "REJECTED", rejectionReason: input.reason?.slice(0, 300) || "Could not verify" },
+    data: input.approve
+      ? { status: "VERIFIED", verifiedAt: new Date(), verifiedById: actor.userId, rejectionReason: null, nextReverifyAt: nextReverifyAt(new Date(), m.expiresAt) }
+      : { status: "REJECTED", rejectionReason: input.reason?.slice(0, 300) || "Could not verify" },
   });
   await audit(prisma, actor, input.approve ? "malpractice.verified" : "malpractice.rejected", "MalpracticePolicy", id, { status: m.status }, input);
+  // A fresh check with the carrier closes any open re-verify task for this policy.
+  await prisma.adminTask.updateMany({ where: { kind: "REVERIFY", entityId: id, resolvedAt: null }, data: { resolvedAt: new Date(), resolvedById: actor.userId } });
   await recomputeProviderStatus(m.providerId);
   await notify(prisma, m.provider.userId, {
     template: "malpractice_reviewed",

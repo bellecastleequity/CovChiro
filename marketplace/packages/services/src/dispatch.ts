@@ -613,9 +613,10 @@ export async function offerByToken(token: string) {
 }
 
 /** Accept/decline from the signed link — the token alone authorizes this one offer (§8.2). */
-export async function respondByToken(token: string, accept: boolean) {
+export async function respondByToken(token: string, accept: boolean, coverageAttested = false) {
   const offer = await prisma.offer.findUnique({ where: { linkTokenHash: sha256(token) }, include: { dispatch: true } });
   if (!offer) throw new DomainError("NOT_FOUND", "This link is invalid.");
+  if (accept && coverageAttested) await prisma.provider.update({ where: { id: offer.providerId }, data: { coverageAttestedAt: new Date() } });
   if (offer.dispatch && offer.dispatch.status !== "ACTIVE" && offer.status !== "ACCEPTED") return { state: "FILLED" as RespondState, message: "This shift has been filled." };
   return respondToDispatchOffer(offer.id, accept, "LINK");
 }

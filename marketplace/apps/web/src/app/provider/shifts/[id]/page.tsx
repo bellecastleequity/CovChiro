@@ -121,6 +121,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
                   </Field>
                   {openDays.length > 1 ? <Checkbox name="allDays" defaultChecked label={`Apply for all ${openDays.length} open days of this booking`} /> : null}
                   <Checkbox name="commit" required label="If selected, I commit to working this shift." />
+                  <Checkbox name="coverage" required label="My malpractice insurance is active and unchanged since I last uploaded it." />
                   <SubmitButton className="w-full" size="lg">{shift.instantBook ? "Book now" : "Apply"}</SubmitButton>
                 </ActionForm>
               )}

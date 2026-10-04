@@ -499,3 +499,13 @@ export const awardRewardPointsAction = formAction(async (fd) => {
   revalidatePath("/admin/rewards");
   return { ok: `${points > 0 ? "Gave" : "Took"} ${Math.abs(points)} points ${points > 0 ? "to" : "from"} ${acct.name}.` };
 });
+
+export const stateLicenseCheckAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const file = fd.get("file");
+  if (!(file instanceof File) || !file.size) throw new DomainError("VALIDATION", "Choose the license file you downloaded from the state.");
+  const { boardcheck } = await import("@cm/services");
+  const r = await boardcheck.runBoardCheck(actor, { state: str(fd, "state") || "FL", professionCode: str(fd, "professionCode") || "DC", file: Buffer.from(await file.arrayBuffer()), fileName: file.name });
+  revalidatePath("/admin/verification/state-check");
+  return `Checked ${r.checked} license${r.checked === 1 ? "" : "s"}: ${r.ok} active, ${r.stopped} stopped, ${r.review} to review, ${r.notFound} not found.`;
+});

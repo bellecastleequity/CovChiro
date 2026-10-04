@@ -1,5 +1,6 @@
 "use server";
 
+import { DomainError } from "@cm/core";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { DateTime } from "luxon";
@@ -10,7 +11,7 @@ import {
   standing,
   dispatch,
   oncall,
-  addBlackout, addMalpractice, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
+  addBlackout, addMalpractice, attestCoverage, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
   removeAvailabilityException, requestAgreement, respondToOffer, setAvailability, setProviderPhoto, setSkills, submitLodgingReceipt, submitRating,
   updateProviderProfile, upsertLicense, withdrawApplication, prelicensure, payfloors, shiftChanges,
 } from "@cm/services";
@@ -37,6 +38,8 @@ export const onMyWayAction = formAction(async (fd) => {
 export const applyAction = formAction(async (fd) => {
   const { actor } = await me();
   const input = { note: optStr(fd, "note"), commit: bool(fd, "commit") };
+  if (!bool(fd, "coverage")) throw new DomainError("VALIDATION", "Please confirm your malpractice insurance is active and unchanged.");
+  await attestCoverage(actor.providerId!);
   if (bool(fd, "allDays")) {
     const all = await bookings.applyToAllDays(actor, str(fd, "shiftId"), input);
     revalidatePath("/provider", "layout");
@@ -72,6 +75,10 @@ export const withdrawAction = formAction(async (fd) => {
 export const respondOfferAction = formAction(async (fd) => {
   const { actor } = await me();
   const accept = str(fd, "decision") === "accept";
+  if (accept) {
+    if (!bool(fd, "coverage")) throw new DomainError("VALIDATION", "Please confirm your malpractice insurance is active and unchanged.");
+    await attestCoverage(actor.providerId!);
+  }
   const r = await respondToOffer(actor, str(fd, "offerId"), accept);
   revalidatePath("/provider", "layout");
   if (r.confirmed && r.assignmentId) redirect(`/provider/assignments/${r.assignmentId}`);

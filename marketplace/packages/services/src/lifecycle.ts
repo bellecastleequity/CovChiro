@@ -136,6 +136,12 @@ async function recheckAssignments(ids: string[], label: string) {
   return lapsed;
 }
 
+/** Re-check one provider's booked shifts now (a credential just stopped counting). */
+export async function recheckProviderAssignments(providerId: string, label: string) {
+  const future = await prisma.assignment.findMany({ where: { providerId, status: { in: ["CONFIRMED", "IN_PROGRESS"] }, endsAt: { gt: new Date() } }, select: { id: true } });
+  return recheckAssignments(future.map((f) => f.id), label);
+}
+
 /** Nightly (2:00 AM ET): expire credentials, re-check future assignments, reminders, re-verify tasks. */
 export async function nightlyCredentialSweep(now = new Date()) {
   const expired = await prisma.$transaction([
@@ -171,7 +177,13 @@ export async function nightlyCredentialSweep(now = new Date()) {
     const exists = await prisma.adminTask.findFirst({ where: { kind: "REVERIFY", entityId: l.id, resolvedAt: null } });
     if (!exists) await prisma.adminTask.create({ data: { kind: "REVERIFY", title: `Re-verify ${l.professionCode} license ${l.licenseNumber} (${l.state})`, entityType: "License", entityId: l.id } });
   }
-  return { expiredLicenses: expired[0].count, expiredPolicies: expired[1].count, expiredCerts: expired[2].count, lapsed, reverifyTasks: reverify.length };
+  // Malpractice: re-confirm with the carrier every 90 days (coverage can be cancelled any time).
+  const policies = await prisma.malpracticePolicy.findMany({ where: { status: "VERIFIED", nextReverifyAt: { lte: now } }, include: { provider: { select: { displayName: true } } } });
+  for (const p of policies) {
+    const exists = await prisma.adminTask.findFirst({ where: { kind: "REVERIFY", entityId: p.id, resolvedAt: null } });
+    if (!exists) await prisma.adminTask.create({ data: { kind: "REVERIFY", title: `Re-verify ${p.provider.displayName}'s malpractice policy ${p.policyNumber} (${p.carrier}) with the carrier`, entityType: "MalpracticePolicy", entityId: p.id } });
+  }
+  return { expiredLicenses: expired[0].count, expiredPolicies: expired[1].count, expiredCerts: expired[2].count, lapsed, reverifyTasks: reverify.length + policies.length };
 }
 
 /** 24h before each shift: re-verify eligibility (SPEC INV-1 #8). */

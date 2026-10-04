@@ -1,7 +1,7 @@
 import { ExternalLink, FileText } from "lucide-react";
 import { credentialPlace, NATIONAL_CREDENTIAL, US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
-import { providerProfile } from "@cm/services";
+import { providerProfile, getSettings } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -18,6 +18,7 @@ export const metadata = { title: "Credentials" };
 export default async function Credentials() {
   const { actor } = await requireActor("provider");
   const { provider, canTake, nationalCredentialStates } = await providerProfile(actor);
+  const rs = await getSettings();
   const myCodes = provider.professions.map((p) => p.professionCode);
   const [allProfessions, skills] = await Promise.all([
     prisma.profession.findMany({ orderBy: { sortOrder: "asc" } }),
@@ -110,6 +111,9 @@ export default async function Credentials() {
                 ))}
               </ul>
             ) : null}
+            <div className="mb-5 rounded-xl bg-sky-50 p-4 text-sm text-sky-900 ring-1 ring-sky-200">
+              <b>Please list us as a certificate holder.</b> Ask your carrier to add <b>{rs["agreements.companyLegalName"]}</b>{rs["agreements.companyAddress"] ? <>, {rs["agreements.companyAddress"]}</> : null} as a certificate holder on your policy, so we hear about any change or cancellation directly. Tell us within 24 hours if your coverage changes, lapses or is cancelled.
+            </div>
             <ActionForm action={malpracticeAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" resetOnSuccess>
               <Field label="Carrier"><Input name="carrier" required /></Field>
               <Field label="Policy number"><Input name="policyNumber" required /></Field>

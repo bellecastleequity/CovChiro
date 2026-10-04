@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ExternalLink, FileText } from "lucide-react";
 import { credentialPlace, NATIONAL_CREDENTIAL } from "@cm/core";
 import { admin } from "@cm/services";
@@ -43,7 +44,7 @@ export default async function Verification() {
   const empty = !q.licenses.length && !q.policies.length && !q.certs.length && !q.npi.length;
   return (
     <>
-      <PageHeader title="Verification queue" description="Confirm name, number, status and expiration against the state board (profession + state) before verifying. Credentials for states that aren't open yet are listed last." />
+      <PageHeader actions={<Link href="/admin/verification/state-check" className="text-sm font-medium text-brand-700">State license check →</Link>} title="Verification queue" description="Confirm name, number, status and expiration against the state board (profession + state) before verifying. Credentials for states that aren't open yet are listed last." />
       {empty ? <Empty title="Queue is clear" /> : null}
       <div className="space-y-6">
         {q.licenses.length ? (

@@ -1,5 +1,6 @@
 import { Inbox } from "lucide-react";
 import { prisma } from "@cm/db";
+import { Checkbox } from "@/components/ui/form";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card } from "@/components/ui/card";
 import { Empty, PageHeader } from "@/components/ui/misc";
@@ -44,6 +45,7 @@ export default async function Offers() {
                   <ActionForm action={respondOfferAction}>
                     <input type="hidden" name="offerId" value={o.id} />
                     <input type="hidden" name="decision" value="accept" />
+                    <Checkbox name="coverage" required className="mb-2" label="My malpractice insurance is active and unchanged." />
                     <SubmitButton>Accept shift</SubmitButton>
                   </ActionForm>
                   <ActionForm action={respondOfferAction} confirm="Decline this invitation?">
