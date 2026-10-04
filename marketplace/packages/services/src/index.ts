@@ -3,6 +3,7 @@ export * from "./effects";
 export * from "./eligibility";
 export * as enrollment from "./enrollment";
 export * as rewards from "./rewards";
+export * as breaks from "./breaks";
 export * from "./matching";
 export * from "./pricing";
 export * from "./notify";

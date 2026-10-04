@@ -38,6 +38,7 @@ export const EXPECTED_MIGRATIONS = [
   "0030_shift_lunch",
   "0031_trailblazer",
   "0032_rewards",
+  "0033_provider_break",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */

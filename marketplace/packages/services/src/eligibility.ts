@@ -162,6 +162,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
         availabilityRules: p.availability.map((r) => ({ weekday: r.weekday, startMin: r.startMin, endMin: r.endMin, timeZone: r.timeZone })),
         openDates: p.openDates.map((o) => ({ start: +o.startsAt, end: +o.endsAt })),
         blackouts: p.blackouts.map((b) => ({ start: +b.startsAt, end: +b.endsAt })),
+        onBreak: p.breakStartsAt ? { from: +p.breakStartsAt, until: p.breakEndsAt ? +p.breakEndsAt : null } : null,
         busy: p.assignments.map((a) => ({ start: +a.startsAt - a.bufferMinutes * 60_000, end: +a.endsAt + a.bufferMinutes * 60_000 })),
         payFloors: p.payFloors.map((f) => ({ professionCode: f.professionCode, minHalfDayCents: f.minHalfDayCents, minFullDayCents: f.minFullDayCents, minHourlyCents: f.minHourlyCents, includeMileage: f.includeMileage })),
       },
