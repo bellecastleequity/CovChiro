@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@cm/config";
-import { DomainError, hoursLabel, manualPunchProblem, milesBetween, PUNCH_LABEL, punchProblem, summarizeTimesheet, type Punch, type PunchKind } from "@cm/core";
+import { DomainError, hoursLabel, manualPunchProblem, milesBetween, PUNCH_LABEL, punchProblem, punchRemindersDue, summarizeTimesheet, type Punch, type PunchKind } from "@cm/core";
 import { prisma } from "@cm/db";
 import { audit, clock, getSettings, SYSTEM, type Actor } from "./context";
 import { openDispute } from "./lifecycle";
@@ -377,3 +377,50 @@ export async function timeclockSweep(now = clock.now()) {
 
 /** Provider-visible label for each status. */
 export const TIMESHEET_STATUS: Record<string, string> = { OPEN: "On the clock", SUBMITTED: "Waiting for clinic sign-off", APPROVED: "Signed off", DISPUTED: "Problem reported: under review" };
+
+// ---------------- punch reminders ----------------
+
+const REMINDER: Record<PunchKind, { title: string; body: string }> = {
+  IN: { title: "Your shift has started: clock in", body: "Tap Clock in when you arrive so your time is recorded." },
+  BREAK_START: { title: "Lunch time: start your break", body: "Tap Start lunch so your break is recorded. Skip this if you're working through lunch." },
+  BREAK_END: { title: "Back from lunch? End your break", body: "Tap End lunch when you're back so your time is recorded." },
+  OUT: { title: "Your shift has ended: clock out", body: "Tap Clock out so your timesheet goes to the clinic. If you're staying late, clock out when you leave." },
+};
+
+/** Job punchReminders: one push + text nudge per missed punch (core punchRemindersDue). */
+export async function punchReminderSweep(now = clock.now()) {
+  const s = await getSettings();
+  if (!s["timeclock.enabled"] || !s["timeclock.punchReminders"]) return { sent: 0 };
+  const rows = await prisma.assignment.findMany({
+    where: {
+      status: { in: ["CONFIRMED", "IN_PROGRESS"] },
+      startsAt: { lte: now },
+      endsAt: { gte: new Date(+now - 4 * HOUR) },
+      OR: [{ timesheet: null }, { timesheet: { status: "OPEN" } }],
+    },
+    include: { provider: { select: { userId: true } }, shift: { select: { lunchMinutes: true, lunchStartsAt: true, location: { select: { name: true } } } }, punches: { orderBy: { at: "asc" } } },
+    take: 500,
+  });
+  let sent = 0;
+  for (const a of rows) {
+    const kinds = punchRemindersDue(toPunches(a.punches as Loaded["punches"]), { startsAt: a.startsAt, endsAt: a.endsAt, lunchStartsAt: a.shift.lunchStartsAt, lunchMinutes: a.shift.lunchMinutes }, now, { afterMinutes: s["timeclock.punchReminderMinutes"] });
+    for (const kind of kinds) {
+      // Once per punch per booking, even if two ticks overlap.
+      const claimed = await prisma.digestSend.createMany({ data: [{ key: `punch:${a.id}:${kind}`, userId: a.provider.userId }], skipDuplicates: true });
+      if (!claimed.count) continue;
+      const m = REMINDER[kind];
+      await notify(prisma, a.provider.userId, {
+        template: "punch_reminder",
+        title: m.title,
+        body: `${a.shift.location.name}: ${m.body}`,
+        link: `/provider/assignments/${a.id}`,
+        ctaLabel: "Open time clock",
+        email: false,
+        emailFallback: false,
+        sms: s["timeclock.punchReminderText"],
+      }).catch(() => undefined);
+      sent++;
+    }
+  }
+  return { sent };
+}

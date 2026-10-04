@@ -135,3 +135,34 @@ function sorted(ps: Punch[]) {
 }
 
 export const PUNCH_LABEL: Record<PunchKind, string> = { IN: "Punched in", BREAK_START: "Lunch start", BREAK_END: "Lunch end", OUT: "Punched out" };
+
+/**
+ * Punch reminders: which nudges are due now (each is sent once by the caller).
+ * Clock in once the shift has started; start lunch once the planned lunch has begun and they're
+ * still on the clock; back from lunch once it should have ended and they're still on break; clock
+ * out once the shift has ended. `afterMinutes` of slack each time; nothing older than `staleHours`.
+ */
+export function punchRemindersDue(
+  punches: Punch[],
+  shift: { startsAt: Date; endsAt: Date; lunchStartsAt?: Date | null; lunchMinutes?: number | null },
+  now: Date,
+  opts: { afterMinutes: number; staleHours?: number },
+): PunchKind[] {
+  const after = opts.afterMinutes * 60_000;
+  const stale = (opts.staleHours ?? 3) * 3_600_000;
+  const t = +now;
+  const due = (at: number, until: number) => t >= at + after && t < Math.min(until, at + stale);
+  const state = clockState(punches);
+  const out: PunchKind[] = [];
+  if (state === "NOT_STARTED" && due(+shift.startsAt, +shift.endsAt)) out.push("IN");
+  const lunchStart = shift.lunchMinutes && shift.lunchStartsAt ? +shift.lunchStartsAt : null;
+  if (lunchStart !== null) {
+    const lunchEnd = lunchStart + shift.lunchMinutes! * 60_000;
+    // A break already taken around lunch time counts.
+    const tookLunch = punches.some((p) => p.kind === "BREAK_START" && +p.at >= lunchStart - 60 * 60_000);
+    if (state === "ON_CLOCK" && !tookLunch && due(lunchStart, lunchEnd)) out.push("BREAK_START");
+    if (state === "ON_BREAK" && due(lunchEnd, +shift.endsAt)) out.push("BREAK_END");
+  }
+  if ((state === "ON_CLOCK" || state === "ON_BREAK") && due(+shift.endsAt, Infinity)) out.push("OUT");
+  return out;
+}

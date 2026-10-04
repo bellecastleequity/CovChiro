@@ -1,7 +1,7 @@
 import { purgeSpam } from "./spam";
 import { nightlyBackup } from "./backups";
 import { referralSweep } from "./referrals";
-import { timeclockSweep } from "./timeclock";
+import { punchReminderSweep, timeclockSweep } from "./timeclock";
 import { volumeSweep } from "./volume";
 import { recruitSweep } from "./shiftRecruit";
 import { expireShiftChanges } from "./shiftChanges";
@@ -80,6 +80,7 @@ export const JOBS: Job[] = [
   // Referral rewards: both sides once the invited person's first shift is done (+ hold).
   // Time clock: close forgotten punch-outs, remind clinics, auto-approve timesheets.
   { name: "timeclockSweep", schedule: { everySeconds: 900 }, run: () => timeclockSweep() },
+  { name: "punchReminders", schedule: { everySeconds: 60 }, run: () => punchReminderSweep() },
   { name: "volumeSweep", schedule: { everySeconds: 300 }, run: () => volumeSweep() },
   { name: "recruitSweep", schedule: { everySeconds: 600 }, run: () => recruitSweep() },
   { name: "referralSweep", schedule: { everySeconds: 3600 }, run: () => referralSweep() },

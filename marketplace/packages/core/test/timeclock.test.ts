@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockState, manualPunchProblem, milesBetween, nextPunches, punchProblem, summarizeTimesheet, type Punch } from "../src/timeclock";
+import { clockState, manualPunchProblem, milesBetween, nextPunches, punchProblem, punchRemindersDue, summarizeTimesheet, type Punch } from "../src/timeclock";
 
 const t = (hhmm: string) => new Date(`2026-03-02T${hhmm}:00Z`);
 const scheduled = { startsAt: t("13:00"), endsAt: t("21:00") };
@@ -58,5 +58,42 @@ describe("summarizeTimesheet", () => {
   it("measures distance", () => {
     expect(milesBetween({ lat: 28.5421, lng: -81.379 }, { lat: 28.5421, lng: -81.379 })).toBe(0);
     expect(milesBetween({ lat: 28.5421, lng: -81.379 }, { lat: 28.5383, lng: -81.3792 })).toBeCloseTo(0.26, 1);
+  });
+});
+
+describe("punch reminders", () => {
+  const at = (h: number, m = 0) => new Date(Date.UTC(2026, 9, 14, h, m));
+  const shift = { startsAt: at(12), endsAt: at(21), lunchStartsAt: at(16), lunchMinutes: 60 }; // 8–5 ET, lunch 12–1
+  const o = { afterMinutes: 5 };
+  const due = (p: Punch[], now: Date, sh = shift) => punchRemindersDue(p, sh, now, o);
+
+  it("clock in: after the start plus the slack, until it's stale", () => {
+    expect(due([], at(12, 4))).toEqual([]);
+    expect(due([], at(12, 5))).toEqual(["IN"]);
+    expect(due([], at(15, 6))).toEqual([]); // more than 3 h late: no point
+    expect(due([{ kind: "IN", at: at(11, 55) }], at(12, 10))).toEqual([]);
+  });
+
+  it("lunch: start it when it's due, come back when it should be over", () => {
+    const inn: Punch[] = [{ kind: "IN", at: at(11, 55) }];
+    expect(due(inn, at(16, 3))).toEqual([]);
+    expect(due(inn, at(16, 5))).toEqual(["BREAK_START"]);
+    expect(due(inn, at(17, 1))).toEqual([]); // lunch time has passed
+    const onBreak: Punch[] = [...inn, { kind: "BREAK_START", at: at(16) }];
+    expect(due(onBreak, at(16, 30))).toEqual([]);
+    expect(due(onBreak, at(17, 5))).toEqual(["BREAK_END"]);
+    // An early lunch counts as taken.
+    const early: Punch[] = [...inn, { kind: "BREAK_START", at: at(15, 30) }, { kind: "BREAK_END", at: at(16) }];
+    expect(due(early, at(16, 10))).toEqual([]);
+    // No planned lunch: no lunch reminders.
+    expect(due(inn, at(16, 10), { ...shift, lunchStartsAt: null, lunchMinutes: 0 })).toEqual([]);
+  });
+
+  it("clock out: after the end, whether on the clock or still on break", () => {
+    const inn: Punch[] = [{ kind: "IN", at: at(11, 55) }, { kind: "BREAK_START", at: at(16) }, { kind: "BREAK_END", at: at(17) }];
+    expect(due(inn, at(21, 2))).toEqual([]);
+    expect(due(inn, at(21, 5))).toEqual(["OUT"]);
+    expect(due([...inn, { kind: "OUT", at: at(21) }], at(21, 10))).toEqual([]);
+    expect(due([{ kind: "IN", at: at(12) }, { kind: "BREAK_START", at: at(20, 30) }], at(21, 6))).toEqual(["OUT"]);
   });
 });

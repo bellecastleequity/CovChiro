@@ -20,6 +20,29 @@ const at = (d: Date, mins: number) => () => new Date(+d + mins * 60_000);
 
 afterEach(() => setClock(null));
 
+describe("punch reminders", () => {
+  it("nudges once to clock in and once to clock out, by app and text, never by email", async () => {
+    const { provider, assignmentId, startsAt, endsAt } = await booked(41);
+    const reminders = () => prisma.notification.findMany({ where: { userId: provider.userId, template: "punch_reminder" }, orderBy: { createdAt: "asc" } });
+    await timeclock.punchReminderSweep(new Date(+startsAt + 2 * 60_000));
+    expect(await reminders()).toHaveLength(0); // within the slack
+    await timeclock.punchReminderSweep(new Date(+startsAt + 6 * 60_000));
+    await timeclock.punchReminderSweep(new Date(+startsAt + 8 * 60_000));
+    const first = await reminders();
+    expect(first).toHaveLength(1);
+    expect(first[0].title).toMatch(/clock in/);
+    expect(first[0].link).toBe(`/provider/assignments/${assignmentId}`);
+
+    setClock(at(startsAt, 10));
+    await timeclock.punch(provider.actor, assignmentId, "IN");
+    setClock(null);
+    await timeclock.punchReminderSweep(new Date(+endsAt + 6 * 60_000));
+    const all = await reminders();
+    expect(all).toHaveLength(2);
+    expect(all[1].title).toMatch(/clock out/);
+  });
+});
+
 describe("time clock", () => {
   it("in → lunch → back → out submits the timesheet; the clinic signs off by email link", async () => {
     const { clinic, provider, assignmentId, startsAt, endsAt } = await booked(40);
