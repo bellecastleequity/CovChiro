@@ -58,13 +58,15 @@ mkdir -p "$SITE/public" "$SITE/uploads"
 printf '<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n' > "$SITE/uploads/.htaccess"
 # cPanel's Node.js screen expects a package.json in the application root.
 cat > "$APP/package.json" <<'JSON'
-{ "name": "coverageoncall", "private": true, "scripts": { "start": "node apps/web/server.js", "dbcheck": "node dbcheck.js" } }
+{ "name": "coverageoncall", "private": true, "scripts": { "start": "node apps/web/server.js", "dbcheck": "node dbcheck.js", "update": "node updater.js", "rollback": "node updater.js rollback" } }
 JSON
 # Which release is installed (Admin → Backups shows it; rollback = previous app folder).
 LATEST_MIGRATION=$(ls packages/db/prisma/migrations | grep -E '^[0-9]{4}_' | sort | tail -1)
 printf '{ "version": "%s", "builtAt": "%s", "latestMigration": "%s" }\n' "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$LATEST_MIGRATION" > "$APP/RELEASE.json"
 # Diagnostics: Setup Node.js App → "Run JS script" → dbcheck.
 cp deploy/cpanel/dbcheck.js "$APP/dbcheck.js"
+# One-file updates: Setup Node.js App → "Run JS script" → update / rollback.
+cp deploy/cpanel/updater.js "$APP/updater.js"
 # Never ship local env files.
 find "$SITE" -maxdepth 4 -name ".env*" -delete
 if [[ -e "$APP/node_modules" ]]; then echo "app/ must not contain node_modules (CloudLinux)" >&2; exit 1; fi
@@ -135,6 +137,39 @@ shopt -u nullglob
 #   left the Prisma engine out and had to be extracted over the old folder;
 #   renaming instead of copying caused two outages in Oct 2026.)
 # Each part stays under 30 MB. public/ and uploads/ are left alone.
+# One-file update package (deploy/cpanel/updater.js): app/ + node_modules/ + every migration
+# (each wrapped with its Prisma history row; the updater applies only the ones the site lacks)
+# + manifest.json. Uploaded into the site folder and installed with "Run JS script" → update.
+PKG=$ROOT/dist/package-staging
+rm -rf "$PKG" && mkdir -p "$PKG/migrations"
+MIGS=()
+for dir in packages/db/prisma/migrations/*/; do
+  name=$(basename "$dir")
+  [[ $name =~ ^[0-9]{4}_ ]] || continue
+  sum=$(sha256sum "$dir/migration.sql" | cut -d' ' -f1)
+  {
+    echo "BEGIN;"
+    cat "$dir/migration.sql"
+    echo ""
+    echo "INSERT INTO \"_prisma_migrations\" (id, checksum, finished_at, migration_name, applied_steps_count) SELECT gen_random_uuid()::text, '$sum', now(), '$name', 1 WHERE NOT EXISTS (SELECT 1 FROM \"_prisma_migrations\" WHERE migration_name = '$name');"
+    echo "COMMIT;"
+  } > "$PKG/migrations/$name.sql"
+  MIGS+=("\"$name\"")
+done
+VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+printf '{ "version": "%s", "builtAt": "%s", "migrations": [%s] }\n' "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(IFS=,; echo "${MIGS[*]}")" > "$PKG/manifest.json"
+rm -f "$ROOT"/dist/coverageoncall-update*.tar.gz
+python3 - "$PKG" "$OUT/$APP_DIR" "$ROOT/dist/coverageoncall-update.tar.gz" <<'PY'
+import sys, tarfile
+pkg, site, out = sys.argv[1:]
+with tarfile.open(out, "w:gz", compresslevel=9, format=tarfile.GNU_FORMAT) as t:
+    t.add(f"{pkg}/manifest.json", "manifest.json")
+    t.add(f"{pkg}/migrations", "migrations")
+    t.add(f"{site}/app", "app")
+    t.add(f"{site}/node_modules", "node_modules")
+PY
+rm -rf "$PKG"
+echo "Built dist/coverageoncall-update.tar.gz ($(du -h "$ROOT/dist/coverageoncall-update.tar.gz" | cut -f1), one-file update: upload, Stop App, Run JS script update, Start App)"
 (cd "$OUT/$APP_DIR" && rm -f "$ROOT"/dist/coverageoncall-update*.zip \
   && zip -qr -9 "$ROOT/dist/coverageoncall-update-part1.zip" app \
   && zip -qr -9 "$ROOT/dist/coverageoncall-update-part2.zip" node_modules -x "node_modules/.prisma/*" \

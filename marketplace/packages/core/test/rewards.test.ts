@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clinicRewardEvents, DEFAULT_LEVELS, DEFAULT_REWARD_POINTS, providerRewardEvents, rewardLevel, type ProviderRewardFacts } from "../src";
+import { trainingRewardEvents, clinicRewardEvents, DEFAULT_LEVELS, DEFAULT_REWARD_POINTS, providerRewardEvents, rewardLevel, type ProviderRewardFacts } from "../src";
 
 const d = (s: string) => new Date(s);
 const H = 3_600_000;
@@ -64,5 +64,15 @@ describe("clinic points", () => {
       ],
     }, DEFAULT_REWARD_POINTS, { lateCancelHours: 48 });
     expect(e.map((x) => x.refKey).sort()).toEqual(["c.early:a1", "c.email:c1", "c.firstPost:c1", "c.lateCancel:a3", "c.location:c1", "c.payment:c1", "c.rated:a1", "c.shift:a1", "c.shift:a2", "c.signoff:a1"]);
+  });
+});
+
+describe("training points", () => {
+  const all = ["welcome", "ready", "finding"];
+  it("a lesson once, the course bonus when every lesson is passed, unknown lessons ignored", () => {
+    expect(trainingRewardEvents("PROVIDER", "p1", "welcome", [], all, DEFAULT_REWARD_POINTS).map((e) => e.refKey)).toEqual(["p.lesson:p1:welcome"]);
+    expect(trainingRewardEvents("PROVIDER", "p1", "finding", ["welcome", "ready"], all, DEFAULT_REWARD_POINTS).map((e) => e.refKey)).toEqual(["p.lesson:p1:finding", "p.course:p1"]);
+    expect(trainingRewardEvents("CLINIC", "c1", "nope", [], all, DEFAULT_REWARD_POINTS)).toEqual([]);
+    expect(trainingRewardEvents("CLINIC", "c1", "welcome", [], all, DEFAULT_REWARD_POINTS)[0].kind).toBe("c.lesson");
   });
 });

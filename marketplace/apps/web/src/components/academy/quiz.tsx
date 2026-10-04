@@ -6,6 +6,7 @@ import type { QuizQuestion } from "@/lib/academy/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { markDone } from "./progress";
+import { lessonPassedAction } from "@/app/academy-actions";
 
 /** Quick check at the end of a lesson. All correct marks the lesson complete. */
 export function Quiz({ questions, userId, course, slug }: { questions: QuizQuestion[]; userId: string; course: string; slug: string }) {
@@ -54,7 +55,10 @@ export function Quiz({ questions, userId, course, slug }: { questions: QuizQuest
           disabled={!allAnswered}
           onClick={() => {
             setChecked(true);
-            if (picked.every((p, i) => p === questions[i]!.answer)) markDone(userId, course, slug);
+            if (picked.every((p, i) => p === questions[i]!.answer)) {
+              markDone(userId, course, slug);
+              void lessonPassedAction(slug);
+            }
           }}
         >
           Check answers

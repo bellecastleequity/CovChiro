@@ -6,6 +6,7 @@ import {
   providerRewardEvents,
   REWARD_RULES,
   rewardLevel,
+  trainingRewardEvents,
   type RewardAudience,
   type RewardEventDraft,
 } from "@cm/core";
@@ -289,4 +290,28 @@ export async function accountByEmail(actor: Actor, audience: RewardAudience, ema
   if (audience === "PROVIDER" && user?.provider) return { accountId: user.provider.id, name: user.provider.displayName };
   if (audience === "CLINIC" && user?.clinicMembers[0]) return { accountId: user.clinicMembers[0].clinicOrg.id, name: user.clinicMembers[0].clinicOrg.displayName };
   throw new DomainError("NOT_FOUND", `No ${audience === "PROVIDER" ? "provider" : "clinic"} login with that email.`);
+}
+
+/**
+ * A Training lesson quiz was passed (the lesson list comes from the course the caller serves).
+ * Clinic lessons count once per clinic, whoever on the team passes them.
+ */
+export async function recordLesson(actor: Actor, lesson: string, allLessons: string[]) {
+  const c = await config();
+  if (!c.enabled) return 0;
+  const audience: RewardAudience = actor.role === "PROVIDER" ? "PROVIDER" : "CLINIC";
+  const accountId = audience === "PROVIDER" ? requireProvider(actor) : requireClinic(actor);
+  const kind = audience === "PROVIDER" ? "p.lesson" : "c.lesson";
+  const prefix = `${kind}:${accountId}:`;
+  const passed = (await prisma.rewardEvent.findMany({ where: { accountType: audience, accountId, kind }, select: { refKey: true } })).map((e) => e.refKey.slice(prefix.length));
+  const drafts = trainingRewardEvents(audience, accountId, lesson, passed, allLessons, c.points);
+  if (audience === "PROVIDER") {
+    const p = await prisma.provider.findUniqueOrThrow({ where: { id: accountId }, select: { userId: true } });
+    return write("PROVIDER", accountId, drafts, (level) =>
+      notify(prisma, p.userId, { template: "rewards_level", title: `You've reached ${level}!`, body: "Thanks for being a great part of the network. See your points and what's next on your Rewards page.", link: "/provider/rewards", ctaLabel: "See my rewards", email: false }).then(() => undefined),
+    );
+  }
+  return write("CLINIC", accountId, drafts, (level) =>
+    notifyClinic(prisma, accountId, { template: "rewards_level", title: `Your clinic reached ${level}!`, body: "Thanks for booking with us. See your points and what's next on your Rewards page.", link: "/clinic/rewards", ctaLabel: "See our rewards", email: false }).then(() => undefined),
+  );
 }

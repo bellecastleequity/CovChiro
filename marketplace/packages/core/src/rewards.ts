@@ -28,6 +28,8 @@ export const REWARD_RULES: RewardRule[] = [
   { key: "p.agreement", audience: "PROVIDER", label: "Sign the Provider Agreement", points: 15, group: "Getting started" },
   { key: "p.availability", audience: "PROVIDER", label: "Set your availability", points: 10, group: "Getting started" },
   { key: "p.ready", audience: "PROVIDER", label: "Bonus: every setup step done", points: 50, group: "Getting started" },
+  { key: "p.lesson", audience: "PROVIDER", label: "Pass a Training lesson quiz", points: 5, group: "Getting started" },
+  { key: "p.course", audience: "PROVIDER", label: "Bonus: finish the whole Training course", points: 50, group: "Getting started" },
   // Providers: every shift
   { key: "p.shift", audience: "PROVIDER", label: "Complete a shift", points: 50, group: "Every shift" },
   { key: "p.onTime", audience: "PROVIDER", label: "Clock in on time", points: 10, group: "Every shift" },
@@ -47,6 +49,8 @@ export const REWARD_RULES: RewardRule[] = [
   { key: "c.payment", audience: "CLINIC", label: "Add a payment method", points: 15, group: "Getting started" },
   { key: "c.agreement", audience: "CLINIC", label: "Sign the Clinic Agreement", points: 15, group: "Getting started" },
   { key: "c.firstPost", audience: "CLINIC", label: "Post your first shift", points: 50, group: "Getting started" },
+  { key: "c.lesson", audience: "CLINIC", label: "Pass a Training lesson quiz", points: 5, group: "Getting started" },
+  { key: "c.course", audience: "CLINIC", label: "Bonus: finish the whole Training course", points: 50, group: "Getting started" },
   // Clinics: every shift
   { key: "c.shift", audience: "CLINIC", label: "A covered shift is completed", points: 25, group: "Every shift" },
   { key: "c.early", audience: "CLINIC", label: "Post at least 7 days ahead", points: 10, group: "Every shift" },
@@ -185,5 +189,23 @@ export function clinicRewardEvents(f: ClinicRewardFacts, points: Record<string, 
     if (a.status === "CANCELLED" && a.cancelledBy === "CLINIC" && a.cancelledAt && +a.startsAt - +a.cancelledAt < opts.lateCancelHours * H) add("c.lateCancel", a.id);
   }
   for (const r of f.rewardedReferralIds) add("c.referral", r);
+  return out;
+}
+
+/**
+ * Training: a passed lesson quiz earns points once per lesson, and passing every lesson in the
+ * course earns the course bonus once. `passed` = lessons already recorded plus this one.
+ */
+export function trainingRewardEvents(audience: RewardAudience, accountId: string, lesson: string, passed: string[], allLessons: string[], points: Record<string, number>): RewardEventDraft[] {
+  if (!allLessons.includes(lesson)) return [];
+  const p = audience === "PROVIDER" ? "p" : "c";
+  const out: RewardEventDraft[] = [];
+  const add = (kind: string, ref: string, note?: string) => {
+    const v = points[kind] ?? DEFAULT_REWARD_POINTS[kind] ?? 0;
+    if (v !== 0) out.push({ refKey: `${kind}:${ref}`, kind, points: v, note });
+  };
+  add(`${p}.lesson`, `${accountId}:${lesson}`);
+  const done = new Set([...passed, lesson].filter((x) => allLessons.includes(x)));
+  if (allLessons.every((l) => done.has(l))) add(`${p}.course`, accountId);
   return out;
 }
