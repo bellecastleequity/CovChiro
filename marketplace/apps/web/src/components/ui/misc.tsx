@@ -1,10 +1,12 @@
+import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 
-export function PageHeader({ title, description, actions, eyebrow }: { title: React.ReactNode; description?: React.ReactNode; actions?: React.ReactNode; eyebrow?: React.ReactNode }) {
+export function PageHeader({ title, description, actions, eyebrow, back }: { title: React.ReactNode; description?: React.ReactNode; actions?: React.ReactNode; eyebrow?: React.ReactNode; back?: { href: string; label: string } }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
+        {back ? <Link href={back.href} className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-brand-700 print:hidden"><span aria-hidden>←</span> {back.label}</Link> : null}
         {eyebrow ? <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-accent-700">{eyebrow}</div> : null}
         <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{title}</h1>
         {description ? <p className="mt-1 max-w-2xl text-sm text-slate-500">{description}</p> : null}

@@ -21,7 +21,7 @@ export default async function EarningsStatement({ searchParams }: { searchParams
   const b = brand();
   return (
     <>
-      <PageHeader title={`${year} earnings summary`} description={`${st.provider.legalName} · paid through ${b.name} (Stripe)`} actions={<PrintButton />} />
+      <PageHeader back={{ href: "/provider/earnings", label: "Earnings" }} title={`${year} earnings summary`} description={`${st.provider.legalName} · paid through ${b.name} (Stripe)`} actions={<PrintButton />} />
       <div className="mb-4 flex flex-wrap gap-2 print:hidden">
         {[thisYear, thisYear - 1, thisYear - 2].map((y) => <Link key={y} href={`/provider/earnings/statement?year=${y}`} className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ${y === year ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-slate-600 ring-slate-200"}`}>{y}</Link>)}
       </div>

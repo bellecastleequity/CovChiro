@@ -21,7 +21,7 @@ export default async function AdminHire({ params }: { params: Promise<{ id: stri
   const done = r.status === "PAID" || r.status === "RELEASED";
   return (
     <>
-      <PageHeader eyebrow="Hire request" title={`${r.clinic.displayName} → ${r.provider.displayName}`} description={`${hiring.POSITION_TYPES[r.positionType as keyof typeof hiring.POSITION_TYPES]} · received ${relative(r.createdAt)}`} actions={<Badge>{r.status.replace("_", " ").toLowerCase()}</Badge>} />
+      <PageHeader back={{ href: "/admin/hire", label: "Hire requests" }} eyebrow="Hire request" title={`${r.clinic.displayName} → ${r.provider.displayName}`} description={`${hiring.POSITION_TYPES[r.positionType as keyof typeof hiring.POSITION_TYPES]} · received ${relative(r.createdAt)}`} actions={<Badge>{r.status.replace("_", " ").toLowerCase()}</Badge>} />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6">
           <Card>

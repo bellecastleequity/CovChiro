@@ -21,7 +21,7 @@ export default async function Statement({ searchParams }: { searchParams: Promis
   const b = brand();
   return (
     <>
-      <PageHeader title={`Statement: ${st.label}`} description={`${st.org.legalName}${st.org.billingEmail ? ` · ${st.org.billingEmail}` : ""}`} actions={<PrintButton />} />
+      <PageHeader back={{ href: "/clinic/billing", label: "Billing" }} title={`Statement: ${st.label}`} description={`${st.org.legalName}${st.org.billingEmail ? ` · ${st.org.billingEmail}` : ""}`} actions={<PrintButton />} />
       <div className="mb-4 flex flex-wrap gap-2 print:hidden">
         {months.map((m) => <Link key={m} href={`/clinic/billing/statement?month=${m}`} className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ${m === month ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-slate-600 ring-slate-200"}`}>{DateTime.fromISO(`${m}-01`).toFormat("LLL yyyy")}</Link>)}
       </div>

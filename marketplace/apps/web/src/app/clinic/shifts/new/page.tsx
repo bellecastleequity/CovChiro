@@ -48,7 +48,7 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
   if (!locations.length) {
     return (
       <>
-        <PageHeader title="Post a shift" />
+        <PageHeader back={{ href: "/clinic/shifts", label: "Shifts" }} title="Post a shift" />
         <Empty title="Add a location first" action={<LinkButton href="/clinic/locations">Add location</LinkButton>}>We need your clinic's address to find licensed providers in your state.</Empty>
       </>
     );
@@ -60,7 +60,7 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
   const welcome = redemptions === 0 ? await prisma.promoCode.findFirst({ where: { assignedEmail: org.billingEmail ?? "", active: true, usedCount: 0, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, orderBy: { createdAt: "desc" } }) : null;
   return (
     <>
-      <PageHeader title={draft ? "Edit draft shift" : "Post a shift"} description={draft ? "Change anything, then save the draft or post it. Prices are recalculated from our regional rate card." : "Prices come from our regional rate card and how busy the day is. You'll see the total, and what closing would cost instead, before posting."} />
+      <PageHeader back={{ href: "/clinic/shifts", label: "Shifts" }} title={draft ? "Edit draft shift" : "Post a shift"} description={draft ? "Change anything, then save the draft or post it. Prices are recalculated from our regional rate card." : "Prices come from our regional rate card and how busy the day is. You'll see the total, and what closing would cost instead, before posting."} />
       <PostShiftWizard
         canPost={org.status === "ACTIVE" && org.hasPaymentMethod && agreementCurrent("CLINIC", org.agreementSignedAt, org.agreementVersion)}
         defaultMinYears={org.minYearsExperience}

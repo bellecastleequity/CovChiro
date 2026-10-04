@@ -42,7 +42,7 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
     : 1;
   return (
     <>
-      <PageHeader eyebrow={loc.clinicOrg.displayName} title={dateLabel(a.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })} description={`${timeRange(a.startsAt, a.endsAt, tz)}${a.shift.lunchMinutes ? ` · ${lunchLabel(a.shift.lunchMinutes, a.shift.lunchStartsAt, tz)}` : ""}`} actions={<StatusBadge status={a.status} />} />
+      <PageHeader back={{ href: "/provider/assignments", label: "My shifts" }} eyebrow={loc.clinicOrg.displayName} title={dateLabel(a.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })} description={`${timeRange(a.startsAt, a.endsAt, tz)}${a.shift.lunchMinutes ? ` · ${lunchLabel(a.shift.lunchMinutes, a.shift.lunchStartsAt, tz)}` : ""}`} actions={<StatusBadge status={a.status} />} />
       <PendingChanges providerId={actor.providerId!} assignmentId={a.id} />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

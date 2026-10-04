@@ -16,7 +16,7 @@ export default async function AdminThread({ params }: { params: Promise<{ id: st
   ].sort((a, b) => +a.at - +b.at);
   return (
     <>
-      <PageHeader eyebrow="Conversation (read-only)" title={`${thread.clinicName} ↔ ${thread.providerName}`} />
+      <PageHeader back={{ href: "/admin/messages", label: "Blocked messages" }} eyebrow="Conversation (read-only)" title={`${thread.clinicName} ↔ ${thread.providerName}`} />
       <Card className="divide-y divide-slate-100">
         {all.map((m) => (
           <div key={m.id} className={`px-5 py-3 text-sm ${m.blocked ? "bg-red-50/60" : ""}`}>

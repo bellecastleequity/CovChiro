@@ -25,7 +25,7 @@ export default async function EmergencyScreen({ params }: { params: Promise<{ id
   return (
     <>
       {v.open ? <AutoRefresh seconds={20} /> : null}
-      <PageHeader
+      <PageHeader back={{ href: "/admin/emergencies", label: "Emergencies" }}
         eyebrow={`Emergency · ${sh.location.clinicOrg.displayName}`}
         title={`${dateLabel(sh.startsAt, tz, { weekday: "long", month: "short", day: "numeric" })}, ${timeRange(sh.startsAt, sh.endsAt, tz)}`}
         description={`${sh.location.addressLine1}, ${sh.location.city} · ${sh.professionCode} · ${sh.emergencyReason ?? ""}`}

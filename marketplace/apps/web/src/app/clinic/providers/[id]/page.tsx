@@ -22,6 +22,7 @@ export default async function ClinicProviderProfile({ params }: { params: Promis
   const hire = await prisma.hireRequest.findFirst({ where: { clinicOrgId: actor.clinicOrgId!, providerId: id }, orderBy: { createdAt: "desc" } });
   return (
     <>
+      <Link href="/clinic/providers" className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-brand-700"><span aria-hidden>←</span> My providers</Link>
       <div className="mb-4 flex flex-wrap items-start justify-end gap-2">
         {rel.workedTogether && !rel.blocked ? (
           <ActionForm action={favoriteAction}>

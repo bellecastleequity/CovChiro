@@ -19,7 +19,7 @@ export default async function ClinicHire({ params }: { params: Promise<{ id: str
   const paid = r.status === "PAID" || r.status === "RELEASED";
   return (
     <>
-      <PageHeader eyebrow="Direct hire" title={`Placement: ${r.provider.displayName}`} description={hiring.POSITION_TYPES[r.positionType as keyof typeof hiring.POSITION_TYPES]} />
+      <PageHeader back={{ href: "/clinic/providers", label: "My providers" }} eyebrow="Direct hire" title={`Placement: ${r.provider.displayName}`} description={hiring.POSITION_TYPES[r.positionType as keyof typeof hiring.POSITION_TYPES]} />
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader title="Placement terms" />

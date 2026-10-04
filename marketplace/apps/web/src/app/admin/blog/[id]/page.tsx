@@ -27,7 +27,7 @@ export default async function EditPost({ params, searchParams }: { params: Promi
   return (
     <>
       <Link href="/admin/blog" className="mb-4 inline-block text-sm font-medium text-slate-500 hover:text-slate-900">← All posts</Link>
-      <PageHeader
+      <PageHeader back={{ href: "/admin/blog", label: "Blog" }}
         eyebrow={<span className="flex items-center gap-2"><StatusBadge status={p.status} />{p.aiGenerated ? `AI draft · ${p.aiModel ?? ""}` : "Written by hand"}</span>}
         title={p.title}
         description={`${wordCount(p.body)} words · ${readingMinutes(p.body)} min read · updated ${dateTimeLabel(p.updatedAt)}${p.publishedAt ? ` · published ${dateTimeLabel(p.publishedAt)}` : ""}`}

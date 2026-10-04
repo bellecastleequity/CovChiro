@@ -30,7 +30,7 @@ export default async function ProviderProspectPage({ params }: { params: Promise
   const { p } = d;
   return (
     <>
-      <PageHeader title={p.displayName} description={`${p.professionCode} · NPI ${p.npi} · ${[p.address, p.city, p.state, p.zip].filter(Boolean).join(", ")}`} actions={<Link href="/admin/growth/prospects/providers" className="text-sm text-brand-700">← Provider prospects</Link>} />
+      <PageHeader back={{ href: "/admin/growth/prospects/providers", label: "Provider prospects" }} title={p.displayName} description={`${p.professionCode} · NPI ${p.npi} · ${[p.address, p.city, p.state, p.zip].filter(Boolean).join(", ")}`} actions={<Link href="/admin/growth/prospects/providers" className="text-sm text-brand-700">← Provider prospects</Link>} />
       <GrowthTabs current="/admin/growth/prospects" />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

@@ -29,7 +29,7 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
   const shifts = await prisma.shift.findMany({ where: { location: { clinicOrgId: id } }, orderBy: { startsAt: "desc" }, take: 20 });
   return (
     <>
-      <PageHeader
+      <PageHeader back={{ href: "/admin/clinics", label: "Clinics" }}
         title={c.displayName}
         description={<>{c.legalName} · {c.billingEmail ?? ""} · agreement {c.agreementSignedAt ? `v${c.agreementVersion}` : "unsigned"}{signedCopy ? <> · <Link className="text-brand-700" href={`/agreements/signed/${signedCopy.id}`}>signed copy</Link></> : null}</>}
         actions={<StatusBadge status={c.status} />}

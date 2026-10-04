@@ -23,7 +23,7 @@ export default async function ProspectDetail({ params }: { params: Promise<{ id:
   const p = d.prospect;
   return (
     <>
-      <PageHeader eyebrow={<Link href="/admin/growth/prospects" className="hover:underline">Clinic prospects</Link>} title={p.clinicName} description={[p.ownerName, [p.city, p.state].filter(Boolean).join(", "), p.marketKey ? `market: ${p.marketKey}` : null].filter(Boolean).join(" · ")} />
+      <PageHeader back={{ href: "/admin/growth/prospects", label: "Clinic prospects" }} eyebrow={<Link href="/admin/growth/prospects" className="hover:underline">Clinic prospects</Link>} title={p.clinicName} description={[p.ownerName, [p.city, p.state].filter(Boolean).join(", "), p.marketKey ? `market: ${p.marketKey}` : null].filter(Boolean).join(" · ")} />
       <GrowthTabs current="/admin/growth/prospects" />
       <div className="mb-6 flex flex-wrap gap-1.5">
         <StatusBadge status={p.stage} />

@@ -26,7 +26,7 @@ export default async function PromptDetail({ params }: { params: Promise<{ id: s
   const op = (value: string, label: string, variant: "primary" | "outline" | "danger" = "outline") => <button name="op" value={value} className={buttonClass(variant, "sm")}>{label}</button>;
   return (
     <>
-      <PageHeader eyebrow={<Link href="/admin/growth/prompts" className="hover:underline">Prompts</Link>} title={`${p.key} v${p.version}`} description={p.purpose} />
+      <PageHeader back={{ href: "/admin/growth/prompts", label: "Prompts" }} eyebrow={<Link href="/admin/growth/prompts" className="hover:underline">Prompts</Link>} title={`${p.key} v${p.version}`} description={p.purpose} />
       <GrowthTabs current="/admin/growth/prompts" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Badge tone={p.status === "APPROVED" ? "green" : p.status === "DRAFT" ? "amber" : "gray"}>{humanize(p.status)}</Badge>

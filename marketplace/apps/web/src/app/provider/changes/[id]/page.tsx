@@ -22,7 +22,7 @@ export default async function ShiftChangePage({ params }: { params: Promise<{ id
   const timeMoved = b.startsAt !== a.startsAt || b.endsAt !== a.endsAt;
   return (
     <>
-      <PageHeader eyebrow={c.shift.location.name} title="The clinic asked to change your shift" description="Accept to keep the shift with the new details. If you decline, you're released with no penalty; it doesn't count as a cancellation." />
+      <PageHeader back={{ href: "/provider/assignments", label: "My shifts" }} eyebrow={c.shift.location.name} title="The clinic asked to change your shift" description="Accept to keep the shift with the new details. If you decline, you're released with no penalty; it doesn't count as a cancellation." />
       {c.status !== "PENDING" ? (
         <Alert tone="info" className="mb-5">
           {c.status === "ACCEPTED" ? "You accepted this change." : c.status === "DECLINED" ? "You declined this change and were released from the shift." : c.status === "EXPIRED" ? "This change wasn't answered in time, so you were released from the shift with no penalty." : "The clinic withdrew this change. Your shift stays as booked."}

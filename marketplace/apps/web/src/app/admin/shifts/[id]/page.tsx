@@ -44,7 +44,7 @@ export default async function AdminShift({ params }: { params: Promise<{ id: str
   const names = new Map((await prisma.provider.findMany({ where: { id: { in: [...(set?.excluded.map((e) => e.providerId) ?? []), ...ranked.map((r) => r.providerId)] } }, select: { id: true, displayName: true } })).map((p) => [p.id, p.displayName]));
   return (
     <>
-      <PageHeader eyebrow={`${shift.location.clinicOrg.displayName} · ${shift.professionCode} · ${shift.state}`} title={dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })} description={timeRange(shift.startsAt, shift.endsAt, tz)} actions={<StatusBadge status={shift.status} />} />
+      <PageHeader back={{ href: "/admin/shifts", label: "Shifts" }} eyebrow={`${shift.location.clinicOrg.displayName} · ${shift.professionCode} · ${shift.state}`} title={dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })} description={timeRange(shift.startsAt, shift.endsAt, tz)} actions={<StatusBadge status={shift.status} />} />
       {live || selectable ? (
         <Card className="mb-6 border-red-200 bg-red-50/60">
           <CardBody className="flex flex-wrap items-center justify-between gap-3">

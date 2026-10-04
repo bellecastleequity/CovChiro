@@ -148,7 +148,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
   const dayNo = groupDays.findIndex((d) => d.id === shift.id) + 1;
   return (
     <>
-      <PageHeader
+      <PageHeader back={{ href: "/clinic/shifts", label: "Shifts" }}
         eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} · ${shift.location.name} · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} · ${shift.location.name}`}
         title={dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}
         description={`${timeRange(shift.startsAt, shift.endsAt, tz)}${shift.lunchMinutes ? ` · ${lunchLabel(shift.lunchMinutes, shift.lunchStartsAt, tz)}` : ""}${shift.minYearsExperience ? ` · ${shift.minYearsExperience}+ years' experience` : ""}`}

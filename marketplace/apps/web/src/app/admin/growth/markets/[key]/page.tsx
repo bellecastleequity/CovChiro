@@ -27,7 +27,7 @@ export default async function Market({ params }: { params: Promise<{ key: string
   const profession = await prisma.profession.findUnique({ where: { code: r.market.professionCode } });
   return (
     <>
-      <PageHeader title={r.market.name} description={`${profession?.displayName ?? r.market.professionCode} · ${r.market.state} · ${r.market.radiusMiles}-mile radius`} actions={<Link href="/admin/growth/markets" className="text-sm text-brand-700">← Supply & demand</Link>} />
+      <PageHeader back={{ href: "/admin/growth/markets", label: "Supply & demand" }} title={r.market.name} description={`${profession?.displayName ?? r.market.professionCode} · ${r.market.state} · ${r.market.radiusMiles}-mile radius`} actions={<Link href="/admin/growth/markets" className="text-sm text-brand-700">← Supply & demand</Link>} />
       <GrowthTabs current="/admin/growth/markets" />
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
         <Stat label="Coverage-ready" value={r.ready} hint={`target ${r.market.targetProviders}`} tone="green" />

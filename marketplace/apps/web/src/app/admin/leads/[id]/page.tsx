@@ -13,7 +13,7 @@ export default async function Lead({ params }: { params: Promise<{ id: string }>
   const { lead, promo } = await leads.leadDetail(actor, (await params).id);
   return (
     <>
-      <PageHeader title={lead.name} description={`${lead.email}${lead.phone ? ` · ${lead.phone}` : ""}${lead.organization ? ` · ${lead.organization}` : ""}`} actions={lead.spamCategory ? <span className="rounded-full bg-slate-700 px-3 py-1 text-xs text-white">{lead.spamCategory === "solicitation" ? "Sales pitch" : "Spam"}</span> : <StatusBadge status={lead.status} />} />
+      <PageHeader back={{ href: "/admin/leads", label: "Leads" }} title={lead.name} description={`${lead.email}${lead.phone ? ` · ${lead.phone}` : ""}${lead.organization ? ` · ${lead.organization}` : ""}`} actions={lead.spamCategory ? <span className="rounded-full bg-slate-700 px-3 py-1 text-xs text-white">{lead.spamCategory === "solicitation" ? "Sales pitch" : "Spam"}</span> : <StatusBadge status={lead.status} />} />
       {lead.spamCategory ? (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
           <span>Filed as spam{lead.spamReasons.length ? `: ${lead.spamReasons.join(", ")}` : ""}. No code or emails were sent and nobody was notified.</span>

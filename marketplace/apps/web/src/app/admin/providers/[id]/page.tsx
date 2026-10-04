@@ -35,7 +35,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
   ];
   return (
     <>
-      <PageHeader title={p.displayName} description={`${p.legalName} · ${p.user.email} · ${p.user.phone ?? "no phone"} · home ${p.homeCity ?? "?"}, ${p.homeState ?? "?"}`} actions={<div className="flex gap-2">{student.preLicensure ? <Badge tone="blue">Student</Badge> : student.wasStudent ? <Badge tone="gray">Former student</Badge> : null}<StatusBadge status={p.status} /></div>} />
+      <PageHeader back={{ href: "/admin/providers", label: "Providers" }} title={p.displayName} description={`${p.legalName} · ${p.user.email} · ${p.user.phone ?? "no phone"} · home ${p.homeCity ?? "?"}, ${p.homeState ?? "?"}`} actions={<div className="flex gap-2">{student.preLicensure ? <Badge tone="blue">Student</Badge> : student.wasStudent ? <Badge tone="gray">Former student</Badge> : null}<StatusBadge status={p.status} /></div>} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Completed shifts" value={p.stats?.completedShifts ?? 0} />
         <Stat label="Late cancels / no-shows" value={`${p.stats?.lateCancels ?? 0} / ${p.stats?.noShows ?? 0}`} />

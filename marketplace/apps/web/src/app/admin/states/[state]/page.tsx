@@ -23,7 +23,7 @@ export default async function StatePage({ params, searchParams }: { params: Prom
   const verified = row.cells.reduce((x, c) => x + c.verifiedProviders, 0);
   return (
     <>
-      <PageHeader title={`${US_STATES[state]} (${state})`} />
+      <PageHeader back={{ href: "/admin/states", label: "States" }} title={`${US_STATES[state]} (${state})`} />
       <div className="space-y-6">
         <Card>
           <CardHeader title="State checklist" description="Required before any profession can be enabled here." />

@@ -29,7 +29,7 @@ export default async function ExpansionMarket({ params, searchParams }: { params
   const recent = await prisma.clinicProspect.findMany({ where: { state, professionCodes: { has: professionCode } }, orderBy: { createdAt: "desc" }, take: 8, select: { id: true, clinicName: true, city: true, researchStatus: true, email: true } });
   return (
     <>
-      <PageHeader title={`${profession.displayName} · ${US_STATES[state]}`} description="Cities the bots search in the NPI registry for this market, a few per run, each re-searched on a cycle." actions={<Link href="/admin/growth/expansion" className="text-sm text-brand-700">← Expansion</Link>} />
+      <PageHeader back={{ href: "/admin/growth/expansion", label: "Expansion" }} title={`${profession.displayName} · ${US_STATES[state]}`} description="Cities the bots search in the NPI registry for this market, a few per run, each re-searched on a cycle." actions={<Link href="/admin/growth/expansion" className="text-sm text-brand-700">← Expansion</Link>} />
       <GrowthTabs current="/admin/growth/expansion" />
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

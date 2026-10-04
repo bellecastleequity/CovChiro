@@ -27,7 +27,7 @@ export default async function AdminSupportRequest({ params }: { params: Promise<
   return (
     <div className="mx-auto max-w-3xl">
       <Link href="/admin/support" className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900"><ArrowLeft className="size-4" />Support</Link>
-      <PageHeader title={r.subject} description={`${r.topic} · opened ${dateLabel(r.createdAt)}`} actions={<Badge tone={r.status === "OPEN" ? "amber" : r.status === "ANSWERED" ? "green" : "gray"}>{r.status}</Badge>} />
+      <PageHeader back={{ href: "/admin/support", label: "Support inbox" }} title={r.subject} description={`${r.topic} · opened ${dateLabel(r.createdAt)}`} actions={<Badge tone={r.status === "OPEN" ? "amber" : r.status === "ANSWERED" ? "green" : "gray"}>{r.status}</Badge>} />
       {r.urgent ? (
         <Card className={r.contactedAt ? "mb-4" : "mb-4 border-red-300 ring-2 ring-red-100"}>
           <CardBody className="space-y-2 text-sm">
