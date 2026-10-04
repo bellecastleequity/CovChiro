@@ -12,7 +12,8 @@ import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { agreementAction, passwordAction, payFloorAction, profileAction, studentModeAction } from "../actions";
-import { getSettings, payfloors, schools } from "@cm/services";
+import { breaks, getSettings, payfloors, schools } from "@cm/services";
+import { PauseCircle, PlayCircle } from "lucide-react";
 import { StudentFields } from "@/components/provider/student-fields";
 
 export const metadata = { title: "Profile" };
@@ -22,6 +23,8 @@ export default async function Profile() {
   const p = await prisma.provider.findUniqueOrThrow({ where: { id: actor.providerId! }, include: { professions: { include: { profession: true } } } });
   const signed = p.agreementVersion === AGREEMENT_VERSION.PROVIDER && p.agreementSignedAt;
   const signedCopy = await latestSignedAgreement("PROVIDER", p.id);
+  const brk = await breaks.breakStatus(p.id);
+  const onBreak = brk.onBreak || brk.scheduled;
   const studentEnabled = (await getSettings())["features.preLicensureEnabled"];
   const hasVerifiedLicense = (await prisma.license.count({ where: { providerId: p.id, status: "VERIFIED", expiresAt: { gt: new Date() } } })) > 0;
   const schoolGroups = await schools.schoolOptions(p.professions.map((pp) => pp.professionCode));
@@ -36,7 +39,16 @@ export default async function Profile() {
   return (
     <>
       <p className="mb-1 text-sm font-medium text-accent-700">Member since {dateLabel(p.createdAt, "UTC", { month: "long", year: "numeric" })} · only you see this</p>
-      <PageHeader title="Profile" description="Clinics see your photo, name, headline, About me, credentials, skills, ratings and badges — never your home address or phone." actions={<a href={`/provider/profile/public`} className="text-sm font-medium text-brand-700">Preview public profile →</a>} />
+      <PageHeader title="Profile" description="Clinics see your photo, name, headline, About me, credentials, skills, ratings and badges — never your home address or phone." actions={
+          <div className="flex flex-wrap items-center gap-3">
+            <a href={`/provider/profile/public`} className="text-sm font-medium text-brand-700">Preview public profile →</a>
+            {onBreak ? (
+              <Link href="/provider/break" className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"><PlayCircle className="size-4" />Resume coverage</Link>
+            ) : (
+              <Link href="/provider/break" className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100"><PauseCircle className="size-4" />Taking a break</Link>
+            )}
+          </div>
+        } />
       <div className="space-y-6">
         <Card>
           <CardHeader title="About you" />
