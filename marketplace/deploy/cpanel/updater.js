@@ -227,7 +227,7 @@ async function restorePoint(label) {
     files = await extract(pkg.files, STAGING);
   } catch (e) {
     rm(STAGING);
-    finish(`Couldn't unpack the package: ${e.message}. Nothing was changed.`, false);
+    finish(`Couldn't unpack the package: ${e.message}${pkg.files.length > 1 || /end of file|cut off/i.test(e.message) ? " (a piece may be missing or still uploading: upload every .part file and run update again)" : ""}. Nothing was changed.`, false);
   }
   const manifest = readJson(path.join(STAGING, "manifest.json"));
   const ok = manifest && exists(path.join(STAGING, "app", "apps", "web", "server.js")) && exists(path.join(STAGING, "node_modules", ".prisma"));

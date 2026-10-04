@@ -170,8 +170,8 @@ with tarfile.open(out, "w:gz", compresslevel=9, format=tarfile.GNU_FORMAT) as t:
 PY
 rm -rf "$PKG"
 # The same package in pieces under 30 MB (for size-limited transfers); the updater joins them.
-(cd "$ROOT/dist" && rm -f coverageoncall-update-*.tar.gz.part* && split -b 29m -d -a 1 coverageoncall-update.tar.gz "coverageoncall-update-$VERSION.tar.gz.part" \
-  && for f in coverageoncall-update-$VERSION.tar.gz.part[0-9]; do n=${f##*part}; mv "$f" "coverageoncall-update-$VERSION.tar.gz.part$((n + 1))"; done)
+(cd "$ROOT/dist" && rm -f coverageoncall-update-*.tar.gz.part* \
+  && split -b 29m --numeric-suffixes=1 -a 1 coverageoncall-update.tar.gz "coverageoncall-update-$VERSION.tar.gz.part")
 echo "Built dist/coverageoncall-update.tar.gz ($(du -h "$ROOT/dist/coverageoncall-update.tar.gz" | cut -f1), one-file update: upload, Stop App, Run JS script update, Start App)"
 (cd "$OUT/$APP_DIR" && rm -f "$ROOT"/dist/coverageoncall-update*.zip \
   && zip -qr -9 "$ROOT/dist/coverageoncall-update-part1.zip" app \
