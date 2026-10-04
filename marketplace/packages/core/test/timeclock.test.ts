@@ -63,7 +63,7 @@ describe("summarizeTimesheet", () => {
 
 describe("punch reminders", () => {
   const at = (h: number, m = 0) => new Date(Date.UTC(2026, 9, 14, h, m));
-  const shift = { startsAt: at(12), endsAt: at(21), lunchStartsAt: at(16), lunchMinutes: 60 }; // 8–5 ET, lunch 12–1
+  const shift: { startsAt: Date; endsAt: Date; lunchStartsAt: Date | null; lunchMinutes: number } = { startsAt: at(12), endsAt: at(21), lunchStartsAt: at(16), lunchMinutes: 60 }; // 8–5 ET, lunch 12–1
   const o = { afterMinutes: 5 };
   const due = (p: Punch[], now: Date, sh = shift) => punchRemindersDue(p, sh, now, o);
 

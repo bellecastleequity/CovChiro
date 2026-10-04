@@ -59,6 +59,8 @@ export interface ProviderFacts {
   availabilityRules: WeeklyRule[];
   openDates: Interval[];
   blackouts: Interval[];
+  /** Taking a break: no shifts starting from `from` until `until` (null = until they resume). */
+  onBreak?: { from: number; until: number | null } | null;
   /** Buffered ranges of this provider's CONFIRMED / IN_PROGRESS assignments on other shifts, any profession (INV-2). */
   busy: Interval[];
   /** Lowest pay the provider accepts, per profession (F12). Never shown to clinics. */
@@ -293,7 +295,10 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   const available = [...expandWeeklyRules(provider.availabilityRules, onSite), ...provider.openDates];
   // Overnight stays (lodging allowed, provider willing) travel the day before, so only the clinic hours meet blackouts.
   const blackoutWindow = provider.willingOvernight && shift.lodgingAllowed ? onSite : range;
-  if (provider.blackouts.some((b) => overlaps(b, blackoutWindow))) {
+  const brk = provider.onBreak;
+  if (brk && +shift.startsAt >= brk.from && (brk.until === null || +shift.startsAt < brk.until)) {
+    fail("F4", "OUTSIDE_AVAILABILITY", brk.until === null ? "Taking a break (not accepting new shifts)" : `Taking a break until ${new Date(brk.until).toISOString().slice(0, 10)}`);
+  } else if (provider.blackouts.some((b) => overlaps(b, blackoutWindow))) {
     fail("F4", "OUTSIDE_AVAILABILITY", buffer && blackoutWindow === range ? `Overlaps time off the provider blocked (including ${buffer} min travel either side)` : "Overlaps time off the provider blocked");
   } else if (!containedInUnion(onSite, available)) {
     fail("F4", "OUTSIDE_AVAILABILITY", availabilityGap(provider.availabilityRules, onSite));

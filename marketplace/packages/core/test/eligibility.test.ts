@@ -325,3 +325,15 @@ describe("other hard filters", () => {
     expect(codes(evaluateEligibility(provider(), shift(), pair({ previouslyDeclined: true }), OPTS))).toContain("PREVIOUSLY_DECLINED");
   });
 });
+
+describe("taking a break", () => {
+  it("no shifts starting during the break; shifts before it and after the resume date are fine", () => {
+    const s = shift();
+    const from = +s.startsAt - 86_400_000;
+    expect(ok(provider({ onBreak: { from, until: null } }), s)).toBe(false);
+    expect(codes(evaluateEligibility(provider({ onBreak: { from, until: null } }), s, pair(), OPTS))).toContain("OUTSIDE_AVAILABILITY");
+    expect(ok(provider({ onBreak: { from: +s.startsAt + 3_600_000, until: null } }), s)).toBe(true); // break starts after this shift
+    expect(ok(provider({ onBreak: { from, until: +s.startsAt } }), s)).toBe(true); // back by then
+    expect(ok(provider({ onBreak: { from, until: +s.startsAt + 1 } }), s)).toBe(false);
+  });
+});

@@ -46,8 +46,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
       <section className="relative overflow-hidden bg-gradient-to-b from-accent-50 via-white to-white">
         <div className="container-page grid items-center gap-12 py-16 sm:py-24 lg:grid-cols-2">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
-              <MapPin className="size-3.5" /> Now live in {liveStates.join(", ") || "Florida"}
+            <div className="flex flex-wrap gap-2">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
+                <MapPin className="size-3.5" /> Now live in {liveStates.join(", ") || "Florida"}
+              </div>
+              <Link href="/states" className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-300 hover:bg-amber-100">
+                Providers in other states: enrollment now open →
+              </Link>
             </div>
             <h1 className="mt-5 text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
               Licensed coverage for your clinic, <span className="text-accent-600">on call.</span>
