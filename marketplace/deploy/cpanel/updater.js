@@ -177,8 +177,17 @@ async function database(staging) {
   const raw = process.env.DATABASE_URL;
   if (!raw) throw new Error("DATABASE_URL isn't set in this app's environment variables");
   const req = (m) => require.resolve(m, { paths: [staging] });
+  /** The ES module entry of a package in the new node_modules (the app bundles only that file). */
+  const esm = (name) => {
+    const dir = path.join(staging, "node_modules", ...name.split("/"));
+    const pj = readJson(path.join(dir, "package.json")) || {};
+    const ex = pj.exports && (pj.exports["."] ?? pj.exports);
+    const pick = (e) => (typeof e === "string" ? e : e && (pick(e.import) || pick(e.default) || pick(e.node)));
+    const entry = pick(ex) || pj.module || pj.main || "index.js";
+    return pathToFileURL(path.join(dir, entry)).href;
+  };
   if (process.env.DATABASE_TRANSPORT === "websocket") {
-    const { Pool, neonConfig } = await import(pathToFileURL(req("@neondatabase/serverless")).href);
+    const { Pool, neonConfig } = await import(esm("@neondatabase/serverless"));
     neonConfig.webSocketConstructor = globalThis.WebSocket;
     const pool = new Pool({ connectionString: raw });
     return { query: async (sql) => (await pool.query(sql)).rows, end: () => pool.end() };
