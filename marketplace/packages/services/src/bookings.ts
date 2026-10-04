@@ -191,6 +191,9 @@ export async function bookAgain(actor: Actor, assignmentId: string, dateIso: str
       locationId: s.locationId, professionCode: s.professionCode, startsAt: startsAt.toJSDate(), endsAt: endsAt.toJSDate(),
       requiredSkillIds: s.requiredSkillIds, preferredSkillIds: s.preferredSkillIds, expectedPatients: s.expectedPatients, minYearsExperience: s.minYearsExperience ?? undefined,
       notes: s.notes, instantBook: false, maxTravelBudgetCents: s.maxTravelBudgetCents, lodgingAllowed: s.lodgingAllowed, lodgingCapCentsPerNight: s.lodgingCapCentsPerNight,
+      // Same lunch, at the same time of day.
+      lunchMinutes: s.lunchMinutes,
+      lunchStartsAt: s.lunchStartsAt ? new Date(+startsAt.toJSDate() + (+s.lunchStartsAt - +s.startsAt)) : null,
       supervisionAttestation: (s.supervisionAttestation as never) ?? null,
     },
     { post: true },

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { ActionForm, SubmitButton, type ActionState } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Field, Input, PhiNotice, Textarea } from "@/components/ui/form";
+import { Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form";
 import { previewShiftChangeAction, changeShiftAction } from "../../../actions";
 
 interface Side {
@@ -43,12 +43,13 @@ export function ChangeShiftForm({
   minLeadHours,
 }: {
   shiftId: string;
-  initial: { date: string; start: string; end: string; expectedPatients: number | null; minYearsExperience: number; notes: string };
+  initial: { date: string; start: string; end: string; lunch: string; lunchStart: string; expectedPatients: number | null; minYearsExperience: number; notes: string };
   volume: boolean;
   provider: string | null;
   minLeadHours: number;
 }) {
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [lunch, setLunch] = useState(initial.lunch);
   const [fields, setFields] = useState<Record<string, string>>({});
   const onDone = useCallback((s: ActionState) => {
     if (s?.data) setPreview(s.data as Preview);
@@ -74,6 +75,14 @@ export function ChangeShiftForm({
                   <Field label="Date" htmlFor="date"><Input id="date" name="date" type="date" defaultValue={initial.date} required /></Field>
                   <Field label="Start" htmlFor="start"><Input id="start" name="start" type="time" defaultValue={initial.start} required /></Field>
                   <Field label="End" htmlFor="end"><Input id="end" name="end" type="time" defaultValue={initial.end} required /></Field>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field label="Lunch break (unpaid)" htmlFor="lunch">
+                    <Select id="lunch" name="lunch" value={lunch} onChange={(e) => setLunch(e.target.value)}>
+                      {[0, 30, 45, 60, 90, 120, 150, 180, 210, 240].map((m) => <option key={m} value={String(m)}>{m === 0 ? "No lunch" : m < 60 ? `${m} min` : `${m / 60} hour${m === 60 ? "" : "s"}`}</option>)}
+                    </Select>
+                  </Field>
+                  {lunch !== "0" ? <Field label="Lunch starts" htmlFor="lunchStart"><Input id="lunchStart" name="lunchStart" type="time" step={900} defaultValue={initial.lunchStart} required /></Field> : null}
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {volume ? (
@@ -164,6 +173,6 @@ export function ChangeShiftForm({
   );
 }
 
-function initialFields(i: { date: string; start: string; end: string; expectedPatients: number | null; minYearsExperience: number; notes: string }) {
-  return { date: i.date, start: i.start, end: i.end, expectedPatients: i.expectedPatients == null ? "" : String(i.expectedPatients), minYearsExperience: String(i.minYearsExperience), notes: i.notes, message: "" };
+function initialFields(i: { date: string; start: string; end: string; lunch: string; lunchStart: string; expectedPatients: number | null; minYearsExperience: number; notes: string }) {
+  return { date: i.date, start: i.start, end: i.end, lunch: i.lunch, lunchStart: i.lunchStart, expectedPatients: i.expectedPatients == null ? "" : String(i.expectedPatients), minYearsExperience: String(i.minYearsExperience), notes: i.notes, message: "" };
 }

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, PhiNotice, Textarea } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
-import { dateLabel, money, timeRange } from "@/lib/format";
+import { dateLabel, money, timeRange, lunchLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { applyAction, openThreadAction, withdrawAction } from "../../actions";
 
@@ -51,7 +51,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
             <CardHeader title="About this shift" />
             <CardBody className="space-y-3 text-sm">
               <div className="flex items-center gap-2"><MapPin className="size-4 text-slate-400" />{shift.location.city}, {shift.state} <span className="text-slate-400">(exact address after confirmation)</span></div>
-              <div className="flex items-center gap-2"><Clock className="size-4 text-slate-400" />{timeRange(shift.startsAt, shift.endsAt, tz)}</div>
+              <div className="flex items-center gap-2"><Clock className="size-4 text-slate-400" />{timeRange(shift.startsAt, shift.endsAt, tz)}{shift.lunchMinutes ? <span className="text-slate-500"> · {lunchLabel(shift.lunchMinutes, shift.lunchStartsAt, tz)}</span> : null}</div>
               {ev.drive ? <div className="flex items-center gap-2"><Car className="size-4 text-slate-400" />About {ev.drive.minutes} min drive ({ev.drive.miles} mi)</div> : null}
               {shift.location.dressCode ? <div className="flex items-center gap-2"><Shirt className="size-4 text-slate-400" />Attire: {shift.location.dressCode}</div> : null}
               {shift.minYearsExperience ? <div className="flex items-center gap-2"><Star className="size-4 text-slate-400" />Clinic asks for {shift.minYearsExperience}+ years&apos; experience</div> : null}

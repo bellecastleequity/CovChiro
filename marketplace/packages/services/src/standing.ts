@@ -68,7 +68,7 @@ export async function proposeStanding(actor: Actor, raw: StandingInputT) {
   const firstDay = nextMatchingDay(input.startsOn, input.weekdays);
   const first = occurrence(firstDay, input.startTime, input.endTime, loc.timeZone);
   try {
-    await validateShiftInput(prisma, orgId, { locationId: loc.id, professionCode: input.professionCode, startsAt: first.startsAt, endsAt: first.endsAt, requiredSkillIds: [], preferredSkillIds: [], instantBook: false, lodgingAllowed: false }, true);
+    await validateShiftInput(prisma, orgId, { locationId: loc.id, professionCode: input.professionCode, startsAt: first.startsAt, endsAt: first.endsAt, requiredSkillIds: [], preferredSkillIds: [], instantBook: false, lodgingAllowed: false, lunchMinutes: 0 }, true);
   } catch (e) {
     if (e instanceof DomainError && /supervis/i.test(e.message)) throw new DomainError("VALIDATION", "This profession needs a supervision attestation for each shift here, so post these shifts individually for now.");
     throw e;

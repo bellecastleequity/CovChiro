@@ -138,7 +138,7 @@ export async function releaseClinicRateShift(shiftId: string, actor: Actor, why:
     const sh = await db.shift.findUniqueOrThrow({ where: { id: shiftId } });
     if (sh.rateMode !== "CLINIC" || sh.releasedAt) return null;
     if (!UNFILLED.includes(sh.status as never) || sh.startsAt <= now) return null;
-    const q = await quoteShift(db, { locationId: sh.locationId, professionCode: sh.professionCode, startsAt: sh.startsAt, endsAt: sh.endsAt, expectedPatients: sh.expectedPatients, boosted: sh.boosted, pricedAt: now });
+    const q = await quoteShift(db, { locationId: sh.locationId, professionCode: sh.professionCode, startsAt: sh.startsAt, endsAt: sh.endsAt, lunchMinutes: sh.lunchMinutes, expectedPatients: sh.expectedPatients, boosted: sh.boosted, pricedAt: now });
     await db.shift.update({
       where: { id: shiftId },
       data: {

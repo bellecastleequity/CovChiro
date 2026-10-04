@@ -24,6 +24,8 @@ async function loadDraft(clinicOrgId: string, id: string): Promise<DraftInit> {
     date: s.toISODate()!,
     start: s.toFormat("HH:mm"),
     end: e.toFormat("HH:mm"),
+    lunch: String(sh.lunchMinutes),
+    lunchStart: sh.lunchStartsAt ? DateTime.fromJSDate(sh.lunchStartsAt, { zone: z }).toFormat("HH:mm") : "12:00",
     requiredSkillIds: sh.requiredSkillIds,
     preferredSkillIds: sh.preferredSkillIds,
     expectedPatients: sh.expectedPatients == null ? "" : String(sh.expectedPatients),
@@ -67,6 +69,7 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
         draft={draft}
         volumeCodes={volumeCodes}
         lodging={{ nightlyCents: settings["pricing.lodgingNightlyCents"], overMinutes: settings["pricing.lodgingTriggerMinutes"], maxMinutes: settings["pricing.lodgingMaxDriveMinutes"] }}
+        maxDayMinutes={settings["pricing.maxDaySpanMinutes"]}
         locations={options.map((o) => ({
           id: o.location.id,
           name: o.location.name,

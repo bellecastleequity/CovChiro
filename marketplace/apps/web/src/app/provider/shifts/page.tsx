@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/form";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { buttonClass } from "@/components/ui/button";
-import { dateLabel, money, timeRange } from "@/lib/format";
+import { dateLabel, money, timeRange, lunchLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { CanTake } from "../can-take";
 
@@ -52,7 +52,7 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold">{dateLabel(s.startsAt, s.timeZone)}</div>
-                    <div className="text-sm text-slate-500">{timeRange(s.startsAt, s.endsAt, s.timeZone)}</div>
+                    <div className="text-sm text-slate-500">{timeRange(s.startsAt, s.endsAt, s.timeZone)}{s.lunchMinutes ? ` · ${lunchLabel(s.lunchMinutes, s.lunchStartsAt, s.timeZone)}` : ""}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-semibold tabular-nums text-brand-700">{money(s.pay.totalCents)}</div>

@@ -27,7 +27,7 @@ const me = () => requireActor("clinic");
 /** Every day in the wizard's payload (one for a single shift). */
 async function shiftPayloads(fd: FormData) {
   const raw = JSON.parse(str(fd, "payload") || "{}");
-  const days: { date: string; start: string; end: string }[] = Array.isArray(raw.days) && raw.days.length ? raw.days : [{ date: raw.date, start: raw.start, end: raw.end }];
+  const days: { date: string; start: string; end: string; lunch?: string; lunchStart?: string }[] = Array.isArray(raw.days) && raw.days.length ? raw.days : [{ date: raw.date, start: raw.start, end: raw.end }];
   return Promise.all(days.map((d) => shiftPayloadFrom({ ...raw, ...d })));
 }
 
@@ -42,8 +42,13 @@ async function shiftPayloadFrom(raw: any) {
   const start = DateTime.fromISO(`${raw.date}T${raw.start}`, { zone });
   let end = DateTime.fromISO(`${raw.date}T${raw.end}`, { zone });
   if (end <= start) end = end.plus({ days: 1 });
+  const lunchMinutes = Math.max(0, Math.round(Number(raw.lunch) || 0));
+  let lunchAt = lunchMinutes && raw.lunchStart ? DateTime.fromISO(`${raw.date}T${raw.lunchStart}`, { zone }) : null;
+  if (lunchAt && lunchAt < start) lunchAt = lunchAt.plus({ days: 1 });
   return {
     locationId: raw.locationId,
+    lunchMinutes,
+    lunchStartsAt: lunchAt?.isValid ? lunchAt.toJSDate() : null,
     professionCode: raw.professionCode,
     startsAt: start.isValid ? start.toJSDate() : new Date(NaN),
     endsAt: end.isValid ? end.toJSDate() : new Date(NaN),
@@ -402,9 +407,14 @@ async function changePayload(fd: FormData) {
   let end = DateTime.fromISO(`${str(fd, "date")}T${str(fd, "end")}`, { zone });
   if (end <= start) end = end.plus({ days: 1 });
   const patients = str(fd, "expectedPatients");
+  const lunchMinutes = fd.has("lunch") ? Math.max(0, Number(str(fd, "lunch")) || 0) : undefined;
+  let lunchAt = lunchMinutes && str(fd, "lunchStart") ? DateTime.fromISO(`${str(fd, "date")}T${str(fd, "lunchStart")}`, { zone }) : null;
+  if (lunchAt && lunchAt < start) lunchAt = lunchAt.plus({ days: 1 });
   return {
     shiftId,
     input: {
+      lunchMinutes,
+      lunchStartsAt: lunchMinutes === undefined ? undefined : lunchAt?.isValid ? lunchAt.toJSDate() : null,
       startsAt: start.isValid ? start.toJSDate() : new Date(NaN),
       endsAt: end.isValid ? end.toJSDate() : new Date(NaN),
       expectedPatients: fd.has("expectedPatients") ? (patients === "" ? null : Number(patients)) : undefined,

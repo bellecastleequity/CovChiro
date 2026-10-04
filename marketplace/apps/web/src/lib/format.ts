@@ -16,6 +16,13 @@ export function timeRange(start: Date | string, end: Date | string, tz = "Americ
   return `${timeLabel(start, tz)} – ${timeLabel(end, tz)}`;
 }
 
+/** "Lunch 12:00 – 1:00 PM, unpaid" (empty when there's no lunch). */
+export function lunchLabel(lunchMinutes: number | null | undefined, lunchStartsAt: Date | string | null | undefined, tz = "America/New_York") {
+  if (!lunchMinutes || !lunchStartsAt) return "";
+  const end = new Date(+new Date(lunchStartsAt) + lunchMinutes * 60_000);
+  return `Lunch ${timeRange(lunchStartsAt, end, tz)}, unpaid`;
+}
+
 export function dateTimeLabel(d: Date | string | null | undefined, tz = "America/New_York") {
   if (!d) return "—";
   return new Date(d).toLocaleString("en-US", { timeZone: tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });

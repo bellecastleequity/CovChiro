@@ -27,7 +27,11 @@ export interface AppliedPremium {
 export interface BaseQuote {
   pricingModel: PricingModel;
   tier: DurationTier;
+  /** Paid hours: worked hours (start to finish minus unpaid lunch), or more when the day runs past the day-length limit (see paidHours). */
   hours: number;
+  /** Start to finish, lunch included. */
+  spanHours: number;
+  lunchMinutes: number;
   /** TIERED: hours beyond 8. HOURLY: always 0. */
   overtimeHours: number;
   /** HOURLY: max(hours, minHours). TIERED: equals hours. */
@@ -36,6 +40,29 @@ export interface BaseQuote {
   clinicPriceCents: number;
   providerPayCents: number;
   marginCents: number;
+}
+
+/**
+ * Unpaid lunch. Hours are priced on time worked (start to finish minus lunch),
+ * but the provider's day can't stretch past the day-length limit
+ * (pricing.maxDaySpanMinutes, 9.5 h) for free: the paid hours are whichever is
+ * larger, hours worked or the day's length minus the limit's slack over 8 h.
+ * So a full day's overtime is max(worked − 8, length − limit). With no lunch it
+ * is the clock time, exactly as before.
+ */
+export function paidHours(spanHours: number, lunchMinutes: number, maxDaySpanMinutes: number): number {
+  const worked = spanHours - Math.max(0, lunchMinutes) / 60;
+  if (lunchMinutes <= 0) return round2(spanHours);
+  return round2(Math.max(worked, spanHours - (maxDaySpanMinutes / 60 - 8)));
+}
+
+/** Lunch must fit inside the shift, leaving time to work on both sides. Returns an error message or null. */
+export function lunchProblem(shift: { startsAt: Date; endsAt: Date }, lunchMinutes: number, lunchStartsAt: Date | null): string | null {
+  if (!lunchMinutes) return null;
+  if (lunchMinutes < 0 || lunchMinutes > 300 || lunchMinutes % 15) return "Lunch can be up to 5 hours, in 15-minute steps.";
+  if (!lunchStartsAt) return "Choose when lunch starts.";
+  if (+lunchStartsAt <= +shift.startsAt || +lunchStartsAt + lunchMinutes * 60_000 >= +shift.endsAt) return "Lunch has to start after the shift starts and end before it ends.";
+  return null;
 }
 
 export function durationTier(hours: number): { tier: Exclude<DurationTier, "HOURLY">; overtimeHours: number } {
@@ -62,6 +89,7 @@ type PricingSettings = Pick<
   SettingsMap,
   | "pricing.overtimeClinicCentsPerHour"
   | "pricing.overtimeProviderCentsPerHour"
+  | "pricing.maxDaySpanMinutes"
   | "pricing.premiumUrgentPercent"
   | "pricing.premiumRushPercent"
   | "pricing.rushWithinHours"
@@ -92,13 +120,15 @@ export function premiumMultiplier(premiums: AppliedPremium[]): number {
 }
 
 export function quoteBase(
-  shift: { startsAt: Date; endsAt: Date },
+  shift: { startsAt: Date; endsAt: Date; lunchMinutes?: number | null },
   pricingModel: PricingModel,
   card: RateCardFacts,
   premiumInput: Omit<PremiumInput, "startsAt">,
   s: PricingSettings,
 ): BaseQuote {
-  const hours = round2(hoursBetween(shift.startsAt, shift.endsAt));
+  const spanHours = round2(hoursBetween(shift.startsAt, shift.endsAt));
+  const lunchMinutes = shift.lunchMinutes ?? 0;
+  const hours = paidHours(spanHours, lunchMinutes, s["pricing.maxDaySpanMinutes"]);
   let tier: DurationTier;
   let overtimeHours = 0;
   let billableHours = hours;
@@ -119,7 +149,7 @@ export function quoteBase(
   const mult = premiumMultiplier(premiums);
   const clinicPriceCents = Math.round(baseClinic * mult);
   const providerPayCents = Math.round(baseProvider * mult);
-  return { pricingModel, tier, hours, overtimeHours, billableHours, premiums, clinicPriceCents, providerPayCents, marginCents: clinicPriceCents - providerPayCents };
+  return { pricingModel, tier, hours, spanHours, lunchMinutes, overtimeHours, billableHours, premiums, clinicPriceCents, providerPayCents, marginCents: clinicPriceCents - providerPayCents };
 }
 
 // ---------- travel (§8.5): 100% pass-through, no margin ----------

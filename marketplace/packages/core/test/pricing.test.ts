@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applicablePremiums, clinicTotalCents, clinicView, depositCents, providerTotalCents, providerView, durationTier, federalHolidays,
-  isFederalHoliday, mileageCents, tierFor, platformMarginCents, quoteBase, travelEstimate, travelRange, formatCents,
+  isFederalHoliday, lunchProblem, mileageCents, paidHours, tierFor, platformMarginCents, quoteBase, travelEstimate, travelRange, formatCents,
 } from "../src";
 import { d, S } from "./fixtures";
 
@@ -18,6 +18,47 @@ describe("duration tiers", () => {
     expect(durationTier(8)).toEqual({ tier: "FULL_DAY", overtimeHours: 0 });
     expect(durationTier(10.5)).toEqual({ tier: "FULL_DAY", overtimeHours: 2.5 });
     expect(() => durationTier(0)).toThrow();
+  });
+});
+
+describe("unpaid lunch (9.5 h day limit)", () => {
+  // Overtime = max(worked − 8, day length − 9.5).
+  it.each([
+    // [start-to-finish hours, lunch minutes, paid hours]
+    [9, 60, 8], //        8–5, 1 h lunch: no overtime
+    [10, 180, 8.5], //    9–12 & 3–7: worked 7, day 10 → 0.5 h past the limit
+    [9.5, 150, 8], //     day exactly at the limit: free
+    [11, 180, 9.5], //    8–12 & 3–7: worked 8, day 11 → 1.5 h overtime
+    [10, 60, 9], //       8–6, 1 h lunch: worked 9 → 1 h overtime
+    [12, 240, 10.5], //   8–12 & 4–8: day 12 → 2.5 h overtime
+    [8, 0, 8], //         no lunch: clock time as before
+    [10.5, 0, 10.5],
+    [5, 60, 4], //        half-day morning with a lunch
+  ])("%s h with %s min lunch → %s paid hours", (span, lunch, paid) => {
+    expect(paidHours(span, lunch, 570)).toBe(paid);
+  });
+
+  it("prices a 8–5 day with lunch as a plain full day, and charges past the limit at the overtime rate", () => {
+    const day = { startsAt: d("2026-10-14T12:00:00Z"), endsAt: d("2026-10-14T21:00:00Z") }; // 8–5 ET
+    const opts = { pricedAt: early, timeZone: TZ, boosted: false };
+    expect(quoteBase({ ...day, lunchMinutes: 60 }, "TIERED", FL_CENTRAL, opts, S)).toMatchObject({ tier: "FULL_DAY", overtimeHours: 0, clinicPriceCents: 57500, providerPayCents: 40000, spanHours: 9, lunchMinutes: 60 });
+    expect(quoteBase(day, "TIERED", FL_CENTRAL, opts, S)).toMatchObject({ overtimeHours: 1, clinicPriceCents: 67500, providerPayCents: 47000 });
+    const long = { startsAt: d("2026-10-14T12:00:00Z"), endsAt: d("2026-10-14T23:00:00Z"), lunchMinutes: 180 }; // 8–7, 3 h lunch
+    expect(quoteBase(long, "TIERED", FL_CENTRAL, opts, S)).toMatchObject({ overtimeHours: 1.5, clinicPriceCents: 57500 + 15000, providerPayCents: 40000 + 10500 });
+  });
+
+  it("bills hourly professions for paid hours", () => {
+    const day = { startsAt: d("2026-10-14T12:00:00Z"), endsAt: d("2026-10-14T21:00:00Z"), lunchMinutes: 60 };
+    expect(quoteBase(day, "HOURLY", { clinicPriceCents: 9000, providerPayCents: 6000 }, { pricedAt: early, timeZone: TZ, boosted: false }, S)).toMatchObject({ billableHours: 8, clinicPriceCents: 72000 });
+  });
+
+  it("lunch must sit inside the shift", () => {
+    const day = { startsAt: d("2026-10-14T12:00:00Z"), endsAt: d("2026-10-14T21:00:00Z") };
+    expect(lunchProblem(day, 0, null)).toBeNull();
+    expect(lunchProblem(day, 60, d("2026-10-14T16:00:00Z"))).toBeNull();
+    expect(lunchProblem(day, 60, null)).toMatch(/starts/);
+    expect(lunchProblem(day, 60, d("2026-10-14T20:30:00Z"))).toMatch(/end before/);
+    expect(lunchProblem(day, 45 + 1, d("2026-10-14T16:00:00Z"))).toMatch(/15-minute/);
   });
 });
 

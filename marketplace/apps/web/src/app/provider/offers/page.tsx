@@ -3,7 +3,7 @@ import { prisma } from "@cm/db";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card } from "@/components/ui/card";
 import { Empty, PageHeader } from "@/components/ui/misc";
-import { dateLabel, money, relative, timeRange } from "@/lib/format";
+import { dateLabel, money, relative, timeRange, lunchLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { respondOfferAction } from "../actions";
 
@@ -29,7 +29,7 @@ export default async function Offers() {
                   <div>
                     <div className="font-semibold">{o.shift.location.clinicOrg.displayName}</div>
                     <div className="text-sm text-slate-500">
-                      {dateLabel(o.shift.startsAt, tz)} · {timeRange(o.shift.startsAt, o.shift.endsAt, tz)} · {o.shift.location.city}, {o.shift.state}
+                      {dateLabel(o.shift.startsAt, tz)} · {timeRange(o.shift.startsAt, o.shift.endsAt, tz)}{o.shift.lunchMinutes ? ` (${lunchLabel(o.shift.lunchMinutes, o.shift.lunchStartsAt, tz).toLowerCase()})` : ""} · {o.shift.location.city}, {o.shift.state}
                     </div>
                     <div className="mt-1 text-sm font-medium text-amber-700">
                       {o.status === "ACCEPTED_PENDING" ? "You accepted — you're next in line. We'll confirm the best-matched provider who accepts." : <>Closes {relative(o.expiresAt)}</>}

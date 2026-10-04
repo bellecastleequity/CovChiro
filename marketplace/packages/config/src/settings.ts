@@ -102,6 +102,7 @@ export const SETTINGS = {
   // ---------- pricing (§8) ----------
   "pricing.overtimeClinicCentsPerHour": def({ group: "Pricing", label: "Overtime clinic price per hour beyond 8h", schema: cents, default: 10000, flag: null }),
   "pricing.overtimeProviderCentsPerHour": def({ group: "Pricing", label: "Overtime provider pay per hour beyond 8h", schema: cents, default: 7000, flag: "OWNER_DECISION" }),
+  "pricing.maxDaySpanMinutes": def({ group: "Pricing", label: "Longest day, start to finish, before an unpaid lunch counts as paid time (minutes)", schema: z.number().int().min(480).max(960), default: 570, flag: "OWNER_DECISION" }),
   "pricing.mileageRateCentsPerMile": def({ group: "Pricing", label: "Mileage rate (cents per mile)", schema: cents, default: 20, flag: "OWNER_DECISION" }),
   "pricing.mileageRoundTrip": def({ group: "Pricing", label: "Mileage is round-trip (off = one-way)", schema: z.boolean(), default: false, flag: "OWNER_DECISION" }),
   "pricing.hourlyMinHours": def({ group: "Pricing", label: "Minimum billable hours for hourly professions", schema: z.number().positive(), default: 2, flag: "OWNER_DECISION" }),

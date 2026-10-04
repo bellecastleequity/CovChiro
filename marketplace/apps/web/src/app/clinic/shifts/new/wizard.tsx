@@ -59,6 +59,9 @@ interface Quote {
   premiums: { kind: string; percent: number }[];
   tier: string;
   hours: number;
+  spanHours?: number;
+  lunchMinutes?: number;
+  overtimeHours?: number;
   billableHours: number;
   subtotalCents: number;
   overlapping?: number;
@@ -76,6 +79,36 @@ interface Quote {
 
 const TIER_LABEL = { LIGHT: "Light day", BUSY: "Busy day" } as const;
 
+interface Day {
+  date: string;
+  start: string;
+  end: string;
+  lunch: string;
+  lunchStart: string;
+  /** The clinic chose the lunch itself (no more automatic defaults for this row). */
+  lunchSet?: boolean;
+}
+
+const LUNCH_OPTIONS = [0, 30, 45, 60, 90, 120, 150, 180, 210, 240];
+const toMin = (t: string) => {
+  const [h, m] = t.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+};
+const fromMin = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const spanMin = (start: string, end: string) => {
+  const d = toMin(end) - toMin(start);
+  return d > 0 ? d : d + 1440;
+};
+/** Full days (6 h or more) default to a 1-hour unpaid lunch, at noon when it fits. */
+function defaultLunch(start: string, end: string): Pick<Day, "lunch" | "lunchStart"> {
+  const span = spanMin(start, end);
+  if (span < 360) return { lunch: "0", lunchStart: "12:00" };
+  const s = toMin(start);
+  const at = 720 >= s + 60 && 780 <= s + span - 60 ? 720 : s + Math.floor((span - 60) / 2 / 15) * 15;
+  return { lunch: "60", lunchStart: fromMin(at) };
+}
+const fmtHours = (h: number) => `${Math.round(h * 100) / 100} h`;
+
 const STEPS = ["Where", "What", "When", "Details", "Review"] as const;
 
 /** A saved draft being edited (times already in the location's local zone). */
@@ -87,6 +120,9 @@ export interface DraftInit {
   date: string;
   start: string;
   end: string;
+  /** Unpaid lunch minutes ("0" = none) and its start (HH:mm). */
+  lunch: string;
+  lunchStart: string;
   requiredSkillIds: string[];
   preferredSkillIds: string[];
   expectedPatients: string;
@@ -99,7 +135,7 @@ export interface DraftInit {
   sup: { supervisorName: string; supervisorProfessionCode: string; supervisorLicenseNumber: string; onSiteEntireShift: boolean } | null;
 }
 
-export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft, volumeCodes = [], lodging }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit; volumeCodes?: string[]; lodging: { nightlyCents: number; overMinutes: number; maxMinutes: number } }) {
+export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft, volumeCodes = [], lodging, maxDayMinutes = 570 }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit; volumeCodes?: string[]; lodging: { nightlyCents: number; overMinutes: number; maxMinutes: number }; maxDayMinutes?: number }) {
   const [step, setStep] = useState(0);
   const [locationId, setLocationId] = useState(draft && locations.some((l) => l.id === draft.locationId) ? draft.locationId : locations[0].id);
   const loc = locations.find((l) => l.id === locationId)!;
@@ -108,15 +144,25 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const prof = loc.professions.find((p) => p.code === professionCode);
   const tomorrow = new Date(Date.now() + 86_400_000 * 3).toISOString().slice(0, 10);
   // One row per day; a booking of several days is posted together.
-  const [days, setDays] = useState([draft ? { date: draft.date, start: draft.start, end: draft.end } : { date: tomorrow, start: "08:00", end: "17:00" }]);
+  const [days, setDays] = useState<Day[]>([
+    draft ? { date: draft.date, start: draft.start, end: draft.end, lunch: draft.lunch, lunchStart: draft.lunchStart, lunchSet: true } : { date: tomorrow, start: "08:00", end: "17:00", ...defaultLunch("08:00", "17:00") },
+  ]);
   const { date, start, end } = days[0];
-  const setDay = (i: number, patch: Partial<{ date: string; start: string; end: string }>) => setDays((ds) => ds.map((d, j) => (j === i ? { ...d, ...patch } : d)));
+  // Changing the hours re-suggests the lunch until the clinic picks one itself.
+  const setDay = (i: number, patch: Partial<Day>) =>
+    setDays((ds) =>
+      ds.map((d, j) => {
+        if (j !== i) return d;
+        const next = { ...d, ...patch };
+        return (patch.start !== undefined || patch.end !== undefined) && !d.lunchSet ? { ...next, ...defaultLunch(next.start, next.end) } : next;
+      }),
+    );
   const addDay = () =>
     setDays((ds) => {
       const last = ds[ds.length - 1];
       const next = new Date(`${last.date}T12:00:00`);
       next.setDate(next.getDate() + 1);
-      return [...ds, { date: next.toISOString().slice(0, 10), start: last.start, end: last.end }];
+      return [...ds, { ...last, date: next.toISOString().slice(0, 10) }];
     });
   const [required, setRequired] = useState<string[]>(draft?.requiredSkillIds ?? []);
   const [preferred, setPreferred] = useState<string[]>(draft?.preferredSkillIds ?? []);
@@ -283,6 +329,26 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                       {days.length > 1 ? (
                         <Button type="button" variant="ghost" onClick={() => setDays((ds) => ds.filter((_, j) => j !== i))} aria-label={`Remove day ${i + 1}`}>Remove</Button>
                       ) : <span />}
+                      <div className="flex flex-wrap items-end gap-3 sm:col-span-4">
+                        <Field label={<>Lunch break (unpaid)<InfoTip label="About lunch breaks">Lunch isn&apos;t paid, so an 8–5 day with an hour&apos;s lunch is a normal 8-hour day. Long lunches are fine, but a provider&apos;s day can&apos;t stretch past {maxDayMinutes / 60} hours from start to finish for free: anything longer is paid as overtime. Providers see the lunch before they apply.</InfoTip></>}>
+                          <Select value={d.lunch} onChange={(e) => setDay(i, { lunch: e.target.value, lunchSet: true })} className="w-40">
+                            {LUNCH_OPTIONS.map((m) => <option key={m} value={String(m)}>{m === 0 ? "No lunch" : m < 60 ? `${m} min` : `${m / 60} hour${m === 60 ? "" : "s"}`}</option>)}
+                          </Select>
+                        </Field>
+                        {d.lunch !== "0" ? <Field label="Lunch starts"><Input type="time" step={900} value={d.lunchStart} onChange={(e) => setDay(i, { lunchStart: e.target.value, lunchSet: true })} className="w-36" /></Field> : null}
+                        {d.start && d.end ? (() => {
+                          const span = spanMin(d.start, d.end);
+                          const lunch = Number(d.lunch) || 0;
+                          const worked = span - lunch;
+                          const past = lunch ? Math.max(0, span - maxDayMinutes - Math.max(0, worked - 480)) : 0;
+                          return (
+                            <p className="pb-2 text-xs text-slate-500">
+                              {fmtHours(worked / 60)} working{lunch ? `, ${fmtHours(span / 60)} start to finish` : ""}
+                              {past > 0 ? <span className="text-amber-700"> · {fmtHours(past / 60)} past the {maxDayMinutes / 60}-hour day limit is paid</span> : null}
+                            </p>
+                          );
+                        })() : null}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -400,7 +466,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 <dl className="grid gap-2 text-sm sm:grid-cols-2">
                   <div><dt className="text-slate-500">Location</dt><dd className="font-medium">{loc.name}, {loc.city} {loc.state}</dd></div>
                   <div><dt className="text-slate-500">Coverage</dt><dd className="font-medium">{prof?.displayName}</dd></div>
-                  <div><dt className="text-slate-500">When</dt><dd className="font-medium">{days.length > 1 ? `${days.length} days: ${days.map((d) => d.date).join(", ")}` : `${date} · ${start}–${end}`}</dd></div>
+                  <div><dt className="text-slate-500">When</dt><dd className="font-medium">{days.length > 1 ? `${days.length} days: ${days.map((d) => d.date).join(", ")}` : `${date} · ${start}–${end}`}{days[0].lunch !== "0" ? ` · ${days.length > 1 ? "lunch" : `lunch ${days[0].lunchStart}`} ${Number(days[0].lunch) < 60 ? `${days[0].lunch} min` : `${Number(days[0].lunch) / 60} h`} unpaid` : ""}</dd></div>
                   <div><dt className="text-slate-500">Booking</dt><dd className="font-medium">{instantBook ? "Instant book" : "You choose from applicants"}</dd></div>
                 </dl>
                 <div className="flex gap-2">
@@ -492,7 +558,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
             {quoteError ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{quoteError}</p> : null}
             {quote && !pending ? (
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span>Coverage ({quote.tier === "HOURLY" ? `${quote.billableHours}h` : quote.tier === "HALF_DAY" ? "half day" : `full day${quote.hours > 8 ? ` + ${Math.round((quote.hours - 8) * 100) / 100}h OT` : ""}`})</span><span className="tabular-nums">{money(quote.coverageCents)}</span></div>
+                <div className="flex justify-between"><span>Coverage ({quote.tier === "HOURLY" ? `${quote.billableHours}h` : quote.tier === "HALF_DAY" ? "half day" : `full day${(quote.overtimeHours ?? Math.max(0, quote.hours - 8)) > 0 ? ` + ${Math.round((quote.overtimeHours ?? quote.hours - 8) * 100) / 100}h OT` : ""}`})</span><span className="tabular-nums">{money(quote.coverageCents)}</span></div>
                 {v ? <div className="flex justify-between text-xs text-slate-500"><span>{TIER_LABEL[v.tier]} · up to {v.terms.ceiling + v.terms.grace} visits</span><span>+{money(v.terms.overageClinicCents)}/visit after</span></div> : null}
                 {quote.premiums.map((p) => <div key={p.kind} className="flex justify-between text-xs text-slate-500"><span>incl. {p.kind.toLowerCase()} premium</span><span>+{p.percent}%</span></div>)}
                 {rateActive && ratePrice?.ok ? <div className="flex justify-between rounded-lg bg-amber-50 px-2 py-1.5 font-semibold text-amber-900"><span>Your rate (clinic-set)</span><span className="tabular-nums">{money(ratePrice.clinicPriceCents)}</span></div> : null}

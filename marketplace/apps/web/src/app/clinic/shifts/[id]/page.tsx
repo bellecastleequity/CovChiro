@@ -18,7 +18,7 @@ import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form";
 import { Alert, Empty, PageHeader } from "@/components/ui/misc";
-import { dateLabel, money, pct, relative, timeRange } from "@/lib/format";
+import { dateLabel, money, pct, relative, timeRange, lunchLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import {
   blockAction, boostAction, cancelDispatchAction, confirmAllDaysAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
@@ -150,7 +150,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
       <PageHeader
         eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} · ${shift.location.name} · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} · ${shift.location.name}`}
         title={dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}
-        description={`${timeRange(shift.startsAt, shift.endsAt, tz)}${shift.minYearsExperience ? ` · ${shift.minYearsExperience}+ years' experience` : ""}`}
+        description={`${timeRange(shift.startsAt, shift.endsAt, tz)}${shift.lunchMinutes ? ` · ${lunchLabel(shift.lunchMinutes, shift.lunchStartsAt, tz)}` : ""}${shift.minYearsExperience ? ` · ${shift.minYearsExperience}+ years' experience` : ""}`}
         actions={
           <div className="flex items-center gap-2">
             {changeable ? <LinkButton href={`/clinic/shifts/${shift.id}/change`} size="sm" variant="outline">Change shift</LinkButton> : null}

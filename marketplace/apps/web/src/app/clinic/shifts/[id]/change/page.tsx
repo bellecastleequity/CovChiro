@@ -45,6 +45,8 @@ export default async function ChangeShift({ params }: { params: Promise<{ id: st
             date: start.toISODate()!,
             start: start.toFormat("HH:mm"),
             end: end.toFormat("HH:mm"),
+            lunch: String(shift.lunchMinutes),
+            lunchStart: shift.lunchStartsAt ? DateTime.fromJSDate(shift.lunchStartsAt, { zone: shift.location.timeZone }).toFormat("HH:mm") : "12:00",
             expectedPatients: shift.expectedPatients,
             minYearsExperience: shift.minYearsExperience,
             notes: shift.notes ?? "",

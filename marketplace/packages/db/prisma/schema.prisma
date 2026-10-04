@@ -700,6 +700,9 @@ model Shift {
   notes                   String?
   instantBook             Boolean          @default(false)
   maxTravelBudgetCents    Int?
+  /// Unpaid lunch (0 = none). Priced on paid hours: core paidHours (pricing.maxDaySpanMinutes limit).
+  lunchMinutes            Int              @default(0)
+  lunchStartsAt           DateTime?        @db.Timestamptz(3)
   lodgingAllowed          Boolean          @default(false)
   lodgingCapCentsPerNight Int?
   // Pricing snapshot from the rate engine (INV-7)

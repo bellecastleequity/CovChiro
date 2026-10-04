@@ -1,6 +1,8 @@
 import {
   DomainError,
   hoursBetween,
+  paidHours,
+  round2,
   normalizeCode,
   promoDiscountCents,
   promoRejection,
@@ -107,6 +109,8 @@ export async function quoteShift(
     professionCode: string;
     startsAt: Date;
     endsAt: Date;
+    /** Unpaid lunch minutes (0 = none). */
+    lunchMinutes?: number | null;
     boosted?: boolean;
     promoCode?: string | null;
     pricedAt?: Date;
@@ -125,7 +129,8 @@ export async function quoteShift(
   if (hoursBetween(input.startsAt, input.endsAt) > 16) throw new DomainError("VALIDATION", "Shifts can be at most 16 hours. Post multiple days as separate shifts.");
   const rateRegionId = location.rateRegionId ?? (await resolveRateRegion(db, location.state, location.zip));
   if (!rateRegionId) throw new DomainError("VALIDATION", `Pricing isn't set up for ${location.state} yet.`);
-  const hours = hoursBetween(input.startsAt, input.endsAt);
+  // The tier follows paid hours (an 8–1 morning with an hour's lunch is a 4-hour day).
+  const hours = paidHours(round2(hoursBetween(input.startsAt, input.endsAt)), input.lunchMinutes ?? 0, s["pricing.maxDaySpanMinutes"]);
   const tier = tierFor(profession.pricingModel, hours);
   // Volume pricing: both tier cards must exist for the region, else the flat card is used.
   let volume: ShiftQuote["volume"] = null;
@@ -151,7 +156,7 @@ export async function quoteShift(
   card ??= await findRateCard(db, input.professionCode, rateRegionId, tier, pricedAt);
   if (!card) throw new DomainError("VALIDATION", `No ${profession.displayName} rate card for this area yet.`);
   const base = quoteBase(
-    { startsAt: input.startsAt, endsAt: input.endsAt },
+    { startsAt: input.startsAt, endsAt: input.endsAt, lunchMinutes: input.lunchMinutes ?? 0 },
     profession.pricingModel,
     { clinicPriceCents: card.clinicPriceCents, providerPayCents: card.providerPayCents, minHours: card.minHours },
     { pricedAt, timeZone: location.timeZone, boosted: !!input.boosted, professionCode: input.professionCode },

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { clinicTotalCents, DomainError, looksLikePhi, minPostingLeadOk, providerTotalCents, scanContactInfo, selectionDeadline, urgencyTier } from "@cm/core";
+import { clinicTotalCents, DomainError, looksLikePhi, lunchProblem, minPostingLeadOk, providerTotalCents, scanContactInfo, selectionDeadline, urgencyTier } from "@cm/core";
 import { isInvariantViolation, prisma, Prisma, type Shift, type ShiftChange } from "@cm/db";
 import { audit, clock, getSettings, lockShift, requireClinic, requireProvider, SYSTEM, tx, type Actor, type Db } from "./context";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
@@ -22,6 +22,9 @@ export const ShiftChangeInput = z.object({
   expectedPatients: z.coerce.number().int().min(0).max(500).nullable().optional(),
   minYearsExperience: z.coerce.number().int().min(0).max(40).optional(),
   notes: z.string().max(2000).nullable().optional(),
+  /** Unpaid lunch; omitted = keep the shift's current lunch. */
+  lunchMinutes: z.coerce.number().int().min(0).max(300).optional(),
+  lunchStartsAt: z.coerce.date().nullable().optional(),
   /** Optional note to the confirmed provider explaining the change. */
   message: z.string().max(500).nullable().optional(),
 });
@@ -36,6 +39,9 @@ interface ShiftData {
   expectedPatients: number | null;
   minYearsExperience: number;
   notes: string | null;
+  /** Absent in changes saved before lunch existed (= unchanged). */
+  lunchMinutes?: number;
+  lunchStartsAt?: string | null;
   rateCardId: string | null;
   durationTier: string | null;
   clinicPriceCents: number;
@@ -61,6 +67,8 @@ function shiftDataOf(s: Shift): ShiftData {
     expectedPatients: s.expectedPatients,
     minYearsExperience: s.minYearsExperience,
     notes: s.notes,
+    lunchMinutes: s.lunchMinutes,
+    lunchStartsAt: s.lunchStartsAt?.toISOString() ?? null,
     rateCardId: s.rateCardId,
     durationTier: s.durationTier,
     clinicPriceCents: s.clinicPriceCents,
@@ -79,6 +87,7 @@ function shiftUpdate(d: ShiftData): Prisma.ShiftUpdateInput {
     expectedPatients: d.expectedPatients,
     minYearsExperience: d.minYearsExperience,
     notes: d.notes,
+    ...(d.lunchMinutes !== undefined ? { lunchMinutes: d.lunchMinutes, lunchStartsAt: d.lunchStartsAt ? new Date(d.lunchStartsAt) : null } : {}),
     rateCardId: d.rateCardId,
     durationTier: d.durationTier as Shift["durationTier"],
     clinicPriceCents: d.clinicPriceCents,
@@ -111,9 +120,13 @@ async function propose(db: Db, shift: Awaited<ReturnType<typeof loadForClinic>>,
   if (notes && scanContactInfo(notes).found) throw new DomainError("VALIDATION", "Please don't include phone numbers, emails or links in shift notes — contact details are shared after confirmation.");
   if (input.message && scanContactInfo(input.message).found) throw new DomainError("VALIDATION", "Please don't include phone numbers, emails or links in the note — message your provider in the app instead.");
   const expectedPatients = input.expectedPatients === undefined ? shift.expectedPatients : input.expectedPatients;
+  const lunchMinutes = input.lunchMinutes ?? shift.lunchMinutes;
+  const lunchStartsAt = lunchMinutes ? (input.lunchStartsAt !== undefined ? input.lunchStartsAt : shift.lunchStartsAt) : null;
+  const lunch = lunchProblem(input, lunchMinutes, lunchStartsAt);
+  if (lunch) throw new DomainError("VALIDATION", lunchMinutes === shift.lunchMinutes && input.lunchStartsAt === undefined ? `${lunch} Adjust the lunch break along with the new times.` : lunch);
   // Notice premiums follow the original posting unless the shift moves earlier (then it's priced as of now).
   const pricedAt = +input.startsAt >= +shift.startsAt ? (shift.postedAt ?? shift.createdAt) : now;
-  const q = await quoteShift(db, { locationId: shift.locationId, professionCode: shift.professionCode, startsAt: input.startsAt, endsAt: input.endsAt, expectedPatients, boosted: shift.boosted, pricedAt });
+  const q = await quoteShift(db, { locationId: shift.locationId, professionCode: shift.professionCode, startsAt: input.startsAt, endsAt: input.endsAt, lunchMinutes, expectedPatients, boosted: shift.boosted, pricedAt });
   const live = shift.assignments[0] ?? null;
   // Keep the promo the shift already has (never more than the new price).
   const promo = Math.min(live?.promoDiscountCents ?? shift.promoDiscountCents, q.base.clinicPriceCents);
@@ -123,6 +136,8 @@ async function propose(db: Db, shift: Awaited<ReturnType<typeof loadForClinic>>,
     expectedPatients: expectedPatients ?? null,
     minYearsExperience: input.minYearsExperience ?? shift.minYearsExperience,
     notes,
+    lunchMinutes,
+    lunchStartsAt: lunchStartsAt?.toISOString() ?? null,
     rateCardId: q.rateCardId,
     durationTier: q.base.tier,
     clinicPriceCents: q.base.clinicPriceCents,
@@ -428,11 +443,17 @@ function day(d: ShiftData, tz: string) {
 function when(d: ShiftData, tz: string) {
   return `${day(d, tz)}, ${fmt(d.startsAt, tz, { hour: "numeric", minute: "2-digit" })}–${fmt(d.endsAt, tz, { hour: "numeric", minute: "2-digit" })}`;
 }
+function lunchLabel(d: ShiftData, tz: string) {
+  if (!d.lunchMinutes || !d.lunchStartsAt) return "none";
+  const end = new Date(+new Date(d.lunchStartsAt) + d.lunchMinutes * 60_000).toISOString();
+  return `${fmt(d.lunchStartsAt, tz, { hour: "numeric", minute: "2-digit" })}–${fmt(end, tz, { hour: "numeric", minute: "2-digit" })} unpaid`;
+}
 function summary(a: ShiftData, b: ShiftData, tz: string) {
   const parts: string[] = [];
   if (a.startsAt !== b.startsAt || a.endsAt !== b.endsAt) parts.push(`from ${when(a, tz)} to ${when(b, tz)}`);
   if (a.expectedPatients !== b.expectedPatients) parts.push(`expected patients ${a.expectedPatients ?? "not set"} → ${b.expectedPatients ?? "not set"}`);
   if (a.minYearsExperience !== b.minYearsExperience) parts.push(`experience ${a.minYearsExperience}+ → ${b.minYearsExperience}+ years`);
+  if (b.lunchMinutes !== undefined && (a.lunchMinutes !== b.lunchMinutes || (a.lunchStartsAt ?? null) !== (b.lunchStartsAt ?? null))) parts.push(`lunch ${lunchLabel(a, tz)} → ${lunchLabel(b, tz)}`);
   if ((a.notes ?? "") !== (b.notes ?? "")) parts.push("updated notes");
   return parts.length ? `: ${parts.join("; ")}` : "";
 }

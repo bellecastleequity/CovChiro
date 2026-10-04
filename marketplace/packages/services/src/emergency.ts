@@ -137,6 +137,8 @@ async function createReplacementShift(originalId: string, startsAt: Date, actor:
       instantBook: false,
       maxTravelBudgetCents: o.maxTravelBudgetCents,
       lodgingAllowed: false,
+      // The lunch still ahead stays on the replacement.
+      ...(o.lunchMinutes && o.lunchStartsAt && o.lunchStartsAt > startsAt ? { lunchMinutes: o.lunchMinutes, lunchStartsAt: o.lunchStartsAt } : {}),
       rateCardId: o.rateCardId,
       durationTier: o.durationTier,
       clinicPriceCents: Math.round(o.clinicPriceCents * ratio),

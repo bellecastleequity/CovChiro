@@ -3,6 +3,7 @@ import {
   DomainError,
   evaluateEligibility,
   NATIONAL_CREDENTIAL,
+  paidHours,
   parseAttestation,
   travelEstimate,
   type EligibilityOptions,
@@ -47,6 +48,7 @@ export async function loadShifts(db: Db, shiftIds: string[]): Promise<Map<string
   if (!shiftIds.length) return out;
   const rows = await db.shift.findMany({ where: { id: { in: shiftIds } }, include: { location: true } });
   if (!rows.length) return out;
+  const maxDaySpan = (await getSettings(db))["pricing.maxDaySpanMinutes"];
   const combos = [...new Map(rows.map((r) => [`${r.professionCode}|${r.state}`, { professionCode: r.professionCode, state: r.state }])).values()];
   const professionCodes = [...new Set(rows.map((r) => r.professionCode))];
   const states = [...new Set(rows.map((r) => r.state))];
@@ -78,7 +80,7 @@ export async function loadShifts(db: Db, shiftIds: string[]): Promise<Map<string
         minYearsExperience: s.minYearsExperience,
         lodgingAllowed: s.lodgingAllowed,
         maxTravelBudgetCents: s.maxTravelBudgetCents,
-        pay: s.durationTier ? { durationTier: s.durationTier, providerPayCents: s.providerPayCents, billableHours: Math.max(0.01, (+s.endsAt - +s.startsAt) / 3_600_000) } : undefined,
+        pay: s.durationTier ? { durationTier: s.durationTier, providerPayCents: s.providerPayCents, billableHours: Math.max(0.01, paidHours((+s.endsAt - +s.startsAt) / 3_600_000, s.lunchMinutes, maxDaySpan)) } : undefined,
         supervisionAttestation: s.supervisionAttestedAt ? parseAttestation(s.supervisionAttestation) : null,
         config: {
           enabled: !!psc?.enabled,

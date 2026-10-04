@@ -6,6 +6,7 @@ import {
   evaluateEligibility,
   favoritesWindowEnd,
   looksLikePhi,
+  lunchProblem,
   medianVisits,
   underDeclareWarning,
   NATIONAL_CREDENTIAL,
@@ -50,6 +51,9 @@ export const ShiftInput = z.object({
   maxTravelBudgetCents: z.coerce.number().int().min(0).nullable().optional(),
   lodgingAllowed: z.boolean().default(false),
   lodgingCapCentsPerNight: z.coerce.number().int().min(0).nullable().optional(),
+  /** Unpaid lunch: minutes (0 = none) and when it starts. Paid hours exclude it, up to the day-length limit. */
+  lunchMinutes: z.coerce.number().int().min(0).max(300).default(0),
+  lunchStartsAt: z.coerce.date().nullable().optional(),
   promoCode: z.string().max(60).nullable().optional(),
   supervisionAttestation: z
     .object({
@@ -119,6 +123,8 @@ export async function validateShiftInput(db: Db, orgId: string, input: z.output<
   const loc = await db.clinicLocation.findFirst({ where: { id: input.locationId, clinicOrgId: orgId, active: true } });
   if (!loc) throw new DomainError("NOT_FOUND", "Location not found");
   if (!loc.professionCodes.includes(input.professionCode)) throw new DomainError("VALIDATION", "This location doesn't post shifts for that profession. Add it in Locations first.");
+  const lunch = lunchProblem(input, input.lunchMinutes, input.lunchStartsAt ?? null);
+  if (lunch) throw new DomainError("VALIDATION", lunch);
   if (input.notes && looksLikePhi(input.notes)) throw new DomainError("VALIDATION", "Please remove patient information from the notes. Do not include patient information.");
   if (input.notes && scanContactInfo(input.notes).found) throw new DomainError("VALIDATION", "Please don't include phone numbers, emails or links in shift notes — contact details are shared after confirmation.");
   const skillIds = [...new Set([...input.requiredSkillIds, ...input.preferredSkillIds])];
@@ -169,6 +175,9 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT) {
     premiums: q.base.premiums,
     tier: q.base.tier,
     hours: q.base.hours,
+    spanHours: q.base.spanHours,
+    lunchMinutes: q.base.lunchMinutes,
+    overtimeHours: q.base.overtimeHours,
     billableHours: q.base.billableHours,
     subtotalCents: q.base.clinicPriceCents - (q.promo?.discountCents ?? 0),
     travel,
@@ -254,6 +263,8 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
         instantBook: input.instantBook,
         maxTravelBudgetCents: input.maxTravelBudgetCents ?? null,
         lodgingAllowed: input.lodgingAllowed,
+        lunchMinutes: input.lunchMinutes,
+        lunchStartsAt: input.lunchMinutes ? (input.lunchStartsAt ?? null) : null,
         // Flat nightly allowance from Settings (no receipts), kept with the shift.
         lodgingCapCentsPerNight: input.lodgingAllowed ? (await getSettings(db))["pricing.lodgingNightlyCents"] : null,
         rateCardId: q.rateCardId,
@@ -337,6 +348,8 @@ export async function updateDraftShift(actor: Actor, shiftId: string, raw: Shift
         instantBook: input.instantBook,
         maxTravelBudgetCents: input.maxTravelBudgetCents ?? null,
         lodgingAllowed: input.lodgingAllowed,
+        lunchMinutes: input.lunchMinutes,
+        lunchStartsAt: input.lunchMinutes ? (input.lunchStartsAt ?? null) : null,
         // Flat nightly allowance from Settings (no receipts), kept with the shift.
         lodgingCapCentsPerNight: input.lodgingAllowed ? (await getSettings(db))["pricing.lodgingNightlyCents"] : null,
         rateCardId: q.rateCardId,
@@ -497,6 +510,8 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
       professionCode: sh.professionCode,
       startsAt: sh.startsAt,
       endsAt: sh.endsAt,
+      lunchMinutes: sh.lunchMinutes,
+      lunchStartsAt: sh.lunchStartsAt,
       timeZone: sh.location.timeZone,
       city: sh.location.city,
       state: sh.state,

@@ -327,7 +327,8 @@ const money_: Lesson = {
       <Ul
         items={[
           "Your base price comes from the rate card for your clinic's region (set by ZIP code) and the shift length: half day (under 4 hours), full day (4–8 hours).",
-          `Hours beyond 8 are billed at ${money(s["pricing.overtimeClinicCentsPerHour"])} per hour.`,
+          `Hours beyond 8 are billed at ${money(s["pricing.overtimeClinicCentsPerHour"])} per hour. Lunch is unpaid: add it when you post, and an 8–5 day with an hour's lunch is a normal 8-hour day.`,
+          `Long lunches are fine, but a provider's day can't run past ${s["pricing.maxDaySpanMinutes"] / 60} hours from start to finish for free: the time past that is billed as overtime. Providers see the lunch before they apply.`,
           `Premiums apply automatically: weekend +${s["pricing.premiumWeekendPercent"]}%, federal holiday +${s["pricing.premiumHolidayPercent"]}%, posted under 48 hours before the start +${s["pricing.premiumUrgentPercent"]}%${s["pricing.premiumRushPercent"] > 0 ? `, or +${s["pricing.premiumRushPercent"]}% instead when posted under ${s["pricing.rushWithinHours"]} hours before (rush)` : ""}. Premiums raise your provider's pay by the same percent, which is what gets short-notice shifts filled.`,
           <>
             <b>Travel is passed straight through to your provider</b>: mileage at {money(s["pricing.mileageRateCentsPerMile"], { exact: true })} per mile{" "}

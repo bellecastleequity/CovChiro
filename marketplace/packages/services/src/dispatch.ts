@@ -879,7 +879,7 @@ export async function boostAndRedispatch(actor: Actor, shiftId: string) {
   if (shift.boosted) throw new DomainError("CONFLICT", "This shift is already boosted.");
   if (shift.rateMode === "CLINIC" && !shift.releasedAt) throw new DomainError("CONFLICT", "This shift is at your own rate. Release it to market first.");
   const { quoteShift } = await import("./pricing");
-  const q = await quoteShift(prisma, { locationId: shift.locationId, professionCode: shift.professionCode, startsAt: shift.startsAt, endsAt: shift.endsAt, boosted: true, pricedAt: shift.postedAt ?? clock.now(), expectedPatients: shift.expectedPatients, volumeTier: shift.declaredTier });
+  const q = await quoteShift(prisma, { locationId: shift.locationId, professionCode: shift.professionCode, startsAt: shift.startsAt, endsAt: shift.endsAt, lunchMinutes: shift.lunchMinutes, boosted: true, pricedAt: shift.postedAt ?? clock.now(), expectedPatients: shift.expectedPatients, volumeTier: shift.declaredTier });
   const discount = Math.min(shift.promoDiscountCents, Math.max(0, q.base.clinicPriceCents - q.base.providerPayCents));
   await prisma.shift.update({ where: { id: shiftId }, data: { boosted: true, clinicPriceCents: q.base.clinicPriceCents, providerPayCents: q.base.providerPayCents, premiumsApplied: q.base.premiums as never, promoDiscountCents: discount } });
   await audit(prisma, actor, "shift.boosted", "Shift", shiftId, { clinicPriceCents: shift.clinicPriceCents, providerPayCents: shift.providerPayCents }, { clinicPriceCents: q.base.clinicPriceCents, providerPayCents: q.base.providerPayCents });
