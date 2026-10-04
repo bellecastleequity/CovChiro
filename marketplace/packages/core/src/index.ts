@@ -14,6 +14,7 @@ export * from "./payouts";
 export * from "./credentials";
 export * from "./supervision";
 export * from "./badges";
+export * from "./rewards";
 export * from "./dispatch";
 export * from "./prelicensure";
 export * from "./growth";

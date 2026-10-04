@@ -28,6 +28,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     { href: "/provider/oncall", label: "On Call", icon: "notifications" },
     { href: "/provider/earnings", label: "Earnings", icon: "earnings" },
     { href: "/provider/refer", label: "Refer & earn", icon: "refer" },
+    { href: "/provider/rewards", label: "Rewards", icon: "rewards" },
     { href: "/provider/feedback", label: "Feedback", icon: "list", badge: newFeedback },
     { href: "/provider/credentials", label: "Credentials", icon: "credentials" },
     { href: "/provider/availability", label: "Availability", icon: "availability" },

@@ -1,3 +1,4 @@
+import { RewardsChip } from "@/components/rewards/rewards-chip";
 import { GroundFloor } from "@/components/referrals/refer-page";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, PlusCircle, Users } from "lucide-react";
@@ -31,6 +32,7 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
   return (
     <>
       <PageHeader eyebrow={org.displayName} title={`Welcome${org.status === "ONBOARDING" ? "" : " back"}, ${firstName(user.name)}`} actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
+      {!needsSetup ? <RewardsChip audience="CLINIC" accountId={org.id} href="/clinic/rewards" /> : null}
       {rs["referrals.enabled"] ? <GroundFloor userId={user.id} kind="clinic" justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
       {sheets.length ? (
         <Alert tone="warning" className="mb-6" title={`${sheets.length} timesheet${sheets.length === 1 ? "" : "s"} to sign off`}>

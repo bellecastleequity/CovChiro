@@ -2515,3 +2515,21 @@ model TrailblazerSpot {
   @@unique([providerId, professionCode, state])
   @@index([professionCode, state, reservedAt])
 }
+
+/// Rewards points history. One row per earned event (refKey unique: awarding is idempotent);
+/// manual awards/corrections by admins too. Totals and levels are sums of this table.
+model RewardEvent {
+  id          String   @id @default(cuid())
+  /// PROVIDER (accountId = Provider.id) or CLINIC (accountId = ClinicOrg.id).
+  accountType String
+  accountId   String
+  kind        String
+  points      Int
+  refKey      String   @unique
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([accountType, accountId, createdAt])
+  @@index([accountType, createdAt])
+}

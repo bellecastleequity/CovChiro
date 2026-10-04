@@ -25,6 +25,7 @@ export default async function ClinicLayout({ children }: { children: React.React
     { href: "/clinic/timesheets", label: "Timesheets", icon: "timeclock", badge: pendingSheets },
     { href: "/clinic/providers", label: "My providers", icon: "providers" },
     { href: "/clinic/refer", label: "Refer & earn", icon: "refer" },
+    { href: "/clinic/rewards", label: "Rewards", icon: "rewards" },
     { href: "/clinic/standing", label: "Standing bookings", icon: "standing" },
     { href: "/clinic/locations", label: "Locations", icon: "locations" },
     { href: "/clinic/team", label: "Team", icon: "team" },

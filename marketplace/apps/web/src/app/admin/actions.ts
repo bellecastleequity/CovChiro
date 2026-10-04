@@ -488,3 +488,14 @@ export const healthAction = formAction(async (fd) => {
   revalidatePath("/admin", "layout");
   return "issues" in r ? `Checked. ${r.issues ? `${r.issues} open problem${r.issues === 1 ? "" : "s"}` : "Everything looks good."}${r.fresh ? ` · ${r.fresh} new alert${r.fresh === 1 ? "" : "s"} emailed` : ""}${r.resolved ? ` · ${r.resolved} resolved` : ""}` : "Checked.";
 });
+
+export const awardRewardPointsAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const audience = str(fd, "audience") === "CLINIC" ? "CLINIC" : "PROVIDER";
+  const { rewards } = await import("@cm/services");
+  const acct = await rewards.accountByEmail(actor, audience, str(fd, "email"));
+  const points = Math.round(Number(str(fd, "points")));
+  await rewards.awardPoints(actor, { accountType: audience, accountId: acct.accountId, points, note: str(fd, "note") });
+  revalidatePath("/admin/rewards");
+  return { ok: `${points > 0 ? "Gave" : "Took"} ${Math.abs(points)} points ${points > 0 ? "to" : "from"} ${acct.name}.` };
+});
