@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { DomainError } from "@cm/core";
-import { prelicensure } from "@cm/services";
+import { enrollment, prelicensure } from "@cm/services";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/form";
 import { Alert, PageHeader, Table, Td, Th } from "@/components/ui/misc";
@@ -25,6 +25,7 @@ export default async function Supply({ searchParams }: { searchParams: Promise<{
     data = await prelicensure.providerSupply(actor, {});
   }
   const rows = data[group];
+  const waiting = await enrollment.waitingByState(actor);
   return (
     <>
       <PageHeader title="Provider supply" description="Where coverage-ready providers are — check a market before marketing to its clinics." />
@@ -101,6 +102,29 @@ export default async function Supply({ searchParams }: { searchParams: Promise<{
           </Table>
         ) : (
           <CardBody className="text-sm text-slate-500">No providers yet.</CardBody>
+        )}
+      </Card>
+      <Card className="mt-6">
+        <CardHeader title="Waiting for their state to open" description="Providers who enrolled in states that aren't open yet (a license submitted there, not rejected). Use it to pick the next state to open." />
+        {waiting.length ? (
+          <Table>
+            <thead>
+              <tr><Th>State</Th><Th>Profession</Th><Th className="text-right">Enrolled</Th><Th className="text-right">License verified</Th><Th className="text-right">Trailblazer badges taken</Th></tr>
+            </thead>
+            <tbody>
+              {waiting.map((w) => (
+                <tr key={`${w.professionCode}${w.state}`}>
+                  <Td>{w.stateName}</Td>
+                  <Td>{w.professionCode}</Td>
+                  <Td className="text-right tabular-nums">{w.enrolled}</Td>
+                  <Td className="text-right tabular-nums">{w.verified}</Td>
+                  <Td className="text-right tabular-nums">{w.trailblazers} of {w.spots}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : (
+          <CardBody className="text-sm text-slate-500">Nobody has enrolled outside the open states yet.</CardBody>
         )}
       </Card>
     </>

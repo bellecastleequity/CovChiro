@@ -1,4 +1,4 @@
-import { growth, providerChecklist } from "@cm/services";
+import { enrollment, growth, providerChecklist } from "@cm/services";
 
 export type SetupItem = { label: string; done: boolean; href?: string; hint?: string };
 export type SetupStatus = { items: SetupItem[]; readyLabel: string; base: string };
@@ -23,7 +23,14 @@ export function providerSetupItems(checklist: ProviderChecklist, email: string):
 }
 
 export async function providerSetupStatus(providerId: string, email: string): Promise<SetupStatus> {
-  return { items: providerSetupItems(await providerChecklist(providerId), email), readyLabel: "Ready for shifts", base: "/provider" };
+  const items = providerSetupItems(await providerChecklist(providerId), email);
+  // Enrolled ahead of their state opening: ready, but there are no shifts there yet.
+  let readyLabel = "Ready for shifts";
+  if (items.every((i) => i.done)) {
+    const m = await enrollment.enrollmentStatus(providerId);
+    if (!m.inOpenMarket && m.waiting.length) readyLabel = `Ready · waiting for ${m.waiting[0].state} to open`;
+  }
+  return { items, readyLabel, base: "/provider" };
 }
 
 /** What a clinic must finish before it can post (the first request itself isn't a setup step). */

@@ -184,6 +184,7 @@ export const SETTINGS = {
   "backups.keepRestorePoints": def({ group: "Backups", label: "Neon restore points to keep", help: "Each is a Neon branch; free Neon plans allow about 10 branches in total.", schema: z.number().int().min(1).max(30), default: 5, flag: null }),
 
   // ---------- time clock ----------
+  "enrollment.trailblazerSpots": def({ group: "Enrollment", label: "Trailblazer badges per state (first providers to enroll before a state opens)", help: "Places are held in the order licenses are submitted; the badge shows once that license is verified.", schema: z.number().int().min(0).max(500), default: 25, flag: null }),
   "timeclock.enabled": def({ group: "Time clock", label: "Providers punch in / lunch / out and clinics sign off the timesheet", schema: z.boolean(), default: true, flag: null }),
   "timeclock.earliestInMinutes": def({ group: "Time clock", label: "Earliest punch-in (minutes before the shift starts)", schema: z.number().int().min(0).max(240), default: 60, flag: null }),
   "timeclock.latestHoursAfterEnd": def({ group: "Time clock", label: "Clock stays open this many hours after the scheduled end", help: "After that, missed times are added by hand with a note.", schema: z.number().int().min(1).max(48), default: 6, flag: null }),

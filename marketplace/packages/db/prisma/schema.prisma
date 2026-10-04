@@ -323,6 +323,7 @@ model Provider {
   payouts              Payout[]
   transfers            PayoutTransfer[]
   threads              MessageThread[]
+  trailblazerSpots     TrailblazerSpot[]
 }
 
 /// A recruitment link: coverageoncall.com/join/<slug> (school, event or
@@ -2496,4 +2497,21 @@ model SandboxReport {
   resolvedAt    DateTime? @db.Timestamptz(3)
 
   @@index([status, createdAt])
+}
+
+/// Trailblazer badge (early enrollment): a provider who submitted a license for a state before
+/// that profession opened there holds a place in line; the first enrollment.trailblazerSpots
+/// active places per profession × state earn the badge (shown once the license is verified).
+model TrailblazerSpot {
+  id             String    @id @default(cuid())
+  providerId     String
+  provider       Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  professionCode String
+  state          String    @db.Char(2)
+  reservedAt     DateTime  @default(now()) @db.Timestamptz(3)
+  /// License rejected or removed: the place goes to the next in line.
+  releasedAt     DateTime? @db.Timestamptz(3)
+
+  @@unique([providerId, professionCode, state])
+  @@index([professionCode, state, reservedAt])
 }

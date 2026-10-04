@@ -43,7 +43,7 @@ export default async function Verification() {
   const empty = !q.licenses.length && !q.policies.length && !q.certs.length && !q.npi.length;
   return (
     <>
-      <PageHeader title="Verification queue" description="Confirm name, number, status and expiration against the state board (profession + state) before verifying." />
+      <PageHeader title="Verification queue" description="Confirm name, number, status and expiration against the state board (profession + state) before verifying. Credentials for states that aren't open yet are listed last." />
       {empty ? <Empty title="Queue is clear" /> : null}
       <div className="space-y-6">
         {q.licenses.length ? (
@@ -54,7 +54,7 @@ export default async function Verification() {
                 <div key={l.id} className="px-5 py-4 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <div className="font-semibold">{l.provider.legalName} <span className="font-normal text-slate-500">({l.provider.displayName})</span>{l.provider.preLicensure ? <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-sky-200">Student — new graduate</span> : null}</div>
+                      <div className="font-semibold">{l.provider.legalName} <span className="font-normal text-slate-500">({l.provider.displayName})</span>{!l.marketOpen ? <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200">Market not open · low priority</span> : null}{l.provider.preLicensure ? <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-sky-200">Student — new graduate</span> : null}</div>
                       <div className="text-slate-600">{l.profession.displayName} · {credentialPlace(l.state)} · #{l.licenseNumber}{l.credentialTitle ? ` · ${l.credentialTitle}` : ""} · expires {dateLabel(l.expiresAt, "UTC", { month: "short", day: "numeric", year: "numeric" })}</div>
                     </div>
                     <div className="flex gap-3">
@@ -78,7 +78,7 @@ export default async function Verification() {
                 <div key={m.id} className="px-5 py-4 text-sm">
                   <div className="flex flex-wrap justify-between gap-2">
                     <div>
-                      <div className="font-semibold">{m.provider.legalName}{m.provider.preLicensure ? <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-sky-200">Student — new graduate</span> : null}</div>
+                      <div className="font-semibold">{m.provider.legalName}{!m.marketOpen ? <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200">Market not open · low priority</span> : null}{m.provider.preLicensure ? <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-sky-200">Student — new graduate</span> : null}</div>
                       <div className="text-slate-600">{m.carrier} #{m.policyNumber} · {money(m.perOccurrenceCents)}/{money(m.aggregateCents)} · covers {m.coveredProfessionCodes.join(", ")} · expires {dateLabel(m.expiresAt, "UTC", { month: "short", day: "numeric", year: "numeric" })}</div>
                     </div>
                     <a className="flex items-center gap-1 text-brand-700" href={`/api/files/${m.documentUrl}`} target="_blank"><FileText className="size-4" />Certificate</a>

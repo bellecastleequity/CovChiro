@@ -25,6 +25,10 @@ export interface BadgeInput {
   malpracticeVerified: boolean;
   npiVerified: boolean;
   onCallActive: boolean;
+  /** States where they earned the Trailblazer badge (state names). */
+  trailblazerStates?: string[];
+  /** How many places the badge has per state. */
+  trailblazerSpots?: number;
 }
 
 export type BadgeKind = "status" | "earned";
@@ -81,6 +85,10 @@ export function providerBadges(i: BadgeInput): Badge[] {
   if ((i.maxYearsInPractice ?? 0) >= t.seasoned) add("seasoned", `${i.maxYearsInPractice}+ years in practice`, "Experienced clinician.", "earned", "gray");
   if (i.favoritedByClinics >= t.clinicFavorite) add("clinic_favorite", "Clinic favorite", `Favorited by ${i.favoritedByClinics} clinics.`, "earned", "amber");
   if (i.verifiedProfessions >= 2) add("multi_profession", "Dual-licensed", "Verified in more than one profession.", "earned", "gray");
+  if (i.trailblazerStates?.length) {
+    const where = i.trailblazerStates.join(" and ");
+    add("trailblazer", "Trailblazer", `One of the first ${i.trailblazerSpots ?? 25} providers to join in ${where}, before it opened.`, "earned", "amber");
+  }
   if (i.verifiedStates >= 2) add("multi_state", "Multi-state", `Licensed in ${i.verifiedStates} states.`, "earned", "gray");
   return out;
 }

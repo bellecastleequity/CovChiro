@@ -15,6 +15,7 @@ import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Alert, Checklist, Empty, PageHeader, Stat } from "@/components/ui/misc";
 import { PendingChanges } from "@/components/provider/pending-changes";
+import { MarketWaiting } from "@/components/provider/market-waiting";
 import { StatusBadge } from "@/components/ui/badge";
 import { dateLabel, money, relative, timeRange, firstName } from "@/lib/format";
 import { requireActor } from "@/lib/session";
@@ -61,6 +62,7 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
           </span>
         } title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
       <PendingChanges providerId={actor.providerId!} />
+      <MarketWaiting providerId={actor.providerId!} />
       {clock ? <div className="mb-6"><ClockCard v={clock} title="Today's time clock" /></div> : null}
       {visitView?.canSubmit ? <div className="mb-6"><ProviderVisitCard v={visitView} assignmentId={clock!.assignmentId} tz={clock!.timeZone} action={visitsAction} /></div> : null}
       {recruited.length ? (

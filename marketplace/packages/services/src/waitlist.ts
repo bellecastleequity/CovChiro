@@ -71,8 +71,10 @@ export async function notifyIfOpen(leadId: string, pairs?: Pair[]): Promise<bool
 }
 
 export async function waitlistOpeningSweep() {
+  // Providers already enrolled there hear first (enrollment.announceOpenings).
+  const enrolled = await (await import("./enrollment")).announceOpenings().catch(() => ({ sent: 0 }));
   const pairs = await livePairs();
-  if (!pairs.length) return { sent: 0 };
+  if (!pairs.length) return { sent: enrolled.sent };
   const states = [...new Set(pairs.map((p) => p.state))];
   const leads = await prisma.lead.findMany({
     where: { source: "waitlist", state: { in: states }, unsubscribedAt: null, status: { notIn: ["UNSUBSCRIBED", "LOST"] } },
@@ -85,5 +87,5 @@ export async function waitlistOpeningSweep() {
     if (done.has(key(l.id, l.state!, l.professionCode))) continue;
     if (await notifyIfOpen(l.id, pairs)) sent++;
   }
-  return { sent };
+  return { sent, enrolledProviders: enrolled.sent };
 }

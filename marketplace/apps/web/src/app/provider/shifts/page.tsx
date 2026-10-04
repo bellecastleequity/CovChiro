@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Car, Clock, Search, Users, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
-import { providerProfile, shiftBoard } from "@cm/services";
+import { enrollment, providerProfile, shiftBoard } from "@cm/services";
+import { MarketWaiting } from "@/components/provider/market-waiting";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/form";
@@ -18,6 +19,7 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
   const f = await searchParams;
   const [{ canTake, provider }, shifts, professions] = await Promise.all([providerProfile(actor), shiftBoard(actor, { professionCode: f.profession || undefined, state: f.state || undefined }), prisma.profession.findMany()]);
   const states = [...new Set(Object.values(canTake).flat())];
+  const market = await enrollment.enrollmentStatus(actor.providerId!);
   return (
     <>
       <PageHeader title="Find shifts" description={<>Showing shifts you're licensed for — <CanTake canTake={canTake} /></>} />
@@ -36,7 +38,8 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
         </Select>
         <button className={buttonClass("outline")}>Filter</button>
       </form>
-      {provider.status !== "ACTIVE" ? (
+      {!market.inOpenMarket && market.waiting.length ? <MarketWaiting providerId={actor.providerId!} /> : null}
+      {!market.inOpenMarket && market.waiting.length && shifts.length === 0 ? null : provider.status !== "ACTIVE" ? (
         <Empty title="Finish setting up to see shifts" icon={<Search className="size-6" />}>
           Once your profile, license and malpractice are verified, matching shifts appear here.
         </Empty>

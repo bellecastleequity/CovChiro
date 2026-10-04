@@ -23,7 +23,22 @@ export async function verificationQueue(actor: Actor) {
   const stateBoards = await prisma.stateConfig.findMany({ where: { boardLookupUrl: { not: null } } });
   const boardUrl = (prof: string, state: string) =>
     boards.find((b) => b.professionCode === prof && b.state === state)?.boardLookupUrl ?? stateBoards.find((s) => s.state === state)?.boardLookupUrl ?? null;
-  return { licenses: licenses.map((l) => ({ ...l, boardLookupUrl: boardUrl(l.professionCode, l.state) })), policies, certs, npi };
+  // States that aren't open yet are low priority: open-market credentials first, oldest first within each.
+  const { liveSet } = await import("./enrollment");
+  const live = await liveSet();
+  const nationalLive = new Set([...live].map((k) => k.split(":")[0]));
+  const openLicense = (l: { professionCode: string; state: string }) => (l.state === NATIONAL_CREDENTIAL ? nationalLive.has(l.professionCode) : live.has(`${l.professionCode}:${l.state}`));
+  const openStatesByProvider = new Map<string, boolean>();
+  const providerLicenses = await prisma.license.findMany({ where: { providerId: { in: policies.map((p) => p.providerId) }, status: { not: "REJECTED" } }, select: { providerId: true, professionCode: true, state: true } });
+  for (const l of providerLicenses) if (openLicense(l)) openStatesByProvider.set(l.providerId, true);
+  const byPriority = <T extends { marketOpen: boolean }>(rows: T[]) => [...rows.filter((r) => r.marketOpen), ...rows.filter((r) => !r.marketOpen)];
+  return {
+    licenses: byPriority(licenses.map((l) => ({ ...l, boardLookupUrl: boardUrl(l.professionCode, l.state), marketOpen: openLicense(l) }))),
+    // A policy is urgent when its provider holds a license for an open market (or hasn't added one yet).
+    policies: byPriority(policies.map((p) => ({ ...p, marketOpen: openStatesByProvider.get(p.providerId) ?? !providerLicenses.some((l) => l.providerId === p.providerId) }))),
+    certs,
+    npi,
+  };
 }
 
 export async function reviewLicense(actor: Actor, licenseId: string, input: { approve: boolean; expiresAt?: Date; evidenceUrl?: string | null; reason?: string | null; method?: string }) {
@@ -37,6 +52,7 @@ export async function reviewLicense(actor: Actor, licenseId: string, input: { ap
       ? { status: "VERIFIED", verifiedById: actor.userId, verifiedAt: now, verificationMethod: input.method ?? "board-lookup", verificationEvidenceUrl: input.evidenceUrl ?? null, expiresAt, nextReverifyAt: nextReverifyAt(now, expiresAt), rejectionReason: null }
       : { status: "REJECTED", rejectionReason: input.reason?.slice(0, 300) || "Could not verify", verifiedById: actor.userId, verifiedAt: now },
   });
+  if (!input.approve) await (await import("./enrollment")).releaseTrailblazer(l.providerId, l.professionCode, l.state);
   await audit(prisma, actor, input.approve ? "license.verified" : "license.rejected", "License", licenseId, { status: l.status }, { status: updated.status, expiresAt, reason: input.reason });
   await prisma.adminTask.updateMany({ where: { kind: "REVERIFY", entityId: licenseId, resolvedAt: null }, data: { resolvedAt: now, resolvedById: actor.userId } });
   await recomputeProviderStatus(l.providerId);

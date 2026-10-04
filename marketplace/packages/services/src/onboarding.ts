@@ -105,13 +105,25 @@ export async function recomputeProviderStatus(providerId: string) {
     if (pp.status !== "ACTIVE" || !pp.license || !pp.malpractice) continue;
     const claimed = await prisma.digestSend.createMany({ data: [{ key: `ready:${providerId}:${pp.professionCode}`, userId: provider.userId }], skipDuplicates: true });
     if (!claimed.count) continue;
-    await notify(prisma, provider.userId, {
-      template: "provider_ready",
-      title: `You're all set to take ${pp.displayName} shifts`,
-      body: `Your onboarding is complete. You'll now see ${pp.displayName.toLowerCase()} shifts you qualify for and can receive offers.`,
-      link: "/provider/shifts",
-      ctaLabel: "Find shifts",
-    });
+    // Enrolled ahead of their state opening: no shifts yet, so say so.
+    const { enrollmentStatus } = await import("./enrollment");
+    const market = await enrollmentStatus(providerId);
+    const waiting = market.inOpenMarket ? [] : market.waiting.filter((w) => w.professionCode === pp.professionCode);
+    await notify(prisma, provider.userId, waiting.length
+      ? {
+          template: "provider_ready",
+          title: `You're all set: we'll tell you the moment ${waiting[0].stateName} opens`,
+          body: `Your onboarding is complete. ${pp.displayName} shifts aren't open in ${waiting.map((w) => w.stateName).join(" or ")} yet; when they are, you'll be among the first we notify and invite.${waiting.some((w) => w.trailblazer) ? " You've earned a Trailblazer badge as one of the first there." : ""}`,
+          link: "/provider",
+          ctaLabel: "Open my dashboard",
+        }
+      : {
+          template: "provider_ready",
+          title: `You're all set to take ${pp.displayName} shifts`,
+          body: `Your onboarding is complete. You'll now see ${pp.displayName.toLowerCase()} shifts you qualify for and can receive offers.`,
+          link: "/provider/shifts",
+          ctaLabel: "Find shifts",
+        });
   }
   // A shift a colleague was recruited for: invite them now they're ready.
   const claims = await prisma.shiftRecruitClaim.findMany({ where: { providerId, invitedAt: null }, select: { id: true } });
@@ -250,6 +262,8 @@ export async function upsertLicense(actor: Actor, raw: z.input<typeof LicenseInp
     update: { licenseNumber: input.licenseNumber, credentialTitle: input.credentialTitle || psc?.credentialTitle || null, expiresAt: input.expiresAt, documentUrl: input.documentUrl ?? undefined, status: "PENDING_VERIFICATION", verifiedAt: null, verifiedById: null, rejectionReason: null },
   });
   await audit(prisma, actor, "license.submitted", "License", l.id, null, { professionCode: l.professionCode, state: l.state });
+  // Enrolling before the state opens holds a Trailblazer place.
+  await (await import("./enrollment")).reserveTrailblazer(providerId, l.professionCode, l.state).catch(() => undefined);
   return l;
 }
 
@@ -260,6 +274,7 @@ export async function deleteLicense(actor: Actor, licenseId: string) {
   const future = await prisma.assignment.count({ where: { providerId, state: l.state, professionCode: l.professionCode, status: { in: ["CONFIRMED", "IN_PROGRESS"] } } });
   if (future) throw new DomainError("CONFLICT", "You have confirmed shifts that depend on this license. Cancel them first or contact support.");
   await prisma.license.delete({ where: { id: l.id } });
+  await (await import("./enrollment")).releaseTrailblazer(providerId, l.professionCode, l.state);
   await audit(prisma, actor, "license.deleted", "License", l.id, l);
 }
 

@@ -27,6 +27,8 @@ export async function badgesFor(providerIds: string[]): Promise<Map<string, Badg
     prisma.assignment.groupBy({ by: ["providerId"], where: { providerId: { in: providerIds }, cancelledBy: "PROVIDER", cancelledAt: { gte: yearAgo }, status: "CANCELLED" }, _count: true }),
     prisma.assignment.groupBy({ by: ["providerId"], where: { providerId: { in: providerIds }, status: "NO_SHOW", startsAt: { gte: yearAgo } }, _count: true }),
   ]);
+  const { trailblazerStates, stateName } = await import("./enrollment");
+  const trail = await trailblazerStates(providerIds);
   for (const p of providers) {
     const st = stats.find((x) => x.providerId === p.id);
     const rs = ratings.filter((r) => r.assignment.providerId === p.id);
@@ -57,6 +59,8 @@ export async function badgesFor(providerIds: string[]): Promise<Map<string, Badg
         licenseVerified: Object.keys(pairs).length > 0,
         malpracticeVerified: p.malpractice.some((m) => m.status === "VERIFIED" && m.expiresAt > now),
         npiVerified: !!p.npiVerifiedAt,
+        trailblazerStates: (trail.get(p.id) ?? []).map(stateName),
+        trailblazerSpots: s["enrollment.trailblazerSpots"],
         onCallActive: s["features.onCallEnabled"] && p.onCallRules.some((r) => r.active && (!r.pausedUntil || r.pausedUntil <= now)),
       }),
     );

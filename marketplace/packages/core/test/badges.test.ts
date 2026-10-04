@@ -51,3 +51,12 @@ describe("LinkedIn URL", () => {
     expect(normalizeLinkedIn("")).toBeNull();
   });
 });
+
+describe("Trailblazer badge", () => {
+  it("shows for the states earned, naming them", () => {
+    expect(keys({})).not.toContain("trailblazer");
+    const b = providerBadges({ ...base, trailblazerStates: ["Georgia"], trailblazerSpots: 25 }).find((x) => x.key === "trailblazer")!;
+    expect(b.label).toBe("Trailblazer");
+    expect(b.description).toMatch(/first 25 providers to join in Georgia/);
+  });
+});
