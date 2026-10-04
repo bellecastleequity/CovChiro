@@ -14,11 +14,12 @@ import { AutoRefresh, Countdown } from "@/components/countdown";
 import { BadgeList } from "@/components/provider-profile";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
+import { InfoTip } from "@/components/ui/info-tip";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form";
 import { Alert, Empty, PageHeader } from "@/components/ui/misc";
-import { dateLabel, money, pct, relative, timeRange, lunchLabel } from "@/lib/format";
+import { dateLabel, money, pct, relative, timeRange, lunchLabel, timeLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import {
   blockAction, boostAction, cancelDispatchAction, confirmAllDaysAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
@@ -154,7 +155,16 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
         actions={
           <div className="flex items-center gap-2">
             {changeable ? <LinkButton href={`/clinic/shifts/${shift.id}/change`} size="sm" variant="outline">Change shift</LinkButton> : null}
-            <StatusBadge status={shift.status} />
+            {shift.status === "FAVORITES_ONLY" && shift.favoritesWindowEndsAt ? (
+              <span className="inline-flex items-center gap-1">
+                <StatusBadge status={shift.status} label={`Favorites first · opens to everyone at ${timeLabel(shift.favoritesWindowEndsAt, tz)}`} />
+                <InfoTip label="About favorites first">
+                  Your favorite providers who qualify for this shift get a head start: until {timeLabel(shift.favoritesWindowEndsAt, tz)} only they can see it and apply. After that it opens to every eligible provider automatically. Shifts posted less than 48 hours ahead skip this and open to everyone right away.
+                </InfoTip>
+              </span>
+            ) : (
+              <StatusBadge status={shift.status} />
+            )}
           </div>
         }
       />

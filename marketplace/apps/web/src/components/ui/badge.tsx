@@ -15,6 +15,9 @@ export function Badge({ tone = "gray", className, children }: { tone?: Tone; cla
   return <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset", tones[tone], className)}>{children}</span>;
 }
 
+/** Wording that reads better than the status name. */
+const STATUS_LABEL: Record<string, string> = { FAVORITES_ONLY: "Favorites first" };
+
 export function StatusBadge({ status, label }: { status: string; label?: string }) {
-  return <Badge tone={STATUS_TONE[status] ?? "gray"}>{label ?? humanize(status)}</Badge>;
+  return <Badge tone={STATUS_TONE[status] ?? "gray"}>{label ?? STATUS_LABEL[status] ?? humanize(status)}</Badge>;
 }
