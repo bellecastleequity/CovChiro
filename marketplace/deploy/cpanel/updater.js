@@ -58,14 +58,45 @@ if (mode === "rollback") {
 
 // ---------------- find and unpack the package ----------------
 
+/**
+ * The newest package: one coverageoncall-update*.tar.gz, or the same split into pieces
+ * (coverageoncall-update-<version>.tar.gz.part1, .part2, …) that are joined back in order.
+ */
 function findPackage() {
-  const files = fs.readdirSync(SITE).filter((f) => /^coverageoncall-update.*\.tar\.gz$/i.test(f)).map((f) => ({ f, t: fs.statSync(path.join(SITE, f)).mtimeMs }));
-  files.sort((a, b) => b.t - a.t);
-  return files[0] ? path.join(SITE, files[0].f) : null;
+  const all = fs.readdirSync(SITE);
+  const whole = all.filter((f) => /^coverageoncall-update.*\.tar\.gz$/i.test(f)).map((f) => ({ files: [path.join(SITE, f)], name: f, t: fs.statSync(path.join(SITE, f)).mtimeMs }));
+  const groups = new Map();
+  for (const f of all) {
+    const m = f.match(/^(coverageoncall-update.*\.tar\.gz)\.part(\d+)$/i);
+    if (!m) continue;
+    const g = groups.get(m[1]) ?? [];
+    g.push({ n: Number(m[2]), file: path.join(SITE, f) });
+    groups.set(m[1], g);
+  }
+  const split = [...groups.entries()].map(([name, parts]) => {
+    parts.sort((a, b) => a.n - b.n);
+    return { files: parts.map((p) => p.file), name, t: Math.max(...parts.map((p) => fs.statSync(p.file).mtimeMs)), parts: parts.map((p) => p.n) };
+  });
+  const pick = [...whole, ...split].sort((a, b) => b.t - a.t)[0] ?? null;
+  if (pick && pick.parts && pick.parts.some((n, i) => n !== i + 1)) finish(`Some pieces of ${pick.name} are missing (found part ${pick.parts.join(", ")}). Upload every piece.`, false);
+  return pick;
+}
+
+/** The package files read back to back as one stream. */
+function joined(files) {
+  const { PassThrough } = require("stream");
+  const out = new PassThrough();
+  (async () => {
+    for (const f of files) {
+      await new Promise((res, rej) => fs.createReadStream(f).on("error", rej).on("end", res).pipe(out, { end: false }));
+    }
+    out.end();
+  })().catch((e) => out.destroy(e));
+  return out;
 }
 
 /** Streaming .tar.gz extractor (ustar + GNU long names), no dependencies. */
-function extract(file, dest) {
+function extract(files, dest) {
   return new Promise((resolve, reject) => {
     let buf = Buffer.alloc(0);
     let longName = null;
@@ -126,7 +157,7 @@ function extract(file, dest) {
         if (++count % 2000 === 0) console.log(`  ${count} files…`);
       }
     }
-    const input = fs.createReadStream(file).pipe(zlib.createGunzip());
+    const input = joined(files).pipe(zlib.createGunzip());
     input.on("data", (chunk) => {
       buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
       try { step(); } catch (e) { input.destroy(); reject(e); }
@@ -184,15 +215,16 @@ async function restorePoint(label) {
 
 (async () => {
   const pkg = findPackage();
-  if (!pkg) finish(`Upload coverageoncall-update.tar.gz into ${SITE} first (the folder that has app and node_modules).`, false);
-  log(`Package: ${path.basename(pkg)} (${Math.round(fs.statSync(pkg).size / 1048576)} MB)`);
+  if (!pkg) finish(`Upload coverageoncall-update.tar.gz (or all of its .part pieces) into ${SITE} first (the folder that has app and node_modules).`, false);
+  const mb = Math.round(pkg.files.reduce((t, f) => t + fs.statSync(f).size, 0) / 1048576);
+  log(`Package: ${pkg.name}${pkg.files.length > 1 ? ` (${pkg.files.length} pieces)` : ""}, ${mb} MB`);
 
   rm(STAGING);
   fs.mkdirSync(STAGING, { recursive: true });
   log("Unpacking…");
   let files;
   try {
-    files = await extract(pkg, STAGING);
+    files = await extract(pkg.files, STAGING);
   } catch (e) {
     rm(STAGING);
     finish(`Couldn't unpack the package: ${e.message}. Nothing was changed.`, false);
@@ -248,7 +280,14 @@ async function restorePoint(label) {
   rm(STAGING);
   const done = p("installed-updates");
   fs.mkdirSync(done, { recursive: true });
-  fs.renameSync(pkg, path.join(done, `${manifest.version}-${path.basename(pkg)}`));
-  for (const old of fs.readdirSync(done).map((f) => ({ f, t: fs.statSync(path.join(done, f)).mtimeMs })).sort((a, b) => b.t - a.t).slice(2)) rm(path.join(done, old.f));
+  for (const f of pkg.files) fs.renameSync(f, path.join(done, `${manifest.version}-${path.basename(f)}`));
+  // Keep the files of the last two installs only (newest first by date).
+  const byVersion = new Map();
+  for (const f of fs.readdirSync(done)) {
+    const v = f.split("-")[0];
+    byVersion.set(v, Math.max(byVersion.get(v) ?? 0, fs.statSync(path.join(done, f)).mtimeMs));
+  }
+  const keep = new Set([...byVersion.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([v]) => v));
+  for (const f of fs.readdirSync(done)) if (!keep.has(f.split("-")[0])) rm(path.join(done, f));
   finish(`Installed ${manifest.version}. Now click Start App (or Restart). If anything looks wrong, Stop App, run "rollback", and Start App.`);
 })();
