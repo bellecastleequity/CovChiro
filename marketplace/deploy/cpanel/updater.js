@@ -153,7 +153,8 @@ async function database(staging) {
     return { query: async (sql) => (await pool.query(sql)).rows, end: () => pool.end() };
   }
   let pg;
-  try { pg = require(req("pg")); } catch { throw new Error("direct database connections need the websocket transport here (DATABASE_TRANSPORT = websocket)"); }
+  try { pg = require(req("pg")); } catch { try { pg = require("pg"); } catch { pg = null; } }
+  if (!pg) throw new Error("direct database connections need the websocket transport here (DATABASE_TRANSPORT = websocket)");
   const client = new pg.Client({ connectionString: raw });
   await client.connect();
   return { query: async (sql) => (await client.query(sql)).rows, end: () => client.end() };

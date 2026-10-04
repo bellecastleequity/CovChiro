@@ -51,4 +51,17 @@ describe("Rewards", () => {
     expect(r.rules.every((x) => x.audience === "CLINIC")).toBe(true);
     await expect(rewards.myClinicRewards(provider.actor)).rejects.toThrow();
   });
+
+  it("training: points once per passed lesson and a bonus for the whole course", async () => {
+    const provider = await makeProvider();
+    const lessons = ["welcome", "ready", "finding"];
+    expect(await rewards.recordLesson(provider.actor, "welcome", lessons)).toBe(1);
+    expect(await rewards.recordLesson(provider.actor, "welcome", lessons)).toBe(0);
+    expect(await rewards.recordLesson(provider.actor, "nope", lessons)).toBe(0);
+    await rewards.recordLesson(provider.actor, "ready", lessons);
+    expect(await rewards.recordLesson(provider.actor, "finding", lessons)).toBe(2); // last lesson + course bonus
+    const kinds = (await prisma.rewardEvent.findMany({ where: { accountId: provider.id, kind: { in: ["p.lesson", "p.course"] } } })).map((e) => e.kind);
+    expect(kinds.filter((k) => k === "p.lesson")).toHaveLength(3);
+    expect(kinds.filter((k) => k === "p.course")).toHaveLength(1);
+  });
 });
