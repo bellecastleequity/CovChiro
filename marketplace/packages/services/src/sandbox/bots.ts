@@ -102,7 +102,8 @@ export async function botsTick(now = new Date()) {
     const p = botProviders.get(a.providerId)!;
     const kinds = new Set(a.punches.map((x) => x.kind));
     if (a.reconfirmRequestedAt && !a.reconfirmedAt) await act(`reconfirm ${a.id}`, () => reconfirmAttendance(p.actor, a.id));
-    if (!a.onMyWayAt && +now >= +a.startsAt - 50 * MIN && +now < +a.startsAt) await act(`on my way ${a.id}`, () => markOnMyWay(p.actor, a.id));
+    // On my way from ~15 miles out (a made-up position), so the clinic sees an arrival time.
+    if (!a.onMyWayAt && +now >= +a.startsAt - 50 * MIN && +now < +a.startsAt) await act(`on my way ${a.id}`, () => markOnMyWay(p.actor, a.id, a.shift.location.lat != null && a.shift.location.lng != null ? { lat: a.shift.location.lat + 0.2, lng: a.shift.location.lng + 0.05 } : null));
     if (!kinds.has("IN") && +now >= +a.startsAt - 8 * MIN && +now < +a.endsAt) {
       await act(`punch in ${a.id}`, () => punch(p.actor, a.id, "IN", { lat: a.shift.location.lat + 0.0002, lng: a.shift.location.lng, accuracyM: 15 }));
     }

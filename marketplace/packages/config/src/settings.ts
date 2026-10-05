@@ -254,6 +254,10 @@ export const SETTINGS = {
   "reconfirm.missesBeforePause": def({ group: "Shift reconfirmation", label: "Missed reconfirmations that pause a provider", schema: z.number().int().min(1).max(10), default: 2, flag: null }),
   "reconfirm.missWindowDays": def({ group: "Shift reconfirmation", label: "…counted over this many days", schema: z.number().int().min(7).max(365), default: 90, flag: null }),
   "checkin.promptBeforeHours": def({ group: "Shift reconfirmation", label: "Day-of 'On my way' prompt, before the start", schema: z.number().min(0.5).max(12), default: 2, flag: null }),
+  "arrival.etaEnabled": def({ group: "Shift reconfirmation", label: "After 'On my way', share the provider's arrival time with the clinic (with their phone's permission)", schema: z.boolean(), default: true, flag: null }),
+  "arrival.updateSeconds": def({ group: "Shift reconfirmation", label: "Arrival time: seconds between updates while the provider's page is open", schema: z.number().int().min(30).max(900), default: 120, flag: null }),
+  "arrival.nearMinutes": def({ group: "Shift reconfirmation", label: "Text the clinic when the provider is this many minutes away (0 = off)", schema: z.number().int().min(0).max(30), default: 5, flag: null }),
+  "arrival.stopAfterStartMinutes": def({ group: "Shift reconfirmation", label: "Stop sharing the arrival time this long after the start (it also stops at clock-in)", schema: z.number().int().min(0).max(180), default: 30, flag: null }),
   "checkin.alertBeforeMinutes": def({ group: "Shift reconfirmation", label: "Alert you and the clinic if not 'On my way' by this long before the start", schema: z.number().int().min(0).max(240), default: 30, flag: null }),
 
   // ---------- emergency cover ----------

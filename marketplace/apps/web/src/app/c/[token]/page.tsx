@@ -5,6 +5,7 @@ import { brand } from "@cm/config";
 import { attendance } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Logo } from "@/components/site/header";
+import { ArrivalSharer, OnMyWayButton } from "@/components/attendance/on-my-way";
 import { attendanceLinkAction } from "../../o/actions";
 
 export const dynamic = "force-dynamic";
@@ -51,13 +52,13 @@ export default async function AttendanceLink({ params }: { params: Promise<{ tok
               )}
               {dayOf ? (
                 a.onMyWayAt ? (
-                  <div className="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm font-medium text-emerald-800"><Navigation className="size-4" />The clinic knows you're on your way.</div>
+                  a.arrivedAt ? (
+                    <div className="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm font-medium text-emerald-800"><Navigation className="size-4" />You've arrived. Have a great day!</div>
+                  ) : (
+                    <ArrivalSharer target={{ token }} timeZone={tz} etaAt={a.etaAt?.toISOString() ?? null} miles={a.etaMiles} />
+                  )
                 ) : (
-                  <ActionForm action={attendanceLinkAction}>
-                    <input type="hidden" name="token" value={token} />
-                    <input type="hidden" name="do" value="onway" />
-                    <SubmitButton size="lg" variant={a.reconfirmedAt ? "primary" : "outline"} className="w-full">On my way</SubmitButton>
-                  </ActionForm>
+                  <OnMyWayButton target={{ token }} size="lg" className="w-full" />
                 )
               ) : null}
               <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-medium text-brand-700">

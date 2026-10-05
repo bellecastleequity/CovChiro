@@ -11,9 +11,10 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { PendingChanges } from "@/components/provider/pending-changes";
+import { ArrivalSharer, OnMyWayButton } from "@/components/attendance/on-my-way";
 import { dateLabel, money, timeRange, lunchLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { cancelAssignmentAction, disputeAction, graceCancelAction, lodgingAction, onMyWayAction, openThreadAction, ratingAction, reconfirmAction } from "../../actions";
+import { cancelAssignmentAction, disputeAction, graceCancelAction, lodgingAction, openThreadAction, ratingAction, reconfirmAction } from "../../actions";
 
 export default async function Assignment({ params }: { params: Promise<{ id: string }> }) {
   const { actor } = await requireActor("provider");
@@ -67,14 +68,13 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
             <Card>
               <CardHeader title="Heading out?" description="Let the clinic know you're on your way." />
               <CardBody>
-                <ActionForm action={onMyWayAction}>
-                  <input type="hidden" name="assignmentId" value={a.id} />
-                  <SubmitButton>On my way</SubmitButton>
-                </ActionForm>
+                <OnMyWayButton target={{ assignmentId: a.id }} />
               </CardBody>
             </Card>
           ) : null}
-          {live && (a.reconfirmedAt || a.onMyWayAt) ? (
+          {live && a.onMyWayAt && !a.arrivedAt && hoursToStart > -1 ? (
+            <ArrivalSharer target={{ assignmentId: a.id }} timeZone={loc.timeZone} etaAt={a.etaAt?.toISOString() ?? null} miles={a.etaMiles} />
+          ) : live && (a.reconfirmedAt || a.onMyWayAt) ? (
             <p className="text-sm text-emerald-700">{a.onMyWayAt ? "✓ The clinic knows you're on your way." : "✓ You've confirmed you're coming."}</p>
           ) : null}
           {live ? (

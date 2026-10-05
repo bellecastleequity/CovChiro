@@ -25,6 +25,7 @@ export * from "./providerAcquisition";
 export * from "./spam";
 export * from "./referrals";
 export * from "./timeclock";
+export * from "./arrival";
 export * from "./navorder";
 export * from "./closing";
 export * from "./volume";

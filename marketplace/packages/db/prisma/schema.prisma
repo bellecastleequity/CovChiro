@@ -971,6 +971,11 @@ model Assignment {
   reconfirmedAt        DateTime?                 @db.Timestamptz(3)
   checkinPromptedAt    DateTime?                 @db.Timestamptz(3)
   onMyWayAt            DateTime?                 @db.Timestamptz(3)
+  /// Arrival time from "On my way" (phone position → drive time). Only the result is kept, never the position.
+  etaAt                DateTime?                 @db.Timestamptz(3)
+  etaMiles             Float?
+  etaUpdatedAt         DateTime?                 @db.Timestamptz(3)
+  etaNearNotifiedAt    DateTime?                 @db.Timestamptz(3)
   /// The clinic confirmed the provider arrived.
   arrivedAt            DateTime?                 @db.Timestamptz(3)
   checkinAlertedAt     DateTime?                 @db.Timestamptz(3)

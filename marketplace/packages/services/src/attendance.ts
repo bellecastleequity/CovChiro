@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@cm/config";
-import { DomainError } from "@cm/core";
+import { arrivalPlan, DomainError, type ArrivalSettings } from "@cm/core";
+import { geoProvider, haversineMiles } from "@cm/integrations";
 import { prisma, type Prisma } from "@cm/db";
 import { audit, clock, getSettings, SYSTEM, type Actor } from "./context";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
@@ -67,24 +68,107 @@ export async function reconfirmAttendance(actor: Actor | null, assignmentId: str
   return "Thanks — you're confirmed. See you there!";
 }
 
-/** Day-of check-in: "On my way." Also counts as reconfirmed; the clinic is told. */
-export async function markOnMyWay(actor: Actor | null, assignmentId: string) {
+/** A phone position from the browser (used once for a drive time, never stored). */
+export interface PhonePosition {
+  lat: number;
+  lng: number;
+}
+
+const validPosition = (p: PhonePosition | null | undefined): p is PhonePosition =>
+  !!p && Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180 && !(p.lat === 0 && p.lng === 0);
+
+async function arrivalSettings(): Promise<ArrivalSettings & { enabled: boolean }> {
+  const s = await getSettings();
+  return { enabled: s["arrival.etaEnabled"], updateSeconds: s["arrival.updateSeconds"], nearMinutes: s["arrival.nearMinutes"], stopAfterStartMinutes: s["arrival.stopAfterStartMinutes"] };
+}
+
+const clockTime = (d: Date, timeZone: string) => d.toLocaleTimeString("en-US", { timeZone, hour: "numeric", minute: "2-digit" });
+
+export interface ArrivalStatus {
+  /** Still sharing (On my way, not clocked in, not long past the start). */
+  sharing: boolean;
+  etaAt: Date | null;
+  miles: number | null;
+  updatedAt: Date | null;
+  /** Seconds until the next position is worth sending. */
+  nextInSeconds: number;
+}
+
+/**
+ * "On my way" arrival time: one phone position → drive time to the clinic → Assignment.etaAt /
+ * etaMiles. Looked up at most every arrival.updateSeconds per booking (claimed, so two open tabs
+ * never both pay for a lookup). The clinic is texted once when it's arrival.nearMinutes away.
+ * The position itself is never stored. actor = null from the signed one-tap link.
+ */
+export async function reportPosition(actor: Actor | null, assignmentId: string, pos: PhonePosition): Promise<ArrivalStatus> {
+  const cfg = await arrivalSettings();
+  const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId }, include: { provider: true, shift: { include: { location: true } } } });
+  assertMine(actor, a);
+  const now = clock.now();
+  const state = { status: a.status, onMyWayAt: a.onMyWayAt, arrivedAt: a.arrivedAt, startsAt: a.startsAt, etaUpdatedAt: a.etaUpdatedAt, nearNotifiedAt: a.etaNearNotifiedAt };
+  const plan = arrivalPlan(state, now, cfg);
+  const current = (sharing: boolean, etaAt = a.etaAt, miles = a.etaMiles, updatedAt = a.etaUpdatedAt): ArrivalStatus => ({
+    sharing,
+    etaAt,
+    miles,
+    updatedAt,
+    nextInSeconds: updatedAt ? Math.max(15, Math.ceil((+updatedAt + cfg.updateSeconds * 1000 - +now) / 1000)) : cfg.updateSeconds,
+  });
+  if (!cfg.enabled || !plan.open) return current(false);
+  const loc = a.shift.location;
+  if (!plan.recheck || !validPosition(pos) || loc.lat == null || loc.lng == null) return current(true);
+  const claimed = await prisma.assignment.updateMany({
+    where: { id: a.id, OR: [{ etaUpdatedAt: null }, { etaUpdatedAt: { lte: new Date(+now - cfg.updateSeconds * 1000) } }] },
+    data: { etaUpdatedAt: now },
+  });
+  if (!claimed.count) return current(true);
+  const dest = { lat: loc.lat, lng: loc.lng };
+  const straight = haversineMiles(pos, dest);
+  let drive = straight < 0.15 ? { minutes: 0, miles: 0 } : ((await geoProvider().driveMatrix([pos], dest, now).catch(() => [null]))[0] ?? null);
+  // No route from the map service: a rough estimate from the straight-line distance.
+  drive ??= { miles: Math.round(straight * 1.25 * 10) / 10, minutes: Math.round(((straight * 1.25) / 40) * 60) };
+  const next = arrivalPlan(state, now, cfg, drive);
+  await prisma.assignment.update({ where: { id: a.id }, data: { etaAt: next.etaAt, etaMiles: Math.round(drive.miles * 10) / 10 } });
+  if (next.notifyNear && cfg.nearMinutes > 0) {
+    const first = await prisma.assignment.updateMany({ where: { id: a.id, etaNearNotifiedAt: null }, data: { etaNearNotifiedAt: now } });
+    if (first.count) {
+      const mins = Math.max(1, Math.round(drive.minutes));
+      await notifyClinic(prisma, loc.clinicOrgId, {
+        template: "provider_almost_there",
+        title: drive.minutes < 1 ? `${a.provider.displayName} is arriving now` : `${a.provider.displayName} is about ${mins} minute${mins === 1 ? "" : "s"} away`,
+        body: `Your provider for today at ${loc.name} is almost there.`,
+        link: `/clinic/shifts/${a.shiftId}`,
+        email: false,
+        sms: true,
+      }).catch((e) => console.error("arrival notice failed", e));
+    }
+  }
+  return current(true, next.etaAt, Math.round(drive.miles * 10) / 10, now);
+}
+
+/** Day-of check-in: "On my way." Also counts as reconfirmed; the clinic is told (with the arrival time when the phone shared its position). */
+export async function markOnMyWay(actor: Actor | null, assignmentId: string, pos?: PhonePosition | null) {
   const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId }, include: { provider: true, shift: { include: { location: true } } } });
   assertMine(actor, a);
   if (a.status !== "CONFIRMED" && a.status !== "IN_PROGRESS") throw new DomainError("CONFLICT", "This shift is no longer booked to you.");
   if (a.onMyWayAt) return "Already marked — drive safe!";
   const now = clock.now();
   await prisma.assignment.update({ where: { id: a.id }, data: { onMyWayAt: now, reconfirmedAt: a.reconfirmedAt ?? now } });
-  await audit(prisma, actor ?? SYSTEM, "assignment.on_my_way", "Assignment", a.id, null, { via: actor ? "app" : "link" });
+  await audit(prisma, actor ?? SYSTEM, "assignment.on_my_way", "Assignment", a.id, null, { via: actor ? "app" : "link", sharedLocation: validPosition(pos) });
+  const eta = validPosition(pos) ? await reportPosition(actor, a.id, pos).catch((e) => (console.error("arrival time failed", e), null)) : null;
+  const tz = a.shift.location.timeZone;
+  const arriving = eta?.etaAt ? `, arriving around ${clockTime(eta.etaAt, tz)}${eta.miles ? ` (${eta.miles} mi away)` : ""}` : "";
   await notifyClinic(prisma, a.shift.location.clinicOrgId, {
     template: "provider_on_way",
-    title: `${a.provider.displayName} is on the way`,
-    body: `Your provider for today at ${a.shift.location.name} has checked in and is heading over.`,
+    title: `${a.provider.displayName} is on the way${eta?.etaAt ? `, arriving around ${clockTime(eta.etaAt, tz)}` : ""}`,
+    body: `Your provider for today at ${a.shift.location.name} has checked in and is heading over${arriving}.${eta?.etaAt ? " You'll see the arrival time update on the shift page." : ""}`,
     link: `/clinic/shifts/${a.shiftId}`,
     email: false,
     sms: true,
   });
-  return "Thanks — we've let the clinic know you're on your way. Drive safe!";
+  return eta?.etaAt
+    ? `Thanks! The clinic knows you're on your way, arriving around ${clockTime(eta.etaAt, tz)}. Keep this page open to keep your arrival time up to date. Drive safe!`
+    : "Thanks — we've let the clinic know you're on your way. Drive safe!";
 }
 
 // ---------------- sweep ----------------

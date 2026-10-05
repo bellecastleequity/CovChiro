@@ -407,7 +407,14 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
                 ) : null}
                 {live.status === "CONFIRMED" ? (
                   <p className="text-sm text-slate-600">
-                    {live.onMyWayAt ? "✓ Your provider is on the way." : live.reconfirmedAt ? "✓ Your provider has reconfirmed they're coming." : live.reconfirmRequestedAt ? "We've asked your provider to reconfirm; you'll hear from us if they don't." : null}
+                    {live.onMyWayAt && !live.arrivedAt && live.etaAt ? (
+                      <span className="flex flex-wrap items-center gap-x-2 rounded-xl bg-emerald-50 px-3 py-2 font-medium text-emerald-900">
+                        <Car className="size-4" />
+                        On the way, arriving around {timeLabel(live.etaAt, tz)}{live.etaMiles != null ? ` · ${live.etaMiles} mi away` : ""}
+                        <span className="text-xs font-normal text-emerald-800">updated {live.etaUpdatedAt ? relative(live.etaUpdatedAt) : "just now"}</span>
+                        {+live.startsAt + 30 * 60_000 > Date.now() ? <AutoRefresh seconds={60} /> : null}
+                      </span>
+                    ) : live.onMyWayAt ? "✓ Your provider is on the way." : live.reconfirmedAt ? "✓ Your provider has reconfirmed they're coming." : live.reconfirmRequestedAt ? "We've asked your provider to reconfirm; you'll hear from us if they don't." : null}
                   </p>
                 ) : null}
                 {live.payments.some((p) => p.status === "FAILED") ? <Alert tone="error" title="Deposit failed">Update your payment method in Billing to keep this booking.</Alert> : null}
