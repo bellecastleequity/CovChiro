@@ -29,10 +29,10 @@ export function AskForm() {
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <Input name="name" placeholder="Your name" required />
-        <Input name="email" type="email" placeholder="Email" required />
+        <Input className="req-mark" name="name" placeholder="Your name" required />
+        <Input className="req-mark" name="email" type="email" placeholder="Email" required />
       </div>
-      <Textarea name="question" placeholder="Ask about coverage, pricing, credentials, how it works…" required className="min-h-24" />
+      <Textarea name="question" placeholder="Ask about coverage, pricing, credentials, how it works…" required className="req-mark min-h-24" />
       <FormGuard />
       <button className={buttonClass("primary")} disabled={busy}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}Ask</button>
       {error ? <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p> : null}

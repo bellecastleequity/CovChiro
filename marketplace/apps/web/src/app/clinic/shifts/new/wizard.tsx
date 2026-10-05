@@ -303,13 +303,13 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                     <div className="flex items-center gap-2 text-sm font-semibold text-amber-900"><ShieldCheck className="size-4" />Supervision attestation required<InfoTip label="About supervision">State law requires this profession to work under a licensed supervisor who is physically on site for the whole shift. We record your attestation with the shift; only providers who can legally work under that supervisor are matched.</InfoTip></div>
                     <p className="mt-1 text-xs text-amber-900">{prof.displayName}s must be supervised on site in {loc.state}. Name the supervising provider who will be present for the entire shift.</p>
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      <Field label="Supervisor name"><Input value={sup.supervisorName} onChange={(e) => setSup({ ...sup, supervisorName: e.target.value })} /></Field>
-                      <Field label="Supervisor profession">
+                      <Field label="Supervisor name" required><Input value={sup.supervisorName} onChange={(e) => setSup({ ...sup, supervisorName: e.target.value })} /></Field>
+                      <Field label="Supervisor profession" required>
                         <Select value={sup.supervisorProfessionCode} onChange={(e) => setSup({ ...sup, supervisorProfessionCode: e.target.value })}>
                           {prof.supervisingProfessionCodes.map((c) => <option key={c} value={c}>{c}</option>)}
                         </Select>
                       </Field>
-                      <Field label="License number"><Input value={sup.supervisorLicenseNumber} onChange={(e) => setSup({ ...sup, supervisorLicenseNumber: e.target.value })} /></Field>
+                      <Field label="License number" required><Input value={sup.supervisorLicenseNumber} onChange={(e) => setSup({ ...sup, supervisorLicenseNumber: e.target.value })} /></Field>
                     </div>
                     <Checkbox className="mt-3" checked={sup.onSiteEntireShift} onChange={(e) => setSup({ ...sup, onSiteEntireShift: e.target.checked })} label="I confirm this person will be on site and available for the entire shift, as state law requires." />
                   </div>
@@ -323,9 +323,9 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 <div className="space-y-3">
                   {days.map((d, i) => (
                     <div key={i} className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
-                      <Field label={days.length > 1 ? `Day ${i + 1}` : "Date"}><Input type="date" value={d.date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDay(i, { date: e.target.value })} /></Field>
-                      <Field label="Start"><Input type="time" value={d.start} onChange={(e) => setDay(i, { start: e.target.value })} /></Field>
-                      <Field label="End"><Input type="time" value={d.end} onChange={(e) => setDay(i, { end: e.target.value })} /></Field>
+                      <Field label={days.length > 1 ? `Day ${i + 1}` : "Date"} required><Input type="date" value={d.date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDay(i, { date: e.target.value })} /></Field>
+                      <Field label="Start" required><Input type="time" value={d.start} onChange={(e) => setDay(i, { start: e.target.value })} /></Field>
+                      <Field label="End" required><Input type="time" value={d.end} onChange={(e) => setDay(i, { end: e.target.value })} /></Field>
                       {days.length > 1 ? (
                         <Button type="button" variant="ghost" onClick={() => setDays((ds) => ds.filter((_, j) => j !== i))} aria-label={`Remove day ${i + 1}`}>Remove</Button>
                       ) : <span />}
@@ -335,7 +335,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                             {LUNCH_OPTIONS.map((m) => <option key={m} value={String(m)}>{m === 0 ? "No lunch" : m < 60 ? `${m} min` : `${m / 60} hour${m === 60 ? "" : "s"}`}</option>)}
                           </Select>
                         </Field>
-                        {d.lunch !== "0" ? <Field label="Lunch starts"><Input type="time" step={900} value={d.lunchStart} onChange={(e) => setDay(i, { lunchStart: e.target.value, lunchSet: true })} className="w-36" /></Field> : null}
+                        {d.lunch !== "0" ? <Field label="Lunch starts" required><Input type="time" step={900} value={d.lunchStart} onChange={(e) => setDay(i, { lunchStart: e.target.value, lunchSet: true })} className="w-36" /></Field> : null}
                         {d.start && d.end ? (() => {
                           const span = spanMin(d.start, d.end);
                           const lunch = Number(d.lunch) || 0;
@@ -488,7 +488,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                     ) : (
                       <div className="ml-7 mt-3 space-y-3">
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <Field label="Your rate for coverage ($)" hint={`Market ${money(cr!.marketCents)} · lowest ${money(cr!.floorCents)} (${cr!.minPercent}%)`}>
+                          <Field label="Your rate for coverage ($)" required hint={`Market ${money(cr!.marketCents)} · lowest ${money(cr!.floorCents)} (${cr!.minPercent}%)`}>
                             <Input inputMode="numeric" value={rateDollars} onChange={(e) => { setRateDollars(e.target.value.replace(/[^0-9]/g, "")); setRateAck(false); }} placeholder={String(Math.round(cr!.floorCents / 100))} />
                           </Field>
                         </div>

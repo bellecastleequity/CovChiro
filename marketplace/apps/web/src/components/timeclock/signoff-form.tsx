@@ -22,7 +22,7 @@ export function SignOffForm({ approve, report, hidden, defaultName, signatureReq
       <ActionForm action={approve} className="space-y-3">
         {fields}
         <div className="grid gap-2 sm:grid-cols-2">
-          <Input name="approverName" defaultValue={defaultName} placeholder="Manager's full name" required minLength={2} aria-label="Manager's full name" />
+          <Input className="req-mark" name="approverName" defaultValue={defaultName} placeholder="Manager's full name" required minLength={2} aria-label="Manager's full name" />
           <Input name="approverTitle" placeholder="Title (optional)" aria-label="Title" />
         </div>
         <div>

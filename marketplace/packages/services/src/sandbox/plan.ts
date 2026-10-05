@@ -48,6 +48,13 @@ function nearby(c: DemoClinic, opts: { overnight?: boolean } = {}) {
 const worksOn = (p: DemoProvider, weekday: number) => (p.days ?? [1, 2, 3, 4, 5, 6]).includes(weekday);
 /** Luxon weekday (1 = Mon … 7 = Sun) of a day offset, as 0 = Sun … 6 = Sat. */
 const weekdayOf = (offset: number, now: number) => etDay(offset, now).weekday % 7;
+/** The day offset itself, or the next day when it's a Sunday (demo providers mostly don't work Sundays). */
+const workday = (offset: number, now: number) => (weekdayOf(offset, now) === 0 ? offset + 1 : offset);
+/** Has every skill the shift requires. */
+const hasSkills = (p: DemoProvider, x?: Extras) => (x?.required ?? []).every((k) => p.skills?.includes(k));
+
+/** One nearby applicant for a clinic-set rate shift: someone without a minimum pay (a below-market rate would fail it). */
+const rateApplicants = (clinic: string) => nearby(BOT_CLINICS.find((c) => c.key === clinic)!).filter((p) => !p.floor).slice(0, 1).map((p) => p.key);
 
 class Calendar {
   /** provider key → day offsets they're already working (booked or planned). */
@@ -121,7 +128,7 @@ export async function topUpPlan(now = realNow()): Promise<Spec[]> {
         if (weekdayOf(day, now) === 0) continue;
         const sh = SHAPES[shape++ % SHAPES.length];
         const weekday = weekdayOf(day, now);
-        const avail = helpers.filter((p) => worksOn(p, weekday) && cal.free(p.key, day));
+        const avail = helpers.filter((p) => worksOn(p, weekday) && cal.free(p.key, day) && hasSkills(p, sh.x));
         const far = c.key === "pensacola" || c.key === "gville";
         const x = { ...(sh.x ?? {}), ...(far ? { lodging: true, notes: "We're a drive from most providers: lodging allowance included." } : {}) };
         // Within a week: a third get booked; the rest are open with 1-3 applicants.
@@ -172,7 +179,7 @@ export async function topUpPlan(now = realNow()): Promise<Spec[]> {
 
   // Always at least one of each special kind ahead.
   if (!have.some((h) => h.rateMode === "CLINIC" && h.day > 4)) {
-    out.push({ k: "clinicRate", c: "miami", day: 10 + r(10), start: 8, end: 17, pct: 85, release: true, applicants: nearby(BOT_CLINICS.find((c) => c.key === "miami")!).slice(0, 1).map((p) => p.key) });
+    out.push({ k: "clinicRate", c: "miami", day: workday(10 + r(10), now), start: 8, end: 17, pct: 85, release: true, applicants: rateApplicants("miami") });
   }
   if (!have.some((h) => h.group && h.day > 2)) {
     const base = 15 + r(5);
@@ -227,15 +234,15 @@ export async function initialPlan(now = realNow()): Promise<Spec[]> {
     { k: "favorite", c: "bay", p: "auto" },
     { k: "standing", c: "bay", p: "james", weekday: 2, startsInDays: 3, accept: true },
     { k: "standing", c: "lakeside", p: you.key, weekday: 4, startsInDays: 5, accept: false },
-    { k: "multiProvider", c: "bay", day: 12 + r(4), start: 8, end: 17, n: 2, confirm: ["sofia"] },
-    { k: "clinicRate", c: yours.key, day: 18, start: 8, end: 17, pct: 82, release: false },
-    { k: "clinicRate", c: "ftl", day: 9, start: 8, end: 17, pct: 88, release: true, applicants: ["david"] },
-    { k: "draft", c: yours.key, day: 21, start: 8, end: 17 },
-    { k: "cancelled", c: "baldwin", day: 6, start: 8, end: 17 },
-    { k: "change", c: "baldwin", p: you.key, day: 11, start: 8, end: 17, newStart: 9, newEnd: 18 },
+    { k: "multiProvider", c: "bay", day: workday(12 + r(4), now), start: 8, end: 17, n: 2, confirm: ["sofia"] },
+    { k: "clinicRate", c: yours.key, day: workday(18, now), start: 8, end: 17, pct: 82, release: false },
+    { k: "clinicRate", c: "ftl", day: workday(9, now), start: 8, end: 17, pct: 88, release: true, applicants: rateApplicants("ftl") },
+    { k: "draft", c: yours.key, day: workday(21, now), start: 8, end: 17 },
+    { k: "cancelled", c: "baldwin", day: workday(6, now), start: 8, end: 17 },
+    { k: "change", c: "baldwin", p: you.key, day: workday(11, now), start: 8, end: 17, newStart: 9, newEnd: 18 },
     { k: "emergency", c: "lakeside", p: "alicia" },
     { k: "multiday", c: yours.key, days: [24, 25, 26].filter((d) => weekdayOf(d, now) !== 0), start: 8, end: 17 },
-    { k: "open", c: yours.key, day: 4, start: 8, end: 17, patients: 30, x: { promo: "WELCOME20" } },
+    { k: "open", c: yours.key, day: workday(4, now), start: 8, end: 17, patients: 30, x: { promo: "WELCOME20" } },
     { k: "hire", c: "lakeside", p: "auto" },
     { k: "support", who: yours.key, side: "clinic", subject: "Can we post a shift for two locations?", body: "We might open a second office next year. Can one account post for both?" },
     { k: "support", who: you.key, side: "provider", subject: "When does my pay arrive?", body: "I finished a shift last week; when should I expect the transfer?" },

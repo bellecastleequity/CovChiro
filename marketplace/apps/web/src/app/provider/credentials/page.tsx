@@ -5,7 +5,7 @@ import { providerProfile, getSettings } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select, RequiredMark } from "@/components/ui/form";
 import { InfoTip } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/ui/misc";
 import { dateLabel, money } from "@/lib/format";
@@ -122,7 +122,7 @@ export default async function Credentials() {
               <Field label={<>Aggregate limit ($)<InfoTip label="About aggregate">The most your policy pays for all claims in the policy year. Often $3,000,000.</InfoTip></>}><Input name="aggregate" inputMode="numeric" placeholder="3,000,000" required /></Field>
               <Field label="Certificate of insurance"><Input name="document" type="file" accept="application/pdf,image/*" required /></Field>
               <fieldset className="sm:col-span-2 lg:col-span-3">
-                <legend className="mb-1.5 text-sm font-medium text-slate-700">Professions covered</legend>
+                <legend className="mb-1.5 text-sm font-medium text-slate-700">Professions covered<RequiredMark /></legend>
                 <div className="flex flex-wrap gap-4">
                   {provider.professions.map((p) => <Checkbox key={p.professionCode} name="covered" value={p.professionCode} defaultChecked label={p.profession.displayName} />)}
                 </div>

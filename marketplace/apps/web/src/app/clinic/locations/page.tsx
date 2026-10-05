@@ -5,7 +5,7 @@ import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { AddressInput } from "@/components/ui/address-input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select, Textarea, RequiredMark } from "@/components/ui/form";
 import { InfoTip } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/ui/misc";
 import { requireActor } from "@/lib/session";
@@ -41,7 +41,7 @@ async function LocationForm({ loc }: { loc?: Loc }) {
         </Select>
       </Field>
       <fieldset>
-        <legend className="mb-1.5 text-sm font-medium text-slate-700">We post shifts for<InfoTip label="About professions">The professions you&apos;ll post shifts for at this location. Professions marked (soon) aren&apos;t open on the platform yet.</InfoTip></legend>
+        <legend className="mb-1.5 text-sm font-medium text-slate-700">We post shifts for<RequiredMark /><InfoTip label="About professions">The professions you&apos;ll post shifts for at this location. Professions marked (soon) aren&apos;t open on the platform yet.</InfoTip></legend>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           {professions.map((p) => <Checkbox key={p.code} name="professions" value={p.code} defaultChecked={chosen.includes(p.code)} label={`${p.displayName}${p.active ? "" : " (soon)"}`} />)}
         </div>

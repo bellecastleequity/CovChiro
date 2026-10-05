@@ -60,3 +60,12 @@
 html[data-sandbox] aside.fixed {
   top: 1.75rem;
 }
+
+/* Required field with no label (placeholder only): a small red asterisk inside the box, top right. */
+.req-mark {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Ctext x='5' y='9.5' font-size='12' text-anchor='middle' fill='%23dc2626' font-family='Arial'%3E*%3C/text%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.55rem top 0.5rem;
+  background-size: 0.6rem;
+  padding-right: 1.5rem;
+}

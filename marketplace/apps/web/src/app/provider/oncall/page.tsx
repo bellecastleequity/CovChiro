@@ -5,7 +5,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select, RequiredMark } from "@/components/ui/form";
 import { Alert, PageHeader, Stat } from "@/components/ui/misc";
 import { dateTimeLabel, pct } from "@/lib/format";
 import { requireActor } from "@/lib/session";
@@ -58,7 +58,7 @@ export default async function OnCallPage() {
               <ActionForm action={onCallRuleAction} className="grid gap-4 sm:grid-cols-2">
                 {rule ? <input type="hidden" name="ruleId" value={rule.id} /> : null}
                 <fieldset className="sm:col-span-2">
-                  <legend className="mb-1.5 text-sm font-medium text-slate-700">Professions</legend>
+                  <legend className="mb-1.5 text-sm font-medium text-slate-700">Professions<RequiredMark /></legend>
                   <div className="flex flex-wrap gap-4">{o.activeProfessions.map((x) => <Checkbox key={x.code} name="professions" value={x.code} defaultChecked={!rule || rule.professionCodes.includes(x.code)} label={x.name} />)}</div>
                   {!o.activeProfessions.length ? <p className="text-sm text-slate-500">You'll be able to choose professions once you're active in at least one.</p> : null}
                 </fieldset>

@@ -1,4 +1,24 @@
+import { Children, isValidElement } from "react";
 import { cn } from "@/lib/cn";
+
+/** Red asterisk after the label of something that must be filled in. */
+export function RequiredMark() {
+  return (
+    <span className="ml-0.5 text-red-600" aria-hidden>
+      *
+      <span className="sr-only"> (required)</span>
+    </span>
+  );
+}
+
+/** True when a control among these children (or one level down) is marked required. */
+function hasRequired(children: React.ReactNode, depth = 0): boolean {
+  return Children.toArray(children).some((c) => {
+    if (!isValidElement<{ required?: unknown; children?: React.ReactNode }>(c)) return false;
+    if (c.props.required) return true;
+    return depth < 2 && hasRequired(c.props.children, depth + 1);
+  });
+}
 
 const control = "block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:bg-slate-50";
 
@@ -22,10 +42,17 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
   return <label className={cn("mb-1.5 block text-sm font-medium text-slate-700", className)} {...props} />;
 }
 
-export function Field({ label, hint, children, className, htmlFor }: { label: React.ReactNode; hint?: React.ReactNode; children: React.ReactNode; className?: string; htmlFor?: string }) {
+/**
+ * Label + control + hint. The label gets a red asterisk when the control is required (found
+ * automatically from a `required` child) or when `required` is passed (e.g. a required group).
+ */
+export function Field({ label, hint, children, className, htmlFor, required }: { label: React.ReactNode; hint?: React.ReactNode; children: React.ReactNode; className?: string; htmlFor?: string; required?: boolean }) {
   return (
     <div className={className}>
-      <Label htmlFor={htmlFor}>{label}</Label>
+      <Label htmlFor={htmlFor}>
+        {label}
+        {(required ?? hasRequired(children)) ? <RequiredMark /> : null}
+      </Label>
       {children}
       {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
     </div>
@@ -36,7 +63,10 @@ export function Checkbox({ label, className, ...props }: React.InputHTMLAttribut
   return (
     <label className={cn("flex items-start gap-2.5 text-sm text-slate-700", className)}>
       <input type="checkbox" className="mt-0.5 size-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" {...props} />
-      <span>{label}</span>
+      <span>
+        {label}
+        {props.required ? <RequiredMark /> : null}
+      </span>
     </label>
   );
 }

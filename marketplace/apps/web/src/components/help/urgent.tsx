@@ -5,7 +5,7 @@ import { getSettings, type Actor } from "@cm/services";
 import { escalateAction } from "@/app/help-actions";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody } from "@/components/ui/card";
-import { Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form";
+import { Field, Input, PhiNotice, Select, Textarea, RequiredMark } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import type { HelpCenter } from "@/lib/help/types";
@@ -73,7 +73,7 @@ export async function UrgentHelp({ center, actor, user, shiftId, sentId }: { cen
         <CardBody>
           <ActionForm action={escalateAction} className="space-y-5" successMessage={false}>
             <fieldset>
-              <legend className="mb-2 text-sm font-medium text-slate-800">How should we reach you?</legend>
+              <legend className="mb-2 text-sm font-medium text-slate-800">How should we reach you?<RequiredMark /></legend>
               <div className="grid gap-2 sm:grid-cols-3">
                 {METHODS.map((m, i) => (
                   <label key={m.v} className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-800 has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">

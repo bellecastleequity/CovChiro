@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@cm/db";
 import { google, referrals } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
-import { Checkbox, Field, Input } from "@/components/ui/form";
+import { Checkbox, Field, Input, RequiredMark } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { GOOGLE_PENDING_COOKIE } from "@/lib/google";
 import { googleSignupAction } from "../../actions";
@@ -49,7 +49,7 @@ export default async function GoogleSignup({ searchParams }: { searchParams: Pro
             </Field>
           ) : (
             <fieldset>
-              <legend className="mb-1.5 text-sm font-medium text-slate-700">Your profession(s)</legend>
+              <legend className="mb-1.5 text-sm font-medium text-slate-700">Your profession(s)<RequiredMark /></legend>
               <div className="space-y-2">
                 {professions.map((p) => (
                   <Checkbox key={p.code} name="professions" value={p.code} defaultChecked={p.code === "DC"} label={`${p.displayName} (${p.credentialSuffix})`} />

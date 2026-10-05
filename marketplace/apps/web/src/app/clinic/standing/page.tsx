@@ -4,7 +4,7 @@ import { getSettings, standing } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select, Textarea, RequiredMark } from "@/components/ui/form";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
@@ -82,7 +82,7 @@ export default async function ClinicStanding({ searchParams }: { searchParams: P
                     </Select>
                   </Field>
                   <fieldset>
-                    <legend className="mb-1.5 text-sm font-medium text-slate-700">Every</legend>
+                    <legend className="mb-1.5 text-sm font-medium text-slate-700">Every<RequiredMark /></legend>
                     <div className="flex flex-wrap gap-x-4 gap-y-2">
                       {DAYS.map(([n, label]) => <Checkbox key={n} name="weekdays" value={n} label={label} />)}
                     </div>

@@ -176,14 +176,14 @@ export default async function Profile() {
           <CardBody>
             {user.passwordHash ? (
               <ActionForm action={passwordAction} className="grid gap-3 sm:grid-cols-3" resetOnSuccess>
-                <Input name="current" type="password" placeholder="Current password" required autoComplete="current-password" />
-                <Input name="next" type="password" placeholder="New password" minLength={10} required autoComplete="new-password" />
+                <Input className="req-mark" name="current" type="password" placeholder="Current password" required autoComplete="current-password" />
+                <Input className="req-mark" name="next" type="password" placeholder="New password" minLength={10} required autoComplete="new-password" />
                 <SubmitButton variant="outline">Change password</SubmitButton>
               </ActionForm>
             ) : (
               <ActionForm action={passwordAction} className="grid gap-3 sm:grid-cols-3" resetOnSuccess>
                 <p className="text-sm text-slate-600 sm:col-span-3">You sign in with Google. Set a password if you&apos;d also like to sign in with your email.</p>
-                <Input name="next" type="password" placeholder="New password" minLength={10} required autoComplete="new-password" />
+                <Input className="req-mark" name="next" type="password" placeholder="New password" minLength={10} required autoComplete="new-password" />
                 <SubmitButton variant="outline">Set password</SubmitButton>
               </ActionForm>
             )}

@@ -79,8 +79,8 @@ export default async function Availability() {
                 <input type="hidden" name="kind" value="open" />
                 <Field label="Date"><Input type="date" name="startDate" required /></Field>
                 <div />
-                <Field label="From"><Input type="time" name="startTime" defaultValue="07:00" /></Field>
-                <Field label="To"><Input type="time" name="endTime" defaultValue="19:00" /></Field>
+                <Field label="From"><Input type="time" name="startTime" defaultValue="07:00" required /></Field>
+                <Field label="To"><Input type="time" name="endTime" defaultValue="19:00" required /></Field>
                 <div className="col-span-2"><SubmitButton size="sm" variant="outline">Add open day</SubmitButton></div>
               </ActionForm>
             </CardBody>

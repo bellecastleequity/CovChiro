@@ -313,7 +313,8 @@ export async function runSpec(s: Spec, seed: number, admin: Actor): Promise<stri
       const p = providerOf(cast, s.p);
       // Inside the late-cancel window: tomorrow 8 AM (less than 24 h away once it's past 8 AM), else later today.
       const now = DateTime.fromMillis(realNow(), { zone: ZONE });
-      const start = now.hour >= 8 ? now.startOf("day").plus({ days: 1, hours: 8 }) : DateTime.max(now.startOf("day").plus({ hours: 8 }), now.plus({ hours: 2 }).startOf("hour"));
+      // (At least 3 hours out: shifts must start 2 hours from now.)
+      const start = now.hour >= 8 ? now.startOf("day").plus({ days: 1, hours: 8 }) : DateTime.max(now.startOf("day").plus({ hours: 8 }), now.plus({ hours: 3 }).startOf("hour"));
       const { shiftId } = await createShift(c.actor, input(c, 0, start.toJSDate(), start.plus({ hours: 8 }).toJSDate(), 28, { notes: "Doctor out sick." }, seed), { post: true });
       await book(c, p, shiftId, "apply", seed);
       const a = await liveAssignment(shiftId);

@@ -108,8 +108,8 @@ export function LeadForm({
   return (
     <form onSubmit={submit} className={compact ? "space-y-3" : "space-y-4"}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Input name="name" required placeholder="Your name" autoComplete="name" aria-label="Your name" />
-        <Input name="email" type="email" required placeholder="Email" autoComplete="email" aria-label="Email" />
+        <Input className="req-mark" name="name" required placeholder="Your name" autoComplete="name" aria-label="Your name" />
+        <Input className="req-mark" name="email" type="email" required placeholder="Email" autoComplete="email" aria-label="Email" />
       </div>
       {source === "contact" || source === "waitlist" ? (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -142,7 +142,7 @@ export function LeadForm({
           ) : null}
         </div>
       ) : null}
-      {source === "contact" ? <Textarea name="message" required placeholder="How can we help?" aria-label="Message" /> : null}
+      {source === "contact" ? <Textarea className="req-mark" name="message" required placeholder="How can we help?" aria-label="Message" /> : null}
       <FormGuard />
       {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p> : null}
       <button type="submit" disabled={busy} className={buttonClass("primary", "lg", "w-full")}>

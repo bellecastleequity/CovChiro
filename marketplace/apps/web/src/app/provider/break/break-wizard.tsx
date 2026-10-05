@@ -92,7 +92,7 @@ export function BreakWizard({ today }: { today: string }) {
 
         {step === 0 ? (
           <div className="space-y-4">
-            <Field label="When does your break start?" hint="From this date you won't be offered or invited to new shifts.">
+            <Field required label="When does your break start?" hint="From this date you won't be offered or invited to new shifts.">
               <Input type="date" value={startDate} min={today} onChange={(e) => setStartDate(e.target.value)} className="max-w-48" />
             </Field>
             <Button onClick={loadBookings} disabled={pending || !startDate}>{pending ? "Checking…" : "Next"}</Button>

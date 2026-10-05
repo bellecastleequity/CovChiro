@@ -73,7 +73,7 @@ export function ResumeWizard({ today, hours, openDates, since }: { today: string
 
         {step === 1 ? (
           <div className="space-y-4">
-            <Field label="When can you take shifts again?" hint="Today means right away.">
+            <Field required label="When can you take shifts again?" hint="Today means right away.">
               <Input type="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} className="max-w-48" />
             </Field>
             <div className="flex gap-2"><Button variant="outline" onClick={() => setStep(0)}><ChevronLeft className="size-4" />Back</Button><Button onClick={() => setStep(2)} disabled={!date}>Next</Button></div>

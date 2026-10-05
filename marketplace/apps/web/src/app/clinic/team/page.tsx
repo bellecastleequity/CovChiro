@@ -31,8 +31,8 @@ export default async function Team() {
           <CardHeader title="Invite a team member" />
           <CardBody>
             <ActionForm action={inviteStaffAction} className="grid gap-3 sm:grid-cols-3" resetOnSuccess>
-              <Input name="name" placeholder="Name" required />
-              <Input name="email" type="email" placeholder="Email" required />
+              <Input className="req-mark" name="name" placeholder="Name" required />
+              <Input className="req-mark" name="email" type="email" placeholder="Email" required />
               <SubmitButton>Send invite</SubmitButton>
             </ActionForm>
           </CardBody>

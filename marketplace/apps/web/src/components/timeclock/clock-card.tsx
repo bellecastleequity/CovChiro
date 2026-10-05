@@ -34,7 +34,7 @@ export function ClockCard({ v, title = "Time clock" }: { v: View; title?: string
               <input type="hidden" name="tz" value={v.timeZone} />
               <Select name="kind" defaultValue={next[0]}>{next.map((k) => <option key={k} value={k}>{LABEL[k]}</option>)}</Select>
               <Input name="at" type="datetime-local" required max={nowLocal} defaultValue={nowLocal} />
-              <Input name="note" required minLength={3} placeholder="What happened? (shown to the clinic)" className="sm:col-span-2" />
+              <Input name="note" required minLength={3} placeholder="What happened? (shown to the clinic)" className="req-mark sm:col-span-2" />
               <div><SubmitButton size="sm" variant="outline">Add time</SubmitButton></div>
             </ActionForm>
           </details>

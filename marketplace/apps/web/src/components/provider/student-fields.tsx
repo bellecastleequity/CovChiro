@@ -1,5 +1,5 @@
 import { EXPECTED_LICENSURE, US_STATES } from "@cm/core";
-import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select, RequiredMark } from "@/components/ui/form";
 import { SchoolPicker, type SchoolGroup } from "./school-picker";
 
 /**
@@ -29,14 +29,14 @@ export function StudentFields({ schools, defaultSchool, defaultStates = ["FL"], 
           <Input id="phone" name="phone" type="tel" autoComplete="tel" required />
         </Field>
       ) : null}
-      <Field label="School" htmlFor="school">
+      <Field label="School" htmlFor="school" required>
         <SchoolPicker groups={schools} defaultValue={defaults.school ?? defaultSchool} />
       </Field>
       <Field label="Graduation date (or expected graduation date)" htmlFor="graduationDate">
         <Input id="graduationDate" name="graduationDate" type="date" defaultValue={defaults.graduationDate ?? undefined} required />
       </Field>
       <fieldset>
-        <legend className="mb-1.5 text-sm font-medium text-slate-700">State(s) where you plan to be licensed</legend>
+        <legend className="mb-1.5 text-sm font-medium text-slate-700">State(s) where you plan to be licensed<RequiredMark /></legend>
         <div className="grid max-h-36 grid-cols-4 gap-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-6">
           {Object.keys(US_STATES).map((s) => (
             <label key={s} className="flex items-center gap-1.5 font-mono text-xs">

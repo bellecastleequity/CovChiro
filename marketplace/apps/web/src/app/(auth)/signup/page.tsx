@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { dollars } from "@cm/core";
 import { getSettings, google, referrals, schools } from "@cm/services";
 import { isSandbox } from "@cm/config";
-import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select, RequiredMark } from "@/components/ui/form";
 import { SOURCE_OPTIONS, StudentFields } from "@/components/provider/student-fields";
 import { cn } from "@/lib/cn";
 import { GoogleAnalytics } from "@/components/site/google-analytics";
@@ -78,7 +78,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
           </Field>
         ) : (
           <fieldset>
-            <legend className="mb-1.5 text-sm font-medium text-slate-700">Your profession(s)</legend>
+            <legend className="mb-1.5 text-sm font-medium text-slate-700">Your profession(s)<RequiredMark /></legend>
             <div className="space-y-2">
               {professions.map((p) => (
                 <Checkbox key={p.code} name="professions" value={p.code} defaultChecked={profession ? profession === p.code : p.code === "DC"} label={`${p.displayName} (${p.credentialSuffix})`} />
