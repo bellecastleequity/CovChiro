@@ -42,6 +42,8 @@ model User {
   referralCode    String?   @unique @db.Citext
   /// Secret token for the private calendar feed (/api/calendar/<token>); reset = new token.
   calendarToken   String?   @unique
+  /// Google account id ("sub") for Sign in with Google. Clinic and provider accounts only.
+  googleSub       String?   @unique
 
   provider          Provider?
   clinicMembers     ClinicMember[]

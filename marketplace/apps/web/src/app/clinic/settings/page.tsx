@@ -84,13 +84,21 @@ export default async function Settings() {
           </CardBody>
         </Card>
         <Card>
-          <CardHeader title="Password" />
+          <CardHeader title="Password" description={user.googleSub ? "Google sign-in is linked: you can use Continue with Google." : undefined} />
           <CardBody>
-            <ActionForm action={passwordAction} className="grid gap-3 sm:grid-cols-3" resetOnSuccess>
-              <Input name="current" type="password" placeholder="Current password" required />
-              <Input name="next" type="password" placeholder="New password" minLength={10} required />
-              <SubmitButton variant="outline">Change password</SubmitButton>
-            </ActionForm>
+            {user.passwordHash ? (
+              <ActionForm action={passwordAction} className="grid gap-3 sm:grid-cols-3" resetOnSuccess>
+                <Input name="current" type="password" placeholder="Current password" required />
+                <Input name="next" type="password" placeholder="New password" minLength={10} required />
+                <SubmitButton variant="outline">Change password</SubmitButton>
+              </ActionForm>
+            ) : (
+              <ActionForm action={passwordAction} className="grid gap-3 sm:grid-cols-3" resetOnSuccess>
+                <p className="text-sm text-slate-600 sm:col-span-3">You sign in with Google. Set a password if you&apos;d also like to sign in with your email.</p>
+                <Input name="next" type="password" placeholder="New password" minLength={10} required autoComplete="new-password" />
+                <SubmitButton variant="outline">Set password</SubmitButton>
+              </ActionForm>
+            )}
           </CardBody>
         </Card>
       </div>

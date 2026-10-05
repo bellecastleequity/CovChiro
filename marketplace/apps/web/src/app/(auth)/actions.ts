@@ -2,7 +2,8 @@
 
 import { headers, cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth, shiftRecruit } from "@cm/services";
+import { auth, google, shiftRecruit } from "@cm/services";
+import { GOOGLE_PENDING_COOKIE } from "@/lib/google";
 import { formAction, str } from "@/lib/action";
 import { getSession, homeFor, SESSION_COOKIE, setSessionCookie } from "@/lib/session";
 
@@ -89,6 +90,32 @@ export const signupAction = formAction(async (fd) => {
   await setSessionCookie(token);
   // Came through a "Recruit a provider" shift link: claim that shift for the new profile.
   const shiftLink = role === "provider" ? (await cookies()).get("cm_shift")?.value : null;
+  if (shiftLink) await shiftRecruit.claimForUser(user.id, shiftLink);
+  const code = str(fd, "code");
+  redirect(role === "provider" ? `/provider?welcome=1${shiftLink ? "&recruit=1#recruited" : ""}` : `/clinic?welcome=1${code ? `&code=${encodeURIComponent(code)}` : ""}`);
+});
+
+/** Finish sign-up after "Continue with Google" (/signup/google). */
+export const googleSignupAction = formAction(async (fd) => {
+  const jar = await cookies();
+  const role = str(fd, "role") === "provider" ? "provider" : "clinic";
+  const user = await google.googleSignup(
+    jar.get(GOOGLE_PENDING_COOKIE)?.value,
+    {
+      role,
+      name: str(fd, "name"),
+      organization: str(fd, "organization") || undefined,
+      professionCodes: fd.getAll("professions").map(String),
+      acceptTerms: fd.get("terms") === "on" ? true : (false as never),
+      campaign: str(fd, "campaign") || null,
+      prospectToken: jar.get("cm_pt")?.value || null,
+      referralCode: jar.get("cm_ref")?.value || null,
+    },
+    { ip: await ip(), visitorId: jar.get("cm_vid")?.value ?? null },
+  );
+  jar.delete(GOOGLE_PENDING_COOKIE);
+  await setSessionCookie(await auth.createSession(user.id, true));
+  const shiftLink = role === "provider" ? jar.get("cm_shift")?.value : null;
   if (shiftLink) await shiftRecruit.claimForUser(user.id, shiftLink);
   const code = str(fd, "code");
   redirect(role === "provider" ? `/provider?welcome=1${shiftLink ? "&recruit=1#recruited" : ""}` : `/clinic?welcome=1${code ? `&code=${encodeURIComponent(code)}` : ""}`);

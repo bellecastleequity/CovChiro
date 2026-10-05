@@ -4,18 +4,21 @@ import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { FormGuard } from "@/components/site/form-guard";
 import { cookies } from "next/headers";
 import { dollars } from "@cm/core";
-import { getSettings, referrals, schools } from "@cm/services";
+import { getSettings, google, referrals, schools } from "@cm/services";
 import { isSandbox } from "@cm/config";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { SOURCE_OPTIONS, StudentFields } from "@/components/provider/student-fields";
 import { cn } from "@/lib/cn";
 import { GoogleAnalytics } from "@/components/site/google-analytics";
+import { Alert } from "@/components/ui/misc";
+import { GoogleButton, OrDivider } from "@/components/site/google-button";
 import { signupAction } from "../actions";
 
 export const metadata = { title: "Create your account" };
 
-export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string; student?: string; campaign?: string; c?: string; ref?: string }> }) {
-  const { role: r, code, profession, student: st, campaign, c, ref: refParam } = await searchParams;
+export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string; student?: string; campaign?: string; c?: string; ref?: string; google?: string }> }) {
+  const { role: r, code, profession, student: st, campaign, c, ref: refParam, google: problem } = await searchParams;
+  const googleNote = problem ? google.GOOGLE_PROBLEMS[problem as keyof typeof google.GOOGLE_PROBLEMS] : null;
   const inv = await referrals.invitation(refParam ?? (await cookies()).get("cm_ref")?.value);
   const role = r === "provider" ? "provider" : "clinic";
   const settings = await getSettings();
@@ -50,6 +53,13 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
           <Link href={`/signup?role=provider&student=1${keep}`} className={cn("rounded-lg py-2 text-center", student ? "bg-brand-600 text-white" : "text-slate-500")}>
             Student / not yet licensed
           </Link>
+        </div>
+      ) : null}
+      {googleNote ? <Alert tone={problem === "cancelled" ? "info" : "error"} className="mt-4">{googleNote}</Alert> : null}
+      {google.googleEnabled() && !student ? (
+        <div className="mt-6">
+          <GoogleButton params={{ role, campaign, code }} label="Sign up with Google" />
+          <OrDivider />
         </div>
       ) : null}
       <ActionForm action={signupAction} className="mt-6 space-y-4" successMessage={false}>

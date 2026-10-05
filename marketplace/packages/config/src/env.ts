@@ -37,6 +37,9 @@ const EnvSchema = z.object({
   /** Cloudflare Turnstile ("verify you're human") on public forms; both unset = no check. */
   TURNSTILE_SITE_KEY: z.string().optional(),
   TURNSTILE_SECRET_KEY: z.string().optional(),
+  /** Sign in with Google (clinic and provider accounts): an OAuth "Web application" client. Both unset = no Google button. */
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),
   /** Defaults to "<BRAND_NAME> <mail@BRAND_DOMAIN>". */
   EMAIL_FROM: z.string().optional(),

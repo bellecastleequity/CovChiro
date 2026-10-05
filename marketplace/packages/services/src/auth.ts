@@ -79,6 +79,16 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
     await checkRateLimit(`signup:${meta.ip}`, 10, 3600);
     if ((await checkHuman({ ...meta.guard, ip: meta.ip })) === "bot") throw new DomainError("VALIDATION", "Something went wrong. Please refresh the page and try again.");
   }
+  return createAccount(input, await hashPassword(input.password), {}, meta);
+}
+
+export type AccountInput = Omit<z.output<typeof SignupInput>, "password">;
+
+/**
+ * Creates the user and their clinic or provider profile (password sign-up and Google sign-up).
+ * google: the account was made with Google, whose email is already verified (no confirmation email).
+ */
+export async function createAccount(input: AccountInput, passwordHash: string | null, google: { sub?: string }, meta: { visitorId?: string | null } = {}) {
   if (await prisma.user.findUnique({ where: { email: input.email } })) {
     throw new DomainError("CONFLICT", "An account with that email already exists. Try signing in.");
   }
@@ -91,7 +101,7 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
   }
   // Prepared outside the transaction: the student ZIP lookup may call the geocoder.
   const studentData = input.role === "provider" && input.student ? await studentFields(input.student, new Date()) : {};
-  const passwordHash = await hashPassword(input.password);
+  const viaGoogle = google.sub ? { googleSub: google.sub, emailVerifiedAt: new Date() } : {};
   let adminLink = "/admin";
   let details: string[] = [];
   let clinicOrgId: string | null = null;
@@ -99,7 +109,7 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
   const user = await prisma.$transaction(async (db) => {
     if (input.role === "clinic") {
       const org = input.organization?.trim() || `${input.name}'s clinic`;
-      const u = await db.user.create({ data: { email: input.email, name: input.name, passwordHash, role: "CLINIC_OWNER" } });
+      const u = await db.user.create({ data: { email: input.email, name: input.name, passwordHash, role: "CLINIC_OWNER", ...viaGoogle } });
       const c = await db.clinicOrg.create({ data: { legalName: org, displayName: org, billingEmail: input.email, members: { create: { userId: u.id, role: "CLINIC_OWNER" } } } });
       adminLink = `/admin/clinics/${c.id}`;
       clinicOrgId = c.id;
@@ -108,7 +118,7 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
     }
     const professions = await db.profession.findMany({ where: { code: { in: input.professionCodes?.length ? input.professionCodes : ["DC"] } } });
     if (!professions.length) throw new DomainError("VALIDATION", "Choose at least one profession.");
-    const u = await db.user.create({ data: { email: input.email, name: input.name, passwordHash, role: "PROVIDER", phone: input.phone || null } });
+    const u = await db.user.create({ data: { email: input.email, name: input.name, passwordHash, role: "PROVIDER", phone: input.phone || null, ...viaGoogle } });
     const p = await db.provider.create({
       data: {
         userId: u.id,
@@ -125,8 +135,8 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
     details = [`Profession: ${professions.map((x) => x.displayName).join(", ")}`, ...(input.student ? [`Student / not yet licensed — graduating ${input.student.graduationDate.toISOString().slice(0, 10)}, ${input.student.school}`] : [])];
     return u;
   });
-  await audit(prisma, { userId: user.id, role: user.role }, "user.signup", "User", user.id, null, { role: user.role });
-  await sendVerificationEmail(user);
+  await audit(prisma, { userId: user.id, role: user.role }, "user.signup", "User", user.id, null, { role: user.role, ...(google.sub ? { via: "google" } : {}) });
+  if (!google.sub) await sendVerificationEmail(user);
   await onUserSignup(user.id, user.email);
   if (input.referralCode) await recordReferralSignup(user.id, input.referralCode);
   try {
@@ -150,12 +160,12 @@ export async function signup(raw: z.input<typeof SignupInput>, meta: { ip?: stri
   await notifyAdmins(prisma, {
     template: "admin_new_signup",
     title: `${spam?.category ? "Possible spam — " : ""}New ${input.role} signup: ${input.role === "clinic" ? (input.organization?.trim() || input.name) : input.name}`,
-    body: `${input.name} (${input.email}) just created a ${input.role} account.`,
+    body: `${input.name} (${input.email}) just created a ${input.role} account${google.sub ? " with Google" : ""}.`,
     details: spam?.category ? [...details, `Spam check: ${spam.reasons.join(", ")} (score ${spam.score}). Suspend or ban from their admin page if it isn't a real ${input.role}.`] : details,
     link: adminLink,
     ctaLabel: `View ${input.role}`,
   }).catch((e) => console.error("admin signup notice failed", e));
-  await track({ type: "SIGNUP", userId: user.id, visitorId: meta.visitorId, path: input.attribution?.landingPath ?? null, utm: input.attribution?.utm, props: { role: input.role, student: !!input.student, campaign: input.attribution?.campaign ?? null } });
+  await track({ type: "SIGNUP", userId: user.id, visitorId: meta.visitorId, path: input.attribution?.landingPath ?? null, utm: input.attribution?.utm, props: { role: input.role, student: !!input.student, campaign: input.attribution?.campaign ?? null, ...(google.sub ? { via: "google" } : {}) } });
   return user;
 }
 
@@ -414,7 +424,8 @@ export async function completeMfa(sessionToken: string, code: string, opts: { en
 export async function changePassword(actor: Actor, current: string, next: string) {
   if (!actor.userId) throw new DomainError("UNAUTHENTICATED", "Sign in first.");
   const user = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId } });
-  if (!user.passwordHash || !(await verify(user.passwordHash, current))) throw new DomainError("VALIDATION", "Your current password is incorrect.");
+  // Accounts made with Google have no password until they set one here.
+  if (user.passwordHash && !(await verify(user.passwordHash, current))) throw new DomainError("VALIDATION", "Your current password is incorrect.");
   if (next.length < 10) throw new DomainError("VALIDATION", "Use at least 10 characters.");
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(next) } });
   await audit(prisma, actor, "user.password_changed", "User", user.id);
