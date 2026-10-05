@@ -40,6 +40,18 @@ const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); }
 
 // ---------------- rollback ----------------
 
+// Passenger restarts the app's processes on their next request when tmp/restart.txt changes, so an
+// old process never keeps running against the new files (that breaks pages with "failed to load chunk").
+function touchRestart() {
+  try {
+    const dir = path.join(APP, "tmp");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "restart.txt"), new Date().toISOString());
+  } catch (e) {
+    log(`(Couldn't write tmp/restart.txt: ${e.message}. Use Stop App, then Start App.)`);
+  }
+}
+
 function swap(a, b) {
   const tmp = `${a}-swap-${Date.now()}`;
   fs.renameSync(a, tmp);
@@ -53,7 +65,8 @@ if (mode === "rollback") {
   const to = readJson(path.join(SITE, "app-previous", "RELEASE.json"));
   swap(path.join(SITE, "app"), path.join(SITE, "app-previous"));
   if (exists(path.join(SITE, "node_modules-previous"))) swap(path.join(SITE, "node_modules"), path.join(SITE, "node_modules-previous"));
-  finish(`Rolled back from ${from ? from.version : "?"} to ${to ? to.version : "the previous version"}. Now click Start App (or Restart). Run "rollback" again to undo this.`);
+  touchRestart();
+  finish(`Rolled back from ${from ? from.version : "?"} to ${to ? to.version : "the previous version"}. Now click Stop App, wait a few seconds, then Start App. Run "rollback" again to undo this.`);
 }
 
 // ---------------- find and unpack the package ----------------
@@ -298,5 +311,6 @@ async function restorePoint(label) {
   }
   const keep = new Set([...byVersion.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([v]) => v));
   for (const f of fs.readdirSync(done)) if (!keep.has(f.split("-")[0])) rm(path.join(done, f));
-  finish(`Installed ${manifest.version}. Now click Start App (or Restart). If anything looks wrong, Stop App, run "rollback", and Start App.`);
+  touchRestart();
+  finish(`Installed ${manifest.version}. Now click Stop App, wait a few seconds, then Start App. If anything looks wrong, Stop App, run "rollback", and Start App.`);
 })();
