@@ -1,4 +1,4 @@
-import { admin } from "@cm/services";
+import { admin, google } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -36,6 +36,31 @@ export default async function Settings() {
             <GoogleBrowserCheck browserKey={env().GOOGLE_MAPS_BROWSER_KEY ?? null} />
           </div>
         </Card>
+        {(() => {
+          const g = google.googleSetupStatus();
+          return (
+            <Card>
+              <CardHeader
+                title={<span className="flex items-center gap-2">Sign in with Google {g.enabled ? <Badge tone="green">On</Badge> : <Badge tone="amber">Off</Badge>}</span>}
+                description="The Continue with Google button shows on sign-in and sign-up once the app sees both keys below (Setup Node.js App → Environment variables, then Stop App and Start App)."
+              />
+              <dl className="grid gap-2 px-5 pb-5 text-sm sm:grid-cols-[14rem_1fr]">
+                <dt className="font-mono text-xs text-slate-500">GOOGLE_CLIENT_ID</dt>
+                <dd>{g.clientId ? <span className="font-mono text-xs">{g.clientId}</span> : <span className="text-red-700">Not set</span>}{g.clientId && !g.clientIdLooksRight ? <span className="ml-2 text-amber-700">Should end in .apps.googleusercontent.com (that&apos;s the Client ID, not the project ID).</span> : null}</dd>
+                <dt className="font-mono text-xs text-slate-500">GOOGLE_CLIENT_SECRET</dt>
+                <dd>{g.secretSet ? "Set" : <span className="text-red-700">Not set</span>}</dd>
+                <dt className="text-xs text-slate-500">Authorized redirect URI</dt>
+                <dd className="font-mono text-xs">{g.redirectUri} <span className="font-sans text-slate-500">(add exactly this in Google Cloud → Credentials → your OAuth client)</span></dd>
+                {g.lookalikes.length ? (
+                  <>
+                    <dt className="text-xs text-slate-500">Similar names found</dt>
+                    <dd className="text-amber-700">{g.lookalikes.join(", ")}: if one of these holds the Google sign-in key, rename it to the name above.</dd>
+                  </>
+                ) : null}
+              </dl>
+            </Card>
+          );
+        })()}
         <Card>
           <CardHeader title="Text message check" description="Sends a test text through Twilio, waits for the delivery result, and explains any Twilio error in plain words (missing keys, trial account, A2P 10DLC / toll-free registration, wrong sender…)." />
           <ActionForm action={testTextAction} className="flex flex-wrap items-center gap-2 px-5 pb-5">

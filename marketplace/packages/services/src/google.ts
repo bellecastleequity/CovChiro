@@ -18,7 +18,25 @@ import { checkRateLimit, createAccount, createSession, SignupInput } from "./aut
  *    already confirmed, no password; one can be set later on the profile/settings page).
  */
 
-export const googleEnabled = () => !!(env().GOOGLE_CLIENT_ID && env().GOOGLE_CLIENT_SECRET);
+export const googleEnabled = () => !!(env().GOOGLE_CLIENT_ID?.trim() && env().GOOGLE_CLIENT_SECRET?.trim());
+
+/**
+ * What the running app sees, for Admin → Settings (never the secret itself). Also lists
+ * Google-ish variable names that are set under a different name, the usual mistake.
+ */
+export function googleSetupStatus() {
+  const id = env().GOOGLE_CLIENT_ID?.trim() ?? "";
+  const secret = env().GOOGLE_CLIENT_SECRET?.trim() ?? "";
+  const lookalikes = Object.keys(process.env).filter((k) => /GOOGLE|OAUTH|CLIENT/i.test(k) && !/^GOOGLE_(CLIENT_ID|CLIENT_SECRET|MAPS_API_KEY|MAPS_BROWSER_KEY)$/.test(k));
+  return {
+    enabled: !!(id && secret),
+    clientId: id ? `${id.slice(0, 12)}…${id.slice(-27)}` : null,
+    clientIdLooksRight: !id || /\.apps\.googleusercontent\.com$/.test(id),
+    secretSet: !!secret,
+    redirectUri: googleRedirectUri(),
+    lookalikes,
+  };
+}
 export const googleRedirectUri = () => `${env().APP_BASE_URL.replace(/\/$/, "")}/api/auth/google/callback`;
 
 export interface GoogleProfile {
