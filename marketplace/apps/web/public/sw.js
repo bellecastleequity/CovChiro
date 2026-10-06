@@ -24,7 +24,8 @@ self.addEventListener("push", (event) => {
       await self.registration.showNotification(title, {
         body: (n && n.body) || "You have a new update.",
         icon: "/icons/icon-192.png",
-        badge: "/icons/icon-192.png",
+        // Android draws the status-bar badge from transparency only: a white mark on transparent, not the app icon (a solid square shows as a white box).
+        badge: "/icons/badge-96.png",
         tag: (n && n.link) || "coverageoncall",
         renotify: true,
         data: { url: (n && n.link) || "/" },
