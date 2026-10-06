@@ -3,7 +3,7 @@ import { auth, google } from "@cm/services";
 import { GOOGLE_FLOW_COOKIE, GOOGLE_PENDING_COOKIE } from "@/lib/google";
 import { homeFor, SESSION_COOKIE } from "@/lib/session";
 
-interface Flow { state: string; nonce: string; verifier: string; role: string; next: string; campaign: string; code: string }
+interface Flow { state: string; nonce: string; verifier: string; role: string; next: string; campaign: string; code: string; intent?: string }
 
 const cookieOpts = { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: "/" };
 
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     flow = null;
   }
   const back = (problem: string) => {
-    const to = flow?.role ? `/signup?role=${flow.role}&google=${problem}` : `/login?google=${problem}`;
+    const to = flow?.intent === "connect" ? `${flow.next || "/login"}${(flow.next || "").includes("?") ? "&" : "?"}google=${problem}#google` : flow?.role ? `/signup?role=${flow.role}&google=${problem}` : `/login?google=${problem}`;
     const res = new NextResponse(null, { status: 303, headers: { Location: to } });
     res.cookies.delete({ name: GOOGLE_FLOW_COOKIE, path: "/api/auth/google" });
     return res;
@@ -26,6 +26,13 @@ export async function GET(req: NextRequest) {
   if (!flow?.state || q.get("state") !== flow.state || !q.get("code")) return back("expired");
   try {
     const profile = await google.exchangeGoogleCode(q.get("code")!, flow.verifier, flow.nonce);
+    if (flow.intent === "connect") {
+      // Link to whoever is signed in on this browser.
+      const session = await auth.sessionFromToken(req.cookies.get(SESSION_COOKIE)?.value);
+      if (!session) return back("signin");
+      const r = await google.connectGoogle(session.user.id, profile);
+      return back(r.ok ? "connected" : r.problem);
+    }
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
     const r = await google.googleSignIn(profile, { ip, userAgent: req.headers.get("user-agent") ?? undefined });
     if (r.kind === "problem") return back(r.problem);

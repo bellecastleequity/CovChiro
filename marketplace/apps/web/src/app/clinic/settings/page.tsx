@@ -8,11 +8,13 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
+import { GoogleAccountCard } from "@/components/site/google-account";
 import { agreementAction, clinicPhoneConfirmAction, experienceAction, clinicPhoneStartAction, orgAction, passwordAction } from "../actions";
 
 export const metadata = { title: "Settings" };
 
-export default async function Settings() {
+export default async function Settings({ searchParams }: { searchParams: Promise<{ google?: string }> }) {
+  const { google: googleNotice } = await searchParams;
   const { actor, user } = await requireActor("clinic");
   const { org } = await clinicProfile(actor);
   const owner = actor.role === "CLINIC_OWNER";
@@ -83,8 +85,9 @@ export default async function Settings() {
             ) : <p className="text-sm text-slate-500">The clinic owner needs to sign the agreement.</p>}
           </CardBody>
         </Card>
+        <GoogleAccountCard connected={!!user.googleSub} hasPassword={!!user.passwordHash} back="/clinic/settings" notice={googleNotice} />
         <Card>
-          <CardHeader title="Password" description={user.googleSub ? "Google sign-in is linked: you can use Continue with Google." : undefined} />
+          <CardHeader title="Password" />
           <CardBody>
             {user.passwordHash ? (
               <ActionForm action={passwordAction} className="grid gap-3 sm:grid-cols-3" resetOnSuccess>

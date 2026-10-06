@@ -3,7 +3,7 @@ import { z } from "zod";
 import { env } from "@cm/config";
 import { DomainError } from "@cm/core";
 import { prisma, type User } from "@cm/db";
-import { audit } from "./context";
+import { audit, type Actor } from "./context";
 import { checkRateLimit, createAccount, createSession, SignupInput } from "./auth";
 
 /**
@@ -140,7 +140,9 @@ export function readPending(token: string | undefined | null, now = Date.now()):
 
 export type GoogleProblem = "unverified" | "admin" | "disabled" | "other_google" | "banned";
 
-export const GOOGLE_PROBLEMS: Record<GoogleProblem | "failed" | "cancelled" | "expired" | "off", string> = {
+export const GOOGLE_PROBLEMS: Record<GoogleProblem | "failed" | "cancelled" | "expired" | "off" | "taken" | "signin", string> = {
+  taken: "That Google account is already connected to a different login here. Sign in with it, or choose another Google account.",
+  signin: "Please sign in first, then connect your Google account.",
   unverified: "Google hasn't verified that email address yet, so we can't use it to sign you in. Verify it with Google, or sign in with your email and password.",
   admin: "Admin accounts sign in with email, password and a 2-step code, not Google.",
   disabled: "This account is turned off. Contact support if you think this is a mistake.",
@@ -188,6 +190,35 @@ export async function googleSignIn(p: GoogleProfile, meta: { ip?: string; userAg
   // Optional 2-step still applies (test site: an emailed code, sent by the 2-step page).
   const token = await createSession(user.id, !user.mfaEnabled, meta.userAgent);
   return { kind: "session", user, token, mfaRequired: user.mfaEnabled };
+}
+
+// ---------------- connect / disconnect (signed in) ----------------
+
+/**
+ * "Connect Google account" on Profile / Settings: links whichever Google account the person chose
+ * to the login they're signed in with, whatever its email. Replaces an earlier link.
+ */
+export async function connectGoogle(userId: string, p: GoogleProfile): Promise<{ ok: true } | { ok: false; problem: "admin" | "taken" }> {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  if (user.role === "PLATFORM_ADMIN") return { ok: false, problem: "admin" };
+  const holder = await prisma.user.findUnique({ where: { googleSub: p.sub }, select: { id: true } });
+  if (holder && holder.id !== user.id) return { ok: false, problem: "taken" };
+  if (user.googleSub !== p.sub) {
+    await prisma.user.update({ where: { id: user.id }, data: { googleSub: p.sub } });
+    await audit(prisma, { userId: user.id, role: user.role }, "user.google_linked", "User", user.id, null, { googleEmail: p.email, via: "connect" });
+  }
+  return { ok: true };
+}
+
+/** "Disconnect": only when they can still sign in with a password. */
+export async function disconnectGoogle(actor: Actor) {
+  if (!actor.userId) throw new DomainError("UNAUTHENTICATED", "Sign in first.");
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId } });
+  if (!user.googleSub) return "Google isn't connected.";
+  if (!user.passwordHash) throw new DomainError("VALIDATION", "Set a password first, so you can still sign in after disconnecting Google.");
+  await prisma.user.update({ where: { id: user.id }, data: { googleSub: null } });
+  await audit(prisma, actor, "user.google_unlinked", "User", user.id);
+  return "Google is disconnected. Sign in with your email and password from now on.";
 }
 
 export const GoogleSignupInput = SignupInput.pick({ role: true, name: true, organization: true, professionCodes: true, acceptTerms: true, campaign: true, prospectToken: true, referralCode: true });

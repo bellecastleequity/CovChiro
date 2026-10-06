@@ -17,6 +17,8 @@ export async function GET(req: NextRequest) {
     next: next.startsWith("/") && !next.startsWith("//") ? next.slice(0, 300) : "",
     campaign: (q.get("campaign") ?? "").slice(0, 60),
     code: (q.get("code") ?? "").slice(0, 40),
+    /** "connect" = link Google to the signed-in login (Profile / Settings). */
+    intent: q.get("intent") === "connect" ? "connect" : "",
   };
   const res = new NextResponse(null, { status: 303, headers: { Location: google.googleAuthUrl(r) } });
   res.cookies.set(GOOGLE_FLOW_COOKIE, Buffer.from(JSON.stringify(flow)).toString("base64url"), {

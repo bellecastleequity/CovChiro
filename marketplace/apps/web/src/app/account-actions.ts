@@ -21,3 +21,12 @@ export const saveNavOrderAction = async (root: string, hrefs: string[] | null) =
   revalidatePath(root, "layout");
   return { ok: hrefs === null ? "Menu reset to the default order." : "Menu order saved." };
 };
+
+/** Profile / Settings: unlink Google from this login (needs a password to sign in afterwards). */
+export const disconnectGoogleAction = formAction(async () => {
+  const { actor } = await requireActor("any");
+  const { google } = await import("@cm/services");
+  const msg = await google.disconnectGoogle(actor);
+  revalidatePath("/", "layout");
+  return msg;
+});

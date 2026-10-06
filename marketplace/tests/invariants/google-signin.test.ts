@@ -78,6 +78,30 @@ describe("Sign in with Google", () => {
     expect(await google.googleSignIn(profile(banned))).toEqual({ kind: "problem", problem: "banned" });
   });
 
+  it("signed in: connects any Google account (even another email), refuses one already in use and admins; disconnect needs a password", async () => {
+    const email = `office-${uid()}@clinic.dev`;
+    const user = await auth.signup({ role: "clinic", name: "Pat Lee", email, password: "correct-horse-battery", organization: "Sunrise Chiropractic", acceptTerms: true });
+    const gmail = profile(`pat.${uid()}@gmail.com`);
+    expect(await google.connectGoogle(user.id, gmail)).toEqual({ ok: true });
+    // Now Continue with Google with the Gmail account signs in to the office login.
+    const r = await google.googleSignIn(gmail);
+    expect(r.kind === "session" && r.user.id).toBe(user.id);
+
+    const other = await prisma.user.create({ data: { email: `x-${uid()}@test.dev`, name: "X", role: "PROVIDER" } });
+    expect(await google.connectGoogle(other.id, gmail)).toEqual({ ok: false, problem: "taken" });
+    const admin = await prisma.user.create({ data: { email: `ad-${uid()}@test.dev`, name: "A", role: "PLATFORM_ADMIN" } });
+    expect(await google.connectGoogle(admin.id, profile(`ad.${uid()}@gmail.com`))).toEqual({ ok: false, problem: "admin" });
+
+    const actor = { userId: user.id, role: "CLINIC_OWNER" as const, providerId: null, clinicOrgId: null };
+    expect(await google.disconnectGoogle(actor)).toMatch(/disconnected/);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).googleSub).toBeNull();
+    // A Google-only login can't disconnect (it would be locked out).
+    const g2 = await google.googleSignIn(profile(`solo-${uid()}@test.dev`));
+    if (g2.kind !== "signup") throw new Error("expected signup");
+    const solo = await google.googleSignup(g2.pending, { role: "provider", name: "Solo", professionCodes: ["DC"], acceptTerms: true });
+    await expect(google.disconnectGoogle({ userId: solo.id, role: "PROVIDER", providerId: null, clinicOrgId: null })).rejects.toThrow(/Set a password first/);
+  });
+
   it("only accepts Google ID tokens meant for us with the right nonce", () => {
     const tok = (claims: object) => `x.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.y`;
     const claims = { iss: "https://accounts.google.com", aud: "someone-elses-client", exp: Date.now() / 1000 + 600, nonce: "n1", sub: "1", email: "a@b.dev", email_verified: true };

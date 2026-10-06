@@ -11,6 +11,7 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
+import { GoogleAccountCard } from "@/components/site/google-account";
 import { agreementAction, passwordAction, payFloorAction, profileAction, studentModeAction } from "../actions";
 import { breaks, getSettings, payfloors, schools } from "@cm/services";
 import { PauseCircle, PlayCircle } from "lucide-react";
@@ -18,7 +19,8 @@ import { StudentFields } from "@/components/provider/student-fields";
 
 export const metadata = { title: "Profile" };
 
-export default async function Profile() {
+export default async function Profile({ searchParams }: { searchParams: Promise<{ google?: string }> }) {
+  const { google: googleNotice } = await searchParams;
   const { actor, user } = await requireActor("provider");
   const p = await prisma.provider.findUniqueOrThrow({ where: { id: actor.providerId! }, include: { professions: { include: { profession: true } } } });
   const signed = p.agreementVersion === AGREEMENT_VERSION.PROVIDER && p.agreementSignedAt;
@@ -171,8 +173,9 @@ export default async function Profile() {
             )}
           </CardBody>
         </Card>
+        <GoogleAccountCard connected={!!user.googleSub} hasPassword={!!user.passwordHash} back="/provider/profile" notice={googleNotice} />
         <Card>
-          <CardHeader title="Password" description={user.googleSub ? "Google sign-in is linked: you can use Continue with Google." : undefined} />
+          <CardHeader title="Password" />
           <CardBody>
             {user.passwordHash ? (
               <ActionForm action={passwordAction} className="grid gap-3 sm:grid-cols-3" resetOnSuccess>
