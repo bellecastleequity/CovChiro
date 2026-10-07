@@ -1,6 +1,6 @@
 import { NATIONAL_CREDENTIAL, US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
-import { getSettings, requireAdmin, type Actor } from "./context";
+import { clock, getSettings, requireAdmin, type Actor } from "./context";
 import { notify } from "./notify";
 import { livePairs } from "./waitlist";
 
@@ -159,6 +159,8 @@ export async function announceOpenings() {
     for (const l of licensed) {
       const claimed = await prisma.digestSend.createMany({ data: [{ key: `opened:${l.providerId}:${k}`, userId: l.provider.userId }], skipDuplicates: true });
       if (!claimed.count) continue;
+      // Their market just opened: the active-status clock starts now (they couldn't take shifts before).
+      await prisma.provider.update({ where: { id: l.providerId }, data: { activeConfirmedAt: clock.now() } });
       await notify(prisma, l.provider.userId, {
         template: "market_opened",
         title: `We're open in ${stateName(p.state)}!`,

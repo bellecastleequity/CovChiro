@@ -3,6 +3,7 @@ import { nightlyBackup } from "./backups";
 import { referralSweep } from "./referrals";
 import { punchReminderSweep, timeclockSweep } from "./timeclock";
 import { rewardsSweep } from "./rewards";
+import { activitySweep } from "./activity";
 import { volumeSweep } from "./volume";
 import { recruitSweep } from "./shiftRecruit";
 import { expireShiftChanges } from "./shiftChanges";
@@ -82,6 +83,7 @@ export const JOBS: Job[] = [
   // Time clock: close forgotten punch-outs, remind clinics, auto-approve timesheets.
   { name: "timeclockSweep", schedule: { everySeconds: 900 }, run: () => timeclockSweep() },
   { name: "punchReminders", schedule: { everySeconds: 60 }, run: () => punchReminderSweep() },
+  { name: "providerActivity", schedule: { everySeconds: 3600 }, long: true, run: () => activitySweep() },
   { name: "rewardsSweep", schedule: { everySeconds: 3600 }, long: true, run: () => rewardsSweep() },
   { name: "volumeSweep", schedule: { everySeconds: 300 }, run: () => volumeSweep() },
   { name: "recruitSweep", schedule: { everySeconds: 600 }, run: () => recruitSweep() },

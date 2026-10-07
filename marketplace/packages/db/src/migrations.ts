@@ -43,6 +43,7 @@ export const EXPECTED_MIGRATIONS = [
   "0035_google_signin",
   "0036_arrival_eta",
   "0037_territories",
+  "0038_provider_active",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */

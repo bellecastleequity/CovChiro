@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { DomainError } from "@cm/core";
-import { concentration, enrollment, prelicensure } from "@cm/services";
+import { activity, concentration, enrollment, prelicensure } from "@cm/services";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/form";
 import { Alert, PageHeader, Table, Td, Th } from "@/components/ui/misc";
@@ -27,6 +27,7 @@ export default async function Supply({ searchParams }: { searchParams: Promise<{
   const rows = data[group];
   const waiting = await enrollment.waitingByState(actor);
   const conc = await concentration.shiftConcentration(actor);
+  const paused = await activity.pausedForInactivity(actor);
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const day = (d: Date) => d.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" });
   return (
@@ -169,6 +170,22 @@ export default async function Supply({ searchParams }: { searchParams: Promise<{
               <p className="text-sm text-slate-500">Nobody is working {conc.heavyDays}+ days a week.</p>
             )}
             <p className="mt-2 text-xs text-slate-500">Near full-time work through the platform can look like employment for an independent contractor. Check with your attorney, and watch for fatigue.</p>
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">Paused for inactivity ({paused.length})</h3>
+            {paused.length ? (
+              <ul className="divide-y divide-slate-100 text-sm">
+                {paused.map((p) => (
+                  <li key={p.id} className="flex justify-between gap-2 py-2">
+                    <Link href={`/admin/providers/${p.id}`} className="font-medium text-brand-700 hover:underline">{p.displayName}</Link>
+                    <span className="text-slate-500">paused {day(p.breakStartsAt!)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-500">Nobody is paused for inactivity.</p>
+            )}
+            <p className="mt-2 text-xs text-slate-500">Paused automatically after <Link href="/admin/settings#s-activity.pauseAfterDays" className="text-brand-700">the set number of days</Link> with no completed shift, application, accepted offer, upcoming booking or &quot;I&apos;m still available&quot; tap. One tap brings them back.</p>
           </div>
           <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
             Spread the work is <b>{conc.spreadWork.percent > 0 ? `on: −${conc.spreadWork.percent}% per shift over ${conc.spreadWork.freeShifts} in ${conc.spreadWork.days} days, up to −${conc.spreadWork.maxPercent}%` : "off"}</b>. It only changes who Smart Dispatch asks first, never who wins a shift or a clinic&apos;s own pick.{" "}

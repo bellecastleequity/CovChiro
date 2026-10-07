@@ -410,3 +410,12 @@ export const respondShiftChangeAction = formAction(async (fd) => {
   revalidatePath("/provider", "layout");
   return accept ? "Accepted. Your shift has been updated." : "Declined. You've been released from this shift with no penalty.";
 });
+
+/** "I'm still available" / "I'm active again" from the dashboard banner. */
+export const confirmActiveAction = formAction(async () => {
+  const { actor } = await me();
+  const { activity } = await import("@cm/services");
+  const r = await activity.confirmActive(actor.providerId!, "app");
+  revalidatePath("/provider", "layout");
+  return r;
+});

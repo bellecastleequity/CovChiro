@@ -306,6 +306,25 @@ const A: HelpArticle[] = [
   },
   // ---------------- account ----------------
   {
+    slug: "stay-active",
+    category: "account",
+    title: "Staying active (and coming back after a pause)",
+    summary: "Show you're still taking shifts at least once a month, or your profile is paused until you tap to come back.",
+    keywords: "active inactive paused pause still available reactivate break offers stopped",
+    links: [{ href: "/provider", label: "Open your dashboard" }],
+    body: (s) => (
+      <Ul
+        items={[
+          "Any of these keeps you active: a completed shift, applying to a shift, accepting an offer or invitation, having an upcoming booking, or tapping \"I'm still available\". Just signing in doesn't count.",
+          `If none of that happens for ${s["activity.pauseAfterDays"]} days, we pause your profile: no new offers or invitations. Bookings you already have aren't affected.`,
+          `We remind you first, ${s["activity.reminderDays"].join(" and ")} days after your last activity, by email and in the app (the last reminder also by text).`,
+          "To come back, tap \"I'm active again\" in the email, the text or the banner on your dashboard. You're matched to shifts again right away.",
+          "Providers in states we haven't opened yet are never paused. Neither is a break you set up yourself.",
+        ]}
+      />
+    ),
+  },
+  {
     slug: "ratings",
     category: "account",
     title: "Ratings and private feedback",

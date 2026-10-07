@@ -24,7 +24,8 @@ export async function breakStatus(providerId: string) {
   const p = await prisma.provider.findUniqueOrThrow({ where: { id: providerId }, select: { breakStartsAt: true, breakEndsAt: true, homeTimeZone: true } });
   const now = clock.now();
   if (p.breakStartsAt && p.breakEndsAt && p.breakEndsAt <= now) {
-    await prisma.provider.update({ where: { id: providerId }, data: { breakStartsAt: null, breakEndsAt: null } });
+    // Back from a planned break: their active-status clock starts again.
+    await prisma.provider.update({ where: { id: providerId }, data: { breakStartsAt: null, breakEndsAt: null, breakReason: null, activeConfirmedAt: now } });
     return { onBreak: false, scheduled: false, from: null, until: null, timeZone: p.homeTimeZone };
   }
   return {
@@ -85,7 +86,7 @@ export async function startBreak(actor: Actor, input: { startDate: string; relea
   for (const a of apps) await withdrawApplication(actor, a.id).catch(() => undefined);
   const offers = await prisma.offer.findMany({ where: { providerId, status: "PENDING", shift: { startsAt: { gte: from } } }, select: { id: true } });
   for (const o of offers) await respondToOffer(actor, o.id, false).catch(() => undefined);
-  await prisma.provider.update({ where: { id: providerId }, data: { breakStartsAt: from, breakEndsAt: null } });
+  await prisma.provider.update({ where: { id: providerId }, data: { breakStartsAt: from, breakEndsAt: null, breakReason: null } });
   await audit(prisma, actor, "provider.break_started", "Provider", providerId, null, { from, released: [...release], kept: input.keep, withdrawnApplications: apps.length, declinedOffers: offers.length });
   return { from, released: release.size, kept: preview.during.length - release.size, withdrawnApplications: apps.length, declinedOffers: offers.length };
 }
@@ -101,8 +102,8 @@ export async function resumeCoverage(actor: Actor, input: { resumeDate: string; 
   const back = day(input.resumeDate, p.homeTimeZone);
   if (back < DateTime.fromJSDate(now, { zone: p.homeTimeZone }).startOf("day")) throw new DomainError("VALIDATION", "Choose today or a later date.");
   const until = back.toJSDate();
-  if (until <= now) await prisma.provider.update({ where: { id: providerId }, data: { breakStartsAt: null, breakEndsAt: null } });
-  else await prisma.provider.update({ where: { id: providerId }, data: { breakEndsAt: until } });
+  if (until <= now) await prisma.provider.update({ where: { id: providerId }, data: { breakStartsAt: null, breakEndsAt: null, breakReason: null, activeConfirmedAt: now } });
+  else await prisma.provider.update({ where: { id: providerId }, data: { breakEndsAt: until, activeConfirmedAt: until } });
   await audit(prisma, actor, "provider.break_ended", "Provider", providerId, null, { resumeAt: until });
   return { resumeAt: until, now: until <= now };
 }

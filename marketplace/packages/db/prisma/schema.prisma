@@ -329,6 +329,10 @@ model Provider {
   /// Taking a break: no new shifts starting from breakStartsAt until breakEndsAt (null = until they resume). core eligibility F4.
   breakStartsAt        DateTime?                @db.Timestamptz(3)
   breakEndsAt          DateTime?                @db.Timestamptz(3)
+  /// "INACTIVE" = paused automatically for no activity (one tap to come back); null = a break they chose.
+  breakReason          String?
+  /// Last "I'm still available" tap (or the active-status clock start). Logging in doesn't count.
+  activeConfirmedAt    DateTime?                @db.Timestamptz(3)
   /// Last time the provider confirmed their malpractice coverage is active and unchanged (when applying or accepting).
   coverageAttestedAt   DateTime?                @db.Timestamptz(3)
 }

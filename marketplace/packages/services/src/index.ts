@@ -7,6 +7,7 @@ export * as breaks from "./breaks";
 export * as boardcheck from "./boardcheck";
 export * as google from "./google";
 export * as concentration from "./concentration";
+export * as activity from "./activity";
 export * from "./matching";
 export * from "./pricing";
 export * from "./notify";
