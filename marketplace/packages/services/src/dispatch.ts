@@ -5,6 +5,7 @@ import {
   awardAtClose,
   capWindow,
   dispatchScore,
+  spreadWorkFactor,
   DomainError,
   evaluateEligibility,
   inQuietHours,
@@ -232,6 +233,18 @@ async function buildCandidates(db: Db, dispatchId: string, tier: UrgencyTier, cf
     })).map((x) => x.providerId),
   );
   const pBy = new Map(providers.filter((p) => !dropped.has(p.id)).map((p) => [p.id, p]));
+  // Spread the work (off unless dispatch.spreadWorkPercent > 0): recent shifts per candidate.
+  const spread = { perShiftPercent: s["dispatch.spreadWorkPercent"], freeShifts: s["dispatch.spreadWorkFreeShifts"], maxPercent: s["dispatch.spreadWorkMaxPercent"] };
+  const recentBy = new Map<string, number>();
+  if (spread.perShiftPercent > 0) {
+    const since = new Date(+now - s["dispatch.spreadWorkDays"] * 86_400_000);
+    const rows = await db.assignment.groupBy({
+      by: ["providerId"],
+      where: { providerId: { in: ids }, status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] }, startsAt: { gte: since, lte: now } },
+      _count: true,
+    });
+    for (const r of rows) recentBy.set(r.providerId, r._count);
+  }
   const offered = new Set(offeredHere.map((o) => o.providerId));
   const todayBy = new Map(offersToday.map((o) => [o.providerId, o._count]));
   const pendingBy = new Map(pending.map((o) => [o.providerId, o._count]));
@@ -262,7 +275,7 @@ async function buildCandidates(db: Db, dispatchId: string, tier: UrgencyTier, cf
       userId: p.userId,
       matchScore: r.score,
       pRespond: p0,
-      dispatchScore: dispatchScore(r.score, p0, cfg.beta, boosted.has(p.id) ? s["dispatch.standbyCourtesyBoost"] : 0),
+      dispatchScore: dispatchScore(r.score, p0, cfg.beta, boosted.has(p.id) ? s["dispatch.standbyCourtesyBoost"] : 0) * spreadWorkFactor(recentBy.get(p.id) ?? 0, spread),
       driveMinutes: drive ?? 0,
       shiftsThisMonth: r.input.shiftsThisMonth,
       evaluated: r.evaluated,

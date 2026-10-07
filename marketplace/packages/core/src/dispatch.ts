@@ -290,3 +290,25 @@ export function pickReplyCode(taken: Set<string>, rand: () => number = Math.rand
   }
   throw new Error("No reply codes available");
 }
+
+// ---------------- spread the work (owner setting, off by default) ----------------
+
+export interface SpreadWorkSettings {
+  /** Percent taken off the dispatch score per recent shift above freeShifts (0 = off). */
+  perShiftPercent: number;
+  /** Shifts in the window that cost nothing. */
+  freeShifts: number;
+  /** Most the dispatch score can be lowered, in percent. */
+  maxPercent: number;
+}
+
+/**
+ * Multiplier for the dispatch score (who's asked first) of a provider with `recentShifts` in the
+ * window. Never touches the match score, so awards stay rank-protected and clinics' own picks
+ * are unaffected.
+ */
+export function spreadWorkFactor(recentShifts: number, s: SpreadWorkSettings): number {
+  if (s.perShiftPercent <= 0) return 1;
+  const over = Math.max(0, recentShifts - s.freeShifts);
+  return 1 - Math.min(s.maxPercent, over * s.perShiftPercent) / 100;
+}
