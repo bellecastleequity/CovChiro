@@ -23,7 +23,27 @@ export const US_STATES: Record<string, string> = {
   NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
   RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah",
   VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+  // U.S. territories: U.S. dollars, ZIP codes and the NPI registry, each with its own chiropractic board.
+  PR: "Puerto Rico", VI: "U.S. Virgin Islands",
 };
+
+/**
+ * Canadian provinces and territories: waitlist only for now (no shifts, sign-up or payments there).
+ * Their two-letter codes never collide with U.S. ones, so a waitlist lead keeps them in Lead.state.
+ */
+export const CA_PROVINCES: Record<string, string> = {
+  AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick", NL: "Newfoundland and Labrador",
+  NS: "Nova Scotia", NT: "Northwest Territories", NU: "Nunavut", ON: "Ontario", PE: "Prince Edward Island",
+  QC: "Quebec", SK: "Saskatchewan", YT: "Yukon",
+};
+
+/** A state, territory or Canadian province code → its name ("Ontario, Canada"). */
+export function regionName(code: string | null | undefined): string {
+  if (!code) return "";
+  if (US_STATES[code]) return US_STATES[code];
+  if (CA_PROVINCES[code]) return `${CA_PROVINCES[code]}, Canada`;
+  return code;
+}
 
 /**
  * License.state for a national registry credential (e.g. ARDMS, CCI, ARRT),

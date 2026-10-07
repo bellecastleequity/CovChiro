@@ -44,7 +44,7 @@ export class GoogleGeo implements GeoProvider {
     if (opts.placeId) u.searchParams.set("place_id", opts.placeId);
     else {
       u.searchParams.set("address", address);
-      u.searchParams.set("components", "country:US");
+      u.searchParams.set("components", "country:US|country:PR|country:VI");
     }
     u.searchParams.set("key", this.key);
     const j = (await (await fetch(u)).json()) as any;
@@ -60,9 +60,11 @@ export class GoogleGeo implements GeoProvider {
       const c = top.address_components.find((x: any) => x.types.includes(t));
       return c ? (short ? c.short_name : c.long_name) : "";
     };
-    const state = comp("administrative_area_level_1", true);
+    // Google lists Puerto Rico and the U.S. Virgin Islands as their own countries (no state).
+    const country = comp("country", true);
+    const state = country === "PR" || country === "VI" ? country : comp("administrative_area_level_1", true);
     const zip = comp("postal_code");
-    if (comp("country", true) !== "US" || !state || !zip) return null;
+    if (!["US", "PR", "VI"].includes(country) || !state || !zip) return null;
     // Google flags spelling variants ("Terrace" vs "Ter") as partial matches;
     // those are fine as long as it found the actual street address. A partial
     // match that only reached the street, city or ZIP is not.
@@ -175,7 +177,7 @@ const ZIP3: Record<string, [string, number, number]> = {
 };
 
 const ZIP_RANGES: [number, number, string][] = [
-  [5, 5, "NY"], [6, 9, "PR"], [10, 27, "MA"], [28, 29, "RI"], [30, 38, "NH"], [39, 49, "ME"], [50, 59, "VT"], [60, 69, "CT"],
+  [5, 5, "NY"], [6, 7, "PR"], [8, 8, "VI"], [9, 9, "PR"], [10, 27, "MA"], [28, 29, "RI"], [30, 38, "NH"], [39, 49, "ME"], [50, 59, "VT"], [60, 69, "CT"],
   [70, 89, "NJ"], [100, 149, "NY"], [150, 196, "PA"], [197, 199, "DE"], [200, 205, "DC"], [206, 219, "MD"], [220, 246, "VA"],
   [247, 268, "WV"], [270, 289, "NC"], [290, 299, "SC"], [300, 319, "GA"], [320, 349, "FL"], [350, 369, "AL"], [370, 385, "TN"],
   [386, 397, "MS"], [398, 399, "GA"], [400, 427, "KY"], [430, 459, "OH"], [460, 479, "IN"], [480, 499, "MI"], [500, 528, "IA"],
@@ -201,6 +203,8 @@ function tzFor(state: string, zip: string): string {
   if (["CA", "NV", "OR", "WA"].includes(state)) return "America/Los_Angeles";
   if (state === "AK") return "America/Anchorage";
   if (state === "HI") return "Pacific/Honolulu";
+  if (state === "PR") return "America/Puerto_Rico";
+  if (state === "VI") return "America/St_Thomas";
   return "America/New_York";
 }
 

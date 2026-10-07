@@ -1,4 +1,4 @@
-import { US_STATES } from "@cm/core";
+import { CA_PROVINCES, US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
 import Link from "next/link";
 import { getSettings } from "@cm/services";
@@ -45,13 +45,14 @@ export default async function States() {
       ) : null}
       <div id="waitlist" className="mt-6 max-w-xl rounded-2xl border border-slate-200 p-6">
         <h2 className="text-lg font-semibold">Join the waitlist</h2>
-        <p className="mt-1 text-sm text-slate-600">We&apos;ll email you the day we open in your state.</p>
+        <p className="mt-1 text-sm text-slate-600">We&apos;ll email you the day we open in your state. In Canada? Choose your province: we&apos;re planning our Canadian launch and the waitlist tells us where to start.</p>
         <div className="mt-4">
           <LeadForm
             source="waitlist"
             askAudience
             professions={professions.map((p) => ({ code: p.code, name: p.displayName }))}
             states={Object.entries(US_STATES).filter(([code]) => code !== "US").map(([code, name]) => ({ code, name }))}
+            provinces={Object.entries(CA_PROVINCES).map(([code, name]) => ({ code, name }))}
             cta="Join the waitlist"
           />
         </div>

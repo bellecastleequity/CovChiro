@@ -1,5 +1,5 @@
 import { brand } from "@cm/config";
-import { US_STATES } from "@cm/core";
+import { regionName } from "@cm/core";
 import { prisma, type Lead } from "@cm/db";
 import { absoluteUrl, sendEmail } from "./notify";
 
@@ -26,7 +26,7 @@ const key = (leadId: string, state: string, code: string | null) => `waitlist-op
 
 async function sendOpening(lead: Lead, pairs: Pair[]): Promise<boolean> {
   const b = brand();
-  const stateName = US_STATES[lead.state as keyof typeof US_STATES] ?? lead.state ?? "your state";
+  const stateName = lead.state ? regionName(lead.state) : "your state";
   const k = key(lead.id, lead.state!, lead.professionCode);
   // Claim first: one email per lead per opening, even with overlapping runs.
   try {

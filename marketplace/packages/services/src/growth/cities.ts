@@ -42,6 +42,8 @@ export const STATE_CITIES: Record<string, string[]> = {
   OK: ["Oklahoma City", "Tulsa", "Norman", "Broken Arrow", "Edmond", "Lawton", "Moore", "Stillwater", "Owasso", "Enid"],
   OR: ["Portland", "Eugene", "Salem", "Bend", "Beaverton", "Hillsboro", "Medford", "Lake Oswego", "Corvallis", "Tigard"],
   PA: ["Philadelphia", "Pittsburgh", "Allentown", "Harrisburg", "Lancaster", "Erie", "Reading", "Scranton", "State College", "King of Prussia", "West Chester", "Bethlehem"],
+  PR: ["San Juan", "Bayamón", "Carolina", "Ponce", "Caguas", "Guaynabo", "Arecibo", "Mayagüez", "Trujillo Alto", "Humacao"],
+  VI: ["Charlotte Amalie", "Christiansted", "Frederiksted", "Cruz Bay"],
   RI: ["Providence", "Warwick", "Cranston", "Pawtucket", "Newport", "East Providence", "Woonsocket", "Westerly"],
   SC: ["Charleston", "Columbia", "Greenville", "Myrtle Beach", "Mount Pleasant", "Rock Hill", "Spartanburg", "Summerville", "Hilton Head Island", "Florence"],
   SD: ["Sioux Falls", "Rapid City", "Aberdeen", "Brookings", "Watertown", "Mitchell", "Spearfish"],

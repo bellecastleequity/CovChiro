@@ -80,7 +80,7 @@ export function AddressInput({ name, defaultValue, placeholder, required, browse
       session.current ??= new p.AutocompleteSessionToken();
       const mine = ++seq.current;
       try {
-        const { suggestions: found } = await p.AutocompleteSuggestion.fetchAutocompleteSuggestions({ input: text, sessionToken: session.current, includedRegionCodes: ["us"] });
+        const { suggestions: found } = await p.AutocompleteSuggestion.fetchAutocompleteSuggestions({ input: text, sessionToken: session.current, includedRegionCodes: ["us", "pr", "vi"] });
         if (mine !== seq.current) return;
         setSuggestions(found.filter((s: any) => s.placePrediction).slice(0, 5).map((s: any) => ({ text: s.placePrediction.text.toString(), prediction: s.placePrediction })));
         setActive(-1);

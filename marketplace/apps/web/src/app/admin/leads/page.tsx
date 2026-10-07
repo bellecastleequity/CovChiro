@@ -1,3 +1,4 @@
+import { regionName } from "@cm/core";
 import Link from "next/link";
 import { Download } from "lucide-react";
 import { leads } from "@cm/services";
@@ -42,7 +43,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
             {rows.map((l) => (
               <tr key={l.id} className="hover:bg-slate-50">
                 <Td><Link href={`/admin/leads/${l.id}`} className="font-medium text-slate-900 hover:text-brand-700">{l.name}</Link><div className="text-xs text-slate-500">{l.email}{l.organization ? ` · ${l.organization}` : ""}</div></Td>
-                <Td className="text-xs">{l.source}{l.campaignCode && !l.campaignCode.includes(":") ? ` · ${l.campaignCode}` : ""}{l.professionCode ? ` · ${l.professionCode}` : ""}{l.state ? ` · ${l.state}` : ""}<div className="text-slate-400">{l.audience.toLowerCase()}{l.utmSource ? ` · utm ${l.utmSource}` : ""}</div></Td>
+                <Td className="text-xs">{l.source}{l.campaignCode && !l.campaignCode.includes(":") ? ` · ${l.campaignCode}` : ""}{l.professionCode ? ` · ${l.professionCode}` : ""}{l.state ? ` · ${regionName(l.state)}` : ""}<div className="text-slate-400">{l.audience.toLowerCase()}{l.utmSource ? ` · utm ${l.utmSource}` : ""}</div></Td>
                 <Td className="font-mono text-xs">{l.promoCode ?? "—"}</Td>
                 <Td>{l.dripStep}</Td>
                 <Td>{l.spamCategory ? <span className="text-xs text-slate-500">{l.spamCategory === "solicitation" ? "Sales pitch" : "Spam"}<div className="max-w-48 truncate" title={l.spamReasons.join(", ")}>{l.spamReasons.join(", ")}</div></span> : <StatusBadge status={l.status} />}</Td>

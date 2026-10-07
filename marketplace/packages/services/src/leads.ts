@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { brand } from "@cm/config";
-import { DomainError, promoLabel } from "@cm/core";
+import { DomainError, promoLabel, CA_PROVINCES, regionName } from "@cm/core";
 import { prisma, type Lead, type LeadStatus, type PromoCode } from "@cm/db";
 import { audit, getSettings, requireAdmin, type Actor } from "./context";
 import { absoluteUrl, sendEmail, type EmailContent } from "./notify";
@@ -149,7 +149,7 @@ function defaultCopy(lead: Lead, promo: PromoCode | null, step: number): { subje
   const b = brand();
   if (lead.source === "waitlist") {
     const copy = [
-      { subject: `You're on the ${b.name} waitlist`, intro: `Thanks for your interest${lead.state ? ` in ${lead.state}` : ""}. We'll let you know as soon as we open for your profession in your state.` },
+      { subject: `You're on the ${b.name} waitlist`, intro: `Thanks for your interest${lead.state ? ` in ${regionName(lead.state)}` : ""}. We'll let you know as soon as we open for your profession in your ${lead.state && CA_PROVINCES[lead.state] ? "province" : "state"}.` },
       { subject: `How ${b.name} works`, intro: "Clinics post coverage shifts, licensed providers apply or get matched, and pay runs through the platform — no chasing invoices." },
       { subject: "What to have ready", intro: "When we launch in your area you'll need your state license, malpractice certificate and NPI (if your profession uses one). Getting these together now makes onboarding quick." },
     ];

@@ -14,6 +14,7 @@ export function LeadForm({
   campaign,
   professionCode,
   states,
+  provinces,
   professions,
   askAudience,
   cta = "Get my code",
@@ -24,6 +25,8 @@ export function LeadForm({
   campaign?: string;
   professionCode?: string;
   states?: { code: string; name: string }[];
+  /** Waitlist only: Canadian provinces, listed under "Canada" after the U.S. states. */
+  provinces?: { code: string; name: string }[];
   /** Waitlist: let the visitor pick a profession (blank = any). */
   professions?: { code: string; name: string }[];
   /** Waitlist: ask "I'm a clinic / I'm a provider". */
@@ -131,13 +134,32 @@ export function LeadForm({
           {states ? (
             <Select name="state" defaultValue="" aria-label="State" required={source === "waitlist"}>
               <option value="" disabled>
-                Your state
+                {provinces?.length ? "Your state or province" : "Your state"}
               </option>
-              {states.map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.name}
-                </option>
-              ))}
+              {provinces?.length ? (
+                <>
+                  <optgroup label="United States">
+                    {states.map((s) => (
+                      <option key={s.code} value={s.code}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Canada">
+                    {provinces.map((s) => (
+                      <option key={s.code} value={s.code}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                </>
+              ) : (
+                states.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.name}
+                  </option>
+                ))
+              )}
             </Select>
           ) : null}
         </div>

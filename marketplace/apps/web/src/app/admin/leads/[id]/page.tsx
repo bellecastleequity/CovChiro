@@ -1,3 +1,4 @@
+import { regionName } from "@cm/core";
 import { leads } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { StatusBadge } from "@/components/ui/badge";
@@ -45,7 +46,7 @@ export default async function Lead({ params }: { params: Promise<{ id: string }>
             <CardBody className="space-y-1 text-sm">
               <div>Audience: {lead.audience.toLowerCase()}</div>
               <div>Source: {lead.source}{lead.campaignCode ? ` (${lead.campaignCode})` : ""}</div>
-              {lead.professionCode ? <div>Profession: {lead.professionCode}{lead.state ? ` · ${lead.state}` : ""}</div> : null}
+              {lead.professionCode ? <div>Profession: {lead.professionCode}{lead.state ? ` · ${regionName(lead.state)}` : ""}</div> : null}
               {promo ? <div>Code: <span className="font-mono">{promo.code}</span> · used {promo.usedCount}/{promo.maxUses ?? "∞"}{promo.expiresAt ? ` · expires ${dateLabel(promo.expiresAt)}` : ""}</div> : null}
               <div>Follow-up emails sent: {lead.dripStep}{lead.nextDripAt ? ` · next ${dateTimeLabel(lead.nextDripAt)}` : ""}</div>
               {lead.utmSource ? <div>UTM: {lead.utmSource}/{lead.utmMedium}/{lead.utmCampaign}</div> : null}
