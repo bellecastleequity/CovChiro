@@ -58,6 +58,8 @@ export const ShiftInput = z.object({
   lodgingCapCentsPerNight: z.coerce.number().int().min(0).nullable().optional(),
   /** Fly-in coverage OK (whole booking; flyInFields checks days and notice). */
   flyIn: z.boolean().optional(),
+  /** Multi-day: one provider for every day (core/sameProvider.ts); undefined = Settings default. */
+  sameProvider: z.boolean().optional(),
   /** Unpaid lunch: minutes (0 = none) and when it starts. Paid hours exclude it, up to the day-length limit. */
   lunchMinutes: z.coerce.number().int().min(0).max(300).default(0),
   lunchStartsAt: z.coerce.date().nullable().optional(),
@@ -451,8 +453,17 @@ async function postInTx(db: Db, actor: Actor, shiftId: string, effects: Effects)
 export async function notifyEligibleProvidersOfShift(shiftId: string, reason: "posted" | "reopened") {
   const s = await getSettings();
   const loaded = await loadShift(prisma, shiftId);
+  // Same provider for all days: one notice from the first day, only to providers who can take every day.
+  const { lockedGroupId, groupCoverage } = await import("./sameProvider");
+  const lockedGroup = await lockedGroupId(prisma, shiftId);
+  let onlyAllDays: Set<string> | null = null;
+  if (lockedGroup) {
+    const first = await prisma.shift.findFirst({ where: { shiftGroupId: lockedGroup, status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] } }, orderBy: { startsAt: "asc" }, select: { id: true } });
+    if (first?.id !== shiftId) return 0;
+    onlyAllDays = new Set((await groupCoverage(lockedGroup)).allDayIds);
+  }
   const set = await getEligibleProviders(prisma, loaded);
-  const ranked = await rankEvaluated(prisma, loaded, set.eligible);
+  const ranked = (await rankEvaluated(prisma, loaded, set.eligible)).filter((r) => !onlyAllDays || onlyAllDays.has(r.providerId));
   await logMatchRun(prisma, shiftId, reason, ranked, set.excluded, set.prefilteredOut);
   const shift = await prisma.shift.findUniqueOrThrow({ where: { id: shiftId }, include: { location: true } });
   const favoritesOnly = shift.status === "FAVORITES_ONLY";
@@ -472,7 +483,9 @@ export async function notifyEligibleProvidersOfShift(shiftId: string, reason: "p
       await notify(prisma, t.evaluated.provider.userId, {
         template: "booking_available",
         title: `${group.length}-day booking available ${d(group[0].startsAt)} – ${d(group.at(-1)!.startsAt)} in ${shift.location.city}, ${shift.state}`,
-        body: `A ${shift.professionCode} coverage booking matches your licenses. Apply to all days in one tap, or just the days that suit you.`,
+        body: lockedGroup
+          ? `A ${shift.professionCode} coverage booking matches your licenses and you're free every day. The clinic wants one provider for all ${group.length} days: apply for the whole booking in one tap.`
+          : `A ${shift.professionCode} coverage booking matches your licenses. Apply to all days in one tap, or just the days that suit you.`,
         link: `/provider/shifts/${group[0].id}`,
         ctaLabel: "View booking",
         sms: urgent || favoritesOnly,
@@ -568,7 +581,25 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
       declaredTier: sh.declaredTier,
       /** The provider would fly in: whole trip, airfare per trip (shown separately), lodging every night. */
       flyIn: flyIn ? { airfareCents: sh.flyInAirfareCents ?? 0, nightlyCents: sh.flyInNightlyCents ?? 0, shiftGroupId: sh.shiftGroupId } : null,
+      shiftGroupId: sh.shiftGroupId,
+      /** Same provider for all days (locked): shown only when they can take every open day. */
+      sameProviderDays: null as number | null,
     });
+  }
+  // Same provider for all days: show a locked booking only to providers who can take every open day.
+  const groupIds = [...new Set(out.map((o) => o.shiftGroupId).filter((g): g is string => !!g))];
+  if (groupIds.length) {
+    const { LOCKED_GROUP } = await import("./sameProvider");
+    const locked = await prisma.shiftGroup.findMany({ where: { id: { in: groupIds }, ...LOCKED_GROUP }, select: { id: true, shifts: { where: { status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] } }, select: { id: true } } } });
+    const missing = locked.flatMap((g) => g.shifts.map((x) => x.id)).filter((id) => !evaluated.has(id));
+    const extra = missing.length ? await evaluateProviderForShifts(prisma, providerId, missing) : new Map();
+    const ok = (id: string) => (evaluated.get(id) ?? extra.get(id))?.result.eligible === true;
+    const drop = new Set<string>();
+    for (const g of locked) {
+      const all = g.shifts.every((x) => ok(x.id));
+      for (const o of out) if (o.shiftGroupId === g.id) (all || o.applied ? (o.sameProviderDays = g.shifts.length) : drop.add(o.id));
+    }
+    return out.filter((o) => !drop.has(o.id));
   }
   return out;
 }
@@ -594,6 +625,11 @@ export async function applyToShift(actor: Actor, shiftId: string, input: { note?
   if (ev.result.flyIn && shift.shiftGroupId && !opts.allDays) {
     throw new DomainError("VALIDATION", "You'd fly in for this booking, so apply to all of its days together (Apply to all days).");
   }
+  // Same provider for all days: the whole booking or nothing.
+  const { lockedGroupId } = await import("./sameProvider");
+  const locked = shift.shiftGroupId && !opts.allDays ? await lockedGroupId(prisma, shiftId) : null;
+  if (locked) throw new DomainError("VALIDATION", "The clinic wants one provider for every day of this booking, so apply for all of its days together (Apply to all days).");
+  const inLockedGroup = !!shift.shiftGroupId && !!(opts.allDays && (await lockedGroupId(prisma, shiftId)));
   const ranked = await rankEvaluated(prisma, ev.shift, [ev]);
   const score = ranked[0]?.score ?? 0;
   const existing = await prisma.application.findUnique({ where: { shiftId_providerId: { shiftId, providerId } } });
@@ -608,14 +644,14 @@ export async function applyToShift(actor: Actor, shiftId: string, input: { note?
   const flyIn = !!ev.result.flyIn;
   // During an active dispatch an application counts as an acceptance in the current wave (Addendum 02 §5.6).
   const { applicationAsAcceptance } = await import("./dispatch");
-  if (!flyIn && (await prisma.dispatch.findFirst({ where: { shiftId, status: "ACTIVE" } }))) {
+  if (!flyIn && !inLockedGroup && (await prisma.dispatch.findFirst({ where: { shiftId, status: "ACTIVE" } }))) {
     await applicationAsAcceptance(shiftId, providerId, app.id);
     const confirmed = await prisma.assignment.findFirst({ where: { shiftId, providerId, status: "CONFIRMED" } });
     return { applicationId: app.id, confirmed: !!confirmed, flyIn };
   }
 
   const s = await getSettings();
-  if (!flyIn && shift.instantBook && score >= s["matching.instantBookMinScore"]) {
+  if (!flyIn && !inLockedGroup && shift.instantBook && score >= s["matching.instantBookMinScore"]) {
     try {
       await confirmProvider(actor, shiftId, providerId, "INSTANT_BOOK");
       return { applicationId: app.id, confirmed: true, flyIn };
@@ -717,6 +753,8 @@ export async function shiftCandidates(actor: Actor, shiftId: string) {
 
 export async function selectApplicant(actor: Actor, shiftId: string, providerId: string) {
   await clinicShift(actor, shiftId);
+  const { lockedGroupId } = await import("./sameProvider");
+  if (await lockedGroupId(prisma, shiftId)) return (await import("./bookings")).confirmForAllDays(actor, shiftId, providerId).then(() => ({ assignmentId: "" }));
   const app = await prisma.application.findUnique({ where: { shiftId_providerId: { shiftId, providerId } } });
   if (app?.status === "NOT_SELECTED" || app?.status === "SELECTED") throw new DomainError("CONFLICT", "This shift has already been filled.");
   // A provider who accepted a dispatch offer can be picked directly too (Addendum 02 §5.8).
@@ -728,6 +766,29 @@ export async function selectApplicant(actor: Actor, shiftId: string, providerId:
 
 export async function inviteProviders(actor: Actor, shiftId: string, providerIds: string[]) {
   const shift = await clinicShift(actor, shiftId);
+  const { lockedGroupId, groupCoverage } = await import("./sameProvider");
+  const lockedGroup = await lockedGroupId(prisma, shiftId);
+  if (lockedGroup) {
+    // One provider for all days: a single-day offer would break that, so invite them to apply for the whole booking.
+    if (!providerIds.length || providerIds.length > 3) throw new DomainError("VALIDATION", "Invite 1 to 3 providers at a time.");
+    const cov = await groupCoverage(lockedGroup);
+    const ok = providerIds.filter((id) => cov.allDayIds.includes(id));
+    if (!ok.length) throw new DomainError("VALIDATION", "None of them can take every day of this booking. Split it to invite them for the days they can take.");
+    const loc = await prisma.clinicLocation.findUniqueOrThrow({ where: { id: shift.locationId }, include: { clinicOrg: true } });
+    for (const id of ok) {
+      const p = await prisma.provider.findUniqueOrThrow({ where: { id }, select: { userId: true } });
+      await notify(prisma, p.userId, {
+        template: "booking_invite",
+        title: `${loc.clinicOrg.displayName} invited you to a ${cov.openDays}-day booking`,
+        body: `They'd like one provider for all ${cov.openDays} days and asked for you. Apply for the whole booking in one tap and they can confirm you right away.`,
+        link: `/provider/shifts/${shiftId}`,
+        ctaLabel: "View booking",
+        sms: true,
+      });
+    }
+    await audit(prisma, actor, "booking.invited_all_days", "ShiftGroup", lockedGroup, null, { providerIds: ok });
+    return { offerIds: [] as string[], invited: ok.length, skipped: providerIds.length - ok.length, allDays: true };
+  }
   if (!providerIds.length || providerIds.length > 3) throw new DomainError("VALIDATION", "Invite 1 to 3 providers at a time.");
   const pending = await prisma.offer.count({ where: { shiftId, dispatchId: null, status: { in: ["PENDING", "ACCEPTED_PENDING"] } } });
   if (pending + providerIds.length > 3) throw new DomainError("VALIDATION", "You can have up to 3 open invitations at once.");

@@ -1,6 +1,9 @@
 import { DomainError } from "@cm/core";
 import { prisma } from "@cm/db";
 import { audit, getSettings, requireClinic, requireProvider, type Actor } from "./context";
+import { confirmProvider } from "./confirm";
+import { assertProviderEligibleForShift } from "./eligibility";
+import { lockedGroupId } from "./sameProvider";
 import { notifyClinic } from "./notify";
 import { applyToShift, cancelAssignment, createShift, flyInFields, postShift, selectApplicant, ShiftInput, type ShiftInputT, validateShiftInput } from "./shifts";
 
@@ -39,7 +42,9 @@ export async function createMultiDay(actor: Actor, days: ShiftInputT[], opts: { 
     await validateShiftInput(prisma, orgId, d, opts.post);
   }
   const fly = await flyInFields(parsed[0].locationId, parsed.map((d) => ({ ...d, flyIn: parsed.some((x) => x.flyIn) })));
-  const group = await prisma.shiftGroup.create({ data: { locationId: parsed[0].locationId } });
+  // Same provider for all days (default from Settings when the form doesn't say).
+  const sameProvider = parsed.some((d) => d.sameProvider === true) || (parsed.every((d) => d.sameProvider === undefined) && (await getSettings())["bookings.sameProviderDefault"]);
+  const group = await prisma.shiftGroup.create({ data: { locationId: parsed[0].locationId, sameProviderRequired: sameProvider } });
   const shiftIds: string[] = [];
   for (const [i, d] of parsed.entries()) {
     const { shiftId } = await createShift(actor, { ...d, promoCode: i === 0 ? d.promoCode : null }, { post: false });
@@ -99,6 +104,11 @@ export async function applyToAllDays(actor: Actor, shiftId: string, input: { not
     }
   }
   if (!applied) throw new DomainError("VALIDATION", "You can't take any of the open days in this booking.");
+  // Same provider for all days: every open day or none.
+  if (skipped && (await lockedGroupId(prisma, shiftId))) {
+    await prisma.application.updateMany({ where: { id: { in: made }, status: "ACTIVE" }, data: { status: "WITHDRAWN", withdrawnAt: new Date() } });
+    throw new DomainError("VALIDATION", `The clinic wants one provider for all ${applied + skipped} days, and you can't take ${skipped} of them (check your availability, other bookings and credentials for those dates).`);
+  }
   // A fly-in trip needs flyIn.minDays days, or the flight isn't worth it for either side.
   const min = (await getSettings())["flyIn.minDays"];
   if (flyIn && applied < min) {
@@ -109,9 +119,43 @@ export async function applyToAllDays(actor: Actor, shiftId: string, input: { not
 }
 
 /** Clinic: confirm one provider for every open day they applied to. */
+/**
+ * Confirm one provider for every open day of a booking, all or nothing: eligibility for every day is
+ * checked first, so a day that can't be confirmed stops the whole thing before anything is booked.
+ */
+export async function confirmAllDays(actor: Actor, groupId: string, providerId: string, method: "CLINIC_PICKED_APPLICANT" | "AUTO_APPLICANT") {
+  const days = await prisma.shift.findMany({ where: { shiftGroupId: groupId, status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] } }, orderBy: { startsAt: "asc" } });
+  if (!days.length) throw new DomainError("CONFLICT", "Nothing left to confirm in this booking.");
+  for (const d of days) await assertProviderEligibleForShift(prisma, providerId, d.id);
+  let confirmed = 0;
+  const failed: string[] = [];
+  for (const d of days) {
+    try {
+      await confirmProvider(actor, d.id, providerId, method);
+      confirmed++;
+    } catch (e) {
+      failed.push((e as Error).message);
+    }
+  }
+  if (failed.length) {
+    // Rare race (someone else's booking landed in between): tell admins; the booked days stand.
+    const { notifyAdmins } = await import("./notify");
+    await notifyAdmins(prisma, { template: "same_provider_partial", title: "A same-provider booking was only partly confirmed", body: `${confirmed} of ${days.length} days confirmed for provider ${providerId}: ${failed[0]}`, link: `/admin/shifts/${days[0].id}`, email: true });
+  }
+  if (!confirmed) throw new DomainError("CONFLICT", failed[0] ?? "Nothing to confirm.");
+  return { confirmed, failed: failed.length };
+}
+
 export async function confirmForAllDays(actor: Actor, shiftId: string, providerId: string) {
   requireClinic(actor);
   const sh = await prisma.shift.findUniqueOrThrow({ where: { id: shiftId } });
+  const locked = await lockedGroupId(prisma, shiftId);
+  if (locked) {
+    const open = await prisma.shift.findMany({ where: { shiftGroupId: locked, status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] } }, select: { id: true } });
+    const apps = await prisma.application.count({ where: { providerId, status: "ACTIVE", shiftId: { in: open.map((o) => o.id) } } });
+    if (apps < open.length) throw new DomainError("VALIDATION", "This provider hasn't applied for every day, and you asked for one provider for all days. Pick someone who applied for all of them, or split the booking.");
+    return confirmAllDays(actor, locked, providerId, "CLINIC_PICKED_APPLICANT");
+  }
   const ids = sh.shiftGroupId
     ? (await prisma.application.findMany({ where: { providerId, status: "ACTIVE", shift: { shiftGroupId: sh.shiftGroupId } }, select: { shiftId: true } })).map((a) => a.shiftId)
     : [shiftId];

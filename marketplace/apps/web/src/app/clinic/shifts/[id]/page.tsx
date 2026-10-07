@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Ban, Car, Heart, MessageSquare, Radar, Star, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
 import { clinicView } from "@cm/core";
-import { dispatch, getSettings, shiftCandidates, shiftChanges, timeclock, volume } from "@cm/services";
+import { dispatch, getSettings, sameProvider, shiftCandidates, shiftChanges, timeclock, volume } from "@cm/services";
 import { clinicApproveAction, clinicConfirmVisitsAction, clinicReportAction, clinicReportVisitsAction } from "@/app/timeclock-actions";
 import { ClinicVisitPanel } from "@/components/timeclock/visit-count";
 import { SignOffForm } from "@/components/timeclock/signoff-form";
@@ -23,7 +23,7 @@ import { dateLabel, money, pct, relative, timeRange, lunchLabel, timeLabel } fro
 import { requireActor } from "@/lib/session";
 import {
   blockAction, boostAction, cancelDispatchAction, confirmAllDaysAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
-  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, releaseClinicRateAction, reportNoShowAction, selectAction, withdrawShiftChangeAction,
+  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, releaseClinicRateAction, reportNoShowAction, selectAction, withdrawShiftChangeAction, splitBookingAction, keepWaitingAction,
 } from "../../actions";
 
 type Cand = Awaited<ReturnType<typeof shiftCandidates>>["applicants"][number];
@@ -146,6 +146,11 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
         }, {}),
       ).filter((x) => x.days > 1)
     : [];
+
+  // Same provider for all days: still waiting for one provider (not split, nobody booked yet).
+  const lockedGroup = shift.shiftGroupId ? await sameProvider.lockedGroupId(prisma, shift.id) : null;
+  const coverage = lockedGroup ? await sameProvider.groupCoverage(lockedGroup) : null;
+  const groupRow = shift.shiftGroupId ? await prisma.shiftGroup.findUnique({ where: { id: shift.shiftGroupId }, select: { sameProviderRequired: true, splitAt: true, splitBy: true, splitAskedAt: true } }) : null;
   const heldAtRate = shift.rateMode === "CLINIC" && !shift.releasedAt;
   const rateTerms = shift.rateTerms as { text?: string; acceptedByName?: string; acceptedAt?: string } | null;
   const pendingChange = await prisma.shiftChange.findFirst({ where: { shiftId: id, status: "PENDING" } });
@@ -234,9 +239,49 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
       {live?.arrivedAt ? <p className="mb-5 text-sm text-emerald-700">✓ {live.provider.displayName} arrived.</p> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          {lockedGroup && coverage ? (
+            <Card id="same-provider" className="scroll-mt-20 border-brand-200">
+              <CardHeader
+                title={`Same provider for all ${coverage.openDays} days`}
+                description="Only providers who are free and qualified for every day can apply, and you confirm one of them for the whole booking."
+              />
+              <CardBody className="space-y-3 text-sm">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl bg-slate-50 p-3"><div className="text-2xl font-semibold tabular-nums">{coverage.allDays}</div><div className="text-xs text-slate-600">providers can take every day</div></div>
+                  <div className="rounded-xl bg-slate-50 p-3"><div className="text-2xl font-semibold tabular-nums">{coverage.anyDay}</div><div className="text-xs text-slate-600">could take at least one day if you split it</div></div>
+                  <div className="rounded-xl bg-slate-50 p-3"><div className="text-2xl font-semibold tabular-nums">{coverage.fullApplicants.length}</div><div className="text-xs text-slate-600">applied for every day</div></div>
+                </div>
+                {groupRow?.splitAskedAt ? (
+                  <Alert tone="warning" title="No one provider has applied for every day yet">
+                    Split it so each day can be filled on its own, or keep waiting a little longer. If you don&apos;t choose, we&apos;ll split it {groupRow.splitAskedAt ? `around ${new Date(+groupRow.splitAskedAt + s["bookings.splitWaitHours"] * 3_600_000).toLocaleString("en-US", { timeZone: tz, weekday: "short", hour: "numeric", minute: "2-digit" })}` : "soon"} so your days get covered.
+                  </Alert>
+                ) : coverage.allDays === 0 ? (
+                  <Alert tone="warning">No single provider can take every day right now. Splitting it lets each day be filled on its own.</Alert>
+                ) : (
+                  <p className="text-slate-600">If no one provider applies for every day by your decision deadline, we&apos;ll ask whether to split it, and split it automatically after {s["bookings.splitWaitHours"]} hours (or straight away when the first day is less than {s["bookings.splitNowWithinHours"]} hours off).</p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <ActionForm action={splitBookingAction} confirm="Split into separate days? Each day will then be filled on its own, and you may get different providers on different days.">
+                    <input type="hidden" name="groupId" value={lockedGroup} />
+                    <input type="hidden" name="shiftId" value={shift.id} />
+                    <SubmitButton size="sm" variant={groupRow?.splitAskedAt || coverage.allDays === 0 ? "primary" : "outline"}>Split into separate days</SubmitButton>
+                  </ActionForm>
+                  {groupRow?.splitAskedAt ? (
+                    <ActionForm action={keepWaitingAction}>
+                      <input type="hidden" name="groupId" value={lockedGroup} />
+                      <input type="hidden" name="shiftId" value={shift.id} />
+                      <SubmitButton size="sm" variant="outline">Keep waiting for one provider</SubmitButton>
+                    </ActionForm>
+                  ) : null}
+                </div>
+              </CardBody>
+            </Card>
+          ) : groupRow?.splitAt ? (
+            <Alert tone="info">This booking was split into separate days {groupRow.splitBy === "auto" ? "automatically, because no one provider could take every day in time" : "at your request"}. Each day is filled on its own.</Alert>
+          ) : null}
           {groupDays.length > 1 ? (
             <Card>
-              <CardHeader title={`Part of a ${groupDays.length}-day booking`} description="Each day is covered on its own, so if a provider can't make one day we find cover for just that day." />
+              <CardHeader title={`Part of a ${groupDays.length}-day booking`} description={lockedGroup ? "You'll confirm one provider for all the days." : "Each day is covered on its own, so if a provider can't make one day we find cover for just that day."} />
               <CardBody className="divide-y divide-slate-100 p-0 text-sm">
                 {groupDays.map((d, i) => (
                   <Link key={d.id} href={`/clinic/shifts/${d.id}`} className={`flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50 ${d.id === shift.id ? "bg-brand-50/50" : ""}`}>

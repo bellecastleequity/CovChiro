@@ -72,6 +72,7 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
         volumeCodes={volumeCodes}
         lodging={{ nightlyCents: settings["pricing.lodgingNightlyCents"], overMinutes: settings["pricing.lodgingTriggerMinutes"], maxMinutes: settings["pricing.lodgingMaxDriveMinutes"] }}
         maxDayMinutes={settings["pricing.maxDaySpanMinutes"]}
+        sameProvider={{ defaultOn: settings["bookings.sameProviderDefault"], waitHours: settings["bookings.splitWaitHours"], splitNowHours: settings["bookings.splitNowWithinHours"] }}
         flyIn={
           settings["flyIn.enabled"]
             ? {

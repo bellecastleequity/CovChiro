@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Car, Clock, MapPin, Plane, Shirt, Star, Users } from "lucide-react";
 import { prisma } from "@cm/db";
-import { evaluateProviderForShift, getSettings } from "@cm/services";
+import { evaluateProviderForShift, getSettings, sameProvider } from "@cm/services";
 import { parseVolumeTerms, providerView } from "@cm/core";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
       })
     : [];
   const OPENISH = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"];
+  const sameOnly = shift.shiftGroupId ? !!(await sameProvider.lockedGroupId(prisma, shift.id)) : false;
   const openDays = groupDays.filter((d) => OPENISH.includes(d.status) && !d.applications.some((x) => x.status === "ACTIVE") && !d.assignments.length);
   const dayNo = groupDays.findIndex((d) => d.id === shift.id) + 1;
   return (
@@ -79,7 +80,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
           </Card>
           {groupDays.length > 1 ? (
             <Card>
-              <CardHeader title={`Part of a ${groupDays.length}-day booking`} description={flyIn ? "The clinic needs cover on each of these days. As a fly-in provider you apply for all of them together." : "The clinic needs cover on each of these days. You can apply for one day or all of them."} />
+              <CardHeader title={`Part of a ${groupDays.length}-day booking`} description={sameOnly ? "The clinic wants one provider for every day, so you apply for all of them together." : flyIn ? "The clinic needs cover on each of these days. As a fly-in provider you apply for all of them together." : "The clinic needs cover on each of these days. You can apply for one day or all of them."} />
               <CardBody className="divide-y divide-slate-100 p-0 text-sm">
                 {groupDays.map((d, i) => {
                   const mine = d.assignments.length ? "You're booked" : d.applications.some((x) => x.status === "ACTIVE") ? "Applied" : OPENISH.includes(d.status) ? "Open" : "Filled";
@@ -137,7 +138,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
                     <Textarea id="note" name="note" maxLength={500} placeholder="Techniques you use, what you're comfortable with…" />
                     <PhiNotice />
                   </Field>
-                  {flyIn && openDays.length > 1 ? (
+                  {(flyIn || sameOnly) && openDays.length > 1 ? (
                     <><input type="hidden" name="allDays" value="on" /><p className="text-sm text-slate-600">You&apos;ll apply for all {openDays.length} open days of this trip.</p></>
                   ) : openDays.length > 1 ? <Checkbox name="allDays" defaultChecked label={`Apply for all ${openDays.length} open days of this booking`} /> : null}
                   <Checkbox name="commit" required label="If selected, I commit to working this shift." />

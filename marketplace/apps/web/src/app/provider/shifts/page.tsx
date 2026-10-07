@@ -74,6 +74,7 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
                   {s.instantBook ? <Badge tone="blue"><Zap className="size-3" />Instant book</Badge> : null}
                   {s.clinicSetRate ? <Badge tone="amber">Clinic-set rate</Badge> : null}
                   {s.flyIn ? <Badge tone="blue"><Plane className="size-3" />Fly-in · all days</Badge> : null}
+                  {s.sameProviderDays && !s.flyIn ? <Badge tone="brand">Same provider · all {s.sameProviderDays} days</Badge> : null}
                   {s.applied ? <Badge tone="green">Applied</Badge> : null}
                 </div>
               </Card>

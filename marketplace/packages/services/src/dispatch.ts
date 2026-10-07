@@ -73,6 +73,9 @@ export async function startDispatch(shiftId: string, trigger: DispatchTrigger, a
     if (shift.startsAt <= now) return { dispatchId: null, state: "shift started" };
     // Clinic-set rate (beta): not auto-filled until released to market.
     if (shift.rateMode === "CLINIC" && !shift.releasedAt) return { dispatchId: null, state: "clinic-set rate: release to market first" };
+    // Same provider for all days: no single-day offers until it's split or someone is booked.
+    const { lockedGroupId } = await import("./sameProvider");
+    if (await lockedGroupId(db, shiftId)) return { dispatchId: null, state: "same provider for all days: waiting for one provider" };
     const active = await db.dispatch.findFirst({ where: { shiftId, status: "ACTIVE" } });
     if (active) return { dispatchId: active.id, state: "already active" };
     const hasStandby = trigger === "BACKFILL" && (await db.standbyEntry.count({ where: { shiftId } })) > 0;
@@ -993,8 +996,11 @@ export async function tickDispatch(now = clock.now()) {
 /** Selection deadline (planned shifts, §3): auto-select a qualifying applicant, else dispatch. */
 export async function runSelectionDeadlines(now = clock.now()) {
   const s = await getSettings();
+  // Same-provider bookings are decided as a whole first (confirm, ask to split, or split).
+  const { LOCKED_GROUP, runGroupDeadlines } = await import("./sameProvider");
+  const groups = await runGroupDeadlines(now);
   const due = await prisma.shift.findMany({
-    where: { status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING"] }, selectionDeadline: { lte: now }, startsAt: { gt: now }, dispatches: { none: {} } },
+    where: { status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING"] }, selectionDeadline: { lte: now }, startsAt: { gt: now }, dispatches: { none: {} }, NOT: { shiftGroup: LOCKED_GROUP } },
     select: { id: true },
   });
   let dispatched = 0;
@@ -1022,7 +1028,7 @@ export async function runSelectionDeadlines(now = clock.now()) {
     await startDispatch(id, "SELECTION_DEADLINE");
     dispatched++;
   }
-  return { dispatched, autoSelected };
+  return { dispatched, autoSelected, groups };
 }
 
 /** Favorites-only window ends → open to everyone eligible. */

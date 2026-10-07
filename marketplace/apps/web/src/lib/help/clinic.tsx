@@ -67,6 +67,25 @@ const A: HelpArticle[] = [
   },
   // ---------------- posting ----------------
   {
+    slug: "same-provider",
+    category: "posting",
+    title: "Same provider for every day of a booking",
+    summary: "Posting several days? Keep one provider for all of them, or let each day fill on its own.",
+    keywords: "same provider multi-day several days continuity one doctor whole week split booking",
+    links: [{ href: "/clinic/shifts/new", label: "Post a shift" }],
+    body: (s) => (
+      <Ul
+        items={[
+          `When you post two or more days, "Same provider for all days" is ${s["bookings.sameProviderDefault"] ? "ticked" : "unticked"} by default. Untick it to let each day be filled on its own.`,
+          "With it on, only providers who are free and qualified for every day can apply, and you confirm one provider for the whole booking. That's better for your patients, but fewer providers can take every day, so it can take longer to fill.",
+          "The booking page shows how many providers can take every day, how many could take at least one day if you split it, and who has applied for all of them.",
+          `If no one provider has applied for every day by your decision deadline, we ask whether to split it. If you don't answer within ${s["bookings.splitWaitHours"]} hours, or the first day is less than ${s["bookings.splitNowWithinHours"]} hours away, we split it automatically so your days still get covered. You can also split it yourself, or keep waiting, from the booking page.`,
+          "Once a provider is booked, if they later have to cancel one day, that day gets cover on its own and they keep the other days.",
+        ]}
+      />
+    ),
+  },
+  {
     slug: "fly-in",
     category: "posting",
     title: "Fly-in coverage",

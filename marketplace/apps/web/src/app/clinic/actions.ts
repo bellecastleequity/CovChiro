@@ -14,7 +14,7 @@ import {
   feedback,
   shiftChanges,
   clinicRate,
-  archiveLocation, auth, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
+  archiveLocation, auth, sameProvider, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
 import { bool, formAction, optStr, str } from "@/lib/action";
@@ -61,6 +61,7 @@ async function shiftPayloadFrom(raw: any) {
     maxTravelBudgetCents: raw.maxTravelBudget ? Math.round(Number(raw.maxTravelBudget) * 100) : null,
     lodgingAllowed: !!raw.lodgingAllowed,
     flyIn: !!raw.flyIn,
+    sameProvider: typeof raw.sameProvider === "boolean" ? raw.sameProvider : undefined,
     lodgingCapCentsPerNight: raw.lodgingCap ? Math.round(Number(raw.lodgingCap) * 100) : null,
     promoCode: raw.promoCode || null,
     supervisionAttestation: raw.supervisionAttestation ?? null,
@@ -171,8 +172,9 @@ export const acceptHireAction = formAction(async (fd) => {
 export const inviteAction = formAction(async (fd) => {
   const { actor } = await me();
   const ids = fd.getAll("providerId").map(String);
-  await inviteProviders(actor, str(fd, "shiftId"), ids);
+  const r = await inviteProviders(actor, str(fd, "shiftId"), ids);
   revalidatePath(`/clinic/shifts/${str(fd, "shiftId")}`);
+  if ("allDays" in r && r.allDays) return `Asked ${r.invited} provider${r.invited === 1 ? "" : "s"} to apply for every day${r.skipped ? ` (${r.skipped} can't take every day, so weren't asked)` : ""}. You'll be notified when they apply.`;
   return `Invitation sent to ${ids.length} provider${ids.length === 1 ? "" : "s"}. First to accept gets the shift.`;
 });
 
@@ -452,4 +454,18 @@ export const releaseClinicRateAction = formAction(async (fd) => {
   const r = await clinicRate.releaseNow(actor, str(fd, "shiftId"));
   revalidatePath("/clinic", "layout");
   return `Released at the market price of $${(r.clinicPriceCents / 100).toFixed(2)}. We're filling it now.`;
+});
+
+export const splitBookingAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await sameProvider.splitGroup(actor, str(fd, "groupId"), "clinic");
+  revalidatePath(`/clinic/shifts/${str(fd, "shiftId")}`);
+  return "Split. Each day is now filled on its own.";
+});
+
+export const keepWaitingAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const until = await sameProvider.keepWaiting(actor, str(fd, "groupId"));
+  revalidatePath(`/clinic/shifts/${str(fd, "shiftId")}`);
+  return `OK, we'll keep looking for one provider until ${until.toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" })} ET, then ask again.`;
 });

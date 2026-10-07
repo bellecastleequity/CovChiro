@@ -682,7 +682,13 @@ model ShiftGroup {
   id                   String         @id @default(cuid())
   locationId           String
   location             ClinicLocation @relation(fields: [locationId], references: [id])
+  /// Same provider for all days (core/sameProvider.ts): until split, one provider covers every day.
   sameProviderRequired Boolean        @default(false)
+  /// The clinic was asked to split it (no one provider could take every day by the deadline).
+  splitAskedAt         DateTime?      @db.Timestamptz(3)
+  /// Split into separate days (by the clinic, or automatically after bookings.splitWaitHours).
+  splitAt              DateTime?      @db.Timestamptz(3)
+  splitBy              String?
   shifts               Shift[]
 }
 

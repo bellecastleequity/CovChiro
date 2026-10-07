@@ -155,7 +155,7 @@ function flyInBlocker(days: { date: string }[], f: FlyInOptions): string | null 
   return null;
 }
 
-export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft, volumeCodes = [], lodging, maxDayMinutes = 570, flyIn }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit; volumeCodes?: string[]; lodging: { nightlyCents: number; overMinutes: number; maxMinutes: number }; maxDayMinutes?: number; flyIn?: FlyInOptions }) {
+export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft, volumeCodes = [], lodging, maxDayMinutes = 570, flyIn, sameProvider = { defaultOn: true, waitHours: 4, splitNowHours: 48 } }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit; volumeCodes?: string[]; lodging: { nightlyCents: number; overMinutes: number; maxMinutes: number }; maxDayMinutes?: number; flyIn?: FlyInOptions; sameProvider?: { defaultOn: boolean; waitHours: number; splitNowHours: number } }) {
   const [step, setStep] = useState(0);
   const [locationId, setLocationId] = useState(draft && locations.some((l) => l.id === draft.locationId) ? draft.locationId : locations[0].id);
   const loc = locations.find((l) => l.id === locationId)!;
@@ -192,6 +192,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const [instantBook, setInstantBook] = useState(draft?.instantBook ?? false);
   const [lodgingAllowed, setLodgingAllowed] = useState(draft?.lodgingAllowed ?? true);
   const [maxTravelBudget, setMaxTravelBudget] = useState(draft?.maxTravelBudget ?? "");
+  const [sameProviderOn, setSameProviderOn] = useState(sameProvider.defaultOn);
   const [flyInOn, setFlyInOn] = useState(draft?.flyIn ?? (!!flyIn && flyIn.suggest.includes(loc.state)));
   const [promoCode, setPromoCode] = useState(defaultCode);
   const [sup, setSup] = useState(draft?.sup ?? { supervisorName: "", supervisorProfessionCode: prof?.supervisingProfessionCodes[0] ?? "", supervisorLicenseNumber: "", onSiteEntireShift: false });
@@ -236,6 +237,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
         instantBook,
         lodgingAllowed,
         flyIn: flyInActive,
+        sameProvider: days.length > 1 ? sameProviderOn : false,
         maxTravelBudget: maxTravelBudget || null,
         promoCode: promoCode.trim() || null,
         supervisionAttestation: prof?.supervisionRequired ? sup : null,
@@ -244,7 +246,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
           ? { priceCents: Math.round(Number(rateDollars) * 100), release: rateRelease, releaseAt: rateRelease ? cr!.releaseAt : null, releaseHours: cr!.releaseHours, accepted: rateAck }
           : null,
       }),
-    [rateActive, rateDollars, rateRelease, rateAck, cr, providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, flyInActive, maxTravelBudget, promoCode, sup, prof],
+    [rateActive, rateDollars, rateRelease, rateAck, cr, providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, flyInActive, sameProviderOn, maxTravelBudget, promoCode, sup, prof],
   );
 
   function refreshQuote() {
@@ -378,6 +380,25 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                   ))}
                 </div>
                 {days.length < 14 && !draft ? <Button type="button" variant="outline" size="sm" onClick={addDay}>+ Add another day</Button> : null}
+                {days.length > 1 && !draft ? (
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <Checkbox
+                      checked={sameProviderOn}
+                      onChange={(e) => setSameProviderOn(e.target.checked)}
+                      label={<>Same provider for all {days.length} days <span className="font-normal text-slate-500">(recommended for continuity)</span></>}
+                    />
+                    <div className="ml-7 mt-2 space-y-1 text-xs text-slate-600">
+                      {sameProviderOn ? (
+                        <>
+                          <p><b>How it fills:</b> only providers who are free and qualified for <i>every</i> day can apply, and you confirm one provider for the whole booking. Fewer providers can take every day, so it can take longer to fill than separate days, especially for long bookings.</p>
+                          <p><b>If no one provider is free for all days</b> by the decision deadline, we&apos;ll ask you to split it so each day gets covered, and split it automatically if you don&apos;t answer within {sameProvider.waitHours} hours (or straight away when the first day is less than {sameProvider.splitNowHours} hours off). You can also split it yourself any time from the booking page.</p>
+                        </>
+                      ) : (
+                        <p><b>How it fills:</b> each day is filled on its own, so it fills faster, but you may get a different provider on different days. Providers can still apply for all days at once.</p>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
                 {!draft ? (
                   <div className="rounded-xl border border-slate-200 p-4">
                     <Field label={<>Providers needed at the same time<InfoTip label="About several providers">Need two or more providers on the same day? Each provider is a separate booking with its own price, patient count and confirmation, and one provider can never take two of them. Choose the number here and we&apos;ll create one booking per provider, or post another booking later for the same time.</InfoTip></>}>

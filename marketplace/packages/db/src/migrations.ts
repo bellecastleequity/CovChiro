@@ -49,6 +49,7 @@ export const EXPECTED_MIGRATIONS = [
   "0041_tax_info",
   "0042_territory_rates",
   "0043_chargebacks",
+  "0044_same_provider",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */
