@@ -45,6 +45,7 @@ export const EXPECTED_MIGRATIONS = [
   "0037_territories",
   "0038_provider_active",
   "0039_malpractice_states",
+  "0040_fly_in",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */

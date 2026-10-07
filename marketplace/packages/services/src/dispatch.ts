@@ -212,8 +212,10 @@ async function buildCandidates(db: Db, dispatchId: string, tier: UrgencyTier, cf
     ...(d.shift.boosted ? { distanceMultiplier: 1.5 } : {}),
     ...(d.shift.emergencyAt ? { distanceMultiplierAll: s["emergency.driveMultiplier"] } : {}),
   });
-  if (!set.eligible.length) return [];
-  const ranked = await rankEvaluated(db, shift, set.eligible);
+  // Fly-in providers are never offered a single day by Smart Dispatch: they apply for the whole trip and the clinic picks.
+  const eligible = set.eligible.filter((e) => !e.result.flyIn);
+  if (!eligible.length) return [];
+  const ranked = await rankEvaluated(db, shift, eligible);
   const ids = ranked.map((r) => r.providerId);
   const dayAgo = new Date(+now - 86_400_000);
   const [providers, offeredHere, offersToday, pending, responsiveness, recentStandby, apps] = await Promise.all([
@@ -750,10 +752,11 @@ export async function onCallMatches(db: Db, shiftId: string): Promise<{ provider
   const shift = await db.shift.findUniqueOrThrow({ where: { id: shiftId }, include: { location: true } });
   const loaded = await loadShift(db, shiftId);
   const set = await getEligibleProviders(db, loaded); // INV-1 first — rules can never widen it (§15 #2)
-  if (!set.eligible.length) return [];
-  const rules = await db.onCallRule.findMany({ where: { providerId: { in: set.eligible.map((e) => e.providerId) }, active: true }, include: { provider: true } });
+  const eligible = set.eligible.filter((e) => !e.result.flyIn); // fly-in is never instant (whole trip, clinic picks)
+  if (!eligible.length) return [];
+  const rules = await db.onCallRule.findMany({ where: { providerId: { in: eligible.map((e) => e.providerId) }, active: true }, include: { provider: true } });
   if (!rules.length) return [];
-  const ranked = await rankEvaluated(db, loaded, set.eligible.filter((e) => rules.some((r) => r.providerId === e.providerId)));
+  const ranked = await rankEvaluated(db, loaded, eligible.filter((e) => rules.some((r) => r.providerId === e.providerId)));
   const out = [];
   for (const r of ranked) {
     const prov = rules.find((x) => x.providerId === r.providerId)!.provider;

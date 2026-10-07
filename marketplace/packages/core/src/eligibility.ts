@@ -1,3 +1,4 @@
+import type { FlyInFacts } from "./flyin";
 import { DateTime } from "luxon";
 import type { ErrorCode } from "./errors";
 import { DomainError } from "./errors";
@@ -67,6 +68,8 @@ export interface ProviderFacts {
   busy: Interval[];
   /** Lowest pay the provider accepts, per profession (F12). Never shown to clinics. */
   payFloors?: PayFloor[];
+  /** States/territories they'll fly to (fly-in coverage; credentials still required). */
+  flyInStates?: string[];
 }
 
 /** ProfessionStateConfig for the shift's (profession, state), with profession defaults already resolved. */
@@ -108,6 +111,8 @@ export interface ShiftFacts {
   config: ProfessionStateFacts;
   /** Catalog facts for every skill the shift requires. */
   skills: SkillFact[];
+  /** Fly-in allowed for this shift (flyin.ts); null/absent = no fly-in. */
+  flyIn?: FlyInFacts | null;
   /** Quoted provider pay (tier base with premiums, no overage) for F12. Absent = F12 skipped. */
   pay?: { durationTier: "HALF_DAY" | "FULL_DAY" | "HOURLY"; providerPayCents: number; billableHours: number };
 }
@@ -133,6 +138,8 @@ export interface EligibilityOptions {
   lodgingMaxDriveMinutes?: number;
   /** Credential-only checks (nightly sweep, pre-shift check): F0, F1, F1b, F2 only. */
   credentialsOnly?: boolean;
+  /** Evaluation time (fly-in cut-off); defaults to now. */
+  now?: Date;
 }
 
 export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12";
@@ -146,6 +153,8 @@ export interface EligibilityFailure {
 export interface EligibilityResult {
   eligible: boolean;
   failures: EligibilityFailure[];
+  /** The provider would fly in (beyond driving range, fly-in allowed both sides). */
+  flyIn?: boolean;
 }
 
 /**
@@ -226,6 +235,22 @@ export function skillScopeProblem(skills: SkillFact[]): string | null {
   return bad.length ? `${bad.length} selected skill(s) are outside the scope of practice for this profession in this state` : null;
 }
 
+/** Within the provider's drive limit, or the lodging limit when they'll stay overnight (F7). */
+export function withinDrive(provider: ProviderFacts, shift: ShiftFacts, driveMinutes: number | null, opts: EligibilityOptions): boolean {
+  const overnightOk =
+    provider.willingOvernight && shift.lodgingAllowed && (opts.lodgingMaxDriveMinutes === undefined || (driveMinutes !== null && driveMinutes <= opts.lodgingMaxDriveMinutes));
+  if (overnightOk) return true;
+  const limit = provider.maxDriveMinutes * Math.max(provider.willingOvernight ? (opts.distanceMultiplier ?? 1) : 1, opts.distanceMultiplierAll ?? 1);
+  return driveMinutes !== null && driveMinutes <= limit;
+}
+
+/** Beyond driving range, but the shift allows fly-in, the provider flies to its state, and there's still time to book flights. */
+export function isFlyInPair(provider: ProviderFacts, shift: ShiftFacts, driveMinutes: number | null, opts: EligibilityOptions): boolean {
+  if (!shift.flyIn || !provider.flyInStates?.includes(shift.state)) return false;
+  if (+(opts.now ?? new Date()) > +shift.flyIn.until) return false;
+  return !withinDrive(provider, shift, driveMinutes, opts);
+}
+
 export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, pair: PairFacts, opts: EligibilityOptions): EligibilityResult {
   const failures: EligibilityFailure[] = [];
   const fail = (filter: FilterId, code: ErrorCode, message: string) => failures.push({ filter, code, message });
@@ -288,7 +313,9 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   }
   if (missing) fail("F6", "MISSING_REQUIRED_SKILL", `Missing ${missing} required skill(s) or certification(s)`);
 
-  const buffer = travelBufferMinutes(pair.driveMinutes, opts.travelBufferExtraMinutes);
+  const flyIn = isFlyInPair(provider, shift, pair.driveMinutes, opts);
+  // A fly-in provider stays at the destination, so no drive time either side.
+  const buffer = travelBufferMinutes(flyIn ? null : pair.driveMinutes, opts.travelBufferExtraMinutes);
   const range = bufferedRange(shift.startsAt, shift.endsAt, buffer);
 
   // F5 — no overlapping active assignment in any profession (INV-2 is also a DB constraint).
@@ -299,7 +326,7 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   const onSite = iv(shift.startsAt, shift.endsAt);
   const available = [...expandWeeklyRules(provider.availabilityRules, onSite), ...provider.openDates];
   // Overnight stays (lodging allowed, provider willing) travel the day before, so only the clinic hours meet blackouts.
-  const blackoutWindow = provider.willingOvernight && shift.lodgingAllowed ? onSite : range;
+  const blackoutWindow = (provider.willingOvernight && shift.lodgingAllowed) || flyIn ? onSite : range;
   const brk = provider.onBreak;
   if (brk && +shift.startsAt >= brk.from && (brk.until === null || +shift.startsAt < brk.until)) {
     fail("F4", "OUTSIDE_AVAILABILITY", brk.until === null ? "Taking a break (not accepting new shifts)" : `Taking a break until ${new Date(brk.until).toISOString().slice(0, 10)}`);
@@ -314,7 +341,7 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   const overnightOk =
     provider.willingOvernight && shift.lodgingAllowed && (opts.lodgingMaxDriveMinutes === undefined || (pair.driveMinutes !== null && pair.driveMinutes <= opts.lodgingMaxDriveMinutes));
   const limit = provider.maxDriveMinutes * Math.max(provider.willingOvernight ? (opts.distanceMultiplier ?? 1) : 1, opts.distanceMultiplierAll ?? 1);
-  if (!overnightOk) {
+  if (!overnightOk && !flyIn) {
     if (pair.driveMinutes === null) fail("F7", "TOO_FAR", "Drive time unavailable");
     else if (pair.driveMinutes > limit) {
       fail("F7", "TOO_FAR", `Drive of ${Math.round(pair.driveMinutes)} min exceeds the provider's max of ${Math.round(limit)}`);
@@ -341,7 +368,7 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   // F10 — declined an offer for this shift already.
   if (pair.previouslyDeclined) fail("F10", "PREVIOUSLY_DECLINED", "Previously declined this shift");
 
-  return { eligible: failures.length === 0, failures };
+  return { eligible: failures.length === 0, failures, ...(flyIn ? { flyIn: true } : {}) };
 }
 
 /** Throws the first failure as a DomainError (F0/F1 failures come first). */

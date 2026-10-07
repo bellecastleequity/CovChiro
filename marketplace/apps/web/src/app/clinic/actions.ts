@@ -60,6 +60,7 @@ async function shiftPayloadFrom(raw: any) {
     instantBook: !!raw.instantBook,
     maxTravelBudgetCents: raw.maxTravelBudget ? Math.round(Number(raw.maxTravelBudget) * 100) : null,
     lodgingAllowed: !!raw.lodgingAllowed,
+    flyIn: !!raw.flyIn,
     lodgingCapCentsPerNight: raw.lodgingCap ? Math.round(Number(raw.lodgingCap) * 100) : null,
     promoCode: raw.promoCode || null,
     supervisionAttestation: raw.supervisionAttestation ?? null,

@@ -12,8 +12,10 @@ import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { GoogleAccountCard } from "@/components/site/google-account";
-import { agreementAction, passwordAction, payFloorAction, profileAction, studentModeAction } from "../actions";
+import { agreementAction, flyInAction, passwordAction, payFloorAction, profileAction, studentModeAction } from "../actions";
 import { breaks, getSettings, payfloors, schools } from "@cm/services";
+import { flyInAirfareCents, flyInNightlyCents, regionName } from "@cm/core";
+import { money } from "@/lib/format";
 import { PauseCircle, PlayCircle } from "lucide-react";
 import { StudentFields } from "@/components/provider/student-fields";
 
@@ -34,6 +36,9 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
   const licStates = [...new Set((await prisma.license.findMany({ where: { providerId: p.id, status: "VERIFIED" }, select: { state: true } })).map((l) => l.state).filter((x) => x !== "US"))];
   const guidance = await Promise.all(p.professions.map(async (pp) => ({ code: pp.professionCode, g: await payfloors.payGuidance(pp.professionCode, licStates) })));
   const dollars = (c: number | null | undefined) => (c ? String(c / 100) : "");
+  const settings = await getSettings();
+  // Fly-in: any state they hold (or have submitted) a license for.
+  const flyChoices = [...new Set((await prisma.license.findMany({ where: { providerId: p.id, status: { not: "REJECTED" }, state: { not: "US" } }, select: { state: true } })).map((l) => l.state))].sort();
   const studentDefaults = {
     school: p.school, graduationDate: p.graduationDate?.toISOString().slice(0, 10) ?? null, intendedStates: p.intendedStates, licensureApplied: p.licensureApplied,
     expectedLicensure: p.expectedLicensure, homeZip: p.homeZip, maxDriveMinutes: p.maxDriveMinutes, preferredArea: p.preferredArea, smsConsent: !!p.smsConsentAt,
@@ -89,7 +94,7 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
               <Field label="About me" className="sm:col-span-2" hint="Your approach, techniques, the kinds of practices you love covering."><Textarea name="bio" defaultValue={p.bio ?? ""} maxLength={1500} required /></Field>
               <Field label="Headshot" hint="A clear, friendly photo of your face.">{p.photoUrl ? <img src={`/api/files/${p.photoUrl}`} alt="" className="mb-2 size-16 rounded-full object-cover" /> : null}<Input name="photo" type="file" accept="image/*" /></Field>
               <div className="space-y-2 pt-6">
-                <Checkbox name="willingOvernight" defaultChecked={p.willingOvernight} label={<>Willing to stay overnight for distant shifts<InfoTip label="About overnight shifts">You&apos;ll also be offered shifts beyond your normal drive time when the clinic covers lodging. You book the room and upload the receipt to be reimbursed.</InfoTip></>} />
+                <Checkbox name="willingOvernight" defaultChecked={p.willingOvernight} label={<>Willing to stay overnight for distant shifts<InfoTip label="About overnight shifts">You&apos;ll also be offered shifts beyond your normal drive time when the clinic allows lodging. A flat nightly allowance is added to your pay; no receipts.</InfoTip></>} />
                 <Checkbox name="xrayComfort" defaultChecked={p.xrayComfort} label="Comfortable taking/reading X-rays" />
               </div>
               <div className="sm:col-span-2"><SubmitButton>Save profile</SubmitButton></div>
@@ -125,6 +130,32 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
                   </ActionForm>
                 </details>
               )}
+            </CardBody>
+          </Card>
+        ) : null}
+        {settings["flyIn.enabled"] && flyChoices.length ? (
+          <Card id="fly-in">
+            <CardHeader
+              title="Fly-in coverage"
+              description={`Licensed and insured somewhere too far to drive (an island, another region)? Pick it and clinics there that allow fly-in can book you for trips of ${settings["flyIn.minDays"]}+ days, posted at least ${settings["flyIn.minLeadDays"]} days ahead. You get a flat airfare allowance per trip and lodging every night, no receipts. Travel days aren't paid.`}
+            />
+            <CardBody>
+              <ActionForm action={flyInAction} className="space-y-3">
+                <fieldset className="grid gap-2 sm:grid-cols-2">
+                  <legend className="mb-1 text-sm font-medium text-slate-700">I&apos;ll fly to</legend>
+                  {flyChoices.map((st) => (
+                    <Checkbox
+                      key={st}
+                      name="flyInStates"
+                      value={st}
+                      defaultChecked={p.flyInStates.includes(st)}
+                      label={<>{regionName(st)} <span className="text-xs text-slate-500">· airfare {money(flyInAirfareCents(st, settings))}, lodging {money(flyInNightlyCents(st, settings))}/night</span></>}
+                    />
+                  ))}
+                </fieldset>
+                <p className="text-xs text-slate-500">You still need a verified license and malpractice coverage for that state. Book your flights once the booking is confirmed and the clinic&apos;s {settings["flyIn.airfareRefundHours"]}-hour change window has passed: after that, the airfare allowance is yours even if the clinic cancels.</p>
+                <SubmitButton size="sm">Save fly-in states</SubmitButton>
+              </ActionForm>
             </CardBody>
           </Card>
         ) : null}

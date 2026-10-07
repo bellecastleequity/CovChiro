@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Car, Clock, Search, Users, Zap } from "lucide-react";
+import { Car, Clock, Plane, Search, Users, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
 import { enrollment, providerProfile, shiftBoard } from "@cm/services";
 import { MarketWaiting } from "@/components/provider/market-waiting";
@@ -59,13 +59,13 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-semibold tabular-nums text-brand-700">{money(s.pay.totalCents)}</div>
-                    <div className="text-xs text-slate-500">incl. {money(s.pay.mileageCents)} mileage{s.pay.lodgingCents ? ` + ${money(s.pay.lodgingCents)} lodging` : ""}</div>
+                    <div className="text-xs text-slate-500">{s.flyIn ? `incl. ${money(s.pay.lodgingCents)} lodging · + ${money(s.flyIn.airfareCents)} airfare per trip` : <>incl. {money(s.pay.mileageCents)} mileage{s.pay.lodgingCents ? ` + ${money(s.pay.lodgingCents)} lodging` : ""}</>}</div>
                   </div>
                 </div>
                 <div className="mt-3 text-sm font-medium">{s.clinicName}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                   <span>{s.city}, {s.state}</span>
-                  {s.driveMinutes !== null ? <span className="flex items-center gap-1"><Car className="size-3.5" />{s.driveMinutes} min</span> : null}
+                  {s.flyIn ? <span className="flex items-center gap-1"><Plane className="size-3.5" />Fly-in</span> : s.driveMinutes !== null ? <span className="flex items-center gap-1"><Car className="size-3.5" />{s.driveMinutes} min</span> : null}
                   {s.expectedPatients ? <span className="flex items-center gap-1"><Users className="size-3.5" />{s.declaredTier ? `${s.declaredTier === "LIGHT" ? "Light" : "Busy"} day · ` : ""}~{s.expectedPatients} patients</span> : s.declaredTier ? <span className="flex items-center gap-1"><Users className="size-3.5" />{s.declaredTier === "LIGHT" ? "Light" : "Busy"} day</span> : null}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
@@ -73,6 +73,7 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
                   {s.urgent ? <Badge tone="amber"><Clock className="size-3" />Urgent</Badge> : null}
                   {s.instantBook ? <Badge tone="blue"><Zap className="size-3" />Instant book</Badge> : null}
                   {s.clinicSetRate ? <Badge tone="amber">Clinic-set rate</Badge> : null}
+                  {s.flyIn ? <Badge tone="blue"><Plane className="size-3" />Fly-in · all days</Badge> : null}
                   {s.applied ? <Badge tone="green">Applied</Badge> : null}
                 </div>
               </Card>

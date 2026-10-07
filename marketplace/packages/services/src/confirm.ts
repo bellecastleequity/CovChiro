@@ -66,7 +66,19 @@ export async function confirmInTx(
 
   const ev = await assertProviderEligibleForShift(db, providerId, shiftId);
   const drive = ev.drive ?? { minutes: 0, miles: 0 };
-  const travel = travelEstimate(drive, { lodgingAllowed: shift.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s);
+  // Fly-in: no mileage; lodging every night (the night before each day) at the fly-in rate; the
+  // airfare allowance once per trip, on the first day this provider covers in the booking.
+  const flyIn = !!ev.result.flyIn;
+  let airfareCents = 0;
+  if (flyIn) {
+    const carried = shift.shiftGroupId
+      ? await db.assignment.count({ where: { providerId, airfareCents: { gt: 0 }, status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] }, shift: { shiftGroupId: shift.shiftGroupId } } })
+      : 0;
+    airfareCents = carried ? 0 : (shift.flyInAirfareCents ?? 0);
+  }
+  const travel = flyIn
+    ? { mileageCents: 0, lodgingEstimateCents: shift.flyInNightlyCents ?? 0 }
+    : travelEstimate(drive, { lodgingAllowed: shift.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s);
 
   // Promo: redeem now (counts only confirmed shifts). If it ran out since posting, drop it.
   let discount = shift.promoDiscountCents;
@@ -93,6 +105,7 @@ export async function confirmInTx(
     mileageCents: travel.mileageCents,
     // Flat nightly lodging allowance (no receipts): charged to the clinic and paid to the provider.
     lodgingCents: travel.lodgingEstimateCents,
+    airfareCents,
   };
   const clinicTotal = clinicTotalCents(breakdown);
   const providerTotal = providerTotalCents(breakdown);
@@ -104,7 +117,7 @@ export async function confirmInTx(
       professionCode: shift.professionCode,
       startsAt: shift.startsAt,
       endsAt: shift.endsAt,
-      bufferMinutes: travelBufferMinutes(ev.drive?.minutes ?? null, s["matching.travelBufferExtraMinutes"]),
+      bufferMinutes: travelBufferMinutes(flyIn ? null : (ev.drive?.minutes ?? null), s["matching.travelBufferExtraMinutes"]),
       selectionMethod: method,
       driveMinutes: drive.minutes,
       driveMiles: drive.miles,
@@ -113,9 +126,12 @@ export async function confirmInTx(
       promoDiscountCents: discount,
       mileageCents: travel.mileageCents,
       lodgingEstimateCents: travel.lodgingEstimateCents,
+      flyIn,
+      airfareCents,
       clinicTotalCents: clinicTotal,
       providerTotalCents: providerTotal,
-      depositCents: depositCents(clinicTotal, s["payments.depositPercent"]),
+      // Fly-in: the airfare is collected in full with the deposit (flights are booked soon after).
+      depositCents: depositCents(clinicTotal - airfareCents, s["payments.depositPercent"]) + airfareCents,
       confirmedAt: now,
       graceEndsAt: opts.graceMinutes ? new Date(+now + opts.graceMinutes * 60_000) : null,
     },
@@ -166,7 +182,11 @@ export async function confirmInTx(
     await notify(prisma, ev.provider.userId, {
       template: "shift_confirmed_provider",
       title: `You're confirmed: ${date} at ${shift.location.name}`,
-      body: `You're booked for ${date} in ${shift.location.city}, ${shift.location.state}. Arrival notes and the on-site contact are on the shift page.`,
+      body: `You're booked for ${date} in ${shift.location.city}, ${shift.location.state}. Arrival notes and the on-site contact are on the shift page.${
+        airfareCents
+          ? ` This is a fly-in booking: book your flights after ${new Date(+now + s["flyIn.airfareRefundHours"] * 3_600_000).toLocaleString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}, when the clinic's change window ends. Your $${(airfareCents / 100).toFixed(0)} airfare allowance and lodging are included in your pay.`
+          : ""
+      }`,
       link: `/provider/assignments/${assignment.id}`,
       ctaLabel: "View shift details",
       // Standing-booking days are expected: in-app only (the daily/weekly digests list them).

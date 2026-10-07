@@ -158,6 +158,23 @@ export const ProviderProfileInput = z.object({
   yearsInPractice: z.record(z.string(), z.coerce.number().int().min(0).max(70)).optional(),
 });
 
+/**
+ * Fly-in coverage: the states/territories the provider will fly to. Only states where they hold a
+ * license (not rejected) can be picked; matching still needs it VERIFIED plus malpractice there.
+ */
+export async function setFlyInStates(actor: Actor, states: string[]) {
+  const providerId = requireProvider(actor);
+  const want = [...new Set(states.map((x) => x.trim().toUpperCase()).filter(Boolean))];
+  const licensed = new Set(
+    (await prisma.license.findMany({ where: { providerId, status: { not: "REJECTED" }, state: { not: NATIONAL_CREDENTIAL } }, select: { state: true } })).map((l) => l.state),
+  );
+  const bad = want.filter((x) => !licensed.has(x));
+  if (bad.length) throw new DomainError("VALIDATION", `Add your license for ${bad.join(", ")} first (Credentials), then pick it here.`);
+  await prisma.provider.update({ where: { id: providerId }, data: { flyInStates: want } });
+  await audit(prisma, actor, "provider.fly_in_states", "Provider", providerId, null, { states: want });
+  return want;
+}
+
 export async function updateProviderProfile(actor: Actor, raw: z.input<typeof ProviderProfileInput>) {
   const providerId = requireProvider(actor);
   const input = ProviderProfileInput.parse(raw);

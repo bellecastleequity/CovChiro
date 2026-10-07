@@ -2,6 +2,7 @@ import { agreementCurrent } from "./agreements";
 import {
   DomainError,
   evaluateEligibility,
+  isFlyInPair,
   NATIONAL_CREDENTIAL,
   paidHours,
   parseAttestation,
@@ -15,7 +16,7 @@ import {
 import type { SettingsMap } from "@cm/config";
 import { Prisma } from "@cm/db";
 import { geoProvider, type DriveResult } from "@cm/integrations";
-import { getSettings, type Db } from "./context";
+import { clock, getSettings, type Db } from "./context";
 
 /**
  * THE eligibility implementation (INV-1 profession + state, INV-3, INV-8,
@@ -80,6 +81,7 @@ export async function loadShifts(db: Db, shiftIds: string[]): Promise<Map<string
         minYearsExperience: s.minYearsExperience,
         lodgingAllowed: s.lodgingAllowed,
         maxTravelBudgetCents: s.maxTravelBudgetCents,
+        flyIn: s.flyInAirfareCents !== null && s.flyInUntil ? { airfareCents: s.flyInAirfareCents, nightlyCents: s.flyInNightlyCents ?? 0, until: s.flyInUntil } : null,
         pay: s.durationTier ? { durationTier: s.durationTier, providerPayCents: s.providerPayCents, billableHours: Math.max(0.01, paidHours((+s.endsAt - +s.startsAt) / 3_600_000, s.lunchMinutes, maxDaySpan)) } : undefined,
         supervisionAttestation: s.supervisionAttestedAt ? parseAttestation(s.supervisionAttestation) : null,
         config: {
@@ -160,6 +162,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
         skills: p.skills.map((s) => ({ skillId: s.skillId, certificationStatus: s.certificationStatus, certificationExpiresAt: s.certificationExpiresAt })),
         maxDriveMinutes: p.maxDriveMinutes,
         willingOvernight: p.willingOvernight,
+        flyInStates: p.flyInStates,
         availabilityRules: p.availability.map((r) => ({ weekday: r.weekday, startMin: r.startMin, endMin: r.endMin, timeZone: r.timeZone })),
         openDates: p.openDates.map((o) => ({ start: +o.startsAt, end: +o.endsAt })),
         blackouts: p.blackouts.map((b) => ({ start: +b.startsAt, end: +b.endsAt })),
@@ -210,10 +213,25 @@ export async function driveTimes(
 // ---------------- pair facts ----------------
 
 export function eligibilityOptions(s: SettingsMap, extra: Partial<EligibilityOptions> = {}): EligibilityOptions {
-  return { travelBufferExtraMinutes: s["matching.travelBufferExtraMinutes"], lodgingMaxDriveMinutes: s["pricing.lodgingMaxDriveMinutes"], ...extra };
+  return { travelBufferExtraMinutes: s["matching.travelBufferExtraMinutes"], lodgingMaxDriveMinutes: s["pricing.lodgingMaxDriveMinutes"], now: clock.now(), ...extra };
 }
 
-async function pairFactsFor(db: Db, shift: LoadedShift, providerIds: string[], drives: Map<string, DriveResult | null>, s: SettingsMap) {
+/**
+ * Estimated travel for a provider/shift pair. A fly-in pair (core isFlyInPair) has no mileage:
+ * the trip's airfare allowance plus one night's lodging at the fly-in rate (the night before the day).
+ */
+export function pairTravel(provider: ProviderFacts, shift: LoadedShift, drive: DriveResult | null, s: SettingsMap, opts: EligibilityOptions) {
+  const f = shift.facts;
+  if (f.flyIn && isFlyInPair(provider, f, drive?.minutes ?? null, opts)) {
+    return { flyIn: true, mileageCents: 0, lodgingEstimateCents: f.flyIn.nightlyCents, airfareCents: f.flyIn.airfareCents, totalCents: f.flyIn.nightlyCents + f.flyIn.airfareCents, nights: 1 };
+  }
+  const t = drive
+    ? travelEstimate(drive, { lodgingAllowed: f.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s)
+    : { totalCents: 0, mileageCents: 0, lodgingEstimateCents: 0, nights: 0 };
+  return { flyIn: false, airfareCents: 0, ...t };
+}
+
+async function pairFactsFor(db: Db, shift: LoadedShift, providers: Map<string, LoadedProvider>, providerIds: string[], drives: Map<string, DriveResult | null>, s: SettingsMap, opts: EligibilityOptions) {
   const [blocks, declines] = await Promise.all([
     db.block.findMany({
       where: {
@@ -230,9 +248,7 @@ async function pairFactsFor(db: Db, shift: LoadedShift, providerIds: string[], d
   const out = new Map<string, PairFacts>();
   for (const id of providerIds) {
     const drive = drives.get(id) ?? null;
-    const travel = drive
-      ? travelEstimate(drive, { lodgingAllowed: shift.facts.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s)
-      : { totalCents: 0, mileageCents: 0, lodgingEstimateCents: 0, nights: 0 };
+    const travel = pairTravel(providers.get(id)!.facts, shift, drive, s, opts);
     out.set(id, { driveMinutes: drive?.minutes ?? null, travelEstimateCents: travel.totalCents, mileageCents: travel.mileageCents, blocked: blocked.has(id), previouslyDeclined: declined.has(id) });
   }
   return out;
@@ -263,8 +279,9 @@ export async function evaluateProviderForShift(
   const drives = extra.credentialsOnly
     ? new Map<string, DriveResult | null>()
     : await driveTimes([{ key: providerId, lat: provider.homeLat, lng: provider.homeLng }], { locationId: shift.locationId, ...shift.location }, arrive);
-  const pair = (await pairFactsFor(db, shift, [providerId], drives, s)).get(providerId)!;
-  const result = evaluateEligibility(provider.facts, shift.facts, pair, eligibilityOptions(s, extra));
+  const opts = eligibilityOptions(s, extra);
+  const pair = (await pairFactsFor(db, shift, providers, [providerId], drives, s, opts)).get(providerId)!;
+  const result = evaluateEligibility(provider.facts, shift.facts, pair, opts);
   return { providerId, provider, pair, drive: drives.get(providerId) ?? null, result, shift };
 }
 
@@ -312,9 +329,7 @@ export async function evaluateProviderForShifts(
   const opts = eligibilityOptions(s, extra);
   for (const shift of list) {
     const drive = drives.get(shift.facts.id) ?? null;
-    const travel = drive
-      ? travelEstimate(drive, { lodgingAllowed: shift.facts.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s)
-      : { totalCents: 0, mileageCents: 0, lodgingEstimateCents: 0, nights: 0 };
+    const travel = pairTravel(provider.facts, shift, drive, s, opts);
     const pair: PairFacts = {
       driveMinutes: drive?.minutes ?? null,
       travelEstimateCents: travel.totalCents,
@@ -359,8 +374,10 @@ export async function nationalCredentialStates(db: Db): Promise<Record<string, s
  * as the pure function defines them, then a straight-line distance bound
  * (maxDriveMinutes × 1.2 miles) for providers who can't take lodging.
  */
-async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: number, distanceMultiplierAll = 1, lodgingMaxDriveMinutes = 240): Promise<string[]> {
+async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: number, distanceMultiplierAll = 1, lodgingMaxDriveMinutes = 240, now: Date = clock.now()): Promise<string[]> {
   const f = shift.facts;
+  // Fly-in: providers who fly to this state skip the distance bound while fly-in providers can still be added.
+  const flyInOpen = !!f.flyIn && +now <= +f.flyIn.until;
   if (!f.config.enabled || !f.config.stateEnabled) return []; // F0 fails for everyone
   const rows = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
     SELECT p.id FROM "Provider" p
@@ -379,7 +396,8 @@ async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: numb
         AND (cardinality(m."coveredStates") = 0 OR ${f.state} = ANY(m."coveredStates"))
     )
     AND (
-      (p."willingOvernight" AND ${f.lodgingAllowed} AND p."homeGeo" IS NOT NULL AND ST_DWithin(
+      (${flyInOpen} AND ${f.state} = ANY(p."flyInStates"))
+      OR (p."willingOvernight" AND ${f.lodgingAllowed} AND p."homeGeo" IS NOT NULL AND ST_DWithin(
             p."homeGeo",
             ST_SetSRID(ST_MakePoint(${shift.location.lng}, ${shift.location.lat}), 4326)::geography,
             ${lodgingMaxDriveMinutes}::float8 * 1.2 * 1609.344))
@@ -402,7 +420,7 @@ export interface EligibleSet {
 export async function getEligibleProviders(db: Db, shiftOrId: string | LoadedShift, extra: Partial<EligibilityOptions> = {}): Promise<EligibleSet> {
   const s = await getSettings(db);
   const shift = typeof shiftOrId === "string" ? await loadShift(db, shiftOrId) : shiftOrId;
-  const ids = await prefilterIds(db, shift, extra.distanceMultiplier ?? 1, extra.distanceMultiplierAll ?? 1, extra.lodgingMaxDriveMinutes ?? s["pricing.lodgingMaxDriveMinutes"]);
+  const ids = await prefilterIds(db, shift, extra.distanceMultiplier ?? 1, extra.distanceMultiplierAll ?? 1, extra.lodgingMaxDriveMinutes ?? s["pricing.lodgingMaxDriveMinutes"], extra.now ?? clock.now());
   const totalWithAnyLicense = await db.provider.count({ where: { licenses: { some: { professionCode: shift.facts.professionCode } } } });
   const providers = await loadProviders(db, ids, shift.facts.id);
   const drives = await driveTimes(
@@ -410,8 +428,8 @@ export async function getEligibleProviders(db: Db, shiftOrId: string | LoadedShi
     { locationId: shift.locationId, ...shift.location },
     shift.facts.startsAt,
   );
-  const pairs = await pairFactsFor(db, shift, ids, drives, s);
   const opts = eligibilityOptions(s, extra);
+  const pairs = await pairFactsFor(db, shift, providers, ids, drives, s, opts);
   const eligible: Evaluated[] = [];
   const excluded: Evaluated[] = [];
   for (const id of ids) {

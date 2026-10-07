@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Car, Clock, MapPin, Shirt, Star, Users } from "lucide-react";
+import { Car, Clock, MapPin, Plane, Shirt, Star, Users } from "lucide-react";
 import { prisma } from "@cm/db";
 import { evaluateProviderForShift, getSettings } from "@cm/services";
 import { parseVolumeTerms, providerView } from "@cm/core";
@@ -22,8 +22,10 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
   const ev = await evaluateProviderForShift(prisma, actor.providerId!, id);
   if (!ev.result.eligible && !app) notFound();
   const s = await getSettings();
-  const mileage = ev.drive ? Math.round((s["pricing.mileageRoundTrip"] ? 2 : 1) * ev.drive.miles * s["pricing.mileageRateCentsPerMile"]) : 0;
-  const pay = providerView({ clinicPriceCents: 0, providerPayCents: shift.providerPayCents, promoDiscountCents: 0, mileageCents: mileage, lodgingCents: 0 });
+  const flyIn = !!ev.result.flyIn;
+  const mileage = !flyIn && ev.drive ? Math.round((s["pricing.mileageRoundTrip"] ? 2 : 1) * ev.drive.miles * s["pricing.mileageRateCentsPerMile"]) : 0;
+  // Fly-in: lodging every night (the night before each day); airfare once per trip, shown on its own.
+  const pay = providerView({ clinicPriceCents: 0, providerPayCents: shift.providerPayCents, promoDiscountCents: 0, mileageCents: mileage, lodgingCents: flyIn ? (shift.flyInNightlyCents ?? 0) : 0 });
   const skills = await prisma.skill.findMany({ where: { id: { in: [...shift.requiredSkillIds, ...shift.preferredSkillIds] } } });
   const clinicRating = await prisma.rating.aggregate({ where: { raterType: "PROVIDER", revealedAt: { not: null }, assignment: { shift: { location: { clinicOrgId: shift.location.clinicOrgId } } } }, _avg: { stars: true }, _count: true });
   const tz = shift.location.timeZone;
@@ -45,6 +47,12 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
       {shift.rateMode === "CLINIC" && !shift.releasedAt ? (
         <Alert tone="info" className="mb-5" title="Clinic-set rate">The clinic set its own rate for this shift. It isn't filled automatically: apply if the pay works for you and the clinic chooses who to confirm.</Alert>
       ) : null}
+      {flyIn ? (
+        <Alert tone="info" className="mb-5" title="You'd fly in for this booking">
+          You&apos;re licensed here but too far to drive, and the clinic allows fly-in coverage. You get {money(shift.flyInAirfareCents)} airfare per trip and {money(shift.flyInNightlyCents)} lodging every night (no receipts); travel days aren&apos;t paid.
+          {shift.shiftGroupId ? " You apply for all the open days together and the clinic picks." : ""} Book flights once you&apos;re confirmed and the clinic&apos;s {s["flyIn.airfareRefundHours"]}-hour change window has passed.
+        </Alert>
+      ) : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>
@@ -52,7 +60,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
             <CardBody className="space-y-3 text-sm">
               <div className="flex items-center gap-2"><MapPin className="size-4 text-slate-400" />{shift.location.city}, {shift.state} <span className="text-slate-400">(exact address after confirmation)</span></div>
               <div className="flex items-center gap-2"><Clock className="size-4 text-slate-400" />{timeRange(shift.startsAt, shift.endsAt, tz)}{shift.lunchMinutes ? <span className="text-slate-500"> · {lunchLabel(shift.lunchMinutes, shift.lunchStartsAt, tz)}</span> : null}</div>
-              {ev.drive ? <div className="flex items-center gap-2"><Car className="size-4 text-slate-400" />About {ev.drive.minutes} min drive ({ev.drive.miles} mi)</div> : null}
+              {flyIn ? <div className="flex items-center gap-2"><Plane className="size-4 text-slate-400" />Fly-in booking</div> : ev.drive ? <div className="flex items-center gap-2"><Car className="size-4 text-slate-400" />About {ev.drive.minutes} min drive ({ev.drive.miles} mi)</div> : null}
               {shift.location.dressCode ? <div className="flex items-center gap-2"><Shirt className="size-4 text-slate-400" />Attire: {shift.location.dressCode}</div> : null}
               {shift.minYearsExperience ? <div className="flex items-center gap-2"><Star className="size-4 text-slate-400" />Clinic asks for {shift.minYearsExperience}+ years&apos; experience</div> : null}
               {shift.declaredTier && volTerms ? (
@@ -71,7 +79,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
           </Card>
           {groupDays.length > 1 ? (
             <Card>
-              <CardHeader title={`Part of a ${groupDays.length}-day booking`} description="The clinic needs cover on each of these days. You can apply for one day or all of them." />
+              <CardHeader title={`Part of a ${groupDays.length}-day booking`} description={flyIn ? "The clinic needs cover on each of these days. As a fly-in provider you apply for all of them together." : "The clinic needs cover on each of these days. You can apply for one day or all of them."} />
               <CardBody className="divide-y divide-slate-100 p-0 text-sm">
                 {groupDays.map((d, i) => {
                   const mine = d.assignments.length ? "You're booked" : d.applications.some((x) => x.status === "ACTIVE") ? "Applied" : OPENISH.includes(d.status) ? "Open" : "Filled";
@@ -91,9 +99,19 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
             <CardHeader title="Your pay" />
             <CardBody className="space-y-2 text-sm">
               <div className="flex justify-between"><span>Shift pay</span><span className="tabular-nums">{money(pay.payCents)}</span></div>
-              <div className="flex justify-between"><span>Mileage</span><span className="tabular-nums">{money(pay.mileageCents)}</span></div>
-              {shift.lodgingAllowed ? <div className="flex justify-between text-slate-500"><span>Lodging</span><span>Reimbursed up to {money(shift.lodgingCapCentsPerNight)}/night</span></div> : null}
-              <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold"><span>Total</span><span className="tabular-nums text-brand-700">{money(pay.totalCents)}</span></div>
+              {flyIn ? (
+                <>
+                  <div className="flex justify-between"><span>Lodging (night before)</span><span className="tabular-nums">{money(pay.lodgingCents)}</span></div>
+                  <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold"><span>Total for this day</span><span className="tabular-nums text-brand-700">{money(pay.totalCents)}</span></div>
+                  <div className="flex justify-between text-slate-600"><span>Airfare allowance, once per trip</span><span className="tabular-nums">+{money(shift.flyInAirfareCents)}</span></div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between"><span>Mileage</span><span className="tabular-nums">{money(pay.mileageCents)}</span></div>
+                  {shift.lodgingAllowed ? <div className="flex justify-between text-slate-500"><span>Lodging</span><span>{money(shift.lodgingCapCentsPerNight)}/night if your drive is long</span></div> : null}
+                  <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold"><span>Total</span><span className="tabular-nums text-brand-700">{money(pay.totalCents)}</span></div>
+                </>
+              )}
             </CardBody>
           </Card>
           <Card>
@@ -119,7 +137,9 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
                     <Textarea id="note" name="note" maxLength={500} placeholder="Techniques you use, what you're comfortable with…" />
                     <PhiNotice />
                   </Field>
-                  {openDays.length > 1 ? <Checkbox name="allDays" defaultChecked label={`Apply for all ${openDays.length} open days of this booking`} /> : null}
+                  {flyIn && openDays.length > 1 ? (
+                    <><input type="hidden" name="allDays" value="on" /><p className="text-sm text-slate-600">You&apos;ll apply for all {openDays.length} open days of this trip.</p></>
+                  ) : openDays.length > 1 ? <Checkbox name="allDays" defaultChecked label={`Apply for all ${openDays.length} open days of this booking`} /> : null}
                   <Checkbox name="commit" required label="If selected, I commit to working this shift." />
                   <Checkbox name="coverage" required label="My malpractice insurance is active and unchanged since I last uploaded it." />
                   <SubmitButton className="w-full" size="lg">{shift.instantBook ? "Book now" : "Apply"}</SubmitButton>

@@ -115,7 +115,13 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
     providerPayCents: 0,
     promoDiscountCents: live?.promoDiscountCents ?? shift.promoDiscountCents,
     mileageCents: live?.mileageCents ?? 0,
-    lodgingCents: live?.lodgingApprovedCents ?? 0,
+    // Flat lodging allowance is in the total (older bookings: approved receipts instead).
+    lodgingCents: live
+      ? live.lodgingEstimateCents > 0 && live.clinicTotalCents >= live.clinicPriceCents - live.promoDiscountCents + live.mileageCents + live.lodgingEstimateCents + live.airfareCents
+        ? live.lodgingEstimateCents
+        : live.lodgingApprovedCents
+      : 0,
+    airfareCents: live?.airfareCents ?? 0,
   });
   const hoursToStart = (+shift.startsAt - Date.now()) / 3_600_000;
   const replacement = await prisma.shift.findFirst({ where: { rescueOfShiftId: id }, select: { id: true } });
@@ -487,8 +493,14 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
             <CardBody className="space-y-2 text-sm">
               <div className="flex justify-between"><span>Coverage</span><span className="tabular-nums">{money(view.coverageCents)}</span></div>
               {view.discountCents ? <div className="flex justify-between text-emerald-700"><span>Promo {shift.promoCode?.code}</span><span>−{money(view.discountCents)}</span></div> : null}
-              <div className="flex justify-between"><span>Mileage</span><span className="tabular-nums">{live ? money(view.mileageCents) : "Set at confirmation"}</span></div>
+              {live?.flyIn ? (
+                <div className="flex justify-between"><span>Travel</span><span className="text-slate-500">Fly-in, no mileage</span></div>
+              ) : (
+                <div className="flex justify-between"><span>Mileage</span><span className="tabular-nums">{live ? money(view.mileageCents) : "Set at confirmation"}</span></div>
+              )}
               {view.lodgingCents ? <div className="flex justify-between"><span>Lodging</span><span>{money(view.lodgingCents)}</span></div> : null}
+              {view.airfareCents ? <div className="flex justify-between"><span>Airfare allowance (per trip)</span><span className="tabular-nums">{money(view.airfareCents)}</span></div> : null}
+              {!live && shift.flyInAirfareCents !== null ? <p className="text-xs text-slate-500">Fly-in OK: a provider who flies in adds {money(shift.flyInAirfareCents)} airfare per trip and {money(shift.flyInNightlyCents)} a night instead of mileage.</p> : null}
               <div className="flex justify-between border-t border-slate-100 pt-2 font-semibold"><span>Total</span><span className="tabular-nums">{money(view.totalCents)}</span></div>
               {live?.payments.filter((p) => p.type !== "REFUND").map((p) => <div key={p.id} className="flex justify-between text-xs text-slate-500"><span>{p.type.toLowerCase()}</span><span>{money(p.amountCents, { exact: true })} · {p.status.toLowerCase()}</span></div>)}
             </CardBody>

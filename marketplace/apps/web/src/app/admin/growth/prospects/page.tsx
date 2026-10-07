@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { growth } from "@cm/services";
+import { US_STATES } from "@cm/core";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { buttonClass } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateLabel, dateTimeLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { importProspectsAction, runProspectingAction, saveProspectAction } from "../actions";
+import { addClinicByHandAction, importProspectsAction, runProspectingAction } from "../actions";
 import { Stat } from "@/components/ui/misc";
 import { ProspectSwitch } from "./switch";
 import { ResearchHealth } from "../panels";
@@ -32,7 +33,7 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
   const qs = (p: number) => new URLSearchParams({ ...Object.fromEntries(Object.entries(f).filter(([k, v]) => v && k !== "page")), page: String(p) }).toString();
   return (
     <>
-      <PageHeader title="Prospecting · clinics" description="Practices found automatically in every prelaunch/live market: the public NPI registry gives every practice location and its chiropractors; AI web research then finds each practice's website, public business email and size, citing its sources. Public business information only. AI segment guesses are labeled as guesses." />
+      <PageHeader title="Prospecting · clinics" description="Practices found automatically in every prelaunch/live market: the public NPI registry gives every practice location and its chiropractors; AI web research then finds each practice's website, public business email and size, citing its sources. Public business information only. AI segment guesses are labeled as guesses." actions={<a href="#add" className={buttonClass("primary", "sm")}>Add a clinic</a>} />
       <GrowthTabs current="/admin/growth/prospects" />
       <ProspectSwitch current="clinics" />
       <Card className="mb-6">
@@ -108,21 +109,28 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
             </ActionForm>
           </CardBody>
         </Card>
-        <Card>
-          <CardHeader title="Add a clinic" />
+        <Card id="add">
+          <CardHeader title="Add a clinic you heard about" description="Email and clinic name are all it takes; the rest is optional. A clinic already on the list (same email) isn't duplicated." />
           <CardBody>
-            <ActionForm action={saveProspectAction} className="grid gap-2 sm:grid-cols-2">
-              <Input name="clinicName" placeholder="Clinic name" required className="sm:col-span-2" />
-              <Input name="ownerName" placeholder="Owner / lead doctor" />
-              <Input name="email" type="email" placeholder="Public business email" />
-              <Input name="phone" placeholder="Business phone" />
-              <Input name="website" placeholder="Website" />
-              <Input name="city" placeholder="City" />
-              <Input name="zip" placeholder="ZIP" />
-              <Input name="providerCount" type="number" min={0} placeholder="Chiropractors" />
-              <Input name="locationsCount" type="number" min={0} placeholder="Locations" />
-              <Input name="source" placeholder="Source" className="sm:col-span-2" />
-              <SubmitButton size="sm">Add clinic</SubmitButton>
+            <ActionForm action={addClinicByHandAction} className="grid gap-3 sm:grid-cols-2">
+              <Field label="Clinic name"><Input name="clinicName" required /></Field>
+              <Field label="Email"><Input name="email" type="email" required placeholder="office@clinic.com" /></Field>
+              <Field label="Doctor / owner name"><Input name="ownerName" placeholder="Dr. Ana Rivera" /></Field>
+              <Field label="Phone"><Input name="phone" /></Field>
+              <Field label="City"><Input name="city" /></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="State"><Select name="state" defaultValue="FL">{Object.entries(US_STATES).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</Select></Field>
+                <Field label="ZIP"><Input name="zip" inputMode="numeric" /></Field>
+              </div>
+              <Field label="Website" className="sm:col-span-2"><Input name="website" placeholder="clinic.com" /></Field>
+              <Field label="Notes (only you see these)" className="sm:col-span-2"><Textarea name="notes" className="min-h-16" placeholder="Where you heard of them, who you spoke to…" /></Field>
+              <fieldset className="space-y-1.5 text-sm sm:col-span-2">
+                <legend className="mb-1 font-medium text-slate-700">Then</legend>
+                <label className="flex items-start gap-2"><input type="radio" name="start" value="now" defaultChecked className="mt-1" /><span>Send the first outreach email now <span className="text-slate-500">(follow-ups go out automatically when clinic outreach is on)</span></span></label>
+                <label className="flex items-start gap-2"><input type="radio" name="start" value="auto" className="mt-1" /><span>Add to the automatic email sequence</span></label>
+                <label className="flex items-start gap-2"><input type="radio" name="start" value="save" className="mt-1" /><span>Just save it (no emails yet)</span></label>
+              </fieldset>
+              <div className="sm:col-span-2"><SubmitButton size="sm">Add clinic</SubmitButton></div>
             </ActionForm>
           </CardBody>
         </Card>

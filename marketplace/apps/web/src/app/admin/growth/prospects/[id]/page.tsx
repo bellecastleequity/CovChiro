@@ -6,21 +6,32 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { buttonClass } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
-import { Checklist, PageHeader, Table, Td, Th } from "@/components/ui/misc";
+import { Alert, Checklist, PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateTimeLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { manualEmailAction, noteAction, overrideProspectAction, replyAction, researchProspectAction, saveProspectAction, instagramHandleAction } from "../../actions";
+import { manualEmailAction, sendFirstOutreachAction, noteAction, overrideProspectAction, replyAction, researchProspectAction, saveProspectAction, instagramHandleAction } from "../../actions";
 import { GrowthTabs, SEGMENTS, STAGES } from "../../ui";
 
 export const metadata = { title: "Clinic prospect" };
 export const dynamic = "force-dynamic";
 
-export default async function ProspectDetail({ params }: { params: Promise<{ id: string }> }) {
+const ADDED: Record<string, { tone: "success" | "info" | "warning"; text: string }> = {
+  sent: { tone: "success", text: "Clinic added and the first outreach email has been sent." },
+  notsent: { tone: "warning", text: "Clinic added, but the first email couldn't go out yet. See why below." },
+  added: { tone: "success", text: "Clinic added to the outreach list." },
+  saved: { tone: "info", text: "Clinic saved with outreach paused. Unpause it or send the first email below when you're ready." },
+  exists: { tone: "info", text: "That email is already on the list, so here's the existing clinic (nothing was duplicated)." },
+};
+
+export default async function ProspectDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ added?: string }> }) {
   const { actor } = await requireActor("admin");
   const { id } = await params;
+  const { added } = await searchParams;
   const d = await growth.prospectDetail(actor, id).catch(() => null);
   if (!d) notFound();
   const p = d.prospect;
+  const ready = await growth.outreachReadiness(id);
+  const notice = added ? ADDED[added] : null;
   return (
     <>
       <PageHeader back={{ href: "/admin/growth/prospects", label: "Clinic prospects" }} eyebrow={<Link href="/admin/growth/prospects" className="hover:underline">Clinic prospects</Link>} title={p.clinicName} description={[p.ownerName, [p.city, p.state].filter(Boolean).join(", "), p.marketKey ? `market: ${p.marketKey}` : null].filter(Boolean).join(" · ")} />
@@ -35,6 +46,25 @@ export default async function ProspectDetail({ params }: { params: Promise<{ id:
         {p.smsConsentAt ? <Badge tone="green">SMS opt-in</Badge> : null}
         {p.clinicOrgId ? <Link href={`/admin/clinics/${p.clinicOrgId}`}><Badge tone="brand">Has an account →</Badge></Link> : null}
       </div>
+
+      {notice ? <Alert tone={notice.tone} className="mb-5">{notice.text}</Alert> : null}
+      <Card id="outreach" className="mb-6">
+        <CardHeader
+          title="Outreach emails"
+          description={ready.blockers.length ? "This clinic won't get outreach emails until these are sorted:" : ready.automatic ? "The automatic outreach emails will go to this clinic." : "Ready to email. The automatic follow-ups are waiting on:"}
+        />
+        <CardBody className="space-y-3 text-sm">
+          {ready.blockers.length ? <ul className="list-disc space-y-1 pl-5 text-red-700">{ready.blockers.map((b) => <li key={b}>{b}</li>)}</ul> : null}
+          {ready.waits.length ? <ul className="list-disc space-y-1 pl-5 text-slate-600">{ready.waits.map((w) => <li key={w}>{w}</li>)}</ul> : null}
+          {ready.firstNow ? (
+            <ActionForm action={sendFirstOutreachAction} confirm={`Send the first outreach email to ${p.email} now?`}>
+              <input type="hidden" name="id" value={p.id} />
+              <SubmitButton size="sm">Send the first email now</SubmitButton>
+              <p className="mt-1 text-xs text-slate-500">Uses the approved first-contact wording, with unsubscribe and the postal address, as you. Suppression and do-not-contact still apply.</p>
+            </ActionForm>
+          ) : null}
+        </CardBody>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-6">

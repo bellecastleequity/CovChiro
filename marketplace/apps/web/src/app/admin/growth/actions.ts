@@ -138,6 +138,25 @@ export const saveProspectAction = formAction(async (fd) => {
   return "Saved.";
 });
 
+export const addClinicByHandAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await growth.addClinicByHand(actor, {
+    clinicName: str(fd, "clinicName"), email: str(fd, "email"), ownerName: optStr(fd, "ownerName"), city: optStr(fd, "city"), state: str(fd, "state") || "FL",
+    zip: optStr(fd, "zip"), phone: optStr(fd, "phone"), website: optStr(fd, "website"), notes: optStr(fd, "notes"),
+    start: (["now", "auto", "save"].includes(str(fd, "start")) ? str(fd, "start") : "auto") as "now" | "auto" | "save",
+  });
+  rv();
+  const notice = r.existed ? "exists" : r.sent && "subject" in r.sent ? "sent" : r.sent ? "notsent" : str(fd, "start") === "save" ? "saved" : "added";
+  redirect(`/admin/growth/prospects/${r.prospect.id}?added=${notice}#outreach`);
+});
+
+export const sendFirstOutreachAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await growth.sendFirstOutreachNow(actor, str(fd, "id"));
+  rv();
+  return `Sent: "${r.subject}". The follow-ups go out automatically when clinic outreach is on.`;
+});
+
 export const importProspectsAction = formAction(async (fd) => {
   const { actor } = await me();
   const file = fd.get("file");

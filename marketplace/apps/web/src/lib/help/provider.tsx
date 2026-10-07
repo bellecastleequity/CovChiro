@@ -304,6 +304,26 @@ const A: HelpArticle[] = [
     links: [{ href: "/provider/earnings/statement", label: "Open year-end summary" }],
     body: () => <P>Earnings → Year-end summary lists every payout by month. Use Print → Save as PDF for your accountant.</P>,
   },
+  {
+    slug: "fly-in",
+    category: "pay",
+    title: "Fly-in coverage (states you'd fly to)",
+    summary: "Licensed and insured somewhere too far to drive? Clinics there can book you for trips, with airfare and lodging allowances.",
+    keywords: "fly fly-in flight airfare plane island virgin islands puerto rico travel trip lodging hotel",
+    links: [{ href: "/provider/profile#fly-in", label: "Choose the states you'd fly to" }],
+    body: (s) => (
+      <Ul
+        items={[
+          "On Profile → Fly-in coverage, tick the states or territories you'd fly to. You can pick any state you have a license for; to be matched you still need that license verified and malpractice coverage that includes the state.",
+          `Clinics there can allow fly-in when they post bookings of ${s["flyIn.minDays"]}+ consecutive days at least ${s["flyIn.minLeadDays"]} days ahead. Those bookings show on Find shifts with a Fly-in badge.`,
+          "You apply for all the days of the trip together, and the clinic picks. Fly-in bookings aren't sent as instant offers.",
+          "Pay: the normal day rate, plus lodging every night (the night before each day) and a flat airfare allowance once per trip, set per destination. No receipts. Travel days aren't paid.",
+          `Book your flights once you're confirmed and the clinic's ${s["flyIn.airfareRefundHours"]}-hour change window has passed (the time is on the shift page). After that, if the clinic cancels, the airfare allowance is still paid to you, plus the normal late-cancellation compensation when it applies.`,
+          "If you cancel the trip yourself, the airfare isn't paid. Cancel one day but keep others, and it still is.",
+        ]}
+      />
+    ),
+  },
   // ---------------- account ----------------
   {
     slug: "stay-active",

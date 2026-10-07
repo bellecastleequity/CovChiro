@@ -67,6 +67,24 @@ const A: HelpArticle[] = [
   },
   // ---------------- posting ----------------
   {
+    slug: "fly-in",
+    category: "posting",
+    title: "Fly-in coverage",
+    summary: "Few local providers? Let licensed providers from elsewhere fly in for multi-day bookings.",
+    keywords: "fly fly-in flight airfare island virgin islands puerto rico travel out of state lodging",
+    links: [{ href: "/clinic/shifts/new", label: "Post a shift" }],
+    body: (s) => (
+      <Ul
+        items={[
+          `When you post ${s["flyIn.minDays"]}+ consecutive days at least ${s["flyIn.minLeadDays"]} days ahead, tick "Fly-in coverage OK" in Details. Providers licensed and insured in your state who live too far to drive can then apply.`,
+          "They apply for all the days together and you choose; a fly-in provider is never auto-booked by instant offers.",
+          "If you confirm one, a flat airfare allowance per trip and a nightly lodging allowance are added to your total instead of mileage (the amounts for your state are shown when you post). No receipts. Travel days aren't charged.",
+          `The airfare is collected with the deposit. Cancel within ${s["flyIn.airfareRefundHours"]} hours of confirming and it's refunded; after that the provider books flights, so a cancellation keeps the airfare (paid to them) on top of the normal cancellation terms.`,
+        ]}
+      />
+    ),
+  },
+  {
     slug: "post-a-shift",
     category: "posting",
     title: "How to post a shift",

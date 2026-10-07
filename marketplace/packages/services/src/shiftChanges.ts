@@ -153,6 +153,7 @@ async function propose(db: Db, shift: Awaited<ReturnType<typeof loadForClinic>>,
     promoDiscountCents: d.promoDiscountCents,
     mileageCents: l.mileageCents,
     lodgingCents: l.lodgingEstimateCents,
+    airfareCents: l.airfareCents,
   });
   const before: ChangeSide = { shift: shiftDataOf(shift), totals: live ? { clinicTotalCents: live.clinicTotalCents, providerTotalCents: live.providerTotalCents } : null };
   const next: ChangeSide = { shift: after, totals: live ? { clinicTotalCents: clinicTotalCents(breakdown(after, live)), providerTotalCents: providerTotalCents(breakdown(after, live)) } : null };
@@ -393,7 +394,12 @@ async function releaseForChange(actor: Actor, c: ShiftChange, outcome: "DECLINED
   });
   if (!released) return { status: outcome.toLowerCase() as "declined" | "expired" };
   const paid = await depositPaidCents(released.id);
-  if (paid > 0) await refundAssignment(SYSTEM, released.id, paid, "provider released after a clinic change — full refund");
+  // Fly-in: the clinic's change released the provider, so their airfare counts like a clinic cancellation.
+  const { airfareOnCancel, airfarePayout } = await import("./shifts");
+  const air = await airfareOnCancel(released, "CLINIC", now, paid);
+  await airfarePayout(prisma, released, air, now);
+  const refund = paid - (air.kept ? air.paidPart : 0);
+  if (refund > 0) await refundAssignment(SYSTEM, released.id, refund, air.kept ? "provider released after a clinic change — refund less the fly-in airfare" : "provider released after a clinic change — full refund");
   const shift = await prisma.shift.findUniqueOrThrow({ where: { id: c.shiftId }, include: { location: true } });
   const provider = await prisma.provider.findUniqueOrThrow({ where: { id: c.providerId }, select: { userId: true, displayName: true } });
   const tz = shift.location.timeZone;

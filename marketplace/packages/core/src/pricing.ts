@@ -198,14 +198,16 @@ export interface PriceBreakdown {
   promoDiscountCents: number;
   mileageCents: number;
   lodgingCents: number;
+  /** Fly-in airfare allowance (flat, no receipts). */
+  airfareCents?: number;
 }
 
 export function clinicTotalCents(b: PriceBreakdown): number {
-  return b.clinicPriceCents - b.promoDiscountCents + b.mileageCents + b.lodgingCents;
+  return b.clinicPriceCents - b.promoDiscountCents + b.mileageCents + b.lodgingCents + (b.airfareCents ?? 0);
 }
 
 export function providerTotalCents(b: PriceBreakdown): number {
-  return b.providerPayCents + b.mileageCents + b.lodgingCents;
+  return b.providerPayCents + b.mileageCents + b.lodgingCents + (b.airfareCents ?? 0);
 }
 
 export function platformMarginCents(b: PriceBreakdown): number {
@@ -219,6 +221,7 @@ export function clinicView(b: PriceBreakdown) {
     discountCents: b.promoDiscountCents,
     mileageCents: b.mileageCents,
     lodgingCents: b.lodgingCents,
+    airfareCents: b.airfareCents ?? 0,
     totalCents: clinicTotalCents(b),
   };
 }
@@ -229,6 +232,7 @@ export function providerView(b: PriceBreakdown) {
     payCents: b.providerPayCents,
     mileageCents: b.mileageCents,
     lodgingCents: b.lodgingCents,
+    airfareCents: b.airfareCents ?? 0,
     totalCents: providerTotalCents(b),
   };
 }

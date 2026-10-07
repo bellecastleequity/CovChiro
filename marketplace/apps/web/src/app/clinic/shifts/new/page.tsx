@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { DateTime } from "luxon";
+import { flyInAirfareCents, flyInNightlyCents } from "@cm/core";
 import { prisma } from "@cm/db";
 import { agreementCurrent, getSettings, postingOptions } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
@@ -34,6 +35,7 @@ async function loadDraft(clinicOrgId: string, id: string): Promise<DraftInit> {
     instantBook: sh.instantBook,
     lodgingAllowed: sh.lodgingAllowed,
     lodgingCap: sh.lodgingCapCentsPerNight ? String(sh.lodgingCapCentsPerNight / 100) : "",
+    flyIn: sh.flyInAirfareCents !== null,
     maxTravelBudget: sh.maxTravelBudgetCents ? String(sh.maxTravelBudgetCents / 100) : "",
     sup: att && typeof att === "object" ? att : null,
   };
@@ -70,6 +72,17 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
         volumeCodes={volumeCodes}
         lodging={{ nightlyCents: settings["pricing.lodgingNightlyCents"], overMinutes: settings["pricing.lodgingTriggerMinutes"], maxMinutes: settings["pricing.lodgingMaxDriveMinutes"] }}
         maxDayMinutes={settings["pricing.maxDaySpanMinutes"]}
+        flyIn={
+          settings["flyIn.enabled"]
+            ? {
+                minDays: settings["flyIn.minDays"],
+                minLeadDays: settings["flyIn.minLeadDays"],
+                refundHours: settings["flyIn.airfareRefundHours"],
+                byState: Object.fromEntries([...new Set(options.map((o) => o.location.state))].map((st) => [st, { airfareCents: flyInAirfareCents(st, settings), nightlyCents: flyInNightlyCents(st, settings) }])),
+                suggest: Object.keys(settings["flyIn.airfareDollars"]),
+              }
+            : undefined
+        }
         locations={options.map((o) => ({
           id: o.location.id,
           name: o.location.name,

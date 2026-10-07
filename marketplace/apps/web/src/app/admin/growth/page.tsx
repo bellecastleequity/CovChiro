@@ -2,6 +2,7 @@ import Link from "next/link";
 import { growth } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
+import { buttonClass } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Alert, PageHeader, Stat, Table, Td, Th } from "@/components/ui/misc";
 import { dateTimeLabel, humanize } from "@/lib/format";
@@ -34,7 +35,7 @@ export default async function GrowthOverview() {
         eyebrow="AI acquisition & marketplace liquidity"
         title="Growth command center"
         description="Provider supply and clinic demand in one place. Agents run on the server on their own schedule; this page controls and observes them. Software decides who is contacted and when; AI only writes, classifies and summarizes. Success is measured in completed shifts."
-        actions={<PauseButton paused={o.settings.paused} />}
+        actions={<div className="flex flex-wrap gap-2"><Link href="/admin/growth/prospects#add" className={buttonClass("outline", "sm")}>Add a clinic</Link><PauseButton paused={o.settings.paused} /></div>}
       />
       <GrowthTabs current="/admin/growth" badges={{ "/admin/growth/approvals": o.counts.pendingApprovals, "/admin/growth/escalations": o.counts.openEscalations }} />
 

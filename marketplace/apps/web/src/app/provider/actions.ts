@@ -13,7 +13,7 @@ import {
   oncall,
   addBlackout, addMalpractice, attestCoverage, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
   removeAvailabilityException, requestAgreement, respondToOffer, setAvailability, setProviderPhoto, setSkills, submitLodgingReceipt, submitRating,
-  updateProviderProfile, upsertLicense, withdrawApplication, prelicensure, payfloors, shiftChanges,
+  setFlyInStates, updateProviderProfile, upsertLicense, withdrawApplication, prelicensure, payfloors, shiftChanges,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -390,6 +390,13 @@ export const studentModeAction = formAction(async (fd) => {
   });
   revalidatePath("/provider");
   return "Saved.";
+});
+
+export const flyInAction = formAction(async (fd) => {
+  const { actor } = await requireActor("provider");
+  const states = await setFlyInStates(actor, fd.getAll("flyInStates").map(String));
+  revalidatePath("/provider", "layout");
+  return states.length ? `Saved. Clinics in ${states.join(", ")} that allow fly-in coverage can now find you.` : "Saved. You won't be matched to fly-in bookings.";
 });
 
 export const payFloorAction = formAction(async (fd) => {

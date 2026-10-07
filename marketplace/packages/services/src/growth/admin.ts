@@ -6,9 +6,10 @@ import { audit, clock, getSettings, invalidateSettings, requireAdmin, type Actor
 import { absoluteUrl } from "../notify";
 import { updateSetting } from "../admin";
 import { getEligibleProviders } from "../eligibility";
-import { AGENT_AUDIENCE, AGENTS, Deferred, ai, aiRules, aiSpendCents, logAgent, newToken, normEmail, recipient, sendGrowthEmail, suppress, type AgentKey, type Audience, type GrowthEntityType } from "./engine";
+import { AGENT_AUDIENCE, AGENTS, Deferred, agentOn, ai, aiRules, aiSpendCents, compose, isSuppressed, logAgent, marketingOn, newToken, normEmail, pickPrompt, recipient, sendGrowthEmail, suppress, type AgentKey, type Audience, type GrowthEntityType } from "./engine";
+import { outreachProfessionFor } from "./expansion";
 import { ensureGrowthDefaults } from "./defaults";
-import { advanceOutreach, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
+import { advanceOutreach, prospectVars, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
 import { discoverySweep, prospectingStatus, researchProspect, researchSweep } from "./prospecting";
 import { marketSupplySweep } from "./supply";
 import { resumeResearch } from "./aihealth";
@@ -306,6 +307,93 @@ export async function saveProspect(actor: Actor, raw: unknown, id?: string) {
   await classifyProspect(row.id);
   await refreshProspect(row.id);
   return row;
+}
+
+// ---------------- clinics added by hand ----------------
+
+/**
+ * Will the clinic outreach emails reach this clinic, and if not, why (plain reasons with where to fix them).
+ * `firstNow` = the admin can send the first email right away (a person's send skips the marketing switch
+ * and the outreach agent, never suppression, do-not-contact or the live-market rule).
+ */
+export async function outreachReadiness(id: string) {
+  const p = await prisma.clinicProspect.findUniqueOrThrow({ where: { id } });
+  const s = await getSettings();
+  const blockers: string[] = [];
+  const waits: string[] = [];
+  if (p.clinicOrgId) blockers.push("They already have a clinic account, so they get onboarding emails instead.");
+  if (!p.email) blockers.push("No email address yet.");
+  if (p.doNotContact) blockers.push("Marked do not contact.");
+  if (["BOUNCED", "COMPLAINED", "UNSUBSCRIBED"].includes(p.emailStatus)) blockers.push(`Email ${p.emailStatus.toLowerCase()}.`);
+  if (p.email && (await isSuppressed("EMAIL", p.email))) blockers.push("This address is on the do-not-email list (unsubscribed or suppressed).");
+  const professionCode = await outreachProfessionFor(p);
+  if (!professionCode) blockers.push(`Clinic outreach isn't open in ${p.state}: the Growth → Expansion target must be LIVE and the marketplace open there.`);
+  if (p.outreachStep > 0) waits.push(`Outreach already started (email ${p.outreachStep} of ${OUTREACH_SEQUENCE.length} sent).`);
+  if (p.outreachPaused) waits.push("Outreach is paused for this clinic.");
+  if (!(await marketingOn("clinic"))) waits.push("Clinic marketing is switched off (Growth → Overview), so the automatic follow-ups won't go out.");
+  if (!(await agentOn("clinicOutreach"))) waits.push("The Clinic Outreach agent is off (Growth → AI Agents), so the automatic follow-ups won't go out.");
+  if (s["growth.pausedOutbound"]) waits.push("Outbound is paused (PAUSE OUTBOUND).");
+  if (s["growth.outreachMode"] !== "auto") waits.push("Outreach is in review mode: automatic emails wait in Approvals for a person to approve.");
+  return {
+    professionCode,
+    blockers,
+    waits,
+    firstNow: !blockers.length && p.outreachStep === 0,
+    automatic: !blockers.length && !waits.some((w) => !/review mode|already started/.test(w)),
+  };
+}
+
+/** Send the first clinic outreach email now, as the admin (same approved wording and compliance checks). */
+export async function sendFirstOutreachNow(actor: Actor, id: string) {
+  requireAdmin(actor);
+  const p = await prisma.clinicProspect.findUniqueOrThrow({ where: { id } });
+  const ready = await outreachReadiness(id);
+  if (ready.blockers.length) throw new DomainError("VALIDATION", ready.blockers[0]);
+  if (p.outreachStep > 0) throw new DomainError("CONFLICT", "The first email has already gone out to this clinic.");
+  const r = await recipient("PROSPECT", id);
+  if (!r) throw new DomainError("VALIDATION", "This clinic can't be emailed.");
+  const prompt = await pickPrompt(OUTREACH_SEQUENCE[0], ready.professionCode);
+  if (!prompt) throw new DomainError("VALIDATION", "There's no approved first-contact email yet (Growth → Content).");
+  const msg = await compose("clinicOutreach", prompt, prospectVars(p, r.firstName), { city: p.city, clinic_name: p.clinicName }, true);
+  const res = await sendGrowthEmail(r, msg, { agent: "clinicOutreach", purpose: "COMMERCIAL", prompt: { key: prompt.key, version: prompt.version }, dedupeKey: `outreach:${id}:0`, createdById: actor.userId });
+  if (!res.ok) throw new DomainError("VALIDATION", res.reason === "already_sent" ? "The first email has already gone out to this clinic." : `Not sent: ${res.reason}.`);
+  await advanceOutreach(id);
+  await audit(prisma, actor, "growth.prospect.first_email_now", "ClinicProspect", id, null, { communicationId: res.communicationId });
+  return { subject: msg.subject };
+}
+
+export const HandAddInput = z.object({
+  clinicName: z.string().trim().min(1, "Clinic name is required.").max(200),
+  email: z.string().trim().toLowerCase().email("Enter a valid email."),
+  ownerName: z.string().trim().max(160).optional().nullable(),
+  city: z.string().trim().max(100).optional().nullable(),
+  state: z.string().trim().toUpperCase().length(2).default("FL"),
+  zip: z.string().trim().max(10).optional().nullable(),
+  phone: z.string().trim().max(30).optional().nullable(),
+  website: z.string().trim().max(200).optional().nullable(),
+  notes: z.string().trim().max(4000).optional().nullable(),
+  /** now = send the first email now; auto = the automatic sequence; save = keep, no emails. */
+  start: z.enum(["now", "auto", "save"]).default("auto"),
+});
+
+/**
+ * A clinic the owner saw or heard about: email + clinic name (the rest optional). Same email already
+ * on the list → that clinic is returned (nothing duplicated). Then send the first email now, leave it
+ * to the automatic sequence, or just save it (outreach paused).
+ */
+export async function addClinicByHand(actor: Actor, raw: z.input<typeof HandAddInput>) {
+  requireAdmin(actor);
+  const input = HandAddInput.parse(raw);
+  const existing = await prisma.clinicProspect.findFirst({ where: { email: input.email } });
+  if (existing) return { prospect: existing, existed: true, sent: null as null | { subject: string } | { error: string }, readiness: await outreachReadiness(existing.id) };
+  const prospect = await saveProspect(actor, {
+    clinicName: input.clinicName, email: input.email, ownerName: input.ownerName || null, city: input.city || null, state: input.state, zip: input.zip || null,
+    phone: input.phone || null, website: input.website || null, notes: input.notes || null, source: "Added by hand",
+  });
+  if (input.start === "save") await prisma.clinicProspect.update({ where: { id: prospect.id }, data: { outreachPaused: true } });
+  // The clinic is saved either way; a send that can't go out says why.
+  const sent = input.start === "now" ? await sendFirstOutreachNow(actor, prospect.id).catch((e: Error) => ({ error: e.message })) : null;
+  return { prospect, existed: false, sent, readiness: await outreachReadiness(prospect.id) };
 }
 
 /** Manual overrides of automation-owned fields (segment, stage, pause, do-not-contact). */

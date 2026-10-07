@@ -227,6 +227,8 @@ model Provider {
   homeGeo                  Unsupported("geography(Point, 4326)")?
   maxDriveMinutes          Int                                    @default(90)
   willingOvernight         Boolean                                @default(false)
+  /// Fly-in coverage: states/territories they'll fly to (credentials still required there).
+  flyInStates              String[]                               @default([])
   bio                      String?
   school                   String?
   graduationYear           Int?
@@ -724,6 +726,10 @@ model Shift {
   lunchStartsAt           DateTime?        @db.Timestamptz(3)
   lodgingAllowed          Boolean          @default(false)
   lodgingCapCentsPerNight Int?
+  /// Fly-in coverage allowed (snapshot at posting; null = no): airfare per trip, lodging per night, and the last moment a fly-in provider can be added.
+  flyInAirfareCents       Int?
+  flyInNightlyCents       Int?
+  flyInUntil              DateTime?        @db.Timestamptz(3)
   // Pricing snapshot from the rate engine (INV-7)
   rateCardId              String?
   durationTier            DurationTier?
@@ -964,6 +970,9 @@ model Assignment {
   mileageCents         Int
   lodgingEstimateCents Int                       @default(0)
   lodgingApprovedCents Int                       @default(0)
+  /// Fly-in booking (provider flies in): airfare allowance on the first day they cover in the booking, 0 on the rest.
+  flyIn                Boolean                   @default(false)
+  airfareCents         Int                       @default(0)
   clinicTotalCents     Int
   providerTotalCents   Int
   depositCents         Int                       @default(0)

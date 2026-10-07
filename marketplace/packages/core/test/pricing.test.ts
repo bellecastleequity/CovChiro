@@ -171,7 +171,7 @@ describe("display separation", () => {
   it("doctor view never exposes clinic price, discount or margin", () => {
     const v = providerView(b);
     expect(JSON.stringify(v)).not.toMatch(/57500|5000\b/);
-    expect(Object.keys(v)).toEqual(["payCents", "mileageCents", "lodgingCents", "totalCents"]);
+    expect(Object.keys(v)).toEqual(["payCents", "mileageCents", "lodgingCents", "airfareCents", "totalCents"]);
     expect(v.totalCents).toBe(41200);
   });
   it("totals, margin, deposit", () => {

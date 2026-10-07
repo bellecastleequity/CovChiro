@@ -1,8 +1,8 @@
 import { DomainError } from "@cm/core";
 import { prisma } from "@cm/db";
-import { audit, requireClinic, requireProvider, type Actor } from "./context";
+import { audit, getSettings, requireClinic, requireProvider, type Actor } from "./context";
 import { notifyClinic } from "./notify";
-import { applyToShift, cancelAssignment, createShift, postShift, selectApplicant, ShiftInput, type ShiftInputT, validateShiftInput } from "./shifts";
+import { applyToShift, cancelAssignment, createShift, flyInFields, postShift, selectApplicant, ShiftInput, type ShiftInputT, validateShiftInput } from "./shifts";
 
 /**
  * Multi-day bookings: several days posted together as one ShiftGroup. Each
@@ -17,7 +17,16 @@ const LIVE = ["CONFIRMED", "IN_PROGRESS"] as const;
 /** Post (or save) several days at once. A promo code applies to the first day only. */
 export async function createMultiDay(actor: Actor, days: ShiftInputT[], opts: { post: boolean }) {
   const orgId = requireClinic(actor);
-  if (days.length === 1) return { groupId: null, shiftIds: [(await createShift(actor, days[0], opts)).shiftId] };
+  if (days.some((d) => d.flyIn) && days.some((d) => d.clinicRate)) throw new DomainError("VALIDATION", "Fly-in coverage can't be combined with a clinic-set rate.");
+  if (days.length === 1) {
+    const one = ShiftInput.parse(days[0]);
+    const fly = await flyInFields(one.locationId, [one]);
+    if (!fly) return { groupId: null, shiftIds: [(await createShift(actor, days[0], opts)).shiftId] };
+    const { shiftId } = await createShift(actor, days[0], { post: false });
+    await prisma.shift.update({ where: { id: shiftId }, data: fly });
+    if (opts.post) await postShift(actor, shiftId);
+    return { groupId: null, shiftIds: [shiftId] };
+  }
   if (days.some((d) => d.clinicRate)) throw new DomainError("VALIDATION", "A clinic-set rate is available for single-day shifts only.");
   if (days.length > MAX_DAYS) throw new DomainError("VALIDATION", `Up to ${MAX_DAYS} days per booking.`);
   const parsed = days.map((d) => ShiftInput.parse(d)).sort((a, b) => +a.startsAt - +b.startsAt);
@@ -29,11 +38,12 @@ export async function createMultiDay(actor: Actor, days: ShiftInputT[], opts: { 
     if (!(d.endsAt > d.startsAt)) throw new DomainError("VALIDATION", "Each day needs an end time after its start.");
     await validateShiftInput(prisma, orgId, d, opts.post);
   }
+  const fly = await flyInFields(parsed[0].locationId, parsed.map((d) => ({ ...d, flyIn: parsed.some((x) => x.flyIn) })));
   const group = await prisma.shiftGroup.create({ data: { locationId: parsed[0].locationId } });
   const shiftIds: string[] = [];
   for (const [i, d] of parsed.entries()) {
     const { shiftId } = await createShift(actor, { ...d, promoCode: i === 0 ? d.promoCode : null }, { post: false });
-    await prisma.shift.update({ where: { id: shiftId }, data: { shiftGroupId: group.id } });
+    await prisma.shift.update({ where: { id: shiftId }, data: { shiftGroupId: group.id, ...(fly ?? {}) } });
     shiftIds.push(shiftId);
   }
   if (opts.post) for (const id of shiftIds) await postShift(actor, id);
@@ -76,15 +86,25 @@ export async function applyToAllDays(actor: Actor, shiftId: string, input: { not
   const days = await prisma.shift.findMany({ where: { shiftGroupId: sh.shiftGroupId, status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] } }, orderBy: { startsAt: "asc" } });
   let applied = 0;
   let skipped = 0;
+  const made: string[] = [];
+  let flyIn = false;
   for (const d of days) {
     try {
-      await applyToShift(actor, d.id, input);
+      const r = await applyToShift(actor, d.id, input, { allDays: true });
+      made.push(r.applicationId);
+      if (r.flyIn) flyIn = true;
       applied++;
     } catch {
       skipped++; // not eligible that day (availability, conflict…) or already applied
     }
   }
   if (!applied) throw new DomainError("VALIDATION", "You can't take any of the open days in this booking.");
+  // A fly-in trip needs flyIn.minDays days, or the flight isn't worth it for either side.
+  const min = (await getSettings())["flyIn.minDays"];
+  if (flyIn && applied < min) {
+    await prisma.application.updateMany({ where: { id: { in: made }, status: "ACTIVE" }, data: { status: "WITHDRAWN", withdrawnAt: new Date() } });
+    throw new DomainError("VALIDATION", `You'd fly in for this booking, which needs at least ${min} days, but you can only take ${applied} of them (check your availability and other bookings).`);
+  }
   return { applied, skipped };
 }
 
@@ -122,19 +142,20 @@ export async function cancelBookingDays(actor: Actor, assignmentId: string, reas
     scope === "remaining" && a.shift.shiftGroupId
       ? await prisma.assignment.findMany({
           where: { providerId, status: { in: [...LIVE] }, startsAt: { gte: a.startsAt }, shift: { shiftGroupId: a.shift.shiftGroupId } },
-          orderBy: { startsAt: "asc" },
+          // Latest first: the day carrying a fly-in airfare goes last, when no other days remain (refunded).
+          orderBy: { startsAt: "desc" },
         })
       : [a];
   const quiet = targets.length > 1;
   for (const t of targets) await cancelAssignment(actor, t.id, reason, { by: "PROVIDER", quiet });
   if (quiet) {
     const tz = a.shift.location.timeZone;
-    const days = targets.map((t) => t.startsAt.toLocaleDateString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric" }));
+    const days = [...targets].reverse().map((t) => t.startsAt.toLocaleDateString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric" }));
     await notifyClinic(prisma, a.shift.location.clinicOrgId, {
       template: "booking_cancelled_days",
       title: `We've had a cancellation for ${targets.length} days — we're already finding replacements`,
       body: `${a.provider.displayName} can no longer cover ${days.join(", ")}. No need to worry — we're finding a replacement for each day urgently as we speak, and we'll email you as each day is covered. Your deposits for those days are being refunded.`,
-      link: `/clinic/shifts/${targets[0].shiftId}`,
+      link: `/clinic/shifts/${targets[targets.length - 1].shiftId}`,
       sms: true,
     });
   }

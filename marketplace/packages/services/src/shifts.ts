@@ -2,6 +2,11 @@ import { z } from "zod";
 import {
   assertTransition,
   cancellationOutcome,
+  flyInAirfareKept,
+  flyInAirfareCents,
+  flyInNightlyCents,
+  flyInPostingProblem,
+  flyInUntil,
   DomainError,
   evaluateEligibility,
   favoritesWindowEnd,
@@ -51,6 +56,8 @@ export const ShiftInput = z.object({
   maxTravelBudgetCents: z.coerce.number().int().min(0).nullable().optional(),
   lodgingAllowed: z.boolean().default(false),
   lodgingCapCentsPerNight: z.coerce.number().int().min(0).nullable().optional(),
+  /** Fly-in coverage OK (whole booking; flyInFields checks days and notice). */
+  flyIn: z.boolean().optional(),
   /** Unpaid lunch: minutes (0 = none) and when it starts. Paid hours exclude it, up to the day-length limit. */
   lunchMinutes: z.coerce.number().int().min(0).max(300).default(0),
   lunchStartsAt: z.coerce.date().nullable().optional(),
@@ -292,6 +299,22 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
   return { shiftId };
 }
 
+/**
+ * Fly-in for a booking (all its days): enough consecutive days and notice (core flyInPostingProblem),
+ * then the destination's airfare and nightly allowances and the cut-off are snapshotted on each day.
+ * Throws a clear VALIDATION error when it can't be offered; null when fly-in isn't asked for.
+ */
+export async function flyInFields(locationId: string, days: { startsAt: Date; endsAt: Date; flyIn?: boolean }[]) {
+  if (!days.some((d) => d.flyIn)) return null;
+  const s = await getSettings();
+  if (!s["flyIn.enabled"]) throw new DomainError("VALIDATION", "Fly-in coverage isn't available right now. Untick it to post.");
+  const why = flyInPostingProblem(days, clock.now(), s);
+  if (why) throw new DomainError("VALIDATION", why);
+  const loc = await prisma.clinicLocation.findUniqueOrThrow({ where: { id: locationId }, select: { state: true } });
+  const first = days.reduce((a, d) => (d.startsAt < a ? d.startsAt : a), days[0].startsAt);
+  return { flyInAirfareCents: flyInAirfareCents(loc.state, s), flyInNightlyCents: flyInNightlyCents(loc.state, s), flyInUntil: flyInUntil(first, s) };
+}
+
 export async function postShift(actor: Actor, shiftId: string) {
   const orgId = requireClinic(actor);
   const effects = new Effects();
@@ -352,6 +375,8 @@ export async function updateDraftShift(actor: Actor, shiftId: string, raw: Shift
         lunchStartsAt: input.lunchMinutes ? (input.lunchStartsAt ?? null) : null,
         // Flat nightly allowance from Settings (no receipts), kept with the shift.
         lodgingCapCentsPerNight: input.lodgingAllowed ? (await getSettings(db))["pricing.lodgingNightlyCents"] : null,
+        // Fly-in is set for the whole booking at posting; unticking it on a draft clears it.
+        ...(input.flyIn ? {} : { flyInAirfareCents: null, flyInNightlyCents: null, flyInUntil: null }),
         rateCardId: q.rateCardId,
         durationTier: q.base.tier,
         clinicPriceCents: q.base.clinicPriceCents,
@@ -493,6 +518,8 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
   // drive-time rule, so it isn't worth a full evaluation (drive time lookup included).
   const reachable = (sh: (typeof candidates)[number]) => {
     if (me.homeLat === null || me.homeLng === null) return true;
+    // Fly-in shifts in a state they fly to are never too far (eligibility still decides).
+    if (sh.flyInUntil && +sh.flyInUntil >= Date.now() && me.flyInStates.includes(sh.state)) return true;
     const limitMin = me.willingOvernight && sh.lodgingAllowed ? Math.max(me.maxDriveMinutes, s["pricing.lodgingMaxDriveMinutes"]) : me.maxDriveMinutes;
     return milesBetween(me.homeLat, me.homeLng, sh.location.lat, sh.location.lng) <= limitMin * 1.2;
   };
@@ -503,7 +530,10 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
   for (const sh of toCheck) {
     const ev = evaluated.get(sh.id);
     if (!ev?.result.eligible) continue;
-    const trip = ev.drive ? travelEstimate(ev.drive, { lodgingAllowed: sh.lodgingAllowed, lodgingCapCentsPerNight: sh.lodgingCapCentsPerNight }, s) : { mileageCents: 0, lodgingEstimateCents: 0 };
+    const flyIn = !!ev.result.flyIn;
+    const trip = flyIn
+      ? { mileageCents: 0, lodgingEstimateCents: sh.flyInNightlyCents ?? 0 }
+      : ev.drive ? travelEstimate(ev.drive, { lodgingAllowed: sh.lodgingAllowed, lodgingCapCentsPerNight: sh.lodgingCapCentsPerNight }, s) : { mileageCents: 0, lodgingEstimateCents: 0 };
     const mileage = trip.mileageCents;
     out.push({
       id: sh.id,
@@ -526,12 +556,14 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
       urgent: +sh.startsAt - Date.now() < 48 * 3_600_000,
       expectedPatients: sh.expectedPatients,
       declaredTier: sh.declaredTier,
+      /** The provider would fly in: whole trip, airfare per trip (shown separately), lodging every night. */
+      flyIn: flyIn ? { airfareCents: sh.flyInAirfareCents ?? 0, nightlyCents: sh.flyInNightlyCents ?? 0, shiftGroupId: sh.shiftGroupId } : null,
     });
   }
   return out;
 }
 
-export async function applyToShift(actor: Actor, shiftId: string, input: { note?: string | null; commit: boolean }) {
+export async function applyToShift(actor: Actor, shiftId: string, input: { note?: string | null; commit: boolean }, opts: { allDays?: boolean } = {}) {
   const providerId = requireProvider(actor);
   if (!input.commit) throw new DomainError("VALIDATION", "Please confirm that you'll work this shift if selected.");
   let note = input.note?.trim() || null;
@@ -548,6 +580,10 @@ export async function applyToShift(actor: Actor, shiftId: string, input: { note?
   });
   const shift = await prisma.shift.findUniqueOrThrow({ where: { id: shiftId }, include: { location: true } });
   if (!["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"].includes(shift.status)) throw new DomainError("CONFLICT", "This shift is no longer accepting applications.");
+  // Flying in is for the whole trip: apply to every day of the booking together (bookings.applyToAllDays).
+  if (ev.result.flyIn && shift.shiftGroupId && !opts.allDays) {
+    throw new DomainError("VALIDATION", "You'd fly in for this booking, so apply to all of its days together (Apply to all days).");
+  }
   const ranked = await rankEvaluated(prisma, ev.shift, [ev]);
   const score = ranked[0]?.score ?? 0;
   const existing = await prisma.application.findUnique({ where: { shiftId_providerId: { shiftId, providerId } } });
@@ -558,19 +594,21 @@ export async function applyToShift(actor: Actor, shiftId: string, input: { note?
   });
   await audit(prisma, actor, "application.created", "Application", app.id, null, { shiftId, score });
 
+  // A fly-in applicant is always the clinic's pick (whole trip at once): no dispatch acceptance, no instant book.
+  const flyIn = !!ev.result.flyIn;
   // During an active dispatch an application counts as an acceptance in the current wave (Addendum 02 §5.6).
   const { applicationAsAcceptance } = await import("./dispatch");
-  if (await prisma.dispatch.findFirst({ where: { shiftId, status: "ACTIVE" } })) {
+  if (!flyIn && (await prisma.dispatch.findFirst({ where: { shiftId, status: "ACTIVE" } }))) {
     await applicationAsAcceptance(shiftId, providerId, app.id);
     const confirmed = await prisma.assignment.findFirst({ where: { shiftId, providerId, status: "CONFIRMED" } });
-    return { applicationId: app.id, confirmed: !!confirmed };
+    return { applicationId: app.id, confirmed: !!confirmed, flyIn };
   }
 
   const s = await getSettings();
-  if (shift.instantBook && score >= s["matching.instantBookMinScore"]) {
+  if (!flyIn && shift.instantBook && score >= s["matching.instantBookMinScore"]) {
     try {
       await confirmProvider(actor, shiftId, providerId, "INSTANT_BOOK");
-      return { applicationId: app.id, confirmed: true };
+      return { applicationId: app.id, confirmed: true, flyIn };
     } catch (e) {
       if (!(e instanceof DomainError && e.code === "CONFLICT")) throw e;
     }
@@ -578,11 +616,11 @@ export async function applyToShift(actor: Actor, shiftId: string, input: { note?
   await notifyClinic(prisma, shift.location.clinicOrgId, {
     template: "new_application",
     title: `New applicant for ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric" })}`,
-    body: `${ev.provider.displayName} applied to your ${shift.professionCode} shift at ${shift.location.name}.`,
+    body: `${ev.provider.displayName} applied to your ${shift.professionCode} shift at ${shift.location.name}.${flyIn ? " They'd fly in for it (airfare and lodging allowances are added to the total)." : ""}`,
     link: `/clinic/shifts/${shiftId}`,
     ctaLabel: "Review applicants",
   });
-  return { applicationId: app.id, confirmed: false };
+  return { applicationId: app.id, confirmed: false, flyIn };
 }
 
 export async function withdrawApplication(actor: Actor, applicationId: string) {
@@ -809,16 +847,47 @@ export async function adminAssign(actor: Actor, shiftId: string, providerId: str
 
 const LIVE = ["CONFIRMED", "IN_PROGRESS"] as const;
 
+/**
+ * Fly-in airfare when a day carrying it is cancelled (core flyInAirfareKept): kept = paid to the
+ * provider (flights booked, or they still fly for other days) and not refunded to the clinic.
+ * `paidPart` = the part of the paid deposit that was the airfare.
+ */
+export async function airfareOnCancel(
+  a: { id: string; providerId: string; airfareCents: number; confirmedAt: Date; shift: { shiftGroupId: string | null } },
+  by: "CLINIC" | "PROVIDER" | "PLATFORM",
+  now: Date,
+  depositPaid: number,
+) {
+  if (!a.airfareCents) return { kept: false, airfareCents: 0, paidPart: 0 };
+  const otherDaysRemain = a.shift.shiftGroupId
+    ? (await prisma.assignment.count({ where: { providerId: a.providerId, id: { not: a.id }, status: { in: [...LIVE, "COMPLETED"] }, shift: { shiftGroupId: a.shift.shiftGroupId } } })) > 0
+    : false;
+  const kept = flyInAirfareKept({ by, confirmedAt: a.confirmedAt, now, otherDaysRemain }, await getSettings());
+  return { kept, airfareCents: a.airfareCents, paidPart: Math.min(a.airfareCents, depositPaid) };
+}
+
+export async function airfarePayout(db: Db, a: { id: string; providerId: string }, air: { kept: boolean; airfareCents: number }, now: Date) {
+  if (!air.kept || !air.airfareCents) return;
+  await db.payout.create({
+    data: { providerId: a.providerId, assignmentId: a.id, kind: "LATE_CANCEL", description: "Fly-in airfare allowance (flights booked)", amountCents: air.airfareCents, status: "SCHEDULED", releaseAt: now },
+  });
+}
+
 export async function cancelShiftByClinic(actor: Actor, shiftId: string, reason: string) {
   const shift = await clinicShift(actor, shiftId);
   if (!shiftIsCancellable(shift.status)) throw new DomainError("INVALID_TRANSITION", "This shift can no longer be cancelled.");
   const s = await getSettings();
-  const assignment = await prisma.assignment.findFirst({ where: { shiftId, status: { in: [...LIVE] } }, include: { provider: true } });
+  const assignment = await prisma.assignment.findFirst({ where: { shiftId, status: { in: [...LIVE] } }, include: { provider: true, shift: { select: { shiftGroupId: true } } } });
   const now = new Date();
   let outcome = null;
+  let air = { kept: false, airfareCents: 0, paidPart: 0 };
   if (assignment) {
     const deposit = await depositPaidCents(assignment.id);
-    outcome = cancellationOutcome({ by: actor.role === "PLATFORM_ADMIN" ? "PLATFORM" : "CLINIC", now, startsAt: shift.startsAt, depositPaidCents: deposit }, s);
+    const by = actor.role === "PLATFORM_ADMIN" ? "PLATFORM" : "CLINIC";
+    air = await airfareOnCancel(assignment, by, now, deposit);
+    // The matrix applies to the deposit without the airfare; the airfare is kept or refunded on its own.
+    outcome = cancellationOutcome({ by, now, startsAt: shift.startsAt, depositPaidCents: deposit - air.paidPart }, s);
+    if (!air.kept) outcome = { ...outcome, refundDepositCents: outcome.refundDepositCents + air.paidPart };
   }
   await tx(async (db) => {
     await db.shift.update({ where: { id: shiftId }, data: { status: "CANCELLED", cancelledAt: now, cancelReason: reason.slice(0, 500) } });
@@ -845,15 +914,16 @@ export async function cancelShiftByClinic(actor: Actor, shiftId: string, reason:
           },
         });
       }
+      await airfarePayout(db, assignment, air, now);
     }
-    await audit(db, actor, "shift.cancelled", "Shift", shiftId, { status: shift.status }, { status: "CANCELLED", reason, outcome });
+    await audit(db, actor, "shift.cancelled", "Shift", shiftId, { status: shift.status }, { status: "CANCELLED", reason, outcome, airfare: air.airfareCents ? air : undefined });
   });
   if (assignment && outcome && outcome.refundDepositCents > 0) await refundAssignment(actor, assignment.id, outcome.refundDepositCents, "clinic cancellation ≥ free-cancel window");
   if (assignment) {
     await notify(prisma, assignment.provider.userId, {
       template: "shift_cancelled_provider",
       title: "A confirmed shift was cancelled",
-      body: `The clinic cancelled your ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric" })} shift at ${shift.location.name}.${outcome?.providerCompensationCents ? " You'll receive late-cancellation compensation." : ""}`,
+      body: `The clinic cancelled your ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric" })} shift at ${shift.location.name}.${outcome?.providerCompensationCents ? " You'll receive late-cancellation compensation." : ""}${air.kept ? " You'll also receive the airfare allowance for your flights." : air.airfareCents ? " The clinic cancelled within its change window, so please don't book flights for this booking." : ""}`,
       link: "/provider/earnings",
       sms: true,
     });
@@ -886,7 +956,10 @@ export async function cancelAssignment(
   const s = await getSettings();
   const now = clock.now();
   const deposit = await depositPaidCents(a.id);
-  const outcome = cancellationOutcome({ by: opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", noShow: opts.noShow, now, startsAt: a.startsAt, depositPaidCents: deposit }, s);
+  const air = await airfareOnCancel(a, opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", now, deposit);
+  const base = cancellationOutcome({ by: opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", noShow: opts.noShow, now, startsAt: a.startsAt, depositPaidCents: deposit - air.paidPart }, s);
+  // Fly-in airfare: refunded unless the provider still flies for other days of the booking.
+  const outcome = air.kept ? base : { ...base, refundDepositCents: base.refundDepositCents + air.paidPart };
   const newStatus = opts.lapse ? "LICENSE_LAPSED" : opts.noShow ? "NO_SHOW" : "CANCELLED";
   const reopen = a.startsAt > now && !opts.noShow;
   await tx(async (db) => {
@@ -896,6 +969,7 @@ export async function cancelAssignment(
       data: { status: newStatus, cancelledAt: now, cancelledBy: opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", cancelReason: reason.slice(0, 500) },
     });
     await db.payout.updateMany({ where: { assignmentId: a.id, status: { in: ["PENDING", "SCHEDULED", "ON_HOLD"] } }, data: { status: "CANCELLED" } });
+    await airfarePayout(db, a, air, now);
     await db.promoRedemption.updateMany({ where: { shiftId: a.shiftId, voidedAt: null }, data: { voidedAt: now } });
     if (a.shift.promoCodeId && a.shift.promoDiscountCents > 0) {
       await db.promoCode.update({ where: { id: a.shift.promoCodeId }, data: { usedCount: { decrement: 1 } } });

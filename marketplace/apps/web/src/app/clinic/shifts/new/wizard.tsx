@@ -131,11 +131,31 @@ export interface DraftInit {
   instantBook: boolean;
   lodgingAllowed: boolean;
   lodgingCap: string;
+  flyIn?: boolean;
   maxTravelBudget: string;
   sup: { supervisorName: string; supervisorProfessionCode: string; supervisorLicenseNumber: string; onSiteEntireShift: boolean } | null;
 }
 
-export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft, volumeCodes = [], lodging, maxDayMinutes = 570 }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit; volumeCodes?: string[]; lodging: { nightlyCents: number; overMinutes: number; maxMinutes: number }; maxDayMinutes?: number }) {
+/** Fly-in coverage (Settings flyIn.*): allowances per destination state and the booking rules. */
+export interface FlyInOptions {
+  minDays: number;
+  minLeadDays: number;
+  refundHours: number;
+  byState: Record<string, { airfareCents: number; nightlyCents: number }>;
+  /** States where it's on by default (destinations with their own airfare allowance). */
+  suggest: string[];
+}
+
+/** Why this booking can't allow fly-in (same rules as core flyInPostingProblem), or null. */
+function flyInBlocker(days: { date: string }[], f: FlyInOptions): string | null {
+  const dates = days.map((d) => d.date).sort();
+  if (dates.length < f.minDays) return `Needs at least ${f.minDays} consecutive days.`;
+  for (let i = 1; i < dates.length; i++) if ((+new Date(dates[i]) - +new Date(dates[i - 1])) / 86_400_000 > 1) return "Days must be consecutive.";
+  if ((+new Date(`${dates[0]}T12:00:00`) - Date.now()) / 86_400_000 < f.minLeadDays) return `Needs ${f.minLeadDays}+ days' notice so the provider can book flights.`;
+  return null;
+}
+
+export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYears = 0, mileage, draft, volumeCodes = [], lodging, maxDayMinutes = 570, flyIn }: { locations: Loc[]; canPost: boolean; defaultCode: string; defaultMinYears?: number; mileage: { rateLabel: string; roundTrip: boolean }; draft?: DraftInit; volumeCodes?: string[]; lodging: { nightlyCents: number; overMinutes: number; maxMinutes: number }; maxDayMinutes?: number; flyIn?: FlyInOptions }) {
   const [step, setStep] = useState(0);
   const [locationId, setLocationId] = useState(draft && locations.some((l) => l.id === draft.locationId) ? draft.locationId : locations[0].id);
   const loc = locations.find((l) => l.id === locationId)!;
@@ -172,6 +192,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const [instantBook, setInstantBook] = useState(draft?.instantBook ?? false);
   const [lodgingAllowed, setLodgingAllowed] = useState(draft?.lodgingAllowed ?? true);
   const [maxTravelBudget, setMaxTravelBudget] = useState(draft?.maxTravelBudget ?? "");
+  const [flyInOn, setFlyInOn] = useState(draft?.flyIn ?? (!!flyIn && flyIn.suggest.includes(loc.state)));
   const [promoCode, setPromoCode] = useState(defaultCode);
   const [sup, setSup] = useState(draft?.sup ?? { supervisorName: "", supervisorProfessionCode: prof?.supervisingProfessionCodes[0] ?? "", supervisorLicenseNumber: "", onSiteEntireShift: false });
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -188,6 +209,9 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const volumePriced = !!prof && prof.pricingModel !== "HOURLY" && volumeCodes.includes(prof.code);
   const visitsNum = expectedPatients === "" ? null : Math.max(0, Math.floor(Number(expectedPatients) || 0));
 
+  const flyInFor = flyIn?.byState[loc.state] ?? null;
+  const flyInWhyNot = flyIn ? flyInBlocker(days, flyIn) : null;
+  const flyInActive = !!flyIn && !!flyInFor && flyInOn && !flyInWhyNot && !rateOn;
   const cr = quote?.clinicRate ?? null;
   const rateEligible = !!cr && !draft && days.length === 1 && providersNeeded === 1;
   const rateActive = rateEligible && cr!.available && rateOn;
@@ -211,6 +235,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
         notes,
         instantBook,
         lodgingAllowed,
+        flyIn: flyInActive,
         maxTravelBudget: maxTravelBudget || null,
         promoCode: promoCode.trim() || null,
         supervisionAttestation: prof?.supervisionRequired ? sup : null,
@@ -219,7 +244,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
           ? { priceCents: Math.round(Number(rateDollars) * 100), release: rateRelease, releaseAt: rateRelease ? cr!.releaseAt : null, releaseHours: cr!.releaseHours, accepted: rateAck }
           : null,
       }),
-    [rateActive, rateDollars, rateRelease, rateAck, cr, providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, maxTravelBudget, promoCode, sup, prof],
+    [rateActive, rateDollars, rateRelease, rateAck, cr, providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, flyInActive, maxTravelBudget, promoCode, sup, prof],
   );
 
   function refreshQuote() {
@@ -456,6 +481,21 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                     <Checkbox checked={lodgingAllowed} onChange={(e) => setLodgingAllowed(e.target.checked)} label={<>Allow lodging for providers who live further away <span className="font-normal text-slate-500">(optional, recommended)</span><InfoTip label="About lodging">With lodging on, providers who&apos;ll stay overnight can be offered this shift from up to {Math.round(lodging.maxMinutes / 60)} hours away. If the provider you get lives more than {Math.round(lodging.overMinutes / 60)} hours away, a flat {money(lodging.nightlyCents)} per night is added (no receipts). Nearby providers cost nothing extra. With it off, only providers within their own drive limit are offered the shift.</InfoTip></>} />
                     <p className="ml-7 text-xs text-slate-500">Reaches more providers, so rural, multi-day and short-notice shifts fill faster. Adds {money(lodging.nightlyCents)} per night only if your provider needs to stay over.</p>
                   </div>
+                  {flyIn && flyInFor ? (
+                    <div>
+                      <Checkbox
+                        checked={flyInOn}
+                        onChange={(e) => setFlyInOn(e.target.checked)}
+                        disabled={!!flyInWhyNot}
+                        label={<>Fly-in coverage OK <span className="font-normal text-slate-500">(optional)</span><InfoTip label="About fly-in coverage">Providers licensed and insured in {loc.state} who live too far to drive (for example on the mainland) can fly in for this booking. If you confirm one, a flat {money(flyInFor.airfareCents)} airfare allowance per trip and {money(flyInFor.nightlyCents)} a night lodging are added (no receipts); travel days aren&apos;t charged. They apply for all the days together and you pick them. Once confirmed you have {flyIn.refundHours} hours to cancel and get the airfare back; after that they book flights and the airfare stays with them if you cancel.</InfoTip></>}
+                      />
+                      <p className="ml-7 text-xs text-slate-500">
+                        {flyInWhyNot
+                          ? `Not available for this booking: ${flyInWhyNot}`
+                          : `Reaches licensed providers who'd fly in. Adds ${money(flyInFor.airfareCents)} airfare per trip and ${money(flyInFor.nightlyCents)} a night only if your provider flies in.`}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -573,7 +613,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 )}
                 {providersNeeded > 1 && !draft ? <div className="flex justify-between rounded-lg bg-brand-50 px-2 py-1.5 font-semibold text-brand-800"><span>{providersNeeded} providers</span><span className="tabular-nums">{money(((quote.days && quote.days.length > 1 ? quote.totalCents : quote.subtotalCents) ?? 0) * providersNeeded + (quote.discountCents ?? 0) * (providersNeeded - 1))}</span></div> : null}
                 {quote.overlapping ? <p className="rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600">You already have {quote.overlapping} booking{quote.overlapping === 1 ? "" : "s"} here at this time. That&apos;s fine if you need another provider: each booking is filled by a different provider.</p> : null}
-                <p className="text-xs text-slate-500">Plus mileage at cost for the provider you confirm{lodgingAllowed ? `, and ${money(lodging.nightlyCents)} a night lodging if they need to stay over` : ""}. A deposit is charged at confirmation; the balance after the shift.</p>
+                <p className="text-xs text-slate-500">Plus mileage at cost for the provider you confirm{lodgingAllowed ? `, and ${money(lodging.nightlyCents)} a night lodging if they need to stay over` : ""}{flyInActive && flyInFor ? `. A provider who flies in adds ${money(flyInFor.airfareCents)} airfare per trip and ${money(flyInFor.nightlyCents)} a night instead of mileage` : ""}. A deposit is charged at confirmation; the balance after the shift.</p>
               </div>
             ) : !quoteError && !pending ? (
               <p className="text-sm text-slate-500">Choose a date and time to see the price.</p>
