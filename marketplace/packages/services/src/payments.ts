@@ -160,6 +160,15 @@ export async function handleStripeEvent(rawBody: string, signature: string | nul
       }
       break;
     }
+    case "charge.dispute.created":
+    case "charge.dispute.updated":
+    case "charge.dispute.closed":
+    case "charge.dispute.funds_withdrawn":
+    case "charge.dispute.funds_reinstated": {
+      const { recordStripeDispute } = await import("./chargebacks");
+      await recordStripeDispute(obj as never);
+      break;
+    }
     case "transfer.reversed": {
       const t = await prisma.payoutTransfer.findUnique({ where: { stripeTransferId: obj.id } });
       if (t) {

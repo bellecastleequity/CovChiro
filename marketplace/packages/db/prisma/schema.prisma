@@ -1300,6 +1300,33 @@ model Timesheet {
   @@index([status, submittedAt])
 }
 
+/// A card dispute (chargeback) Stripe told us about: the clinic disputed a charge with its bank.
+/// Separate from Dispute (the platform's own "report a problem" process).
+model ChargeDispute {
+  id                  String    @id @default(cuid())
+  stripeDisputeId     String    @unique
+  stripePaymentIntent String?
+  paymentId           String?
+  clinicOrgId         String?
+  assignmentId        String?
+  amountCents         Int
+  reason              String
+  /// Stripe status: warning_needs_response | warning_under_review | needs_response | under_review | won | lost | warning_closed | prevented
+  status              String
+  evidenceDueBy       DateTime? @db.Timestamptz(3)
+  evidenceSubmittedAt DateTime? @db.Timestamptz(3)
+  evidenceSubmittedBy String?
+  /// Provider payouts on this booking that were put on hold when it opened (released by an admin).
+  heldPayoutIds       String[]  @default([])
+  adminNote           String?
+  closedAt            DateTime? @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([clinicOrgId, status])
+  @@index([status])
+}
+
 model Dispute {
   id           String     @id @default(cuid())
   assignmentId String

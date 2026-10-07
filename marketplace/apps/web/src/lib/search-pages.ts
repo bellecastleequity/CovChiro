@@ -17,6 +17,7 @@ const ADMIN: SearchPage[] = [
   { label: "Shifts", href: "/admin/shifts", section: "Admin", keywords: "bookings coverage assignments schedule" },
   { label: "Provider pay", href: "/admin/payouts", section: "Money", keywords: "payouts stripe transfers holds adjustments bonus pay providers issue payment" },
   { label: "Payments & disputes", href: "/admin/payments", section: "Money", keywords: "charges refunds stripe manual charge clinic billing disputes" },
+  { label: "Card disputes (chargebacks)", href: "/admin/payments/chargebacks", section: "Money", keywords: "chargeback dispute bank card stripe evidence" },
   { label: "1099 report", href: "/admin/payments/1099", section: "Money", keywords: "1099 w9 w-9 tax taxes irs contractor nec year end" },
   { label: "Promo codes", href: "/admin/promo", section: "Money", keywords: "discount coupon welcome offer campaign landing" },
   { label: "Referrals", href: "/admin/referrals", section: "Money", keywords: "refer earn invite bonus credit friend" },

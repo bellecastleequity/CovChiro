@@ -249,6 +249,7 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
     if (opts.post && !(await agreementAccepted("CLINIC", org.agreementSignedAt, org.agreementVersion))) {
       throw new DomainError("FORBIDDEN", "Please sign the current Clinic Platform Agreement in Settings before posting shifts.");
     }
+    if (opts.post) await assertNoOpenChargeback(orgId);
     const { supervisionRequired, loc } = await validateShiftInput(db, orgId, input, opts.post);
     if (input.clinicRate && !opts.post) throw new DomainError("VALIDATION", "A clinic-set rate is applied when you post. Post the shift now, or switch back to the market price to save a draft.");
     const q = await quoteShift(db, { ...input, promoCode: input.clinicRate ? null : input.promoCode?.trim() || (await autoCredit(db, orgId)) });
@@ -315,6 +316,14 @@ export async function flyInFields(locationId: string, days: { startsAt: Date; en
   return { flyInAirfareCents: flyInAirfareCents(loc.state, s), flyInNightlyCents: flyInNightlyCents(loc.state, s), flyInUntil: flyInUntil(first, s) };
 }
 
+/** Clinic Agreement v5: posting pauses while the clinic has an open card dispute (chargeback). */
+async function assertNoOpenChargeback(orgId: string) {
+  const { openChargebackFor } = await import("./chargebacks");
+  if (await openChargebackFor(orgId)) {
+    throw new DomainError("FORBIDDEN", "Posting is paused while a card dispute you opened with your bank is open. Ask your bank to withdraw it, or contact us so we can sort out the shift directly.");
+  }
+}
+
 export async function postShift(actor: Actor, shiftId: string) {
   const orgId = requireClinic(actor);
   const effects = new Effects();
@@ -327,6 +336,7 @@ export async function postShift(actor: Actor, shiftId: string) {
     if (!(await agreementAccepted("CLINIC", org.agreementSignedAt, org.agreementVersion))) {
       throw new DomainError("FORBIDDEN", "Please sign the current Clinic Platform Agreement in Settings before posting shifts.");
     }
+    await assertNoOpenChargeback(orgId);
     await validateShiftInput(
       db,
       orgId,

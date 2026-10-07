@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { prisma } from "@cm/db";
 import { setModerationProvider } from "@cm/integrations";
 import {
-  adminAssign, agreementForSigning, canViewLocationPhoto, messaging, requestAgreement, sha256, signAgreement, signedAgreement, standing,
+  AGREEMENT_VERSION, adminAssign, agreementForSigning, canViewLocationPhoto, messaging, requestAgreement, sha256, signAgreement, signedAgreement, standing,
 } from "@cm/services";
 import { makeClinic, makeProvider, makeShift } from "../factories";
 
@@ -66,7 +66,7 @@ describe("in-house e-signature", () => {
     expect(r.sig).toMatchObject({ status: "SIGNED", typedSignature: "Pat Provider", signerIp: "203.0.113.9", signerAgent: "vitest" });
     expect(r.sig.documentHash).toBe(sha256(r.sig.documentText!));
     expect(r.sig.consentAt).toBeTruthy();
-    expect((await prisma.provider.findUniqueOrThrow({ where: { id: provider.id } })).agreementVersion).toBe(2);
+    expect((await prisma.provider.findUniqueOrThrow({ where: { id: provider.id } })).agreementVersion).toBe(AGREEMENT_VERSION.PROVIDER);
     // Nobody else can read it.
     const other = await makeProvider();
     await expect(signedAgreement(await actorOf(other.id), id)).rejects.toThrow(/not found/i);

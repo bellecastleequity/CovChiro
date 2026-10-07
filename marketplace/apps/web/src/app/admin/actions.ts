@@ -9,7 +9,7 @@ import {
   schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax,
+  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax, chargebacks,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -515,4 +515,19 @@ export const refreshTaxAction = formAction(async () => {
   const r = await tax.refreshTaxStatuses(actor);
   revalidatePath("/admin/payments/1099");
   return `Checked ${r.updated} provider${r.updated === 1 ? "" : "s"} with Stripe${r.failed ? ` (${r.failed} couldn't be read)` : ""}.`;
+});
+
+export const chargebackEvidenceAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const submit = str(fd, "mode") === "submit";
+  const r = await chargebacks.submitChargebackEvidence(actor, str(fd, "id"), { submit, note: optStr(fd, "note") });
+  revalidatePath("/admin/payments/chargebacks");
+  return submit ? `Evidence submitted to Stripe (status: ${r.status.replace(/_/g, " ")}). The bank usually decides within 60–75 days.` : "Saved in Stripe as a draft. You can still change it before submitting.";
+});
+
+export const chargebackReleaseAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const n = await chargebacks.releaseChargebackHolds(actor, str(fd, "id"));
+  revalidatePath("/admin/payments/chargebacks");
+  return n ? `Released ${n} held payment${n === 1 ? "" : "s"} to the provider.` : "Nothing was on hold.";
 });

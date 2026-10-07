@@ -74,6 +74,8 @@ export interface PaymentsProvider {
    * the platform) and the transfer can run before the charge's funds become available.
    */
   transfer(input: { accountId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string>; sourcePaymentIntentId?: string | null }): Promise<{ id: string }>;
+  /** Card dispute (chargeback): send text evidence to Stripe; submit = final (Stripe sends it to the bank). */
+  submitDisputeEvidence(disputeId: string, evidence: Record<string, string>, submit: boolean): Promise<{ status: string }>;
   /** Throws if the signature is invalid. */
   parseWebhook(rawBody: string, signature: string | null): Stripe.Event;
 }
@@ -196,6 +198,10 @@ class StripePayments implements PaymentsProvider {
    * transfers) and the "Connected accounts" destination (providers'
    * account.updated) separate secrets, both pointed at the same URL.
    */
+  async submitDisputeEvidence(disputeId: string, evidence: Record<string, string>, submit: boolean) {
+    const d = await this.s.disputes.update(disputeId, { evidence: evidence as Stripe.DisputeUpdateParams.Evidence, submit });
+    return { status: d.status };
+  }
   parseWebhook(rawBody: string, signature: string | null) {
     const secrets = (this.webhookSecret ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     if (!secrets.length || !signature) throw new Error("Webhook signature missing");
@@ -264,6 +270,9 @@ export class FakePayments implements PaymentsProvider {
     if (!this.transfers.some((t) => t.idempotencyKey === i.idempotencyKey)) this.transfers.push({ amountCents: i.amountCents, sourcePaymentIntentId: i.sourcePaymentIntentId ?? null, idempotencyKey: i.idempotencyKey });
     return { id: this.id("tr", i.idempotencyKey) };
   }
+  async submitDisputeEvidence(_disputeId: string, _evidence: Record<string, string>, submit: boolean) {
+    return { status: submit ? "under_review" : "needs_response" };
+  }
   parseWebhook(rawBody: string): Stripe.Event {
     if (env().NODE_ENV === "production" && !isSandbox()) throw new Error("Fake payments cannot accept webhooks in production");
     return JSON.parse(rawBody);
@@ -310,6 +319,9 @@ export class SandboxPayments implements PaymentsProvider {
     // A fake account is paid by the fake; a real test account from a fake charge goes unlinked.
     if (this.by(i.accountId) === this.fake) return this.fake.transfer(i);
     return this.real.transfer({ ...i, sourcePaymentIntentId: i.sourcePaymentIntentId?.includes("_fake_") ? null : i.sourcePaymentIntentId });
+  }
+  submitDisputeEvidence(disputeId: string, evidence: Record<string, string>, submit: boolean) {
+    return this.by(disputeId).submitDisputeEvidence(disputeId, evidence, submit);
   }
   parseWebhook(rawBody: string, signature: string | null) {
     return this.real.parseWebhook(rawBody, signature);

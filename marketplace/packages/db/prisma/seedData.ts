@@ -72,6 +72,12 @@ export const FL_REGIONS = [
   { name: "FL-Smaller cities", tier: 2, zip3List: ["321", "323", "324", "325", "326", "329", "338", "339", "341", "342", "344", "346", "349"], half: { LIGHT: [25000, 21500], BUSY: [32500, 26500] }, full: { LIGHT: [45000, 39000], BUSY: [57500, 46500] } },
 ];
 
+/** Territories (owner-approved Oct 2026; migration 0042 adds the same rows to existing databases): PR = Florida smaller cities, VI ≈ 20% above Florida major cities. */
+export const TERRITORY_REGIONS = [
+  { name: "PR-All", state: "PR", tier: 2, zip3List: ["006", "007", "009"], half: { LIGHT: [25000, 21500], BUSY: [32500, 26500] }, full: { LIGHT: [45000, 39000], BUSY: [57500, 46500] } },
+  { name: "VI-All", state: "VI", tier: 1, zip3List: ["008"], half: { LIGHT: [33000, 28000], BUSY: [45000, 35500] }, full: { LIGHT: [60000, 50500], BUSY: [75000, 60000] } },
+] as const;
+
 /** Sonography in a state that doesn't license it: accept the national registries (A5). */
 export const SONO_NATIONAL = {
   licensedAtStateLevel: false,
@@ -137,10 +143,10 @@ export async function seedBase(prisma: PrismaClient) {
   });
 
   const regionIds: Record<string, string> = {};
-  for (const r of FL_REGIONS) {
+  for (const r of [...FL_REGIONS.map((x) => ({ ...x, state: "FL" })), ...TERRITORY_REGIONS]) {
     const region = await prisma.rateRegion.upsert({
       where: { name: r.name },
-      create: { name: r.name, state: "FL", tier: r.tier, zip3List: r.zip3List },
+      create: { name: r.name, state: r.state, tier: r.tier, zip3List: [...r.zip3List] },
       update: {},
     });
     regionIds[r.name] = region.id;
@@ -160,6 +166,9 @@ export async function seedBase(prisma: PrismaClient) {
     }
   }
   await prisma.stateConfig.update({ where: { state: "FL" }, data: { defaultRateRegionId: regionIds["FL-Smaller cities"] } });
+  for (const r of TERRITORY_REGIONS) {
+    await prisma.stateConfig.updateMany({ where: { state: r.state, defaultRateRegionId: null }, data: { defaultRateRegionId: regionIds[r.name] } });
+  }
 
   // Profession × FL rows so the admin matrix shows every cell; only DC is enabled.
   for (const p of PROFESSIONS) {

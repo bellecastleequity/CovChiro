@@ -111,7 +111,7 @@ export async function JoinPage({ slug, search }: { slug?: string; search: Search
             <Field label="Create a password" htmlFor="password" hint="At least 10 characters.">
               <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
             </Field>
-            <Checkbox name="terms" required label={<>I agree to the terms of service and privacy policy.</>} />
+            <Checkbox name="terms" required label={<>I agree to the <Link href="/terms" target="_blank" className="underline">terms of service</Link> and <Link href="/privacy" target="_blank" className="underline">privacy policy</Link>.</>} />
             <FormGuard />
             <SubmitButton className="w-full" size="lg" pendingText="Creating your profile…">
               Create my provider profile

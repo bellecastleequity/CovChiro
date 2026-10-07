@@ -61,7 +61,7 @@ export default async function GoogleSignup({ searchParams }: { searchParams: Pro
             </fieldset>
           )}
           {inv ? <p className="rounded-lg bg-accent-50 px-3 py-2 text-sm text-slate-800"><b>{inv.from} invited you.</b> Your referral is linked to this account.</p> : null}
-          <Checkbox name="terms" required label={<>I agree to the terms of service and privacy policy.</>} />
+          <Checkbox name="terms" required label={<>I agree to the <Link href="/terms" target="_blank" className="underline">terms of service</Link> and <Link href="/privacy" target="_blank" className="underline">privacy policy</Link>.</>} />
           {code ? <p className="rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-800">Your code <strong className="font-mono">{code}</strong> will be ready when you post your first shift.</p> : null}
           <SubmitButton className="w-full" size="lg" pendingText="Creating account…">
             Create account

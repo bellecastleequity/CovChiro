@@ -116,6 +116,8 @@ export async function SiteFooter() {
             <li><Link href="/faq">FAQ</Link></li>
             <li><Link href="/contact">Contact</Link></li>
             <li><a href={`mailto:${b.supportEmail}`}>{b.supportEmail}</a></li>
+            <li><Link href="/privacy">Privacy policy</Link></li>
+            <li><Link href="/terms">Terms of service</Link></li>
           </ul>
         </div>
       </div>

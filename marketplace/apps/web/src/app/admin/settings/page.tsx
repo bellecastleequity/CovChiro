@@ -1,7 +1,9 @@
-import { admin, google } from "@cm/services";
+import { admin, emaildns, google } from "@cm/services";
+import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardHeader } from "@/components/ui/card";
+import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { buttonClass } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/misc";
 import { requireActor } from "@/lib/session";
@@ -11,8 +13,12 @@ import { googleCheckAction, settingAction, testEmailAction, testTextAction } fro
 
 export const metadata = { title: "Settings" };
 
-export default async function Settings() {
+const DNS_TONE = { ok: "green", warn: "amber", fail: "red" } as const;
+const DNS_LABEL = { ok: "OK", warn: "Improve", fail: "Missing / wrong" } as const;
+
+export default async function Settings({ searchParams }: { searchParams: Promise<{ emailcheck?: string }> }) {
   const { actor, user } = await requireActor("admin");
+  const dnsCheck = (await searchParams).emailcheck ? await emaildns.emailDnsCheck(actor).catch(() => null) : null;
   const rows = await admin.settingsView(actor);
   const groups = [...new Set(rows.map((r) => r.group))];
   const open = rows.filter((r) => r.flag).length;
@@ -26,6 +32,26 @@ export default async function Settings() {
             <Input name="to" type="email" required defaultValue={user.email} className="w-72" />
             <SubmitButton size="sm" variant="outline">Send test email</SubmitButton>
           </ActionForm>
+        </Card>
+        <Card id="email-dns" className="scroll-mt-20">
+          <CardHeader
+            title="Email deliverability check"
+            description={`Looks up the DNS records inbox providers check before trusting mail from ${emaildns.sendingDomain()} (SPF, DKIM, DMARC, MX) and says exactly what to add. Without them, booking and outreach emails tend to land in spam.`}
+          />
+          <CardBody className="space-y-3 pt-0">
+            <Link href="?emailcheck=1#email-dns" className={buttonClass("outline", "sm")}>{dnsCheck ? "Check again" : "Check DNS records"}</Link>
+            {dnsCheck ? (
+              <ul className="space-y-3 text-sm">
+                {dnsCheck.checks.map((c) => (
+                  <li key={c.key} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex items-center gap-2 font-medium">{c.label} <Badge tone={DNS_TONE[c.state]}>{DNS_LABEL[c.state]}</Badge></div>
+                    {c.found ? <div className="mt-1 break-all font-mono text-xs text-slate-500">{c.found}</div> : null}
+                    {c.fix ? <div className="mt-1 text-slate-700">{c.fix}</div> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </CardBody>
         </Card>
         <Card>
           <CardHeader title="Google check" description="Tests both Maps keys and shows Google's exact answer. The server key (GOOGLE_MAPS_API_KEY) does address lookup, time zones and drive times; the browser key (GOOGLE_MAPS_BROWSER_KEY) gives address suggestions as people type." />

@@ -107,7 +107,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         <Field label="Password" htmlFor="password" hint="At least 10 characters.">
           <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
         </Field>
-        <Checkbox name="terms" required label={<>I agree to the terms of service and privacy policy.</>} />
+        <Checkbox name="terms" required label={<>I agree to the <Link href="/terms" target="_blank" className="underline">terms of service</Link> and <Link href="/privacy" target="_blank" className="underline">privacy policy</Link>.</>} />
         {code ? <p className="rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-800">Your code <strong className="font-mono">{code}</strong> will be ready when you post your first shift.</p> : null}
         <FormGuard />
         <SubmitButton className="w-full" size="lg" pendingText="Creating account…">

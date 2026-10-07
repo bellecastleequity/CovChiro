@@ -100,7 +100,7 @@ export default async function OnCallPage() {
               </ActionForm>
               <ActionForm action={phoneConfirmAction} className="space-y-2">
                 <Input name="code" inputMode="numeric" maxLength={6} placeholder="6-digit code" required />
-                <Checkbox name="consent" defaultChecked label="Text me shift offers and account alerts. Msg & data rates may apply. Reply STOP to opt out." />
+                <Checkbox name="consent" defaultChecked label={<>Text me shift offers and account alerts. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. <a href="/privacy" target="_blank" className="underline">Privacy</a> · <a href="/terms" target="_blank" className="underline">Terms</a></>} />
                 <SubmitButton size="sm">Verify</SubmitButton>
               </ActionForm>
               </>)}

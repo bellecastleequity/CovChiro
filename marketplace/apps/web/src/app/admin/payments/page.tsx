@@ -24,7 +24,7 @@ export default async function Payments() {
   ]);
   return (
     <>
-      <PageHeader title="Payments & disputes" actions={<Link href="/admin/payments/1099" className={buttonClass("outline", "sm")}>1099 report</Link>} />
+      <PageHeader title="Payments & disputes" actions={<div className="flex gap-2"><Link href="/admin/payments/chargebacks" className={buttonClass("outline", "sm")}>Card disputes</Link><Link href="/admin/payments/1099" className={buttonClass("outline", "sm")}>1099 report</Link></div>} />
       <div className="space-y-6">
         <Card>
           <CardHeader title={`Open disputes (${disputes.length})`} description="The provider's payout is held until resolved." />

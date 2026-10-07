@@ -51,7 +51,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               <Input name="code" inputMode="numeric" maxLength={6} placeholder="6-digit code" required className="max-w-40" />
               <SubmitButton size="md">Verify</SubmitButton>
             </ActionForm>
-            <p className="text-xs text-slate-500">By verifying, you agree to receive shift alerts by text. Msg &amp; data rates may apply. Reply STOP to opt out.</p>
+            <p className="text-xs text-slate-500">By verifying, you agree to receive shift alerts by text. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. <a href="/privacy" target="_blank" className="underline">Privacy</a> · <a href="/terms" target="_blank" className="underline">Terms</a></p>
             </>) : null}
           </CardBody>
         </Card>

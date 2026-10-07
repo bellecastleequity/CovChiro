@@ -69,11 +69,11 @@ export function ActionForm({
   );
 }
 
-export function SubmitButton({ children, variant = "primary", size = "md", className, pendingText, disabled }: { children: React.ReactNode; disabled?: boolean; variant?: "primary" | "secondary" | "outline" | "ghost" | "danger"; size?: "sm" | "md" | "lg"; className?: string; pendingText?: string }) {
+export function SubmitButton({ children, variant = "primary", size = "md", className, pendingText, disabled, name, value }: { children: React.ReactNode; disabled?: boolean; variant?: "primary" | "secondary" | "outline" | "ghost" | "danger"; size?: "sm" | "md" | "lg"; className?: string; pendingText?: string; /** Sent with the form when this button submits it (several buttons, one form). */ name?: string; value?: string }) {
   const { pending: formPending } = useFormStatus();
   const pending = useContext(PendingContext) || formPending;
   return (
-    <button type="submit" disabled={pending || disabled} className={buttonClass(variant, size, cn(className))}>
+    <button type="submit" name={name} value={value} disabled={pending || disabled} className={buttonClass(variant, size, cn(className))}>
       {pending ? <Loader2 className="size-4 animate-spin" /> : null}
       {pending && pendingText ? pendingText : children}
     </button>
