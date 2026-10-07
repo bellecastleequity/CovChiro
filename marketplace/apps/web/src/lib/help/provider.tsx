@@ -318,7 +318,7 @@ const A: HelpArticle[] = [
           "Your W-9 details (legal name, address, SSN or EIN) are collected by Stripe during Payout setup. Stripe keeps them, not us.",
           "Paid through your own company (LLC, PA, PC)? On Payout setup choose \"My company\" before you start, so Stripe takes the company's EIN and the 1099 goes to the company. Switching after payouts are on needs support.",
           "If Payout setup shows \"Full number still needed\", Stripe has only the last 4 of your SSN so far. Open the Stripe dashboard and finish the tax step so your 1099 can be issued.",
-          `Your 1099 is issued by Stripe (by email and in your Stripe dashboard) by the end of January when you were paid at least $${s["tax.form1099ThresholdDollars"].toLocaleString("en-US")} in the year.`,
+          `Your 1099 is issued by Stripe (by email and in your Stripe dashboard) by the end of January when you were paid at least $${s["tax.form1099ThresholdDollars"].toLocaleString("en-US")} in the year. Look for an email from Stripe; the form is in your Stripe dashboard (Payout setup → Open Stripe dashboard). Agree to electronic delivery there, or Stripe mails a paper copy.`,
           "Mileage, lodging and airfare are flat allowances paid with your shift pay (no receipts). Ask your tax preparer how to report them and which travel costs you can deduct.",
           "Your yearly earnings statement (Earnings → Statement) lists everything paid to you, month by month.",
         ]}
