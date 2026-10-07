@@ -9,7 +9,7 @@ import { applyToShift, respondToOffer, selectApplicant } from "../shifts";
 import { respondStanding } from "../standing";
 import { approveAsClinic, punch } from "../timeclock";
 import { confirmVisitsAsClinic, submitVisits } from "../volume";
-import { loadCast } from "./cast";
+import { keepDemoAgreementsCurrent, loadCast } from "./cast";
 import { APPLY_NOTES, CLINIC_REVIEWS, PROVIDER_REVIEWS } from "./data";
 import { sandboxBusy } from "./runner";
 import { isUnexpected, recordError } from "./errors";
@@ -32,6 +32,7 @@ const roll = (id: string) => [...id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0
 const UNFILLED = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] as const;
 
 export async function botsTick(now = new Date()) {
+  await keepDemoAgreementsCurrent();
   if (!isSandbox()) return "not the test site";
   if (!(await prisma.setting.findUnique({ where: { key: "sandbox.builtAt" } }))) return "no demo yet";
   if (await sandboxBusy()) return "building";

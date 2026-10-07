@@ -10,7 +10,7 @@ import { releaseDuePayouts } from "../payouts";
 import { applyToShift, createShift, quoteForClinic, selectApplicant, shiftBoard } from "../shifts";
 import { approveAsClinic, punch } from "../timeclock";
 import { confirmVisitsAsClinic, submitVisits, volumeSweep } from "../volume";
-import { createClinic, createProvider, demoEmail } from "./cast";
+import { createClinic, createProvider, demoEmail, keepDemoAgreementsCurrent } from "./cast";
 import { DEMO_PASSWORD, type DemoClinic, type DemoProvider } from "./data";
 import { recordError } from "./errors";
 import { isTester } from "./testers";
@@ -50,6 +50,7 @@ async function ensureAccounts() {
   const hash = await hashPassword(DEMO_PASSWORD);
   if (!(await prisma.user.findUnique({ where: { email: demoEmail("selfcheck", "clinic") } }))) await createClinic(CHECK_CLINIC, hash, 90);
   if (!(await prisma.user.findUnique({ where: { email: demoEmail("selfcheck", "provider") } }))) await createProvider(CHECK_PROVIDER, hash, 91, adminActor);
+  await keepDemoAgreementsCurrent();
   const cu = await prisma.user.findUniqueOrThrow({ where: { email: demoEmail("selfcheck", "clinic") }, include: { clinicMembers: { include: { clinicOrg: { include: { locations: true } } } } } });
   const pu = await prisma.user.findUniqueOrThrow({ where: { email: demoEmail("selfcheck", "provider") }, include: { provider: true } });
   const org = cu.clinicMembers[0].clinicOrg;

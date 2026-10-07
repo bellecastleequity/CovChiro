@@ -287,3 +287,21 @@ export async function loadCast() {
   return { clinics, providers };
 }
 export type Cast = Awaited<ReturnType<typeof loadCast>>;
+
+/**
+ * Test site: when an agreement version is bumped, the demo accounts (@sandbox.test) would be locked out
+ * (clinics can't post, providers aren't matched) until someone re-signed each one. They're test data, so
+ * keep them on the current version. Real logins on the test site still sign for themselves.
+ */
+export async function keepDemoAgreementsCurrent() {
+  const now = new Date();
+  const orgs = await prisma.clinicOrg.updateMany({
+    where: { OR: [{ agreementVersion: null }, { agreementVersion: { lt: AGREEMENT_VERSION.CLINIC } }], agreementSignedAt: { not: null }, members: { some: { user: { email: { endsWith: "@sandbox.test" } } } } },
+    data: { agreementVersion: AGREEMENT_VERSION.CLINIC, agreementSignedAt: now },
+  });
+  const providers = await prisma.provider.updateMany({
+    where: { OR: [{ agreementVersion: null }, { agreementVersion: { lt: AGREEMENT_VERSION.PROVIDER } }], agreementSignedAt: { not: null }, user: { email: { endsWith: "@sandbox.test" } } },
+    data: { agreementVersion: AGREEMENT_VERSION.PROVIDER, agreementSignedAt: now },
+  });
+  return { clinics: orgs.count, providers: providers.count };
+}
