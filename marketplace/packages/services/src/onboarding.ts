@@ -1,7 +1,7 @@
 import { brand } from "@cm/config";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { DomainError, licensedPairs, scanContactInfo, NATIONAL_CREDENTIAL, normalizeLinkedIn, US_STATES } from "@cm/core";
+import { DomainError, taxInfoStatus, licensedPairs, scanContactInfo, NATIONAL_CREDENTIAL, normalizeLinkedIn, US_STATES } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
 import { esignProvider, GeoServiceError, geoProvider, lookupNpi, paymentsProvider, testSigningEnabled } from "@cm/integrations";
 import { AGREEMENT_VERSION, agreementAccepted, buildAgreementFor, sha256, type AgreementDoc } from "./agreements";
@@ -50,6 +50,8 @@ export async function providerChecklist(providerId: string) {
     homeBase: p.homeLat !== null,
     emailVerified: !!p.user.emailVerifiedAt,
     payouts: p.stripePayoutsEnabled,
+    /** Stripe still needs the full SSN/EIN for the 1099 (doesn't block matching). */
+    taxInfoNeeded: p.stripePayoutsEnabled && (p.taxInfoStatus === "LAST4" || p.taxInfoStatus === "MISSING"),
     agreement: await agreementAccepted("PROVIDER", p.agreementSignedAt, p.agreementVersion),
     npi: p.professions.some((x) => x.profession.npiRequired) ? !!p.npiVerifiedAt : true,
   };
@@ -405,6 +407,7 @@ export async function providerStripeLink(actor: Actor) {
       siteUrl: absoluteUrl("/"),
       mcc: codes.length === 1 && codes[0] === "DC" ? "8041" : "8099",
       productDescription: `Licensed ${what} provider paid for temporary clinic coverage shifts booked through ${brand().name}.`,
+      businessType: p.taxEntity === "COMPANY" ? "company" : "individual",
     });
     await prisma.provider.update({ where: { id: providerId }, data: { stripeAccountId: accountId } });
   }
@@ -419,8 +422,23 @@ export async function refreshProviderStripe(providerId: string) {
   const p = await prisma.provider.findUniqueOrThrow({ where: { id: providerId } });
   if (!p.stripeAccountId) return;
   const st = await paymentsProvider().accountStatus(p.stripeAccountId);
-  if (st.payoutsEnabled !== p.stripePayoutsEnabled) await prisma.provider.update({ where: { id: providerId }, data: { stripePayoutsEnabled: st.payoutsEnabled } });
+  await prisma.provider.update({ where: { id: providerId }, data: { stripePayoutsEnabled: st.payoutsEnabled, taxInfoStatus: taxInfoStatus(st.taxFacts), taxCheckedAt: new Date() } });
   await recomputeProviderStatus(providerId);
+}
+
+/**
+ * Paid as themselves (SSN) or through their own company (EIN). It decides the Stripe account type, so it
+ * can change only until payouts are set up; after that a person has to help (the 1099 follows the account).
+ */
+export async function setTaxEntity(actor: Actor, entity: "INDIVIDUAL" | "COMPANY") {
+  const providerId = requireProvider(actor);
+  const p = await prisma.provider.findUniqueOrThrow({ where: { id: providerId } });
+  if (p.taxEntity === entity) return entity;
+  if (p.stripePayoutsEnabled) throw new DomainError("CONFLICT", "Payouts are already set up on your current tax ID. Contact support to switch: your 1099 follows the Stripe account.");
+  // An unfinished Stripe setup of the other type is left behind; the next "Set up payouts" starts the right one.
+  await prisma.provider.update({ where: { id: providerId }, data: { taxEntity: entity, stripeAccountId: null, taxInfoStatus: "UNKNOWN", taxCheckedAt: null } });
+  await audit(prisma, actor, "provider.tax_entity", "Provider", providerId, { taxEntity: p.taxEntity, stripeAccountId: p.stripeAccountId }, { taxEntity: entity });
+  return entity;
 }
 
 // ======================================================================

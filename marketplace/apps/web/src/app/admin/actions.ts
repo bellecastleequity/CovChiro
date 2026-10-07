@@ -9,7 +9,7 @@ import {
   schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health,
+  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -508,4 +508,11 @@ export const stateLicenseCheckAction = formAction(async (fd) => {
   const r = await boardcheck.runBoardCheck(actor, { state: str(fd, "state") || "FL", professionCode: str(fd, "professionCode") || "DC", file: Buffer.from(await file.arrayBuffer()), fileName: file.name });
   revalidatePath("/admin/verification/state-check");
   return `Checked ${r.checked} license${r.checked === 1 ? "" : "s"}: ${r.ok} active, ${r.stopped} stopped, ${r.review} to review, ${r.notFound} not found.`;
+});
+
+export const refreshTaxAction = formAction(async () => {
+  const { actor } = await requireActor("admin");
+  const r = await tax.refreshTaxStatuses(actor);
+  revalidatePath("/admin/payments/1099");
+  return `Checked ${r.updated} provider${r.updated === 1 ? "" : "s"} with Stripe${r.failed ? ` (${r.failed} couldn't be read)` : ""}.`;
 });

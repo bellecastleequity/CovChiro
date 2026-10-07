@@ -51,7 +51,7 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
     { label: "Complete your profile & home base", done: c.profile && c.homeBase, href: "/provider/profile" },
     { label: "Add a profile photo", done: c.photo, href: "/provider/profile" },
     { label: "Add your NPI", done: c.npi, href: "/provider/profile" },
-    { label: "Set up payouts (Stripe)", done: c.payouts, href: "/provider/payouts" },
+    { label: "Set up payouts & tax info (Stripe)", done: c.payouts, href: "/provider/payouts", hint: c.taxInfoNeeded ? "Payouts are on, but Stripe still needs your full SSN or EIN for your 1099." : undefined },
     { label: "Sign the Provider Platform Agreement", done: c.agreement, href: "/provider/profile#agreement" },
   ];
   return (
@@ -207,6 +207,10 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
       {!c.payouts ? (
         <Alert tone="warning" className="mt-6" title="Payouts aren't set up yet">
           <Link href="/provider/payouts" className="underline">Connect your bank through Stripe</Link> so you can be paid.
+        </Alert>
+      ) : c.taxInfoNeeded ? (
+        <Alert tone="warning" className="mt-6" title="Stripe still needs your tax ID for your 1099">
+          Your payouts are on, but Stripe needs your full SSN or EIN before it can issue your 1099. <Link href="/provider/payouts" className="underline">Open Payout setup</Link> and finish the tax step.
         </Alert>
       ) : null}
       <div className="mt-6 grid gap-3 sm:grid-cols-2">

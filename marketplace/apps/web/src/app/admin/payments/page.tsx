@@ -4,6 +4,7 @@ import { getSettings } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { ManualChargeForm } from "@/components/admin/manual-charge-form";
 import { StatusBadge } from "@/components/ui/badge";
+import { buttonClass } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Alert, PageHeader, Table, Td, Th } from "@/components/ui/misc";
@@ -23,7 +24,7 @@ export default async function Payments() {
   ]);
   return (
     <>
-      <PageHeader title="Payments & disputes" />
+      <PageHeader title="Payments & disputes" actions={<Link href="/admin/payments/1099" className={buttonClass("outline", "sm")}>1099 report</Link>} />
       <div className="space-y-6">
         <Card>
           <CardHeader title={`Open disputes (${disputes.length})`} description="The provider's payout is held until resolved." />

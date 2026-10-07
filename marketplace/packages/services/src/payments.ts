@@ -1,6 +1,6 @@
-import { DomainError } from "@cm/core";
+import { DomainError, taxInfoStatus } from "@cm/core";
 import { prisma, type PaymentType } from "@cm/db";
-import { paymentsProvider } from "@cm/integrations";
+import { paymentsProvider, taxFactsOfAccount } from "@cm/integrations";
 import { audit, getSettings, SYSTEM, type Actor } from "./context";
 import { notifyAdmins, notifyClinic } from "./notify";
 
@@ -150,7 +150,7 @@ export async function handleStripeEvent(rawBody: string, signature: string | nul
       break;
     }
     case "account.updated": {
-      await prisma.provider.updateMany({ where: { stripeAccountId: obj.id }, data: { stripePayoutsEnabled: !!obj.payouts_enabled } });
+      await prisma.provider.updateMany({ where: { stripeAccountId: obj.id }, data: { stripePayoutsEnabled: !!obj.payouts_enabled, taxInfoStatus: taxInfoStatus(taxFactsOfAccount(obj as never)), taxCheckedAt: new Date() } });
       break;
     }
     case "checkout.session.completed": {

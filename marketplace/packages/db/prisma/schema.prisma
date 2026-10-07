@@ -229,6 +229,11 @@ model Provider {
   willingOvernight         Boolean                                @default(false)
   /// Fly-in coverage: states/territories they'll fly to (credentials still required there).
   flyInStates              String[]                               @default([])
+  /// Tax info (W-9 details) is held by Stripe, never here. INDIVIDUAL (SSN) | COMPANY (EIN): the Stripe account type to create.
+  taxEntity                String                                 @default("INDIVIDUAL")
+  /// core taxInfoStatus read from Stripe: COMPLETE | LAST4 | MISSING | UNKNOWN.
+  taxInfoStatus            String                                 @default("UNKNOWN")
+  taxCheckedAt             DateTime?                              @db.Timestamptz(3)
   bio                      String?
   school                   String?
   graduationYear           Int?

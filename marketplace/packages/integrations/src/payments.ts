@@ -20,6 +20,35 @@ export interface ConnectedAccountInput {
   /** Merchant category, e.g. 8041 chiropractors, 8099 other health services. */
   mcc: string;
   productDescription: string;
+  /** Paid as themselves (SSN) or through their own company (EIN). Default individual. */
+  businessType?: "individual" | "company";
+}
+
+export interface AccountStatus {
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  /** What Stripe says about the W-9 details (core taxInfoStatus turns it into a status); never the number itself. */
+  taxFacts: AccountTaxFacts;
+}
+
+export interface AccountTaxFacts {
+  businessType: string | null;
+  detailsSubmitted: boolean;
+  individual: { idNumberProvided: boolean | null; ssnLast4Provided: boolean | null } | null;
+  company: { taxIdProvided: boolean | null } | null;
+  due: string[];
+}
+
+/** Tax facts from a Stripe account object (accounts.retrieve or the account.updated webhook). */
+export function taxFactsOfAccount(a: Pick<Stripe.Account, "business_type" | "details_submitted" | "individual" | "company" | "requirements">): AccountTaxFacts {
+  const r = a.requirements;
+  return {
+    businessType: a.business_type ?? null,
+    detailsSubmitted: !!a.details_submitted,
+    individual: a.individual ? { idNumberProvided: a.individual.id_number_provided ?? null, ssnLast4Provided: a.individual.ssn_last_4_provided ?? null } : null,
+    company: a.company ? { taxIdProvided: a.company.tax_id_provided ?? null } : null,
+    due: [...(r?.currently_due ?? []), ...(r?.past_due ?? []), ...(r?.eventually_due ?? [])],
+  };
 }
 
 export interface ChargeResult {
@@ -36,7 +65,7 @@ export interface PaymentsProvider {
   createConnectedAccount(input: ConnectedAccountInput): Promise<string>;
   connectOnboardingUrl(input: { accountId: string; providerId: string; returnUrl: string; refreshUrl: string }): Promise<string>;
   connectDashboardUrl(accountId: string): Promise<string | null>;
-  accountStatus(accountId: string): Promise<{ payoutsEnabled: boolean; detailsSubmitted: boolean }>;
+  accountStatus(accountId: string): Promise<AccountStatus>;
   chargeOffSession(input: { customerId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string> }): Promise<ChargeResult>;
   refund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string }): Promise<{ id: string }>;
   /**
@@ -87,10 +116,13 @@ class StripePayments implements PaymentsProvider {
   async createConnectedAccount(i: ConnectedAccountInput) {
     const a = await this.s.accounts.create(
       {
-        type: "express", country: "US", email: i.email, capabilities: { transfers: { requested: true } }, business_type: "individual", metadata: { providerId: i.providerId },
+        type: "express", country: "US", email: i.email, capabilities: { transfers: { requested: true } }, business_type: i.businessType ?? "individual", metadata: { providerId: i.providerId },
         // Prefilled so providers aren't asked for a website or what they sell (they can still edit it).
         business_profile: { url: i.siteUrl, mcc: i.mcc, product_description: i.productDescription },
-        individual: { email: i.email, ...(i.firstName ? { first_name: i.firstName } : {}), ...(i.lastName ? { last_name: i.lastName } : {}) },
+        // A company account (paid under its EIN) gets its details from Stripe's own steps.
+        ...((i.businessType ?? "individual") === "individual"
+          ? { individual: { email: i.email, ...(i.firstName ? { first_name: i.firstName } : {}), ...(i.lastName ? { last_name: i.lastName } : {}) } }
+          : {}),
       },
       { idempotencyKey: onceKey("acct", i.providerId) },
     );
@@ -109,7 +141,7 @@ class StripePayments implements PaymentsProvider {
   }
   async accountStatus(accountId: string) {
     const a = await this.s.accounts.retrieve(accountId);
-    return { payoutsEnabled: !!a.payouts_enabled, detailsSubmitted: !!a.details_submitted };
+    return { payoutsEnabled: !!a.payouts_enabled, detailsSubmitted: !!a.details_submitted, taxFacts: taxFactsOfAccount(a) };
   }
   async chargeOffSession(i: { customerId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string> }): Promise<ChargeResult> {
     const customer = (await this.s.customers.retrieve(i.customerId)) as Stripe.Customer;
@@ -205,8 +237,8 @@ export class FakePayments implements PaymentsProvider {
   async connectDashboardUrl() {
     return null;
   }
-  async accountStatus() {
-    return { payoutsEnabled: true, detailsSubmitted: true };
+  async accountStatus(): Promise<AccountStatus> {
+    return { payoutsEnabled: true, detailsSubmitted: true, taxFacts: { businessType: "individual", detailsSubmitted: true, individual: { idNumberProvided: true, ssnLast4Provided: true }, company: null, due: [] } };
   }
   async chargeOffSession(i: { amountCents: number; idempotencyKey: string }): Promise<ChargeResult> {
     if (i.amountCents % 100 === 13) return { id: this.id("pi", i.idempotencyKey), status: "failed", failureReason: "Card declined (test)" };

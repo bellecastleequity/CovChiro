@@ -66,7 +66,7 @@ const A: HelpArticle[] = [
           caption="What Stripe asks, in order"
           steps={[
             { title: "Email and phone", detail: "Stripe texts you a code. This also becomes your Stripe sign-in for viewing payouts later." },
-            { title: "Business type: Individual / sole proprietorship", detail: "You're paid as an independent contractor (1099), not as an employee. Choose Company only if you're paid through your own LLC or corporation.", tone: "accent" },
+            { title: "Business type: Individual / sole proprietorship", detail: "You're paid as an independent contractor (1099), not as an employee. Paid through your own LLC, PA or PC with its own EIN? Choose \"My company\" on our Payout setup page before you start, so the 1099 goes to the company.", tone: "accent" },
             { title: "Your details", detail: "Legal name, date of birth, home address and SSN, exactly as on your tax records." },
             { title: "Professional details", detail: `Usually filled in for you. If Stripe asks for a website or description, use our website or: "Independent contractor providing clinic coverage shifts through ${brand}."` },
             { title: "Bank account", detail: "Sign in to your bank or type the routing and account numbers. Payouts go here." },
@@ -303,6 +303,27 @@ const A: HelpArticle[] = [
     keywords: "tax taxes 1099 annual year end statement summary pdf",
     links: [{ href: "/provider/earnings/statement", label: "Open year-end summary" }],
     body: () => <P>Earnings → Year-end summary lists every payout by month. Use Print → Save as PDF for your accountant.</P>,
+  },
+  {
+    slug: "taxes-1099",
+    category: "pay",
+    title: "Taxes, W-9 and your 1099",
+    summary: "Stripe collects your W-9 details and sends your 1099 each January. We never see your SSN or EIN.",
+    keywords: "tax taxes w9 w-9 1099 1099-nec ssn ein irs independent contractor llc pc pa company mileage lodging airfare deduction",
+    links: [{ href: "/provider/payouts", label: "Open Payout setup" }, { href: "/provider/earnings", label: "Earnings & statements" }],
+    body: (s) => (
+      <Ul
+        items={[
+          "You're an independent contractor, not an employee: nothing is withheld, and you handle your own taxes. Set money aside as you go.",
+          "Your W-9 details (legal name, address, SSN or EIN) are collected by Stripe during Payout setup. Stripe keeps them, not us.",
+          "Paid through your own company (LLC, PA, PC)? On Payout setup choose \"My company\" before you start, so Stripe takes the company's EIN and the 1099 goes to the company. Switching after payouts are on needs support.",
+          "If Payout setup shows \"Full number still needed\", Stripe has only the last 4 of your SSN so far. Open the Stripe dashboard and finish the tax step so your 1099 can be issued.",
+          `Your 1099 is issued by Stripe (by email and in your Stripe dashboard) by the end of January when you were paid at least $${s["tax.form1099ThresholdDollars"].toLocaleString("en-US")} in the year.`,
+          "Mileage, lodging and airfare are flat allowances paid with your shift pay (no receipts). Ask your tax preparer how to report them and which travel costs you can deduct.",
+          "Your yearly earnings statement (Earnings → Statement) lists everything paid to you, month by month.",
+        ]}
+      />
+    ),
   },
   {
     slug: "fly-in",

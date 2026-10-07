@@ -32,6 +32,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
       [`${x.displayName}: verified malpractice`, x.malpractice, true],
     ]),
     ["Stripe payouts", c.payouts, true],
+    [`Tax info with Stripe (${p.taxEntity === "COMPANY" ? "company EIN" : "SSN"}): ${p.taxInfoStatus === "COMPLETE" ? "complete" : p.taxInfoStatus === "LAST4" ? "last 4 only" : p.taxInfoStatus === "MISSING" ? "missing" : "not checked"}`, p.taxInfoStatus === "COMPLETE", false],
   ];
   return (
     <>

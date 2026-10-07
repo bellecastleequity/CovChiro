@@ -17,7 +17,7 @@ export function providerSetupItems(checklist: ProviderChecklist, email: string):
       { label: `${p.displayName}: verified license`, done: p.license, href: "/provider/credentials", hint: p.licensePending ? "Submitted — verification in progress." : undefined },
       { label: `${p.displayName}: malpractice coverage`, done: p.malpractice, href: "/provider/credentials" },
     ]),
-    { label: "Set up payouts (Stripe)", done: c.payouts, href: "/provider/payouts" },
+    { label: "Set up payouts & tax info (Stripe)", done: c.payouts, href: "/provider/payouts", hint: c.taxInfoNeeded ? "Payouts are on, but Stripe still needs your full SSN or EIN for your 1099." : undefined },
     { label: "Sign the Provider Platform Agreement", done: c.agreement, href: "/provider/profile#agreement" },
   ];
 }

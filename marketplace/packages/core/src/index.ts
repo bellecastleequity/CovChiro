@@ -28,6 +28,7 @@ export * from "./timeclock";
 export * from "./arrival";
 export * from "./activity";
 export * from "./flyin";
+export * from "./tax";
 export * from "./navorder";
 export * from "./closing";
 export * from "./volume";

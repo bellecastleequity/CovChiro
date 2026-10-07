@@ -224,8 +224,18 @@ async function restorePoint(label) {
     if (!r.ok) throw new Error(`Neon said (${r.status}): ${t.slice(0, 200)}`);
     return t ? JSON.parse(t) : {};
   };
+  const branches = (await call("GET", `/projects/${project}/branches`)).branches || [];
   let parent = process.env.NEON_BRANCH_ID;
-  if (!parent) parent = ((await call("GET", `/projects/${project}/branches`)).branches || []).find((b) => b.default || b.primary)?.id;
+  if (!parent) parent = branches.find((b) => b.default || b.primary)?.id;
+  // Restore points this updater made before earlier updates: keep the newest KEEP_UPDATE_POINTS, delete the rest,
+  // so they never fill the Neon project's branch limit (only branches named restore-point-…-before-… are touched).
+  const KEEP_UPDATE_POINTS = 2;
+  const mine = branches
+    .filter((b) => /^restore-point-\d{8}-\d{4}-before-/.test(b.name || "") && b.id !== parent && !(b.default || b.primary))
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  for (const b of mine.slice(KEEP_UPDATE_POINTS - 1)) {
+    await call("DELETE", `/projects/${project}/branches/${b.id}`).then(() => log(`  removed old update restore point ${b.name}`)).catch((e) => log(`  couldn't remove ${b.name}: ${e.message}`));
+  }
   const d = new Date();
   const stamp = d.toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
   const name = `restore-point-${stamp}-${label}`.slice(0, 60);

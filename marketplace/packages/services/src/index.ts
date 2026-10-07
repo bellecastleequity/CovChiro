@@ -4,6 +4,7 @@ export * from "./eligibility";
 export * as enrollment from "./enrollment";
 export * as rewards from "./rewards";
 export * as breaks from "./breaks";
+export * as tax from "./tax";
 export * as boardcheck from "./boardcheck";
 export * as google from "./google";
 export * as concentration from "./concentration";

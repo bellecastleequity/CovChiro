@@ -13,7 +13,7 @@ import {
   oncall,
   addBlackout, addMalpractice, attestCoverage, addOpenDate, addProfession, applyToShift, auth, cancelAssignment, deleteLicense, messaging, openDispute, providerStripeLink,
   removeAvailabilityException, requestAgreement, respondToOffer, setAvailability, setProviderPhoto, setSkills, submitLodgingReceipt, submitRating,
-  setFlyInStates, updateProviderProfile, upsertLicense, withdrawApplication, prelicensure, payfloors, shiftChanges,
+  setFlyInStates, setTaxEntity, updateProviderProfile, upsertLicense, withdrawApplication, prelicensure, payfloors, shiftChanges,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -390,6 +390,13 @@ export const studentModeAction = formAction(async (fd) => {
   });
   revalidatePath("/provider");
   return "Saved.";
+});
+
+export const taxEntityAction = formAction(async (fd) => {
+  const { actor } = await requireActor("provider");
+  const e = await setTaxEntity(actor, str(fd, "taxEntity") === "COMPANY" ? "COMPANY" : "INDIVIDUAL");
+  revalidatePath("/provider/payouts");
+  return e === "COMPANY" ? "Saved: Stripe will ask for your company's details and EIN." : "Saved: Stripe will ask for your own details and SSN.";
 });
 
 export const flyInAction = formAction(async (fd) => {
