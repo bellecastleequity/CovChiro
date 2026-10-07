@@ -287,6 +287,8 @@ export const MalpracticeInput = z.object({
   aggregateDollars: z.coerce.number().int().min(1).max(21_000_000),
   expiresAt: z.coerce.date(),
   coveredProfessionCodes: z.array(z.string()).min(1, "Choose the professions this policy covers."),
+  /** States/territories covered; empty = all of them. */
+  coveredStates: z.array(z.string().trim().toUpperCase().length(2)).max(60).default([]),
   documentUrl: z.string().min(1, "Upload the certificate of insurance."),
 });
 
@@ -303,6 +305,7 @@ export async function addMalpractice(actor: Actor, raw: z.input<typeof Malpracti
       aggregateCents: input.aggregateDollars * 100,
       expiresAt: input.expiresAt,
       coveredProfessionCodes: input.coveredProfessionCodes,
+      coveredStates: input.coveredStates,
       documentUrl: input.documentUrl,
     },
   });

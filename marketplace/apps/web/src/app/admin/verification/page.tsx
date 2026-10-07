@@ -80,7 +80,7 @@ export default async function Verification() {
                   <div className="flex flex-wrap justify-between gap-2">
                     <div>
                       <div className="font-semibold">{m.provider.legalName}{!m.marketOpen ? <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200">Market not open · low priority</span> : null}{m.provider.preLicensure ? <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-sky-200">Student — new graduate</span> : null}</div>
-                      <div className="text-slate-600">{m.carrier} #{m.policyNumber} · {money(m.perOccurrenceCents)}/{money(m.aggregateCents)} · covers {m.coveredProfessionCodes.join(", ")} · expires {dateLabel(m.expiresAt, "UTC", { month: "short", day: "numeric", year: "numeric" })}</div>
+                      <div className="text-slate-600">{m.carrier} #{m.policyNumber} · {money(m.perOccurrenceCents)}/{money(m.aggregateCents)} · covers {m.coveredProfessionCodes.join(", ")} in {m.coveredStates.length ? m.coveredStates.join(", ") : "all states"} · expires {dateLabel(m.expiresAt, "UTC", { month: "short", day: "numeric", year: "numeric" })}</div>
                     </div>
                     <a className="flex items-center gap-1 text-brand-700" href={`/api/files/${m.documentUrl}`} target="_blank"><FileText className="size-4" />Certificate</a>
                   </div>

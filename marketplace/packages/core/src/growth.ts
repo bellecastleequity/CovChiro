@@ -33,7 +33,7 @@ export interface ProviderGrowthInput {
 
 export function providerGrowthState(p: ProviderGrowthInput): { stage: ProviderGrowthStage; message: CredentialMessage; coverageReady: boolean } {
   const licOk = hasQualifyingLicense(p.licenses, p.professionCode, p.state, p.now, p.nationalCredentialAccepted ?? false);
-  const malOk = hasQualifyingMalpractice(p.malpractice, p.professionCode, p.now, p.mins);
+  const malOk = hasQualifyingMalpractice(p.malpractice, p.professionCode, p.now, p.mins, p.state);
   if (licOk && malOk) {
     const stage = p.shiftsCompleted >= 2 ? "REPEAT_PROVIDER" : p.shiftsCompleted >= 1 ? "FIRST_SHIFT" : "COVERAGE_READY";
     return { stage, message: "none", coverageReady: true };

@@ -155,6 +155,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
           perOccurrenceCents: m.perOccurrenceCents,
           aggregateCents: m.aggregateCents,
           coveredProfessionCodes: m.coveredProfessionCodes,
+          coveredStates: m.coveredStates,
         })),
         skills: p.skills.map((s) => ({ skillId: s.skillId, certificationStatus: s.certificationStatus, certificationExpiresAt: s.certificationExpiresAt })),
         maxDriveMinutes: p.maxDriveMinutes,
@@ -375,6 +376,7 @@ async function prefilterIds(db: Db, shift: LoadedShift, distanceMultiplier: numb
         AND m.status = 'VERIFIED' AND m."expiresAt" > ${f.endsAt}
         AND m."perOccurrenceCents" >= ${f.config.malpracticeMinOccurrenceCents}
         AND m."aggregateCents" >= ${f.config.malpracticeMinAggregateCents}
+        AND (cardinality(m."coveredStates") = 0 OR ${f.state} = ANY(m."coveredStates"))
     )
     AND (
       (p."willingOvernight" AND ${f.lodgingAllowed} AND p."homeGeo" IS NOT NULL AND ST_DWithin(

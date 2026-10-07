@@ -10,7 +10,7 @@ export async function providerTrust(providerId: string, professionCode: string, 
   const [license, nationalCredential, malpractice, stats, sheets, provider] = await Promise.all([
     prisma.license.findFirst({ where: { providerId, professionCode, state, status: "VERIFIED" }, orderBy: { expiresAt: "desc" } }),
     prisma.license.findFirst({ where: { providerId, professionCode, state: "US", status: "VERIFIED" }, orderBy: { expiresAt: "desc" } }),
-    prisma.malpracticePolicy.findFirst({ where: { providerId, status: "VERIFIED", coveredProfessionCodes: { has: professionCode } }, orderBy: { expiresAt: "desc" } }),
+    prisma.malpracticePolicy.findFirst({ where: { providerId, status: "VERIFIED", coveredProfessionCodes: { has: professionCode }, OR: [{ coveredStates: { isEmpty: true } }, { coveredStates: { has: state } }] }, orderBy: { expiresAt: "desc" } }),
     prisma.providerStats.findUnique({ where: { providerId } }),
     prisma.timesheet.findMany({ where: { assignment: { providerId }, status: { in: ["SUBMITTED", "APPROVED"] } }, select: { flags: true }, orderBy: { createdAt: "desc" }, take: 50 }),
     prisma.provider.findUnique({ where: { id: providerId }, select: { coverageAttestedAt: true } }),

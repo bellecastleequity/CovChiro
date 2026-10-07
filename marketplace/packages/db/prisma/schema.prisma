@@ -403,6 +403,8 @@ model MalpracticePolicy {
   aggregateCents         Int
   /// Professions this policy covers; must include the shift's profession (INV-3).
   coveredProfessionCodes String[]      @default([])
+  /// States/territories this policy covers; empty = all (INV-3 checks the shift's state).
+  coveredStates          String[]      @default([])
   expiresAt              DateTime      @db.Timestamptz(3)
   documentUrl            String
   status                 LicenseStatus @default(PENDING_VERIFICATION)

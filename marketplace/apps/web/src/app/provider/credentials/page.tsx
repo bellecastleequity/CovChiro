@@ -104,7 +104,7 @@ export default async function Credentials() {
                   <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
                     <div>
                       <div className="font-medium">{m.carrier} · {m.policyNumber}</div>
-                      <div className="text-xs text-slate-500">{money(m.perOccurrenceCents)} / {money(m.aggregateCents)} · expires {dateLabel(m.expiresAt, "UTC", { month: "short", day: "numeric", year: "numeric" })} · covers {m.coveredProfessionCodes.join(", ")}</div>
+                      <div className="text-xs text-slate-500">{money(m.perOccurrenceCents)} / {money(m.aggregateCents)} · expires {dateLabel(m.expiresAt, "UTC", { month: "short", day: "numeric", year: "numeric" })} · covers {m.coveredProfessionCodes.join(", ")} · {m.coveredStates.length ? `in ${m.coveredStates.join(", ")}` : "all states"}</div>
                     </div>
                     <StatusBadge status={m.status} />
                   </li>
@@ -125,6 +125,20 @@ export default async function Credentials() {
                 <legend className="mb-1.5 text-sm font-medium text-slate-700">Professions covered<RequiredMark /></legend>
                 <div className="flex flex-wrap gap-4">
                   {provider.professions.map((p) => <Checkbox key={p.professionCode} name="covered" value={p.professionCode} defaultChecked label={p.profession.displayName} />)}
+                </div>
+              </fieldset>
+              <fieldset className="sm:col-span-2 lg:col-span-3">
+                <legend className="mb-1.5 text-sm font-medium text-slate-700">States covered<RequiredMark /><InfoTip label="About states covered">Check your certificate. Most chiropractic policies cover you anywhere in the U.S.; some only cover certain states. You&apos;re only matched to shifts in states your policy covers.</InfoTip></legend>
+                <div className="space-y-2 text-sm">
+                  <label className="flex items-center gap-2"><input type="radio" name="statesScope" value="all" defaultChecked /> All U.S. states and territories</label>
+                  <label className="flex items-center gap-2"><input type="radio" name="statesScope" value="some" /> Only these:</label>
+                  <div className="ml-6 grid max-h-36 grid-cols-4 gap-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-8">
+                    {Object.keys(US_STATES).map((st) => (
+                      <label key={st} className="flex items-center gap-1.5 font-mono text-xs">
+                        <input type="checkbox" name="coveredStates" value={st} defaultChecked={provider.licenses.some((l) => l.state === st)} /> {st}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </fieldset>
               <div className="sm:col-span-2 lg:col-span-3"><SubmitButton size="sm">Submit policy</SubmitButton></div>

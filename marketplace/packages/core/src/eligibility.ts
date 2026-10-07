@@ -34,6 +34,8 @@ export interface MalpracticeFact {
   perOccurrenceCents: number;
   aggregateCents: number;
   coveredProfessionCodes: string[];
+  /** States/territories the policy covers; empty or missing = all states. */
+  coveredStates?: string[];
 }
 
 export interface ProviderSkillFact {
@@ -167,11 +169,14 @@ export function hasQualifyingMalpractice(
   professionCode: string,
   endsAt: Date,
   mins: Pick<ProfessionStateFacts, "malpracticeMinOccurrenceCents" | "malpracticeMinAggregateCents">,
+  /** The shift's state: a policy that lists covered states must include it. */
+  state?: string,
 ): boolean {
   return policies.some(
     (p) =>
       p.status === "VERIFIED" &&
       p.coveredProfessionCodes.includes(professionCode) &&
+      (!state || !p.coveredStates?.length || p.coveredStates.includes(state)) &&
       p.expiresAt.getTime() > endsAt.getTime() &&
       p.perOccurrenceCents >= mins.malpracticeMinOccurrenceCents &&
       p.aggregateCents >= mins.malpracticeMinAggregateCents,
@@ -252,8 +257,8 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
   }
 
   // F2 — malpractice covering the profession and meeting the profession-state minimum (INV-3).
-  if (!hasQualifyingMalpractice(provider.malpractice, shift.professionCode, shift.endsAt, cfg)) {
-    fail("F2", "MALPRACTICE_INVALID", `No verified malpractice policy covering ${shift.professionCode} at the required limits through the shift end`);
+  if (!hasQualifyingMalpractice(provider.malpractice, shift.professionCode, shift.endsAt, cfg, shift.state)) {
+    fail("F2", "MALPRACTICE_INVALID", `No verified malpractice policy covering ${shift.professionCode} in ${shift.state} at the required limits through the shift end`);
   }
 
   if (opts.credentialsOnly) return { eligible: failures.length === 0, failures };

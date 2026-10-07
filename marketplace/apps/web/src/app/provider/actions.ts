@@ -249,6 +249,7 @@ export const deleteLicenseAction = formAction(async (fd) => {
 
 export const malpracticeAction = formAction(async (fd) => {
   const { actor } = await me();
+  if (str(fd, "statesScope") === "some" && !fd.getAll("coveredStates").length) throw new DomainError("VALIDATION", "Choose the states your policy covers, or pick \"All U.S. states and territories\".");
   const doc = await saveUpload(fd.get("document"), `providers/${actor.providerId}/malpractice`, { required: true });
   await addMalpractice(actor, {
     carrier: str(fd, "carrier"),
@@ -257,6 +258,7 @@ export const malpracticeAction = formAction(async (fd) => {
     aggregateDollars: Number(str(fd, "aggregate").replace(/[$,]/g, "")),
     expiresAt: str(fd, "expiresAt"),
     coveredProfessionCodes: fd.getAll("covered").map(String),
+    coveredStates: str(fd, "statesScope") === "some" ? fd.getAll("coveredStates").map(String) : [],
     documentUrl: doc!,
   });
   revalidatePath("/provider/credentials");

@@ -67,7 +67,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
             <CardHeader title="Credentials" action={<Link className="text-sm text-brand-700" href="/admin/verification">Verification queue</Link>} />
             <CardBody className="space-y-2 text-sm">
               {p.licenses.map((l) => <div key={l.id} className="flex justify-between"><span>{l.professionCode} · {l.state} · #{l.licenseNumber} · exp {dateLabel(l.expiresAt, "UTC", { month: "short", day: "numeric", year: "numeric" })}</span><StatusBadge status={l.status} /></div>)}
-              {p.malpractice.map((m) => <div key={m.id} className="flex justify-between"><span>Malpractice {m.carrier} · {m.coveredProfessionCodes.join(", ")} · {money(m.perOccurrenceCents)}/{money(m.aggregateCents)}</span><StatusBadge status={m.status} /></div>)}
+              {p.malpractice.map((m) => <div key={m.id} className="flex justify-between"><span>Malpractice {m.carrier} · {m.coveredProfessionCodes.join(", ")} ({m.coveredStates.length ? m.coveredStates.join(", ") : "all states"}) · {money(m.perOccurrenceCents)}/{money(m.aggregateCents)}</span><StatusBadge status={m.status} /></div>)}
               <div className="pt-2 text-xs text-slate-500">NPI {p.npi ?? "—"} {p.npiVerifiedAt ? "(verified)" : ""} · payouts {p.stripePayoutsEnabled ? "enabled" : "not set up"} · agreement {p.agreementSignedAt ? `v${p.agreementVersion}` : "unsigned"}{signedCopy ? <> · <Link className="text-brand-700" href={`/agreements/signed/${signedCopy.id}`}>signed copy</Link></> : null}</div>
               <div className="text-xs text-slate-500">Per profession: {checklist.perProfession.map((x) => `${x.professionCode} ${x.status.toLowerCase()}`).join(" · ")}</div>
             </CardBody>
