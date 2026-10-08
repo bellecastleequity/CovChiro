@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   autoApprovable,
+  openChecks,
+  overrideCheck,
   clinicCleared,
   clinicVerifyDeadline,
   evaluateEligibility,
@@ -121,5 +123,20 @@ describe("clinic verification", () => {
     const rule: StateOwnershipRule = { entityRegistry: "NJ Business Records", entityLookupUrl: "https://example.test", nonPractitionerOwners: "NOT_ALLOWED" };
     const checks = verificationChecks(input({ entityState: "NJ", owners: [{ name: "Max Investor", percent: 100, licensed: false }] }), facts({ rule, locationState: "NJ", owners: [{ license: null, nameMatches: false }] }));
     expect(checks.find((c) => c.key === "ownership")?.outcome).toBe("FAIL");
+  });
+
+  it("documents can come later by email (a person then reviews), and an admin can mark single items OK", () => {
+    const lay = input({ owners: [{ name: "Jane Doe", percent: 51, licensed: true, professionCode: "DC", licenseState: "FL", licenseNumber: "CH1" }, { name: "Max Investor", percent: 49, licensed: false }], facilityLicenseNumber: "HCC1" });
+    expect(verificationInputProblems(lay, FL).join(" ")).toMatch(/email the documents/);
+    expect(verificationInputProblems({ ...lay, documentsLater: true }, FL)).toEqual([]);
+    const checks = verificationChecks({ ...input(), documentsLater: true }, facts({ owners: [{ license: "NOT_FOUND", nameMatches: false }] }));
+    expect(openChecks(checks).map((c) => c.key)).toEqual(["owner_0", "documents"]);
+    const at = d("2026-10-10T15:00:00Z");
+    let next = overrideCheck(checks, "owner_0", "Owner", "Checked on the FL board site", at);
+    expect(next.find((c) => c.key === "owner_0")).toMatchObject({ outcome: "PASS", override: { from: "REVIEW", by: "Owner", note: "Checked on the FL board site" } });
+    expect(autoApprovable(next).approve).toBe(false);
+    next = overrideCheck(next, "documents", "Owner", "Received by email", at);
+    expect(autoApprovable(next).approve).toBe(true);
+    expect(() => overrideCheck(next, "nope", "Owner", "x", at)).toThrow();
   });
 });

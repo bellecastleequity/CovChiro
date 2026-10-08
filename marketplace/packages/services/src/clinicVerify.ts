@@ -2,6 +2,8 @@ import { brand } from "@cm/config";
 import {
   autoApprovable,
   clinicCleared,
+  openChecks,
+  overrideCheck,
   clinicVerifyDeadline,
   DomainError,
   namesMatch,
@@ -216,17 +218,24 @@ function cleanInput(raw: VerificationInput): VerificationInput {
     facilityLicenseNumber: t(raw.facilityLicenseNumber) || null,
     facilityExemptionNumber: t(raw.facilityExemptionNumber) || null,
     documentKeys: raw.documentKeys.filter(Boolean),
+    documentsLater: !!raw.documentsLater,
     attestName: t(raw.attestName),
   };
 }
 
-/** The clinic owner submits (or renews) verification. */
-export async function submitVerification(actor: Actor, raw: VerificationInput, meta: { ip?: string | null } = {}) {
-  const orgId = requireClinic(actor, { ownerOnly: true });
+/**
+ * The clinic owner submits (or renews) verification. An admin can also enter it for a clinic that
+ * couldn't (meta.clinicOrgId + meta.adminNote saying how the owner gave the details and confirmed
+ * the statement); it then goes through the same checks.
+ */
+export async function submitVerification(actor: Actor, raw: VerificationInput, meta: { ip?: string | null; clinicOrgId?: string; adminNote?: string | null } = {}) {
+  const byAdmin = actor.role === "PLATFORM_ADMIN";
+  if (byAdmin && (!meta.clinicOrgId || !meta.adminNote?.trim())) throw new DomainError("VALIDATION", "Note how the owner gave you these details and confirmed the ownership statement (e.g. \"Phone call with Dr. Doe, Oct 9\").");
+  const orgId = byAdmin ? meta.clinicOrgId! : requireClinic(actor, { ownerOnly: true });
   const s = await getSettings();
   const input = cleanInput(raw);
   const org = await prisma.clinicOrg.findUniqueOrThrow({ where: { id: orgId }, include: { locations: { where: { active: true }, orderBy: { createdAt: "asc" }, take: 1 } } });
-  if (org.verificationStatus === "REJECTED") throw new DomainError("FORBIDDEN", "Your clinic's verification was declined. Please contact us.");
+  if (org.verificationStatus === "REJECTED" && !byAdmin) throw new DomainError("FORBIDDEN", "Your clinic's verification was declined. Please contact us.");
   if (!org.locations.length) throw new DomainError("VALIDATION", "Add your clinic location first (Locations), then verify.");
   const rule = ruleFor(s, org.locations[0].state);
   const problems = verificationInputProblems(input, rule);
@@ -247,15 +256,15 @@ export async function submitVerification(actor: Actor, raw: VerificationInput, m
       facilityLicenseNumber: input.facilityLicenseNumber,
       facilityExemptionNumber: input.facilityExemptionNumber,
       documentKeys: input.documentKeys,
-      attestName: input.attestName,
+      attestName: byAdmin ? `${input.attestName} (entered by an admin: ${meta.adminNote!.trim()})`.slice(0, 500) : input.attestName,
       attestText: ATTEST_TEXT,
-      attestIp: meta.ip ?? null,
+      attestIp: byAdmin ? null : (meta.ip ?? null),
       submittedById: actor.userId,
       submittedAt: now,
       checks: checks as unknown as Prisma.InputJsonValue,
     },
   });
-  await audit(prisma, actor, "clinic.verification_submitted", "ClinicVerification", row.id, null, { clinicOrgId: orgId, auto: auto.approve });
+  await audit(prisma, actor, byAdmin ? "clinic.verification_entered_by_admin" : "clinic.verification_submitted", "ClinicVerification", row.id, null, { clinicOrgId: orgId, auto: auto.approve, note: meta.adminNote ?? null });
   if (auto.approve && s["clinicVerify.autoApprove"]) {
     await approve(SYSTEM, row.id, null, true);
     return { status: "VERIFIED" as const, autoApproved: true };
@@ -263,14 +272,58 @@ export async function submitVerification(actor: Actor, raw: VerificationInput, m
   // A verified clinic renewing stays verified while its renewal is reviewed.
   const stillVerified = org.verificationStatus === "VERIFIED" && clinicCleared(clearFacts(org), now);
   if (!stillVerified) await prisma.clinicOrg.update({ where: { id: orgId }, data: { verificationStatus: "PENDING", verificationNote: null } });
-  await notifyAdmins(prisma, {
+  if (!byAdmin) await notifyAdmins(prisma, {
     template: "clinic_verification_review",
     title: `Clinic to verify: ${org.displayName}`,
     body: `${org.displayName} sent its ownership details. ${auto.reasons.length} item(s) need a look: ${auto.reasons.slice(0, 3).join(" ")}`.slice(0, 600),
     link: `/admin/verification/clinics/${row.id}`,
     ctaLabel: "Review",
   }).catch(() => undefined);
-  return { status: stillVerified ? ("VERIFIED" as const) : ("PENDING" as const), autoApproved: false };
+  return { status: stillVerified ? ("VERIFIED" as const) : ("PENDING" as const), autoApproved: false, verificationId: row.id };
+}
+
+async function openSubmission(id: string) {
+  const row = await prisma.clinicVerification.findUnique({ where: { id } });
+  if (!row) throw new DomainError("NOT_FOUND", "Verification not found");
+  if (!["PENDING", "NEEDS_INFO"].includes(row.status)) throw new DomainError("CONFLICT", "This submission has already been decided.");
+  return row;
+}
+
+/** Admin approves one item by hand (e.g. checked the license by phone), with how they checked. */
+export async function approveCheck(actor: Actor, verificationId: string, key: string, note: string | null) {
+  requireAdmin(actor);
+  if (!note?.trim()) throw new DomainError("VALIDATION", "Note how you checked this item (kept with the record).");
+  const row = await openSubmission(verificationId);
+  const by = actor.userId ? ((await prisma.user.findUnique({ where: { id: actor.userId }, select: { name: true } }))?.name ?? "Admin") : "Admin";
+  let checks: VerificationCheck[];
+  try {
+    checks = overrideCheck(row.checks as unknown as VerificationCheck[], key, by, note.trim(), clock.now());
+  } catch {
+    throw new DomainError("NOT_FOUND", "That item isn't on this submission.");
+  }
+  await prisma.clinicVerification.update({ where: { id: row.id }, data: { checks: checks as unknown as Prisma.InputJsonValue } });
+  await audit(prisma, actor, "clinic.verification_item_approved", "ClinicVerification", row.id, null, { key, note: note.trim() });
+  return { remaining: openChecks(checks).length };
+}
+
+/** Admin adds documents the clinic sent another way (email, fax). */
+export async function addVerificationDocuments(actor: Actor, verificationId: string, keys: string[]) {
+  requireAdmin(actor);
+  if (!keys.length) throw new DomainError("VALIDATION", "Choose a file to upload.");
+  const row = await openSubmission(verificationId);
+  const bad = keys.find((k) => !k.startsWith(`clinics/${row.clinicOrgId}/`));
+  if (bad) throw new DomainError("VALIDATION", "Upload the file to this clinic's folder.");
+  await prisma.clinicVerification.update({ where: { id: row.id }, data: { documentKeys: [...row.documentKeys, ...keys] } });
+  await audit(prisma, actor, "clinic.verification_documents_added", "ClinicVerification", row.id, null, { count: keys.length });
+}
+
+/** The form's prefill for an admin entering it for a clinic. */
+export async function adminVerificationForm(actor: Actor, clinicOrgId: string) {
+  requireAdmin(actor);
+  const owner = await prisma.clinicMember.findFirst({ where: { clinicOrgId, role: "CLINIC_OWNER" }, select: { userId: true } });
+  if (!owner) throw new DomainError("NOT_FOUND", "This clinic has no owner login.");
+  const org = await prisma.clinicOrg.findUniqueOrThrow({ where: { id: clinicOrgId }, select: { displayName: true } });
+  return { org, form: await myVerification({ userId: owner.userId, role: "CLINIC_OWNER", clinicOrgId }) };
 }
 
 async function approve(actor: Actor, verificationId: string, note: string | null, auto = false) {

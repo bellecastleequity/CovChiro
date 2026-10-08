@@ -69,7 +69,8 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
               description={`${c.verificationStatus.replace("_", " ").toLowerCase()}${c.verifiedUntil && c.verificationStatus === "VERIFIED" ? ` · renew by ${dateLabel(c.verifiedUntil)}` : ""}${c.verificationGraceUntil ? ` · grace until ${dateLabel(c.verificationGraceUntil)}` : ""}`}
             />
             <CardBody className="space-y-3 text-sm">
-              {lastVerification ? <Link href={`/admin/verification/clinics/${lastVerification.id}`} className="font-medium text-brand-700">Latest submission ({lastVerification.status.toLowerCase()}) →</Link> : <p className="text-slate-500">Nothing submitted yet.</p>}
+              {lastVerification ? <Link href={`/admin/verification/clinics/${lastVerification.id}`} className="block font-medium text-brand-700">Latest submission ({lastVerification.status.toLowerCase()}) →</Link> : <p className="text-slate-500">Nothing submitted yet.</p>}
+              <Link href={`/admin/clinics/${c.id}/verification`} className="block font-medium text-brand-700">Enter the details for the clinic →</Link>
               <ActionForm action={clinicVerificationAdminAction} className="space-y-2">
                 <input type="hidden" name="clinicOrgId" value={c.id} />
                 <Textarea name="note" placeholder="Note (required to verify by hand: how you checked)" className="min-h-16" />

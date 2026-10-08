@@ -13,6 +13,8 @@ import {
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
+import { saveUpload } from "@/lib/upload";
+import { verificationInputFrom } from "@/lib/verification-input";
 
 const me = () => requireActor("admin");
 // Admin screens show the real error text instead of "Something went wrong".
@@ -589,4 +591,32 @@ export const clinicVerificationAdminAction = formAction(async (fd) => {
   await clinicVerify.adminSetClinicVerification(actor, str(fd, "clinicOrgId"), action, optStr(fd, "note"));
   rv(`/admin/clinics/${str(fd, "clinicOrgId")}`);
   return action === "VERIFY" ? "Clinic verified." : action === "EXTEND" ? "More time given." : "The clinic has been asked to verify again.";
+});
+
+export const clinicVerificationItemAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await clinicVerify.approveCheck(actor, str(fd, "id"), str(fd, "key"), optStr(fd, "note"));
+  rv(`/admin/verification/clinics/${str(fd, "id")}`);
+  return r.remaining ? `Marked OK. ${r.remaining} item${r.remaining === 1 ? "" : "s"} left.` : "Marked OK. Everything's checked: you can verify the clinic.";
+});
+
+export const clinicVerificationDocsAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const keys: string[] = [];
+  for (const f of fd.getAll("documents").slice(0, 6)) {
+    const key = await saveUpload(f, `clinics/${str(fd, "clinicOrgId")}/verification`);
+    if (key) keys.push(key);
+  }
+  await clinicVerify.addVerificationDocuments(actor, str(fd, "id"), keys);
+  rv(`/admin/verification/clinics/${str(fd, "id")}`);
+  return `${keys.length} document${keys.length === 1 ? "" : "s"} added.`;
+});
+
+export const clinicVerificationEnterAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const orgId = str(fd, "clinicOrgId");
+  if (!bool(fd, "attest")) throw new DomainError("VALIDATION", "Tick that the owner confirmed the ownership statement.");
+  const r = await clinicVerify.submitVerification(actor, await verificationInputFrom(fd, orgId), { clinicOrgId: orgId, adminNote: optStr(fd, "adminNote") });
+  rv("/admin/verification/clinics");
+  redirect(r.autoApproved ? `/admin/clinics/${orgId}#verification` : `/admin/verification/clinics/${r.verificationId}`);
 });

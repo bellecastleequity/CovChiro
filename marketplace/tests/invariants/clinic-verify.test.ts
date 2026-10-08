@@ -101,7 +101,7 @@ describe("clinic ownership verification", () => {
       c.actor,
       form({ owners: [{ name: "Jane Doe", percent: 51, licensed: true, professionCode: "DC", licenseState: "FL", licenseNumber: "CH12345" }, { name: "Max Investor", percent: 49, licensed: false }], facilityLicenseNumber: "HCC9999", documentKeys: [`clinics/${c.org.id}/verification/a.pdf`] }),
     );
-    expect(r).toEqual({ status: "PENDING", autoApproved: false });
+    expect(r).toMatchObject({ status: "PENDING", autoApproved: false });
     const q = await clinicVerify.listClinicVerifications(actor);
     const row = q.rows.find((x) => x.clinicOrgId === c.org.id)!;
     expect(row.checks.find((x) => x.key === "ownership")?.outcome).toBe("REVIEW");
@@ -162,4 +162,42 @@ describe("clinic ownership verification", () => {
     await clinicVerify.adminSetClinicVerification(actor, c.org.id, "EXTEND", null);
     expect(await clinicVerify.clinicIsCleared(prisma, c.org.id)).toBe(true);
   });
+
+  it("documents by email: admin uploads them, marks items OK one by one, then verifies", async () => {
+    registry({ license: "CH99999" }); // owner's license not found → needs a person
+    const actor = await admin();
+    const { c, p, shiftId } = await newClinic();
+    const lay = form({ owners: [{ name: "Jane Doe", percent: 51, licensed: true, professionCode: "DC", licenseState: "FL", licenseNumber: "CH12345" }, { name: "Max Investor", percent: 49, licensed: false }], facilityLicenseNumber: "HCC9999" });
+    await expect(clinicVerify.submitVerification(c.actor, lay)).rejects.toThrow(/email the documents/);
+    const r = await clinicVerify.submitVerification(c.actor, { ...lay, documentsLater: true });
+    expect(r.status).toBe("PENDING");
+    const id = r.verificationId!;
+    await expect(clinicVerify.approveCheck(actor, id, "owner_0", "")).rejects.toThrow(/how you checked/);
+    await expect(clinicVerify.approveCheck(c.actor, id, "owner_0", "x")).rejects.toThrow();
+    expect((await clinicVerify.approveCheck(actor, id, "owner_0", "Confirmed on the FL board lookup")).remaining).toBe(3);
+    await expect(clinicVerify.addVerificationDocuments(actor, id, ["clinics/other/x.pdf"])).rejects.toThrow(/folder/);
+    await clinicVerify.addVerificationDocuments(actor, id, [`clinics/${c.org.id}/verification/emailed.pdf`]);
+    await clinicVerify.approveCheck(actor, id, "documents", "AHCA certificate received by email");
+    await clinicVerify.approveCheck(actor, id, "ownership", "Investor ownership allowed with the AHCA license");
+    expect((await clinicVerify.approveCheck(actor, id, "facility", "AHCA license HCC9999 active on the state lookup")).remaining).toBe(0);
+    const row = await prisma.clinicVerification.findUniqueOrThrow({ where: { id } });
+    expect(row.documentKeys).toEqual([`clinics/${c.org.id}/verification/emailed.pdf`]);
+    expect(JSON.stringify(row.checks)).toMatch(/Confirmed on the FL board lookup/);
+    await clinicVerify.decideClinicVerification(actor, id, "APPROVE", null);
+    expect((await shiftBoard(p.actor)).map((s: { id: string }) => s.id)).toContain(shiftId);
+  });
+
+  it("an admin can enter the form for a clinic (with a note on how the owner gave the details)", async () => {
+    registry();
+    const actor = await admin();
+    const { c } = await newClinic();
+    await expect(clinicVerify.submitVerification(actor, form(), { clinicOrgId: c.org.id })).rejects.toThrow(/Note how/);
+    const r = await clinicVerify.submitVerification(actor, form(), { clinicOrgId: c.org.id, adminNote: "Phone call with Dr. Doe" });
+    expect(r.autoApproved).toBe(true);
+    const row = await prisma.clinicVerification.findFirstOrThrow({ where: { clinicOrgId: c.org.id } });
+    expect(row.attestName).toMatch(/entered by an admin: Phone call with Dr. Doe/);
+    expect(row.submittedById).toBe(actor.userId);
+    expect((await clinicVerify.adminVerificationForm(actor, c.org.id)).form.prefill.entityName).toBe("Sunshine Chiropractic LLC");
+  });
 });
+

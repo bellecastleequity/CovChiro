@@ -81,6 +81,8 @@ export interface VerificationInput {
   /** Florida-style certificate of exemption on file (practitioner-owned). */
   facilityExemptionNumber: string | null;
   documentKeys: string[];
+  /** Couldn't upload: the clinic will email the documents (an admin uploads them and marks the item OK). */
+  documentsLater?: boolean;
   /** Typed name for the sworn statement. */
   attestName: string;
 }
@@ -123,7 +125,7 @@ export function verificationInputProblems(input: VerificationInput, rule: StateO
   });
   if (rule?.nonPractitionerOwners === "FACILITY_LICENSE" && input.owners.length && !practitionerOwned(input.owners)) {
     if (!input.facilityLicenseNumber?.trim()) out.push(`Not every owner is a licensed practitioner, so enter the clinic's ${rule.facilityLicenseName ?? "facility license"} number.`);
-    if (!input.documentKeys.length) out.push(`Upload a copy of the ${rule.facilityLicenseName ?? "facility license"}.`);
+    if (!input.documentKeys.length && !input.documentsLater) out.push(`Upload a copy of the ${rule.facilityLicenseName ?? "facility license"}, or tick "I'll email the documents instead".`);
   }
   if (input.attestName.trim().length < 3) out.push("Type your full name to sign the ownership statement.");
   return out;
@@ -185,7 +187,18 @@ export interface VerificationCheck {
   label: string;
   outcome: CheckOutcome;
   detail: string;
+  /** An admin marked this item OK by hand (what it was before, who, when, how they checked). */
+  override?: { from: CheckOutcome; by: string; at: string; note: string };
 }
+
+/** An admin approves one item by hand: it becomes PASS, keeping what it was and how they checked. */
+export function overrideCheck(checks: VerificationCheck[], key: string, by: string, note: string, at: Date): VerificationCheck[] {
+  if (!checks.some((c) => c.key === key)) throw new Error(`No check ${key}`);
+  return checks.map((c) => (c.key === key && c.outcome !== "PASS" ? { ...c, outcome: "PASS", override: { from: c.outcome, by, at: at.toISOString(), note } } : c));
+}
+
+/** Items still needing a person (the registration spot-check never blocks). */
+export const openChecks = (checks: VerificationCheck[]) => checks.filter((c) => c.key !== "entity" && (c.outcome === "FAIL" || c.outcome === "REVIEW"));
 
 /** The automatic checks, one row each, in plain words (shown to the admin). */
 export function verificationChecks(input: VerificationInput, f: VerificationFacts): VerificationCheck[] {
@@ -247,6 +260,9 @@ export function verificationChecks(input: VerificationInput, f: VerificationFact
       detail: input.facilityLicenseNumber ? `License ${input.facilityLicenseNumber}.` : `Exemption ${input.facilityExemptionNumber}.`,
     });
   }
+  if (input.documentsLater) {
+    out.push({ key: "documents", label: "Documents", outcome: "REVIEW", detail: "The clinic couldn't upload and will email the documents. Upload them here when they arrive, then mark this OK." });
+  }
   if (f.linkedToBlocked) out.push({ key: "linked", label: "Links to blocked clinics", outcome: "FAIL", detail: "Shares a phone number or address with a suspended or banned clinic." });
   return out;
 }
@@ -258,6 +274,6 @@ export function verificationChecks(input: VerificationInput, f: VerificationFact
  * it never stops auto-approval on its own.
  */
 export function autoApprovable(checks: VerificationCheck[]): { approve: boolean; reasons: string[] } {
-  const blocking = checks.filter((c) => c.key !== "entity" && (c.outcome === "FAIL" || c.outcome === "REVIEW"));
+  const blocking = openChecks(checks);
   return { approve: blocking.length === 0, reasons: blocking.map((c) => `${c.label}: ${c.detail}`) };
 }

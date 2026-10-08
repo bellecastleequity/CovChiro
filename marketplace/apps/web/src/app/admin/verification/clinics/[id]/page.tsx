@@ -4,11 +4,11 @@ import { clinicVerify } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Field, Textarea } from "@/components/ui/form";
+import { Field, Input, Textarea } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { clinicVerificationDecisionAction } from "../../../actions";
+import { clinicVerificationDecisionAction, clinicVerificationDocsAction, clinicVerificationItemAction } from "../../../actions";
 
 export const metadata = { title: "Clinic verification" };
 
@@ -45,9 +45,19 @@ export default async function ClinicVerificationDetail({ params }: { params: Pro
               {d.checks.map((c) => (
                 <div key={c.key} className="flex gap-3 px-5 py-3 text-sm">
                   <div className="mt-0.5">{ICON[c.outcome]}</div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="font-medium">{c.label}</div>
                     <div className="text-slate-600">{c.detail}</div>
+                    {c.override ? (
+                      <div className="mt-1 text-xs text-emerald-700">Marked OK by {c.override.by}, {when(new Date(c.override.at))}: {c.override.note}</div>
+                    ) : open && (c.outcome === "REVIEW" || c.outcome === "FAIL") && c.key !== "entity" ? (
+                      <ActionForm action={clinicVerificationItemAction} className="mt-2 flex flex-wrap items-center gap-2">
+                        <input type="hidden" name="id" value={row.id} />
+                        <input type="hidden" name="key" value={c.key} />
+                        <Input name="note" required placeholder="How you checked, e.g. confirmed on the state lookup" className="h-9 min-w-0 flex-1 sm:max-w-sm" />
+                        <SubmitButton size="sm" variant="outline">Mark OK</SubmitButton>
+                      </ActionForm>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -77,6 +87,14 @@ export default async function ClinicVerificationDetail({ params }: { params: Pro
                   {row.documentKeys.map((k, i) => <a key={k} href={`/api/files/${k}`} target="_blank" className="flex items-center gap-1 text-brand-700"><FileText className="size-4" />Document {i + 1}</a>)}
                 </div>
               ) : <p className="text-slate-500">No documents uploaded.</p>}
+              {open ? (
+                <ActionForm action={clinicVerificationDocsAction} className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-slate-300 p-3">
+                  <input type="hidden" name="id" value={row.id} />
+                  <input type="hidden" name="clinicOrgId" value={org.id} />
+                  <input type="file" name="documents" multiple required accept="application/pdf,image/png,image/jpeg,image/webp" className="text-sm" />
+                  <SubmitButton size="sm" variant="outline">Add documents the clinic sent</SubmitButton>
+                </ActionForm>
+              ) : null}
               {rule?.note ? <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">{rule.note}</p> : null}
             </CardBody>
           </Card>
@@ -84,7 +102,7 @@ export default async function ClinicVerificationDetail({ params }: { params: Pro
         <div className="space-y-6">
           {open ? (
             <Card>
-              <CardHeader title="Decide" description="The clinic sees your note for 'Ask for more' and 'Decline'." />
+              <CardHeader title="Decide" description={`${d.checks.filter((c) => c.key !== "entity" && c.outcome !== "PASS").length} item(s) still flagged. You can verify anyway; marking items OK keeps a record of how you checked. The clinic sees your note for 'Ask for more' and 'Decline'.`} />
               <CardBody className="space-y-4">
                 <ActionForm action={clinicVerificationDecisionAction} className="space-y-3">
                   <input type="hidden" name="id" value={row.id} />

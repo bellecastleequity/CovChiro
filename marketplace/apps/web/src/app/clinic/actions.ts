@@ -22,6 +22,7 @@ import {
 import { bool, formAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
 import { saveUpload } from "@/lib/upload";
+import { verificationInputFrom } from "@/lib/verification-input";
 
 const me = () => requireActor("clinic");
 
@@ -475,38 +476,16 @@ export const keepWaitingAction = formAction(async (fd) => {
 export const clinicVerificationAction = formAction(async (fd) => {
   const { actor } = await me();
   if (!bool(fd, "attest")) throw new DomainError("VALIDATION", "Tick the ownership statement and type your name to sign it.");
-  const uploads: string[] = [];
-  for (const f of fd.getAll("documents").slice(0, 6)) {
-    const key = await saveUpload(f, `clinics/${actor.clinicOrgId}/verification`);
-    if (key) uploads.push(key);
-  }
-  const owners = [0, 1, 2, 3, 4, 5].map((i) => ({
-    name: str(fd, `owner${i}_name`),
-    percent: Number(str(fd, `owner${i}_percent`).replace("%", "") || 0),
-    licensed: str(fd, `owner${i}_licensed`) === "yes",
-    professionCode: optStr(fd, `owner${i}_profession`),
-    licenseState: optStr(fd, `owner${i}_state`),
-    licenseNumber: optStr(fd, `owner${i}_license`),
-    npi: optStr(fd, `owner${i}_npi`),
-  }));
   const h = await headers();
   const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || null;
-  const r = await clinicVerify.submitVerification(
-    actor,
-    {
-      entityName: str(fd, "entityName"),
-      entityState: str(fd, "entityState"),
-      entityNumber: str(fd, "entityNumber"),
-      orgNpi: optStr(fd, "orgNpi"),
-      owners,
-      facilityLicenseNumber: optStr(fd, "facilityLicenseNumber"),
-      facilityExemptionNumber: optStr(fd, "facilityExemptionNumber"),
-      documentKeys: [...fd.getAll("keepDocument").map(String).filter((k) => k.startsWith(`clinics/${actor.clinicOrgId}/`)), ...uploads],
-      attestName: str(fd, "attestName"),
-    },
+  const r = await clinicVerify.submitVerification(actor, await verificationInputFrom(fd, actor.clinicOrgId!),
     { ip },
   );
   revalidatePath("/clinic", "layout");
+  if (bool(fd, "documentsLater") && !r.autoApproved) {
+    const { getSettings } = await import("@cm/services");
+    return `Thanks. Please email the documents to ${(await getSettings())["support.email"]} with your clinic's name; we'll attach them and finish the review.`;
+  }
   return r.autoApproved
     ? "Verified. Thank you! Your shifts are going out to providers."
     : r.status === "VERIFIED"
