@@ -113,6 +113,8 @@ export interface ShiftFacts {
   skills: SkillFact[];
   /** Fly-in allowed for this shift (flyin.ts); null/absent = no fly-in. */
   flyIn?: FlyInFacts | null;
+  /** The clinic is verified (or still in its grace period); false = its shifts aren't shown or offered (F13). Absent = cleared. */
+  clinicCleared?: boolean;
   /** Quoted provider pay (tier base with premiums, no overage) for F12. Absent = F12 skipped. */
   pay?: { durationTier: "HALF_DAY" | "FULL_DAY" | "HOURLY"; providerPayCents: number; billableHours: number };
 }
@@ -142,7 +144,7 @@ export interface EligibilityOptions {
   now?: Date;
 }
 
-export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12";
+export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13";
 
 export interface EligibilityFailure {
   filter: FilterId;
@@ -294,6 +296,9 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
     fail("F3", "PROVIDER_NOT_ACTIVE", `Provider is not active for ${shift.professionCode} shifts, or payouts are not enabled`);
   }
   if (!provider.agreementCurrent) fail("F3", "AGREEMENT_NOT_SIGNED", "Sign the current Provider Agreement (Profile → Agreement) to be matched to shifts");
+
+  // F13 — the clinic's ownership verification (clinicVerify.ts). Booked shifts are untouched: credential-only checks stop above.
+  if (shift.clinicCleared === false) fail("F13", "CLINIC_NOT_VERIFIED", "The clinic hasn't finished verification yet");
 
   // F9 — blocks, either direction.
   if (pair.blocked) fail("F9", "BLOCKED", "Blocked");

@@ -25,6 +25,14 @@ export default async function Settings({ searchParams }: { searchParams: Promise
     <>
       <PageHeader title="Settings" />
       <div className="space-y-6">
+        <Card id="verification">
+          <CardHeader title="Clinic verification" description="We confirm who owns every clinic on the platform. Your shifts go out to providers once your clinic is verified." />
+          <CardBody>
+            <Link href="/clinic/settings/verification" className="text-sm font-medium text-brand-700">
+              {org.verificationStatus === "VERIFIED" ? "Verified · view or renew →" : org.verificationStatus === "PENDING" ? "Under review · view →" : "Verify your clinic →"}
+            </Link>
+          </CardBody>
+        </Card>
         <Card>
           <CardHeader title="Clinic" />
           <CardBody>

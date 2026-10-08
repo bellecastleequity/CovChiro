@@ -44,7 +44,7 @@ export default async function Verification() {
   const empty = !q.licenses.length && !q.policies.length && !q.certs.length && !q.npi.length;
   return (
     <>
-      <PageHeader actions={<Link href="/admin/verification/state-check" className="text-sm font-medium text-brand-700">State license check →</Link>} title="Verification queue" description="Confirm name, number, status and expiration against the state board (profession + state) before verifying. Credentials for states that aren't open yet are listed last." />
+      <PageHeader actions={<div className="flex flex-wrap gap-4"><Link href="/admin/verification/clinics" className="text-sm font-medium text-brand-700">Clinics{q.clinics ? ` (${q.clinics})` : ""} →</Link><Link href="/admin/verification/state-check" className="text-sm font-medium text-brand-700">State license check →</Link></div>} title="Verification queue" description="Confirm name, number, status and expiration against the state board (profession + state) before verifying. Credentials for states that aren't open yet are listed last." />
       {empty ? <Empty title="Queue is clear" /> : null}
       <div className="space-y-6">
         {q.licenses.length ? (

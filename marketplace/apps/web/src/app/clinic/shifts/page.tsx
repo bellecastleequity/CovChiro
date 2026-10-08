@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Alert, Empty, PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateLabel, money, timeRange } from "@/lib/format";
 import { requireActor } from "@/lib/session";
+import { VerificationBanner } from "@/components/clinic/verification-banner";
 
 export const metadata = { title: "Shifts" };
 
@@ -24,6 +25,7 @@ export default async function Shifts({ searchParams }: { searchParams: Promise<{
   return (
     <>
       <PageHeader title="Shifts" actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
+      <VerificationBanner clinicOrgId={actor.clinicOrgId!} />
       {n > 1 ? <div className="mb-4"><Alert tone="success">{posted ? `Posted ${n} separate bookings, one per provider.` : `Saved ${n} draft bookings, one per provider.`} Each one is filled, confirmed and priced on its own.</Alert></div> : null}
       <CalendarSync userId={user.id} who="clinic" />
       {shifts.length ? (

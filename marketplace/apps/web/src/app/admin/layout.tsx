@@ -12,7 +12,7 @@ import { requireActor } from "@/lib/session";
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user } = await requireActor("admin");
   const [pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen] = await Promise.all([
-    prisma.license.count({ where: { status: "PENDING_VERIFICATION" } }).then(async (n) => n + (await prisma.malpracticePolicy.count({ where: { status: "PENDING_VERIFICATION" } }))),
+    prisma.license.count({ where: { status: "PENDING_VERIFICATION" } }).then(async (n) => n + (await prisma.malpracticePolicy.count({ where: { status: "PENDING_VERIFICATION" } })) + (await prisma.clinicVerification.count({ where: { status: "PENDING" } }))),
     prisma.adminTask.count({ where: { resolvedAt: null } }),
     prisma.dispute.count({ where: { status: "OPEN" } }),
     missingMigrations(prisma),

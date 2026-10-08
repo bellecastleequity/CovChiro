@@ -107,8 +107,12 @@ export async function runBoardCheck(actor: Actor, input: { state: string; profes
     results.push({ provider: who, providerId: l.providerId, licenseNumber: l.licenseNumber, status: row.status, outcome: l.status === "SUSPENDED" ? "reinstated" : "ok" });
     if (l.status === "SUSPENDED") await task(`${who}: ${stateName} license ${l.licenseNumber} shows active again. Re-verify to reinstate it`, l.id);
   }
+  // Owners of verified clinics with a license in this state's file.
+  const { checkClinicOwnersInBoardFile } = await import("./clinicVerify");
+  const clinicOwners = await checkClinicOwnersInBoardFile((nums) => parseBoardFile(text, nums), state, input.professionCode, classifyBoardStatus);
   const summary = {
     at: now.toISOString(),
+    clinicOwners,
     fileName: input.fileName.slice(0, 120),
     state,
     professionCode: input.professionCode,

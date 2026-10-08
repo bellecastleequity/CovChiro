@@ -8,6 +8,7 @@ export * as tax from "./tax";
 export * as chargebacks from "./chargebacks";
 export * as sameProvider from "./sameProvider";
 export * as announcements from "./announcements";
+export * as clinicVerify from "./clinicVerify";
 export * as boardcheck from "./boardcheck";
 export * as google from "./google";
 export * as emaildns from "./emaildns";

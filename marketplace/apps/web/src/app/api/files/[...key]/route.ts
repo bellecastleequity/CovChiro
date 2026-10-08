@@ -15,8 +15,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ key
   const isAdmin = s.actor.role === "PLATFORM_ADMIN" && s.mfaVerified;
   const own = s.actor.providerId && key.startsWith(`providers/${s.actor.providerId}/`);
   const photo = key.startsWith("photos/");
+  const clinicDoc = !!s.actor.clinicOrgId && key.startsWith(`clinics/${s.actor.clinicOrgId}/`);
   const locationPhoto = key.startsWith("locations/") && (await canViewLocationPhoto(s.actor, key));
-  if (!isAdmin && !own && !photo && !locationPhoto) return new NextResponse("Not found", { status: 404 });
+  if (!isAdmin && !own && !clinicDoc && !photo && !locationPhoto) return new NextResponse("Not found", { status: 404 });
   const st = storageProvider();
   const signed = await st.signedUrl(key, 10);
   if (signed) return NextResponse.redirect(signed);

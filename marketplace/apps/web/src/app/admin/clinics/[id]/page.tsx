@@ -10,7 +10,8 @@ import { PageHeader } from "@/components/ui/misc";
 import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { AccountModeration } from "@/components/admin/account-moderation";
-import { approveClinicAction, clinicStatusAction } from "../../actions";
+import { approveClinicAction, clinicStatusAction, clinicVerificationAdminAction } from "../../actions";
+import { Textarea } from "@/components/ui/form";
 
 export default async function AdminClinic({ params }: { params: Promise<{ id: string }> }) {
   await requireActor("admin");
@@ -26,6 +27,7 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
     ["Clinic Agreement signed", !!c.agreementSignedAt, false],
     ["Payment method on file", c.hasPaymentMethod, true],
   ];
+  const lastVerification = await prisma.clinicVerification.findFirst({ where: { clinicOrgId: id }, orderBy: { submittedAt: "desc" }, select: { id: true, status: true } });
   const shifts = await prisma.shift.findMany({ where: { location: { clinicOrgId: id } }, orderBy: { startsAt: "desc" }, take: 20 });
   return (
     <>
@@ -59,6 +61,24 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
                 </ActionForm>
               )}
               <p className="text-xs text-slate-500">Approval activates the clinic and skips the email, location and agreement steps. A payment method is still needed to post, because posting takes a deposit — and each shift needs a location.</p>
+            </CardBody>
+          </Card>
+          <Card id="verification">
+            <CardHeader
+              title="Ownership verification"
+              description={`${c.verificationStatus.replace("_", " ").toLowerCase()}${c.verifiedUntil && c.verificationStatus === "VERIFIED" ? ` · renew by ${dateLabel(c.verifiedUntil)}` : ""}${c.verificationGraceUntil ? ` · grace until ${dateLabel(c.verificationGraceUntil)}` : ""}`}
+            />
+            <CardBody className="space-y-3 text-sm">
+              {lastVerification ? <Link href={`/admin/verification/clinics/${lastVerification.id}`} className="font-medium text-brand-700">Latest submission ({lastVerification.status.toLowerCase()}) →</Link> : <p className="text-slate-500">Nothing submitted yet.</p>}
+              <ActionForm action={clinicVerificationAdminAction} className="space-y-2">
+                <input type="hidden" name="clinicOrgId" value={c.id} />
+                <Textarea name="note" placeholder="Note (required to verify by hand: how you checked)" className="min-h-16" />
+                <div className="flex flex-wrap gap-2">
+                  <SubmitButton size="sm" name="action" value="VERIFY">Verify by hand</SubmitButton>
+                  <SubmitButton size="sm" name="action" value="EXTEND" variant="outline">Give more time</SubmitButton>
+                  <SubmitButton size="sm" name="action" value="RESET" variant="outline">Ask to verify again</SubmitButton>
+                </div>
+              </ActionForm>
             </CardBody>
           </Card>
           <Card>

@@ -65,6 +65,28 @@ const A: HelpArticle[] = [
       />
     ),
   },
+  {
+    slug: "verification",
+    category: "start",
+    title: "Verifying your clinic",
+    summary: "We confirm who owns every clinic on the platform. Most clinics are verified in minutes.",
+    keywords: "verify verification ownership owner npi ahca clinic license sunbiz fraud renew yearly",
+    links: [{ href: "/clinic/settings/verification", label: "Clinic verification" }],
+    body: (s) => (
+      <Ul
+        items={[
+          "To protect providers and patients from fraud, we confirm the legal business, who owns it and their licenses for every clinic. The owner fills in Settings → Clinic verification: the registered business name and number, each owner and their license, the clinic's organization NPI, and a signed ownership statement.",
+          "Some states license clinics that aren't wholly owned by licensed practitioners. In Florida, for example, that's the AHCA Health Care Clinic License: if any owner isn't a licensed practitioner, enter its number and upload a copy.",
+          s["clinicVerify.autoApprove"]
+            ? "We check the details against public records right away. When everything matches, your clinic is verified on the spot; otherwise our team reviews it, usually within one business day."
+            : "Our team checks the details against public records, usually within one business day.",
+          "You can post shifts before you're verified. They go out to providers as soon as your clinic is verified. Clinics that joined before verification started can keep posting as normal until their deadline.",
+          `Verification lasts ${s["clinicVerify.renewMonths"]} months; we remind you before it's due. Tell us within 10 days if ownership changes.`,
+          "Never upload patient information.",
+        ]}
+      />
+    ),
+  },
   // ---------------- posting ----------------
   {
     slug: "same-provider",

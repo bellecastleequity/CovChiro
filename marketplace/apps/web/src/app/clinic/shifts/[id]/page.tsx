@@ -21,6 +21,7 @@ import { Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form"
 import { Alert, Empty, PageHeader } from "@/components/ui/misc";
 import { dateLabel, money, pct, relative, timeRange, lunchLabel, timeLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
+import { VerificationBanner } from "@/components/clinic/verification-banner";
 import {
   blockAction, boostAction, cancelDispatchAction, confirmAllDaysAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
   markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, releaseClinicRateAction, reportNoShowAction, selectAction, withdrawShiftChangeAction, splitBookingAction, keepWaitingAction,
@@ -179,6 +180,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
           </div>
         }
       />
+      <VerificationBanner clinicOrgId={actor.clinicOrgId!} />
       {sp.changed === "applied" ? <Alert tone="success" className="mb-5" title="Shift updated">Anyone who applied has been told about the change.</Alert> : null}
       {sp.changed === "pending" && pendingChange ? <Alert tone="success" className="mb-5" title="Change sent">We've asked your provider to accept it. We'll let you know as soon as they answer.</Alert> : null}
       {pendingChange ? (

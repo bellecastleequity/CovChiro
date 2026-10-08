@@ -38,6 +38,7 @@ export async function verificationQueue(actor: Actor) {
     policies: byPriority(policies.map((p) => ({ ...p, marketOpen: openStatesByProvider.get(p.providerId) ?? !providerLicenses.some((l) => l.providerId === p.providerId) }))),
     certs,
     npi,
+    clinics: await prisma.clinicVerification.count({ where: { status: "PENDING" } }),
   };
 }
 

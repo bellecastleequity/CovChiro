@@ -92,6 +92,10 @@ export interface ClinicOpts {
   lat?: number;
   lng?: number;
   professionCodes?: string[];
+  /** Street address (default: the same one for every test clinic). */
+  address?: string;
+  /** Clinic ownership verification status (default VERIFIED). */
+  verification?: "NOT_STARTED" | "PENDING" | "VERIFIED";
 }
 
 const DEFAULT_LOC: Record<string, { zip: string; lat: number; lng: number; city: string }> = {
@@ -117,6 +121,9 @@ export async function makeClinic(o: ClinicOpts = {}) {
       stripeCustomerId: `cus_test_${id}`,
       agreementSignedAt: new Date(),
       agreementVersion: AGREEMENT_VERSION.CLINIC,
+      // Ownership verification: test clinics are verified unless a test says otherwise.
+      verificationStatus: o.verification ?? "VERIFIED",
+      verifiedAt: (o.verification ?? "VERIFIED") === "VERIFIED" ? new Date() : null,
       members: { create: { userId: user.id, role: "CLINIC_OWNER" } },
     },
   });
@@ -124,7 +131,7 @@ export async function makeClinic(o: ClinicOpts = {}) {
     data: {
       clinicOrgId: org.id,
       name: `Main ${id}`,
-      addressLine1: "1 Test St",
+      addressLine1: o.address ?? "1 Test St",
       city: d.city,
       state,
       zip: o.zip ?? d.zip,

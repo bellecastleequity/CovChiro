@@ -96,6 +96,10 @@ export async function createClinic(c: DemoClinic, passwordHash: string, i: numbe
       stripeCustomerId: c.noPayment ? null : `cus_fake_${c.key}`,
       agreementSignedAt: new Date(),
       agreementVersion: AGREEMENT_VERSION.CLINIC,
+      // Demo clinics start verified (clinic ownership verification); a new clinic signup on the test site goes through the form.
+      verificationStatus: "VERIFIED",
+      verifiedAt: new Date(),
+      verifiedUntil: new Date(Date.now() + 5 * 365 * 86_400_000),
       minYearsExperience: c.minYears ?? 0,
       relaxExperienceInEmergency: c.relaxInEmergency ?? true,
       members: { create: { userId: user.id, role: "CLINIC_OWNER" } },
@@ -302,6 +306,11 @@ export async function keepDemoAgreementsCurrent() {
   const providers = await prisma.provider.updateMany({
     where: { OR: [{ agreementVersion: null }, { agreementVersion: { lt: AGREEMENT_VERSION.PROVIDER } }], agreementSignedAt: { not: null }, user: { email: { endsWith: "@sandbox.test" } } },
     data: { agreementVersion: AGREEMENT_VERSION.PROVIDER, agreementSignedAt: now },
+  });
+  // Demo clinics that never submitted the form stay verified (the test site predates verification).
+  await prisma.clinicOrg.updateMany({
+    where: { verificationStatus: "NOT_STARTED", verifications: { none: {} }, members: { some: { user: { email: { endsWith: "@sandbox.test" } } } } },
+    data: { verificationStatus: "VERIFIED", verifiedAt: now, verifiedUntil: new Date(+now + 5 * 365 * 86_400_000), verificationGraceUntil: null },
   });
   return { clinics: orgs.count, providers: providers.count };
 }

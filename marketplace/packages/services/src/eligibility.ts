@@ -1,7 +1,9 @@
 import { agreementCurrent } from "./agreements";
 import {
+  clinicCleared,
   DomainError,
   evaluateEligibility,
+  type ClinicVerificationStatus,
   isFlyInPair,
   NATIONAL_CREDENTIAL,
   paidHours,
@@ -47,9 +49,15 @@ export async function loadShift(db: Db, shiftId: string): Promise<LoadedShift> {
 export async function loadShifts(db: Db, shiftIds: string[]): Promise<Map<string, LoadedShift>> {
   const out = new Map<string, LoadedShift>();
   if (!shiftIds.length) return out;
-  const rows = await db.shift.findMany({ where: { id: { in: shiftIds } }, include: { location: true } });
+  const rows = await db.shift.findMany({
+    where: { id: { in: shiftIds } },
+    include: { location: { include: { clinicOrg: { select: { verificationStatus: true, verifiedUntil: true, verificationGraceUntil: true } } } } },
+  });
   if (!rows.length) return out;
-  const maxDaySpan = (await getSettings(db))["pricing.maxDaySpanMinutes"];
+  const settings = await getSettings(db);
+  const maxDaySpan = settings["pricing.maxDaySpanMinutes"];
+  const verifyOn = settings["clinicVerify.enabled"];
+  const now = clock.now();
   const combos = [...new Map(rows.map((r) => [`${r.professionCode}|${r.state}`, { professionCode: r.professionCode, state: r.state }])).values()];
   const professionCodes = [...new Set(rows.map((r) => r.professionCode))];
   const states = [...new Set(rows.map((r) => r.state))];
@@ -81,6 +89,11 @@ export async function loadShifts(db: Db, shiftIds: string[]): Promise<Map<string
         minYearsExperience: s.minYearsExperience,
         lodgingAllowed: s.lodgingAllowed,
         maxTravelBudgetCents: s.maxTravelBudgetCents,
+        clinicCleared: clinicCleared(
+          { status: s.location.clinicOrg.verificationStatus as ClinicVerificationStatus, verifiedUntil: s.location.clinicOrg.verifiedUntil, graceUntil: s.location.clinicOrg.verificationGraceUntil },
+          now,
+          verifyOn,
+        ),
         flyIn: s.flyInAirfareCents !== null && s.flyInUntil ? { airfareCents: s.flyInAirfareCents, nightlyCents: s.flyInNightlyCents ?? 0, until: s.flyInUntil } : null,
         pay: s.durationTier ? { durationTier: s.durationTier, providerPayCents: s.providerPayCents, billableHours: Math.max(0.01, paidHours((+s.endsAt - +s.startsAt) / 3_600_000, s.lunchMinutes, maxDaySpan)) } : undefined,
         supervisionAttestation: s.supervisionAttestedAt ? parseAttestation(s.supervisionAttestation) : null,

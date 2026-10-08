@@ -9,7 +9,7 @@ import {
   schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax, chargebacks, announcements,
+  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax, chargebacks, announcements, clinicVerify,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -573,4 +573,20 @@ export const cancelAnnouncementAction = formAction(async (fd) => {
   await announcements.cancelAnnouncement(actor, str(fd, "id"));
   revalidatePath("/admin/announcements");
   return "Stopped. Anyone not reached yet won't get it.";
+});
+
+export const clinicVerificationDecisionAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const decision = str(fd, "decision") as "APPROVE" | "NEEDS_INFO" | "REJECT";
+  await clinicVerify.decideClinicVerification(actor, str(fd, "id"), decision, optStr(fd, "note"));
+  rv("/admin/verification/clinics");
+  return decision === "APPROVE" ? "Verified. Their shifts are going out to providers." : decision === "REJECT" ? "Declined. The clinic has been told." : "Sent. The clinic has been asked for more.";
+});
+
+export const clinicVerificationAdminAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const action = str(fd, "action") as "VERIFY" | "EXTEND" | "RESET";
+  await clinicVerify.adminSetClinicVerification(actor, str(fd, "clinicOrgId"), action, optStr(fd, "note"));
+  rv(`/admin/clinics/${str(fd, "clinicOrgId")}`);
+  return action === "VERIFY" ? "Clinic verified." : action === "EXTEND" ? "More time given." : "The clinic has been asked to verify again.";
 });

@@ -343,6 +343,9 @@ export async function clinicChecklist(orgId: string) {
     { key: "location", label: "Clinic location", done: org.locations.length > 0 || !!org.adminApprovedAt, url: "/clinic/locations" },
     { key: "payment", label: "Payment method", done: org.hasPaymentMethod, url: "/clinic/billing" },
     { key: "agreement", label: "Clinic agreement", done: !!org.agreementSignedAt || !!org.adminApprovedAt, url: "/clinic/settings" },
+    ...((await getSettings())["clinicVerify.enabled"]
+      ? [{ key: "verification", label: "Clinic verification", done: org.verificationStatus === "VERIFIED", url: "/clinic/settings/verification" }]
+      : []),
     { key: "request", label: "First coverage request", done: posted > 0, url: "/clinic/shifts/new" },
   ];
   return { org, steps, next: steps.find((x) => !x.done) ?? null };

@@ -76,6 +76,10 @@ export async function startDispatch(shiftId: string, trigger: DispatchTrigger, a
     // Same provider for all days: no single-day offers until it's split or someone is booked.
     const { lockedGroupId } = await import("./sameProvider");
     if (await lockedGroupId(db, shiftId)) return { dispatchId: null, state: "same provider for all days: waiting for one provider" };
+    // Clinic ownership verification: nothing goes to providers until the clinic is cleared (released on verify).
+    const loc = await db.clinicLocation.findUniqueOrThrow({ where: { id: shift.locationId }, select: { clinicOrgId: true } });
+    const { clinicIsCleared } = await import("./clinicVerify");
+    if (!(await clinicIsCleared(db, loc.clinicOrgId, now))) return { dispatchId: null, state: "clinic not verified yet" };
     const active = await db.dispatch.findFirst({ where: { shiftId, status: "ACTIVE" } });
     if (active) return { dispatchId: active.id, state: "already active" };
     const hasStandby = trigger === "BACKFILL" && (await db.standbyEntry.count({ where: { shiftId } })) > 0;
@@ -999,8 +1003,11 @@ export async function runSelectionDeadlines(now = clock.now()) {
   // Same-provider bookings are decided as a whole first (confirm, ask to split, or split).
   const { LOCKED_GROUP, runGroupDeadlines } = await import("./sameProvider");
   const groups = await runGroupDeadlines(now);
+  // Clinics not cleared by ownership verification wait (their shifts are released when verified).
+  const { clearedOrgWhere } = await import("./clinicVerify");
+  const cleared = s["clinicVerify.enabled"] ? { location: { clinicOrg: clearedOrgWhere(now) } } : {};
   const due = await prisma.shift.findMany({
-    where: { status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING"] }, selectionDeadline: { lte: now }, startsAt: { gt: now }, dispatches: { none: {} }, NOT: { shiftGroup: LOCKED_GROUP } },
+    where: { status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING"] }, selectionDeadline: { lte: now }, startsAt: { gt: now }, dispatches: { none: {} }, NOT: { shiftGroup: LOCKED_GROUP }, ...cleared },
     select: { id: true },
   });
   let dispatched = 0;

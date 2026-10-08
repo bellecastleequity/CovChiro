@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DateTime } from "luxon";
 import { prisma } from "@cm/db";
+import { DomainError } from "@cm/core";
 import {
   hiring,
   standing,
@@ -14,6 +15,7 @@ import {
   feedback,
   shiftChanges,
   clinicRate,
+  clinicVerify,
   archiveLocation, auth, sameProvider, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
@@ -468,4 +470,46 @@ export const keepWaitingAction = formAction(async (fd) => {
   const until = await sameProvider.keepWaiting(actor, str(fd, "groupId"));
   revalidatePath(`/clinic/shifts/${str(fd, "shiftId")}`);
   return `OK, we'll keep looking for one provider until ${until.toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" })} ET, then ask again.`;
+});
+
+export const clinicVerificationAction = formAction(async (fd) => {
+  const { actor } = await me();
+  if (!bool(fd, "attest")) throw new DomainError("VALIDATION", "Tick the ownership statement and type your name to sign it.");
+  const uploads: string[] = [];
+  for (const f of fd.getAll("documents").slice(0, 6)) {
+    const key = await saveUpload(f, `clinics/${actor.clinicOrgId}/verification`);
+    if (key) uploads.push(key);
+  }
+  const owners = [0, 1, 2, 3, 4, 5].map((i) => ({
+    name: str(fd, `owner${i}_name`),
+    percent: Number(str(fd, `owner${i}_percent`).replace("%", "") || 0),
+    licensed: str(fd, `owner${i}_licensed`) === "yes",
+    professionCode: optStr(fd, `owner${i}_profession`),
+    licenseState: optStr(fd, `owner${i}_state`),
+    licenseNumber: optStr(fd, `owner${i}_license`),
+    npi: optStr(fd, `owner${i}_npi`),
+  }));
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || null;
+  const r = await clinicVerify.submitVerification(
+    actor,
+    {
+      entityName: str(fd, "entityName"),
+      entityState: str(fd, "entityState"),
+      entityNumber: str(fd, "entityNumber"),
+      orgNpi: optStr(fd, "orgNpi"),
+      owners,
+      facilityLicenseNumber: optStr(fd, "facilityLicenseNumber"),
+      facilityExemptionNumber: optStr(fd, "facilityExemptionNumber"),
+      documentKeys: [...fd.getAll("keepDocument").map(String).filter((k) => k.startsWith(`clinics/${actor.clinicOrgId}/`)), ...uploads],
+      attestName: str(fd, "attestName"),
+    },
+    { ip },
+  );
+  revalidatePath("/clinic", "layout");
+  return r.autoApproved
+    ? "Verified. Thank you! Your shifts are going out to providers."
+    : r.status === "VERIFIED"
+      ? "Thanks. Your renewal is with our team; you stay verified meanwhile."
+      : "Thanks. Our team is reviewing your details, usually within one business day. We'll email you.";
 });
