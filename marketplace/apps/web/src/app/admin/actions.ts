@@ -9,7 +9,7 @@ import {
   schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax, chargebacks,
+  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax, chargebacks, announcements,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -530,4 +530,47 @@ export const chargebackReleaseAction = formAction(async (fd) => {
   const n = await chargebacks.releaseChargebackHolds(actor, str(fd, "id"));
   revalidatePath("/admin/payments/chargebacks");
   return n ? `Released ${n} held payment${n === 1 ? "" : "s"} to the provider.` : "Nothing was on hold.";
+});
+
+function announcementFields(fd: FormData) {
+  return {
+    kind: (str(fd, "kind") === "NEWS" ? "NEWS" : "NOTICE") as "NEWS" | "NOTICE",
+    title: str(fd, "title"),
+    body: str(fd, "body"),
+    linkPath: optStr(fd, "linkPath"),
+    ctaLabel: optStr(fd, "ctaLabel"),
+    channels: (["email", "sms", "push"] as const).filter((c) => fd.get(`ch_${c}`) === "on"),
+    audience: {
+      audience: (["PROVIDERS", "CLINICS", "EVERYONE"].includes(str(fd, "audience")) ? str(fd, "audience") : "EVERYONE") as "PROVIDERS" | "CLINICS" | "EVERYONE",
+      providerStatus: (["ALL", "READY", "ONBOARDING"].includes(str(fd, "providerStatus")) ? str(fd, "providerStatus") : "ALL") as "ALL" | "READY" | "ONBOARDING",
+      state: optStr(fd, "state"),
+      professionCode: optStr(fd, "professionCode"),
+      ownersOnly: fd.get("ownersOnly") === "on",
+    },
+  };
+}
+
+export const announcementAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const mode = str(fd, "mode");
+  const a = announcementFields(fd);
+  if (mode === "count") {
+    const p = await announcements.previewAudience(actor, a.audience);
+    return `This would reach ${p.total} ${p.total === 1 ? "person" : "people"}: ${p.providers} provider${p.providers === 1 ? "" : "s"} and ${p.clinicLogins} clinic login${p.clinicLogins === 1 ? "" : "s"}.`;
+  }
+  if (mode === "test") {
+    const to = await announcements.sendTestAnnouncement(actor, a);
+    return `Test sent to you (${to}): check your email, the bell and your phone.`;
+  }
+  if (fd.get("confirmSend") !== "on") throw new DomainError("VALIDATION", "Tick the box confirming you've checked the audience before sending.");
+  const row = await announcements.createAnnouncement(actor, a);
+  revalidatePath("/admin/announcements");
+  return `Sending to ${row.recipientCount} ${row.recipientCount === 1 ? "person" : "people"}. It goes out in batches over the next few minutes; progress is below.`;
+});
+
+export const cancelAnnouncementAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  await announcements.cancelAnnouncement(actor, str(fd, "id"));
+  revalidatePath("/admin/announcements");
+  return "Stopped. Anyone not reached yet won't get it.";
 });

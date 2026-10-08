@@ -27,6 +27,7 @@ import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSwe
 import { releaseDuePayouts } from "./payouts";
 import { settleDueInvites } from "./shifts";
 import { standingSweep } from "./standing";
+import { announcementSweep } from "./announcements";
 import { runPreLicensureFollowups } from "./prelicensure";
 import { autoDraftSweep } from "./blog";
 import { isSandbox } from "@cm/config";
@@ -84,6 +85,8 @@ export const JOBS: Job[] = [
   { name: "timeclockSweep", schedule: { everySeconds: 900 }, run: () => timeclockSweep() },
   { name: "punchReminders", schedule: { everySeconds: 60 }, run: () => punchReminderSweep() },
   { name: "providerActivity", schedule: { everySeconds: 3600 }, long: true, run: () => activitySweep() },
+  // Admin announcements: sent in batches so large audiences never time out.
+  { name: "announcements", schedule: { everySeconds: 60 }, long: true, run: () => announcementSweep() },
   { name: "rewardsSweep", schedule: { everySeconds: 3600 }, long: true, run: () => rewardsSweep() },
   { name: "volumeSweep", schedule: { everySeconds: 300 }, run: () => volumeSweep() },
   { name: "recruitSweep", schedule: { everySeconds: 600 }, run: () => recruitSweep() },

@@ -32,6 +32,7 @@ export * from "./tax";
 export * from "./emaildns";
 export * from "./chargeback";
 export * from "./sameProvider";
+export * from "./announcements";
 export * from "./navorder";
 export * from "./closing";
 export * from "./volume";

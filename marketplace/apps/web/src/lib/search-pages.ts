@@ -26,6 +26,7 @@ const ADMIN: SearchPage[] = [
   { label: "States & professions", href: "/admin/states", section: "Pricing", keywords: "markets enable launch florida profession state config" },
   { label: "Providers", href: "/admin/providers", section: "People", keywords: "doctors chiropractors list" },
   { label: "Clinics", href: "/admin/clinics", section: "People", keywords: "practices customers list" },
+  { label: "Announcements", href: "/admin/announcements", section: "People", keywords: "mass message broadcast email all providers all clinics everyone blast newsletter notice announcement text" },
   { label: "Users & logins", href: "/admin/users", section: "People", keywords: "suspend unsuspend delete ban login staff admins accounts" },
   { label: "Leads", href: "/admin/leads", section: "People", keywords: "inquiries contact waitlist popup spam" },
   { label: "Leads: spam", href: "/admin/leads?spam=1", section: "People", keywords: "junk filtered" },

@@ -46,6 +46,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/promo", label: "Promo codes", icon: "promo" },
     { href: "/admin/referrals", label: "Referrals", icon: "refer" },
     { href: "/admin/rewards", label: "Rewards", icon: "rewards" },
+    { href: "/admin/announcements", label: "Announcements", icon: "messages" },
     { href: "/admin/users", label: "Users & logins", icon: "team" },
     { href: "/admin/backups", label: "Backups & restore", icon: "backup" },
     { href: "/admin/health", label: "System health", icon: "health", badge: healthOpen.length },

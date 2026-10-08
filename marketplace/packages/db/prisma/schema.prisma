@@ -1306,6 +1306,31 @@ model Timesheet {
   @@index([status, submittedAt])
 }
 
+/// Admin mass message (Admin → Announcements). Delivery is once per person (DigestSend announce:<id>:<userId>).
+model Announcement {
+  id             String    @id @default(cuid())
+  /// NOTICE (service/account) | NEWS (promotional: unsubscribe link, unsubscribed skipped, never by text)
+  kind           String
+  title          String
+  body           String
+  linkPath       String?
+  ctaLabel       String?
+  /// { audience: PROVIDERS|CLINICS|EVERYONE, providerStatus, state, professionCode, ownersOnly }
+  audience       Json
+  channels       String[]  @default([])
+  /// QUEUED | SENDING | DONE | CANCELLED
+  status         String    @default("QUEUED")
+  recipientCount Int       @default(0)
+  sentCount      Int       @default(0)
+  skippedCount   Int       @default(0)
+  createdById    String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  startedAt      DateTime? @db.Timestamptz(3)
+  finishedAt     DateTime? @db.Timestamptz(3)
+
+  @@index([status])
+}
+
 /// A card dispute (chargeback) Stripe told us about: the clinic disputed a charge with its bank.
 /// Separate from Dispute (the platform's own "report a problem" process).
 model ChargeDispute {
