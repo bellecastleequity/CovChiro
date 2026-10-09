@@ -9,7 +9,7 @@ import {
   schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax, chargebacks, announcements, clinicVerify,
+  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax, chargebacks, announcements, clinicVerify, markets, getSettings,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -20,6 +20,15 @@ const me = () => requireActor("admin");
 // Admin screens show the real error text instead of "Something went wrong".
 const formAction: typeof baseFormAction = (fn) => baseFormAction(fn, { technical: true });
 const rv = (p: string) => revalidatePath(p, "layout");
+
+// ---------- open states ----------
+export const openAllStatesNowAction = formAction(async () => {
+  await me();
+  if (!(await getSettings())["market.openAllStates"]) throw new DomainError("VALIDATION", 'Turn on Settings → Open states → "Open every state automatically" first.');
+  const r = await markets.openAllMarkets();
+  rv("/admin/states");
+  return r.states.length || r.pairs.length ? `Opened ${r.states.length} state${r.states.length === 1 ? "" : "s"} (${r.pairs.length} profession-state pair${r.pairs.length === 1 ? "" : "s"}).` : "Every state is already open (apart from the ones you keep closed).";
+});
 
 // ---------- email & texts ----------
 export const googleCheckAction = formAction(async () => {
