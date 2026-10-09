@@ -60,15 +60,19 @@ async function ensureAccounts() {
   };
 }
 
-/** A past day the check provider hasn't worked yet (2-20 days ago). */
+/**
+ * A past day the check provider hasn't worked yet (2-60 days ago, most recent first). Each run uses one
+ * day; the nightly run frees one a day as the window slides, so manual "Run now"s eat into the spare ones.
+ */
+const LOOKBACK_DAYS = 60;
 async function freeDay(providerId: string) {
   const today = DateTime.fromMillis(realNow(), { zone: ZONE }).startOf("day");
-  for (let back = 2; back <= 20; back++) {
+  for (let back = 2; back <= LOOKBACK_DAYS; back++) {
     const d = today.minus({ days: back });
     const taken = await prisma.assignment.count({ where: { providerId, startsAt: { gte: d.toJSDate(), lt: d.plus({ days: 1 }).toJSDate() } } });
     if (!taken) return d;
   }
-  throw new DomainError("CONFLICT", "The self-check provider has no free day in the last 20 days.");
+  throw new DomainError("CONFLICT", `Every day in the last ${LOOKBACK_DAYS} days already has a self-check shift (each run uses one). Tonight's run will have a free day again.`);
 }
 
 export async function runSelfCheck(trigger: "nightly" | "manual" = "manual"): Promise<SelfCheckRun> {
