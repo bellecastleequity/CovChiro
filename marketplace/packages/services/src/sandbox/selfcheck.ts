@@ -65,12 +65,26 @@ async function ensureAccounts() {
  * day; the nightly run frees one a day as the window slides, so manual "Run now"s eat into the spare ones.
  */
 const LOOKBACK_DAYS = 60;
+const SHIFT_HOURS = [8, 17] as const;
+
+/** The provider's live bookings (with their travel buffer) that would clash with an 8-5 shift on `d` (same rule as eligibility F5). */
+async function clashes(providerId: string, d: DateTime) {
+  const start = +d.set({ hour: SHIFT_HOURS[0] }).toJSDate();
+  const end = +d.set({ hour: SHIFT_HOURS[1] }).toJSDate();
+  const near = await prisma.assignment.findMany({
+    where: { providerId, status: { in: ["CONFIRMED", "IN_PROGRESS"] }, startsAt: { lt: new Date(end + DAY) }, endsAt: { gt: new Date(start - DAY) } },
+    select: { id: true, startsAt: true, endsAt: true, bufferMinutes: true, status: true, shift: { select: { location: { select: { name: true } } } } },
+  });
+  // Our own buffer is unknown until booking: allow a generous 3 hours either side.
+  return near.filter((a) => +a.startsAt - a.bufferMinutes * MIN < end + 3 * HOUR && +a.endsAt + a.bufferMinutes * MIN > start - 3 * HOUR);
+}
+
 async function freeDay(providerId: string) {
   const today = DateTime.fromMillis(realNow(), { zone: ZONE }).startOf("day");
   for (let back = 2; back <= LOOKBACK_DAYS; back++) {
     const d = today.minus({ days: back });
     const taken = await prisma.assignment.count({ where: { providerId, startsAt: { gte: d.toJSDate(), lt: d.plus({ days: 1 }).toJSDate() } } });
-    if (!taken) return d;
+    if (!taken && !(await clashes(providerId, d)).length) return d;
   }
   throw new DomainError("CONFLICT", `Every day in the last ${LOOKBACK_DAYS} days already has a self-check shift (each run uses one). Tonight's run will have a free day again.`);
 }
@@ -115,8 +129,8 @@ async function runChecks(trigger: "nightly" | "manual"): Promise<SelfCheckRun> {
   if (a) {
     const { clinic, provider } = a as Awaited<ReturnType<typeof ensureAccounts>>;
     const day = await freeDay(provider.id);
-    const start = day.set({ hour: 8 }).toJSDate();
-    const end = day.set({ hour: 17 }).toJSDate();
+    const start = day.set({ hour: SHIFT_HOURS[0] }).toJSDate();
+    const end = day.set({ hour: SHIFT_HOURS[1] }).toJSDate();
     const postedAt = +start - 6 * DAY;
     const mailSince = new Date(realNow());
     const input = { locationId: clinic.locationId, professionCode: "DC", startsAt: start, endsAt: end, expectedPatients: 24, notes: "Automated self-check shift." };
@@ -149,7 +163,12 @@ async function runChecks(trigger: "nightly" | "manual"): Promise<SelfCheckRun> {
       });
       if (!(await step(postedAt + 2 * HOUR, "Provider applies", () => applyToShift(provider.actor, shiftId, { commit: true, note: "Self-check" })))) return;
       if (!(await step(postedAt + 4 * HOUR, "Clinic books the provider (deposit charged)", async () => {
-        await selectApplicant(clinic.actor, shiftId, provider.id);
+        await selectApplicant(clinic.actor, shiftId, provider.id).catch(async (e) => {
+          // Name the clashing booking so the cause is visible in the result.
+          const c = /overlap/i.test((e as Error).message) ? await clashes(provider.id, day) : [];
+          if (!c.length) throw e;
+          throw new Error(`${(e as Error).message}: ${c.map((a) => `${a.status.toLowerCase()} booking at ${a.shift.location.name}, ${DateTime.fromJSDate(a.startsAt, { zone: ZONE }).toFormat("LLL d h:mm a")}–${DateTime.fromJSDate(a.endsAt, { zone: ZONE }).toFormat("h:mm a")}`).join("; ")}`);
+        });
         const asg = await prisma.assignment.findFirstOrThrow({ where: { shiftId, status: "CONFIRMED" } });
         assignmentId = asg.id;
         const dep = await prisma.payment.findFirst({ where: { assignmentId, type: "DEPOSIT" } });
