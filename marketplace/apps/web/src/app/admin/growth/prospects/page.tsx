@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { growth } from "@cm/services";
-import { US_STATES } from "@cm/core";
+import { isPersonalInjuryPractice, US_STATES } from "@cm/core";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { buttonClass } from "@/components/ui/button";
@@ -21,12 +21,12 @@ export const dynamic = "force-dynamic";
 const INTENTS = ["COLD", "WARM", "ENGAGED", "HIGH_INTENT", "ACTIVE_CUSTOMER", "REPEAT_CUSTOMER"];
 const intentTone = (c: string) => (c === "HIGH_INTENT" ? "red" : c === "ENGAGED" ? "amber" : c.endsWith("CUSTOMER") ? "green" : c === "WARM" ? "blue" : "gray") as "red" | "amber" | "green" | "blue" | "gray";
 
-export default async function Prospects({ searchParams }: { searchParams: Promise<{ q?: string; stage?: string; intent?: string; segment?: string; market?: string; research?: string; page?: string }> }) {
+export default async function Prospects({ searchParams }: { searchParams: Promise<{ q?: string; stage?: string; intent?: string; segment?: string; market?: string; research?: string; focus?: string; page?: string }> }) {
   const { actor } = await requireActor("admin");
   const f = await searchParams;
   const page = Math.max(0, Number(f.page ?? 0) || 0);
   const [{ rows, total }, st] = await Promise.all([
-    growth.prospects(actor, { q: f.q, stage: f.stage, intent: f.intent, segment: f.segment, market: f.market, research: f.research, skip: page * 50 }),
+    growth.prospects(actor, { q: f.q, stage: f.stage, intent: f.intent, segment: f.segment, market: f.market, research: f.research, focus: f.focus, skip: page * 50 }),
     growth.prospecting(actor),
   ]);
   const r = st.research;
@@ -69,6 +69,7 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
         <Select name="stage" defaultValue={f.stage ?? ""} className="w-48"><option value="">All stages</option>{STAGES.map((s) => <option key={s} value={s}>{humanize(s)}</option>)}</Select>
         <Select name="intent" defaultValue={f.intent ?? ""} className="w-40"><option value="">All intent</option>{INTENTS.map((s) => <option key={s} value={s}>{humanize(s)}</option>)}</Select>
         <Select name="segment" defaultValue={f.segment ?? ""} className="w-40"><option value="">All segments</option>{SEGMENTS.map((s) => <option key={s} value={s}>{humanize(s)}</option>)}</Select>
+        <Select name="focus" defaultValue={f.focus ?? ""} className="w-48"><option value="">All practice types</option><option value="pi">Personal injury</option></Select>
         <Select name="research" defaultValue={f.research ?? ""} className="w-44"><option value="">Any research</option><option value="with_email">Has business email</option>{["PENDING", "DONE", "NOT_FOUND", "FAILED"].map((s) => <option key={s} value={s}>Research: {humanize(s)}</option>)}</Select>
         <button className={buttonClass("outline")}>Filter</button>
       </form>
@@ -82,7 +83,7 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
                 <Td><Link href={`/admin/growth/prospects/${p.id}`} className="font-medium text-slate-900 hover:text-brand-700">{p.clinicName}</Link><div className="text-xs text-slate-500">{p.ownerName ?? ""}{p.email ? ` · ${p.email}` : ""}</div></Td>
                 <Td className="text-xs">{[p.city, p.zip].filter(Boolean).join(" ") || "—"}<div className="text-slate-400">{p.marketKey ?? "no market"}</div></Td>
                 <Td className="text-xs"><StatusBadge status={p.researchStatus} />{p.website ? <div className="max-w-40 truncate text-slate-400">{p.website.replace(/^https?:\/\/(www\.)?/, "")}</div> : null}</Td>
-                <Td className="text-xs">{humanize(p.segment)}<div className="text-slate-400">{p.segmentBasis === "AI" ? `AI guess · ${Math.round((p.segmentConfidence ?? 0) * 100)}%` : p.segmentBasis === "NONE" ? "not classified" : humanize(p.segmentBasis)}</div></Td>
+                <Td className="text-xs">{isPersonalInjuryPractice(p.practiceType) ? <div className="mb-0.5 font-medium text-accent-700">Personal injury</div> : null}{humanize(p.segment)}<div className="text-slate-400">{p.segmentBasis === "AI" ? `AI guess · ${Math.round((p.segmentConfidence ?? 0) * 100)}%` : p.segmentBasis === "NONE" ? "not classified" : humanize(p.segmentBasis)}</div></Td>
                 <Td><StatusBadge status={p.stage} /></Td>
                 <Td><Badge tone={intentTone(p.intentCategory)}>{humanize(p.intentCategory)} · {p.intentScore}</Badge></Td>
                 <Td className="text-xs">{p.doNotContact ? <Badge tone="red">Do not contact</Badge> : p.emailStatus !== "UNKNOWN" && p.emailStatus !== "VALID" ? <Badge tone="red">{humanize(p.emailStatus)}</Badge> : p.outreachPaused ? <Badge>Paused</Badge> : null}<div className="text-slate-400">step {p.outreachStep} · {p.lastContactedAt ? dateLabel(p.lastContactedAt) : "not contacted"}</div></Td>

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DomainError, renderTemplate, validateAiCopy } from "@cm/core";
+import { DomainError, PI_PRACTICE_PHRASES, renderTemplate, validateAiCopy } from "@cm/core";
 import { prisma, type Prisma, type ProspectStage } from "@cm/db";
 import { brand } from "@cm/config";
 import { audit, clock, getSettings, invalidateSettings, requireAdmin, type Actor } from "../context";
@@ -9,7 +9,7 @@ import { getEligibleProviders } from "../eligibility";
 import { AGENT_AUDIENCE, AGENTS, Deferred, agentOn, ai, aiRules, aiSpendCents, compose, isSuppressed, logAgent, marketingOn, newToken, normEmail, pickPrompt, recipient, sendGrowthEmail, suppress, type AgentKey, type Audience, type GrowthEntityType } from "./engine";
 import { outreachProfessionFor } from "./expansion";
 import { ensureGrowthDefaults } from "./defaults";
-import { advanceOutreach, prospectVars, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
+import { advanceOutreach, approvedPiKeys, outreachKey, prospectVars, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
 import { discoverySweep, prospectingStatus, researchProspect, researchSweep } from "./prospecting";
 import { marketSupplySweep } from "./supply";
 import { resumeResearch } from "./aihealth";
@@ -245,7 +245,7 @@ export async function updateEscalation(actor: Actor, id: string, status: "OPEN" 
 
 // ---------------- prospects ----------------
 
-export async function prospects(actor: Actor, f: { q?: string; stage?: string; intent?: string; segment?: string; market?: string; research?: string; skip?: number } = {}) {
+export async function prospects(actor: Actor, f: { q?: string; stage?: string; intent?: string; segment?: string; market?: string; research?: string; focus?: string; skip?: number } = {}) {
   requireAdmin(actor);
   const where: Prisma.ClinicProspectWhereInput = {
     ...(f.q ? { OR: ["clinicName", "ownerName", "email", "city", "zip"].map((k) => ({ [k]: { contains: f.q, mode: "insensitive" } })) } : {}),
@@ -253,6 +253,8 @@ export async function prospects(actor: Actor, f: { q?: string; stage?: string; i
     ...(f.intent ? { intentCategory: f.intent as never } : {}),
     ...(f.segment ? { segment: f.segment } : {}),
     ...(f.market ? { marketKey: f.market } : {}),
+    // Personal injury practices: same phrases as core isPersonalInjuryPractice.
+    ...(f.focus === "pi" ? { AND: [{ OR: PI_PRACTICE_PHRASES.map((ph) => ({ practiceType: { contains: ph, mode: "insensitive" as const } })) }] } : {}),
     ...(f.research === "with_email" ? { email: { not: null } } : f.research ? { researchStatus: f.research } : {}),
   };
   const [rows, total] = await Promise.all([
@@ -352,7 +354,8 @@ export async function sendFirstOutreachNow(actor: Actor, id: string) {
   if (p.outreachStep > 0) throw new DomainError("CONFLICT", "The first email has already gone out to this clinic.");
   const r = await recipient("PROSPECT", id);
   if (!r) throw new DomainError("VALIDATION", "This clinic can't be emailed.");
-  const prompt = await pickPrompt(OUTREACH_SEQUENCE[0], ready.professionCode);
+  // Personal injury practices get the PI first email when it's approved.
+  const prompt = (await pickPrompt(outreachKey(0, p.practiceType, await approvedPiKeys()), ready.professionCode)) ?? (await pickPrompt(OUTREACH_SEQUENCE[0], ready.professionCode));
   if (!prompt) throw new DomainError("VALIDATION", "There's no approved first-contact email yet (Growth → Content).");
   const msg = await compose("clinicOutreach", prompt, prospectVars(p, r.firstName), { city: p.city, clinic_name: p.clinicName }, true);
   const res = await sendGrowthEmail(r, msg, { agent: "clinicOutreach", purpose: "COMMERCIAL", prompt: { key: prompt.key, version: prompt.version }, dedupeKey: `outreach:${id}:0`, createdById: actor.userId });
@@ -578,6 +581,7 @@ export async function promptStatus(actor: Actor, id: string, op: "approve" | "ac
 }
 
 const SAMPLE: Record<string, string> = {
+  pi_url: "https://coverageoncall.com/personal-injury-clinics",
   greeting_name: "Dr. Rivera", clinic_name: "Bayside Family Chiropractic", city: "Tampa", segment: "solo", first_name: "Jordan", state_name: "Florida", school: "Palmer College",
   checklist: "✓ Account\n✓ Clinic location\n○ Payment method", next_step: "Payment method", dates: "Oct 16–17", status_line: "Next step: add your license when it arrives.",
   travel_line: "Your maximum drive is set to 60 minutes.", market_name: "Tampa Bay", reply_summary: "Asked whether coverage costs more than closing for a day.",

@@ -121,3 +121,11 @@ describe("applying research findings", () => {
     expect(low.rejected).toContain("low_confidence");
   });
 });
+
+describe("personal injury practices", () => {
+  it("recognises PI / auto accident practice types, not sports injury", async () => {
+    const { isPersonalInjuryPractice } = await import("../src");
+    for (const t of ["Personal Injury", "personal-injury & wellness", "Auto accident and injury care", "Whiplash and motor vehicle injuries", "auto injury"]) expect(isPersonalInjuryPractice(t)).toBe(true);
+    for (const t of ["Sports injury", "family", "pediatric", "", null, undefined]) expect(isPersonalInjuryPractice(t)).toBe(false);
+  });
+});

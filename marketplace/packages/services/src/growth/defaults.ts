@@ -7,7 +7,7 @@ import { prisma } from "@cm/db";
  * admin control center, so fresh installs and upgraded databases both get it.
  */
 
-type Seed = { key: string; agent: string; purpose: string; subject: string | null; body: string; instructions: string | null; vars: string[]; channel?: string };
+type Seed = { key: string; agent: string; purpose: string; subject: string | null; body: string; instructions: string | null; vars: string[]; channel?: string; /** Installed as a draft for an admin to approve (nothing uses it until then). */ draft?: boolean };
 
 /** Starter prompts that aren't about one profession; the rest are chiropractic wording. */
 export const GENERIC_PROMPT_KEYS = ["CLINIC_ONBOARDING_NEXT_STEP", "ABANDONED_COVERAGE_REQUEST"];
@@ -26,6 +26,20 @@ export const DEFAULT_PROMPTS: Seed[] = [
     body: "Hi {{greeting_name}},\n\nA quick follow-up. Owners usually book coverage for planned time away: vacations, CE seminars and conferences, family events, maternity or paternity leave, or a recurring day off each week.\n\nPosting a few weeks ahead gives the most choice of providers, and you can set techniques, dress code and day-of contacts so the day runs your way.\n\nSee how it works: {{site_url}}\n\nThe {{brand}} team",
     instructions: "Personalize the opening line to the clinic type if known. Educational, no pressure, no financial promises. 90-140 words.",
     vars: ["greeting_name", "clinic_name", "city", "segment", "site_url", "brand"],
+  },
+  {
+    key: "CLINIC_PI_FIRST_CONTACT", agent: "clinicOutreach", purpose: "First email to a personal injury (auto accident) practice: replaces CLINIC_FIRST_CONTACT for PI prospects once approved.", draft: true,
+    subject: "Keeping {{clinic_name}} open when a doctor is out",
+    body: "Hi {{greeting_name}},\n\nPersonal injury practices run on availability. When a new accident patient calls, they usually need to be seen soon. In Florida, PIP generally requires treatment to start within 14 days of the accident. If the doctor is out sick, on vacation or at a CE weekend, that patient often goes to the next office that can see them.\n\n{{brand}} books licensed, insured, verified chiropractors to cover your schedule:\n\n- Sick days, vacations and seminar weekends\n- The days you can't be at a second location\n- The weeks between an associate leaving and a new hire starting\n\nYou see whether each covering doctor has personal injury experience before you choose. Enrolling is free, so the day you need someone, it's a two-minute post instead of a scramble.\n\nWe put together a page for PI clinics, with calculators you can run on your own numbers: {{pi_url}}\n\nThanks for reading,\nThe {{brand}} team",
+    instructions: "Personalize lightly using only the facts given (clinic type, city). Keep the core message: a PI office doesn't have to turn patients away when a doctor is out. No revenue figures, ROI or guarantees. Don't imply you've looked at their website, schedule or patients. Never mention attorneys, paid referrals or patient solicitation. 140-190 words.",
+    vars: ["greeting_name", "clinic_name", "city", "segment", "pi_url", "brand"],
+  },
+  {
+    key: "CLINIC_PI_GROWTH", agent: "clinicOutreach", purpose: "Second email to a personal injury practice (second location, keeping doctors): replaces CLINIC_VACATION_EDUCATION for PI prospects once approved.", draft: true,
+    subject: "Thinking about a second location?",
+    body: "Hi {{greeting_name}},\n\nA quick follow-up with two situations we hear about a lot from personal injury clinics.\n\nOpening a second location. You can't be in two offices at once, and hiring a full-time doctor before the patients are there is a big bet. Many owners cover the days they can't be at the new office and book the same doctor every week until it's ready for a full-time hire. If that doctor turns out to be the right fit, you can hire them through us.\n\nKeeping your doctors. Burned-out doctors leave. When time off doesn't mean a closed office or a colleague carrying a double schedule, people take it, and they stay.\n\nThe page below has a planner for both, using our current rates and your own numbers: {{pi_url}}\n\nThe {{brand}} team",
+    instructions: "Personalize the opening line to the clinic type if known. Educational, no pressure, no financial promises, no attorneys or patient solicitation. 120-170 words.",
+    vars: ["greeting_name", "clinic_name", "city", "segment", "pi_url", "brand"],
   },
   {
     key: "CLINIC_SICK_DAY_EDUCATION", agent: "clinicOutreach", purpose: "Third touch: unplanned absences and associate gaps.",
@@ -136,7 +150,7 @@ export async function ensureGrowthDefaults() {
   for (const p of DEFAULT_PROMPTS) {
     if (existing.has(p.key)) continue;
     await prisma.promptTemplate.create({
-      data: { key: p.key, professionCode: GENERIC_PROMPT_KEYS.includes(p.key) ? null : "DC", version: 1, agent: p.agent, channel: p.channel ?? "EMAIL", purpose: p.purpose, subjectTemplate: p.subject, body: p.body, instructions: p.instructions, allowedVars: p.vars, status: "APPROVED", active: true, approvedAt: new Date(), notes: "Starter version" },
+      data: { key: p.key, professionCode: GENERIC_PROMPT_KEYS.includes(p.key) ? null : "DC", version: 1, agent: p.agent, channel: p.channel ?? "EMAIL", purpose: p.purpose, subjectTemplate: p.subject, body: p.body, instructions: p.instructions, allowedVars: p.vars, ...(p.draft ? { status: "DRAFT", active: false, notes: "Starter version: review and approve to use it" } : { status: "APPROVED", active: true, approvedAt: new Date(), notes: "Starter version" }) },
     }).catch(() => undefined);
   }
   if ((await prisma.growthMarket.count()) === 0) {

@@ -48,8 +48,10 @@ const nextBase = () => ({ lat: 10 + 2.5 * area++, lng: -81.379 });
 async function scenario(n: number, opts: { daysAhead?: number; hoursBefore?: number } = {}) {
   const base = nextBase();
   const clinic = await makeClinic({ state: "FL", lat: base.lat, lng: base.lng });
-  const shift = await makeShift(clinic.location.id, { days: opts.daysAhead ?? 20 });
-  // Same-day tier: clock 3h before the shift (7am ET for a 9am shift?) — keep inside quiet-hours-free daytime.
+  // 15:00 UTC = 10 or 11 AM Eastern (standard / daylight time), so "3h before" is 7-8 AM: outside providers'
+  // default quiet hours (9 PM–6 AM) whatever the time of year.
+  const shift = await makeShift(clinic.location.id, { days: opts.daysAhead ?? 20, startHourUtc: 15 });
+  // Same-day tier: clock 3h before the shift.
   at(new Date(+shift.startsAt - (opts.hoursBefore ?? 3) * 3_600_000));
   const providers: P[] = [];
   for (let i = 0; i < n; i++) {

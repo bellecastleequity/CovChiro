@@ -149,8 +149,8 @@ export async function makeClinic(o: ClinicOpts = {}) {
 }
 
 /** Direct shift insert (bypasses the posting service) — used to probe triggers. */
-export async function makeShift(locationId: string, o: { professionCode?: string; status?: "DRAFT" | "OPEN"; days?: number; requiredSkillIds?: string[]; attestation?: unknown; lodgingAllowed?: boolean } = {}) {
-  const { startsAt, endsAt } = futureWeekday(o.days ?? 10);
+export async function makeShift(locationId: string, o: { professionCode?: string; status?: "DRAFT" | "OPEN"; days?: number; startHourUtc?: number; requiredSkillIds?: string[]; attestation?: unknown; lodgingAllowed?: boolean } = {}) {
+  const { startsAt, endsAt } = futureWeekday(o.days ?? 10, o.startHourUtc);
   const creator = await prisma.user.findFirstOrThrow();
   return prisma.shift.create({
     data: {

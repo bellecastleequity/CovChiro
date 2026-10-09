@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { isPersonalInjuryPractice } from "@cm/core";
 import { growth } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
@@ -34,7 +35,7 @@ export default async function ProspectDetail({ params, searchParams }: { params:
   const notice = added ? ADDED[added] : null;
   return (
     <>
-      <PageHeader back={{ href: "/admin/growth/prospects", label: "Clinic prospects" }} eyebrow={<Link href="/admin/growth/prospects" className="hover:underline">Clinic prospects</Link>} title={p.clinicName} description={[p.ownerName, [p.city, p.state].filter(Boolean).join(", "), p.marketKey ? `market: ${p.marketKey}` : null].filter(Boolean).join(" · ")} />
+      <PageHeader back={{ href: "/admin/growth/prospects", label: "Clinic prospects" }} eyebrow={<Link href="/admin/growth/prospects" className="hover:underline">Clinic prospects</Link>} title={p.clinicName} actions={isPersonalInjuryPractice(p.practiceType) ? <span className="rounded-full bg-accent-50 px-3 py-1 text-sm font-medium text-accent-700 ring-1 ring-accent-200">Personal injury · gets the PI emails</span> : null} description={[p.ownerName, [p.city, p.state].filter(Boolean).join(", "), p.marketKey ? `market: ${p.marketKey}` : null].filter(Boolean).join(" · ")} />
       <GrowthTabs current="/admin/growth/prospects" />
       <div className="mb-6 flex flex-wrap gap-1.5">
         <StatusBadge status={p.stage} />
@@ -187,7 +188,7 @@ export default async function ProspectDetail({ params, searchParams }: { params:
               <ActionForm action={saveProspectAction} className="space-y-2">
                 <input type="hidden" name="id" value={p.id} />
                 {([["clinicName", "Clinic name"], ["ownerName", "Owner"], ["email", "Email"], ["phone", "Phone"], ["website", "Website"], ["address", "Address"], ["city", "City"], ["county", "County"], ["zip", "ZIP"], ["practiceType", "Practice type"], ["source", "Source"], ["campaignCode", "Campaign"]] as const).map(([k, l]) => (
-                  <Field key={k} label={l}><Input name={k} defaultValue={(p[k] as string | null) ?? ""} required={k === "clinicName"} /></Field>
+                  <Field key={k} label={l} hint={k === "practiceType" ? "Include \"personal injury\" or \"auto accident\" to send this clinic the personal injury emails." : undefined}><Input name={k} defaultValue={(p[k] as string | null) ?? ""} required={k === "clinicName"} /></Field>
                 ))}
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="Locations"><Input name="locationsCount" type="number" min={0} defaultValue={p.locationsCount ?? ""} /></Field>

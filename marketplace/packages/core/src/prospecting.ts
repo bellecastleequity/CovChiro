@@ -260,3 +260,16 @@ export function applyResearch(current: ResearchTarget, f: ResearchFindings, minC
   if (!current.socialUrls.length && socials.length) patch.socialUrls = socials.slice(0, 6);
   return { patch, rejected, pause: f.closed, sources };
 }
+
+/**
+ * Personal injury practices (auto accident care) get their own outreach wording and landing page.
+ * Decided from the researched practice type (an admin can edit it on the prospect page). "Sports
+ * injury" alone isn't personal injury. PI_PRACTICE_PHRASES is also the admin list filter, so the
+ * two always agree.
+ */
+export const PI_PRACTICE_PHRASES = ["personal injury", "personal-injury", "accident", "whiplash", "auto injury", "motor vehicle"];
+
+export function isPersonalInjuryPractice(practiceType: string | null | undefined): boolean {
+  const t = (practiceType ?? "").toLowerCase();
+  return PI_PRACTICE_PHRASES.some((p) => t.includes(p));
+}

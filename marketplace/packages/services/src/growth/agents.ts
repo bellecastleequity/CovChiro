@@ -1,5 +1,6 @@
 import { brand } from "@cm/config";
 import {
+  isPersonalInjuryPractice,
   activationDue, escalationTopic, leadScore, nurtureDue, outreachStepDue, providerGrowthState, prospectStageFromAccount, ruleSegment, US_STATES, wantsOptOut,
   type GrowthCadence, type ProspectStage,
 } from "@cm/core";
@@ -281,12 +282,27 @@ export async function prospectSweep() {
 // ---------------- clinic outreach (the launch switch) ----------------
 
 export const OUTREACH_SEQUENCE = ["CLINIC_FIRST_CONTACT", "CLINIC_VACATION_EDUCATION", "CLINIC_SICK_DAY_EDUCATION"];
+/** Personal injury practices get these instead, step for step, once an admin has approved them (else the general wording). */
+export const PI_OUTREACH_SEQUENCE = ["CLINIC_PI_FIRST_CONTACT", "CLINIC_PI_GROWTH", "CLINIC_SICK_DAY_EDUCATION"];
+
+/** PI prompt keys with an approved, active version (one query per sweep). */
+export async function approvedPiKeys(): Promise<Set<string>> {
+  const rows = await prisma.promptTemplate.findMany({ where: { key: { in: PI_OUTREACH_SEQUENCE }, status: "APPROVED", active: true }, select: { key: true } });
+  return new Set(rows.map((r) => r.key));
+}
+
+/** Which prompt a prospect gets at a step: the PI version for PI practices when it's approved. */
+export function outreachKey(step: number, practiceType: string | null, piReady: Set<string>): string {
+  const pi = PI_OUTREACH_SEQUENCE[step];
+  return isPersonalInjuryPractice(practiceType) && pi && piReady.has(pi) ? pi : OUTREACH_SEQUENCE[step];
+}
 
 export function prospectVars(c: { publicToken: string; clinicName: string; city: string | null; segment: string }, greeting: string) {
   return {
     greeting_name: greeting, clinic_name: c.clinicName, city: c.city, segment: c.segment !== "unknown" ? c.segment.replace(/_/g, " ") : null, brand: brand().name,
     calculator_url: absoluteUrl(`/tools/cost-of-closing?c=${c.publicToken}`),
     site_url: absoluteUrl(`/for-clinics?c=${c.publicToken}`),
+    pi_url: absoluteUrl(`/personal-injury-clinics?c=${c.publicToken}`),
     signup_url: absoluteUrl(`/signup?role=clinic&c=${c.publicToken}`),
   };
 }
@@ -308,6 +324,7 @@ export async function outreachSweep() {
     take: s["growth.dailyOutreachCap"] * 2,
   });
   const allowed = new Map<string, boolean>();
+  const piReady = await approvedPiKeys();
   for (const c of rows) {
     // Safety: only where the growth target is LIVE and the marketplace takes shifts for that profession there.
     const professionCode = await outreachProfessionFor(c, allowed);
@@ -317,7 +334,7 @@ export async function outreachSweep() {
     const r = await recipient("PROSPECT", c.id);
     if (!r) continue;
     out.queued++;
-    const res = await outcome(() => composeAndSend("clinicOutreach", r, OUTREACH_SEQUENCE[c.outreachStep], prospectVars(c, r.firstName), {
+    const res = await outcome(() => composeAndSend("clinicOutreach", r, outreachKey(c.outreachStep, c.practiceType, piReady), prospectVars(c, r.firstName), {
       purpose: "COMMERCIAL", professionCode, dedupeKey: `outreach:${c.id}:${c.outreachStep}`, review: s["growth.outreachMode"] !== "auto",
       facts: { city: c.city, segment: c.segment !== "unknown" ? c.segment : null, clinic_name: c.clinicName },
     }));
