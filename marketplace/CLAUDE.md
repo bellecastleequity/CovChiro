@@ -167,3 +167,4 @@ Precedence: Addendum 03 (with the owner's decisions) > 02 > 01 > SPEC.md for pri
 ## Backlog (agreed, for a later update)
 
 - Growth command center "Today" card (apps/web/src/app/admin/growth/page.tsx, growth.todayNumbers): show each stat's all-time total under today's number (e.g. "0 today · 1,240 total") so the zeros aren't mistaken for lost data.
+- "Launch a profession" checklist (owner, Oct 2026; likely next: massage, no date): before opening a non-chiropractic profession in all states, build an Admin → States checklist per profession: per-state credential rule (state license vs national credential vs local/none, prefilled from a built-in list), supervision rules, rate cards in the national default region, board directory link; "Open all states" for it only when complete. openAllMarkets today assumes licensedAtStateLevel everywhere, so it is safe only for professions every state licenses (DC).
