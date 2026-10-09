@@ -48,7 +48,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
           <div>
             <div className="flex flex-wrap gap-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
-                <MapPin className="size-3.5" /> {liveStates.length >= 10 ? `Now live in ${liveStates.length >= 50 ? "all 50 states" : `${liveStates.length} states`}` : `Now live in ${liveStates.join(", ") || "Florida"}`}
+                <MapPin className="size-3.5" /> {liveLabel(liveStates)}
               </div>
               <Link href="/states" className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-300 hover:bg-amber-100">
                 {liveStates.length >= 10 ? "Providers: enroll from any state →" : "Providers in other states: enrollment now open →"}
@@ -186,4 +186,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
 /** "A", "A and B", "A, B and C". */
 function listJoin(xs: string[]) {
   return xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+}
+
+/** Hero pill: the states list while it's short, then "all 50 states" plus DC and the territories that are live. */
+function liveLabel(live: string[]) {
+  const extras = ["DC", "PR", "VI"];
+  const states = live.filter((s) => !extras.includes(s));
+  if (live.length < 10) return `Now live in ${live.join(", ") || "Florida"}`;
+  const also = [live.includes("DC") ? "DC" : null, live.includes("PR") ? "Puerto Rico" : null, live.includes("VI") ? "USVI" : null].filter(Boolean) as string[];
+  const head = states.length >= 50 ? "all 50 states" : `${states.length} states`;
+  if (!also.length) return `Now live in ${head}`;
+  return `Now live in ${head}, ${also.length > 1 ? `${also.slice(0, -1).join(", ")} & ${also[also.length - 1]}` : also[0]}`;
 }
