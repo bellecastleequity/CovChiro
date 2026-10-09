@@ -77,8 +77,9 @@ export const quoteAction = formAction(async (fd) => {
   const inputs = await shiftPayloads(fd);
   const quotes = [];
   // Promo code: first day only (same rule as posting).
-  for (const [i, input] of inputs.entries()) quotes.push(await quoteForClinic(actor, { ...input, promoCode: i === 0 ? input.promoCode : null }));
   const raw = JSON.parse(str(fd, "payload") || "{}");
+  const needed = Number(raw.providersNeeded) || 1;
+  for (const [i, input] of inputs.entries()) quotes.push(await quoteForClinic(actor, { ...input, promoCode: i === 0 ? input.promoCode : null }, { needed }));
   const dates: string[] = Array.isArray(raw.days) && raw.days.length ? raw.days.map((d: { date: string }) => d.date) : [raw.date];
   return {
     ok: "quote",
@@ -86,16 +87,38 @@ export const quoteAction = formAction(async (fd) => {
       ...quotes[0],
       days: quotes.map((q, i) => ({ date: dates[i], subtotalCents: q.subtotalCents, premiums: q.premiums })),
       totalCents: quotes.reduce((t, q) => t + q.subtotalCents, 0),
+      // Open states: the fewest doctors available on any day, and the first short day's reason.
+      supply: quotes.every((q) => q.supply)
+        ? { ...(quotes.find((q) => !q.supply!.ok)?.supply ?? quotes[0].supply!), available: Math.min(...quotes.map((q) => q.supply!.available)), shortDate: (() => { const i = quotes.findIndex((q) => !q.supply!.ok); return i >= 0 && quotes.length > 1 ? dates[i] : null; })() }
+        : null,
     },
   };
 });
+
+/** Posting refused because no doctor can take it yet: the drafts are saved and the clinic will be told. */
+function waitingDraft(e: unknown): string | null {
+  if (e instanceof DomainError && e.code === "NO_PROVIDER_AVAILABLE") {
+    const ids = (e.details as { shiftIds?: string[] } | undefined)?.shiftIds;
+    if (ids?.length) return ids[0];
+  }
+  return null;
+}
 
 export const createShiftAction = formAction(async (fd) => {
   const { actor } = await me();
   const post = str(fd, "mode") !== "draft";
   const inputs = await shiftPayloads(fd);
   const raw = JSON.parse(str(fd, "payload") || "{}");
-  const { shiftIds, bookings: n } = await bookings.createForProviders(actor, inputs, Number(raw.providersNeeded) || 1, { post });
+  let made: { shiftIds: string[]; bookings: number };
+  try {
+    made = await bookings.createForProviders(actor, inputs, Number(raw.providersNeeded) || 1, { post });
+  } catch (e) {
+    const draft = waitingDraft(e);
+    if (!draft) throw e;
+    revalidatePath("/clinic", "layout");
+    redirect(`/clinic/shifts/${draft}?waiting=1`);
+  }
+  const { shiftIds, bookings: n } = made;
   revalidatePath("/clinic", "layout");
   redirect(n > 1 ? `/clinic/shifts?${post ? "posted" : "saved"}=${n}` : `/clinic/shifts/${shiftIds[0]}?${post ? "posted" : "saved"}=1`);
 });
@@ -105,9 +128,15 @@ export const updateDraftAction = formAction(async (fd) => {
   const post = str(fd, "mode") !== "draft";
   const shiftId = str(fd, "shiftId");
   const [input] = await shiftPayloads(fd);
-  await updateDraftShift(actor, shiftId, input, { post });
+  let waiting = false;
+  try {
+    await updateDraftShift(actor, shiftId, input, { post });
+  } catch (e) {
+    if (!waitingDraft(e)) throw e;
+    waiting = true;
+  }
   revalidatePath("/clinic", "layout");
-  redirect(`/clinic/shifts/${shiftId}?${post ? "posted" : "saved"}=1`);
+  redirect(`/clinic/shifts/${shiftId}?${waiting ? "waiting" : post ? "posted" : "saved"}=1`);
 });
 
 export const postDraftAction = formAction(async (fd) => {

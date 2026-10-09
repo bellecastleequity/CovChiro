@@ -29,6 +29,8 @@ import { settleDueInvites } from "./shifts";
 import { standingSweep } from "./standing";
 import { announcementSweep } from "./announcements";
 import { clinicVerifySweep } from "./clinicVerify";
+import { openAllMarkets } from "./markets";
+import { waitingDraftSweep } from "./supply";
 import { runPreLicensureFollowups } from "./prelicensure";
 import { autoDraftSweep } from "./blog";
 import { isSandbox } from "@cm/config";
@@ -99,6 +101,10 @@ export const JOBS: Job[] = [
   // Clinic-set rate (beta): unfilled shifts whose clinic chose release go to market at their release time.
   { name: "clinicRateRelease", schedule: { everySeconds: 300 }, run: () => releaseDueClinicRates() },
   { name: "shiftChangeExpiry", schedule: { everySeconds: 300 }, run: () => expireShiftChanges() },
+  // Open states: switch on every state not closed by an admin (posting is gated by available doctors).
+  { name: "openMarkets", schedule: { everySeconds: 3600 }, long: true, run: () => openAllMarkets() },
+  // Drafts saved because no doctor could take them: tell the clinic once one can.
+  { name: "waitingDrafts", schedule: { everySeconds: 900 }, long: true, run: () => waitingDraftSweep() },
   { name: "waitlistOpenings", schedule: { everySeconds: 3600 }, run: () => waitlistOpeningSweep() },
   { name: "indexNow", schedule: { cron: "20 6 * * *", tz: "America/New_York" }, run: () => indexNowSweep() },
   { name: "reviewRequests", schedule: { cron: "20 10 * * *", tz: "America/New_York" }, run: () => reviewRequestSweep() },

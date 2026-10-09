@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@cm/db";
-import { growth } from "@cm/services";
+import { growth, supply } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -15,9 +15,17 @@ import { GrowthTabs, supplyTone } from "../ui";
 export const metadata = { title: "Supply & demand" };
 export const dynamic = "force-dynamic";
 
+const GAP_LABEL: Record<string, string> = {
+  NONE_NEARBY: "No doctors nearby yet",
+  BOOKED: "All booked",
+  UNAVAILABLE: "Not available then",
+  REQUIREMENTS: "Shift requirements",
+  TOO_FEW: "Not enough doctors",
+};
+
 export default async function Markets() {
   await requireActor("admin");
-  const [rows, professions] = await Promise.all([growth.marketSupply(), prisma.profession.findMany({ orderBy: { sortOrder: "asc" }, select: { code: true, displayName: true } })]);
+  const [rows, professions, demand] = await Promise.all([growth.marketSupply(), prisma.profession.findMany({ orderBy: { sortOrder: "asc" }, select: { code: true, displayName: true } }), supply.demandSummary(90)]);
   const gaps = rows.filter((r) => r.market.active && (r.supply === "CRITICAL" || r.supply === "LOW"));
   return (
     <>
@@ -26,6 +34,27 @@ export default async function Markets() {
         description="Coverage-ready providers against each metro's demand. Supply status and readiness are recomputed hourly by the Supply Gap agent; recruitment works the neediest markets first. New markets are added automatically when a profession × state goes into prelaunch (Growth → Expansion)."
       />
       <GrowthTabs current="/admin/growth/markets" />
+      {demand.length ? (
+        <Card className="mb-6" id="turned-away">
+          <CardHeader title="Clinics who couldn't post: no doctor available (90 days)" description="Every refused posting is logged here: where clinics want doctors before we have them. Recruit providers licensed in these states near these cities (Growth → Expansion). The clinic is texted and emailed the moment a doctor can take the shift." />
+          <Table>
+            <thead><tr><Th>Where</Th><Th>Profession</Th><Th>Clinics</Th><Th>Attempts</Th><Th>Posted later</Th><Th>Main reason</Th><Th>Last</Th></tr></thead>
+            <tbody>
+              {demand.slice(0, 50).map((d) => (
+                <tr key={`${d.professionCode}-${d.state}-${d.city}`}>
+                  <Td>{d.city}, {d.state}</Td>
+                  <Td>{d.professionCode}</Td>
+                  <Td className="tabular-nums">{d.clinics}</Td>
+                  <Td className="tabular-nums">{d.attempts}</Td>
+                  <Td className="tabular-nums">{d.posted}</Td>
+                  <Td>{GAP_LABEL[d.topGap] ?? d.topGap}</Td>
+                  <Td>{d.lastAt.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" })}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
+      ) : null}
       {gaps.length ? (
         <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {gaps.map((r) => (

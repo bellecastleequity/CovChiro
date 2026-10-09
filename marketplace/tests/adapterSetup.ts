@@ -1,6 +1,7 @@
 import { neonConfig } from "@neondatabase/serverless";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { beforeAll } from "vitest";
 
 /**
  * Optional: run the whole suite through Prisma's driver-adapter layer.
@@ -25,3 +26,17 @@ if (mode === "pg") {
   neonConfig.pipelineConnect = false;
   g.__cmPrismaAdapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
 }
+
+/**
+ * Open states: posting needs an available doctor (market.requireAvailableProvider). Older test files
+ * post shifts to test other things before any provider exists, so the check is off unless a test
+ * (open-states.test.ts) turns it on.
+ */
+beforeAll(async () => {
+  // The test-site suite builds its own database in its own beforeAll (and runs with the check on, like the test site).
+  if (process.env.SANDBOX_MODE === "1") return;
+  const { prisma } = await import("@cm/db");
+  const key = "market.requireAvailableProvider";
+  await prisma.setting.upsert({ where: { key }, create: { key, value: false }, update: { value: false } });
+  (await import("@cm/services")).invalidateSettings();
+});

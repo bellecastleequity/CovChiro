@@ -166,17 +166,20 @@ export async function validateShiftInput(db: Db, orgId: string, input: z.output<
   return { loc, supervisionRequired };
 }
 
-export async function quoteForClinic(actor: Actor, raw: ShiftInputT) {
+export async function quoteForClinic(actor: Actor, raw: ShiftInputT, opts: { needed?: number } = {}) {
   const orgId = requireClinic(actor);
   const input = ShiftInput.parse(raw);
-  await validateShiftInput(prisma, orgId, input, false);
+  const { loc: location } = await validateShiftInput(prisma, orgId, input, false);
   const q = await quoteShift(prisma, { ...input, promoCode: input.promoCode?.trim() || (await autoCredit(prisma, orgId)) });
   // Estimated travel range from currently eligible providers (clinic never sees provider pay).
   let travel: { minCents: number; maxCents: number; candidates: number } | null = null;
   const { clinicRatePreview } = await import("./clinicRate");
   const loc = await prisma.clinicLocation.findUniqueOrThrow({ where: { id: input.locationId }, select: { timeZone: true } });
   const clinicRate = await clinicRatePreview(prisma, { startsAt: input.startsAt, marketClinicPriceCents: q.base.clinicPriceCents, timeZone: loc.timeZone, days: 1 });
+  // Open states: how many doctors could take this shift right now (the posting gate's own check).
+  const supply = await liveSupply(input, location, q, opts.needed ?? 1);
   return {
+    supply,
     clinicRate,
     coverageCents: q.base.clinicPriceCents,
     discountCents: q.promo?.discountCents ?? 0,
@@ -202,6 +205,28 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT) {
  * Clinic-facing volume facts for the posting screen: the tier booked, both tier prices (never
  * provider pay), the extra-visit rule, the location's recent visit counts and the under-declare hint.
  */
+async function liveSupply(input: z.output<typeof ShiftInput>, loc: Prisma.ClinicLocationGetPayload<object>, q: Awaited<ReturnType<typeof quoteShift>>, needed: number) {
+  const supply = await import("./supply");
+  if (!(await supply.supplyGateOn())) return null;
+  const org = await prisma.clinicOrg.findUniqueOrThrow({ where: { id: loc.clinicOrgId }, select: { verificationStatus: true, verifiedUntil: true, verificationGraceUntil: true, minYearsExperience: true } });
+  const r = await supply.previewSupply(
+    prisma,
+    {
+      locationId: loc.id, professionCode: input.professionCode, state: loc.state, startsAt: input.startsAt, endsAt: input.endsAt,
+      requiredSkillIds: input.requiredSkillIds, preferredSkillIds: input.preferredSkillIds, minYearsExperience: input.minYearsExperience ?? org.minYearsExperience,
+      lodgingAllowed: input.lodgingAllowed, maxTravelBudgetCents: input.maxTravelBudgetCents ?? null,
+      flyInAirfareCents: null, flyInNightlyCents: null, flyInUntil: null,
+      durationTier: q.base.tier, providerPayCents: input.clinicRate ? Math.round((q.base.providerPayCents * input.clinicRate.priceCents) / Math.max(1, q.base.clinicPriceCents)) : q.base.providerPayCents,
+      lunchMinutes: input.lunchMinutes, lodgingCapCentsPerNight: null,
+      supervisionAttestedAt: input.supervisionAttestation ? new Date() : null, supervisionAttestation: (input.supervisionAttestation ?? null) as Prisma.JsonValue,
+      location: { clinicOrgId: loc.clinicOrgId, lat: loc.lat, lng: loc.lng, timeZone: loc.timeZone, clinicOrg: org },
+    },
+    needed,
+    !!input.clinicRate,
+  );
+  return { ok: r.ok, available: r.available, gap: r.gap, headline: r.headline, detail: r.detail };
+}
+
 async function clinicVolumeView(v: NonNullable<Awaited<ReturnType<typeof quoteShift>>["volume"]>, locationId: string, expected: number | null) {
   const s = await getSettings();
   const n = s["pricing.underDeclareWarningShifts"];
@@ -242,6 +267,9 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
   const orgId = requireClinic(actor);
   const input = ShiftInput.parse(raw);
   const effects = new Effects();
+  // Open states: posting needs an available doctor, checked on the saved draft before it goes out (supply.ts).
+  const { assertSupplyForPosting, supplyGateOn } = await import("./supply");
+  const gate = opts.post && (await supplyGateOn());
   const shiftId = await tx(async (db) => {
     const org = await db.clinicOrg.findUniqueOrThrow({ where: { id: orgId } });
     if (opts.post && (org.status === "SUSPENDED" || org.status === "DEACTIVATED")) throw new DomainError("FORBIDDEN", "Your account is suspended, so new shifts can't be posted. Please contact us.");
@@ -295,9 +323,25 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
     });
     await audit(db, actor, "shift.created", "Shift", shift.id, null, { status: "DRAFT", clinicPriceCents: shift.clinicPriceCents, providerPayCents: shift.providerPayCents, rateMode: shift.rateMode });
     if (rate) effects.add(async () => (await import("./clinicRate")).sendClinicRateReceipt(shift.id));
-    if (opts.post) await postInTx(db, actor, shift.id, effects);
+    if (opts.post && !gate) await postInTx(db, actor, shift.id, effects);
     return shift.id;
   });
+  if (gate) {
+    try {
+      await assertSupplyForPosting([shiftId]);
+    } catch (e) {
+      // A clinic-set rate is only kept on a posted shift: nothing is saved.
+      if (input.clinicRate && e instanceof DomainError && e.code === "NO_PROVIDER_AVAILABLE") {
+        await prisma.postingDemand.updateMany({ where: { shiftId }, data: { shiftId: null } });
+        await prisma.shift.delete({ where: { id: shiftId } });
+        throw new DomainError("NO_PROVIDER_AVAILABLE", e.message.replace(/We saved it as a draft.*$/, "Nothing was saved; try the market price or another day."), { gap: (e.details as { gap?: string })?.gap });
+      }
+      throw e;
+    }
+    await effects.run();
+    await postShift(actor, shiftId, { skipSupply: true });
+    return { shiftId };
+  }
   await effects.run();
   return { shiftId };
 }
@@ -326,9 +370,14 @@ async function assertNoOpenChargeback(orgId: string) {
   }
 }
 
-export async function postShift(actor: Actor, shiftId: string) {
+export async function postShift(actor: Actor, shiftId: string, opts: { skipSupply?: boolean } = {}) {
   const orgId = requireClinic(actor);
   const effects = new Effects();
+  const supply = await import("./supply");
+  if (!opts.skipSupply) {
+    const own = await prisma.shift.findFirst({ where: { id: shiftId, location: { clinicOrgId: orgId } }, select: { status: true } });
+    if (own?.status === "DRAFT") await supply.assertSupplyForPosting([shiftId]);
+  }
   await tx(async (db) => {
     const shift = await db.shift.findFirst({ where: { id: shiftId, location: { clinicOrgId: orgId } } });
     if (!shift) throw new DomainError("NOT_FOUND", "Shift not found");
@@ -347,6 +396,7 @@ export async function postShift(actor: Actor, shiftId: string) {
     );
     await postInTx(db, actor, shiftId, effects);
   });
+  await supply.markDemandPosted([shiftId]);
   await effects.run();
 }
 

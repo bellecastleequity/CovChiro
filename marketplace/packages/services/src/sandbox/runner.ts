@@ -71,7 +71,12 @@ async function enqueue(label: string, specs: Spec[], adminUserId: string | null,
 }
 
 /** Work through the queue until it's empty or `budgetMs` is spent. Safe to call from several places (leased). */
+/** Demo shifts are posted whether or not a demo doctor can take them (the open-states check is for real clinics). */
 export async function runQueue(budgetMs = 45_000) {
+  return (await import("../supply")).withoutSupplyGate(() => runQueueSteps(budgetMs));
+}
+
+async function runQueueSteps(budgetMs: number) {
   if (!isSandbox()) return "not the test site";
   // Loaded lazily: jobs.ts also loads this file.
   const { acquireLease, releaseLease } = await import("../jobs");

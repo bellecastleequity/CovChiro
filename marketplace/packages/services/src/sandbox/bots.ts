@@ -32,6 +32,10 @@ const roll = (id: string) => [...id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0
 const UNFILLED = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] as const;
 
 export async function botsTick(now = new Date()) {
+  return (await import("../supply")).withoutSupplyGate(() => botsTickRun(now));
+}
+
+async function botsTickRun(now: Date) {
   await keepDemoAgreementsCurrent();
   if (!isSandbox()) return "not the test site";
   if (!(await prisma.setting.findUnique({ where: { key: "sandbox.builtAt" } }))) return "no demo yet";

@@ -5,6 +5,7 @@ import { confirmProvider } from "./confirm";
 import { assertProviderEligibleForShift } from "./eligibility";
 import { lockedGroupId } from "./sameProvider";
 import { notifyClinic } from "./notify";
+import { assertSupplyForPosting } from "./supply";
 import { applyToShift, cancelAssignment, createShift, flyInFields, postShift, selectApplicant, ShiftInput, type ShiftInputT, validateShiftInput } from "./shifts";
 
 /**
@@ -51,8 +52,12 @@ export async function createMultiDay(actor: Actor, days: ShiftInputT[], opts: { 
     await prisma.shift.update({ where: { id: shiftId }, data: { shiftGroupId: group.id, ...(fly ?? {}) } });
     shiftIds.push(shiftId);
   }
-  if (opts.post) for (const id of shiftIds) await postShift(actor, id);
   await audit(prisma, actor, "booking.created", "ShiftGroup", group.id, null, { days: shiftIds.length, post: opts.post });
+  if (opts.post) {
+    // Every day needs an available doctor; otherwise the whole booking waits as drafts.
+    await assertSupplyForPosting(shiftIds);
+    for (const id of shiftIds) await postShift(actor, id, { skipSupply: true });
+  }
   return { groupId: group.id, shiftIds };
 }
 
@@ -66,10 +71,16 @@ export async function createForProviders(actor: Actor, days: ShiftInputT[], prov
   const n = Math.floor(providers);
   if (!(n >= 1 && n <= MAX_PROVIDERS_AT_ONCE)) throw new DomainError("VALIDATION", `Choose 1 to ${MAX_PROVIDERS_AT_ONCE} providers.`);
   if (n > 1 && days.some((d) => d.clinicRate)) throw new DomainError("VALIDATION", "A clinic-set rate is available for one provider at a time.");
-  const shiftIds: string[] = [];
+  if (n === 1) return { shiftIds: (await createMultiDay(actor, days, opts)).shiftIds, bookings: 1 };
+  // Several providers: all bookings saved first, then posted only if enough doctors can take every day.
+  const made: string[][] = [];
   for (let i = 0; i < n; i++) {
-    const r = await createMultiDay(actor, i === 0 ? days : days.map((d) => ({ ...d, promoCode: null })), opts);
-    shiftIds.push(...r.shiftIds);
+    made.push((await createMultiDay(actor, i === 0 ? days : days.map((d) => ({ ...d, promoCode: null })), { post: false })).shiftIds);
+  }
+  const shiftIds = made.flat();
+  if (opts.post) {
+    await assertSupplyForPosting(made[0], n, shiftIds);
+    for (const id of shiftIds) await postShift(actor, id, { skipSupply: true });
   }
   return { shiftIds, bookings: n };
 }

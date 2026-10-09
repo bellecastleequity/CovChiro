@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Ban, Car, Heart, MessageSquare, Radar, Star, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
 import { clinicView } from "@cm/core";
-import { dispatch, getSettings, sameProvider, shiftCandidates, shiftChanges, timeclock, volume } from "@cm/services";
+import { dispatch, getSettings, sameProvider, shiftCandidates, shiftChanges, supply as supplySvc, timeclock, volume } from "@cm/services";
 import { clinicApproveAction, clinicConfirmVisitsAction, clinicReportAction, clinicReportVisitsAction } from "@/app/timeclock-actions";
 import { ClinicVisitPanel } from "@/components/timeclock/visit-count";
 import { SignOffForm } from "@/components/timeclock/signoff-form";
@@ -89,7 +89,7 @@ function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; ap
   );
 }
 
-export default async function ClinicShift({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ posted?: string; saved?: string; rebooked?: string; changed?: string }> }) {
+export default async function ClinicShift({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ posted?: string; saved?: string; rebooked?: string; changed?: string; waiting?: string }> }) {
   const { actor, user } = await requireActor("clinic");
   const { id } = await params;
   const sp = await searchParams;
@@ -108,6 +108,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
   const visitView = live && +live.startsAt <= Date.now() ? await volume.visitViewForClinic(actor, live.id) : null;
   const sheet = live && s["timeclock.enabled"] && +live.startsAt - Date.now() < s["timeclock.earliestInMinutes"] * 60_000 ? await timeclock.timesheetForClinic(actor, live.id) : null;
   const selectable = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"].includes(shift.status);
+  const draftSupply = shift.status === "DRAFT" ? await supplySvc.draftSupply(actor, shift.id) : null;
   const cands = selectable ? await shiftCandidates(actor, id) : null;
   const track = await dispatch.dispatchStatus(id);
   const acceptedIds = new Set(track?.acceptedPending.map((a) => a.providerId) ?? []);
@@ -208,6 +209,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
       ) : null}
       {sp.posted ? <Alert tone="success" className="mb-5" title="Shift posted">We're notifying eligible providers now. Applicants will appear below.</Alert> : null}
       {sp.saved ? <Alert tone="info" className="mb-5">Draft saved.</Alert> : null}
+      {sp.waiting ? <Alert tone="warning" className="mb-5" title="Saved as a draft: no doctor can take it yet">We&apos;ll text and email you the moment a doctor is available, so you can post it in one tap. Meanwhile we&apos;re recruiting doctors in your area.</Alert> : null}
       {sp.rebooked ? <Alert tone="success" className="mb-5" title="Booked again">We posted the shift and invited your provider. You&apos;ll hear from us as soon as they accept.</Alert> : null}
       {shift.emergencyAt && selectable ? (
         <Alert tone="warning" className="mb-5" title={shift.rescueOfShiftId ? "Emergency replacement — we're on it" : "We've had a cancellation — we're on it"}>
@@ -388,7 +390,14 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
             </Card>
           ) : null}
           {shift.status === "DRAFT" ? (
-            <Card><CardBody>
+            <Card><CardBody className="space-y-3">
+              {draftSupply?.ok ? (
+                <Alert tone="success" title={`${draftSupply.available} doctor${draftSupply.available === 1 ? " is" : "s are"} available for this shift now`}>Post it before they&apos;re booked elsewhere.</Alert>
+              ) : draftSupply ? (
+                <Alert tone="warning" title={draftSupply.waiting ? "Waiting for a doctor" : "No doctor available yet"}>
+                  {draftSupply.headline} {draftSupply.hint && !/recruiting/.test(draftSupply.hint) ? `${draftSupply.hint} ` : ""}{draftSupply.waiting ? "We'll text and email you the moment a doctor can take it, so you can post it in one tap." : "Post it and we'll keep it as a draft and tell you the moment a doctor can take it."}
+                </Alert>
+              ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 <ActionForm action={postDraftAction}><input type="hidden" name="shiftId" value={shift.id} /><SubmitButton>Post this shift</SubmitButton></ActionForm>
                 <LinkButton variant="outline" href={`/clinic/shifts/new?draft=${shift.id}`}>Edit draft</LinkButton>

@@ -89,6 +89,24 @@ const A: HelpArticle[] = [
   },
   // ---------------- posting ----------------
   {
+    slug: "no-doctor-available",
+    category: "posting",
+    title: "When no doctor is available yet",
+    summary: "We only post a shift when a doctor can take it. Otherwise we save it and tell you the moment one can.",
+    keywords: "no doctor available waiting draft booked not enrolled new state open notify text email demand",
+    links: [{ href: "/clinic/shifts/new", label: "Post a shift" }, { href: "/clinic/shifts", label: "My shifts" }],
+    body: () => (
+      <Ul
+        items={[
+          "While you fill in a shift we show how many doctors could take it right now: licensed in your state, insured, close enough, free that day and not already booked.",
+          "If none can, we don't post it, so you're never left waiting on a shift nobody can fill. We save it as a draft instead and tell you why: no doctors near you yet, everyone booked at that time, or the shift's details (for example required skills or minimum experience) rule them out.",
+          "The moment a doctor can take it, we text and email you. Open the link and tap Post this shift; it goes out right away.",
+          "Every request we can't fill tells our recruiting team where clinics need doctors, so we recruit there first.",
+        ]}
+      />
+    ),
+  },
+  {
     slug: "same-provider",
     category: "posting",
     title: "Same provider for every day of a booking",

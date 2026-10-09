@@ -41,3 +41,4 @@ export * from "./names";
 export * from "./instagram";
 export * from "./health";
 export * from "./seo";
+export * from "./supply";

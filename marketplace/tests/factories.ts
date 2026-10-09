@@ -102,6 +102,7 @@ const DEFAULT_LOC: Record<string, { zip: string; lat: number; lng: number; city:
   FL: { zip: "32801", lat: 28.5421, lng: -81.379, city: "Orlando" },
   GA: { zip: "30303", lat: 33.749, lng: -84.388, city: "Atlanta" },
   AL: { zip: "36602", lat: 30.694, lng: -88.043, city: "Mobile" },
+  NM: { zip: "87102", lat: 35.0844, lng: -106.6504, city: "Albuquerque" },
 };
 
 export async function makeClinic(o: ClinicOpts = {}) {

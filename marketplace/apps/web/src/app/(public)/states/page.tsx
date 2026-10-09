@@ -20,7 +20,7 @@ export default async function States() {
   return (
     <div className="container-page py-16">
       <h1 className="text-4xl font-semibold">Where we're available</h1>
-      <p className="mt-3 max-w-2xl text-slate-600">We open state by state. If your state isn&apos;t open yet, hang tight: we&apos;ll be in your area soon.</p>
+      <p className="mt-3 max-w-2xl text-slate-600">Clinics in the highlighted states can post a shift whenever a doctor near them is available, and we tell them the moment one is. Providers can enroll from any state: every doctor who joins opens up coverage for the clinics near them.</p>
       <div className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
         {Object.entries(US_STATES).map(([code, name]) => {
           const live = byState.get(code);

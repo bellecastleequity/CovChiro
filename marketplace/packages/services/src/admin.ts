@@ -1,10 +1,11 @@
 import { brand, env, validateSetting, SETTINGS } from "@cm/config";
-import { DomainError, NATIONAL_CREDENTIAL, nextReverifyAt, US_STATES } from "@cm/core";
+import { closedListAfterToggle, DomainError, NATIONAL_CREDENTIAL, nextReverifyAt, US_STATES } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
 import { checkGoogleServerKey, mailProvider, onAllowList, smsProvider, TWILIO_ERROR_HELP } from "@cm/integrations";
 import { audit, getSettings, invalidateSettings, requireAdmin, type Actor } from "./context";
 import { notify, sendEmail } from "./notify";
 import { recomputeProviderStatus } from "./onboarding";
+import { nationalRateRegionId } from "./pricing";
 import { ensureSchools } from "./schools";
 
 // ======================================================================
@@ -130,11 +131,12 @@ export async function stateMatrix(actor: Actor) {
     prisma.rateRegion.findMany({ include: { rateCards: { where: { effectiveTo: null } } } }),
     prisma.license.groupBy({ by: ["professionCode", "state"], where: { status: "VERIFIED", expiresAt: { gt: new Date() } }, _count: true }),
   ]);
+  const national = (await getSettings())["pricing.nationalRateRegion"];
   const cells = states.map((st) => ({
     state: st,
     cells: professions.map((p) => {
       const psc = pscs.find((x) => x.professionCode === p.code && x.state === st.state) ?? null;
-      const checklist = pairChecklist(p, psc, st, regions);
+      const checklist = pairChecklist(p, psc, st, regions, national);
       const ready = Object.values(checklist).every(Boolean);
       return {
         professionCode: p.code,
@@ -155,8 +157,11 @@ function pairChecklist(
   psc: { legalReviewComplete: boolean; licensedAtStateLevel: boolean; alternativeCredentialAllowed: boolean; boardLookupUrl: string | null; supervisionRequired: boolean | null; supervisingProfessionCodes: string[] } | null,
   st: { enabled: boolean; state: string },
   regions: Region[],
+  /** pricing.nationalRateRegion: prices a state that has no rate regions of its own. */
+  national = "",
 ) {
-  const stateRegions = regions.filter((r) => r.state === st.state);
+  const own = regions.filter((r) => r.state === st.state);
+  const stateRegions = own.length ? own : regions.filter((r) => national && r.name === national);
   const tiers = p.pricingModel === "HOURLY" ? ["HOURLY"] : ["HALF_DAY", "FULL_DAY"];
   return {
     stateEnabled: st.enabled,
@@ -166,6 +171,15 @@ function pairChecklist(
     supervisionConfigured: psc?.supervisionRequired !== null && psc?.supervisionRequired !== undefined && (!psc.supervisionRequired || psc.supervisingProfessionCodes.length > 0),
     rateCards: stateRegions.length > 0 && stateRegions.every((r) => tiers.every((t) => r.rateCards.some((c) => c.professionCode === p.code && c.durationTier === t))),
   };
+}
+
+/** Setting market.closedStates: what the admin switched off stays off (and switching on removes it). */
+async function rememberSwitch(key: string, enabled: boolean) {
+  const closed = (await getSettings())["market.closedStates"];
+  const next = closedListAfterToggle(closed, key, enabled);
+  if (next.join() === [...closed].sort().join()) return;
+  await prisma.setting.upsert({ where: { key: "market.closedStates" }, create: { key: "market.closedStates", value: next }, update: { value: next } });
+  invalidateSettings();
 }
 
 export async function updateStateConfig(
@@ -180,13 +194,15 @@ export async function updateStateConfig(
     const regions = await prisma.rateRegion.findMany({ where: { state }, include: { rateCards: { where: { effectiveTo: null } } } });
     if (!next.legalReviewComplete) throw new DomainError("VALIDATION", "Mark legal review complete before enabling the state.");
     if (!next.boardLookupUrl) throw new DomainError("VALIDATION", "Add the board lookup URL before enabling the state.");
-    if (!regions.length) throw new DomainError("VALIDATION", "Create at least one rate region (with rate cards) before enabling the state.");
+    if (!regions.length && !(await nationalRateRegionId(prisma))) throw new DomainError("VALIDATION", "Create at least one rate region (with rate cards) before enabling the state, or set Settings → Pricing → Default rate region.");
   }
   const updated = await prisma.stateConfig.update({
     where: { state },
     data: { ...patch, ...(patch.enabled === true && !before.enabled ? { enabledAt: new Date(), enabledById: actor.userId } : {}) },
   });
   await audit(prisma, actor, patch.enabled !== undefined && patch.enabled !== before.enabled ? (patch.enabled ? "state.enabled" : "state.disabled") : "state.updated", "StateConfig", state, before, updated);
+  // Open states: the admin's switch is remembered, so the automatic opening never undoes it.
+  if (patch.enabled !== undefined && patch.enabled !== before.enabled) await rememberSwitch(state, patch.enabled);
   // Opening a state: tell its waitlist now (the hourly sweep is the backstop).
   if (patch.enabled && !before.enabled) void import("./waitlist").then((m) => m.waitlistOpeningSweep()).catch(() => undefined);
   let affected: { id: string }[] = [];
@@ -313,12 +329,13 @@ export async function updateProfessionState(
     malpracticeMinAggregateCents: patch.malpracticeMinAggregateCents ?? before?.malpracticeMinAggregateCents ?? profession.defaultMalpracticeMinAggregateCents,
   };
   if (patch.enabled) {
+    const national = (await getSettings())["pricing.nationalRateRegion"];
     const [st, regions] = await Promise.all([
       prisma.stateConfig.findUniqueOrThrow({ where: { state } }),
-      prisma.rateRegion.findMany({ where: { state }, include: { rateCards: { where: { effectiveTo: null } } } }),
+      prisma.rateRegion.findMany({ where: { OR: [{ state }, ...(national ? [{ name: national }] : [])] }, include: { rateCards: { where: { effectiveTo: null } } } }),
     ]);
     const next = { ...before, ...patch } as NonNullable<typeof before>;
-    const check = pairChecklist(profession, next, st, regions);
+    const check = pairChecklist(profession, next, st, regions, national);
     const missing = Object.entries(check).filter(([, ok]) => !ok).map(([k]) => k);
     if (missing.length) throw new DomainError("VALIDATION", `Checklist incomplete: ${missing.join(", ")}`, { missing });
   }
@@ -338,6 +355,7 @@ export async function updateProfessionState(
   // Opening a profession in a state: tell its waitlist now (the hourly sweep is the backstop).
   if (patch.enabled && !before?.enabled) void import("./waitlist").then((m) => m.waitlistOpeningSweep()).catch(() => undefined);
   await audit(prisma, actor, patch.enabled !== undefined && patch.enabled !== before?.enabled ? (patch.enabled ? "profession_state.enabled" : "profession_state.disabled") : "profession_state.updated", "ProfessionStateConfig", `${professionCode}:${state}`, before, updated);
+  if (patch.enabled !== undefined && patch.enabled !== (before?.enabled ?? false)) await rememberSwitch(`${professionCode}:${state}`, patch.enabled);
   return updated;
 }
 

@@ -26,11 +26,20 @@ export async function resolveRateRegion(db: Db, state: string, zip: string): Pro
   const region = await db.rateRegion.findFirst({ where: { state, zip3List: { has: zip3 } } });
   if (region) return region.id;
   const cfg = await db.stateConfig.findUnique({ where: { state } });
+  // A state with no prices of its own uses the default (national) card at quote time; no task per ZIP3.
+  if (!cfg?.defaultRateRegionId && !(await db.rateRegion.count({ where: { state } }))) return null;
   const existingTask = await db.adminTask.findFirst({ where: { kind: "UNMAPPED_ZIP3", entityId: `${state}:${zip3}`, resolvedAt: null } });
   if (!existingTask) {
     await db.adminTask.create({ data: { kind: "UNMAPPED_ZIP3", title: `ZIP3 ${zip3} (${state}) isn't mapped to a rate region`, entityType: "RateRegion", entityId: `${state}:${zip3}` } });
   }
   return cfg?.defaultRateRegionId ?? null;
+}
+
+/** Setting pricing.nationalRateRegion: the card used in any state without prices of its own (never stored on a location). */
+export async function nationalRateRegionId(db: Db): Promise<string | null> {
+  const name = (await getSettings(db))["pricing.nationalRateRegion"].trim();
+  if (!name) return null;
+  return (await db.rateRegion.findUnique({ where: { name }, select: { id: true } }))?.id ?? null;
 }
 
 /** The card in force at `at`; volumeTier null = the flat (non-volume) card. */
@@ -127,7 +136,7 @@ export async function quoteShift(
   if (!profession) throw new DomainError("VALIDATION", "Unknown profession");
   if (+input.endsAt <= +input.startsAt) throw new DomainError("VALIDATION", "The shift must end after it starts.");
   if (hoursBetween(input.startsAt, input.endsAt) > 16) throw new DomainError("VALIDATION", "Shifts can be at most 16 hours. Post multiple days as separate shifts.");
-  const rateRegionId = location.rateRegionId ?? (await resolveRateRegion(db, location.state, location.zip));
+  const rateRegionId = location.rateRegionId ?? (await resolveRateRegion(db, location.state, location.zip)) ?? (await nationalRateRegionId(db));
   if (!rateRegionId) throw new DomainError("VALIDATION", `Pricing isn't set up for ${location.state} yet.`);
   // The tier follows paid hours (an 8–1 morning with an hour's lunch is a 4-hour day).
   const hours = paidHours(round2(hoursBetween(input.startsAt, input.endsAt)), input.lunchMinutes ?? 0, s["pricing.maxDaySpanMinutes"]);

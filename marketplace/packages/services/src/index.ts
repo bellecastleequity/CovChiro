@@ -68,4 +68,6 @@ export * as seo from "./seo";
 export * as waitlist from "./waitlist";
 export * as shiftChanges from "./shiftChanges";
 export * as clinicRate from "./clinicRate";
+export * as supply from "./supply";
+export * as markets from "./markets";
 export * as sandbox from "./sandbox";

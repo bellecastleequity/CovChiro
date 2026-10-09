@@ -65,6 +65,8 @@ interface Quote {
   billableHours: number;
   subtotalCents: number;
   overlapping?: number;
+  /** Open states: doctors who could take it now (null = the check is off). */
+  supply?: { ok: boolean; available: number; gap: string | null; headline: string; detail: string; shortDate: string | null } | null;
   volume?: {
     tier: "LIGHT" | "BUSY";
     terms: { ceiling: number; grace: number; overageClinicCents: number };
@@ -268,13 +270,15 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const supOk = !prof?.supervisionRequired || (sup.supervisorName.length > 1 && sup.supervisorLicenseNumber.length > 2 && sup.onSiteEntireShift && !!sup.supervisorProfessionCode);
   const daysOk = days.every((d) => d.date && d.start && d.end) && new Set(days.map((d) => d.date)).size === days.length;
   const canNext = [!!locationId, !!prof?.enabled && supOk, daysOk, !volumePriced || visitsNum != null, true][step];
-  // Re-price as the expected visits change (they pick Light or Busy).
+  // Re-price (and recount available doctors) as the shift changes, from the When step on.
   useEffect(() => {
-    if (step < 3) return;
-    const t = setTimeout(refreshQuote, 350);
+    if (step < 2 || !daysOk) return;
+    const t = setTimeout(refreshQuote, 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expectedPatients]);
+  }, [payload, step, daysOk]);
+  const supply = quote?.supply ?? null;
+  const noDoctor = !!supply && !supply.ok;
   const v = quote?.volume ?? null;
   const coverageTotal = quote ? (quote.days && quote.days.length > 1 ? (quote.totalCents ?? 0) : quote.subtotalCents) : null;
   const closing = (collapsible: boolean) => (
@@ -581,13 +585,14 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                     <Checkbox className="mt-3" checked={volumeAck} onChange={(e) => setVolumeAck(e.target.checked)} label="I understand the final price may go up if the day is busier than booked." />
                   </div>
                 ) : null}
+                {noDoctor ? <SupplyNote supply={supply!} /> : null}
                 {!canPost ? <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="size-4 shrink-0" /><span>Finish setup to post: a payment method and the current Clinic Platform Agreement (<a href="/clinic/settings#agreement" className="font-medium underline">sign in Settings</a>). You can save a draft now.</span></p> : null}
                 <div className="flex flex-wrap gap-2">
                   <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
                     <input type="hidden" name="payload" value={payload} />
                     <input type="hidden" name="mode" value="post" />
-                    <SubmitButton size="lg" pendingText="Posting…" disabled={(volumePriced && !volumeAck) || (rateActive && !(ratePrice?.ok && rateAck))}>{providersNeeded > 1 && !draft ? `Post ${providersNeeded} bookings` : days.length > 1 ? `Post ${days.length}-day booking` : rateActive && ratePrice?.ok ? `Post at ${money(ratePrice.clinicPriceCents)}` : "Post shift"}</SubmitButton>
+                    <SubmitButton size="lg" pendingText={noDoctor ? "Saving…" : "Posting…"} disabled={(volumePriced && !volumeAck) || (rateActive && !(ratePrice?.ok && rateAck)) || (noDoctor && rateActive)}>{noDoctor ? "Save and tell me when a doctor is available" : providersNeeded > 1 && !draft ? `Post ${providersNeeded} bookings` : days.length > 1 ? `Post ${days.length}-day booking` : rateActive && ratePrice?.ok ? `Post at ${money(ratePrice.clinicPriceCents)}` : "Post shift"}</SubmitButton>
                   </ActionForm>
                   <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
@@ -617,6 +622,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
             <h3 className="font-semibold">Price</h3>
             {pending ? <p className="text-sm text-slate-400">Calculating…</p> : null}
             {quoteError ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{quoteError}</p> : null}
+            {supply && !pending ? <SupplyBadge supply={supply} /> : null}
             {quote && !pending ? (
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between"><span>Coverage ({quote.tier === "HOURLY" ? `${quote.billableHours}h` : quote.tier === "HALF_DAY" ? "half day" : `full day${(quote.overtimeHours ?? Math.max(0, quote.hours - 8)) > 0 ? ` + ${Math.round((quote.overtimeHours ?? quote.hours - 8) * 100) / 100}h OT` : ""}`})</span><span className="tabular-nums">{money(quote.coverageCents)}</span></div>
@@ -655,6 +661,30 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
         {volumePriced && step >= 3 ? <div className="mt-4 hidden lg:block">{closing(false)}</div> : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Live count of doctors who could take this shift right now (open states: posting needs one). */
+function SupplyBadge({ supply }: { supply: NonNullable<Quote["supply"]> }) {
+  return supply.ok ? (
+    <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+      <Users className="size-4 shrink-0" />
+      <span><b>{supply.available}</b> doctor{supply.available === 1 ? "" : "s"} available for this shift right now</span>
+    </p>
+  ) : (
+    <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+      <span><b>{supply.available ? `${supply.available} doctor${supply.available === 1 ? "" : "s"} available` : "No doctors available"}</b>{supply.shortDate ? ` on ${supply.shortDate}` : ""}. {supply.headline}</span>
+    </p>
+  );
+}
+
+function SupplyNote({ supply }: { supply: NonNullable<Quote["supply"]> }) {
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <p className="font-semibold">{supply.headline}{supply.shortDate ? ` (${supply.shortDate})` : ""}</p>
+      <p className="mt-1">{supply.detail}</p>
     </div>
   );
 }

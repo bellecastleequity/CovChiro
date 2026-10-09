@@ -14,7 +14,7 @@ export default async function States({ searchParams }: { searchParams: Promise<{
   const shown = all ? rows : rows.filter((r) => r.state.enabled || r.cells.some((c) => c.psc) || ["FL", "GA", "AL"].includes(r.state.state));
   return (
     <>
-      <PageHeader title="States & professions" description="A shift can be posted only where the state AND the profession-state pair are enabled. Click a state to edit its checklist." actions={<Link className="text-sm text-brand-700" href={all ? "/admin/states" : "/admin/states?all=1"}>{all ? "Show active" : "Show all 51"}</Link>} />
+      <PageHeader title="States & professions" description="A shift can be posted only where the state AND the profession-state pair are enabled, and (open states) only when at least one doctor can take it. With Settings → Open states on, every state not switched off here opens automatically each hour; switching a state or pair off keeps it off. Click a state to edit its checklist." actions={<Link className="text-sm text-brand-700" href={all ? "/admin/states" : "/admin/states?all=1"}>{all ? "Show active" : "Show all 51"}</Link>} />
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
           <thead>

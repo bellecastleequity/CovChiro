@@ -564,6 +564,33 @@ model ClinicOrg {
 }
 
 /// One submission of the clinic verification form, with the automatic check results and the decision.
+/// A clinic tried to post but no doctor could take the shift (open states). Demand for Growth.
+model PostingDemand {
+  id             String    @id @default(cuid())
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  clinicOrgId    String
+  locationId     String
+  shiftId        String?
+  professionCode String
+  state          String    @db.Char(2)
+  city           String
+  zip            String
+  lat            Float
+  lng            Float
+  startsAt       DateTime  @db.Timestamptz(3)
+  /// core SupplyGap: NONE_NEARBY | BOOKED | UNAVAILABLE | REQUIREMENTS | TOO_FEW
+  gap            String
+  needed         Int       @default(1)
+  available      Int       @default(0)
+  /// Licensed + insured doctors within reach who couldn't take it.
+  nearby         Int       @default(0)
+  /// Set when the clinic later posted the shift (a doctor became available).
+  postedAt       DateTime? @db.Timestamptz(3)
+
+  @@index([state, createdAt])
+  @@index([createdAt])
+}
+
 model ClinicVerification {
   id                      String    @id @default(cuid())
   clinicOrgId             String
@@ -751,84 +778,87 @@ enum ShiftStatus {
 }
 
 model Shift {
-  id                      String           @id @default(cuid())
-  locationId              String
-  location                ClinicLocation   @relation(fields: [locationId], references: [id])
-  shiftGroupId            String?
-  shiftGroup              ShiftGroup?      @relation(fields: [shiftGroupId], references: [id])
+  id                          String           @id @default(cuid())
+  locationId                  String
+  location                    ClinicLocation   @relation(fields: [locationId], references: [id])
+  shiftGroupId                String?
+  shiftGroup                  ShiftGroup?      @relation(fields: [shiftGroupId], references: [id])
   /// Clinic preference: minimum years practicing this profession (0 = any).
-  minYearsExperience      Int              @default(0)
+  minYearsExperience          Int              @default(0)
   /// Generated from a standing booking (ongoing work between one clinic and one provider).
-  standingBookingId       String?
-  standingBooking         StandingBooking? @relation(fields: [standingBookingId], references: [id])
+  standingBookingId           String?
+  standingBooking             StandingBooking? @relation(fields: [standingBookingId], references: [id])
   /// Copy of location.state, set and kept in sync by trigger.
-  state                   String           @db.Char(2)
-  professionCode          String
+  state                       String           @db.Char(2)
+  professionCode              String
   /// INV-8 attestation: { supervisorName, supervisorProfessionCode, supervisorLicenseNumber, onSiteEntireShift }.
-  supervisionAttestation  Json?
-  supervisionAttestedById String?
-  supervisionAttestedAt   DateTime?        @db.Timestamptz(3)
-  startsAt                DateTime         @db.Timestamptz(3)
-  endsAt                  DateTime         @db.Timestamptz(3)
-  status                  ShiftStatus      @default(DRAFT)
-  requiredSkillIds        String[]         @default([])
-  preferredSkillIds       String[]         @default([])
-  expectedPatients        Int?
-  notes                   String?
-  instantBook             Boolean          @default(false)
-  maxTravelBudgetCents    Int?
+  supervisionAttestation      Json?
+  supervisionAttestedById     String?
+  supervisionAttestedAt       DateTime?        @db.Timestamptz(3)
+  startsAt                    DateTime         @db.Timestamptz(3)
+  endsAt                      DateTime         @db.Timestamptz(3)
+  status                      ShiftStatus      @default(DRAFT)
+  requiredSkillIds            String[]         @default([])
+  preferredSkillIds           String[]         @default([])
+  expectedPatients            Int?
+  notes                       String?
+  instantBook                 Boolean          @default(false)
+  maxTravelBudgetCents        Int?
   /// Unpaid lunch (0 = none). Priced on paid hours: core paidHours (pricing.maxDaySpanMinutes limit).
-  lunchMinutes            Int              @default(0)
-  lunchStartsAt           DateTime?        @db.Timestamptz(3)
-  lodgingAllowed          Boolean          @default(false)
-  lodgingCapCentsPerNight Int?
+  lunchMinutes                Int              @default(0)
+  lunchStartsAt               DateTime?        @db.Timestamptz(3)
+  lodgingAllowed              Boolean          @default(false)
+  lodgingCapCentsPerNight     Int?
   /// Fly-in coverage allowed (snapshot at posting; null = no): airfare per trip, lodging per night, and the last moment a fly-in provider can be added.
-  flyInAirfareCents       Int?
-  flyInNightlyCents       Int?
-  flyInUntil              DateTime?        @db.Timestamptz(3)
+  flyInAirfareCents           Int?
+  flyInNightlyCents           Int?
+  flyInUntil                  DateTime?        @db.Timestamptz(3)
   // Pricing snapshot from the rate engine (INV-7)
-  rateCardId              String?
-  durationTier            DurationTier?
-  clinicPriceCents        Int
-  providerPayCents        Int
-  premiumsApplied         Json             @default("[]")
+  rateCardId                  String?
+  durationTier                DurationTier?
+  clinicPriceCents            Int
+  providerPayCents            Int
+  premiumsApplied             Json             @default("[]")
   /// Volume tier from expectedPatients at posting (Addendum 03); null = not volume priced.
-  declaredTier            VolumeTier?
+  declaredTier                VolumeTier?
   /// Terms in force at posting: { ceiling, grace, overageClinicCents, overageProviderCents }.
-  volumeTerms             Json?
-  boosted                 Boolean          @default(false)
+  volumeTerms                 Json?
+  boosted                     Boolean          @default(false)
   /// Emergency cover (no-show / late cancel): broadcast to everyone at once, wider radius, rescue bonus from margin.
-  emergencyAt             DateTime?        @db.Timestamptz(3)
-  emergencySource         String?
-  emergencyReason         String?
-  emergencyBonusPercent   Int              @default(0)
-  emergencyBasePayCents   Int?
+  emergencyAt                 DateTime?        @db.Timestamptz(3)
+  emergencySource             String?
+  emergencyReason             String?
+  emergencyBonusPercent       Int              @default(0)
+  emergencyBasePayCents       Int?
   /// Replacement for the remaining time of a shift whose provider didn't show.
-  rescueOfShiftId         String?
-  promoCodeId             String?
-  promoCode               PromoCode?       @relation(fields: [promoCodeId], references: [id])
-  promoDiscountCents      Int              @default(0)
+  rescueOfShiftId             String?
+  promoCodeId                 String?
+  promoCode                   PromoCode?       @relation(fields: [promoCodeId], references: [id])
+  promoDiscountCents          Int              @default(0)
   /// Clinic-set rate (beta): "MARKET" (rate engine) or "CLINIC" (clinic's own lower price, not auto-filled).
-  rateMode                String           @default("MARKET")
+  rateMode                    String           @default("MARKET")
   /// Market price/pay for this shift when the clinic set its own rate (for the floor, reports and release).
-  marketClinicPriceCents  Int?
-  marketProviderPayCents  Int?
+  marketClinicPriceCents      Int?
+  marketProviderPayCents      Int?
   /// The clinic chose to release to market if unfilled; releaseAt = start − releaseHours (as shown at posting).
-  releaseOnUnfilled       Boolean?
-  releaseHours            Int?
-  releaseAt               DateTime?        @db.Timestamptz(3)
-  releasedAt              DateTime?        @db.Timestamptz(3)
+  releaseOnUnfilled           Boolean?
+  releaseHours                Int?
+  releaseAt                   DateTime?        @db.Timestamptz(3)
+  releasedAt                  DateTime?        @db.Timestamptz(3)
   /// Receipt: { text, acceptedAt, acceptedById, acceptedByName, ip, floorPercent, ... } exactly as shown.
-  rateTerms               Json?
+  rateTerms                   Json?
+  /// Saved as a draft because no doctor could take it (open states): the clinic is told when one can.
+  waitingForProviderSince     DateTime?        @db.Timestamptz(3)
+  providerAvailableNotifiedAt DateTime?        @db.Timestamptz(3)
   // Matching timeline
-  postedAt                DateTime?        @db.Timestamptz(3)
-  favoritesWindowEndsAt   DateTime?        @db.Timestamptz(3)
-  selectionDeadline       DateTime?        @db.Timestamptz(3)
-  cascadeStartedAt        DateTime?        @db.Timestamptz(3)
-  cancelledAt             DateTime?        @db.Timestamptz(3)
-  cancelReason            String?
-  createdById             String
-  createdAt               DateTime         @default(now()) @db.Timestamptz(3)
+  postedAt                    DateTime?        @db.Timestamptz(3)
+  favoritesWindowEndsAt       DateTime?        @db.Timestamptz(3)
+  selectionDeadline           DateTime?        @db.Timestamptz(3)
+  cascadeStartedAt            DateTime?        @db.Timestamptz(3)
+  cancelledAt                 DateTime?        @db.Timestamptz(3)
+  cancelReason                String?
+  createdById                 String
+  createdAt                   DateTime         @default(now()) @db.Timestamptz(3)
 
   applications Application[]
   offers       Offer[]

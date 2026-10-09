@@ -53,6 +53,21 @@ export async function loadShifts(db: Db, shiftIds: string[]): Promise<Map<string
     where: { id: { in: shiftIds } },
     include: { location: { include: { clinicOrg: { select: { verificationStatus: true, verifiedUntil: true, verificationGraceUntil: true } } } } },
   });
+  return buildLoadedShifts(db, rows);
+}
+
+/** The shift columns eligibility reads (a stored row, or an unsaved one for a posting preview). */
+export type ShiftRowForEligibility = Pick<
+  Prisma.ShiftGetPayload<object>,
+  | "id" | "professionCode" | "state" | "startsAt" | "endsAt" | "requiredSkillIds" | "preferredSkillIds" | "minYearsExperience" | "lodgingAllowed" | "maxTravelBudgetCents"
+  | "flyInAirfareCents" | "flyInNightlyCents" | "flyInUntil" | "durationTier" | "providerPayCents" | "lunchMinutes" | "supervisionAttestedAt" | "supervisionAttestation"
+  | "lodgingCapCentsPerNight" | "status" | "locationId"
+> & {
+  location: { clinicOrgId: string; lat: number; lng: number; timeZone: string; clinicOrg: { verificationStatus: string; verifiedUntil: Date | null; verificationGraceUntil: Date | null } };
+};
+
+export async function buildLoadedShifts(db: Db, rows: ShiftRowForEligibility[]): Promise<Map<string, LoadedShift>> {
+  const out = new Map<string, LoadedShift>();
   if (!rows.length) return out;
   const settings = await getSettings(db);
   const maxDaySpan = settings["pricing.maxDaySpanMinutes"];

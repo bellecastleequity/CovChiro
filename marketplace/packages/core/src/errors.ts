@@ -27,7 +27,8 @@ export type ErrorCode =
   | "FORBIDDEN"
   | "UNAUTHENTICATED"
   | "CONFLICT"
-  | "PAYMENT_FAILED";
+  | "PAYMENT_FAILED"
+  | "NO_PROVIDER_AVAILABLE";
 
 export class DomainError extends Error {
   constructor(
@@ -56,6 +57,7 @@ function defaultStatus(code: ErrorCode): number {
     case "CONFLICT":
     case "INVALID_TRANSITION":
     case "SCHEDULE_CONFLICT":
+    case "NO_PROVIDER_AVAILABLE":
       return 409;
     case "PAYMENT_FAILED":
       return 402;
