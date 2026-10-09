@@ -171,3 +171,28 @@ describe("quiet hours & SMS replies (tests 21, 22)", () => {
     expect(pickReplyCode(new Set(["1000"]), () => 0.5)).toBe("5500");
   });
 });
+
+describe("quiet hours: waiting instead of giving up", () => {
+  it("quietHoursEnd gives the next local end time, across midnight and daylight-saving changes", async () => {
+    const { quietHoursEnd } = await import("../src");
+    // 5:00 AM EST on Nov 4 2026 → 6:00 AM EST (11:00 UTC).
+    expect(quietHoursEnd(new Date("2026-11-04T10:00:00Z"), "America/New_York", 1260, 360)?.toISOString()).toBe("2026-11-04T11:00:00.000Z");
+    // 11 PM EDT on Oct 14 → 6 AM EDT next day (10:00 UTC).
+    expect(quietHoursEnd(new Date("2026-10-15T03:00:00Z"), "America/New_York", 1260, 360)?.toISOString()).toBe("2026-10-15T10:00:00.000Z");
+    // Not in quiet hours → null; no quiet hours configured → null.
+    expect(quietHoursEnd(new Date("2026-10-14T16:00:00Z"), "America/New_York", 1260, 360)).toBeNull();
+    expect(quietHoursEnd(new Date("2026-10-14T03:00:00Z"), "America/New_York", 0, 0)).toBeNull();
+  });
+
+  it("quietWakeTime picks the earliest wake from which a provider can still arrive in time", async () => {
+    const { quietWakeTime } = await import("../src");
+    const start = new Date("2026-11-04T13:00:00Z"); // 8 AM EST
+    const six = new Date("2026-11-04T11:00:00Z");
+    const seven = new Date("2026-11-04T12:00:00Z");
+    expect(quietWakeTime([{ wakesAt: seven, driveMinutes: 20 }, { wakesAt: six, driveMinutes: 30 }], 30, start)).toEqual(six);
+    // 6 AM + 100 min drive + 30 min buffer is past 8 AM → that one can't make it; the 7 AM one can.
+    expect(quietWakeTime([{ wakesAt: six, driveMinutes: 100 }, { wakesAt: seven, driveMinutes: 20 }], 30, start)).toEqual(seven);
+    expect(quietWakeTime([{ wakesAt: seven, driveMinutes: 60 }], 30, start)).toBeNull();
+    expect(quietWakeTime([], 30, start)).toBeNull();
+  });
+});

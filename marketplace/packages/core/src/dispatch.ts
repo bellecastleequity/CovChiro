@@ -268,6 +268,24 @@ export function inQuietHours(now: Date, timeZone: string, startMin: number, endM
   return startMin < endMin ? m >= startMin && m < endMin : m >= startMin || m < endMin;
 }
 
+/** When a provider's quiet hours next end (their local endMin), or null when they're not in quiet hours now. */
+export function quietHoursEnd(now: Date, timeZone: string, startMin: number, endMin: number): Date | null {
+  if (!inQuietHours(now, timeZone, startMin, endMin)) return null;
+  const d = DateTime.fromJSDate(now, { zone: timeZone });
+  let end = d.startOf("day").plus({ minutes: endMin });
+  if (end <= d) end = end.plus({ days: 1 });
+  return end.toJSDate();
+}
+
+/**
+ * Before giving up on a dispatch: if some eligible providers were skipped only because of their quiet
+ * hours and could still get there in time once those end, wait until the earliest of them (null = no one).
+ */
+export function quietWakeTime(held: { wakesAt: Date; driveMinutes: number | null }[], arrivalBufferMinutes: number, startsAt: Date): Date | null {
+  const ok = held.filter((h) => arrivalFeasible(h.wakesAt, h.driveMinutes, arrivalBufferMinutes, startsAt)).map((h) => +h.wakesAt);
+  return ok.length ? new Date(Math.min(...ok)) : null;
+}
+
 // ---------------- SMS replies (§8.3) ----------------
 
 export type SmsReply = { kind: "YES" | "NO"; code: string | null } | { kind: "STOP" } | { kind: "START" } | { kind: "HELP" } | { kind: "UNKNOWN" };

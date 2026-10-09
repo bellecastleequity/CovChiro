@@ -9,6 +9,8 @@ import {
   DomainError,
   evaluateEligibility,
   inQuietHours,
+  quietHoursEnd,
+  quietWakeTime,
   onCallRuleMismatch,
   orderForDispatch,
   pickReplyCode,
@@ -109,6 +111,11 @@ async function advanceInTx(db: Db, dispatchId: string, effects: Effects): Promis
     if (d.waves.length) return; // an open wave is running; its close/responses drive the next step
     const s = await getSettings(db);
     const now = clock.now();
+    // Waiting for providers' quiet hours to end (see waitForQuietHours).
+    if (d.stageEndsAt && (d.stage === "WAVES" || d.stage === "BROADCAST")) {
+      if (+now < +d.stageEndsAt) return;
+      await db.dispatch.update({ where: { id: d.id }, data: { stageEndsAt: null } });
+    }
     const tier = urgencyTier(now, d.shift.startsAt);
     const cfg = tierConfigFor(s, tier, d.shift.professionCode);
 
@@ -146,13 +153,14 @@ async function advanceInTx(db: Db, dispatchId: string, effects: Effects): Promis
           const sent = await sendWave(db, d.id, tier, cfg, true, effects, { reoffer: alreadyBroadcast > 0 });
           if (sent) return;
         }
+        if (await waitForQuietHours(db, d.id, tier, cfg, effects)) return;
         await exhaust(db, d.id, effects);
         return;
       }
-      if (!alreadyBroadcast) {
-        const sent = await sendWave(db, d.id, tier, cfg, true, effects);
-        if (sent) return;
-      }
+      // Anyone not asked yet (after a quiet-hours wait, the providers who've just woken up).
+      const sent = await sendWave(db, d.id, tier, cfg, true, effects);
+      if (sent) return;
+      if (await waitForQuietHours(db, d.id, tier, cfg, effects)) return;
       await exhaust(db, d.id, effects);
       return;
     }
@@ -171,6 +179,35 @@ async function raiseRescueBonus(db: Db, shiftId: string, percent: number) {
   const pay = rescuePay(base, percent, sh.clinicPriceCents, sh.promoDiscountCents);
   await db.shift.update({ where: { id: shiftId }, data: { emergencyBonusPercent: percent, providerPayCents: pay } });
   await audit(db, SYSTEM, "emergency.bonus_raised", "Shift", shiftId, { percent: sh.emergencyBonusPercent, providerPayCents: sh.providerPayCents }, { percent, providerPayCents: pay });
+}
+
+/**
+ * Before giving up: eligible providers skipped only because it's their quiet hours (default 9 PM–6 AM)
+ * who could still get there in time once those end → wait until the earliest, then carry on (waves if
+ * nobody's been asked yet, else a broadcast to the newly awake). The clinic is told once.
+ */
+async function waitForQuietHours(db: Db, dispatchId: string, tier: UrgencyTier, cfg: TierConfig, effects: Effects): Promise<boolean> {
+  const s = await getSettings(db);
+  const held: { wakesAt: Date; driveMinutes: number | null }[] = [];
+  await buildCandidates(db, dispatchId, tier, cfg, { quietHeld: held });
+  const d = await db.dispatch.findUniqueOrThrow({ where: { id: dispatchId }, include: { shift: { include: { location: true } } } });
+  const wake = quietWakeTime(held, s["dispatch.arrivalBufferMinutes"], d.shift.startsAt);
+  if (!wake) return false;
+  const firstWait = !(await db.auditLog.count({ where: { entityType: "Shift", entityId: d.shiftId, action: "dispatch.waiting_quiet_hours" } }));
+  await db.dispatch.update({ where: { id: dispatchId }, data: { stageEndsAt: wake, stage: d.currentWave === 0 ? "WAVES" : "BROADCAST" } });
+  await audit(db, SYSTEM, "dispatch.waiting_quiet_hours", "Shift", d.shiftId, null, { dispatchId, until: wake, providers: held.length });
+  if (firstWait) {
+    const at = wake.toLocaleTimeString("en-US", { timeZone: d.shift.location.timeZone, hour: "numeric", minute: "2-digit" });
+    effects.add(() =>
+      notifyClinic(prisma, d.shift.location.clinicOrgId, {
+        template: "dispatch_waiting_quiet_hours",
+        title: `We'll start asking providers at ${at}`,
+        body: `The nearby providers who can cover this shift have their phones on quiet hours right now. We'll start asking them at ${at}, in time for your start, and tell you the moment someone accepts.`,
+        link: `/clinic/shifts/${d.shiftId}`,
+      }),
+    );
+  }
+  return true;
 }
 
 async function exhaust(db: Db, dispatchId: string, effects: Effects) {
@@ -209,7 +246,13 @@ interface Candidate {
   applicationId: string | null;
 }
 
-async function buildCandidates(db: Db, dispatchId: string, tier: UrgencyTier, cfg: TierConfig, opts: { includeAlreadyOffered?: boolean } = {}): Promise<Candidate[]> {
+async function buildCandidates(
+  db: Db,
+  dispatchId: string,
+  tier: UrgencyTier,
+  cfg: TierConfig,
+  opts: { includeAlreadyOffered?: boolean; /** Filled with providers skipped only for their quiet hours. */ quietHeld?: { wakesAt: Date; driveMinutes: number | null }[] } = {},
+): Promise<Candidate[]> {
   const s = await getSettings(db);
   const now = clock.now();
   const d = await db.dispatch.findUniqueOrThrow({ where: { id: dispatchId }, include: { shift: true } });
@@ -274,7 +317,11 @@ async function buildCandidates(db: Db, dispatchId: string, tier: UrgencyTier, cf
       if ((todayBy.get(p.id) ?? 0) >= s["dispatch.maxOffersPerProviderPerDay"]) continue;
       if ((pendingBy.get(p.id) ?? 0) >= s["dispatch.maxConcurrentPendingOffers"]) continue;
       const urgent = tier === "SAME_DAY" || tier === "SHORT";
-      if (inQuietHours(now, p.homeTimeZone, p.quietHoursStart, p.quietHoursEnd) && !(urgent && p.urgentDuringQuietHours)) continue;
+      if (inQuietHours(now, p.homeTimeZone, p.quietHoursStart, p.quietHoursEnd) && !(urgent && p.urgentDuringQuietHours)) {
+        const wakesAt = quietHoursEnd(now, p.homeTimeZone, p.quietHoursStart, p.quietHoursEnd);
+        if (wakesAt) opts.quietHeld?.push({ wakesAt, driveMinutes: drive });
+        continue;
+      }
     }
     // 3. Arrival feasibility.
     if (!arrivalFeasible(now, drive, s["dispatch.arrivalBufferMinutes"], d.shift.startsAt)) continue;

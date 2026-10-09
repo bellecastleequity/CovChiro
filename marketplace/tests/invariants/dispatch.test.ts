@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@cm/db";
+import { DateTime } from "luxon";
 import { dispatch, invalidateSettings, inviteProviders, respondToOffer, selectApplicant, settleDueInvites, setClock, applyToShift, admin, oncall } from "@cm/services";
 import { insertAssignment, makeClinic, makeProvider, makeShift } from "../factories";
 
@@ -207,6 +208,41 @@ describe("Rank-protected awards through the engine (§15 5–10)", () => {
     await dispatch.tickDispatch(fakeNow);
     expect((await prisma.dispatch.findFirstOrThrow({ where: { shiftId: shift.id } })).status).toBe("EXHAUSTED");
     expect((await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } })).status).toBe("OPEN");
+  });
+});
+
+describe("Quiet hours before dawn", () => {
+  it("everyone eligible is in quiet hours: dispatch waits until they end (clinic told once), then asks them", async () => {
+    const { shift, providers } = await scenario(3);
+    // Each provider's quiet hours end 45 minutes from now (their local time), still in time for the shift.
+    const wake = new Date(+fakeNow + 45 * 60_000);
+    const local = DateTime.fromJSDate(wake, { zone: "America/New_York" });
+    await prisma.provider.updateMany({ where: { id: { in: providers.map((p) => p.id) } }, data: { quietHoursStart: 0, quietHoursEnd: local.hour * 60 + local.minute, homeTimeZone: "America/New_York" } });
+    expect((await dispatch.startDispatch(shift.id, "CLINIC_REQUEST")).state).toBe("ACTIVE");
+    const d = await prisma.dispatch.findFirstOrThrow({ where: { shiftId: shift.id } });
+    expect(d.stage).toBe("WAVES");
+    expect(+d.stageEndsAt!).toBe(+DateTime.fromJSDate(wake, { zone: "America/New_York" }).startOf("minute").toJSDate());
+    expect(await prisma.offer.count({ where: { dispatchId: d.id } })).toBe(0);
+    const clinicUsers = (await prisma.clinicMember.findMany({ where: { clinicOrg: { locations: { some: { id: shift.locationId } } } } })).map((m) => m.userId);
+    expect(await prisma.notification.count({ where: { userId: { in: clinicUsers }, template: "dispatch_waiting_quiet_hours" } })).toBe(1);
+    // Still quiet: nothing happens on the next tick.
+    at(new Date(+fakeNow + 20 * 60_000));
+    await dispatch.tickDispatch(fakeNow);
+    expect(await prisma.offer.count({ where: { dispatchId: d.id } })).toBe(0);
+    // Quiet hours over: the first wave goes out.
+    at(new Date(+wake + 60_000));
+    await dispatch.tickDispatch(fakeNow);
+    expect(await prisma.offer.count({ where: { dispatchId: d.id } })).toBeGreaterThan(0);
+    expect((await prisma.dispatch.findUniqueOrThrow({ where: { id: d.id } })).stageEndsAt).toBeNull();
+  });
+
+  it("quiet hours that end too late to get there still exhaust as before", async () => {
+    const { shift, providers } = await scenario(2);
+    // Quiet until after the shift has started.
+    const local = DateTime.fromJSDate(new Date(+shift.startsAt + 30 * 60_000), { zone: "America/New_York" });
+    await prisma.provider.updateMany({ where: { id: { in: providers.map((p) => p.id) } }, data: { quietHoursStart: 0, quietHoursEnd: local.hour * 60 + local.minute, homeTimeZone: "America/New_York" } });
+    await dispatch.startDispatch(shift.id, "CLINIC_REQUEST");
+    expect((await prisma.dispatch.findFirstOrThrow({ where: { shiftId: shift.id } })).status).toBe("EXHAUSTED");
   });
 });
 
