@@ -48,10 +48,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
           <div>
             <div className="flex flex-wrap gap-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
-                <MapPin className="size-3.5" /> Now live in {liveStates.join(", ") || "Florida"}
+                <MapPin className="size-3.5" /> {liveStates.length >= 10 ? `Now live in ${liveStates.length >= 50 ? "all 50 states" : `${liveStates.length} states`}` : `Now live in ${liveStates.join(", ") || "Florida"}`}
               </div>
               <Link href="/states" className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-300 hover:bg-amber-100">
-                Providers in other states: enrollment now open →
+                {liveStates.length >= 10 ? "Providers: enroll from any state →" : "Providers in other states: enrollment now open →"}
               </Link>
             </div>
             <h1 className="mt-5 text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
