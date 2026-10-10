@@ -552,6 +552,12 @@ model ClinicOrg {
 
   /// Ownership verification (core clinicVerify.ts): NOT_STARTED | PENDING | NEEDS_INFO | VERIFIED | REJECTED.
   /// Until cleared (verified and not lapsed, or inside the grace period) its shifts aren't shown to providers (F13).
+  /// Overdue payment rule: future bookings charged in full at confirmation until an admin restores the deposit.
+  payInFull              Boolean              @default(false)
+  payInFullSince         DateTime?            @db.Timestamptz(3)
+  payInFullReason        String?
+  payInFullClearedAt     DateTime?            @db.Timestamptz(3)
+  payInFullClearedById   String?
   verificationStatus     String               @default("NOT_STARTED")
   verifiedAt             DateTime?            @db.Timestamptz(3)
   /// Verification lapses after this (renewal date + grace).
@@ -1235,11 +1241,17 @@ model Payment {
   failureReason         String?
   description           String?
   createdById           String?
+  /// Overdue handling: when the charge first failed, retries made, when the clinic was told.
+  firstFailedAt         DateTime?     @db.Timestamptz(3)
+  retryCount            Int           @default(0)
+  lastAttemptAt         DateTime?     @db.Timestamptz(3)
+  failureNotifiedAt     DateTime?     @db.Timestamptz(3)
   createdAt             DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
 
   @@index([assignmentId])
   @@index([clinicOrgId, createdAt])
+  @@index([status, firstFailedAt])
 }
 
 enum PayoutKind {

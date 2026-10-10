@@ -1,4 +1,4 @@
-import { latestSignedAgreement } from "@cm/services";
+import { getSettings, latestSignedAgreement, overdue } from "@cm/services";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@cm/db";
@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/ui/misc";
 import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { AccountModeration } from "@/components/admin/account-moderation";
-import { approveClinicAction, clinicStatusAction, clinicVerificationAdminAction } from "../../actions";
+import { approveClinicAction, clinicStatusAction, clinicVerificationAdminAction, payInFullAction, retryChargeAction } from "../../actions";
 import { Textarea } from "@/components/ui/form";
 
 export default async function AdminClinic({ params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +27,7 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
     ["Clinic Agreement signed", !!c.agreementSignedAt, false],
     ["Payment method on file", c.hasPaymentMethod, true],
   ];
+  const [due, settings] = await Promise.all([overdue.overdueForClinic(id), getSettings()]);
   const lastVerification = await prisma.clinicVerification.findFirst({ where: { clinicOrgId: id }, orderBy: { submittedAt: "desc" }, select: { id: true, status: true } });
   const shifts = await prisma.shift.findMany({ where: { location: { clinicOrgId: id } }, orderBy: { startsAt: "desc" }, take: 20 });
   return (
@@ -61,6 +62,32 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
                 </ActionForm>
               )}
               <p className="text-xs text-slate-500">Approval activates the clinic and skips the email, location and agreement steps. A payment method is still needed to post, because posting takes a deposit — and each shift needs a location.</p>
+            </CardBody>
+          </Card>
+          <Card id="payment-terms">
+            <CardHeader
+              title="Payment terms"
+              description={c.payInFull ? `Charged in full at confirmation since ${c.payInFullSince ? dateLabel(c.payInFullSince) : "—"}${c.payInFullReason ? ` · ${c.payInFullReason}` : ""}` : `Normal deposit (${settings["payments.depositPercent"]}%) at confirmation, balance after the shift`}
+            />
+            <CardBody className="space-y-3 text-sm">
+              {due.unpaid.length ? (
+                <div className="space-y-2">
+                  <div className="font-medium text-red-700">Unpaid: {money(due.unpaidCents)}</div>
+                  {due.unpaid.map((p) => (
+                    <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                      <span>{p.description ?? p.type} · {money(p.amountCents)} · failed {dateLabel(p.firstFailedAt)}{p.retryCount ? ` · ${p.retryCount} retr${p.retryCount === 1 ? "y" : "ies"}` : ""}{p.failureReason ? ` · ${p.failureReason}` : ""}</span>
+                      <ActionForm action={retryChargeAction}><input type="hidden" name="paymentId" value={p.id} /><input type="hidden" name="clinicOrgId" value={c.id} /><SubmitButton size="sm" variant="outline">Retry charge</SubmitButton></ActionForm>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-slate-500">Nothing unpaid.</p>}
+              <ActionForm action={payInFullAction} className="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="clinicOrgId" value={c.id} />
+                <input type="hidden" name="on" value={c.payInFull ? "0" : "1"} />
+                <Input name="note" placeholder={c.payInFull ? "Why (e.g. paid in full Oct 12)" : "Reason (optional)"} required={c.payInFull} className="h-9 min-w-0 flex-1 sm:max-w-xs" />
+                <SubmitButton size="sm" variant={c.payInFull ? "primary" : "outline"}>{c.payInFull ? "Restore normal deposit" : "Charge in full at confirmation"}</SubmitButton>
+              </ActionForm>
+              <p className="text-xs text-slate-500">Turns on by itself when a charge is unpaid {settings["payments.payInFullAfterHours"]} hours after it failed (Settings → Payments). Only an admin turns it off.</p>
             </CardBody>
           </Card>
           <Card id="verification">

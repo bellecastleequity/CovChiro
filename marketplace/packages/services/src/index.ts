@@ -69,5 +69,6 @@ export * as waitlist from "./waitlist";
 export * as shiftChanges from "./shiftChanges";
 export * as clinicRate from "./clinicRate";
 export * as supply from "./supply";
+export * as overdue from "./overdue";
 export * as markets from "./markets";
 export * as sandbox from "./sandbox";

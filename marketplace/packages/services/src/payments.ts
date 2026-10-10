@@ -11,7 +11,7 @@ import { notifyAdmins, notifyClinic } from "./notify";
  * charge.
  */
 
-async function charge(assignmentId: string | null, clinicOrgId: string, type: PaymentType, amountCents: number, key: string, description: string) {
+export async function charge(assignmentId: string | null, clinicOrgId: string, type: PaymentType, amountCents: number, key: string, description: string) {
   if (amountCents <= 0) return null;
   const existing = await prisma.payment.findUnique({ where: { idempotencyKey: key } });
   if (existing && (existing.status === "SUCCEEDED" || existing.status === "PROCESSING")) return existing;
@@ -20,20 +20,32 @@ async function charge(assignmentId: string | null, clinicOrgId: string, type: Pa
     existing ??
     (await prisma.payment.create({ data: { clinicOrgId, assignmentId, type, amountCents, idempotencyKey: key, description, status: "PENDING" } }));
   if (!org.stripeCustomerId || !org.hasPaymentMethod) {
-    return prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED", failureReason: "No payment method on file" } });
+    const failed = await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED", failureReason: "No payment method on file", firstFailedAt: payment.firstFailedAt ?? new Date(), lastAttemptAt: new Date() } });
+    await (await import("./overdue")).tellClinicChargeFailed(failed.id);
+    return failed;
   }
   const res = await paymentsProvider().chargeOffSession({
     customerId: org.stripeCustomerId,
     amountCents,
-    idempotencyKey: `${key}-${payment.id}`,
+    // A retry is a new attempt for Stripe (same key would replay the failure).
+    idempotencyKey: `${key}-${payment.id}${payment.retryCount ? `-r${payment.retryCount}` : ""}`,
     description,
     metadata: { paymentId: payment.id, clinicOrgId, ...(assignmentId ? { assignmentId } : {}), type },
   });
   const status = res.status === "succeeded" ? "SUCCEEDED" : res.status === "processing" ? "PROCESSING" : "FAILED";
-  return prisma.payment.update({
+  const updated = await prisma.payment.update({
     where: { id: payment.id },
-    data: { status, stripePaymentIntentId: res.id || null, failureReason: res.failureReason ?? (res.status === "requires_action" ? "Card requires authentication" : null) },
+    data: {
+      status,
+      stripePaymentIntentId: res.id || null,
+      failureReason: res.failureReason ?? (res.status === "requires_action" ? "Card requires authentication" : null),
+      lastAttemptAt: new Date(),
+      ...(status === "FAILED" ? { firstFailedAt: payment.firstFailedAt ?? new Date() } : {}),
+    },
   });
+  // Deposits have their own "fix your card" notice (chargeDeposit); every other failed charge is told here.
+  if (status === "FAILED" && type !== "DEPOSIT") await (await import("./overdue")).tellClinicChargeFailed(updated.id);
+  return updated;
 }
 
 export async function chargeDeposit(assignmentId: string) {

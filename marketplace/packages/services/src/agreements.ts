@@ -7,7 +7,7 @@ import { getSettings } from "./context";
 export { agreementText, renderAgreement, type AgreementDoc, type AgreementKind } from "./agreement-text";
 
 /** Bump when the agreement wording changes (agreement-text.ts). v1 was the placeholder used in the build & test phase. */
-export const AGREEMENT_VERSION = { CLINIC: 5, PROVIDER: 3 } as const;
+export const AGREEMENT_VERSION = { CLINIC: 6, PROVIDER: 3 } as const;
 
 /**
  * Has this clinic/provider signed the CURRENT agreement? Required — no

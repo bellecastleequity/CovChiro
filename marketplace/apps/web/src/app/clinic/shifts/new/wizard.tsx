@@ -65,6 +65,8 @@ interface Quote {
   billableHours: number;
   subtotalCents: number;
   overlapping?: number;
+  /** Overdue payment rule: this clinic's bookings are charged in full at confirmation. */
+  payInFull?: boolean;
   /** Open states: providers who could take it now (null = the check is off). */
   supply?: { ok: boolean; available: number; gap: string | null; headline: string; hint: string; detail: string; shortDate: string | null } | null;
   volume?: {
@@ -656,7 +658,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 )}
                 {providersNeeded > 1 && !draft ? <div className="flex justify-between rounded-lg bg-brand-50 px-2 py-1.5 font-semibold text-brand-800"><span>{providersNeeded} providers</span><span className="tabular-nums">{money(((quote.days && quote.days.length > 1 ? quote.totalCents : quote.subtotalCents) ?? 0) * providersNeeded + (quote.discountCents ?? 0) * (providersNeeded - 1))}</span></div> : null}
                 {quote.overlapping ? <p className="rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600">You already have {quote.overlapping} booking{quote.overlapping === 1 ? "" : "s"} here at this time. That&apos;s fine if you need another provider: each booking is filled by a different provider.</p> : null}
-                <p className="text-xs text-slate-500">Plus mileage at cost for the provider you confirm{lodgingAllowed ? `, and ${money(lodging.nightlyCents)} a night lodging if they need to stay over` : ""}{flyInActive && flyInFor ? `. A provider who flies in adds ${money(flyInFor.airfareCents)} airfare per trip and ${money(flyInFor.nightlyCents)} a night instead of mileage` : ""}. A deposit is charged at confirmation; the balance after the shift.</p>
+                <p className="text-xs text-slate-500">Plus mileage at cost for the provider you confirm{lodgingAllowed ? `, and ${money(lodging.nightlyCents)} a night lodging if they need to stay over` : ""}{flyInActive && flyInFor ? `. A provider who flies in adds ${money(flyInFor.airfareCents)} airfare per trip and ${money(flyInFor.nightlyCents)} a night instead of mileage` : ""}. {quote.payInFull ? "Because a payment on your account was overdue, the full amount is charged when a provider is confirmed." : "A deposit is charged at confirmation; the balance after the shift."}</p>
               </div>
             ) : !quoteError && !pending ? (
               <p className="text-sm text-slate-500">Choose a date and time to see the price.</p>

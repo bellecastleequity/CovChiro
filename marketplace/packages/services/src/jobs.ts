@@ -30,6 +30,7 @@ import { standingSweep } from "./standing";
 import { announcementSweep } from "./announcements";
 import { clinicVerifySweep } from "./clinicVerify";
 import { openAllMarkets } from "./markets";
+import { overduePaymentsSweep } from "./overdue";
 import { waitingDraftSweep } from "./supply";
 import { runPreLicensureFollowups } from "./prelicensure";
 import { autoDraftSweep } from "./blog";
@@ -104,6 +105,8 @@ export const JOBS: Job[] = [
   // Open states: switch on every state not closed by an admin (posting is gated by available doctors).
   { name: "openMarkets", schedule: { everySeconds: 3600 }, long: true, run: () => openAllMarkets() },
   // Drafts saved because no doctor could take them: tell the clinic once one can.
+  // Overdue clinic charges: retry, and charge in full at confirmation once one is overdue past the limit.
+  { name: "overduePayments", schedule: { everySeconds: 3600 }, long: true, run: () => overduePaymentsSweep() },
   { name: "waitingDrafts", schedule: { everySeconds: 900 }, long: true, run: () => waitingDraftSweep() },
   { name: "waitlistOpenings", schedule: { everySeconds: 3600 }, run: () => waitlistOpeningSweep() },
   { name: "indexNow", schedule: { cron: "20 6 * * *", tz: "America/New_York" }, run: () => indexNowSweep() },

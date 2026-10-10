@@ -420,7 +420,7 @@ const A: HelpArticle[] = [
     category: "billing",
     title: "When am I charged?",
     summary: "A deposit at confirmation, the balance after the shift, extra visits after your check window.",
-    keywords: "charge charged when deposit balance invoice bill card payment timing",
+    keywords: "charge charged when deposit balance invoice bill card payment timing failed declined overdue pay now in full",
     popular: true,
     lesson: "pricing-payments",
     links: [{ href: "/clinic/billing", label: "Open Billing" }],
@@ -430,6 +430,7 @@ const A: HelpArticle[] = [
           ["At confirmation", `Deposit: ${s["payments.depositPercent"]}% of the booking`],
           ["After the shift", `Balance (including mileage and any lodging), ${hrs(s["payments.autoCompleteHours"])} after the end`],
           ["Extra visits, if any", `After your ${hrs(s["pricing.volumeDisputeHours"])} window to check the count`],
+          ["If a charge fails", `We tell you right away and you can tap Pay now on Billing. We retry the card${s["payments.payInFullEnabled"] ? `; if it's still unpaid after ${hrs(s["payments.payInFullAfterHours"])}, future bookings are charged in full at confirmation until we restore the normal deposit` : ""}`],
         ]}
       />
     ),

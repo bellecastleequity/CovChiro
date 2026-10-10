@@ -8,7 +8,8 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Alert, Empty, PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateTimeLabel, humanize, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { paymentSetupAction } from "../actions";
+import { getSettings, overdue } from "@cm/services";
+import { payNowAction, paymentSetupAction } from "../actions";
 
 export const metadata = { title: "Billing" };
 
@@ -16,6 +17,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
   const { actor } = await requireActor("clinic");
   const sp = await searchParams;
   const org = await prisma.clinicOrg.findUniqueOrThrow({ where: { id: actor.clinicOrgId! } });
+  const [due, settings] = await Promise.all([overdue.overdueForClinic(org.id), getSettings()]);
   const [payments, codes] = await Promise.all([
     prisma.payment.findMany({ where: { clinicOrgId: org.id }, include: { assignment: { select: { startsAt: true } } }, orderBy: { createdAt: "desc" }, take: 100 }),
     prisma.promoRedemption.findMany({ where: { clinicOrgId: org.id }, include: { promoCode: true }, orderBy: { createdAt: "desc" } }),
@@ -24,6 +26,29 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
     <>
       <PageHeader title="Billing" description="Payments run through Stripe. We never store your card or bank numbers." actions={<Link href="/clinic/billing/statement" className={buttonClass("outline", "sm")}>Monthly statements</Link>} />
       {sp.stripe || sp.setup === "done" ? <Alert tone="success" className="mb-5">Payment method saved.</Alert> : null}
+      {org.payInFull ? (
+        <Alert tone="warning" className="mb-5" title="Bookings are charged in full at confirmation">
+          A payment on your account was more than {settings["payments.payInFullAfterHours"]} hours overdue, so each new booking is charged in full when a provider is confirmed, instead of the {settings["payments.depositPercent"]}% deposit. Once everything below is paid, contact us to return to the normal deposit.
+        </Alert>
+      ) : null}
+      {due.unpaid.length ? (
+        <Card id="overdue" className="mb-6 border-red-200 ring-2 ring-red-50">
+          <CardHeader title={`Unpaid: ${money(due.unpaidCents)}`} description={settings["payments.payInFullEnabled"] && !org.payInFull ? `These charges didn't go through. Update your card if needed, then tap Pay now. If one stays unpaid for ${settings["payments.payInFullAfterHours"]} hours, future bookings are charged in full at confirmation.` : "These charges didn't go through. Update your card if needed, then tap Pay now."} />
+          <div className="divide-y divide-slate-100">
+            {due.unpaid.map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+                <div className="min-w-0">
+                  <div className="font-medium">{p.description ?? humanize(p.type)} · {money(p.amountCents)}</div>
+                  <div className="text-xs text-slate-500">Failed {dateTimeLabel(p.firstFailedAt)}{p.failureReason ? ` · ${p.failureReason}` : ""}</div>
+                </div>
+                {actor.role === "CLINIC_OWNER" ? (
+                  <ActionForm action={payNowAction}><input type="hidden" name="paymentId" value={p.id} /><SubmitButton size="sm" pendingText="Paying…">Pay now</SubmitButton></ActionForm>
+                ) : <span className="text-xs text-slate-500">The clinic owner can pay this.</span>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>
           <CardHeader title="Payment method" />

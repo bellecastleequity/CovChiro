@@ -16,7 +16,7 @@ import {
   shiftChanges,
   clinicRate,
   clinicVerify,
-  archiveLocation, auth, sameProvider, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
+  archiveLocation, auth, overdue, sameProvider, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
 import { bool, formAction, optStr, str } from "@/lib/action";
@@ -521,4 +521,14 @@ export const clinicVerificationAction = formAction(async (fd) => {
     : r.status === "VERIFIED"
       ? "Thanks. Your renewal is with our team; you stay verified meanwhile."
       : "Thanks. Our team is reviewing your details, usually within one business day. We'll email you.";
+});
+
+/** Billing: pay an overdue charge now with the card on file. */
+export const payNowAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await overdue.retryPayment(actor, str(fd, "paymentId"));
+  revalidatePath("/clinic/billing");
+  if (r.status === "SUCCEEDED") return "Paid. Thank you.";
+  if (r.status === "PROCESSING") return "Payment is processing. We'll let you know when it clears.";
+  throw new DomainError("PAYMENT_FAILED", `It didn't go through${r.failureReason ? `: ${r.failureReason}` : ""}. Update your card above and try again.`);
 });

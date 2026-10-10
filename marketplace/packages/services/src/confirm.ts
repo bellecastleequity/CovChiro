@@ -1,4 +1,4 @@
-import { assertTransition, clinicTotalCents, depositCents, DomainError, providerTotalCents, SELECTABLE_SHIFT_STATUSES, travelEstimate, travelBufferMinutes } from "@cm/core";
+import { assertTransition, clinicTotalCents, depositCents, depositPercentFor, DomainError, providerTotalCents, SELECTABLE_SHIFT_STATUSES, travelEstimate, travelBufferMinutes } from "@cm/core";
 import { Prisma, isInvariantViolation, type SelectionMethod } from "@cm/db";
 import { audit, clock, getSettings, lockShift, tx, type Actor, type Db } from "./context";
 import { Effects } from "./effects";
@@ -108,6 +108,7 @@ export async function confirmInTx(
     airfareCents,
   };
   const clinicTotal = clinicTotalCents(breakdown);
+  const payInFull = (await db.clinicOrg.findUnique({ where: { id: shift.location.clinicOrgId }, select: { payInFull: true } }))?.payInFull ?? false;
   const providerTotal = providerTotalCents(breakdown);
   const assignment = await db.assignment.create({
     data: {
@@ -131,7 +132,8 @@ export async function confirmInTx(
       clinicTotalCents: clinicTotal,
       providerTotalCents: providerTotal,
       // Fly-in: the airfare is collected in full with the deposit (flights are booked soon after).
-      depositCents: depositCents(clinicTotal - airfareCents, s["payments.depositPercent"]) + airfareCents,
+      // Overdue payment rule: a pay-in-full clinic is charged the whole booking at confirmation.
+      depositCents: depositCents(clinicTotal - airfareCents, depositPercentFor(s["payments.depositPercent"], payInFull)) + airfareCents,
       confirmedAt: now,
       graceEndsAt: opts.graceMinutes ? new Date(+now + opts.graceMinutes * 60_000) : null,
     },

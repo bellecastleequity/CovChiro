@@ -139,6 +139,9 @@ export const SETTINGS = {
 
   // ---------- payments (§9) ----------
   "payments.depositPercent": def({ group: "Payments", label: "Deposit charged at confirmation %", schema: percent, default: 10, flag: null }),
+  "payments.payInFullEnabled": def({ group: "Payments", label: "Charge in full at confirmation when a clinic payment is overdue", help: "When anything a clinic owes is still unpaid after the hours below, its future bookings are charged in full when a provider is confirmed, until you restore the normal deposit on the clinic's page.", schema: z.boolean(), default: true, flag: "OWNER_DECISION" }),
+  "payments.payInFullAfterHours": def({ group: "Payments", label: "Hours a failed clinic charge can stay unpaid before bookings are charged in full", schema: z.number().int().min(1).max(720), default: 48, flag: "OWNER_DECISION" }),
+  "payments.retryAfterHours": def({ group: "Payments", label: "Retry a failed clinic charge this many hours after it first failed", help: "One automatic retry per number. The clinic can also tap Pay now on Billing at any time.", schema: z.array(z.number().int().min(1).max(720)), default: [24], flag: null }),
   "payments.autoCompleteHours": def({ group: "Payments", label: "Auto-complete after shift end (hours)", schema: z.number().min(0), default: 2, flag: null }),
   "payments.payoutHoldHours": def({ group: "Payments", label: "Provider payout hold after completion (hours)", schema: z.number().min(0), default: 48, flag: null }),
   "payments.clinicFreeCancelHours": def({ group: "Payments", label: "Clinic free-cancel cutoff before start (hours)", schema: z.number().min(0), default: 48, flag: null }),

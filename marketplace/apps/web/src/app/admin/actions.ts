@@ -9,7 +9,7 @@ import {
   schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
-  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax, chargebacks, announcements, clinicVerify, markets, getSettings,
+  reviewLodgingReceipt, setHold, prelicensure, referrals, backups, health, tax, chargebacks, announcements, clinicVerify, markets, getSettings, overdue,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction as baseFormAction, optStr, str } from "@/lib/action";
 import { requireActor } from "@/lib/session";
@@ -628,4 +628,22 @@ export const clinicVerificationEnterAction = formAction(async (fd) => {
   const r = await clinicVerify.submitVerification(actor, await verificationInputFrom(fd, orgId), { clinicOrgId: orgId, adminNote: optStr(fd, "adminNote") });
   rv("/admin/verification/clinics");
   redirect(r.autoApproved ? `/admin/clinics/${orgId}#verification` : `/admin/verification/clinics/${r.verificationId}`);
+});
+
+// ---------- overdue payments / pay in full ----------
+export const payInFullAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const on = str(fd, "on") === "1";
+  const note = optStr(fd, "note") ?? "";
+  if (!on && !note.trim()) throw new DomainError("VALIDATION", "Add a short note (e.g. paid in full on Oct 12).");
+  await overdue.setPayInFull(actor, str(fd, "clinicOrgId"), on, note || "Set by an admin");
+  rv(`/admin/clinics/${str(fd, "clinicOrgId")}`);
+  return on ? "Future bookings are charged in full at confirmation." : "Normal deposit restored.";
+});
+
+export const retryChargeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await overdue.retryPayment(actor, str(fd, "paymentId"));
+  rv(`/admin/clinics/${str(fd, "clinicOrgId")}`);
+  return r.status === "SUCCEEDED" ? "Charged." : r.status === "PROCESSING" ? "Processing." : `Still failing${r.failureReason ? `: ${r.failureReason}` : ""}.`;
 });

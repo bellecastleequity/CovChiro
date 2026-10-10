@@ -180,8 +180,10 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT, opts: { nee
   const clinicRate = await clinicRatePreview(prisma, { startsAt: input.startsAt, marketClinicPriceCents: q.base.clinicPriceCents, timeZone: loc.timeZone, days: 1 });
   // Open states: how many providers could take this shift right now (the posting gate's own check).
   const supply = await liveSupply(input, location, q, opts.needed ?? 1, opts.days ?? 1);
+  const payInFull = (await prisma.clinicOrg.findUnique({ where: { id: orgId }, select: { payInFull: true } }))?.payInFull ?? false;
   return {
     supply,
+    payInFull,
     clinicRate,
     coverageCents: q.base.clinicPriceCents,
     discountCents: q.promo?.discountCents ?? 0,
