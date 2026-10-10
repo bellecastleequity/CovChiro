@@ -157,6 +157,16 @@ export const sendFirstOutreachAction = formAction(async (fd) => {
   return `Sent: "${r.subject}". The follow-ups go out automatically when clinic outreach is on.`;
 });
 
+export const importProviderProspectsAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const file = fd.get("file");
+  const csv = file instanceof File && file.size ? await file.text() : str(fd, "csv");
+  const r = await growth.importProviderProspects(actor, csv, str(fd, "source") || `CSV import ${new Date().toISOString().slice(0, 10)}`, str(fd, "professionCode") || "DC");
+  rv();
+  const why = Object.entries(r.reasons).map(([k, n]) => `${n} × ${growth.PROVIDER_IMPORT_REASONS[k] ?? k}`).join("; ");
+  return `Imported: ${r.inserted} new, ${r.updated} updated, ${r.withEmail} with a usable email, ${r.skipped} skipped.${why ? ` Details: ${why}.` : ""}`;
+});
+
 export const importProspectsAction = formAction(async (fd) => {
   const { actor } = await me();
   const file = fd.get("file");

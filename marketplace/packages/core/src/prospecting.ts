@@ -67,7 +67,7 @@ export function addressKey(line1: string, zip: string): string {
 }
 
 const SMALL = new Set(["of", "and", "the", "at", "in", "for", "on"]);
-function titleCase(s: string) {
+export function titleCase(s: string) {
   return s
     .toLowerCase()
     .replace(/\b(llc|pllc|pa|p\.a\.|inc|corp|co|pc|p\.c\.|ltd)\b\.?/g, "")

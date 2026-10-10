@@ -4,12 +4,12 @@ import { growth } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { buttonClass } from "@/components/ui/button";
-import { Card, CardHeader } from "@/components/ui/card";
-import { Input, Select } from "@/components/ui/form";
+import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { runContactDiscoveryAction, runProspectingAction } from "../../actions";
+import { importProviderProspectsAction, runContactDiscoveryAction, runProspectingAction } from "../../actions";
 import { GrowthTabs, usd } from "../../ui";
 import { ProspectSwitch } from "../switch";
 import { ResearchHealth } from "../../panels";
@@ -81,6 +81,22 @@ export default async function ProviderProspects({ searchParams }: { searchParams
         </Table>
       </Card>
       {total > (page + 1) * 100 ? <div className="mt-4"><Link href={`?${qs({ page: String(page + 1) })}`} className={buttonClass("outline")}>Next page</Link></div> : null}
+      <Card id="import" className="mt-6">
+        <CardHeader title="Import providers (CSV)" description="For lists you already have. Header row required. Recognised: npi, first_name, last_name, credential, email, website, address, city, state, zip, practice_role (owner / associate), providers_at_practice. Each row is matched to the NPI registry (by NPI, or by first + last name + state when only one provider of this profession matches); anyone already on the platform is skipped. Emails are kept only when they're the provider's own address or a solo owner's practice mailbox (never a group's shared inbox or Gmail/Yahoo), then checked. Recruitment emails go out only in Prelaunch/Live states (Growth → Expansion) while provider outreach is on." />
+        <CardBody>
+          <ActionForm action={importProviderProspectsAction} className="grid gap-3 lg:grid-cols-2" resetOnSuccess>
+            <div className="space-y-3">
+              <Field label="Source label" hint="Where this list came from, e.g. 'State association directory, Oct 2026'."><Input name="source" /></Field>
+              <Field label="Profession"><Select name="professionCode" defaultValue="DC">{professions.map((p) => <option key={p.code} value={p.code}>{p.displayName}</option>)}</Select></Field>
+              <Field label="CSV file"><Input name="file" type="file" accept=".csv,text/csv" /></Field>
+            </div>
+            <div className="space-y-3">
+              <Field label="…or paste CSV"><Textarea name="csv" className="min-h-32 font-mono text-xs" placeholder={"npi,first_name,last_name,email,state\n1234567893,Ana,Rivera,ana@riverachiro.example,FL"} /></Field>
+              <SubmitButton size="sm">Import providers</SubmitButton>
+            </div>
+          </ActionForm>
+        </CardBody>
+      </Card>
     </>
   );
 }

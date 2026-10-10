@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { DomainError, PI_PRACTICE_PHRASES, renderTemplate, validateAiCopy } from "@cm/core";
+import { acceptProviderEmail, addressKey, DomainError, matchesProfile, PI_PRACTICE_PHRASES, providerImportHeader, providerImportRow, renderTemplate, titleCase, validateAiCopy, type ProviderCandidate } from "@cm/core";
+import { nppesProvider, type NppesRecord } from "@cm/integrations";
 import { prisma, type Prisma, type ProspectStage } from "@cm/db";
 import { brand } from "@cm/config";
 import { audit, clock, getSettings, invalidateSettings, requireAdmin, type Actor } from "../context";
@@ -13,7 +14,8 @@ import { advanceOutreach, approvedPiKeys, outreachKey, prospectVars, clinicCheck
 import { discoverySweep, prospectingStatus, researchProspect, researchSweep } from "./prospecting";
 import { marketSupplySweep } from "./supply";
 import { resumeResearch } from "./aihealth";
-import { advanceProviderOutreach, handleProviderProspectReply, PROVIDER_OUTREACH_SEQUENCE } from "./providers";
+import { advanceProviderOutreach, handleProviderProspectReply, PROVIDER_OUTREACH_SEQUENCE, upsertProviderProspects, verifyContact } from "./providers";
+import { registryProfile } from "./expansion";
 import { attribution, growthFunnels, growthKpis, liquidity, marketForPoint } from "./analytics";
 
 /** Admin side of the growth control center. Every human override is audit-logged. */
@@ -415,7 +417,7 @@ export async function overrideProspect(actor: Actor, id: string, o: { segment?: 
   await logAgent("admin", "prospect_override", { entityType: "PROSPECT", entityId: id, humanOverrideBy: actor.userId, output: o });
 }
 
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [], cell = "", quoted = false;
   for (let i = 0; i < text.length; i++) {
@@ -471,6 +473,111 @@ export async function importProspects(actor: Actor, csv: string, source: string)
   }
   await logAgent("clinicProspecting", "csv_import", { humanOverrideBy: actor.userId, contextRef: source, output: `inserted ${inserted}, updated ${updated}, skipped ${skipped}` });
   return { inserted, updated, skipped };
+}
+
+/** Why a provider CSV row was skipped or its email not used (shown after an import). */
+export const PROVIDER_IMPORT_REASONS: Record<string, string> = {
+  bad_npi: "NPI isn't a valid number",
+  no_npi_or_name: "no NPI, and no first + last name + state to look it up",
+  not_in_registry: "not found in the NPI registry (or deactivated)",
+  several_matches: "several people with that name in that state: add the NPI",
+  not_this_profession: "the NPI isn't an individual of this profession",
+  no_state: "no practice state",
+  registry_unavailable: "the NPI registry didn't answer: try again later",
+  on_platform: "already on the platform",
+  error: "couldn't be saved",
+  email_invalid: "email isn't a valid address",
+  email_role_mailbox: "email is a no-reply or system mailbox",
+  email_personal_freemail: "email is personal free-mail (Gmail, Yahoo…)",
+  email_shared_practice_inbox: "email is a shared practice inbox, not theirs",
+};
+
+/**
+ * Provider CSV import (owner request Oct 2026): each row is matched to the NPI registry (by NPI, or
+ * by name + state when there's exactly one match of this profession), anyone already on the
+ * platform is skipped, and an email is kept only under the same rule as contact discovery
+ * (core acceptProviderEmail: their own address, or a solo owner's practice mailbox), then
+ * MX-checked. Outreach still runs only where the Growth target is PRELAUNCH/LIVE.
+ */
+export async function importProviderProspects(actor: Actor, csv: string, source: string, professionCode = "DC") {
+  requireAdmin(actor);
+  if (csv.length > 5_000_000) throw new DomainError("VALIDATION", "CSV too large (5 MB max).");
+  const rows = parseCsv(csv);
+  if (rows.length < 2) throw new DomainError("VALIDATION", "Paste a CSV with a header row and at least one provider.");
+  if (rows.length > 2001) throw new DomainError("VALIDATION", "Up to 2,000 providers per import. Split the file.");
+  const headers = rows[0].map(providerImportHeader);
+  if (!headers.includes("npi") && !(headers.includes("firstName") && headers.includes("lastName"))) throw new DomainError("VALIDATION", 'The header row needs an "npi" column, or "first_name" and "last_name" (plus "state").');
+  const profile = await registryProfile(professionCode);
+  const reg = nppesProvider();
+  const out = { inserted: 0, updated: 0, withEmail: 0, emailRejected: 0, skipped: 0, reasons: {} as Record<string, number> };
+  const note = (reason: string) => { out.reasons[reason] = (out.reasons[reason] ?? 0) + 1; };
+  const skip = (reason: string) => { out.skipped++; note(reason); };
+  for (const cells of rows.slice(1)) {
+    const raw: Record<string, string> = {};
+    headers.forEach((h, i) => { if (h && cells[i] !== undefined) raw[h] = cells[i]; });
+    const parsed = providerImportRow(raw);
+    if (!parsed.ok) { skip(parsed.reason); continue; }
+    const row = parsed.row;
+    try {
+      let npi = row.npi;
+      let rec: NppesRecord | null = null;
+      if (npi && (await prisma.provider.findFirst({ where: { npi }, select: { id: true } }))) { skip("on_platform"); continue; }
+      try {
+        if (npi && reg.lookup) {
+          rec = await reg.lookup(npi);
+          if (!rec && reg.name !== "none") { skip("not_in_registry"); continue; }
+        } else if (!npi) {
+          const hits = reg.findPeople ? (await reg.findPeople({ firstName: row.firstName!, lastName: row.lastName!, state: row.state! })).filter((r) => r.kind === "individual" && matchesProfile(r, profile)) : [];
+          if (hits.length !== 1) { skip(hits.length ? "several_matches" : "not_in_registry"); continue; }
+          rec = hits[0];
+          npi = rec.npi;
+        }
+      } catch {
+        if (!npi) { skip("registry_unavailable"); continue; }
+      }
+      if (rec && (rec.kind !== "individual" || !matchesProfile(rec, profile))) { skip("not_this_profession"); continue; }
+      if (await prisma.provider.findFirst({ where: { npi: npi! }, select: { id: true } })) { skip("on_platform"); continue; }
+      const loc = rec?.location ?? null;
+      const state = (row.state ?? loc?.state ?? "").toUpperCase();
+      if (!state) { skip("no_state"); continue; }
+      const address = row.address ?? (loc ? [loc.line1, loc.line2].filter(Boolean).join(", ") : "");
+      const zip = row.zip ?? loc?.zip.replace(/\D/g, "").slice(0, 5) ?? "";
+      const firstName = row.firstName ?? (rec?.firstName ? titleCase(rec.firstName) : null);
+      const lastName = row.lastName ?? (rec?.lastName ? titleCase(rec.lastName) : null);
+      const credential = row.credential ?? rec?.credential?.trim() ?? null;
+      const name = [firstName, lastName].filter(Boolean).join(" ") || `NPI ${npi}`;
+      const cand: ProviderCandidate = {
+        npi: npi!, firstName, lastName, credential, displayName: `${name}${credential ? `, ${credential}` : ""}`,
+        address, city: row.city ?? (loc?.city ? titleCase(loc.city) : ""), state, zip, addressKey: address ? addressKey(address.split(",")[0], zip) : `NPI-${npi}`, providersAtPractice: row.providersAtPractice ?? 1,
+      };
+      const before = await prisma.providerProspect.findUnique({ where: { npi: npi! }, select: { id: true } });
+      await upsertProviderProspects([cand], professionCode);
+      const p = await prisma.providerProspect.findUnique({ where: { npi: npi! } });
+      if (!p) { skip("error"); continue; }
+      if (before) out.updated++;
+      else out.inserted++;
+      await prisma.providerProspect.update({
+        where: { id: p.id },
+        data: { ...(before ? {} : { source: source.slice(0, 120) }), ...(row.practiceRole !== "UNKNOWN" ? { practiceRole: row.practiceRole } : {}), ...(row.providersAtPractice ? { providersAtPractice: row.providersAtPractice } : {}), ...(row.website && !p.website ? { website: row.website } : {}) },
+      });
+      if (row.email && row.email !== p.email) {
+        const ok = acceptProviderEmail({ email: row.email, firstName: p.firstName, lastName: p.lastName, website: row.website ?? p.website, practiceRole: (row.practiceRole !== "UNKNOWN" ? row.practiceRole : p.practiceRole) as "OWNER" | "ASSOCIATE" | "UNKNOWN", providersAtPractice: row.providersAtPractice ?? p.providersAtPractice });
+        // A verified address found by discovery is kept; the import fills empty or bad ones.
+        if (ok.ok && (!p.email || p.contactStatus !== "VERIFIED")) {
+          await prisma.providerProspect.update({ where: { id: p.id }, data: { email: row.email, emailOrigin: "import", emailSourceUrl: null, contactStatus: "FOUND", emailStatus: "VALID", ...(p.stage === "DISCOVERED" ? { stage: "CONTACT_FOUND" } : {}) } });
+          await verifyContact(p.id);
+          out.withEmail++;
+        } else if (!ok.ok) {
+          out.emailRejected++;
+          note(`email_${ok.reason}`);
+        }
+      }
+    } catch {
+      skip("error");
+    }
+  }
+  await logAgent("admin", "provider_csv_import", { humanOverrideBy: actor.userId, contextRef: source, output: `inserted ${out.inserted}, updated ${out.updated}, emails ${out.withEmail}, skipped ${out.skipped}` }).catch(() => undefined);
+  return out;
 }
 
 export async function logReply(actor: Actor, prospectId: string, text: string, subject?: string) {

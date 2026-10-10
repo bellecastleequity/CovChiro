@@ -6,6 +6,7 @@
  * only — none of this ever decides credential eligibility (INV-1).
  */
 import { acceptBusinessEmail } from "./prospecting";
+import { US_STATES } from "./credentials";
 
 export type ProviderProspectStage = "DISCOVERED" | "CONTACT_FOUND" | "CONTACT_VERIFIED" | "CONTACTED" | "ENGAGED" | "REGISTERED" | "NOT_INTERESTED" | "DO_NOT_CONTACT";
 
@@ -97,4 +98,61 @@ export function marketReadiness(m: { targetStatus: "OFF" | "PRELAUNCH" | "LIVE";
 /** Cost per outcome (null when there were none). */
 export function costPer(totalCents: number, outcomes: number): number | null {
   return outcomes > 0 ? Math.round(totalCents / outcomes) : null;
+}
+
+// ---------------- CSV import (owner request Oct 2026) ----------------
+
+/** NPI check digit (Luhn over "80840" + the first nine digits). */
+export function validNpi(npi: string): boolean {
+  if (!/^\d{10}$/.test(npi)) return false;
+  const digits = `80840${npi.slice(0, 9)}`.split("").map(Number);
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    let d = digits[digits.length - 1 - i];
+    if (i % 2 === 0) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+  }
+  return (10 - (sum % 10)) % 10 === Number(npi[9]);
+}
+
+const IMPORT_HEADERS: Record<string, string> = {
+  npi: "npi", npi_number: "npi", first_name: "firstName", first: "firstName", firstname: "firstName", last_name: "lastName", last: "lastName", lastname: "lastName", surname: "lastName",
+  credential: "credential", credentials: "credential", email: "email", e_mail: "email", email_address: "email", website: "website", url: "website",
+  address: "address", street: "address", address_1: "address", city: "city", state: "state", zip: "zip", zip_code: "zip", zipcode: "zip", postal_code: "zip",
+  practice_role: "practiceRole", role: "practiceRole", providers_at_practice: "providersAtPractice", providers: "providersAtPractice", doctors: "providersAtPractice",
+};
+
+/** A CSV header cell → field name (null = ignored column). */
+export function providerImportHeader(h: string): string | null {
+  return IMPORT_HEADERS[h.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")] ?? null;
+}
+
+export interface ProviderImportRow {
+  npi: string | null; firstName: string | null; lastName: string | null; credential: string | null; email: string | null; website: string | null;
+  address: string | null; city: string | null; state: string | null; zip: string | null; practiceRole: "OWNER" | "ASSOCIATE" | "UNKNOWN"; providersAtPractice: number | null;
+}
+
+const cap = (s: string) => s.toLowerCase().replace(/(^|[\s'-])\p{L}/gu, (m) => m.toUpperCase());
+
+/** One CSV row → a cleaned row, or why it's skipped. Needs an NPI, or a first + last name and a U.S. state to look it up. */
+export function providerImportRow(rec: Record<string, string | undefined>): { ok: true; row: ProviderImportRow } | { ok: false; reason: "bad_npi" | "no_npi_or_name" } {
+  const v = (k: string) => { const x = rec[k]?.trim(); return x ? x : null; };
+  const npiRaw = v("npi");
+  const npi = npiRaw ? npiRaw.replace(/\D/g, "") : null;
+  if (npi && !validNpi(npi)) return { ok: false, reason: "bad_npi" };
+  const stateRaw = v("state")?.toUpperCase() ?? null;
+  const state = stateRaw && stateRaw in US_STATES ? stateRaw : null;
+  const firstName = v("firstName") ? cap(v("firstName")!) : null;
+  const lastName = v("lastName") ? cap(v("lastName")!) : null;
+  if (!npi && !(firstName && lastName && state)) return { ok: false, reason: "no_npi_or_name" };
+  const role = v("practiceRole")?.toUpperCase();
+  const providers = v("providersAtPractice") ? Number.parseInt(v("providersAtPractice")!, 10) : NaN;
+  return {
+    ok: true,
+    row: {
+      npi, firstName, lastName, credential: v("credential"), email: v("email")?.toLowerCase() ?? null, website: v("website"),
+      address: v("address"), city: v("city") ? cap(v("city")!) : null, state, zip: v("zip") ? v("zip")!.replace(/\D/g, "").slice(0, 5) || null : null,
+      practiceRole: role === "OWNER" || role === "ASSOCIATE" ? role : "UNKNOWN", providersAtPractice: Number.isFinite(providers) && providers > 0 ? providers : null,
+    },
+  };
 }
