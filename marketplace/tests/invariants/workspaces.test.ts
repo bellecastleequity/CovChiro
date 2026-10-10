@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "@cm/db";
-import { auth, getEligibleProviders } from "@cm/services";
+import { auth, getEligibleProviders, hiring, ownside, providerPublicProfile, search, setBlock, setFavorite } from "@cm/services";
 import type { Actor } from "@cm/services";
-import { makeClinic, makeProvider, makeShift, uid } from "../factories";
+import { insertAssignment, makeClinic, makeProvider, makeShift, uid } from "../factories";
 
 /** One login with a clinic side and a provider side (owners only), each a separate workspace. */
 describe("workspaces", () => {
@@ -66,5 +66,33 @@ describe("workspaces", () => {
     expect(mine.eligible.map((e) => e.providerId)).not.toContain(p.id);
     expect(mine.excluded.find((e) => e.providerId === p.id)?.result.failures.map((f) => f.code)).toContain("OWN_CLINIC");
     expect((await getEligibleProviders(prisma, otherShift.id)).eligible.map((e) => e.providerId)).toContain(p.id);
+  });
+
+  it("the two sides are invisible to each other: owner and staff of the clinic can't see, favorite, block, hire or find the provider side", async () => {
+    const own = await makeClinic();
+    const p = await makeProvider();
+    await prisma.clinicMember.create({ data: { userId: p.user.id, clinicOrgId: own.org.id, role: "CLINIC_STAFF" } });
+    const staffUser = await prisma.user.create({ data: { email: `s-${uid()}@test.dev`, name: "Front desk", role: "CLINIC_STAFF", emailVerifiedAt: new Date() } });
+    await prisma.clinicMember.create({ data: { userId: staffUser.id, clinicOrgId: own.org.id, role: "CLINIC_STAFF" } });
+    const staff: Actor = { userId: staffUser.id, role: "CLINIC_STAFF", providerId: null, clinicOrgId: own.org.id };
+    // Even a booking from before (e.g. made before they joined the clinic) doesn't expose them.
+    const past = await makeShift(own.location.id, { days: 250 });
+    await insertAssignment(past.id, p.id);
+
+    expect(await ownside.isOwnPair(p.id, own.org.id)).toBe(true);
+    for (const viewer of [own.actor, staff]) {
+      await expect(providerPublicProfile(viewer, p.id)).rejects.toThrow(/not found/i);
+      await expect(setFavorite(viewer, p.id, true)).rejects.toThrow(/not found/i);
+      await expect(setBlock(viewer, p.id, true)).rejects.toThrow(/not found/i);
+      await expect(hiring.requestHire(viewer, { providerId: p.id, positionType: "FULL_TIME" })).rejects.toThrow(/not found/i);
+      expect((await search.searchRecords(viewer, p.displayName)).filter((h) => h.group === "Providers")).toEqual([]);
+    }
+    // Staff membership blocks matching too (F14 covers every member, not only owners).
+    const shift = await makeShift(own.location.id, { days: 260 });
+    expect((await getEligibleProviders(prisma, shift.id)).eligible.map((e) => e.providerId)).not.toContain(p.id);
+    // Another clinic still sees them normally.
+    const other = await makeClinic();
+    expect((await providerPublicProfile(other.actor, p.id)).id ?? p.id).toBeTruthy();
+    expect(await ownside.isOwnPair(p.id, other.org.id)).toBe(false);
   });
 });

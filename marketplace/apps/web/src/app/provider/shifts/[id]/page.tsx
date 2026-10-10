@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Car, Clock, MapPin, Plane, Shirt, Star, Users } from "lucide-react";
 import { prisma } from "@cm/db";
-import { evaluateProviderForShift, getSettings, sameProvider } from "@cm/services";
+import { evaluateProviderForShift, getSettings, ownside, sameProvider } from "@cm/services";
 import { parseVolumeTerms, providerView } from "@cm/core";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,8 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
   const { actor } = await requireActor("provider");
   const { id } = await params;
   const shift = await prisma.shift.findUnique({ where: { id }, include: { location: { include: { clinicOrg: true } }, applications: { where: { providerId: actor.providerId! } } } });
-  if (!shift) notFound();
+  // Your own clinic's shifts are never shown on your provider side (workspaces).
+  if (!shift || (await ownside.isOwnPair(actor.providerId!, shift.location.clinicOrgId))) notFound();
   const app = shift.applications[0];
   // INV-1: a shift is only shown to providers who are eligible for it (or already applied).
   const ev = await evaluateProviderForShift(prisma, actor.providerId!, id);

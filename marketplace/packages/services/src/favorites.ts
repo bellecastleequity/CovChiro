@@ -1,6 +1,7 @@
 import { DomainError } from "@cm/core";
 import { prisma } from "@cm/db";
 import { audit, requireClinic, requireProvider, type Actor } from "./context";
+import { assertNotOwnPair, notOwnProvider } from "./ownside";
 
 /**
  * Favorites & blocks (SPEC §12). A clinic can favorite a provider only after
@@ -16,6 +17,7 @@ export async function setFavorite(actor: Actor, targetId: string, on: boolean) {
   const clinic = actor.role !== "PROVIDER";
   const fromId = clinic ? requireClinic(actor) : requireProvider(actor);
   const [clinicOrgId, providerId] = clinic ? [fromId, targetId] : [targetId, fromId];
+  await assertNotOwnPair(providerId, clinicOrgId);
   const key = { fromType: clinic ? "CLINIC" : "PROVIDER", fromId, toType: clinic ? "PROVIDER" : "CLINIC", toId: targetId } as const;
   if (on) {
     if (!(await workedTogether(clinicOrgId, providerId))) throw new DomainError("FORBIDDEN", "You can favorite after completing a shift together.");
@@ -31,6 +33,7 @@ export async function setBlock(actor: Actor, targetId: string, on: boolean, reas
   const clinic = actor.role !== "PROVIDER";
   const fromId = clinic ? requireClinic(actor) : requireProvider(actor);
   const key = { fromType: clinic ? "CLINIC" : "PROVIDER", fromId, toType: clinic ? "PROVIDER" : "CLINIC", toId: targetId } as const;
+  await (clinic ? assertNotOwnPair(targetId, fromId) : assertNotOwnPair(fromId, targetId));
   if (on) {
     await prisma.block.upsert({ where: { fromType_fromId_toType_toId: key }, create: { ...key, reason: reason?.slice(0, 300) }, update: { reason: reason?.slice(0, 300) } });
     await prisma.favorite.deleteMany({ where: key });
@@ -45,7 +48,7 @@ export async function clinicRelationships(actor: Actor) {
     prisma.favorite.findMany({ where: { fromType: "CLINIC", fromId: orgId, toType: "PROVIDER" }, orderBy: { createdAt: "desc" } }),
     prisma.block.findMany({ where: { fromType: "CLINIC", fromId: orgId, toType: "PROVIDER" }, orderBy: { createdAt: "desc" } }),
   ]);
-  const people = await prisma.provider.findMany({ where: { id: { in: [...favs, ...blocks].map((x) => x.toId) } }, select: { id: true, displayName: true, photoUrl: true, homeCity: true, homeState: true } });
+  const people = await prisma.provider.findMany({ where: { id: { in: [...favs, ...blocks].map((x) => x.toId) }, ...notOwnProvider(orgId) }, select: { id: true, displayName: true, photoUrl: true, homeCity: true, homeState: true } });
   const pBy = new Map(people.map((p) => [p.id, p]));
   const shifts = await prisma.assignment.groupBy({ by: ["providerId"], where: { providerId: { in: favs.map((f) => f.toId) }, status: "COMPLETED", shift: { location: { clinicOrgId: orgId } } }, _count: true });
   const countBy = new Map(shifts.map((x) => [x.providerId, x._count]));
@@ -67,6 +70,7 @@ export async function upcomingWith(actor: Actor, providerId: string) {
 
 export async function clinicRelationshipWith(actor: Actor, providerId: string) {
   const orgId = requireClinic(actor);
+  await assertNotOwnPair(providerId, orgId);
   const key = { fromType: "CLINIC", fromId: orgId, toType: "PROVIDER", toId: providerId } as const;
   const [fav, block, worked] = await Promise.all([
     prisma.favorite.findUnique({ where: { fromType_fromId_toType_toId: key } }),

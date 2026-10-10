@@ -1,6 +1,7 @@
 import { brand } from "@cm/config";
 import { DomainError } from "@cm/core";
 import { prisma } from "@cm/db";
+import { assertNotOwnPair } from "./ownside";
 import { longDate, sha256 } from "./agreements";
 import { audit, clock, getSettings, requireAdmin, requireClinic, SYSTEM, type Actor } from "./context";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
@@ -23,6 +24,7 @@ export async function requestHire(actor: Actor, input: { providerId: string; pos
   if (!(input.positionType in POSITION_TYPES)) throw new DomainError("VALIDATION", "Pick the kind of position.");
   const provider = await prisma.provider.findUnique({ where: { id: input.providerId } });
   if (!provider) throw new DomainError("NOT_FOUND", "Provider not found");
+  await assertNotOwnPair(provider.id, orgId);
   const met =
     (await prisma.assignment.count({ where: { providerId: provider.id, shift: { location: { clinicOrgId: orgId } } } })) +
     (await prisma.application.count({ where: { providerId: provider.id, shift: { location: { clinicOrgId: orgId } } } }));

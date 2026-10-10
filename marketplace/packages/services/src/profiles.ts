@@ -1,6 +1,7 @@
 import { DomainError, licensedPairs, providerBadges, type Badge } from "@cm/core";
 import { prisma } from "@cm/db";
 import { clock, getSettings, type Actor } from "./context";
+import { assertNotOwnPair } from "./ownside";
 
 /**
  * Provider public profile: headshot, headline, About me, LinkedIn, verified
@@ -85,6 +86,8 @@ export async function providerPublicProfile(viewer: Actor, providerId: string) {
   if (!p || (!isSelf && !isAdmin && p.status !== "ACTIVE")) throw new DomainError("NOT_FOUND", "Provider not found");
   let workedTogether = false;
   if (isClinic) {
+    // A clinic never sees its own owner's/staff's provider side (workspaces).
+    await assertNotOwnPair(providerId, viewer.clinicOrgId!);
     workedTogether = (await prisma.assignment.count({ where: { providerId, status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] }, shift: { location: { clinicOrgId: viewer.clinicOrgId! } } } })) > 0;
   }
   const linkedinVisible = isSelf || isAdmin || s["profiles.linkedinVisibility"] === "always" || workedTogether;

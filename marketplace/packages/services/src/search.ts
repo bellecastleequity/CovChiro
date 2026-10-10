@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import { prisma } from "@cm/db";
 import type { Actor } from "./context";
+import { notOwnProvider } from "./ownside";
 
 /**
  * Records for the backend search bar. Scoped to what the signed-in person can already see:
@@ -80,7 +81,7 @@ async function clinicSearch(orgId: string, q: string): Promise<SearchHit[]> {
       orderBy: { startsAt: "desc" },
       take: TAKE,
     }),
-    prisma.provider.findMany({ where: { displayName: ci(q), assignments: { some: { shift: { location: { clinicOrgId: orgId } } } } }, select: { id: true, displayName: true }, take: TAKE }),
+    prisma.provider.findMany({ where: { displayName: ci(q), assignments: { some: { shift: { location: { clinicOrgId: orgId } } } }, ...notOwnProvider(orgId) }, select: { id: true, displayName: true }, take: TAKE }),
     prisma.clinicLocation.findMany({ where: { clinicOrgId: orgId, OR: [{ name: ci(q) }, { city: ci(q) }] }, select: { name: true, city: true }, take: TAKE }),
     prisma.clinicMember.findMany({ where: { clinicOrgId: orgId, user: { OR: [{ name: ci(q) }, { email: ci(q) }] } }, select: { user: { select: { name: true, email: true } } }, take: TAKE }),
   ]);

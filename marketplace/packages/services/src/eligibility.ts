@@ -160,7 +160,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
       openDates: true,
       payFloors: true,
       // Clinics this login owns (clinic owner who also takes shifts): never their own shifts (F14).
-      user: { select: { clinicMembers: { where: { role: "CLINIC_OWNER" }, select: { clinicOrgId: true } } } },
+      user: { select: { clinicMembers: { select: { clinicOrgId: true } } } },
       assignments: {
         where: { status: { in: ["CONFIRMED", "IN_PROGRESS"] }, ...(excludeShiftId ? { shiftId: { not: excludeShiftId } } : {}) },
         select: { shiftId: true, startsAt: true, endsAt: true, bufferMinutes: true },
