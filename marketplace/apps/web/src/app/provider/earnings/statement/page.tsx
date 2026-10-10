@@ -32,7 +32,7 @@ export default async function EarningsStatement({ searchParams }: { searchParams
       </div>
       <Card className="mb-6 print:border-0 print:shadow-none">
         <CardHeader title="By month" />
-        <Table>
+        <Table compact>
           <tbody>{st.byMonth.map((m) => <tr key={m.label}><Td>{m.label}</Td><Td className="text-right tabular-nums">{m.cents ? money(m.cents, { exact: true }) : "—"}</Td></tr>)}</tbody>
         </Table>
       </Card>

@@ -58,10 +58,11 @@ export function Alert({ tone = "info", title, children, className }: { tone?: ke
   );
 }
 
-export function Table({ children, className }: { children: React.ReactNode; className?: string }) {
+/** `compact`: a short table (two or three narrow columns) that fits a phone without a sideways scroll. */
+export function Table({ children, className, compact }: { children: React.ReactNode; className?: string; compact?: boolean }) {
   return (
     <div className={cn("overflow-x-auto", className)}>
-      <table className="w-full min-w-[560px] text-left text-sm">{children}</table>
+      <table className={cn("w-full text-left text-sm", !compact && "min-w-[560px]")}>{children}</table>
     </div>
   );
 }
