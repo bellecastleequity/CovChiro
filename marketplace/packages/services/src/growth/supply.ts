@@ -1,7 +1,7 @@
-import { demandLevel, marketReadiness, recruitmentPriority, supplyStatus, type SupplyStatus } from "@cm/core";
+import { demandLevel, marketReadiness, marketRecommendation, recruitmentPriority, resolvePriority, supplyStatus, type Side, type SupplyStatus } from "@cm/core";
 import { prisma } from "@cm/db";
 import { haversineMiles } from "@cm/integrations";
-import { clock } from "../context";
+import { clock, getSettings } from "../context";
 import { coverageReadyProviders } from "./analytics";
 import { agentOn, escalate, logAgent } from "./engine";
 
@@ -31,6 +31,7 @@ export async function marketSupply(opts: { key?: string } = {}) {
     select: { status: true, startsAt: true, professionCode: true, location: { select: { lat: true, lng: true, clinicOrgId: true } } },
   });
   const targets = new Map((await prisma.growthTarget.findMany()).map((t) => [`${t.professionCode}|${t.state}`, t.status as "OFF" | "PRELAUNCH" | "LIVE"]));
+  const settings = await getSettings();
   const [providerProspects, clinicProspects] = await Promise.all([
     prisma.providerProspect.groupBy({ by: ["marketKey", "contactStatus", "stage"], where: { marketKey: { in: markets.map((m) => m.key) } }, _count: { _all: true } }),
     prisma.clinicProspect.groupBy({ by: ["marketKey"], where: { marketKey: { in: markets.map((m) => m.key) } }, _count: { _all: true } }),
@@ -54,6 +55,9 @@ export async function marketSupply(opts: { key?: string } = {}) {
     const completed30 = past.filter((s) => s.status === "COMPLETED").length;
     const clinics = new Set(here.map((s) => s.location.clinicOrgId)).size;
     const status: SupplyStatus = supplyStatus({ ready: inMarket, target: m.targetProviders, upcomingRequests: upcomingOpen, filled30, unfilled30 });
+    // Acquisition priority as configured (the recommendation never feeds itself back in here).
+    const configured = resolvePriority({ state: m.state, marketOverride: (m.acquisitionPriority as Side | null) ?? null, overrides: settings["growth.acquisitionPriorities"] });
+    const recommendation = marketRecommendation({ primary: configured.primary, readyProviders: inMarket, targetProviders: m.targetProviders, activeClinics: clinics, upcomingRequests: upcoming.length, upcomingOpen, unfilled30 });
     const pp = providerProspects.filter((x) => x.marketKey === m.key);
     const sum = (f: (x: (typeof pp)[number]) => boolean) => pp.filter(f).reduce((a, x) => a + x._count._all, 0);
     return {
@@ -61,6 +65,7 @@ export async function marketSupply(opts: { key?: string } = {}) {
       supply: status, priority: recruitmentPriority(status), demand: demandLevel({ upcomingRequests: upcoming.length, clinics }),
       readiness: marketReadiness({ targetStatus: targets.get(pair) ?? "OFF", paused: !m.active, ready: inMarket, target: m.targetProviders, supply: status, completed30 }),
       targetStatus: targets.get(pair) ?? "OFF",
+      acquisition: configured, recommendation,
       prospects: {
         providers: sum(() => true), contactable: sum((x) => x.contactStatus === "VERIFIED"), contacted: sum((x) => ["CONTACTED", "ENGAGED", "REGISTERED", "NOT_INTERESTED"].includes(x.stage)),
         registered: sum((x) => x.stage === "REGISTERED"), clinics: clinicProspects.find((x) => x.marketKey === m.key)?._count._all ?? 0,
@@ -78,6 +83,18 @@ export async function marketSupplySweep() {
   const rows = await marketSupply();
   let changed = 0;
   for (const r of rows) {
+    // Two-sided recommendation: stored for the agents (growth.followRecommendations) and the dashboard; a new imbalance against the configured priority is escalated once.
+    const rec = r.recommendation;
+    const recChanged = r.market.recommendedSide !== rec.side || r.market.recommendationKind !== rec.kind;
+    await prisma.growthMarket.update({ where: { id: r.market.id }, data: { recommendedSide: rec.side, recommendationKind: rec.kind, recommendationReason: rec.reason, recommendedAt: clock.now() } });
+    if (recChanged && rec.kind === "IMBALANCE" && rec.differsFromPriority && r.market.active && r.targetStatus !== "OFF") {
+      await escalate({
+        entityType: "MARKET", entityId: r.market.key, label: r.market.name, reasonCode: "market_imbalance", intent: "MEDIUM",
+        reason: rec.reason,
+        summary: `Configured priority: ${r.acquisition.primary === "SUPPLY" ? "providers first" : "clinics first"} (${r.acquisition.source}). ${r.ready} coverage-ready providers, ${r.clinics} clinics booking, ${r.upcomingRequests} upcoming requests, ${r.unfilled30} unfilled in 30 days.`,
+        action: `Consider setting this market to ${rec.side === "SUPPLY" ? "providers first" : "clinics first"} on Growth → Supply & Demand, or turn on "follow recommendations" in Growth settings.`,
+      });
+    }
     if (r.market.supplyStatus !== r.supply) {
       changed++;
       await prisma.growthMarket.update({ where: { id: r.market.id }, data: { supplyStatus: r.supply, supplyCheckedAt: clock.now() } });

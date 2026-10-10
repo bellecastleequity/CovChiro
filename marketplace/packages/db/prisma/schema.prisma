@@ -1225,33 +1225,33 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id                    String        @id @default(cuid())
-  clinicOrgId           String
-  clinicOrg             ClinicOrg     @relation(fields: [clinicOrgId], references: [id])
-  assignmentId          String?
-  assignment            Assignment?   @relation(fields: [assignmentId], references: [id])
-  type                  PaymentType
-  amountCents           Int
-  stripePaymentIntentId String?       @unique
-  stripeRefundId        String?       @unique
-  idempotencyKey        String        @unique
-  status                PaymentStatus @default(PENDING)
+  id                     String        @id @default(cuid())
+  clinicOrgId            String
+  clinicOrg              ClinicOrg     @relation(fields: [clinicOrgId], references: [id])
+  assignmentId           String?
+  assignment             Assignment?   @relation(fields: [assignmentId], references: [id])
+  type                   PaymentType
+  amountCents            Int
+  stripePaymentIntentId  String?       @unique
+  stripeRefundId         String?       @unique
+  idempotencyKey         String        @unique
+  status                 PaymentStatus @default(PENDING)
   /// Provider pay already transferred out of this charge (linked transfers, source_transaction).
-  transferredCents      Int           @default(0)
-  failureReason         String?
-  description           String?
-  createdById           String?
+  transferredCents       Int           @default(0)
+  failureReason          String?
+  description            String?
+  createdById            String?
   /// Overdue handling: when the charge first failed, retries made, when the clinic was told.
-  firstFailedAt         DateTime?     @db.Timestamptz(3)
-  retryCount            Int           @default(0)
-  lastAttemptAt         DateTime?     @db.Timestamptz(3)
-  failureNotifiedAt     DateTime?     @db.Timestamptz(3)
+  firstFailedAt          DateTime?     @db.Timestamptz(3)
+  retryCount             Int           @default(0)
+  lastAttemptAt          DateTime?     @db.Timestamptz(3)
+  failureNotifiedAt      DateTime?     @db.Timestamptz(3)
   /// Rebilling failsafe: an admin excluded this charge from automatic retries, notices and pay-in-full (or it was already paid by another charge).
-  collectionExcludedAt   DateTime?    @db.Timestamptz(3)
+  collectionExcludedAt   DateTime?     @db.Timestamptz(3)
   collectionExcludedById String?
   collectionExcludedNote String?
-  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+  createdAt              DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime      @updatedAt @db.Timestamptz(3)
 
   @@index([assignmentId])
   @@index([clinicOrgId, createdAt])
@@ -1912,22 +1912,75 @@ model ProviderFeedback {
 
 /// Strategic launch regions; "ready" when enough coverage-ready providers sit inside the radius.
 model GrowthMarket {
-  id              String    @id @default(cuid())
-  key             String    @unique
-  name            String
-  state           String    @db.Char(2)
-  professionCode  String    @default("DC")
-  centerLat       Float
-  centerLng       Float
-  radiusMiles     Int       @default(60)
-  targetProviders Int       @default(5)
-  priority        Int       @default(100)
-  active          Boolean   @default(true)
-  notes           String?
+  id                   String    @id @default(cuid())
+  key                  String    @unique
+  name                 String
+  state                String    @db.Char(2)
+  professionCode       String    @default("DC")
+  centerLat            Float
+  centerLng            Float
+  radiusMiles          Int       @default(60)
+  targetProviders      Int       @default(5)
+  priority             Int       @default(100)
+  active               Boolean   @default(true)
+  notes                String?
   /// Supply Gap agent: CRITICAL | LOW | BUILDING | HEALTHY | LIQUID (core supplyStatus), refreshed hourly.
-  supplyStatus    String?
-  supplyCheckedAt DateTime? @db.Timestamptz(3)
-  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  supplyStatus         String?
+  supplyCheckedAt      DateTime? @db.Timestamptz(3)
+  /// Acquisition priority for this market: SUPPLY | DEMAND, null = the state/country setting (core resolvePriority).
+  acquisitionPriority  String?
+  /// Supply Gap agent's two-sided recommendation (core marketRecommendation): SUPPLY | DEMAND, IMBALANCE | PRIORITY, why.
+  recommendedSide      String?
+  recommendationKind   String?
+  recommendationReason String?
+  recommendedAt        DateTime? @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+}
+
+/// One call to an outside prospecting data source (Apollo today): what it did and the credits it is estimated to have used.
+model DataSourceUsage {
+  id               String   @id @default(cuid())
+  /// apollo
+  source           String
+  /// people_search | organization_search | person_enrich | organization_enrich | health
+  operation        String
+  /// SUPPLY | DEMAND | null
+  side             String?
+  region           String?
+  marketKey        String?
+  /// Who started it: an admin's user id, or null for an automatic agent run.
+  createdById      String?
+  /// Agent or screen that made the call (apolloDiscovery, contactDiscovery, research, admin_search…).
+  task             String
+  records          Int      @default(0)
+  /// Estimated from Settings (growth.apollo.creditCosts); Apollo's own account page is the confirmed balance.
+  creditsEstimated Int      @default(0)
+  ok               Boolean  @default(true)
+  error            String?
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([source, createdAt])
+}
+
+/// An admin's prospect search in an outside source, kept for a day so the chosen rows can be imported without searching (and paying) again.
+model ProspectSearch {
+  id               String   @id @default(cuid())
+  source           String
+  /// SUPPLY | DEMAND
+  side             String
+  region           String
+  city             String?
+  professionCode   String   @default("DC")
+  params           Json
+  /// Mapped rows (core mapApolloPerson / mapApolloOrganization) plus duplicate flags.
+  results          Json
+  total            Int?
+  creditsEstimated Int      @default(0)
+  createdById      String?
+  expiresAt        DateTime @db.Timestamptz(3)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([expiresAt])
 }
 
 enum ProspectStage {
@@ -1959,79 +2012,91 @@ enum IntentCategory {
 /// Clinic prospect CRM: one row per practice, public business information only.
 /// clinicOrgId links it once the practice has an account.
 model ClinicProspect {
-  id                 String         @id @default(cuid())
+  id                   String         @id @default(cuid())
   /// Professions practising at this location (from the registry search that found it). Outreach uses the first one with a LIVE growth target here.
-  professionCodes    String[]       @default(["DC"])
-  clinicName         String
-  ownerName          String?
-  doctors            String[]       @default([])
-  email              String?        @db.Citext
-  phone              String?
-  website            String?
-  address            String?
-  city               String?
-  county             String?
-  state              String         @default("FL") @db.Char(2)
-  zip                String?
-  lat                Float?
-  lng                Float?
-  marketKey          String?
-  locationsCount     Int?
-  providerCount      Int?
-  practiceType       String?
+  professionCodes      String[]       @default(["DC"])
+  clinicName           String
+  ownerName            String?
+  doctors              String[]       @default([])
+  email                String?        @db.Citext
+  phone                String?
+  website              String?
+  address              String?
+  city                 String?
+  county               String?
+  state                String         @default("FL") @db.Char(2)
+  zip                  String?
+  lat                  Float?
+  lng                  Float?
+  marketKey            String?
+  locationsCount       Int?
+  providerCount        Int?
+  practiceType         String?
   /// independent | group | franchise | unknown
-  ownership          String?
-  multidisciplinary  Boolean?
-  hasContactForm     Boolean?
-  socialUrls         String[]       @default([])
-  source             String?
-  collectedAt        DateTime?      @db.Timestamptz(3)
-  verifiedAt         DateTime?      @db.Timestamptz(3)
+  ownership            String?
+  multidisciplinary    Boolean?
+  hasContactForm       Boolean?
+  socialUrls           String[]       @default([])
+  source               String?
+  collectedAt          DateTime?      @db.Timestamptz(3)
+  verifiedAt           DateTime?      @db.Timestamptz(3)
   /// solo | multi_dc | multi_location | franchise | multidisciplinary | high_volume | specialty | unknown
-  segment            String         @default("unknown")
-  segmentConfidence  Float?
+  segment              String         @default("unknown")
+  segmentConfidence    Float?
   /// NONE | RULE | AI | MANUAL — an AI guess is never shown as fact.
-  segmentBasis       String         @default("NONE")
-  segmentReason      String?
-  stage              ProspectStage  @default(PROSPECT)
-  intentScore        Int            @default(0)
-  intentCategory     IntentCategory @default(COLD)
-  clinicOrgId        String?        @unique
+  segmentBasis         String         @default("NONE")
+  segmentReason        String?
+  stage                ProspectStage  @default(PROSPECT)
+  intentScore          Int            @default(0)
+  intentCategory       IntentCategory @default(COLD)
+  clinicOrgId          String?        @unique
   /// UNKNOWN | VALID | BOUNCED | COMPLAINED | UNSUBSCRIBED
-  emailStatus        String         @default("UNKNOWN")
-  smsConsentAt       DateTime?      @db.Timestamptz(3)
-  doNotContact       Boolean        @default(false)
-  outreachStep       Int            @default(0)
-  outreachPaused     Boolean        @default(false)
-  lastContactedAt    DateTime?      @db.Timestamptz(3)
-  lastInboundAt      DateTime?      @db.Timestamptz(3)
-  objections         String[]       @default([])
-  aiSummary          String?
-  notes              String?
-  campaignCode       String?
+  emailStatus          String         @default("UNKNOWN")
+  smsConsentAt         DateTime?      @db.Timestamptz(3)
+  doNotContact         Boolean        @default(false)
+  outreachStep         Int            @default(0)
+  outreachPaused       Boolean        @default(false)
+  lastContactedAt      DateTime?      @db.Timestamptz(3)
+  lastInboundAt        DateTime?      @db.Timestamptz(3)
+  objections           String[]       @default([])
+  aiSummary            String?
+  notes                String?
+  campaignCode         String?
   /// Automatic prospecting: normalized practice address (dedupe) and the NPPES NPIs seen there.
-  addressKey         String?        @unique
-  npis               String[]       @default([])
+  addressKey           String?        @unique
+  npis                 String[]       @default([])
   /// The name is a doctor's name from the registry; research may replace it with the practice name.
-  nameFromRegistry   Boolean        @default(false)
+  nameFromRegistry     Boolean        @default(false)
   /// PENDING | RUNNING | DONE | NOT_FOUND | FAILED
-  researchStatus     String         @default("PENDING")
-  researchAttempts   Int            @default(0)
-  researchedAt       DateTime?      @db.Timestamptz(3)
-  researchConfidence Float?
+  researchStatus       String         @default("PENDING")
+  researchAttempts     Int            @default(0)
+  researchedAt         DateTime?      @db.Timestamptz(3)
+  researchConfidence   Float?
   /// Pages the AI research cited for this record.
-  sourceUrls         String[]       @default([])
+  sourceUrls           String[]       @default([])
   /// Instagram follow list: handle from the practice's own social links (or set by an admin).
-  instagramHandle    String?
+  instagramHandle      String?
   /// NONE (not checked) | NO_HANDLE | FOUND (to review) | APPROVED (in the follow queue) | FOLLOWED | SKIPPED
-  igStatus           String         @default("NONE")
-  igApprovedAt       DateTime?      @db.Timestamptz(3)
-  igAutoApproved     Boolean        @default(false)
-  igFollowedAt       DateTime?      @db.Timestamptz(3)
+  igStatus             String         @default("NONE")
+  igApprovedAt         DateTime?      @db.Timestamptz(3)
+  igAutoApproved       Boolean        @default(false)
+  igFollowedAt         DateTime?      @db.Timestamptz(3)
   /// Unsubscribe and tracked-link token.
-  publicToken        String         @unique
-  createdAt          DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime       @updatedAt @db.Timestamptz(3)
+  publicToken          String         @unique
+  /// Apollo.io ids (organization, and the decision-maker whose email we hold). A lead, never verified clinic data.
+  apolloOrganizationId String?        @unique
+  apolloPersonId       String?
+  /// Title of the decision-maker we'd contact (owner, practice manager…).
+  decisionMakerTitle   String?
+  sourceVerifiedAt     DateTime?      @db.Timestamptz(3)
+  /// Paid enrichment: NONE | DONE | NO_MATCH | FAILED | SKIPPED, and the estimated credits it used.
+  enrichmentStatus     String         @default("NONE")
+  enrichmentCredits    Int            @default(0)
+  /// Canada (CASL): consent basis for commercial email + note.
+  consentBasis         String?
+  consentNote          String?
+  createdAt            DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime       @updatedAt @db.Timestamptz(3)
 
   @@index([stage])
   @@index([researchStatus])
@@ -2353,7 +2418,21 @@ model BlogPost {
 /// recruitment emails go out only in PRELAUNCH/LIVE growth markets, through the compliance gate.
 model ProviderProspect {
   id                   String    @id @default(cuid())
-  npi                  String    @unique
+  /// NPI registry number (U.S.). Null for people found elsewhere (Apollo, Canada) until matched to the registry.
+  npi                  String?   @unique
+  /// Apollo.io ids when the record came from (or was enriched by) Apollo. A lead, never proof of a license.
+  apolloPersonId       String?   @unique
+  apolloOrganizationId String?
+  /// Job title as listed by the source (e.g. "Chiropractor").
+  title                String?
+  /// When the source last confirmed these details.
+  sourceVerifiedAt     DateTime? @db.Timestamptz(3)
+  /// Paid enrichment: NONE | DONE | NO_MATCH | FAILED | SKIPPED, and the estimated credits it used.
+  enrichmentStatus     String    @default("NONE")
+  enrichmentCredits    Int       @default(0)
+  /// Canada (CASL): the consent basis an admin recorded for commercial email (core CASL_CONSENT_BASES) + a note.
+  consentBasis         String?
+  consentNote          String?
   professionCode       String
   firstName            String?
   lastName             String?

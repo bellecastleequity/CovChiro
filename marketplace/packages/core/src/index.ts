@@ -43,3 +43,5 @@ export * from "./health";
 export * from "./seo";
 export * from "./supply";
 export * from "./overdue";
+export * from "./acquisition";
+export * from "./apollo";

@@ -66,6 +66,9 @@ const EnvSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   MODERATION_MODEL: z.string().optional(),
   NPPES_API_BASE: z.string().default("https://npiregistry.cms.hhs.gov/api/"),
+  /** Apollo.io (Growth prospecting source). A master API key is needed for people search. */
+  APOLLO_API_KEY: z.string().optional(),
+  APOLLO_API_BASE: z.string().default("https://api.apollo.io/api/v1"),
   /** "1" = this install is the test site (sandbox): demo data, captured email/SMS, Stripe test keys only, no restore controls, not indexed. */
   SANDBOX_MODE: z.string().optional(),
   /** Test site: addresses (or @domains) whose email is really delivered, comma separated. Everything else only lands in the Test outbox. */

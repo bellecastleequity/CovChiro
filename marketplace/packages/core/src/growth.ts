@@ -193,6 +193,8 @@ export interface ContactContext {
   /** This audience's marketing switch is off (provider marketing or clinic marketing). */
   audienceOff?: boolean;
   doNotContact: boolean;
+  /** Jurisdiction rule that forbids this message (e.g. core caslBlock for Canada), if any. */
+  jurisdictionBlock?: string | null;
   address: string;
   /** UNKNOWN | VALID | BOUNCED | COMPLAINED | UNSUBSCRIBED */
   emailStatus: string;
@@ -217,6 +219,7 @@ export function contactDecision(c: ContactContext): { ok: boolean; reason: strin
   if (c.automated && c.pausedOutbound) return no("automation_paused");
   if (c.automated && c.audienceOff) return no("audience_marketing_off");
   if (c.doNotContact) return no("do_not_contact");
+  if (c.jurisdictionBlock) return no(c.jurisdictionBlock);
   if (!c.address.trim()) return no("no_address");
   const hardSuppression = c.suppression !== null && ["BOUNCE", "COMPLAINT", "DO_NOT_CONTACT", "SMS_STOP"].includes(c.suppression);
   if (c.channel === "EMAIL") {

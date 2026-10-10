@@ -17,3 +17,7 @@ export { marketSupply, marketSupplySweep, type MarketRow } from "./supply";
 export * from "./command";
 export { classifyAiError, researchPause, researchRequestsToday, retryAfterMs, withRateLimitRetry } from "./aihealth";
 export { syncInstagramHandles, autoApproveInstagram, instagramSweep, instagramBoard, instagramDecide, setInstagramHandle } from "./instagram";
+export { apolloStatus, apolloPause, resumeApollo, testApolloConnection, searchApollo, prospectSearch, importApolloSearch, importEstimate, apolloDiscoverySweep, apolloEnrichmentSweep, apolloCreditsUsed, apolloGate, upsertApolloProviderProspect, upsertApolloClinicProspect } from "./apollo";
+export { priorityContext, outreachSideAllowance, setMarketPriority, setConsentBasis } from "./priority";
+export { geographyReport, type GeoFilter } from "./geography";
+export { CA_CITY_CENTERS } from "./cities";

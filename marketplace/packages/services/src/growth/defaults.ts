@@ -118,6 +118,22 @@ export const DEFAULT_PROMPTS: Seed[] = [
     instructions: null,
     vars: ["greeting_name", "city", "state_name", "market_name", "signup_url", "site_url", "brand"],
   },
+  {
+    key: "PROVIDER_RECRUIT_UNMATCHED_FIRST_CONTACT", agent: "providerOutreach", draft: true,
+    purpose: "First recruitment email to a provider found outside the NPI registry (e.g. Apollo.io) and not matched to it: makes no claim about their license.",
+    subject: "Coverage days in {{state_name}}",
+    body: "Hi {{greeting_name}},\n\nYour professional profile lists you as a chiropractor in {{state_name}}, so I wanted to share {{brand}}: offices book a chiropractor for a day or a few days when their regular doctor is on vacation, at a seminar or out sick.\n\nYou choose the days you're available and how far you'll travel, and you're paid through the platform. There's no fee to join. Before you can be matched, we verify your license and malpractice insurance.\n\nIf it sounds useful, you can register here: {{signup_url}}\n\nThanks,\nThe {{brand}} team",
+    instructions: "Personalize lightly using only the facts given. Never say or imply they are licensed or verified. No earnings figures, no number of shifts, no guarantees. 110-160 words.",
+    vars: ["greeting_name", "city", "state_name", "market_name", "profession", "signup_url", "site_url", "brand"],
+  },
+  {
+    key: "PROVIDER_RECRUIT_CANADA_WAITLIST", agent: "providerOutreach", draft: true,
+    purpose: "One email to a Canadian provider: {{brand}} isn't open in Canada yet, invite them to the waitlist. Sent only with Canada outreach on and a CASL consent basis recorded on the prospect.",
+    subject: "{{brand}} is coming to Canada",
+    body: "Hi {{greeting_name}},\n\nI found your practice listed publicly in {{state_name}} and wanted to share some news: {{brand}} connects clinics that need short-term coverage with practitioners who want flexible days. We're preparing to open in Canada but don't take bookings there yet.\n\nIf you'd like to hear when we open in your province, you can join the waitlist here: {{waitlist_url}}\n\nThanks,\nThe {{brand}} team",
+    instructions: "Keep it short. Never say coverage or shifts are available in Canada now, and never claim they are licensed. Include no dollar figures. 80-130 words.",
+    vars: ["greeting_name", "city", "state_name", "profession", "waitlist_url", "site_url", "brand"],
+  },
 ];
 
 const MARKETS = [

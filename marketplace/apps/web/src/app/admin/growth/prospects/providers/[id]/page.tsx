@@ -10,6 +10,7 @@ import { dateTimeLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { providerProspectAction } from "../../../actions";
 import { GrowthTabs, usd } from "../../../ui";
+import { SourceCard } from "../../source-card";
 
 export const metadata = { title: "Provider prospect" };
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export default async function ProviderProspectPage({ params }: { params: Promise
   const { p } = d;
   return (
     <>
-      <PageHeader back={{ href: "/admin/growth/prospects/providers", label: "Provider prospects" }} title={p.displayName} description={`${p.professionCode} · NPI ${p.npi} · ${[p.address, p.city, p.state, p.zip].filter(Boolean).join(", ")}`} actions={<Link href="/admin/growth/prospects/providers" className="text-sm text-brand-700">← Provider prospects</Link>} />
+      <PageHeader back={{ href: "/admin/growth/prospects/providers", label: "Provider prospects" }} title={p.displayName} description={`${p.professionCode} · ${p.npi ? `NPI ${p.npi}` : "No NPI match yet"} · ${[p.address, p.city, p.state, p.zip].filter(Boolean).join(", ")}`} actions={<Link href="/admin/growth/prospects/providers" className="text-sm text-brand-700">← Provider prospects</Link>} />
       <GrowthTabs current="/admin/growth/prospects" />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -48,6 +49,7 @@ export default async function ProviderProspectPage({ params }: { params: Promise
               {p.sourceUrls.length ? <div className="sm:col-span-2"><div className="text-xs text-slate-500">Sources</div><ul className="list-disc pl-5 text-xs">{p.sourceUrls.map((u) => <li key={u} className="break-all">{u}</li>)}</ul></div> : null}
             </CardBody>
           </Card>
+          <SourceCard entity="PROVIDER_PROSPECT" p={p} />
           <Card>
             <CardHeader title="Messages" />
             <CardBody className="space-y-3">

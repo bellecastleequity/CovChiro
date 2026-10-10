@@ -57,3 +57,32 @@ export const STATE_CITIES: Record<string, string[]> = {
   WI: ["Milwaukee", "Madison", "Green Bay", "Kenosha", "Appleton", "Waukesha", "Eau Claire", "Oshkosh", "Brookfield", "La Crosse"],
   WY: ["Cheyenne", "Casper", "Laramie", "Gillette", "Rock Springs", "Sheridan", "Jackson"],
 };
+
+/**
+ * Canada (prospecting only; the marketplace isn't open there): starter cities per province with
+ * fixed centers, because address geocoding is limited to the U.S. and its territories. Used by
+ * ensureMarkets and to place Canadian prospects in a market.
+ */
+export const CA_CITY_CENTERS: Record<string, [string, number, number][]> = {
+  ON: [["Toronto", 43.6532, -79.3832], ["Ottawa", 45.4215, -75.6972], ["Mississauga", 43.589, -79.6441], ["Hamilton", 43.2557, -79.8711], ["London", 42.9849, -81.2453], ["Kitchener", 43.4516, -80.4925]],
+  QC: [["Montreal", 45.5019, -73.5674], ["Quebec City", 46.8139, -71.208], ["Laval", 45.6066, -73.7124], ["Gatineau", 45.4765, -75.7013], ["Sherbrooke", 45.4042, -71.8929]],
+  BC: [["Vancouver", 49.2827, -123.1207], ["Surrey", 49.1913, -122.849], ["Burnaby", 49.2488, -122.9805], ["Victoria", 48.4284, -123.3656], ["Kelowna", 49.888, -119.496]],
+  AB: [["Calgary", 51.0447, -114.0719], ["Edmonton", 53.5461, -113.4938], ["Red Deer", 52.2681, -113.8112], ["Lethbridge", 49.6956, -112.8451]],
+  MB: [["Winnipeg", 49.8951, -97.1384], ["Brandon", 49.8485, -99.9501]],
+  SK: [["Saskatoon", 52.1579, -106.6702], ["Regina", 50.4452, -104.6189]],
+  NS: [["Halifax", 44.6488, -63.5752], ["Sydney", 46.1368, -60.1942]],
+  NB: [["Moncton", 46.0878, -64.7782], ["Saint John", 45.2733, -66.0633], ["Fredericton", 45.9636, -66.6431]],
+  NL: [["St. John's", 47.5615, -52.7126]],
+  PE: [["Charlottetown", 46.2382, -63.1311]],
+  YT: [["Whitehorse", 60.7212, -135.0568]],
+  NT: [["Yellowknife", 62.454, -114.3718]],
+  NU: [["Iqaluit", 63.7467, -68.517]],
+};
+for (const [prov, list] of Object.entries(CA_CITY_CENTERS)) STATE_CITIES[prov] = list.map(([c]) => c);
+
+/** A Canadian city's center from the starter list (null for other cities or U.S. regions). */
+export function canadianCityCenter(region: string, city: string | null | undefined) {
+  if (!city) return null;
+  const hit = CA_CITY_CENTERS[region.toUpperCase()]?.find(([c]) => c.toLowerCase() === city.trim().toLowerCase());
+  return hit ? { lat: hit[1], lng: hit[2] } : null;
+}

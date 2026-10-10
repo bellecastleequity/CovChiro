@@ -18,6 +18,7 @@ import { ensureGrowthDefaults } from "./defaults";
 import { growthFunnels, marketForPoint } from "./analytics";
 import { linkProviderProspects, providerOutreachSweep } from "./providers";
 import { activeTargets, outreachProfessionFor, primaryTarget, promptReadiness, providerTargetFrom } from "./expansion";
+import { outreachSideAllowance, priorityContext } from "./priority";
 
 /**
  * Growth agents as idempotent sweeps (same model as jobs.ts): each finds
@@ -321,11 +322,17 @@ export async function outreachSweep() {
   const rows = await prisma.clinicProspect.findMany({
     where: { clinicOrgId: null, outreachPaused: false, doNotContact: false, email: { not: null }, emailStatus: { notIn: ["BOUNCED", "COMPLAINED", "UNSUBSCRIBED"] }, stage: { in: ["PROSPECT", "CONTACTABLE", "OUTREACH_STARTED"] }, outreachStep: { lt: gaps.length } },
     orderBy: [{ outreachStep: "desc" }, { intentScore: "desc" }, { createdAt: "asc" }],
-    take: s["growth.dailyOutreachCap"] * 2,
+    take: s["growth.dailyOutreachCap"] * 4,
   });
+  // Demand-first markets (Florida by default) are worked first, then the rest in the usual order.
+  const ctx = await priorityContext();
+  rows.sort((a, b) => ctx.rank("DEMAND", a.state, a.marketKey) - ctx.rank("DEMAND", b.state, b.marketKey));
+  // Clinic outreach's share of today's marketing emails (core sideSplit by each market's priority).
+  let allowance = (await outreachSideAllowance("DEMAND")).remaining;
   const allowed = new Map<string, boolean>();
   const piReady = await approvedPiKeys();
   for (const c of rows) {
+    if (allowance <= 0) { out.deferred++; break; }
     // Safety: only where the growth target is LIVE and the marketplace takes shifts for that profession there.
     const professionCode = await outreachProfessionFor(c, allowed);
     if (!professionCode) continue;
@@ -339,8 +346,8 @@ export async function outreachSweep() {
       facts: { city: c.city, segment: c.segment !== "unknown" ? c.segment : null, clinic_name: c.clinicName },
     }));
     // In review mode the step advances when a person approves the draft.
-    if (res === "sent") { out.sent++; await advanceOutreach(c.id); }
-    else if (res === "pending_approval") out.drafts++;
+    if (res === "sent") { out.sent++; allowance--; await advanceOutreach(c.id); }
+    else if (res === "pending_approval") { out.drafts++; allowance--; }
     else if (res === "blocked") out.blocked++;
     else if (res.startsWith("deferred")) { out.deferred++; if (res === "deferred:daily_outreach_cap") break; }
   }

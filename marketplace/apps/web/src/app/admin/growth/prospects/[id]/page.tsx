@@ -12,6 +12,7 @@ import { dateTimeLabel, humanize } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { manualEmailAction, sendFirstOutreachAction, noteAction, overrideProspectAction, replyAction, researchProspectAction, saveProspectAction, instagramHandleAction } from "../../actions";
 import { GrowthTabs, SEGMENTS, STAGES } from "../../ui";
+import { SourceCard } from "../source-card";
 
 export const metadata = { title: "Clinic prospect" };
 export const dynamic = "force-dynamic";
@@ -123,6 +124,7 @@ export default async function ProspectDetail({ params, searchParams }: { params:
         </div>
 
         <div className="space-y-6">
+          <SourceCard entity="PROSPECT" p={p} />
           <Card>
             <CardHeader title="Web research" action={<ActionForm action={researchProspectAction} successMessage><input type="hidden" name="id" value={p.id} /><SubmitButton size="sm" variant="outline">{p.researchStatus === "PENDING" ? "Research now" : "Research again"}</SubmitButton></ActionForm>} />
             <CardBody className="space-y-2 text-sm">

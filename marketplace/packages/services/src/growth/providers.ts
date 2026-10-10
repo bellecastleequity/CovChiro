@@ -1,5 +1,5 @@
 import { brand } from "@cm/config";
-import { acceptProviderEmail, escalationTopic, outreachStepDue, US_STATES, wantsOptOut, type ProviderCandidate } from "@cm/core";
+import { acceptProviderEmail, countryOf, escalationTopic, outreachStepDue, regionName, wantsOptOut, type ProviderCandidate } from "@cm/core";
 import { prisma, type Prisma, type ProviderProspect } from "@cm/db";
 import { emailVerifier, geoProvider } from "@cm/integrations";
 import { DateTime } from "luxon";
@@ -10,6 +10,7 @@ import { agentOn, ai, aiRules, composeAndSend, Deferred, escalate, isSuppressed,
 import { activeTargets, registryProfile } from "./expansion";
 import { KNOWN_PRICING, researchEngine, researchSpendCents } from "./prospecting";
 import { handleResearchFailure, researchBlocked, withRateLimitRetry } from "./aihealth";
+import { outreachSideAllowance, priorityContext } from "./priority";
 
 /**
  * Provider acquisition (the provider side of Growth):
@@ -23,6 +24,9 @@ import { handleResearchFailure, researchBlocked, withRateLimitRetry } from "./ai
 const DAY = 86_400_000;
 const STALE_RUNNING_MS = 20 * 60_000;
 export const PROVIDER_OUTREACH_SEQUENCE = ["PROVIDER_RECRUIT_FIRST_CONTACT", "PROVIDER_RECRUIT_FOLLOW_UP"];
+/** One waitlist / pre-enrollment email for Canadian providers (no shifts there yet). Seeded as a draft; nothing goes out until an admin approves it. */
+export const CANADA_RECRUIT_KEY = "PROVIDER_RECRUIT_CANADA_WAITLIST";
+export const UNMATCHED_RECRUIT_KEY = "PROVIDER_RECRUIT_UNMATCHED_FIRST_CONTACT";
 const RANK: Record<string, number> = { CRITICAL: 0, LOW: 1, BUILDING: 2, HEALTHY: 3, LIQUID: 4 };
 
 /** Market supply status by market key (Supply Gap agent), for "neediest markets first". */
@@ -250,12 +254,14 @@ export async function contactDiscoverySweep(opts: { wallMs?: number } = {}) {
       providerId: null, doNotContact: false, OR: pairs,
       AND: [{ OR: [{ researchStatus: "PENDING" }, { researchStatus: "FAILED", researchAttempts: { lt: 3 }, researchedAt: { lt: new Date(+now - DAY) } }, { researchStatus: "RUNNING", researchedAt: { lt: new Date(+now - STALE_RUNNING_MS) } }] }],
     },
-    select: { id: true, marketKey: true, clinicProspectId: true, createdAt: true },
+    select: { id: true, marketKey: true, clinicProspectId: true, createdAt: true, state: true },
     orderBy: { createdAt: "asc" },
     take: 500,
   });
   const rank = await marketRank();
-  due.sort((a, b) => rank(a.marketKey) - rank(b.marketKey) || +a.createdAt - +b.createdAt);
+  // Supply-first markets (providers are their primary side) first, then the neediest markets.
+  const ctx = await priorityContext();
+  due.sort((a, b) => ctx.rank("SUPPLY", a.state, a.marketKey) - ctx.rank("SUPPLY", b.state, b.marketKey) || rank(a.marketKey) - rank(b.marketKey) || +a.createdAt - +b.createdAt);
   const deadline = Date.now() + (opts.wallMs ?? 60_000);
   for (const d of due) {
     if (Date.now() > deadline || out.checked >= s["growth.contactResearchPerRun"]) break;
@@ -277,7 +283,8 @@ export async function contactDiscoverySweep(opts: { wallMs?: number } = {}) {
 
 export function providerProspectVars(p: Pick<ProviderProspect, "publicToken" | "city" | "state" | "professionCode">, greeting: string, professionName: string, marketName: string | null) {
   return {
-    greeting_name: greeting, city: p.city, state_name: US_STATES[p.state] ?? p.state, profession: professionName, market_name: marketName, brand: brand().name,
+    greeting_name: greeting, city: p.city, state_name: regionName(p.state), profession: professionName, market_name: marketName, brand: brand().name,
+    waitlist_url: absoluteUrl(`/states?c=${p.publicToken}#waitlist`),
     signup_url: absoluteUrl(`/signup?role=provider&c=${p.publicToken}`),
     site_url: absoluteUrl(`/for-providers?c=${p.publicToken}`),
   };
@@ -306,13 +313,20 @@ export async function providerOutreachSweep() {
     take: s["growth.dailyOutreachCap"] * 4,
   });
   const rank = await marketRank();
-  rows.sort((a, b) => rank(a.marketKey) - rank(b.marketKey));
+  const ctx = await priorityContext();
+  rows.sort((a, b) => ctx.rank("SUPPLY", a.state, a.marketKey) - ctx.rank("SUPPLY", b.state, b.marketKey) || rank(a.marketKey) - rank(b.marketKey));
+  // Provider recruitment's share of today's marketing emails (core sideSplit by each market's priority).
+  let allowance = (await outreachSideAllowance("SUPPLY")).remaining;
   const ready = new Map<string, boolean>();
   const names = new Map((await prisma.profession.findMany({ select: { code: true, displayName: true } })).map((x) => [x.code, x.displayName.toLowerCase()]));
   const markets = new Map((await prisma.growthMarket.findMany({ select: { key: true, name: true } })).map((m) => [m.key, m.name]));
   for (const p of rows) {
+    if (allowance <= 0) { out.deferred++; break; }
     if (!outreachStepDue(p.outreachStep, p.lastContactedAt, gaps, now)) continue;
-    const key = PROVIDER_OUTREACH_SEQUENCE[Math.min(p.outreachStep, PROVIDER_OUTREACH_SEQUENCE.length - 1)];
+    // Canada isn't open for shifts: Canadian providers get the waitlist / pre-enrollment wording (its own prompt, approved by an admin), and CASL is checked at send time.
+    if (countryOf(p.state) === "CA" && p.outreachStep > 0) continue;
+    // Not matched to the NPI registry (found through Apollo): first email makes no claim about a license.
+    const key = countryOf(p.state) === "CA" ? CANADA_RECRUIT_KEY : !p.npi && p.outreachStep === 0 ? UNMATCHED_RECRUIT_KEY : PROVIDER_OUTREACH_SEQUENCE[Math.min(p.outreachStep, PROVIDER_OUTREACH_SEQUENCE.length - 1)];
     const rk = `${p.professionCode}:${key}`;
     if (!ready.has(rk)) ready.set(rk, (await livePrompts(key, p.professionCode)).length > 0);
     if (!ready.get(rk)) { out.skippedNoPrompt++; continue; }
@@ -324,14 +338,14 @@ export async function providerOutreachSweep() {
     try {
       res = await composeAndSend("providerOutreach", r, key, providerProspectVars(p, r.firstName, names.get(p.professionCode) ?? "provider", p.marketKey ? (markets.get(p.marketKey) ?? null) : null), {
         purpose: "COMMERCIAL", professionCode: p.professionCode, dedupeKey: `ppoutreach:${p.id}:${p.outreachStep}`, review: s["growth.providerOutreachMode"] !== "auto",
-        facts: { city: p.city, state_name: US_STATES[p.state] ?? p.state, market_name: p.marketKey ? (markets.get(p.marketKey) ?? null) : null },
+        facts: { city: p.city, state_name: regionName(p.state), market_name: p.marketKey ? (markets.get(p.marketKey) ?? null) : null },
       });
     } catch (e) {
       if (!(e instanceof Deferred)) throw e;
       res = `deferred:${e.message}`;
     }
-    if (res === "sent") { out.sent++; await advanceProviderOutreach(p.id); }
-    else if (res === "pending_approval") out.drafts++;
+    if (res === "sent") { out.sent++; allowance--; await advanceProviderOutreach(p.id); }
+    else if (res === "pending_approval") { out.drafts++; allowance--; }
     else if (res === "blocked") out.blocked++;
     else if (res.startsWith("deferred")) { out.deferred++; if (res === "deferred:daily_outreach_cap") break; }
   }

@@ -16,6 +16,9 @@ const LINKS: [string, string, string][] = [
   ["/admin/growth/knowledge", "Knowledge base", "Approved answers the conversation agent and website chat may use."],
   ["/admin/growth/suppression", "Suppression", "Unsubscribes, bounces and do-not-contact: honored by every sender."],
   ["/admin/schools", "Schools", "The student sign-up dropdown, per profession."],
+  ["/admin/settings#s-growth.acquisitionPriorities", "Acquisition priorities", "Which side each country, state or province recruits first (Florida: clinics; everywhere else: providers), the primary side's share, and whether agents follow imbalance recommendations. Per-market overrides: Supply & Demand."],
+  ["/admin/growth/prospects/apollo", "Apollo.io", "Connection test, credit caps and usage, automatic discovery and email enrichment, search and import."],
+  ["/admin/settings#s-growth.canadaOutreach", "Canada outreach (CASL)", "Off by default. Canadian prospects also need a consent basis recorded on their page before any commercial email."],
   ["/admin/settings", "All Growth settings", "Cadences, caps, budgets, AI providers and models, research budget, postal address."],
 ];
 

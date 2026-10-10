@@ -438,3 +438,52 @@ export const resumeResearchAction = formAction(async () => {
   rv();
   return "Research resumed. It continues on the next run (every 10 minutes).";
 });
+
+// ---------- acquisition priorities, Apollo.io, Canada consent ----------
+
+export const setMarketPriorityAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const v = str(fd, "side");
+  await growth.setMarketPriority(actor, str(fd, "key"), v === "SUPPLY" || v === "DEMAND" ? v : null);
+  rv();
+  return v ? `This market now works ${v === "SUPPLY" ? "providers" : "clinics"} first.` : "This market follows its state / country setting again.";
+});
+
+export const testApolloAction = formAction(async () => {
+  const { actor } = await me();
+  const r = await growth.testApolloConnection(actor);
+  rv();
+  if (!r.ok) throw new Error(r.detail);
+  return r.detail;
+});
+
+export const resumeApolloAction = formAction(async () => {
+  const { actor } = await me();
+  await growth.resumeApollo(actor);
+  rv();
+  return "Apollo resumed.";
+});
+
+export const searchApolloAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const [sideRaw, targetRaw] = str(fd, "sideTarget").split(":");
+  const side = sideRaw === "DEMAND" ? "DEMAND" : "SUPPLY";
+  const r = await growth.searchApollo(actor, { side, target: targetRaw === "organizations" ? "organizations" : "people", region: str(fd, "region"), city: optStr(fd, "city"), professionCode: str(fd, "professionCode") || "DC", page: Number(str(fd, "page") || 1) });
+  redirect(`/admin/growth/prospects/apollo?search=${r.id}`);
+});
+
+export const importApolloAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const keys = fd.getAll("key").map(String).filter(Boolean);
+  const r = await growth.importApolloSearch(actor, str(fd, "searchId"), keys, { enrich: bool(fd, "enrich"), approved: bool(fd, "approved") });
+  rv();
+  return `Imported: ${r.inserted} new, ${r.updated} updated${r.onPlatform ? `, ${r.onPlatform} already on the platform` : ""}${r.skipped ? `, ${r.skipped} skipped` : ""}${r.credits ? `; about ${r.credits} credits, ${r.withEmail} with a verified email` : ""}.`;
+});
+
+export const consentBasisAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const entity = str(fd, "entity") === "PROSPECT" ? "PROSPECT" : "PROVIDER_PROSPECT";
+  await growth.setConsentBasis(actor, entity, str(fd, "id"), optStr(fd, "basis"), optStr(fd, "note"));
+  rv();
+  return "Saved.";
+});

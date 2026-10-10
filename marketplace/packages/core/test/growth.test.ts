@@ -153,6 +153,7 @@ describe("contact decision (spec §11): software, not AI, decides", () => {
     [{ pausedOutbound: true }, "automation_paused", true],
     [{ audienceOff: true }, "audience_marketing_off", true],
     [{ doNotContact: true }, "do_not_contact", false],
+    [{ jurisdictionBlock: "casl_consent_missing" }, "casl_consent_missing", false],
     [{ address: "" }, "no_address", false],
     [{ emailStatus: "BOUNCED" }, "email_bounced", false],
     [{ emailStatus: "UNSUBSCRIBED" }, "unsubscribed", false],

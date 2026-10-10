@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { defaultSettings, env } from "@cm/config";
-import { contactDecision, renderTemplate, validateAiCopy, type Channel, type Purpose } from "@cm/core";
+import { caslBlock, contactDecision, renderTemplate, validateAiCopy, type Channel, type Purpose } from "@cm/core";
 import { llmProvider } from "@cm/integrations";
 import { prisma, type PromptTemplate } from "@cm/db";
 import { clock, getSettings } from "../context";
@@ -196,6 +196,9 @@ export interface Recipient {
   emailStatus: string;
   timeZone: string;
   firstName: string;
+  /** Prospects: state / territory / province (jurisdiction rules such as Canada's CASL) and the consent basis an admin recorded. */
+  region?: string | null;
+  consentBasis?: string | null;
 }
 
 const titled = (n: string) => n.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (_, a: string, b: string) => a + b.toUpperCase());
@@ -213,7 +216,7 @@ export async function recipient(type: GrowthEntityType, id: string): Promise<Rec
     const p = await prisma.clinicProspect.findUnique({ where: { id } });
     if (!p) return null;
     const surname = (p.ownerName ?? "").replace(/^(dr\.?|doctor)\s+/i, "").trim().split(/\s+/).pop();
-    return { type, id, label: p.clinicName, email: p.email, phone: p.phone, smsConsent: !!p.smsConsentAt, doNotContact: p.doNotContact, emailStatus: p.emailStatus, timeZone: "America/New_York", firstName: surname ? `Dr. ${surname}` : "there" };
+    return { type, id, label: p.clinicName, email: p.email, phone: p.phone, smsConsent: !!p.smsConsentAt, doNotContact: p.doNotContact, emailStatus: p.emailStatus, timeZone: "America/New_York", firstName: surname ? `Dr. ${surname}` : "there", region: p.state, consentBasis: p.consentBasis };
   }
   if (type === "PROVIDER_PROSPECT") {
     const p = await prisma.providerProspect.findUnique({ where: { id } });
@@ -221,6 +224,7 @@ export async function recipient(type: GrowthEntityType, id: string): Promise<Rec
     return {
       type, id, label: p.displayName, email: p.contactStatus === "VERIFIED" || p.contactStatus === "FOUND" ? p.email : null, phone: null, smsConsent: false,
       doNotContact: p.doNotContact || !!p.providerId, emailStatus: p.emailStatus, timeZone: "America/New_York", firstName: prospectGreeting(p),
+      region: p.state, consentBasis: p.consentBasis,
     };
   }
   if (type === "PROVIDER") {
@@ -259,6 +263,7 @@ export async function checkContact(r: Recipient, channel: Channel, purpose: Purp
   return contactDecision({
     channel, purpose, automated, pausedOutbound: s["growth.pausedOutbound"],
     audienceOff: !(audienceOf(r.type) === "provider" ? s["growth.providerMarketing"] : s["growth.clinicMarketing"]), doNotContact: r.doNotContact, address,
+    jurisdictionBlock: caslBlock({ state: r.region ?? null, purpose, consentBasis: r.consentBasis ?? null, canadaOutreach: s["growth.canadaOutreach"] }),
     emailStatus: r.emailStatus, suppression, smsConsent: r.smsConsent, postalAddress: s["growth.postalAddress"],
     lastAutomatedAt: last?.createdAt ?? null, commercialLast7Days: week, commercialToday: today, localMinutes: local.hour * 60 + local.minute,
     limits: {

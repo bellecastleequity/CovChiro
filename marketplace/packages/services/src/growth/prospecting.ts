@@ -1,4 +1,4 @@
-import { addressKey, applyResearch, groupRegistryRecords, registryIndividuals, type ClinicCandidate, type ResearchFindings } from "@cm/core";
+import { addressKey, applyResearch, countryOf, groupRegistryRecords, registryIndividuals, type ClinicCandidate, type ResearchFindings } from "@cm/core";
 import { prisma, type ClinicProspect, type Prisma } from "@cm/db";
 import { geoProvider, llmProvider, nppesProvider } from "@cm/integrations";
 import { DateTime } from "luxon";
@@ -8,6 +8,8 @@ import { classifyProspect, refreshProspect } from "./agents";
 import { marketForPoint } from "./analytics";
 import { activeTargets, registryProfile } from "./expansion";
 import { contactDiscoverySweep, upsertProviderProspects } from "./providers";
+import { apolloDiscoverySweep, apolloEnrichmentSweep, cleanupProspectSearches } from "./apollo";
+import { priorityContext } from "./priority";
 import { handleResearchFailure, researchBlocked, withRateLimitRetry, researchPause, researchRequestsToday, type AiFailure } from "./aihealth";
 
 /**
@@ -134,7 +136,8 @@ export async function discoverySweep(opts: { cities?: string[]; professionCode?:
     jobs = opts.cities.map((city) => ({ professionCode: opts.professionCode ?? "DC", state: opts.state ?? "FL", city }));
   } else {
     const all: (Job & { at: number })[] = [];
-    const targets = (await activeTargets()).filter((t) => (!opts.professionCode || t.professionCode === opts.professionCode) && (!opts.state || t.state === opts.state));
+    // The NPI registry only covers the U.S. (states and territories); Canadian targets are found through Apollo.
+    const targets = (await activeTargets()).filter((t) => countryOf(t.state) === "US" && (!opts.professionCode || t.professionCode === opts.professionCode) && (!opts.state || t.state === opts.state));
     for (const t of targets) {
       for (const city of t.cities) {
         const at = searchedAt(state.cities, t.professionCode, t.state, city);
@@ -372,9 +375,13 @@ export async function researchSweep(opts: { wallMs?: number; concurrency?: numbe
       ],
     },
     orderBy: [{ createdAt: "asc" }],
-    select: { id: true },
-    take: s["growth.researchPerRun"],
+    select: { id: true, state: true, marketKey: true },
+    take: s["growth.researchPerRun"] * 5,
   });
+  // Paid research goes to demand-first markets (clinics are their primary side) before the rest.
+  const ctx = await priorityContext();
+  due.sort((a, b) => ctx.rank("DEMAND", a.state, a.marketKey) - ctx.rank("DEMAND", b.state, b.marketKey));
+  due.splice(s["growth.researchPerRun"]);
   const deadline = Date.now() + (opts.wallMs ?? 120_000);
   const queue = due.map((d) => d.id);
   const worker = async () => {
@@ -408,7 +415,17 @@ export async function prospectingTick() {
     await logAgent("worker", "sweep_failed", { trigger: "contactDiscovery", error: (e as Error).message });
     return { error: (e as Error).message };
   });
-  return { discovery, research, contacts };
+  // Apollo.io (when switched on): more people and clinics where the registry is thin (and Canada), then credits for emails.
+  const apollo = await apolloDiscoverySweep().catch(async (e) => {
+    await logAgent("worker", "sweep_failed", { trigger: "apolloDiscovery", error: (e as Error).message });
+    return { error: (e as Error).message };
+  });
+  const apolloEmails = await apolloEnrichmentSweep().catch(async (e) => {
+    await logAgent("worker", "sweep_failed", { trigger: "apolloEnrichment", error: (e as Error).message });
+    return { error: (e as Error).message };
+  });
+  await cleanupProspectSearches().catch(() => 0);
+  return { discovery, research, contacts, apollo, apolloEmails };
 }
 
 /** Admin view: how far automatic prospecting has got. */

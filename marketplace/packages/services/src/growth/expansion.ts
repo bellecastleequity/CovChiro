@@ -1,9 +1,9 @@
-import { CHIROPRACTIC_PROFILE, DomainError, US_STATES, type RegistryProfile } from "@cm/core";
+import { CA_PROVINCES, CHIROPRACTIC_PROFILE, DomainError, US_STATES, type RegistryProfile } from "@cm/core";
 import { prisma, type GrowthTarget } from "@cm/db";
 import { geoProvider } from "@cm/integrations";
 import { audit, requireAdmin, type Actor } from "../context";
 import { ensureSchools } from "../schools";
-import { STATE_CITIES } from "./cities";
+import { canadianCityCenter, STATE_CITIES } from "./cities";
 import { livePrompts } from "./engine";
 
 /**
@@ -145,7 +145,7 @@ export async function expansionOverview(actor: Actor) {
       providers: prc.get(`${t.professionCode}|${t.state}`) ?? 0,
     })),
     open: [...open],
-    states: Object.entries(US_STATES).map(([code, name]) => ({ code, name, starterCities: STATE_CITIES[code]?.length ?? 0 })),
+    states: [...Object.entries(US_STATES), ...Object.entries(CA_PROVINCES).map(([code, name]) => [code, `${name} (Canada)`] as [string, string])].map(([code, name]) => ({ code, name, starterCities: STATE_CITIES[code]?.length ?? 0, country: CA_PROVINCES[code] ? "CA" : "US" })),
   };
 }
 
@@ -157,7 +157,7 @@ export async function ensureMarkets(professionCode: string, state: string, citie
   if (await prisma.growthMarket.count({ where: { professionCode, state } })) return 0;
   let made = 0;
   for (const [i, city] of cities.slice(0, n).entries()) {
-    const g = await geoProvider().geocode(`${city}, ${state}`).catch(() => null);
+    const g = canadianCityCenter(state, city) ?? (CA_PROVINCES[state] ? null : await geoProvider().geocode(`${city}, ${state}`).catch(() => null));
     if (!g) continue;
     const key = `${professionCode}-${state}-${city}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     await prisma.growthMarket.upsert({
@@ -176,7 +176,9 @@ export async function setTargetStatus(actor: Actor, professionCode: string, stat
   requireAdmin(actor);
   if (!TARGET_STATUSES.includes(status)) throw new DomainError("VALIDATION", "Unknown status.");
   state = state.toUpperCase();
-  if (!US_STATES[state]) throw new DomainError("VALIDATION", "Unknown state.");
+  if (!US_STATES[state] && !CA_PROVINCES[state]) throw new DomainError("VALIDATION", "Unknown state or province.");
+  // Canada: prospecting and waitlist recruitment only (the marketplace can't take shifts there).
+  if (CA_PROVINCES[state] && status === "LIVE") throw new DomainError("VALIDATION", "Canadian provinces can be in Prelaunch (discovery, research and waitlist recruitment) but not Live: the marketplace isn't open in Canada.");
   const profession = await prisma.profession.findUnique({ where: { code: professionCode } });
   if (!profession) throw new DomainError("VALIDATION", "Unknown profession.");
   if (status === "LIVE") {
