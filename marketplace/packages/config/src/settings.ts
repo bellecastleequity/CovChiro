@@ -138,7 +138,7 @@ export const SETTINGS = {
   "pricing.underDeclareWarningShifts": def({ group: "Pricing", label: "Posting hint: recent days compared with the expected visits", help: "Warn (never block) when this many recent days at the location all beat the tier being booked.", schema: z.number().int().min(1).max(10), default: 3, flag: null }),
 
   // ---------- payments (§9) ----------
-  "payments.depositPercent": def({ group: "Payments", label: "Deposit charged at confirmation %", schema: percent, default: 10, flag: null }),
+  "payments.depositPercent": def({ group: "Payments", label: "Deposit charged at confirmation %", schema: percent, default: 25, flag: "OWNER_DECISION" }),
   "payments.payInFullEnabled": def({ group: "Payments", label: "Charge in full at confirmation when a clinic payment is overdue", help: "When anything a clinic owes is still unpaid after the hours below, its future bookings are charged in full when a provider is confirmed, until you restore the normal deposit on the clinic's page.", schema: z.boolean(), default: true, flag: "OWNER_DECISION" }),
   "payments.payInFullAfterHours": def({ group: "Payments", label: "Hours a failed clinic charge can stay unpaid before bookings are charged in full", schema: z.number().int().min(1).max(720), default: 48, flag: "OWNER_DECISION" }),
   "payments.retryAfterHours": def({ group: "Payments", label: "Retry a failed clinic charge this many hours after it first failed", help: "One automatic retry per number. The clinic can also tap Pay now on Billing at any time.", schema: z.array(z.number().int().min(1).max(720)), default: [24], flag: null }),

@@ -71,7 +71,7 @@ describe("Phase 1 end-to-end: post → apply → select → deposit → complete
     const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId }, include: { payments: true, payouts: true } });
     expect(a.clinicTotalCents).toBe(62500 + a.mileageCents);
     expect(a.providerTotalCents).toBe(50000 + a.mileageCents);
-    expect(a.payments.find((p) => p.type === "DEPOSIT")).toMatchObject({ status: "SUCCEEDED", amountCents: Math.round(a.clinicTotalCents * 0.1) });
+    expect(a.payments.find((p) => p.type === "DEPOSIT")).toMatchObject({ status: "SUCCEEDED", amountCents: Math.round(a.clinicTotalCents * 0.25) });
     expect(a.payouts).toHaveLength(1);
     expect(a.payouts[0]).toMatchObject({ kind: "SHIFT", status: "PENDING", amountCents: a.providerTotalCents });
 
