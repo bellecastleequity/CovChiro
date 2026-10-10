@@ -663,3 +663,37 @@ export const includeChargeAction = formAction(async (fd) => {
   rv("/admin/payments");
   return "Included again.";
 });
+
+/* Rewards & Badges */
+export const awardBadgeAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const { badges } = await import("@cm/services");
+  const r = await badges.awardBadge(actor, { email: str(fd, "email"), badgeKey: str(fd, "badgeKey"), note: optStr(fd, "note"), tell: bool(fd, "tell") });
+  revalidatePath("/admin/rewards");
+  return { ok: r.already ? `${r.name} already has the ${r.label} badge.` : `Gave ${r.name} the ${r.label} badge.` };
+});
+
+export const revokeBadgeAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const { badges } = await import("@cm/services");
+  await badges.revokeBadge(actor, str(fd, "id"));
+  revalidatePath("/admin/rewards");
+  return { ok: "Badge removed." };
+});
+
+export const saveCustomBadgeAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const { badges } = await import("@cm/services");
+  const row = await badges.saveCustomBadge(actor, { key: optStr(fd, "key"), label: str(fd, "label"), description: str(fd, "description"), tone: str(fd, "tone") });
+  revalidatePath("/admin/rewards");
+  return { ok: optStr(fd, "key") ? `Saved ${row.label}.` : `Created the ${row.label} badge. Give it to providers below.` };
+});
+
+export const archiveCustomBadgeAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const { badges } = await import("@cm/services");
+  const archived = str(fd, "archived") === "1";
+  await badges.archiveCustomBadge(actor, str(fd, "key"), archived);
+  revalidatePath("/admin/rewards");
+  return { ok: archived ? "Archived: no longer offered or shown." : "Restored." };
+});

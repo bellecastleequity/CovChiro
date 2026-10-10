@@ -335,6 +335,7 @@ model Provider {
   transfers            PayoutTransfer[]
   threads              MessageThread[]
   trailblazerSpots     TrailblazerSpot[]
+  badgeAwards          BadgeAward[]
   /// Taking a break: no new shifts starting from breakStartsAt until breakEndsAt (null = until they resume). core eligibility F4.
   breakStartsAt        DateTime?                @db.Timestamptz(3)
   breakEndsAt          DateTime?                @db.Timestamptz(3)
@@ -2801,4 +2802,34 @@ model RewardEvent {
 
   @@index([accountType, accountId, createdAt])
   @@index([accountType, createdAt])
+}
+
+/// A badge an admin created (Admin → Rewards & Badges). Shown to clinics like an earned badge.
+model CustomBadge {
+  id          String    @id @default(cuid())
+  /// "custom_<slug>" (core customBadgeKey); stays the same when the name changes.
+  key         String    @unique
+  label       String
+  description String
+  tone        String
+  createdById String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  /// Archived: no longer offered or shown (awards kept for history).
+  archivedAt  DateTime? @db.Timestamptz(3)
+}
+
+/// A badge given to a provider by hand: a custom badge or an earned-style built-in (core ASSIGNABLE_BUILTIN_BADGES).
+model BadgeAward {
+  id          String   @id @default(cuid())
+  providerId  String
+  provider    Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  badgeKey    String
+  /// Private admin note (why), never shown to clinics.
+  note        String?
+  awardedById String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([providerId, badgeKey])
+  @@index([badgeKey])
 }

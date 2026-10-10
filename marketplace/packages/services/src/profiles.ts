@@ -1,4 +1,4 @@
-import { DomainError, licensedPairs, providerBadges, type Badge } from "@cm/core";
+import { DomainError, licensedPairs, providerBadges, withAwardedBadges, type Badge } from "@cm/core";
 import { prisma } from "@cm/db";
 import { clock, getSettings, type Actor } from "./context";
 import { assertNotOwnPair } from "./ownside";
@@ -30,6 +30,8 @@ export async function badgesFor(providerIds: string[]): Promise<Map<string, Badg
   ]);
   const { trailblazerStates, stateName } = await import("./enrollment");
   const trail = await trailblazerStates(providerIds);
+  // Badges an admin gave by hand (Rewards & Badges).
+  const [awards, custom] = await Promise.all([prisma.badgeAward.findMany({ where: { providerId: { in: providerIds } }, orderBy: { createdAt: "asc" }, select: { providerId: true, badgeKey: true } }), import("./badges").then((m) => m.customBadges())]);
   for (const p of providers) {
     const st = stats.find((x) => x.providerId === p.id);
     const rs = ratings.filter((r) => r.assignment.providerId === p.id);
@@ -41,7 +43,7 @@ export async function badgesFor(providerIds: string[]): Promise<Map<string, Badg
     const late = Math.max(st?.lateCancels ?? 0, lateCancels.find((x) => x.providerId === p.id)?._count ?? 0);
     out.set(
       p.id,
-      providerBadges({
+      withAwardedBadges(providerBadges({
         completedShifts: st?.completedShifts ?? 0,
         lateCancels12m: late,
         noShows12m: noShows.find((x) => x.providerId === p.id)?._count ?? 0,
@@ -63,7 +65,7 @@ export async function badgesFor(providerIds: string[]): Promise<Map<string, Badg
         trailblazerStates: (trail.get(p.id) ?? []).map(stateName),
         trailblazerSpots: s["enrollment.trailblazerSpots"],
         onCallActive: s["features.onCallEnabled"] && p.onCallRules.some((r) => r.active && (!r.pausedUntil || r.pausedUntil <= now)),
-      }),
+      }), awards.filter((a) => a.providerId === p.id), custom),
     );
   }
   return out;

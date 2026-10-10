@@ -106,3 +106,70 @@ export function normalizeLinkedIn(raw: string | null | undefined): string | null
   if (!/(^|\.)linkedin\.com$/i.test(u.hostname) || !/^\/(in|pub)\/[A-Za-z0-9\-_%]+\/?$/.test(u.pathname)) return null;
   return `https://www.linkedin.com${u.pathname.replace(/\/$/, "")}`;
 }
+
+/* ── Badges given by hand (Admin → Rewards & Badges; owner request Oct 2026) ─────────────────────── */
+
+export const BADGE_TONES: readonly BadgeTone[] = ["green", "brand", "blue", "amber", "gray"];
+
+/**
+ * Built-in badges an admin may give by hand. Only "earned"-style recognition: status badges (license,
+ * insurance, NPI, On Call, new to platform) and fact badges (years in practice, dual-licensed,
+ * multi-state) state something verified, so they're never given by hand.
+ */
+export const ASSIGNABLE_BUILTIN_BADGES: Record<string, { label: string; description: string; tone: BadgeTone }> = {
+  top_rated: { label: "Top rated", description: "Highly rated by the clinics they've covered.", tone: "amber" },
+  punctual: { label: "Punctual", description: "Consistently on time for coverage.", tone: "brand" },
+  responsive: { label: "Responsive", description: "Answers shift offers quickly.", tone: "brand" },
+  reliable: { label: "Reliable", description: "Shows up for every booking.", tone: "green" },
+  clinic_favorite: { label: "Clinic favorite", description: "A favorite of the clinics they've covered.", tone: "amber" },
+  trailblazer: { label: "Trailblazer", description: "One of the first providers to join in their state.", tone: "amber" },
+};
+
+export interface CustomBadgeDef {
+  key: string;
+  label: string;
+  description: string;
+  tone: BadgeTone;
+}
+
+export interface BadgeAwardFact {
+  badgeKey: string;
+}
+
+/** Stable key for a new custom badge: "custom_" + slug of its name. */
+export function customBadgeKey(label: string): string {
+  const slug = label.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+  return `custom_${slug || "badge"}`;
+}
+
+/** Why a custom badge can't be saved, or null. It's shown to clinics, so keep it short and factual. */
+export function customBadgeProblems(i: { label: string; description: string; tone: string }): string | null {
+  const label = i.label.trim();
+  const description = i.description.trim();
+  if (label.length < 2 || label.length > 30) return "Give the badge a name of 2 to 30 characters.";
+  if (description.length < 5 || description.length > 140) return "Describe what it means in 5 to 140 characters (clinics see this).";
+  if (!(BADGE_TONES as readonly string[]).includes(i.tone)) return "Pick a color.";
+  if (/(https?:\/\/|www\.|@|\d{3}[\s.-]?\d{3}[\s.-]?\d{4})/i.test(`${label} ${description}`)) return "Leave out links, emails and phone numbers.";
+  if (/(licen[cs]e|insured|insurance|malpractice|\bnpi\b|board[- ]certified|verified|certified)/i.test(`${label} ${description}`)) {
+    return "Badges given by hand can't claim a license, insurance or certification; those come only from verified credentials.";
+  }
+  return null;
+}
+
+/**
+ * Computed badges plus the ones an admin gave by hand. A hand-given badge already earned is shown once
+ * (the earned one, with its live numbers); unknown or archived keys are skipped.
+ */
+export function withAwardedBadges(computed: Badge[], awards: BadgeAwardFact[], custom: CustomBadgeDef[]): Badge[] {
+  const out = [...computed];
+  const have = new Set(computed.map((b) => b.key));
+  const customBy = new Map(custom.map((c) => [c.key, c]));
+  for (const a of awards) {
+    if (have.has(a.badgeKey)) continue;
+    const def = ASSIGNABLE_BUILTIN_BADGES[a.badgeKey] ?? customBy.get(a.badgeKey);
+    if (!def) continue;
+    out.push({ key: a.badgeKey, label: def.label, description: def.description, kind: "earned", tone: def.tone });
+    have.add(a.badgeKey);
+  }
+  return out;
+}
