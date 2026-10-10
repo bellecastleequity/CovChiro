@@ -448,13 +448,13 @@ async function saveCursor(c: Cursor) {
  * market's acquisition priority (core sideSplit), next page each run. Imported without enrichment;
  * the enrichment sweep spends credits later, priority markets first.
  */
-export async function apolloDiscoverySweep() {
+export async function apolloDiscoverySweep(opts: { states?: string[] } = {}) {
   const s = await getSettings();
   const out = { searches: 0, inserted: 0, updated: 0, skipped: 0, stopped: null as string | null };
   if (!s["growth.apollo.enabled"] || !s["growth.apollo.autoDiscovery"]) return { ...out, stopped: "off" };
   const gate = await apolloGate(0, false, s);
   if (!gate.ok) return { ...out, stopped: gate.reason };
-  const targets = await activeTargets();
+  const targets = (await activeTargets()).filter((t) => !opts.states || opts.states.includes(t.state));
   if (!targets.length) return out;
   const ctx = await priorityContext();
   const n = s["growth.apollo.searchesPerRun"];

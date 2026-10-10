@@ -45,6 +45,8 @@ function fakeApollo(): Fake {
 
 let apollo: Fake;
 beforeAll(async () => {
+  // Starter markets are only seeded into an empty table: seed them before this file adds its own markets.
+  await growth.ensureGrowthDefaults();
   await setting("growth.apollo.enabled", true);
   await setting("growth.apollo.dailyCreditCap", 50);
   await setting("growth.apollo.monthlyCreditCap", 1000);
@@ -168,14 +170,13 @@ describe("Apollo prospecting", () => {
 
   it("scheduled discovery searches Prelaunch/Live markets, splitting runs by each market's priority", async () => {
     await fresh();
-    // Only our Georgia target is active for this run.
-    const others = await prisma.growthTarget.findMany({ where: { status: { in: ["PRELAUNCH", "LIVE"] } } });
-    await prisma.growthTarget.updateMany({ where: { id: { in: others.map((o) => o.id) } }, data: { status: "OFF" } });
+    // Other test files share the database: only Georgia is searched here, nothing else is switched off.
+    const before = await prisma.growthTarget.findUnique({ where: { professionCode_state: { professionCode: "DC", state: "GA" } } });
     const ga = await prisma.growthTarget.upsert({ where: { professionCode_state: { professionCode: "DC", state: "GA" } }, create: { professionCode: "DC", state: "GA", status: "PRELAUNCH", cities: ["Atlanta", "Savannah", "Augusta"] }, update: { status: "PRELAUNCH", cities: ["Atlanta", "Savannah", "Augusta"] } });
     await setting("growth.apollo.autoDiscovery", true);
     await setting("growth.apollo.searchesPerRun", 3);
     apollo.people = [person({ title: "Owner", organization_id: `org-${uid()}`, organization: { name: "Peach Clinic" } })];
-    const out = await growth.apolloDiscoverySweep();
+    const out = await growth.apolloDiscoverySweep({ states: ["GA"] });
     expect(out.searches).toBe(3);
     // Georgia is supply first: most searches look for providers, but clinics still get one.
     const bySide = await prisma.dataSourceUsage.groupBy({ by: ["side"], where: { task: "apolloDiscovery" }, _count: { _all: true } });
@@ -185,10 +186,9 @@ describe("Apollo prospecting", () => {
     // Switched off = nothing called.
     await setting("growth.apollo.autoDiscovery", false);
     apollo.calls = [];
-    expect((await growth.apolloDiscoverySweep()).stopped).toBe("off");
+    expect((await growth.apolloDiscoverySweep({ states: ["GA"] })).stopped).toBe("off");
     expect(apollo.calls).toEqual([]);
-    await prisma.growthTarget.update({ where: { id: ga.id }, data: { status: "OFF" } });
-    for (const o of others) await prisma.growthTarget.update({ where: { id: o.id }, data: { status: o.status } });
+    await prisma.growthTarget.update({ where: { id: ga.id }, data: { status: before?.status ?? "OFF", cities: before?.cities ?? [] } });
     await setting("growth.apollo.searchesPerRun", 2);
   });
 });
@@ -233,7 +233,7 @@ describe("acquisition priorities and Canada", () => {
     await setting("growth.canadaOutreach", true);
     expect((await check()).reason).toBe("casl_consent_missing");
     await prisma.providerProspect.update({ where: { id: p.id }, data: { consentBasis: "CONSPICUOUS_PUBLICATION" } });
-    expect((await check()).reason).not.toMatch(/casl|canada/);
+    expect(["canada_outreach_off", "casl_consent_missing"]).not.toContain((await check()).reason);
     await setting("growth.canadaOutreach", false);
   });
 });

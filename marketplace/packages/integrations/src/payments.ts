@@ -226,7 +226,12 @@ export class FakePayments implements PaymentsProvider {
   private seq = 0;
   constructor(private baseUrl: string) {}
   private id(prefix: string, key?: string) {
-    return `${prefix}_fake_${key ? key.replace(/[^a-zA-Z0-9]/g, "").slice(-24) : Date.now().toString(36) + (this.seq++).toString(36)}`;
+    // The key's tail plus a hash of the whole key: two keys that only differ early on (e.g. refunds of
+    // different payments for the same amount and reason) never get the same id.
+    if (!key) return `${prefix}_fake_${Date.now().toString(36) + (this.seq++).toString(36)}`;
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0;
+    return `${prefix}_fake_${key.replace(/[^a-zA-Z0-9]/g, "").slice(-16)}${h.toString(36)}`;
   }
   async createCustomer(i: { clinicOrgId: string }) {
     return this.id("cus", i.clinicOrgId);
