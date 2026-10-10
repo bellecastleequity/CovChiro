@@ -89,19 +89,19 @@ const A: HelpArticle[] = [
   },
   // ---------------- posting ----------------
   {
-    slug: "no-doctor-available",
+    slug: "no-provider-available",
     category: "posting",
-    title: "When no doctor is available yet",
-    summary: "We only post a shift when a doctor can take it. Otherwise we save it and tell you the moment one can.",
-    keywords: "no doctor available waiting draft booked not enrolled new state open notify text email demand",
+    title: "When no provider is available yet",
+    summary: "We only post a shift when a provider can take it. Otherwise we save it and post it automatically the moment one can.",
+    keywords: "no provider available doctor waiting draft booked notify text email automatically post later",
     links: [{ href: "/clinic/shifts/new", label: "Post a shift" }, { href: "/clinic/shifts", label: "My shifts" }],
     body: () => (
       <Ul
         items={[
-          "While you fill in a shift we show how many doctors could take it right now: licensed in your state, insured, close enough, free that day and not already booked.",
-          "If none can, we don't post it, so you're never left waiting on a shift nobody can fill. We save it as a draft instead and tell you why: no doctors near you yet, everyone booked at that time, or the shift's details (for example required skills or minimum experience) rule them out.",
-          "The moment a doctor can take it, we text and email you. Open the link and tap Post this shift; it goes out right away.",
-          "Every request we can't fill tells our recruiting team where clinics need doctors, so we recruit there first.",
+          "While you fill in a shift we show how many providers could take it right now: licensed in your state, insured, close enough, free that day and not already booked.",
+          "If none are currently available, we don't post it, so you're never left waiting on a shift nobody can take. We save it instead, with a tip when a detail (for example required skills or minimum experience) is what's ruling providers out.",
+          "\"Post it automatically as soon as a provider is available\" is ticked for you: the moment a provider can take it, we post it and text and email you. Untick it if you'd rather we just tell you, and post it yourself in one tap.",
+          "You're never charged to post or wait. The deposit is only charged once a provider is confirmed.",
         ]}
       />
     ),

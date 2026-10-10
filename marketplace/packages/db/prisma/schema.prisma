@@ -850,6 +850,8 @@ model Shift {
   /// Saved as a draft because no doctor could take it (open states): the clinic is told when one can.
   waitingForProviderSince     DateTime?        @db.Timestamptz(3)
   providerAvailableNotifiedAt DateTime?        @db.Timestamptz(3)
+  /// Clinic ticked "post it automatically": the waiting draft is posted the moment a provider can take it.
+  autoPostWhenAvailable       Boolean          @default(false)
   // Matching timeline
   postedAt                    DateTime?        @db.Timestamptz(3)
   favoritesWindowEndsAt       DateTime?        @db.Timestamptz(3)

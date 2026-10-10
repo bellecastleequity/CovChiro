@@ -65,6 +65,7 @@ async function shiftPayloadFrom(raw: any) {
     lodgingAllowed: !!raw.lodgingAllowed,
     flyIn: !!raw.flyIn,
     sameProvider: typeof raw.sameProvider === "boolean" ? raw.sameProvider : undefined,
+    autoPostWhenAvailable: raw.autoPost !== false,
     lodgingCapCentsPerNight: raw.lodgingCap ? Math.round(Number(raw.lodgingCap) * 100) : null,
     promoCode: raw.promoCode || null,
     supervisionAttestation: raw.supervisionAttestation ?? null,
@@ -79,7 +80,7 @@ export const quoteAction = formAction(async (fd) => {
   // Promo code: first day only (same rule as posting).
   const raw = JSON.parse(str(fd, "payload") || "{}");
   const needed = Number(raw.providersNeeded) || 1;
-  for (const [i, input] of inputs.entries()) quotes.push(await quoteForClinic(actor, { ...input, promoCode: i === 0 ? input.promoCode : null }, { needed }));
+  for (const [i, input] of inputs.entries()) quotes.push(await quoteForClinic(actor, { ...input, promoCode: i === 0 ? input.promoCode : null }, { needed, days: inputs.length }));
   const dates: string[] = Array.isArray(raw.days) && raw.days.length ? raw.days.map((d: { date: string }) => d.date) : [raw.date];
   return {
     ok: "quote",
@@ -87,7 +88,7 @@ export const quoteAction = formAction(async (fd) => {
       ...quotes[0],
       days: quotes.map((q, i) => ({ date: dates[i], subtotalCents: q.subtotalCents, premiums: q.premiums })),
       totalCents: quotes.reduce((t, q) => t + q.subtotalCents, 0),
-      // Open states: the fewest doctors available on any day, and the first short day's reason.
+      // Open states: the fewest providers available on any day, and the first short day's reason.
       supply: quotes.every((q) => q.supply)
         ? { ...(quotes.find((q) => !q.supply!.ok)?.supply ?? quotes[0].supply!), available: Math.min(...quotes.map((q) => q.supply!.available)), shortDate: (() => { const i = quotes.findIndex((q) => !q.supply!.ok); return i >= 0 && quotes.length > 1 ? dates[i] : null; })() }
         : null,
@@ -95,7 +96,7 @@ export const quoteAction = formAction(async (fd) => {
   };
 });
 
-/** Posting refused because no doctor can take it yet: the drafts are saved and the clinic will be told. */
+/** Posting refused because no provider can take it yet: the drafts are saved and the clinic will be told. */
 function waitingDraft(e: unknown): string | null {
   if (e instanceof DomainError && e.code === "NO_PROVIDER_AVAILABLE") {
     const ids = (e.details as { shiftIds?: string[] } | undefined)?.shiftIds;

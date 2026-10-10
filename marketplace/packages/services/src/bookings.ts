@@ -28,7 +28,7 @@ export async function createMultiDay(actor: Actor, days: ShiftInputT[], opts: { 
     if (!fly) return { groupId: null, shiftIds: [(await createShift(actor, days[0], opts)).shiftId] };
     const { shiftId } = await createShift(actor, days[0], { post: false });
     await prisma.shift.update({ where: { id: shiftId }, data: fly });
-    if (opts.post) await postShift(actor, shiftId);
+    if (opts.post) await postShift(actor, shiftId, { autoPost: one.autoPostWhenAvailable ?? true });
     return { groupId: null, shiftIds: [shiftId] };
   }
   if (days.some((d) => d.clinicRate)) throw new DomainError("VALIDATION", "A clinic-set rate is available for single-day shifts only.");
@@ -54,8 +54,8 @@ export async function createMultiDay(actor: Actor, days: ShiftInputT[], opts: { 
   }
   await audit(prisma, actor, "booking.created", "ShiftGroup", group.id, null, { days: shiftIds.length, post: opts.post });
   if (opts.post) {
-    // Every day needs an available doctor; otherwise the whole booking waits as drafts.
-    await assertSupplyForPosting(shiftIds);
+    // Every day needs an available provider; otherwise the whole booking waits as drafts.
+    await assertSupplyForPosting(shiftIds, 1, [], { autoPost: parsed[0].autoPostWhenAvailable ?? true });
     for (const id of shiftIds) await postShift(actor, id, { skipSupply: true });
   }
   return { groupId: group.id, shiftIds };
@@ -79,7 +79,7 @@ export async function createForProviders(actor: Actor, days: ShiftInputT[], prov
   }
   const shiftIds = made.flat();
   if (opts.post) {
-    await assertSupplyForPosting(made[0], n, shiftIds);
+    await assertSupplyForPosting(made[0], n, shiftIds, { autoPost: days[0]?.autoPostWhenAvailable ?? true });
     for (const id of shiftIds) await postShift(actor, id, { skipSupply: true });
   }
   return { shiftIds, bookings: n };

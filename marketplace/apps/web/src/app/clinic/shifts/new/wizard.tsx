@@ -65,8 +65,8 @@ interface Quote {
   billableHours: number;
   subtotalCents: number;
   overlapping?: number;
-  /** Open states: doctors who could take it now (null = the check is off). */
-  supply?: { ok: boolean; available: number; gap: string | null; headline: string; detail: string; shortDate: string | null } | null;
+  /** Open states: providers who could take it now (null = the check is off). */
+  supply?: { ok: boolean; available: number; gap: string | null; headline: string; hint: string; detail: string; shortDate: string | null } | null;
   volume?: {
     tier: "LIGHT" | "BUSY";
     terms: { ceiling: number; grace: number; overageClinicCents: number };
@@ -195,6 +195,8 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const [lodgingAllowed, setLodgingAllowed] = useState(draft?.lodgingAllowed ?? true);
   const [maxTravelBudget, setMaxTravelBudget] = useState(draft?.maxTravelBudget ?? "");
   const [sameProviderOn, setSameProviderOn] = useState(sameProvider.defaultOn);
+  // No provider available yet: post it automatically once one is (on by default).
+  const [autoPost, setAutoPost] = useState(true);
   const [flyInOn, setFlyInOn] = useState(draft?.flyIn ?? (!!flyIn && flyIn.suggest.includes(loc.state)));
   const [promoCode, setPromoCode] = useState(defaultCode);
   const [sup, setSup] = useState(draft?.sup ?? { supervisorName: "", supervisorProfessionCode: prof?.supervisingProfessionCodes[0] ?? "", supervisorLicenseNumber: "", onSiteEntireShift: false });
@@ -240,6 +242,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
         lodgingAllowed,
         flyIn: flyInActive,
         sameProvider: days.length > 1 ? sameProviderOn : false,
+        autoPost,
         maxTravelBudget: maxTravelBudget || null,
         promoCode: promoCode.trim() || null,
         supervisionAttestation: prof?.supervisionRequired ? sup : null,
@@ -248,7 +251,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
           ? { priceCents: Math.round(Number(rateDollars) * 100), release: rateRelease, releaseAt: rateRelease ? cr!.releaseAt : null, releaseHours: cr!.releaseHours, accepted: rateAck }
           : null,
       }),
-    [rateActive, rateDollars, rateRelease, rateAck, cr, providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, flyInActive, sameProviderOn, maxTravelBudget, promoCode, sup, prof],
+    [rateActive, rateDollars, rateRelease, rateAck, cr, providersNeeded, locationId, professionCode, date, start, end, days, required, preferred, expectedPatients, minYears, notes, instantBook, lodgingAllowed, flyInActive, sameProviderOn, autoPost, maxTravelBudget, promoCode, sup, prof],
   );
 
   function refreshQuote() {
@@ -270,7 +273,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const supOk = !prof?.supervisionRequired || (sup.supervisorName.length > 1 && sup.supervisorLicenseNumber.length > 2 && sup.onSiteEntireShift && !!sup.supervisorProfessionCode);
   const daysOk = days.every((d) => d.date && d.start && d.end) && new Set(days.map((d) => d.date)).size === days.length;
   const canNext = [!!locationId, !!prof?.enabled && supOk, daysOk, !volumePriced || visitsNum != null, true][step];
-  // Re-price (and recount available doctors) as the shift changes, from the When step on.
+  // Re-price (and recount available providers) as the shift changes, from the When step on.
   useEffect(() => {
     if (step < 2 || !daysOk) return;
     const t = setTimeout(refreshQuote, 500);
@@ -278,7 +281,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload, step, daysOk]);
   const supply = quote?.supply ?? null;
-  const noDoctor = !!supply && !supply.ok;
+  const noProvider = !!supply && !supply.ok;
   const v = quote?.volume ?? null;
   const coverageTotal = quote ? (quote.days && quote.days.length > 1 ? (quote.totalCents ?? 0) : quote.subtotalCents) : null;
   const closing = (collapsible: boolean) => (
@@ -585,14 +588,27 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                     <Checkbox className="mt-3" checked={volumeAck} onChange={(e) => setVolumeAck(e.target.checked)} label="I understand the final price may go up if the day is busier than booked." />
                   </div>
                 ) : null}
-                {noDoctor ? <SupplyNote supply={supply!} /> : null}
+                {noProvider ? (
+                  <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    <p className="font-semibold">{supply!.headline}{supply!.shortDate ? ` (${supply!.shortDate})` : ""}</p>
+                    {supply!.hint ? <p>{supply!.hint}</p> : null}
+                    {!rateActive ? (
+                      <Checkbox
+                        checked={autoPost}
+                        onChange={(e) => setAutoPost(e.target.checked)}
+                        label={`Post ${days.length > 1 ? "them" : "it"} automatically as soon as a provider is available. We'll text and email you when it's posted.`}
+                      />
+                    ) : null}
+                    {!autoPost || rateActive ? <p>We&apos;ll save {days.length > 1 ? "them" : "it"} and text and email you the moment a provider is available, so you can post in one tap.</p> : null}
+                  </div>
+                ) : null}
                 {!canPost ? <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="size-4 shrink-0" /><span>Finish setup to post: a payment method and the current Clinic Platform Agreement (<a href="/clinic/settings#agreement" className="font-medium underline">sign in Settings</a>). You can save a draft now.</span></p> : null}
                 <div className="flex flex-wrap gap-2">
                   <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
                     <input type="hidden" name="payload" value={payload} />
                     <input type="hidden" name="mode" value="post" />
-                    <SubmitButton size="lg" pendingText={noDoctor ? "Saving…" : "Posting…"} disabled={(volumePriced && !volumeAck) || (rateActive && !(ratePrice?.ok && rateAck)) || (noDoctor && rateActive)}>{noDoctor ? "Save and tell me when a doctor is available" : providersNeeded > 1 && !draft ? `Post ${providersNeeded} bookings` : days.length > 1 ? `Post ${days.length}-day booking` : rateActive && ratePrice?.ok ? `Post at ${money(ratePrice.clinicPriceCents)}` : "Post shift"}</SubmitButton>
+                    <SubmitButton size="lg" pendingText={noProvider ? "Saving…" : "Posting…"} disabled={(volumePriced && !volumeAck) || (rateActive && !(ratePrice?.ok && rateAck)) || (noProvider && rateActive)}>{noProvider ? (autoPost ? "Save and post when a provider is available" : "Save and tell me when a provider is available") : providersNeeded > 1 && !draft ? `Post ${providersNeeded} bookings` : days.length > 1 ? `Post ${days.length}-day booking` : rateActive && ratePrice?.ok ? `Post at ${money(ratePrice.clinicPriceCents)}` : "Post shift"}</SubmitButton>
                   </ActionForm>
                   <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}
@@ -665,26 +681,17 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   );
 }
 
-/** Live count of doctors who could take this shift right now (open states: posting needs one). */
+/** Live count of providers who could take this shift right now (open states: posting needs one). */
 function SupplyBadge({ supply }: { supply: NonNullable<Quote["supply"]> }) {
   return supply.ok ? (
     <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
       <Users className="size-4 shrink-0" />
-      <span><b>{supply.available}</b> doctor{supply.available === 1 ? "" : "s"} available for this shift right now</span>
+      <span><b>{supply.available}</b> provider{supply.available === 1 ? "" : "s"} available for this shift right now</span>
     </p>
   ) : (
     <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-      <span><b>{supply.available ? `${supply.available} doctor${supply.available === 1 ? "" : "s"} available` : "No doctors available"}</b>{supply.shortDate ? ` on ${supply.shortDate}` : ""}. {supply.headline}</span>
+      <span>{supply.headline}{supply.shortDate ? ` (${supply.shortDate})` : ""}</span>
     </p>
-  );
-}
-
-function SupplyNote({ supply }: { supply: NonNullable<Quote["supply"]> }) {
-  return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-      <p className="font-semibold">{supply.headline}{supply.shortDate ? ` (${supply.shortDate})` : ""}</p>
-      <p className="mt-1">{supply.detail}</p>
-    </div>
   );
 }

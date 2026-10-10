@@ -18,6 +18,8 @@ export interface SupplyFacts {
   excluded: FilterId[][];
   /** The clinic set its own (lower) rate on this shift. */
   clinicRate?: boolean;
+  /** Days in the booking (wording: this shift / these shifts). */
+  days?: number;
 }
 
 export interface SupplyResult {
@@ -27,7 +29,7 @@ export interface SupplyResult {
   headline: string;
   /** What the clinic could change (may be empty). */
   hint: string;
-  /** hint + how to be told when a doctor is available (for the wizard, before saving). */
+  /** hint + how the clinic is told when a provider is available (wizard, before saving). */
   detail: string;
 }
 
@@ -41,9 +43,15 @@ function bucketOf(filters: FilterId[]): Bucket {
   return "REQUIREMENTS";
 }
 
-const NOTIFY = "Save it as a draft and we'll text and email you the moment a doctor is available, so you can post it in one tap.";
-/** Shown once the draft is already saved. */
-export const SUPPLY_SAVED_NOTE = "We saved it as a draft and will text and email you the moment a doctor can take it, so you can post it in one tap.";
+const NOTIFY = "We'll save it and text and email you the moment a provider is available.";
+
+/** Shown once the draft is saved: posted automatically when a provider is available, or one tap from the clinic. */
+export function savedForProviderNote(autoPost: boolean, days = 1): string {
+  const it = days > 1 ? "them" : "it";
+  return autoPost
+    ? `We saved ${it} and will post ${it} automatically the moment a provider is available, then text and email you.`
+    : `We saved ${it} as ${days > 1 ? "drafts" : "a draft"} and will text and email you the moment a provider is available, so you can post ${it} in one tap.`;
+}
 
 function result(available: number, gap: SupplyGap, headline: string, hint: string): SupplyResult {
   return { ok: false, available, gap, headline, hint, detail: hint ? `${hint} Or ${lower(NOTIFY)}` : NOTIFY };
@@ -51,17 +59,20 @@ function result(available: number, gap: SupplyGap, headline: string, hint: strin
 
 export function supplyCheck(f: SupplyFacts): SupplyResult {
   const available = Math.max(0, f.eligible);
+  const what = (f.days ?? 1) > 1 ? "these shifts" : "this shift";
   if (available >= f.needed) return { ok: true, available, gap: null, headline: "", hint: "", detail: "" };
   if (available > 0) {
-    return result(available, "TOO_FEW", `Only ${available} doctor${available === 1 ? " is" : "s are"} available then; you asked for ${f.needed}.`, `Lower "Providers needed" to ${available}.`);
+    return result(available, "TOO_FEW", `Only ${available} provider${available === 1 ? " is" : "s are"} currently available for ${what}; you asked for ${f.needed}.`, `Lower "Providers needed" to ${available}.`);
   }
+  const none = `No providers are currently available for ${what}.`;
   const counts: Record<Bucket, number> = { GONE: 0, BOOKED: 0, UNAVAILABLE: 0, REQUIREMENTS: 0 };
   for (const x of f.excluded) counts[bucketOf(x)]++;
   const order: Exclude<Bucket, "GONE">[] = ["BOOKED", "UNAVAILABLE", "REQUIREMENTS"];
   const top = order.reduce((a, b) => (counts[b] > counts[a] ? b : a), order[0]);
-  if (counts[top] === 0) return result(available, "NONE_NEARBY", "No doctors near you have joined yet.", "We're recruiting in your area now.");
-  if (top === "BOOKED") return result(available, "BOOKED", "Every doctor near you is already booked at that time.", "Try another day or time.");
-  if (top === "UNAVAILABLE") return result(available, "UNAVAILABLE", "The doctors near you aren't available at that time.", "Try another day or time.");
+  // The gap code is for Growth (where to recruit); clinics always hear "not currently available".
+  if (counts[top] === 0) return result(available, "NONE_NEARBY", none, "");
+  if (top === "BOOKED") return result(available, "BOOKED", none, "Try another day or time.");
+  if (top === "UNAVAILABLE") return result(available, "UNAVAILABLE", none, "Try another day or time.");
   const relax = new Set<string>();
   for (const x of f.excluded) {
     if (bucketOf(x) !== "REQUIREMENTS") continue;
@@ -72,7 +83,7 @@ export function supplyCheck(f: SupplyFacts): SupplyResult {
     if (x.includes("F12") && f.clinicRate) relax.add("the market price instead of your own rate");
   }
   const list = [...relax];
-  return result(available, "REQUIREMENTS", "No doctor near you matches this shift's details.", list.length ? `Try changing: ${list.join(", ")}.` : "Try another day or time.");
+  return result(available, "REQUIREMENTS", `No available providers currently match the requirements for ${what}.`, list.length ? `Try changing: ${list.join(", ")}.` : "Try another day or time.");
 }
 
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);

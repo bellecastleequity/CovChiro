@@ -16,11 +16,11 @@ export const metadata = { title: "Supply & demand" };
 export const dynamic = "force-dynamic";
 
 const GAP_LABEL: Record<string, string> = {
-  NONE_NEARBY: "No doctors nearby yet",
+  NONE_NEARBY: "No providers nearby yet",
   BOOKED: "All booked",
   UNAVAILABLE: "Not available then",
   REQUIREMENTS: "Shift requirements",
-  TOO_FEW: "Not enough doctors",
+  TOO_FEW: "Not enough providers",
 };
 
 export default async function Markets() {
@@ -36,7 +36,7 @@ export default async function Markets() {
       <GrowthTabs current="/admin/growth/markets" />
       {demand.length ? (
         <Card className="mb-6" id="turned-away">
-          <CardHeader title="Clinics who couldn't post: no doctor available (90 days)" description="Every refused posting is logged here: where clinics want doctors before we have them. Recruit providers licensed in these states near these cities (Growth → Expansion). The clinic is texted and emailed the moment a doctor can take the shift." />
+          <CardHeader title="Clinics who couldn't post: no provider available (90 days)" description="Every refused posting is logged here: where clinics want providers before we have them. Recruit providers licensed in these states near these cities (Growth → Expansion). Clinics only see that no providers are currently available; their shift posts automatically (or they are texted and emailed) once one can take it." />
           <Table>
             <thead><tr><Th>Where</Th><Th>Profession</Th><Th>Clinics</Th><Th>Attempts</Th><Th>Posted later</Th><Th>Main reason</Th><Th>Last</Th></tr></thead>
             <tbody>

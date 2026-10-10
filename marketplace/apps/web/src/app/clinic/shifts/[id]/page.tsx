@@ -209,7 +209,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
       ) : null}
       {sp.posted ? <Alert tone="success" className="mb-5" title="Shift posted">We're notifying eligible providers now. Applicants will appear below.</Alert> : null}
       {sp.saved ? <Alert tone="info" className="mb-5">Draft saved.</Alert> : null}
-      {sp.waiting ? <Alert tone="warning" className="mb-5" title="Saved as a draft: no doctor can take it yet">We&apos;ll text and email you the moment a doctor is available, so you can post it in one tap. Meanwhile we&apos;re recruiting doctors in your area.</Alert> : null}
+      {sp.waiting ? <Alert tone="warning" className="mb-5" title="Saved: no providers are currently available for this shift">{draftSupply?.autoPost ? "We'll post it automatically the moment a provider is available, then text and email you." : "We'll text and email you the moment a provider is available, so you can post it in one tap."}</Alert> : null}
       {sp.rebooked ? <Alert tone="success" className="mb-5" title="Booked again">We posted the shift and invited your provider. You&apos;ll hear from us as soon as they accept.</Alert> : null}
       {shift.emergencyAt && selectable ? (
         <Alert tone="warning" className="mb-5" title={shift.rescueOfShiftId ? "Emergency replacement — we're on it" : "We've had a cancellation — we're on it"}>
@@ -392,10 +392,10 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
           {shift.status === "DRAFT" ? (
             <Card><CardBody className="space-y-3">
               {draftSupply?.ok ? (
-                <Alert tone="success" title={`${draftSupply.available} doctor${draftSupply.available === 1 ? " is" : "s are"} available for this shift now`}>Post it before they&apos;re booked elsewhere.</Alert>
+                <Alert tone="success" title={`${draftSupply.available} provider${draftSupply.available === 1 ? " is" : "s are"} available for this shift now`}>Post it before they&apos;re booked elsewhere.</Alert>
               ) : draftSupply ? (
-                <Alert tone="warning" title={draftSupply.waiting ? "Waiting for a doctor" : "No doctor available yet"}>
-                  {draftSupply.headline} {draftSupply.hint && !/recruiting/.test(draftSupply.hint) ? `${draftSupply.hint} ` : ""}{draftSupply.waiting ? "We'll text and email you the moment a doctor can take it, so you can post it in one tap." : "Post it and we'll keep it as a draft and tell you the moment a doctor can take it."}
+                <Alert tone="warning" title={draftSupply.waiting ? (draftSupply.autoPost ? "Waiting for a provider: posts automatically" : "Waiting for a provider") : "No providers available yet"}>
+                  {draftSupply.headline} {draftSupply.hint ? `${draftSupply.hint} ` : ""}{draftSupply.waiting ? (draftSupply.autoPost ? "We'll post it the moment a provider is available, then text and email you." : "We'll text and email you the moment a provider is available, so you can post it in one tap.") : "Tap Post and we'll save it and post it automatically once a provider is available."}
                 </Alert>
               ) : null}
               <div className="flex flex-wrap items-center gap-2">

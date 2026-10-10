@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closedListAfterToggle, marketsToOpen, supplyCheck, waitingDraftAction } from "../src";
+import { closedListAfterToggle, marketsToOpen, savedForProviderNote, supplyCheck, waitingDraftAction } from "../src";
 
 const H = 3_600_000;
 
@@ -12,7 +12,7 @@ describe("posting supply check: at least one doctor must be able to take the shi
     const r = supplyCheck({ needed: 1, eligible: 0, excluded: [] });
     expect(r.ok).toBe(false);
     expect(r.gap).toBe("NONE_NEARBY");
-    expect(r.headline).toMatch(/no doctors near you/i);
+    expect(r.headline).toBe("No providers are currently available for this shift.");
   });
   it("doctors too far away or not finished joining count as none nearby", () => {
     expect(supplyCheck({ needed: 1, eligible: 0, excluded: [["F7"], ["F3"], ["F3", "F5"]] }).gap).toBe("NONE_NEARBY");
@@ -20,7 +20,8 @@ describe("posting supply check: at least one doctor must be able to take the shi
   it("fully booked doctors", () => {
     const r = supplyCheck({ needed: 1, eligible: 0, excluded: [["F5"], ["F5", "F4"], ["F4"]] });
     expect(r.gap).toBe("BOOKED");
-    expect(r.headline).toMatch(/booked/i);
+    expect(r.headline).toBe("No providers are currently available for this shift.");
+    expect(r.hint).toMatch(/another day or time/i);
   });
   it("doctors not available that day (hours, time off, a break)", () => {
     expect(supplyCheck({ needed: 1, eligible: 0, excluded: [["F4"], ["F4"], ["F5"]] }).gap).toBe("UNAVAILABLE");
@@ -41,7 +42,33 @@ describe("posting supply check: at least one doctor must be able to take the shi
   it("several providers needed but fewer available", () => {
     const r = supplyCheck({ needed: 3, eligible: 1, excluded: [["F5"]] });
     expect(r).toMatchObject({ ok: false, available: 1, gap: "TOO_FEW" });
-    expect(r.headline).toMatch(/only 1 doctor/i);
+    expect(r.headline).toBe("Only 1 provider is currently available for this shift; you asked for 3.");
+  });
+});
+
+describe("clinic-facing wording", () => {
+  it("talks about providers and availability, never who has or hasn't joined", () => {
+    const cases = [
+      supplyCheck({ needed: 1, eligible: 0, excluded: [] }),
+      supplyCheck({ needed: 1, eligible: 0, excluded: [["F5"]] }),
+      supplyCheck({ needed: 1, eligible: 0, excluded: [["F4"]] }),
+      supplyCheck({ needed: 1, eligible: 0, excluded: [["F6"]] }),
+      supplyCheck({ needed: 2, eligible: 1, excluded: [] }),
+    ];
+    for (const r of cases) {
+      const text = `${r.headline} ${r.hint} ${r.detail}`;
+      expect(text).not.toMatch(/doctor|joined|recruit|near you/i);
+      expect(text).toMatch(/provider/i);
+    }
+  });
+  it("says 'these shifts' for a multi-day booking", () => {
+    expect(supplyCheck({ needed: 1, eligible: 0, excluded: [], days: 3 }).headline).toBe("No providers are currently available for these shifts.");
+    expect(supplyCheck({ needed: 1, eligible: 0, excluded: [["F6"]], days: 2 }).headline).toBe("No available providers currently match the requirements for these shifts.");
+  });
+  it("the saved note says whether it will post by itself", () => {
+    expect(savedForProviderNote(true, 1)).toMatch(/post it automatically the moment a provider is available/);
+    expect(savedForProviderNote(false, 2)).toMatch(/saved them as drafts/);
+    expect(savedForProviderNote(false, 2)).toMatch(/one tap/);
   });
 });
 

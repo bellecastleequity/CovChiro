@@ -34,6 +34,8 @@ afterAll(async () => {
 describe("open states, gated by available doctors", () => {
   let clinic: Awaited<ReturnType<typeof makeClinic>>;
   let draftId: string;
+  let bookedDraftId: string;
+  let assignmentId: string;
   const day = futureWeekday(12, 15);
 
   it("opens a state that isn't closed, with the default national rate card", async () => {
@@ -56,13 +58,15 @@ describe("open states, gated by available doctors", () => {
   });
 
   it("refuses to post with no doctor nearby: saved as a draft waiting for one, logged as demand", async () => {
-    const err = await createShift(clinic.actor, { locationId: clinic.location.id, professionCode: "DC", startsAt: day.startsAt, endsAt: day.endsAt }, { post: true }).catch((e) => e);
+    const err = await createShift(clinic.actor, { locationId: clinic.location.id, professionCode: "DC", startsAt: day.startsAt, endsAt: day.endsAt, autoPostWhenAvailable: false }, { post: true }).catch((e) => e);
     expect(err.code).toBe("NO_PROVIDER_AVAILABLE");
-    expect(err.message).toMatch(/no doctors near you/i);
+    expect(err.message).toMatch(/^No providers are currently available for this shift\./);
+    expect(err.message).not.toMatch(/doctor|joined|recruit/i);
     draftId = err.details.shiftIds[0];
     const draft = await prisma.shift.findUniqueOrThrow({ where: { id: draftId } });
     expect(draft.status).toBe("DRAFT");
     expect(draft.waitingForProviderSince).not.toBeNull();
+    expect(draft.autoPostWhenAvailable).toBe(false);
     const demand = await prisma.postingDemand.findFirstOrThrow({ where: { shiftId: draftId } });
     expect(demand).toMatchObject({ state: "NM", gap: "NONE_NEARBY", available: 0, postedAt: null });
     // Posting the draft directly is refused the same way.
@@ -70,16 +74,17 @@ describe("open states, gated by available doctors", () => {
     expect((await supply.demandSummary()).some((d) => d.state === "NM" && d.clinics >= 1)).toBe(true);
   });
 
-  it("tells the clinic once a doctor can take it, and the clinic posts in one tap", async () => {
+  it("tells the clinic once a provider can take it, and the clinic posts in one tap", async () => {
     expect((await supply.waitingDraftSweep()).notified).toBe(0);
     const p = await makeProvider({ licenses: [{ professionCode: "DC", state: "NM" }], home: NM });
     const r1 = await supply.waitingDraftSweep();
     expect(r1.notified).toBeGreaterThanOrEqual(1);
-    const note = await prisma.notification.findFirst({ where: { userId: clinic.user.id, template: "doctor_available" } });
+    expect(r1.posted).toBe(0);
+    const note = await prisma.notification.findFirst({ where: { userId: clinic.user.id, template: "provider_available" } });
     expect(note?.link).toBe(`/clinic/shifts/${draftId}`);
     // Once only while the doctor stays available.
     await supply.waitingDraftSweep();
-    expect(await prisma.notification.count({ where: { userId: clinic.user.id, template: "doctor_available" } })).toBe(1);
+    expect(await prisma.notification.count({ where: { userId: clinic.user.id, template: "provider_available" } })).toBe(1);
     const q = await quoteForClinic(clinic.actor, { locationId: clinic.location.id, professionCode: "DC", startsAt: day.startsAt, endsAt: day.endsAt });
     expect(q.supply).toMatchObject({ ok: true, available: 1 });
 
@@ -90,15 +95,32 @@ describe("open states, gated by available doctors", () => {
     expect((await prisma.postingDemand.findFirstOrThrow({ where: { shiftId: draftId } })).postedAt).not.toBeNull();
 
     // Fully booked: the only doctor is confirmed elsewhere at that time.
-    await insertAssignment(draftId, p.id);
+    assignmentId = (await insertAssignment(draftId, p.id)).id;
     const err = await createShift(clinic.actor, { locationId: clinic.location.id, professionCode: "DC", startsAt: day.startsAt, endsAt: day.endsAt }, { post: true }).catch((e) => e);
     expect(err.code).toBe("NO_PROVIDER_AVAILABLE");
-    expect(err.message).toMatch(/booked/i);
-    expect((await prisma.postingDemand.findFirstOrThrow({ where: { shiftId: err.details.shiftIds[0] } })).gap).toBe("BOOKED");
+    expect(err.message).toMatch(/No providers are currently available for this shift\. Try another day or time\./);
+    expect(err.message).toMatch(/post it automatically/);
+    bookedDraftId = err.details.shiftIds[0];
+    expect((await prisma.postingDemand.findFirstOrThrow({ where: { shiftId: bookedDraftId } })).gap).toBe("BOOKED");
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: bookedDraftId } })).autoPostWhenAvailable).toBe(true);
     // A different day is fine.
     const other = futureWeekday(19, 15);
     const { shiftId } = await createShift(clinic.actor, { locationId: clinic.location.id, professionCode: "DC", startsAt: other.startsAt, endsAt: other.endsAt }, { post: true });
     expect((await prisma.shift.findUniqueOrThrow({ where: { id: shiftId } })).status).not.toBe("DRAFT");
+  });
+
+  it("by default a waiting draft is posted automatically once a provider can take it", async () => {
+    expect((await supply.waitingDraftSweep()).posted).toBe(0);
+    // The provider's other booking falls through, so they're free at that time again.
+    await prisma.assignment.update({ where: { id: assignmentId }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+    const r = await supply.waitingDraftSweep();
+    expect(r.posted).toBe(1);
+    const sh = await prisma.shift.findUniqueOrThrow({ where: { id: bookedDraftId } });
+    expect(sh.status).not.toBe("DRAFT");
+    expect(sh.waitingForProviderSince).toBeNull();
+    const note = await prisma.notification.findFirstOrThrow({ where: { userId: clinic.user.id, template: "provider_available_posted" } });
+    expect(note.title).toMatch(/We've posted your shift/);
+    expect(note.body).not.toMatch(/doctor/i);
   });
 
   it("an admin's switch-off is remembered, so the automatic opening never undoes it", async () => {
