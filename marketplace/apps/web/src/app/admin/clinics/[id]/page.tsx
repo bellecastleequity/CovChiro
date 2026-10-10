@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/ui/misc";
 import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { AccountModeration } from "@/components/admin/account-moderation";
-import { approveClinicAction, clinicStatusAction, clinicVerificationAdminAction, payInFullAction, retryChargeAction } from "../../actions";
+import { approveClinicAction, clinicStatusAction, clinicVerificationAdminAction, excludeChargeAction, includeChargeAction, payInFullAction, retryChargeAction } from "../../actions";
 import { Textarea } from "@/components/ui/form";
 
 export default async function AdminClinic({ params }: { params: Promise<{ id: string }> }) {
@@ -75,19 +75,39 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
                   <div className="font-medium text-red-700">Unpaid: {money(due.unpaidCents)}</div>
                   {due.unpaid.map((p) => (
                     <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2">
-                      <span>{p.description ?? p.type} · {money(p.amountCents)} · failed {dateLabel(p.firstFailedAt)}{p.retryCount ? ` · ${p.retryCount} retr${p.retryCount === 1 ? "y" : "ies"}` : ""}{p.failureReason ? ` · ${p.failureReason}` : ""}</span>
-                      <ActionForm action={retryChargeAction}><input type="hidden" name="paymentId" value={p.id} /><input type="hidden" name="clinicOrgId" value={c.id} /><SubmitButton size="sm" variant="outline">Retry charge</SubmitButton></ActionForm>
+                      <span>{p.description ?? p.type} · {money(p.amountCents)} · failed {dateLabel(p.firstFailedAt)}{p.retryCount ? ` · ${p.retryCount} retr${p.retryCount === 1 ? "y" : "ies"}` : ""}{p.failureReason ? ` · ${p.failureReason}` : ""}{p.autoChased ? "" : ` · older than ${settings["payments.autoCollectMaxAgeDays"]} days: not retried automatically`}</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <ActionForm action={retryChargeAction}><input type="hidden" name="paymentId" value={p.id} /><input type="hidden" name="clinicOrgId" value={c.id} /><SubmitButton size="sm" variant="outline">Retry charge</SubmitButton></ActionForm>
+                        <ActionForm action={excludeChargeAction} className="flex items-center gap-1" confirm="Exclude this charge from rebilling? It won't be retried, the clinic won't be asked to pay it, and it won't count toward pay-in-full.">
+                          <input type="hidden" name="paymentId" value={p.id} /><input type="hidden" name="clinicOrgId" value={c.id} />
+                          <Input name="note" required placeholder="Why (e.g. old test charge)" aria-label="Why exclude" className="h-8 w-44" />
+                          <SubmitButton size="sm" variant="ghost">Exclude from rebilling</SubmitButton>
+                        </ActionForm>
+                      </div>
                     </div>
                   ))}
                 </div>
               ) : <p className="text-slate-500">Nothing unpaid.</p>}
+              {due.excluded.length ? (
+                <details className="rounded-lg border border-slate-200 px-3 py-2">
+                  <summary className="cursor-pointer font-medium text-slate-700">Excluded from rebilling ({due.excluded.length})</summary>
+                  <div className="mt-2 space-y-2">
+                    {due.excluded.map((p) => (
+                      <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-slate-600">
+                        <span>{p.description ?? p.type} · {money(p.amountCents)} · excluded {p.excludedAt ? dateLabel(p.excludedAt) : ""}{p.excludedNote ? ` · ${p.excludedNote}` : ""}</span>
+                        <ActionForm action={includeChargeAction}><input type="hidden" name="paymentId" value={p.id} /><input type="hidden" name="clinicOrgId" value={c.id} /><SubmitButton size="sm" variant="ghost">Include again</SubmitButton></ActionForm>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
               <ActionForm action={payInFullAction} className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="clinicOrgId" value={c.id} />
                 <input type="hidden" name="on" value={c.payInFull ? "0" : "1"} />
                 <Input name="note" placeholder={c.payInFull ? "Why (e.g. paid in full Oct 12)" : "Reason (optional)"} required={c.payInFull} className="h-9 min-w-0 flex-1 sm:max-w-xs" />
                 <SubmitButton size="sm" variant={c.payInFull ? "primary" : "outline"}>{c.payInFull ? "Restore normal deposit" : "Charge in full at confirmation"}</SubmitButton>
               </ActionForm>
-              <p className="text-xs text-slate-500">Turns on by itself when a charge is unpaid {settings["payments.payInFullAfterHours"]} hours after it failed (Settings → Payments). Only an admin turns it off.</p>
+              <p className="text-xs text-slate-500">Turns on by itself when a charge from the last {settings["payments.autoCollectMaxAgeDays"]} days is unpaid {settings["payments.payInFullAfterHours"]} hours after it failed (Settings → Payments). Older or excluded charges are never retried or counted automatically. Only an admin turns it off.</p>
             </CardBody>
           </Card>
           <Card id="verification">

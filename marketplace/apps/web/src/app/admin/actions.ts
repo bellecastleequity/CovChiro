@@ -647,3 +647,19 @@ export const retryChargeAction = formAction(async (fd) => {
   rv(`/admin/clinics/${str(fd, "clinicOrgId")}`);
   return r.status === "SUCCEEDED" ? "Charged." : r.status === "PROCESSING" ? "Processing." : `Still failing${r.failureReason ? `: ${r.failureReason}` : ""}.`;
 });
+
+export const excludeChargeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await overdue.excludeFromCollection(actor, str(fd, "paymentId"), str(fd, "note"));
+  rv(`/admin/clinics/${str(fd, "clinicOrgId")}`);
+  rv("/admin/payments");
+  return "Excluded. It won't be retried or counted toward pay-in-full.";
+});
+
+export const includeChargeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await overdue.includeInCollection(actor, str(fd, "paymentId"));
+  rv(`/admin/clinics/${str(fd, "clinicOrgId")}`);
+  rv("/admin/payments");
+  return "Included again.";
+});

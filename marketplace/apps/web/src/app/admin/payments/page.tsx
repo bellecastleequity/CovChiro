@@ -80,7 +80,7 @@ export default async function Payments() {
           <CardHeader title="Recent payments" />
           <Table>
             <thead><tr><Th>Date</Th><Th>Clinic</Th><Th>Type</Th><Th className="text-right">Amount</Th><Th>Status</Th></tr></thead>
-            <tbody>{payments.map((p) => <tr key={p.id}><Td>{dateTimeLabel(p.createdAt)}</Td><Td>{p.clinicOrg.displayName}</Td><Td>{humanize(p.type)}</Td><Td className="text-right tabular-nums">{money(p.amountCents, { exact: true })}</Td><Td><StatusBadge status={p.status} /></Td></tr>)}</tbody>
+            <tbody>{payments.map((p) => <tr key={p.id}><Td>{dateTimeLabel(p.createdAt)}</Td><Td>{p.clinicOrg.displayName}</Td><Td>{humanize(p.type)}</Td><Td className="text-right tabular-nums">{money(p.amountCents, { exact: true })}</Td><Td><StatusBadge status={p.status} />{p.status === "FAILED" ? (p.collectionExcludedAt ? <span className="ml-2 text-xs text-slate-500">Excluded from rebilling</span> : <Link href={`/admin/clinics/${p.clinicOrgId}#payment-terms`} className="ml-2 text-xs font-medium text-brand-700">Retry or exclude →</Link>) : null}</Td></tr>)}</tbody>
           </Table>
         </Card>
         <Alert tone="info">Payment status only changes from Stripe responses and signature-verified webhooks.</Alert>

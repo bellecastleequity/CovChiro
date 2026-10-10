@@ -55,6 +55,7 @@ export const EXPECTED_MIGRATIONS = [
   "0047_open_states",
   "0048_auto_post",
   "0049_pay_in_full",
+  "0050_rebill_guard",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */

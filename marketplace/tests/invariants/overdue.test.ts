@@ -69,4 +69,48 @@ describe("overdue clinic payments", () => {
     const other = await makeClinic();
     await expect(overdue.retryPayment(other.actor, p.id)).rejects.toThrow(/not found/i);
   });
+
+  it("failsafe: never chases an old failed charge or one an admin excluded, and never charges a booking twice", async () => {
+    const c = await makeClinic();
+    // An old test charge from months ago, picked up by the pay-in-full update with a fresh clock.
+    const old = (await charge(null, c.org.id, "BALANCE", 13, `test-old-${uid()}`, "Old test charge"))!;
+    await prisma.payment.update({ where: { id: old.id }, data: { createdAt: new Date(Date.now() - 90 * 24 * H), firstFailedAt: new Date(Date.now() - 49 * H), failureNotifiedAt: null } });
+    const before = await notes(c.user.id, "payment_failed");
+    await overdue.overduePaymentsSweep();
+    const o = await prisma.payment.findUniqueOrThrow({ where: { id: old.id } });
+    expect(o.retryCount).toBe(0);
+    expect(o.failureNotifiedAt).toBeNull();
+    expect(await notes(c.user.id, "payment_failed")).toBe(before);
+    expect((await prisma.clinicOrg.findUniqueOrThrow({ where: { id: c.org.id } })).payInFull).toBe(false);
+    // Admins still see it, marked as not chased.
+    expect((await overdue.overdueForClinic(c.org.id)).unpaid.find((x) => x.id === old.id)?.autoChased).toBe(false);
+
+    // Excluding a recent one: off the clinic's list, never retried or flagged, can't be charged until included again.
+    const recent = (await charge(null, c.org.id, "VOLUME", 2013, `test-recent-${uid()}`, "Extra visits · test"))!;
+    await expect(overdue.excludeFromCollection(c.actor, recent.id, "x")).rejects.toThrow();
+    await expect(overdue.excludeFromCollection(admin, recent.id, " ")).rejects.toThrow(/note/);
+    await overdue.excludeFromCollection(admin, recent.id, "Settled by phone");
+    await failedSince(recent.id, 49);
+    await overdue.overduePaymentsSweep();
+    expect((await prisma.payment.findUniqueOrThrow({ where: { id: recent.id } })).retryCount).toBe(0);
+    expect((await prisma.clinicOrg.findUniqueOrThrow({ where: { id: c.org.id } })).payInFull).toBe(false);
+    const due = await overdue.overdueForClinic(c.org.id);
+    expect(due.unpaid.map((x) => x.id)).not.toContain(recent.id);
+    expect(due.excluded.map((x) => x.id)).toContain(recent.id);
+    await expect(overdue.retryPayment(admin, recent.id)).rejects.toThrow(/excluded/);
+    await overdue.includeInCollection(admin, recent.id);
+    expect((await overdue.overdueForClinic(c.org.id)).unpaid.map((x) => x.id)).toContain(recent.id);
+
+    // A failed charge whose booking already paid the same amount another way is excluded, not charged again.
+    const shift = await makeShift(c.location.id, { days: 22 });
+    const { assignmentId } = await adminAssign({ ...admin }, shift.id, (await makeProvider()).id);
+    const dup = (await charge(assignmentId, c.org.id, "BALANCE", 5013, `test-dup-${uid()}`, "Balance · test"))!;
+    const { id: _id, idempotencyKey: _k, ...rest } = await prisma.payment.findUniqueOrThrow({ where: { id: dup.id } });
+    await prisma.payment.create({ data: { ...rest, idempotencyKey: `test-dup-paid-${uid()}`, stripePaymentIntentId: `pi_fake_dup_${uid()}`, status: "SUCCEEDED", firstFailedAt: null, failureNotifiedAt: null } as never });
+    await failedSince(dup.id, 25);
+    await expect(overdue.retryPayment(c.actor, dup.id)).rejects.toThrow(/already has a matching paid charge/);
+    const d = await prisma.payment.findUniqueOrThrow({ where: { id: dup.id } });
+    expect(d.retryCount).toBe(0);
+    expect(d.collectionExcludedNote).toMatch(/Already paid/);
+  });
 });

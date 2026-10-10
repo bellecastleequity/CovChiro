@@ -1246,6 +1246,10 @@ model Payment {
   retryCount            Int           @default(0)
   lastAttemptAt         DateTime?     @db.Timestamptz(3)
   failureNotifiedAt     DateTime?     @db.Timestamptz(3)
+  /// Rebilling failsafe: an admin excluded this charge from automatic retries, notices and pay-in-full (or it was already paid by another charge).
+  collectionExcludedAt   DateTime?    @db.Timestamptz(3)
+  collectionExcludedById String?
+  collectionExcludedNote String?
   createdAt             DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { depositPercentFor, overduePaymentAction, OVERDUE_PAYMENT_TYPES } from "../src";
+import { alreadyPaidBy, autoCollectable, depositPercentFor, overduePaymentAction, OVERDUE_PAYMENT_TYPES } from "../src";
 
 const H = 3_600_000;
 const now = new Date("2026-10-12T12:00:00Z");
@@ -36,5 +36,28 @@ describe("deposit at confirmation", () => {
   it("is the normal percentage, or everything for a pay-in-full clinic", () => {
     expect(depositPercentFor(10, false)).toBe(10);
     expect(depositPercentFor(10, true)).toBe(100);
+  });
+});
+
+describe("rebilling failsafe", () => {
+  const old = { ...base, firstFailedAt: new Date(+now - 72 * H) };
+  it("never chases a charge older than the age limit (e.g. a failed test charge from months ago)", () => {
+    expect(autoCollectable({ createdAt: new Date(+now - 3 * 24 * H), now, maxAgeDays: 14, excludedAt: null })).toBe(true);
+    expect(autoCollectable({ createdAt: new Date(+now - 15 * 24 * H), now, maxAgeDays: 14, excludedAt: null })).toBe(false);
+    expect(overduePaymentAction({ ...old, createdAt: new Date(+now - 90 * 24 * H), maxAgeDays: 14 })).toEqual({ retry: false, flag: false });
+    expect(overduePaymentAction({ ...old, createdAt: new Date(+now - 3 * 24 * H), maxAgeDays: 14 })).toEqual({ retry: true, flag: true });
+  });
+  it("never chases a charge an admin excluded", () => {
+    expect(autoCollectable({ createdAt: now, now, maxAgeDays: 14, excludedAt: new Date(+now - H) })).toBe(false);
+    expect(overduePaymentAction({ ...old, createdAt: now, maxAgeDays: 14, excludedAt: new Date(+now - H) })).toEqual({ retry: false, flag: false });
+  });
+  it("spots a failed charge the booking has already paid another way", () => {
+    const failed = { id: "f", type: "BALANCE", amountCents: 41600, assignmentId: "a1" };
+    expect(alreadyPaidBy(failed, [{ id: "s", type: "BALANCE", amountCents: 41600, assignmentId: "a1", status: "SUCCEEDED" }])).toBe("s");
+    expect(alreadyPaidBy(failed, [{ id: "s", type: "BALANCE", amountCents: 41600, assignmentId: "a1", status: "FAILED" }])).toBeNull();
+    expect(alreadyPaidBy(failed, [{ id: "s", type: "DEPOSIT", amountCents: 41600, assignmentId: "a1", status: "SUCCEEDED" }])).toBeNull();
+    expect(alreadyPaidBy(failed, [{ id: "s", type: "BALANCE", amountCents: 41600, assignmentId: "a2", status: "SUCCEEDED" }])).toBeNull();
+    expect(alreadyPaidBy({ ...failed, assignmentId: null }, [{ id: "s", type: "BALANCE", amountCents: 41600, assignmentId: null, status: "SUCCEEDED" }])).toBeNull();
+    expect(alreadyPaidBy(failed, [{ id: "f", type: "BALANCE", amountCents: 41600, assignmentId: "a1", status: "SUCCEEDED" }])).toBeNull();
   });
 });
