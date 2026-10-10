@@ -33,10 +33,11 @@ export default async function Availability() {
               {DAYS.map((d, i) => {
                 const r = p.availability.find((x) => x.weekday === i);
                 return (
-                  <div key={d} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
-                    <Checkbox name={`on-${i}`} defaultChecked={!!r} label={d} />
-                    <Input type="time" name={`start-${i}`} defaultValue={r ? hhmm(r.startMin) : "07:00"} className="h-9 w-28" aria-label={`${d} start`} />
-                    <Input type="time" name={`end-${i}`} defaultValue={r ? hhmm(r.endMin) : "19:00"} className="h-9 w-28" aria-label={`${d} end`} />
+                  <div key={d} className="grid grid-cols-2 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 sm:grid-cols-[1fr_auto_auto]">
+                    {/* Phones: the day on its own line, the two times under it (the names were cut off). */}
+                    <div className="col-span-2 sm:col-span-1"><Checkbox name={`on-${i}`} defaultChecked={!!r} label={d} /></div>
+                    <Input type="time" name={`start-${i}`} defaultValue={r ? hhmm(r.startMin) : "07:00"} className="h-9 w-full sm:w-28" aria-label={`${d} start`} />
+                    <Input type="time" name={`end-${i}`} defaultValue={r ? hhmm(r.endMin) : "19:00"} className="h-9 w-full sm:w-28" aria-label={`${d} end`} />
                   </div>
                 );
               })}
