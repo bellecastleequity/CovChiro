@@ -39,7 +39,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     { href: "/provider/help", label: "Help", icon: "help", badge: await support.answeredCount(user.id).catch(() => 0) },
   ];
   return (
-    <AppShell items={items} root="/provider" userId={user.id} userName={user.name} userPhoto={me?.photoUrl ?? null} subtitle="Provider" setup={setup} otherSide={sides?.clinic ? { to: "CLINIC", label: "Switch to my clinic" } : null}>
+    <AppShell items={items} root="/provider" userId={user.id} userName={user.name} userPhoto={me?.photoUrl ?? null} subtitle="Provider" setup={setup} otherSide={sides?.clinic ? { to: "CLINIC", label: "Switch to my clinic" } : null} addSide={sides && !sides.clinic ? { href: "/provider/add-clinic", label: "Add my clinic" } : null}>
       {needsAgreement ? (
         <Alert tone="warning" className="mb-6" title={me?.agreementSignedAt ? "Sign the updated Provider Agreement to keep getting shifts" : "Sign the Provider Agreement to start getting shifts"}>
           Until you do, you won&apos;t be matched, offered or able to apply for shifts. Shifts you&apos;re already booked on stay booked. <Link href="/provider/profile#agreement" className="font-medium underline">Review &amp; sign →</Link>

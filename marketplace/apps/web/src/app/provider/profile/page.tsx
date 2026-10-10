@@ -12,7 +12,8 @@ import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { getSession, requireActor } from "@/lib/session";
 import { GoogleAccountCard } from "@/components/site/google-account";
-import { addClinicSideAction, agreementAction, flyInAction, passwordAction, payFloorAction, profileAction, studentModeAction } from "../actions";
+import { AddClinicSideCard } from "@/components/workspace/add-side";
+import { agreementAction, flyInAction, passwordAction, payFloorAction, profileAction, studentModeAction } from "../actions";
 import { breaks, getSettings, payfloors, schools } from "@cm/services";
 import { flyInAirfareCents, flyInNightlyCents, regionName } from "@cm/core";
 import { money } from "@/lib/format";
@@ -205,18 +206,7 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
             )}
           </CardBody>
         </Card>
-        {!hasClinic ? (
-          <Card id="own-clinic">
-            <CardHeader title="I also own a clinic" description="Own a practice that needs coverage? Add it to this same login and post shifts for it. You switch between your shifts and your clinic from the menu — no second account." />
-            <CardBody>
-              <ActionForm action={addClinicSideAction} successMessage={false} className="flex flex-wrap gap-2">
-                <Input name="organization" placeholder="Clinic name" required minLength={2} className="max-w-xs" />
-                <SubmitButton variant="outline">Add my clinic</SubmitButton>
-              </ActionForm>
-              <p className="mt-2 text-xs text-slate-500">Your clinic is verified like any other before its shifts go out. You&apos;re never matched to your own clinic&apos;s shifts.</p>
-            </CardBody>
-          </Card>
-        ) : null}
+        {!hasClinic ? <AddClinicSideCard /> : null}
         <GoogleAccountCard connected={!!user.googleSub} hasPassword={!!user.passwordHash} back="/provider/profile" notice={googleNotice} />
         <Card>
           <CardHeader title="Password" />

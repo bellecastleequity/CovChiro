@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeftRight, Bell, LifeBuoy, LogOut, MailWarning, Siren } from "lucide-react";
+import { ArrowLeftRight, Bell, PlusCircle, LifeBuoy, LogOut, MailWarning, Siren } from "lucide-react";
 import { clinicHelp } from "@/lib/help/clinic";
 import { providerHelp } from "@/lib/help/provider";
 import { brand, SETTINGS } from "@cm/config";
@@ -17,7 +17,7 @@ import { getSession } from "@/lib/session";
 import { BottomNav, SideNav, type NavItem } from "./nav-link";
 import { ResendVerification } from "./resend-verification";
 
-export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, setup, otherSide, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; setup?: SetupStatusData | null; /** The login's other workspace (clinic owner who also takes shifts): a switch in the header and sidebar. */ otherSide?: { to: "CLINIC" | "PROVIDER"; label: string } | null; children: React.ReactNode }) {
+export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, setup, otherSide, addSide, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; setup?: SetupStatusData | null; /** The login's other workspace (clinic owner who also takes shifts): a switch in the header and sidebar. */ otherSide?: { to: "CLINIC" | "PROVIDER"; label: string } | null; /** No other side yet: a link to add it (clinic owner → take shifts; provider → own clinic). */ addSide?: { href: string; label: string } | null; children: React.ReactNode }) {
   const b = brand();
   const [unread, session, savedOrder] = await Promise.all([prisma.notification.count({ where: { userId, readAt: null } }), getSession(), navprefs.getNavOrder(userId, root)]);
   const ordered = orderNav(items, root, savedOrder);
@@ -55,6 +55,8 @@ export async function AppShell({ items, root, userId, userName, userPhoto, subti
               <input type="hidden" name="to" value={otherSide.to} />
               <button className="flex items-center gap-2 text-sm font-medium text-brand-700 hover:text-brand-800"><ArrowLeftRight className="size-4" /> {otherSide.label}</button>
             </form>
+          ) : addSide ? (
+            <Link href={addSide.href} className="mt-2 flex items-center gap-2 text-sm font-medium text-brand-700 hover:text-brand-800"><PlusCircle className="size-4" /> {addSide.label}</Link>
           ) : null}
           <form action="/api/auth/logout" method="post" className="mt-2">
             <button className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900">
