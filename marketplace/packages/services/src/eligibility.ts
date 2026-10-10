@@ -96,6 +96,7 @@ export async function buildLoadedShifts(db: Db, rows: ShiftRowForEligibility[]):
       status: s.status,
       facts: {
         id: s.id,
+        clinicOrgId: s.location.clinicOrgId,
         professionCode: s.professionCode,
         state: s.state,
         startsAt: s.startsAt,
@@ -158,6 +159,8 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
       blackouts: true,
       openDates: true,
       payFloors: true,
+      // Clinics this login owns (clinic owner who also takes shifts): never their own shifts (F14).
+      user: { select: { clinicMembers: { where: { role: "CLINIC_OWNER" }, select: { clinicOrgId: true } } } },
       assignments: {
         where: { status: { in: ["CONFIRMED", "IN_PROGRESS"] }, ...(excludeShiftId ? { shiftId: { not: excludeShiftId } } : {}) },
         select: { shiftId: true, startsAt: true, endsAt: true, bufferMinutes: true },
@@ -174,6 +177,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
       busyShiftIds: p.assignments.map((a) => a.shiftId),
       facts: {
         id: p.id,
+        ownClinicOrgIds: p.user.clinicMembers.map((m) => m.clinicOrgId),
         status: p.status,
         professions: p.professions.map((x) => ({ professionCode: x.professionCode, status: x.status, yearsInPractice: x.yearsInPractice })),
         payoutsEnabled: p.stripePayoutsEnabled,

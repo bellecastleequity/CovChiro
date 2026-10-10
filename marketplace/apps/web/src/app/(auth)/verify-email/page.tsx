@@ -30,7 +30,7 @@ export default async function VerifyEmail({ searchParams }: { searchParams: Prom
           <SubmitButton size="sm" variant="outline" pendingText="Sending…">Email me a new link</SubmitButton>
         </ActionForm>
       ) : null}
-      <Link href={session ? homeFor(session.user.role) : "/login"} className="mt-6 inline-block font-medium text-brand-700">
+      <Link href={session ? homeFor(session.actor.role) : "/login"} className="mt-6 inline-block font-medium text-brand-700">
         Continue
       </Link>
     </div>

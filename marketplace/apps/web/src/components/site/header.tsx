@@ -40,7 +40,7 @@ export async function SiteHeader() {
         </nav>
         <div className="hidden items-center gap-2 sm:flex">
           {s ? (
-            <LinkButton href={homeFor(s.user.role)} size="sm">
+            <LinkButton href={homeFor(s.actor.role)} size="sm">
               Open dashboard
             </LinkButton>
           ) : (
@@ -54,7 +54,7 @@ export async function SiteHeader() {
             </>
           )}
         </div>
-        <MobileMenu nav={NAV} signedIn={!!s} home={s ? homeFor(s.user.role) : "/signup"} />
+        <MobileMenu nav={NAV} signedIn={!!s} home={s ? homeFor(s.actor.role) : "/signup"} />
       </div>
     </header>
   );

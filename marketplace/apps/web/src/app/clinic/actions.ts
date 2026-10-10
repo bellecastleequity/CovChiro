@@ -20,7 +20,7 @@ import {
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
 import { bool, formAction, optStr, str } from "@/lib/action";
-import { requireActor } from "@/lib/session";
+import { getSession, requireActor } from "@/lib/session";
 import { saveUpload } from "@/lib/upload";
 import { verificationInputFrom } from "@/lib/verification-input";
 
@@ -531,4 +531,13 @@ export const payNowAction = formAction(async (fd) => {
   if (r.status === "SUCCEEDED") return "Paid. Thank you.";
   if (r.status === "PROCESSING") return "Payment is processing. We'll let you know when it clears.";
   throw new DomainError("PAYMENT_FAILED", `It didn't go through${r.failureReason ? `: ${r.failureReason}` : ""}. Update your card above and try again.`);
+});
+
+/** Owner only: add a provider side to this login (taking shifts at other clinics), then switch to it. */
+export const addProviderSideAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await auth.addProviderSide(actor, { professionCodes: fd.getAll("professions").map(String) });
+  const s = await getSession();
+  if (s) await auth.switchWorkspace(s.sessionId, "PROVIDER");
+  redirect("/provider?welcome=1");
 });

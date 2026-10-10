@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { auth, google, shiftRecruit } from "@cm/services";
 import { GOOGLE_PENDING_COOKIE } from "@/lib/google";
 import { formAction, str } from "@/lib/action";
-import { getSession, homeFor, SESSION_COOKIE, setSessionCookie } from "@/lib/session";
+import { getSession, SESSION_COOKIE, setSessionCookie } from "@/lib/session";
 
 async function ip() {
   const h = await headers();
@@ -30,7 +30,8 @@ export const loginAction = formAction(async (fd) => {
   if (r.mfaEnrollRequired) redirect("/mfa/setup");
   if (r.mfaRequired) redirect("/mfa");
   const next = str(fd, "next");
-  redirect(next.startsWith("/") && !next.startsWith("//") ? next : homeFor(r.user.role));
+  // /workspace sends a login with one side home at once and asks a clinic owner who also takes shifts which side to open.
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/workspace");
 });
 
 /** Student-path fields (signup?student=1 and /join); undefined on the normal path. */
@@ -125,7 +126,7 @@ export const mfaVerifyAction = formAction(async (fd) => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value ?? "";
   await auth.completeMfa(token, str(fd, "code"), { enrolling: str(fd, "enrolling") === "1" });
   const s = await getSession();
-  redirect(homeFor(s?.user.role ?? ""));
+  redirect(s ? "/workspace" : "/login");
 });
 
 /** Test site: email a new sign-in code. */

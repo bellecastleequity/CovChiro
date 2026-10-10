@@ -15,6 +15,7 @@ export type ErrorCode =
   | "INSUFFICIENT_EXPERIENCE"
   | "BELOW_PAY_FLOOR"
   | "CLINIC_NOT_VERIFIED"
+  | "OWN_CLINIC"
   | "TOO_FAR"
   | "OVER_TRAVEL_BUDGET"
   | "BLOCKED"

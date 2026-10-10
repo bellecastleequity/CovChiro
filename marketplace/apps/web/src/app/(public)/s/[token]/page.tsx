@@ -19,7 +19,7 @@ export default async function RecruitShift({ params }: { params: Promise<{ token
   const sum = await shiftRecruit.summary(token);
   if (!sum) notFound();
   const session = await getSession();
-  const isProvider = session?.user.role === "PROVIDER";
+  const isProvider = !!session?.workspaces.provider;
   const b = brand();
   const d = sum.shift;
   const rows: [React.ReactNode, React.ReactNode, React.ReactNode][] = [

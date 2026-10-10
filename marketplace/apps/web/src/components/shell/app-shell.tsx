@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, LifeBuoy, LogOut, MailWarning, Siren } from "lucide-react";
+import { ArrowLeftRight, Bell, LifeBuoy, LogOut, MailWarning, Siren } from "lucide-react";
 import { clinicHelp } from "@/lib/help/clinic";
 import { providerHelp } from "@/lib/help/provider";
 import { brand, SETTINGS } from "@cm/config";
@@ -17,7 +17,7 @@ import { getSession } from "@/lib/session";
 import { BottomNav, SideNav, type NavItem } from "./nav-link";
 import { ResendVerification } from "./resend-verification";
 
-export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, setup, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; setup?: SetupStatusData | null; children: React.ReactNode }) {
+export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, setup, otherSide, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; setup?: SetupStatusData | null; /** The login's other workspace (clinic owner who also takes shifts): a switch in the header and sidebar. */ otherSide?: { to: "CLINIC" | "PROVIDER"; label: string } | null; children: React.ReactNode }) {
   const b = brand();
   const [unread, session, savedOrder] = await Promise.all([prisma.notification.count({ where: { userId, readAt: null } }), getSession(), navprefs.getNavOrder(userId, root)]);
   const ordered = orderNav(items, root, savedOrder);
@@ -50,6 +50,12 @@ export async function AppShell({ items, root, userId, userName, userPhoto, subti
             <div className="truncate text-sm font-medium text-slate-900">{userName}</div>
           </div>
           {subtitle ? <div className="truncate text-xs text-slate-500">{subtitle}</div> : null}
+          {otherSide ? (
+            <form action="/api/workspace" method="post" className="mt-2">
+              <input type="hidden" name="to" value={otherSide.to} />
+              <button className="flex items-center gap-2 text-sm font-medium text-brand-700 hover:text-brand-800"><ArrowLeftRight className="size-4" /> {otherSide.label}</button>
+            </form>
+          ) : null}
           <form action="/api/auth/logout" method="post" className="mt-2">
             <button className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900">
               <LogOut className="size-4" /> Sign out
@@ -69,6 +75,14 @@ export async function AppShell({ items, root, userId, userName, userPhoto, subti
             <GlobalSearch entries={entries} placeholder={placeholder} />
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {otherSide ? (
+              <form action="/api/workspace" method="post">
+                <input type="hidden" name="to" value={otherSide.to} />
+                <button className="mr-1 inline-flex items-center gap-1.5 rounded-lg border border-brand-200 px-2.5 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-50" title={otherSide.label} aria-label={otherSide.label}>
+                  <ArrowLeftRight className="size-4" /><span className="hidden md:inline">{otherSide.to === "CLINIC" ? "Clinic" : "Provider"}</span>
+                </button>
+              </form>
+            ) : null}
             {setup ? <SetupStatus status={setup} /> : null}
             {help ? (
               <Link href={`${help.base}/urgent`} className="mr-1 hidden items-center gap-1.5 rounded-lg border border-red-200 px-2.5 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 md:inline-flex">

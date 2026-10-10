@@ -167,7 +167,7 @@ async function placeOf(city: string | null, region: string, address?: string | n
 /** Is this person already on the platform (provider login with the same email)? */
 async function onPlatformByEmail(email: string | null) {
   if (!email) return false;
-  return !!(await prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" }, role: "PROVIDER" }, select: { id: true } }));
+  return !!(await prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" }, provider: { isNot: null } }, select: { id: true } }));
 }
 
 /** For a U.S. person with a full name: their NPI when exactly one individual of the profession matches in that state. */

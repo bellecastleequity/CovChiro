@@ -14,7 +14,7 @@ export const devSignAction = formAction(async (fd) => {
   const sig = await prisma.agreementSignature.findUnique({ where: { envelopeId: str(fd, "envelope") } });
   if (!s || !sig || sig.signerUserId !== s.user.id || sig.provider !== "dev" || !testSigningEnabled()) throw new DomainError("FORBIDDEN", "Not allowed");
   await markAgreementSigned(sig.envelopeId!);
-  redirect(homeFor(s.user.role));
+  redirect(homeFor(s.actor.role));
 });
 
 export const signAgreementAction = formAction(async (fd) => {

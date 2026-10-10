@@ -93,6 +93,8 @@ model Session {
   /// sha256 of the cookie token — the raw token is never stored.
   tokenHash   String   @unique
   mfaVerified Boolean  @default(false)
+  /// One login with both a clinic (owner) and a provider side: the side this session is using (CLINIC | PROVIDER). Null = the login's main role.
+  workspace   String?
   expiresAt   DateTime @db.Timestamptz(3)
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
   userAgent   String?

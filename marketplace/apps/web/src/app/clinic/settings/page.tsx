@@ -7,9 +7,10 @@ import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
-import { requireActor } from "@/lib/session";
+import { getSession, requireActor } from "@/lib/session";
+import { prisma } from "@cm/db";
 import { GoogleAccountCard } from "@/components/site/google-account";
-import { agreementAction, clinicPhoneConfirmAction, experienceAction, clinicPhoneStartAction, orgAction, passwordAction } from "../actions";
+import { addProviderSideAction, agreementAction, clinicPhoneConfirmAction, experienceAction, clinicPhoneStartAction, orgAction, passwordAction } from "../actions";
 
 export const metadata = { title: "Settings" };
 
@@ -21,6 +22,9 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const signed = org.agreementVersion === AGREEMENT_VERSION.CLINIC && org.agreementSignedAt;
   const signedCopy = await latestSignedAgreement("CLINIC", org.id);
   const texting = textingEnabled();
+  // Owners can add a provider side to this login (picking up shifts at other clinics on their days off).
+  const canAddProvider = owner && !(await getSession())?.workspaces.provider;
+  const professions = canAddProvider ? await prisma.profession.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } }) : [];
   return (
     <>
       <PageHeader title="Settings" />
@@ -93,6 +97,20 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             ) : <p className="text-sm text-slate-500">The clinic owner needs to sign the agreement.</p>}
           </CardBody>
         </Card>
+        {canAddProvider ? (
+          <Card id="take-shifts">
+            <CardHeader title="I also take shifts" description="Licensed yourself? Add a provider profile to this same login and pick up shifts at other clinics on your days off. You switch between your clinic and your shifts from the menu — no second account." />
+            <CardBody>
+              <ActionForm action={addProviderSideAction} successMessage={false} className="space-y-3">
+                <div className="flex flex-wrap gap-4">
+                  {professions.map((p) => <Checkbox key={p.code} name="professions" value={p.code} defaultChecked={p.code === "DC"} label={`${p.displayName} (${p.credentialSuffix})`} />)}
+                </div>
+                <p className="text-xs text-slate-500">You&apos;ll add your licenses and get verified like any provider. You&apos;re never matched to your own clinic&apos;s shifts.</p>
+                <SubmitButton variant="outline">Add my provider profile</SubmitButton>
+              </ActionForm>
+            </CardBody>
+          </Card>
+        ) : null}
         <GoogleAccountCard connected={!!user.googleSub} hasPassword={!!user.passwordHash} back="/clinic/settings" notice={googleNotice} />
         <Card>
           <CardHeader title="Password" />

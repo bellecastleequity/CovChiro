@@ -48,6 +48,8 @@ export interface ProviderSkillFact {
 
 export interface ProviderFacts {
   id: string;
+  /** Clinics this provider's login owns (one login with a clinic and a provider workspace): never matched to their shifts (F14). */
+  ownClinicOrgIds?: string[];
   status: ProviderStatus;
   /** Per-profession activation; F3 checks the shift's profession. */
   professions: { professionCode: string; status: ProviderProfessionStatus; yearsInPractice?: number | null }[];
@@ -97,6 +99,8 @@ export interface SkillFact {
 
 export interface ShiftFacts {
   id: string;
+  /** The clinic posting the shift (F14). Absent = not checked. */
+  clinicOrgId?: string;
   professionCode: string;
   /** From the geocoded ClinicLocation — never user free text. */
   state: string;
@@ -144,7 +148,7 @@ export interface EligibilityOptions {
   now?: Date;
 }
 
-export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13";
+export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14";
 
 export interface EligibilityFailure {
   filter: FilterId;
@@ -299,6 +303,9 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
 
   // F13 — the clinic's ownership verification (clinicVerify.ts). Booked shifts are untouched: credential-only checks stop above.
   if (shift.clinicCleared === false) fail("F13", "CLINIC_NOT_VERIFIED", "The clinic hasn't finished verification yet");
+
+  // F14 — a clinic owner who also takes shifts is never matched to their own clinic's shifts.
+  if (shift.clinicOrgId && provider.ownClinicOrgIds?.includes(shift.clinicOrgId)) fail("F14", "OWN_CLINIC", "This is your own clinic's shift");
 
   // F9 — blocks, either direction.
   if (pair.blocked) fail("F9", "BLOCKED", "Blocked");

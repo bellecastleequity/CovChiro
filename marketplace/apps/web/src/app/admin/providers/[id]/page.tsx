@@ -16,7 +16,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
   await requireActor("admin");
   const { id } = await params;
   const signedCopy = await latestSignedAgreement("PROVIDER", id);
-  const p = await prisma.provider.findUnique({ where: { id }, include: { user: true, licenses: true, malpractice: true, professions: true, stats: true, assignments: { include: { shift: { include: { location: { include: { clinicOrg: true } } } } }, orderBy: { startsAt: "desc" }, take: 20 } } });
+  const p = await prisma.provider.findUnique({ where: { id }, include: { user: { include: { clinicMembers: { where: { role: "CLINIC_OWNER" }, include: { clinicOrg: { select: { id: true, displayName: true } } } } } }, licenses: true, malpractice: true, professions: true, stats: true, assignments: { include: { shift: { include: { location: { include: { clinicOrg: true } } } } }, orderBy: { startsAt: "desc" }, take: 20 } } });
   if (!p) notFound();
   const [e, checklist, student] = await Promise.all([earningsFor(id), providerChecklist(id), prelicensure.studentInfo(id)]);
   const c = checklist.common;
@@ -37,6 +37,7 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
   return (
     <>
       <PageHeader back={{ href: "/admin/providers", label: "Providers" }} title={p.displayName} description={`${p.legalName} · ${p.user.email} · ${p.user.phone ?? "no phone"} · home ${p.homeCity ?? "?"}, ${p.homeState ?? "?"}`} actions={<div className="flex gap-2">{student.preLicensure ? <Badge tone="blue">Student</Badge> : student.wasStudent ? <Badge tone="gray">Former student</Badge> : null}<StatusBadge status={p.status} /></div>} />
+      {p.user.clinicMembers.length ? <p className="mb-4 text-sm text-slate-600">Same login also owns {p.user.clinicMembers.map((m, i) => <span key={m.clinicOrgId}>{i ? ", " : ""}<Link className="font-medium text-brand-700" href={`/admin/clinics/${m.clinicOrgId}`}>{m.clinicOrg.displayName}</Link></span>)} — never matched to its shifts.</p> : null}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Completed shifts" value={p.stats?.completedShifts ?? 0} />
         <Stat label="Late cancels / no-shows" value={`${p.stats?.lateCancels ?? 0} / ${p.stats?.noShows ?? 0}`} />

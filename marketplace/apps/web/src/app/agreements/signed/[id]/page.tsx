@@ -21,7 +21,7 @@ export default async function Signed({ params, searchParams }: { params: Promise
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:py-14">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <Link href={homeFor(user.role)} className="text-sm font-medium text-brand-700">← Back to your dashboard</Link>
+        <Link href={homeFor(actor.role)} className="text-sm font-medium text-brand-700">← Back to your dashboard</Link>
         <PrintButton />
       </div>
       {sp.new ? <Alert tone="success" className="mb-5 print:hidden" title="Signed — thank you">A copy has been emailed to you. You can come back to this page any time from your settings.</Alert> : null}

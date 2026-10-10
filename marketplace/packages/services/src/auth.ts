@@ -337,27 +337,112 @@ export async function destroySession(token: string) {
   await prisma.session.deleteMany({ where: { tokenHash: sha256(token) } });
 }
 
+export type Workspace = "PROVIDER" | "CLINIC" | "ADMIN";
+
 export interface SessionInfo {
   sessionId: string;
   user: User;
   mfaVerified: boolean;
+  /** Built for the active workspace only: a clinic workspace has no providerId, a provider workspace no clinicOrgId. */
   actor: Actor;
+  workspace: Workspace;
+  /** Which sides this login has (a clinic owner who also takes shifts has both). */
+  workspaces: { provider: boolean; clinic: boolean };
+}
+
+type SessionUser = User & { provider: { id: string } | null; clinicMembers: { clinicOrgId: string; role: string }[] };
+
+/** The sides a login has: a provider profile, and/or a clinic membership (owner or staff). */
+function sidesOf(u: SessionUser) {
+  return { provider: !!u.provider, clinic: u.clinicMembers.length > 0 };
+}
+
+function mainWorkspace(u: SessionUser): Workspace {
+  if (u.role === "PLATFORM_ADMIN") return "ADMIN";
+  return u.role === "PROVIDER" ? "PROVIDER" : "CLINIC";
+}
+
+function actorFor(u: SessionUser, ws: Workspace): Actor {
+  if (ws === "PROVIDER") return { userId: u.id, role: "PROVIDER", providerId: u.provider?.id ?? null, clinicOrgId: null };
+  if (ws === "CLINIC") {
+    const m = u.clinicMembers.find((x) => x.role === "CLINIC_OWNER") ?? u.clinicMembers[0];
+    return { userId: u.id, role: (m?.role as Actor["role"]) ?? (u.role as Actor["role"]), providerId: null, clinicOrgId: m?.clinicOrgId ?? null };
+  }
+  return { userId: u.id, role: u.role, providerId: null, clinicOrgId: null };
 }
 
 export async function sessionFromToken(token: string | undefined | null): Promise<SessionInfo | null> {
   if (!token) return null;
-  const s = await prisma.session.findUnique({ where: { tokenHash: sha256(token) }, include: { user: { include: { provider: true, clinicMembers: true } } } });
+  const s = await prisma.session.findUnique({ where: { tokenHash: sha256(token) }, include: { user: { include: { provider: { select: { id: true } }, clinicMembers: { select: { clinicOrgId: true, role: true } } } } } });
   if (!s || s.expiresAt < new Date() || s.user.disabledAt) return null;
-  const u = s.user;
-  const member = u.clinicMembers[0];
-  const actor: Actor = {
-    userId: u.id,
-    role: u.role === "PROVIDER" ? "PROVIDER" : u.role,
-    providerId: u.provider?.id ?? null,
-    clinicOrgId: member?.clinicOrgId ?? null,
-  };
+  const u = s.user as SessionUser;
+  const sides = sidesOf(u);
+  const main = mainWorkspace(u);
+  // The session's chosen side, if this login really has it; otherwise the login's main role.
+  const ws: Workspace = main !== "ADMIN" && ((s.workspace === "PROVIDER" && sides.provider) || (s.workspace === "CLINIC" && sides.clinic)) ? (s.workspace as Workspace) : main;
   const { provider: _p, clinicMembers: _c, ...user } = u;
-  return { sessionId: s.id, user: user as User, mfaVerified: s.mfaVerified, actor };
+  return { sessionId: s.id, user: user as User, mfaVerified: s.mfaVerified, actor: actorFor(u, ws), workspace: ws, workspaces: sides };
+}
+
+/** Which sides a login has (for the sign-in redirect: both = choose). */
+export async function sidesForUser(userId: string) {
+  const u = await prisma.user.findUnique({ where: { id: userId }, include: { provider: { select: { id: true } }, clinicMembers: { select: { clinicOrgId: true, role: true } } } });
+  return u ? sidesOf(u as SessionUser) : { provider: false, clinic: false };
+}
+
+/** Switch this session to the login's other side (clinic ↔ provider). Refused for a side the login doesn't have. */
+export async function switchWorkspace(sessionId: string, to: "PROVIDER" | "CLINIC") {
+  const s = await prisma.session.findUniqueOrThrow({ where: { id: sessionId }, include: { user: { include: { provider: { select: { id: true } }, clinicMembers: { select: { clinicOrgId: true, role: true } } } } } });
+  const sides = sidesOf(s.user as SessionUser);
+  if (s.user.role === "PLATFORM_ADMIN" || !(to === "PROVIDER" ? sides.provider : sides.clinic)) throw new DomainError("FORBIDDEN", "This login doesn't have that side.");
+  await prisma.session.update({ where: { id: sessionId }, data: { workspace: to } });
+}
+
+/**
+ * A clinic OWNER adds a provider side to the same login (owner decision Oct 2026: owners only, not
+ * staff). The provider profile goes through the normal onboarding (license, malpractice, agreement,
+ * payouts) and is never matched to their own clinic's shifts (core F14).
+ */
+export async function addProviderSide(actor: Actor, input: { professionCodes: string[] }) {
+  if (actor.role !== "CLINIC_OWNER" || !actor.userId) throw new DomainError("FORBIDDEN", "Only a clinic owner can add a provider profile to their login.");
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId }, include: { provider: true } });
+  if (user.provider) return user.provider;
+  const professions = await prisma.profession.findMany({ where: { code: { in: input.professionCodes.length ? input.professionCodes : ["DC"] }, active: true } });
+  if (!professions.length) throw new DomainError("VALIDATION", "Choose at least one profession.");
+  const p = await prisma.provider.create({
+    data: { userId: user.id, legalName: user.name, displayName: user.name, professions: { create: professions.map((x) => ({ professionCode: x.code })) }, stats: { create: {} } } as Prisma.ProviderUncheckedCreateInput,
+  });
+  await audit(prisma, actor, "user.provider_side_added", "Provider", p.id, null, { professions: professions.map((x) => x.code) });
+  await growthPublic.onProviderSignup(p.id, { campaign: null, graduationDate: null, isStudent: false, prospectToken: null }).catch((e) => console.error("growth attribution failed", e));
+  await notifyAdmins(prisma, {
+    template: "admin_new_signup",
+    title: `Clinic owner added a provider profile: ${user.name}`,
+    body: `${user.name} (${user.email}) owns a clinic and now also takes shifts (${professions.map((x) => x.displayName).join(", ")}). They're never matched to their own clinic's shifts.`,
+    link: `/admin/providers/${p.id}`,
+    ctaLabel: "View provider",
+  }).catch((e) => console.error("admin notice failed", e));
+  return p;
+}
+
+/** A provider adds a clinic they OWN to the same login (they become its owner; staff logins can't do this). */
+export async function addClinicSide(actor: Actor, input: { organization: string }) {
+  if (actor.role !== "PROVIDER" || !actor.userId) throw new DomainError("FORBIDDEN", "Only a provider login can add a clinic here.");
+  const name = input.organization.trim();
+  if (name.length < 2) throw new DomainError("VALIDATION", "Enter the clinic's name.");
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId }, include: { clinicMembers: true } });
+  const existing = user.clinicMembers.find((m) => m.role === "CLINIC_OWNER");
+  if (existing) return prisma.clinicOrg.findUniqueOrThrow({ where: { id: existing.clinicOrgId } });
+  const c = await prisma.clinicOrg.create({ data: { legalName: name, displayName: name, billingEmail: user.email, members: { create: { userId: user.id, role: "CLINIC_OWNER" } } } });
+  await audit(prisma, actor, "user.clinic_side_added", "ClinicOrg", c.id, null, { name });
+  await growthPublic.onClinicSignup(c.id, null).catch((e) => console.error("growth attribution failed", e));
+  await notifyAdmins(prisma, {
+    template: "admin_new_signup",
+    title: `Provider added a clinic they own: ${name}`,
+    body: `${user.name} (${user.email}) takes shifts and now also owns ${name} on the same login. They're never matched to ${name}'s shifts.`,
+    link: `/admin/clinics/${c.id}`,
+    ctaLabel: "View clinic",
+  }).catch((e) => console.error("admin notice failed", e));
+  return c;
 }
 
 // ---------------- TOTP ----------------

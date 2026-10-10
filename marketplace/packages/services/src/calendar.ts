@@ -92,13 +92,15 @@ export async function feedForToken(token: string): Promise<string | null> {
   const since = new Date(+clock.now() - 60 * 86_400_000);
   const b = brand();
   const addr = (l: { name: string; addressLine1: string; city: string; state: string; zip: string }) => `${l.name}, ${l.addressLine1}, ${l.city}, ${l.state} ${l.zip}`;
-  if (u.role === "PROVIDER" && u.provider) {
+  // One login can have both sides (a clinic owner who also takes shifts): the feed carries both.
+  const events: Parameters<typeof toIcs>[1] = [];
+  if (u.provider) {
     const rows = await prisma.assignment.findMany({
       where: { providerId: u.provider.id, status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"] }, startsAt: { gte: since } },
       include: { shift: { include: { location: { include: { clinicOrg: { select: { displayName: true } } } } } } },
       orderBy: { startsAt: "asc" },
     });
-    return toIcs(`${b.name} shifts`, rows.map((a) => ({
+    events.push(...rows.map((a) => ({
       uid: `assignment-${a.id}`, start: a.startsAt, end: a.endsAt, updated: a.confirmedAt,
       summary: `Coverage: ${a.shift.location.clinicOrg.displayName}`,
       location: addr(a.shift.location),
@@ -113,7 +115,7 @@ export async function feedForToken(token: string): Promise<string | null> {
       include: { location: true, assignments: { where: { status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"] } }, include: { provider: { select: { displayName: true } } } } },
       orderBy: { startsAt: "asc" },
     });
-    return toIcs(`${b.name} coverage`, rows.map((s) => {
+    events.push(...rows.map((s) => {
       const p = s.assignments[0]?.provider.displayName;
       return {
         uid: `shift-${s.id}`, start: s.startsAt, end: s.endsAt, updated: s.postedAt ?? s.createdAt,
@@ -124,5 +126,5 @@ export async function feedForToken(token: string): Promise<string | null> {
       };
     }));
   }
-  return toIcs(b.name, []);
+  return toIcs(u.provider && !orgIds.length ? `${b.name} shifts` : orgIds.length && !u.provider ? `${b.name} coverage` : b.name, events);
 }

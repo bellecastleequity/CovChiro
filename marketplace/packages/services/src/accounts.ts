@@ -233,7 +233,7 @@ export async function deleteUser(actor: Actor, userId: string, reason: string) {
   const u = await guardUserAction(actor, userId);
   if (reason.trim().length < 3) throw new DomainError("VALIDATION", "Add a short reason (kept in the audit log).");
   // A provider, or a clinic's only member, is a whole account: delete it from its own page so its work is released.
-  if (u.role === "PROVIDER" && (await prisma.provider.findUnique({ where: { userId } }))) throw new DomainError("VALIDATION", "This is a provider account: delete it from the provider's page so their upcoming shifts are released.");
+  if (await prisma.provider.findUnique({ where: { userId } })) throw new DomainError("VALIDATION", "This is a provider account: delete it from the provider's page so their upcoming shifts are released.");
   const memberships = await prisma.clinicMember.findMany({ where: { userId } });
   for (const m of memberships) {
     if ((await prisma.clinicMember.count({ where: { clinicOrgId: m.clinicOrgId } })) === 1) throw new DomainError("VALIDATION", "This is the clinic's only login: delete the clinic from its page instead.");

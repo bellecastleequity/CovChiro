@@ -337,3 +337,18 @@ describe("taking a break", () => {
     expect(ok(provider({ onBreak: { from, until: +s.startsAt + 1 } }), s)).toBe(false);
   });
 });
+
+describe("F14 own clinic (clinic owners who also take shifts)", () => {
+  it("never matches a provider to shifts at a clinic they own; other clinics are fine", () => {
+    const s = shift({ clinicOrgId: "org-mine" });
+    const r = evaluateEligibility(provider({ ownClinicOrgIds: ["org-mine"] }), s, pair(), OPTS);
+    expect(r.eligible).toBe(false);
+    expect(codes(r)).toContain("OWN_CLINIC");
+    expect(ok(provider({ ownClinicOrgIds: ["org-mine"] }), shift({ clinicOrgId: "org-other" }))).toBe(true);
+    expect(ok(provider(), s)).toBe(true);
+  });
+  it("is not a credential problem: a booking made before is never released by credential checks", () => {
+    const s = shift({ clinicOrgId: "org-mine" });
+    expect(evaluateEligibility(provider({ ownClinicOrgIds: ["org-mine"] }), s, pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
+  });
+});

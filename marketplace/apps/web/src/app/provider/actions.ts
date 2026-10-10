@@ -16,7 +16,7 @@ import {
   setFlyInStates, setTaxEntity, updateProviderProfile, upsertLicense, withdrawApplication, prelicensure, payfloors, shiftChanges,
 } from "@cm/services";
 import { bool, dollarsToCents, formAction, optStr, str } from "@/lib/action";
-import { requireActor } from "@/lib/session";
+import { getSession, requireActor } from "@/lib/session";
 import { saveUpload } from "@/lib/upload";
 
 const me = () => requireActor("provider");
@@ -434,4 +434,13 @@ export const confirmActiveAction = formAction(async () => {
   const r = await activity.confirmActive(actor.providerId!, "app");
   revalidatePath("/provider", "layout");
   return r;
+});
+
+/** Add a clinic this provider owns to the same login, then switch to it. */
+export const addClinicSideAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await auth.addClinicSide(actor, { organization: str(fd, "organization") });
+  const s = await getSession();
+  if (s) await auth.switchWorkspace(s.sessionId, "CLINIC");
+  redirect("/clinic?welcome=1");
 });

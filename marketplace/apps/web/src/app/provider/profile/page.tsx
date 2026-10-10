@@ -10,9 +10,9 @@ import { AddressInput } from "@/components/ui/address-input";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Alert, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
-import { requireActor } from "@/lib/session";
+import { getSession, requireActor } from "@/lib/session";
 import { GoogleAccountCard } from "@/components/site/google-account";
-import { agreementAction, flyInAction, passwordAction, payFloorAction, profileAction, studentModeAction } from "../actions";
+import { addClinicSideAction, agreementAction, flyInAction, passwordAction, payFloorAction, profileAction, studentModeAction } from "../actions";
 import { breaks, getSettings, payfloors, schools } from "@cm/services";
 import { flyInAirfareCents, flyInNightlyCents, regionName } from "@cm/core";
 import { money } from "@/lib/format";
@@ -37,6 +37,7 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
   const guidance = await Promise.all(p.professions.map(async (pp) => ({ code: pp.professionCode, g: await payfloors.payGuidance(pp.professionCode, licStates) })));
   const dollars = (c: number | null | undefined) => (c ? String(c / 100) : "");
   const settings = await getSettings();
+  const hasClinic = !!(await getSession())?.workspaces.clinic;
   // Fly-in: any state they hold (or have submitted) a license for.
   const flyChoices = [...new Set((await prisma.license.findMany({ where: { providerId: p.id, status: { not: "REJECTED" }, state: { not: "US" } }, select: { state: true } })).map((l) => l.state))].sort();
   const studentDefaults = {
@@ -204,6 +205,18 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
             )}
           </CardBody>
         </Card>
+        {!hasClinic ? (
+          <Card id="own-clinic">
+            <CardHeader title="I also own a clinic" description="Own a practice that needs coverage? Add it to this same login and post shifts for it. You switch between your shifts and your clinic from the menu — no second account." />
+            <CardBody>
+              <ActionForm action={addClinicSideAction} successMessage={false} className="flex flex-wrap gap-2">
+                <Input name="organization" placeholder="Clinic name" required minLength={2} className="max-w-xs" />
+                <SubmitButton variant="outline">Add my clinic</SubmitButton>
+              </ActionForm>
+              <p className="mt-2 text-xs text-slate-500">Your clinic is verified like any other before its shifts go out. You&apos;re never matched to your own clinic&apos;s shifts.</p>
+            </CardBody>
+          </Card>
+        ) : null}
         <GoogleAccountCard connected={!!user.googleSub} hasPassword={!!user.passwordHash} back="/provider/profile" notice={googleNotice} />
         <Card>
           <CardHeader title="Password" />

@@ -50,7 +50,8 @@ export async function recipientsFor(raw: z.input<typeof AudienceInput>): Promise
   if (a.audience !== "CLINICS") {
     const providers = await prisma.provider.findMany({
       where: {
-        user: { disabledAt: null, role: "PROVIDER" },
+        // Any login with a provider profile (a clinic owner who also takes shifts counts too).
+        user: { disabledAt: null, role: { not: "PLATFORM_ADMIN" } },
         status: a.providerStatus === "READY" ? "ACTIVE" : a.providerStatus === "ONBOARDING" ? "ONBOARDING" : { not: "DEACTIVATED" },
         ...(a.state ? { OR: [{ homeState: a.state }, { licenses: { some: { state: a.state, status: { not: "REJECTED" } } } }] } : {}),
         ...(a.professionCode ? { professions: { some: { professionCode: a.professionCode } } } : {}),

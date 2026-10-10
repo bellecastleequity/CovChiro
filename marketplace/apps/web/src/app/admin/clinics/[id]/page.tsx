@@ -17,7 +17,7 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
   await requireActor("admin");
   const { id } = await params;
   const signedCopy = await latestSignedAgreement("CLINIC", id);
-  const c = await prisma.clinicOrg.findUnique({ where: { id }, include: { locations: true, members: { include: { user: true } }, payments: { orderBy: { createdAt: "desc" }, take: 20 } } });
+  const c = await prisma.clinicOrg.findUnique({ where: { id }, include: { locations: true, members: { include: { user: { include: { provider: { select: { id: true, displayName: true } } } } } }, payments: { orderBy: { createdAt: "desc" }, take: 20 } } });
   if (!c) notFound();
   const owner = c.members.find((m) => m.role === "CLINIC_OWNER")?.user;
   // [label, done, still required to post even after approval]
@@ -44,7 +44,7 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
           <Card><CardHeader title="Payments" /><CardBody className="space-y-1 text-sm">{c.payments.map((p) => <div key={p.id} className="flex justify-between"><span>{dateLabel(p.createdAt)} · {p.type}</span><span>{money(p.amountCents)} · {p.status.toLowerCase()}</span></div>)}</CardBody></Card>
         </div>
         <div className="space-y-6">
-          <Card><CardHeader title="Team" /><CardBody className="space-y-1 text-sm">{c.members.map((m) => <div key={m.id}>{m.user.name} · {m.user.email} · {m.role === "CLINIC_OWNER" ? "owner" : "staff"}</div>)}</CardBody></Card>
+          <Card><CardHeader title="Team" /><CardBody className="space-y-1 text-sm">{c.members.map((m) => <div key={m.id}>{m.user.name} · {m.user.email} · {m.role === "CLINIC_OWNER" ? "owner" : "staff"}{m.user.provider ? <> · <Link className="text-brand-700" href={`/admin/providers/${m.user.provider.id}`}>also takes shifts</Link></> : null}</div>)}</CardBody></Card>
           <Card>
             <CardHeader title="Onboarding" description={c.adminApprovedAt ? `Approved by admin ${dateLabel(c.adminApprovedAt)}` : "Approve to skip the remaining setup steps."} />
             <CardBody className="space-y-3 text-sm">

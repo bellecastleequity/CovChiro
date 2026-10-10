@@ -15,7 +15,7 @@ export const metadata = { title: "Sign in" };
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string; reset?: string; google?: string }> }) {
   const s = await getSession();
-  if (s && s.mfaVerified) redirect(homeFor(s.user.role));
+  if (s && s.mfaVerified) redirect(homeFor(s.actor.role));
   const { next, reset, google: problem } = await searchParams;
   const googleNote = problem ? google.GOOGLE_PROBLEMS[problem as keyof typeof google.GOOGLE_PROBLEMS] : null;
   return (

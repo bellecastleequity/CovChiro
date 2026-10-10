@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth, google } from "@cm/services";
 import { GOOGLE_FLOW_COOKIE, GOOGLE_PENDING_COOKIE } from "@/lib/google";
-import { homeFor, SESSION_COOKIE } from "@/lib/session";
+import { SESSION_COOKIE } from "@/lib/session";
 
 interface Flow { state: string; nonce: string; verifier: string; role: string; next: string; campaign: string; code: string; intent?: string }
 
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       res.cookies.set(GOOGLE_PENDING_COOKIE, r.pending, { ...cookieOpts, maxAge: 1800 });
       return res;
     }
-    const to = r.mfaRequired ? "/mfa" : flow.next || homeFor(r.user.role);
+    const to = r.mfaRequired ? "/mfa" : flow.next || "/workspace";
     const res = new NextResponse(null, { status: 303, headers: { Location: to } });
     res.cookies.delete({ name: GOOGLE_FLOW_COOKIE, path: "/api/auth/google" });
     res.cookies.set(SESSION_COOKIE, r.token, { ...cookieOpts, maxAge: auth.SESSION_DAYS * 86_400 });
