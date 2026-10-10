@@ -17,7 +17,7 @@ import { getSession } from "@/lib/session";
 import { BottomNav, SideNav, type NavItem } from "./nav-link";
 import { ResendVerification } from "./resend-verification";
 
-export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, setup, otherSide, addSide, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; setup?: SetupStatusData | null; /** The login's other workspace (clinic owner who also takes shifts): a switch in the header and sidebar. */ otherSide?: { to: "CLINIC" | "PROVIDER"; label: string } | null; /** No other side yet: a link to add it (clinic owner → take shifts; provider → own clinic). */ addSide?: { href: string; label: string } | null; children: React.ReactNode }) {
+export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, setup, otherSide, addSide, footnote, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; setup?: SetupStatusData | null; /** The login's other workspace (clinic owner who also takes shifts): a switch in the header and sidebar. */ otherSide?: { to: "CLINIC" | "PROVIDER"; label: string } | null; /** No other side yet: a link to add it (clinic owner → take shifts; provider → own clinic). */ addSide?: { href: string; label: string } | null; /** Small print under the sign-out link (admin: the installed release). */ footnote?: React.ReactNode; children: React.ReactNode }) {
   const b = brand();
   const [unread, session, savedOrder] = await Promise.all([prisma.notification.count({ where: { userId, readAt: null } }), getSession(), navprefs.getNavOrder(userId, root)]);
   const ordered = orderNav(items, root, savedOrder);
@@ -63,6 +63,7 @@ export async function AppShell({ items, root, userId, userName, userPhoto, subti
               <LogOut className="size-4" /> Sign out
             </button>
           </form>
+          {footnote ? <div className="mt-2 text-xs text-slate-400">{footnote}</div> : null}
         </div>
       </aside>
       <div className="min-w-0 overflow-x-clip lg:pl-64 print:pl-0">

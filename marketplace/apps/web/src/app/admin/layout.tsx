@@ -6,6 +6,8 @@ import Link from "next/link";
 import { phoneLabel } from "@/lib/format";
 import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
+import { installedRelease } from "@/lib/release";
+import { dateTimeLabel } from "@/lib/format";
 import type { NavItem } from "@/components/shell/nav-link";
 import { requireActor } from "@/lib/session";
 
@@ -66,7 +68,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   ];
   const urgent = await support.urgentWaiting().catch(() => []);
   return (
-    <AppShell items={items} root="/admin" userId={user.id} userName={user.name} subtitle="Platform admin">
+    <AppShell items={items} root="/admin" userId={user.id} userName={user.name} subtitle="Platform admin" footnote={releaseNote()}>
       {missing.length ? (
         <Alert tone="error" className="mb-6" title="Database update needed">
           This version of the site expects database updates that haven't been run yet: {missing.join(", ")}. Run the matching update-NNN SQL file(s) from this release in Neon&apos;s SQL Editor, in number order. Until then, some pages (for example the provider dashboard) won&apos;t load.
@@ -94,4 +96,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       {children}
     </AppShell>
   );
+}
+
+/** "Version 2c36b28 · built Oct 10, 7:40 AM": the update package installed on this server. */
+function releaseNote() {
+  const rel = installedRelease();
+  return <Link href="/admin/backups" className="hover:text-slate-600" title={rel.latestMigration ? `Database schema ${rel.latestMigration}` : undefined}>Version {rel.version}{rel.builtAt ? ` · built ${dateTimeLabel(new Date(rel.builtAt))}` : ""}</Link>;
 }
