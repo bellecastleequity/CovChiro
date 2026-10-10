@@ -10,22 +10,29 @@ import { installedRelease } from "@/lib/release";
 import { dateTimeLabel } from "@/lib/format";
 import type { NavItem } from "@/components/shell/nav-link";
 import { requireActor } from "@/lib/session";
+import { shortCached } from "@/lib/short-cache";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user } = await requireActor("admin");
-  const [pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen] = await Promise.all([
-    prisma.license.count({ where: { status: "PENDING_VERIFICATION" } }).then(async (n) => n + (await prisma.malpracticePolicy.count({ where: { status: "PENDING_VERIFICATION" } })) + (await prisma.clinicVerification.count({ where: { status: "PENDING" } }))),
-    prisma.adminTask.count({ where: { resolvedAt: null } }),
-    prisma.dispute.count({ where: { status: "OPEN" } }),
-    missingMigrations(prisma),
-    emergency.openEmergencyCount().catch(() => 0),
-    hiring.openHireCount().catch(() => 0),
-    Promise.all([prisma.communication.count({ where: { status: "PENDING_APPROVAL" } }), prisma.escalation.count({ where: { status: { not: "RESOLVED" } } })]).then(([a, b]) => a + b).catch(() => 0),
-    prisma.blogPost.count({ where: { status: "DRAFT", aiGenerated: true, createdById: null } }).catch(() => 0),
-    prisma.supportRequest.count({ where: { status: "OPEN" } }).catch(() => 0),
-  ]);
-  // Open system-health problems (from the monitor's last run; cheap single row).
-  const healthState = ((await prisma.setting.findUnique({ where: { key: "health.alertState" } }).catch(() => null))?.value as AlertState | null) ?? {};
+  // Menu badges + banners, all in parallel and cached for a few seconds (lib/short-cache).
+  const { pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, healthState, sandboxBadge, urgent } = await shortCached("admin-layout", async () => {
+    const [pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, health, sandboxBadge, urgent] = await Promise.all([
+      Promise.all([prisma.license.count({ where: { status: "PENDING_VERIFICATION" } }), prisma.malpracticePolicy.count({ where: { status: "PENDING_VERIFICATION" } }), prisma.clinicVerification.count({ where: { status: "PENDING" } })]).then(([a, b, c]) => a + b + c),
+      prisma.adminTask.count({ where: { resolvedAt: null } }),
+      prisma.dispute.count({ where: { status: "OPEN" } }),
+      missingMigrations(prisma),
+      emergency.openEmergencyCount().catch(() => 0),
+      hiring.openHireCount().catch(() => 0),
+      Promise.all([prisma.communication.count({ where: { status: "PENDING_APPROVAL" } }), prisma.escalation.count({ where: { status: { not: "RESOLVED" } } })]).then(([a, b]) => a + b).catch(() => 0),
+      prisma.blogPost.count({ where: { status: "DRAFT", aiGenerated: true, createdById: null } }).catch(() => 0),
+      prisma.supportRequest.count({ where: { status: "OPEN" } }).catch(() => 0),
+      // Open system-health problems (from the monitor's last run; cheap single row).
+      prisma.setting.findUnique({ where: { key: "health.alertState" } }).catch(() => null),
+      isSandbox() ? Promise.all([prisma.sandboxReport.count({ where: { status: "OPEN" } }), prisma.sandboxError.count({ where: { resolvedAt: null } })]).then(([a, b]) => a + b).catch(() => 0) : Promise.resolve(0),
+      support.urgentWaiting().catch(() => []),
+    ]);
+    return { pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, healthState: ((health?.value as AlertState | null) ?? {}) as AlertState, sandboxBadge, urgent };
+  });
   const healthOpen = Object.values(healthState);
   const healthCritical = healthOpen.filter((h) => h.severity === "critical");
   const items: NavItem[] = [
@@ -63,10 +70,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/audit", label: "Audit log", icon: "audit" },
     // Test site only: demo data, act as a demo account, the captured outbox.
     ...(isSandbox()
-      ? [{ href: "/admin/sandbox", label: "Test site", icon: "sandbox" as const, mobile: true, badge: await Promise.all([prisma.sandboxReport.count({ where: { status: "OPEN" } }), prisma.sandboxError.count({ where: { resolvedAt: null } })]).then(([a, b]) => a + b).catch(() => 0) }]
+      ? [{ href: "/admin/sandbox", label: "Test site", icon: "sandbox" as const, mobile: true, badge: sandboxBadge }]
       : []),
   ];
-  const urgent = await support.urgentWaiting().catch(() => []);
   return (
     <AppShell items={items} root="/admin" userId={user.id} userName={user.name} subtitle="Platform admin" footnote={releaseNote()}>
       {missing.length ? (

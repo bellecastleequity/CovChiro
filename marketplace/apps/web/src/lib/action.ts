@@ -2,6 +2,7 @@ import "server-only";
 import { unstable_rethrow } from "next/navigation";
 import { ZodError } from "zod";
 import { DomainError } from "@cm/core";
+import { clearShortCache } from "./short-cache";
 
 export type ActionState = { ok?: string; error?: string; data?: unknown; at?: number } | null;
 
@@ -13,7 +14,7 @@ export type ActionState = { ok?: string; error?: string; data?: unknown; at?: nu
 export function formAction(fn: (fd: FormData) => Promise<string | void | { ok?: string; data?: unknown }>, opts: { technical?: boolean } = {}) {
   return async (_prev: ActionState, fd: FormData): Promise<ActionState> => {
     try {
-      const r = await fn(fd);
+      const r = await fn(fd).finally(clearShortCache);
       if (r && typeof r === "object") return { ok: r.ok ?? "Saved", data: r.data, at: Date.now() };
       return { ok: r ?? "Saved", at: Date.now() };
     } catch (e) {

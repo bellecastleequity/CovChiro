@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { calendar } from "@cm/services";
 import { formAction } from "@/lib/action";
 import { requireActor } from "@/lib/session";
+import { clearShortCache } from "@/lib/short-cache";
 
 export const resetCalendarAction = formAction(async () => {
   const { user } = await requireActor("any");
@@ -18,6 +19,7 @@ export const saveNavOrderAction = async (root: string, hrefs: string[] | null) =
   if (!["/admin", "/clinic", "/provider"].includes(root)) return { error: "Unknown menu." };
   if (hrefs === null) await navprefs.resetNavOrder(user.id, root);
   else await navprefs.saveNavOrder(user.id, root, hrefs);
+  clearShortCache();
   revalidatePath(root, "layout");
   return { ok: hrefs === null ? "Menu reset to the default order." : "Menu order saved." };
 };

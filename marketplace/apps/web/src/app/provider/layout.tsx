@@ -5,18 +5,21 @@ import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-link";
 import { getSession, requireActor } from "@/lib/session";
+import { shortCached } from "@/lib/short-cache";
 import { providerSetupStatus } from "@/lib/setup";
 
 export default async function ProviderLayout({ children }: { children: React.ReactNode }) {
   const { actor, user } = await requireActor("provider");
-  const [offers, unreadMsgs, newFeedback, me, standingAsks] = await Promise.all([
+  const [[offers, unreadMsgs, newFeedback, me, standingAsks], setup] = await shortCached(`provider-layout:${actor.providerId}`, () => Promise.all([
+    Promise.all([
     prisma.offer.count({ where: { providerId: actor.providerId!, status: { in: ["PENDING", "ACCEPTED_PENDING"] }, expiresAt: { gt: new Date() } } }),
     prisma.message.count({ where: { readAt: null, senderType: "CLINIC", thread: { providerId: actor.providerId! } } }),
     feedback.unreadFeedbackCount(actor.providerId!).catch(() => 0),
     prisma.provider.findUnique({ where: { id: actor.providerId! }, select: { agreementSignedAt: true, agreementVersion: true, photoUrl: true } }),
     prisma.standingBooking.count({ where: { providerId: actor.providerId!, status: "PROPOSED" } }).catch(() => 0),
-  ]);
-  const setup = await providerSetupStatus(actor.providerId!, user.email).catch(() => null);
+    ]),
+    providerSetupStatus(actor.providerId!, user.email).catch(() => null),
+  ]));
   const sides = (await getSession())?.workspaces;
   const needsAgreement = !agreementCurrent("PROVIDER", me?.agreementSignedAt ?? null, me?.agreementVersion ?? null);
   const items: NavItem[] = [

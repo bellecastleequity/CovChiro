@@ -9,6 +9,7 @@ import { searchPagesFor } from "@/lib/search-pages";
 import { GlobalSearch, type SearchEntry } from "./global-search";
 import { AppInstall } from "./app-install";
 import { prisma } from "@cm/db";
+import { shortCached } from "@/lib/short-cache";
 import { Logo } from "@/components/site/header";
 import { LogoMark } from "@/components/site/logo";
 import { SetupStatus } from "./setup-status";
@@ -19,7 +20,7 @@ import { ResendVerification } from "./resend-verification";
 
 export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, setup, otherSide, addSide, footnote, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; setup?: SetupStatusData | null; /** The login's other workspace (clinic owner who also takes shifts): a switch in the header and sidebar. */ otherSide?: { to: "CLINIC" | "PROVIDER"; label: string } | null; /** No other side yet: a link to add it (clinic owner → take shifts; provider → own clinic). */ addSide?: { href: string; label: string } | null; /** Small print under the sign-out link (admin: the installed release). */ footnote?: React.ReactNode; children: React.ReactNode }) {
   const b = brand();
-  const [unread, session, savedOrder] = await Promise.all([prisma.notification.count({ where: { userId, readAt: null } }), getSession(), navprefs.getNavOrder(userId, root)]);
+  const [[unread, savedOrder], session] = await Promise.all([shortCached(`shell:${userId}:${root}`, () => Promise.all([prisma.notification.count({ where: { userId, readAt: null } }), navprefs.getNavOrder(userId, root)])), getSession()]);
   const ordered = orderNav(items, root, savedOrder);
   const unconfirmedEmail = session && !session.user.emailVerifiedAt ? session.user.email : null;
   // Search: the menu + extra pages for this area (+ every setting for admins).

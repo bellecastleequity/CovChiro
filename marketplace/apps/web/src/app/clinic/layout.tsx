@@ -5,18 +5,21 @@ import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-link";
 import { getSession, requireActor } from "@/lib/session";
+import { shortCached } from "@/lib/short-cache";
 import { clinicSetupStatus } from "@/lib/setup";
 
 export default async function ClinicLayout({ children }: { children: React.ReactNode }) {
   const { actor, user } = await requireActor("clinic");
-  const [org, unread, newApps, pendingSheets] = await Promise.all([
+  const [[org, unread, newApps, pendingSheets], setup] = await shortCached(`clinic-layout:${actor.clinicOrgId}`, () => Promise.all([
+    Promise.all([
     prisma.clinicOrg.findUniqueOrThrow({ where: { id: actor.clinicOrgId! } }),
     prisma.message.count({ where: { readAt: null, senderType: "PROVIDER", thread: { clinicOrgId: actor.clinicOrgId! } } }),
     prisma.application.count({ where: { status: "ACTIVE", shift: { location: { clinicOrgId: actor.clinicOrgId! }, status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] } } } }),
     prisma.timesheet.count({ where: { status: "SUBMITTED", assignment: { shift: { location: { clinicOrgId: actor.clinicOrgId! } } } } }),
-  ]);
+    ]),
+    clinicSetupStatus(actor.clinicOrgId!).catch(() => null),
+  ]));
   const sides = (await getSession())?.workspaces;
-  const setup = await clinicSetupStatus(actor.clinicOrgId!).catch(() => null);
   const items: NavItem[] = [
     { href: "/clinic", label: "Home", icon: "dashboard", mobile: true },
     { href: "/clinic/shifts/new", label: "Post shift", icon: "post", mobile: true },

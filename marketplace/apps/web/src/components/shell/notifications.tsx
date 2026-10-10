@@ -4,11 +4,13 @@ import { prisma } from "@cm/db";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { relative } from "@/lib/format";
+import { clearShortCache } from "@/lib/short-cache";
 
 /** Shared notifications page; marks everything read on view. */
 export async function NotificationsPage({ userId }: { userId: string }) {
   const rows = await prisma.notification.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 100 });
   await prisma.notification.updateMany({ where: { userId, readAt: null }, data: { readAt: new Date() } });
+  clearShortCache();
   return (
     <>
       <PageHeader title="Notifications" />
