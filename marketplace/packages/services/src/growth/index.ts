@@ -4,7 +4,7 @@
  * AI only writes, classifies and summarizes inside those decisions.
  */
 export { AGENTS, AGENT_AUDIENCE, isSuppressed, recipient, sendGrowthEmail, suppress, type AgentKey, type Audience, unsubscribeByToken, unsubscribeToken } from "./engine";
-export { growthTick, supplyGapSweep, weeklyBriefing, answerQuestion, providerSnapshot, linkClinicAccounts, clinicChecklist } from "./agents";
+export { growthTick, outreachSweep, supplyGapSweep, weeklyBriefing, answerQuestion, providerSnapshot, linkClinicAccounts, clinicChecklist } from "./agents";
 export { ensureGrowthDefaults, DEFAULT_PROMPTS } from "./defaults";
 export { growthFunnels, growthKpis, liquidity, attribution } from "./analytics";
 export { discoverySweep, researchSweep, researchProspect, prospectingTick, citiesDue, toFindings } from "./prospecting";
@@ -18,6 +18,6 @@ export * from "./command";
 export { classifyAiError, researchPause, researchRequestsToday, retryAfterMs, withRateLimitRetry } from "./aihealth";
 export { syncInstagramHandles, autoApproveInstagram, instagramSweep, instagramBoard, instagramDecide, setInstagramHandle } from "./instagram";
 export { apolloStatus, apolloPause, resumeApollo, testApolloConnection, searchApollo, prospectSearch, importApolloSearch, importEstimate, apolloDiscoverySweep, apolloEnrichmentSweep, apolloCreditsUsed, apolloGate, upsertApolloProviderProspect, upsertApolloClinicProspect } from "./apollo";
-export { priorityContext, outreachSideAllowance, setMarketPriority, setConsentBasis } from "./priority";
+export { inOutreachWindow, priorityContext, outreachSideAllowance, setMarketPriority, setConsentBasis } from "./priority";
 export { geographyReport, type GeoFilter } from "./geography";
 export { CA_CITY_CENTERS } from "./cities";

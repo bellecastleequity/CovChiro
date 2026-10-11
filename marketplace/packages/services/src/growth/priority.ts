@@ -1,4 +1,4 @@
-import { CASL_CONSENT_BASES, DomainError, priorityRank, resolvePriority, sideSplit, type Side } from "@cm/core";
+import { CASL_CONSENT_BASES, DomainError, inLocalWindow, priorityRank, resolvePriority, sideSplit, type Side } from "@cm/core";
 import { prisma } from "@cm/db";
 import { DateTime } from "luxon";
 import { audit, clock, getSettings, requireAdmin, type Actor } from "../context";
@@ -77,4 +77,10 @@ export async function setConsentBasis(actor: Actor, entity: "PROSPECT" | "PROVID
   if (entity === "PROSPECT") await prisma.clinicProspect.update({ where: { id }, data });
   else await prisma.providerProspect.update({ where: { id }, data });
   await audit(prisma, actor, "growth.consent_basis", entity, id, null, data);
+}
+
+/** The prospecting send window (Settings growth.outreachSendDays/From/Until/TimeZone). */
+export async function inOutreachWindow() {
+  const s = await getSettings();
+  return inLocalWindow(clock.now(), s["growth.outreachTimeZone"], s["growth.outreachSendDays"], s["growth.outreachSendFrom"], s["growth.outreachSendUntil"]);
 }

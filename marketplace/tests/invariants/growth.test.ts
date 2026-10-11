@@ -17,6 +17,10 @@ const sentTo = (email: string) => devOutbox.filter((m) => m.to === email && m.ch
 beforeAll(async () => {
   await growth.ensureGrowthDefaults();
   await setting("growth.postalAddress", "1 Main St, Orlando, FL 32801");
+  // These tests move the clock across days: keep the prospecting send window open all week.
+  await setting("growth.outreachSendDays", [0, 1, 2, 3, 4, 5, 6]);
+  await setting("growth.outreachSendFrom", "00:00");
+  await setting("growth.outreachSendUntil", "23:59");
   await setting("growth.clinicMarketing", true);
 });
 
@@ -303,5 +307,28 @@ describe("student path × Growth: no overlaps", () => {
     await growth.growthTick();
     expect((await comms(p.id)).map((x) => x.promptKey)).not.toContain("PROVIDER_COVERAGE_READY");
     expect((await prisma.provider.findUniqueOrThrow({ where: { id: p.id } })).activationCount).toBe(1);
+  });
+});
+
+describe("prospecting send window", () => {
+  it("clinic and provider outreach only run on the set days and hours (Eastern)", async () => {
+    await setting("growth.outreachSendDays", [1, 2, 3, 4, 5]);
+    await setting("growth.outreachSendFrom", "08:15");
+    await setting("growth.outreachSendUntil", "17:00");
+    await setting("growth.agents", { ...(await import("@cm/config")).defaultSettings()["growth.agents"], clinicOutreach: true, providerOutreach: true });
+    try {
+      setClock(() => new Date("2026-10-17T13:30:00Z")); // Saturday 9:30 ET
+      expect(await growth.outreachSweep()).toMatchObject({ outsideWindow: true, sent: 0, drafts: 0 });
+      expect(await growth.providerOutreachSweep()).toMatchObject({ outsideWindow: true, sent: 0, drafts: 0 });
+      setClock(() => new Date("2026-10-19T12:10:00Z")); // Monday 8:10 ET: not yet
+      expect((await growth.outreachSweep()).outsideWindow).toBe(true);
+      setClock(() => new Date("2026-10-19T12:15:00Z")); // Monday 8:15 ET
+      expect((await growth.outreachSweep()).outsideWindow).toBe(false);
+      expect((await growth.providerOutreachSweep()).outsideWindow).toBe(false);
+    } finally {
+      await setting("growth.outreachSendDays", [0, 1, 2, 3, 4, 5, 6]);
+      await setting("growth.outreachSendFrom", "00:00");
+      await setting("growth.outreachSendUntil", "23:59");
+    }
   });
 });

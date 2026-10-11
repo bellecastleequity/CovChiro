@@ -19,7 +19,7 @@ import { ensureGrowthDefaults } from "./defaults";
 import { growthFunnels, marketForPoint } from "./analytics";
 import { linkProviderProspects, providerOutreachSweep } from "./providers";
 import { activeTargets, outreachProfessionFor, primaryTarget, promptReadiness, providerTargetFrom } from "./expansion";
-import { outreachSideAllowance, priorityContext } from "./priority";
+import { inOutreachWindow, outreachSideAllowance, priorityContext } from "./priority";
 
 /**
  * Growth agents as idempotent sweeps (same model as jobs.ts): each finds
@@ -315,8 +315,9 @@ export async function advanceOutreach(prospectId: string) {
 }
 
 export async function outreachSweep() {
-  const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0 };
+  const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0, outsideWindow: false };
   if (!(await agentOn("clinicOutreach")) || !(await marketingOn("clinic"))) return out;
+  if (!(await inOutreachWindow())) return { ...out, outsideWindow: true };
   const s = await getSettings();
   const gaps = s["growth.outreachGapDays"];
   const now = clock.now();

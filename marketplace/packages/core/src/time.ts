@@ -69,3 +69,17 @@ export function localParts(at: Date | number, timeZone: string) {
   const d = DateTime.fromMillis(+at, { zone: timeZone });
   return { weekday: d.weekday % 7, isoDate: d.toISODate()!, year: d.year, month: d.month, day: d.day };
 }
+
+/** "HH:MM" → minutes after midnight. */
+const hhmm = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+
+/**
+ * True when `at` falls on one of `days` (0=Sun..6=Sat) in `timeZone`, from `start` through the
+ * minute `end`, both "HH:MM" local. Used for the marketing-email send window (owner request Oct 2026).
+ */
+export function inLocalWindow(at: Date | number, timeZone: string, days: number[], start: string, end: string): boolean {
+  const d = DateTime.fromMillis(+at, { zone: timeZone });
+  if (!days.includes(d.weekday % 7)) return false;
+  const min = d.hour * 60 + d.minute;
+  return min >= hhmm(start) && min <= hhmm(end);
+}

@@ -15,6 +15,10 @@ const agents = async (on: Record<string, boolean>) => setting("growth.agents", {
 beforeAll(async () => {
   await growth.ensureGrowthDefaults();
   await setting("growth.postalAddress", "1 Main St, Orlando, FL 32801");
+  // These tests move the clock across days: keep the prospecting send window open all week.
+  await setting("growth.outreachSendDays", [0, 1, 2, 3, 4, 5, 6]);
+  await setting("growth.outreachSendFrom", "00:00");
+  await setting("growth.outreachSendUntil", "23:59");
   await setting("growth.clinicMarketing", true);
 });
 

@@ -10,7 +10,7 @@ import { agentOn, ai, aiRules, composeAndSend, Deferred, escalate, isSuppressed,
 import { activeTargets, registryProfile } from "./expansion";
 import { KNOWN_PRICING, researchEngine, researchSpendCents } from "./prospecting";
 import { handleResearchFailure, researchBlocked, withRateLimitRetry } from "./aihealth";
-import { outreachSideAllowance, priorityContext } from "./priority";
+import { inOutreachWindow, outreachSideAllowance, priorityContext } from "./priority";
 
 /**
  * Provider acquisition (the provider side of Growth):
@@ -297,8 +297,9 @@ export async function advanceProviderOutreach(id: string) {
 
 /** Recruitment sequence to verified contacts in PRELAUNCH/LIVE markets, neediest markets first. */
 export async function providerOutreachSweep() {
-  const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0, skippedNoPrompt: 0 };
+  const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0, skippedNoPrompt: 0, outsideWindow: false };
   if (!(await agentOn("providerOutreach")) || !(await marketingOn("provider"))) return out;
+  if (!(await inOutreachWindow())) return { ...out, outsideWindow: true };
   const pairs = await activePairs();
   if (!pairs.length) return out;
   const s = await getSettings();
