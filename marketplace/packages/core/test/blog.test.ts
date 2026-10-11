@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkBlogPost, dollarAmountsIn, parseInline, parseMarkdown, readingMinutes, safeHref, slugify, wordCount } from "../src";
+import { checkBlogPost, pickChannelVideo, rankRelated, youtubeId, type ChannelVideo, dollarAmountsIn, parseInline, parseMarkdown, readingMinutes, safeHref, slugify, wordCount } from "../src";
 
 const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(" ");
 const good = {
@@ -72,5 +72,30 @@ describe("publish checks", () => {
     expect(r.errors).toEqual([]);
     expect(r.warnings.join(" ")).toMatch(/statute/);
     expect(r.warnings.join(" ")).toMatch(/outside links/);
+  });
+});
+
+describe("YouTube on blog posts", () => {
+  it("reads the video ID from any common YouTube link", () => {
+    for (const u of ["https://www.youtube.com/watch?v=3VMjGw18VH4&t=4s", "youtu.be/3VMjGw18VH4", "https://youtube.com/shorts/3VMjGw18VH4", "https://www.youtube-nocookie.com/embed/3VMjGw18VH4", "3VMjGw18VH4", "https://m.youtube.com/watch?v=3VMjGw18VH4"]) expect(youtubeId(u)).toBe("3VMjGw18VH4");
+    for (const u of ["", "https://vimeo.com/123", "https://evil.com/watch?v=3VMjGw18VH4", "https://youtube.com/watch?v=short"]) expect(youtubeId(u)).toBeNull();
+  });
+  const videos: ChannelVideo[] = [
+    { id: "aaaaaaaaaaa", title: "Post a Coverage Shift in 30 Seconds", audience: "CLINIC" },
+    { id: "bbbbbbbbbbb", title: "No-Show Provider? Live Arrival Times", audience: "CLINIC" },
+    { id: "ccccccccccc", title: "Set Your Own Minimum Pay", audience: "PROVIDER" },
+    { id: "ddddddddddd", title: "The App in Your Pocket", audience: "ALL" },
+  ];
+  it("suggests a channel video for the post's audience, matching its words, never the embedded one", () => {
+    expect(pickChannelVideo({ slug: "no-show", title: "What to do when a provider is a no-show", keywords: ["no-show provider"], audience: "CLINIC" }, videos)?.id).toBe("bbbbbbbbbbb");
+    expect(pickChannelVideo({ slug: "no-show", title: "What to do when a provider is a no-show", keywords: [], audience: "CLINIC", videoId: "bbbbbbbbbbb" }, videos)?.id).not.toBe("bbbbbbbbbbb");
+    expect(pickChannelVideo({ slug: "pay", title: "Minimum pay for fill-in work", keywords: [], audience: "PROVIDER" }, videos)?.id).toBe("ccccccccccc");
+    expect(pickChannelVideo({ slug: "x", title: "x", keywords: [], audience: "PROVIDER" }, [videos[0]])).toBeNull();
+  });
+  it("ranks related posts by shared keywords, then newest", () => {
+    const a = { id: "a", keywords: ["locum"], publishedAt: new Date("2026-10-01") };
+    const b = { id: "b", keywords: ["coverage", "locum"], publishedAt: new Date("2026-09-01") };
+    const c = { id: "c", keywords: [], publishedAt: new Date("2026-10-05") };
+    expect(rankRelated({ keywords: ["coverage", "locum"] }, [a, b, c]).map((x) => x.id)).toEqual(["b", "a", "c"]);
   });
 });

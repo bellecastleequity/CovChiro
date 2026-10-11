@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight, CirclePlay } from "lucide-react";
 import { brand, env } from "@cm/config";
 import { readingMinutes } from "@cm/core";
 import { blog } from "@cm/services";
 import { Markdown, TableOfContents } from "@/components/blog/markdown";
+import { YouTubeEmbed } from "@/components/blog/youtube";
 import { LinkButton } from "@/components/ui/button";
 import { dateLabel } from "@/lib/format";
 
@@ -27,7 +28,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   if (!p) notFound();
   const b = brand();
   const base = env().APP_BASE_URL.replace(/\/$/, "");
-  const related = await blog.relatedPosts(p);
+  const [related, videos] = await Promise.all([blog.relatedPosts(p), blog.postVideos(p)]);
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
@@ -57,7 +58,37 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       </header>
       <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="max-w-3xl">
+          {videos.embed ? <YouTubeEmbed id={videos.embed.id} title={videos.embed.title} className="mb-10" /> : null}
           <Markdown source={p.body} />
+          {videos.suggested ? (
+            <section className="mt-12" aria-labelledby="watch-next">
+              <h2 id="watch-next" className="text-xl font-semibold">Watch next</h2>
+              <p className="mt-1 text-sm text-slate-600">{videos.suggested.title}</p>
+              <YouTubeEmbed id={videos.suggested.id} title={videos.suggested.title} className="mt-4" />
+              {videos.channelUrl ? (
+                <a href={videos.channelUrl} target="_blank" rel="noopener" className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:text-brand-800">
+                  <CirclePlay className="size-4" /> More videos on our YouTube channel
+                </a>
+              ) : null}
+            </section>
+          ) : null}
+          {related.length ? (
+            <section className="mt-12" aria-labelledby="keep-reading">
+              <h2 id="keep-reading" className="text-xl font-semibold">Keep reading</h2>
+              <ul className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {related.map((r) => (
+                  <li key={r.id}>
+                    <Link href={`/blog/${r.slug}`} className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-brand-300 hover:shadow-sm">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-accent-700">{r.audience === "CLINIC" ? "For clinics" : r.audience === "PROVIDER" ? "For providers" : "Clinics & providers"}</span>
+                      <span className="mt-2 font-semibold leading-snug text-slate-900 group-hover:text-brand-700">{r.title}</span>
+                      <span className="mt-2 line-clamp-3 text-sm text-slate-600">{r.description}</span>
+                      <span className="mt-auto inline-flex items-center gap-1 pt-3 text-sm font-medium text-brand-700">Read <ArrowRight className="size-4" /></span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <div className="mt-12 rounded-2xl bg-brand-600 p-6 text-white sm:p-8">
             <h2 className="text-xl font-semibold">{forClinics ? "Need coverage for your clinic?" : "Looking for coverage shifts?"}</h2>
             <p className="mt-2 text-brand-100">
@@ -71,16 +102,6 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         </div>
         <aside className="space-y-6 lg:sticky lg:top-20 lg:self-start">
           <TableOfContents source={p.body} />
-          {related.length ? (
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">More articles</div>
-              <ul className="mt-3 space-y-3">
-                {related.map((r) => (
-                  <li key={r.id}><Link href={`/blog/${r.slug}`} className="text-sm font-medium text-slate-800 hover:text-brand-700">{r.title}</Link></li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
         </aside>
       </div>
     </article>

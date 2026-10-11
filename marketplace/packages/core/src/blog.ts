@@ -216,3 +216,51 @@ export function checkBlogPost(p: BlogDraft, opts: { knownDollarAmounts?: string[
 }
 
 export { dollarsIn as dollarAmountsIn };
+
+// ---------------- YouTube on blog posts (owner request Oct 2026) ----------------
+
+/** The 11-character video ID from a YouTube link (watch, youtu.be, shorts, embed, live) or a bare ID; null otherwise. */
+export function youtubeId(input: string | null | undefined): string | null {
+  const s = (input ?? "").trim();
+  if (!s) return null;
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  let u: URL;
+  try { u = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`); } catch { return null; }
+  const host = u.hostname.toLowerCase().replace(/^(www|m|music)\./, "");
+  let id: string | null = null;
+  if (host === "youtu.be") id = u.pathname.split("/")[1] ?? null;
+  else if (host === "youtube.com" || host === "youtube-nocookie.com") {
+    id = u.searchParams.get("v") ?? (u.pathname.match(/^\/(?:embed|shorts|live|v)\/([^/?#]+)/)?.[1] ?? null);
+  }
+  return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+}
+
+export interface ChannelVideo { id: string; title: string; audience: "CLINIC" | "PROVIDER" | "ALL" }
+
+const words = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !["coverageoncall", "chiropractor", "chiropractic", "with", "your", "from", "that", "this", "what", "when"].includes(w)));
+
+/**
+ * The channel video to suggest at the end of a post: same audience (or ALL), never the one already
+ * embedded, best word overlap with the post's title + keywords; ties broken by the slug so each post
+ * keeps the same suggestion.
+ */
+export function pickChannelVideo(post: { slug: string; title: string; keywords: string[]; audience: string; videoId?: string | null }, videos: ChannelVideo[]): ChannelVideo | null {
+  const fits = videos.filter((v) => v.id !== post.videoId && (post.audience === "ALL" || v.audience === "ALL" || v.audience === post.audience));
+  if (!fits.length) return null;
+  const mine = words(`${post.title} ${post.keywords.join(" ")}`);
+  let h = 0;
+  for (const ch of post.slug) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const scored = fits.map((v, i) => ({ v, score: [...words(v.title)].filter((w) => mine.has(w)).length, tie: (i + h) % fits.length }));
+  scored.sort((a, b) => b.score - a.score || a.tie - b.tie);
+  return scored[0].v;
+}
+
+/** Order candidate posts for "Keep reading": shared keywords first, then newest. */
+export function rankRelated<T extends { keywords: string[]; publishedAt: Date | null }>(post: { keywords: string[] }, candidates: T[], take = 3): T[] {
+  const mine = new Set(post.keywords.map((k) => k.toLowerCase()));
+  return candidates
+    .map((c) => ({ c, shared: c.keywords.filter((k) => mine.has(k.toLowerCase())).length }))
+    .sort((a, b) => b.shared - a.shared || +(b.c.publishedAt ?? 0) - +(a.c.publishedAt ?? 0))
+    .slice(0, take)
+    .map((x) => x.c);
+}

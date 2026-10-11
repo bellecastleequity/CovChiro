@@ -38,6 +38,7 @@ export const savePostAction = formAction(async (fd) => {
   const { actor } = await me();
   const post = await blog.savePost(actor, str(fd, "id"), {
     title: str(fd, "title"), slug: str(fd, "slug"), description: str(fd, "description"), body: str(fd, "body"), audience: str(fd, "audience"), keywords: str(fd, "keywords"),
+    videoUrl: str(fd, "videoUrl"), suggestedVideoUrl: str(fd, "suggestedVideoUrl"),
   });
   rv(post.slug);
   return "Saved.";

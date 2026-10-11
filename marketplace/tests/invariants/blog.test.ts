@@ -115,3 +115,32 @@ describe("blog: AI drafts, people publish", () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe("blog videos and keep reading (owner request Oct 2026)", () => {
+  it("stores YouTube links in one form, refuses other links, and suggests a different channel video", async () => {
+    const post = await blog.createPost(admin, { title: `Video post ${uid()}` });
+    const base = { title: post.title, slug: post.slug, description: "d", body: "Some text.", audience: "CLINIC", keywords: "no-show provider" };
+    await expect(blog.savePost(admin, post.id, { ...base, videoUrl: "https://vimeo.com/123" })).rejects.toThrow(/must be a YouTube link/);
+    const saved = await blog.savePost(admin, post.id, { ...base, videoUrl: "https://youtu.be/RlqfnLRMW0E?si=x", suggestedVideoUrl: "" });
+    expect(saved).toMatchObject({ videoUrl: "https://www.youtube.com/watch?v=RlqfnLRMW0E", suggestedVideoUrl: null });
+    const v = await blog.postVideos(saved);
+    expect(v.embed).toEqual({ id: "RlqfnLRMW0E", title: "No-Show Provider? Live Arrival Times & One-Tap Replacement" });
+    expect(v.suggested?.id).toBeTruthy();
+    expect(v.suggested?.id).not.toBe("RlqfnLRMW0E");
+    const picked = await blog.savePost(admin, post.id, { ...base, videoUrl: "", suggestedVideoUrl: "https://www.youtube.com/watch?v=3VMjGw18VH4" });
+    expect(await blog.postVideos(picked)).toMatchObject({ embed: null, suggested: { id: "3VMjGw18VH4", title: "Post a Chiropractic Coverage Shift in 30 Seconds" } });
+  });
+
+  it("keep reading puts posts that share search phrases first", async () => {
+    const mk = async (kw: string, daysAgo: number) => {
+      const t = `Related ${uid()}`;
+      const p = await prisma.blogPost.create({ data: { title: t, slug: `rel-${uid()}`, description: "d", body: "b", audience: "CLINIC", keywords: kw ? [kw] : [], status: "PUBLISHED", publishedAt: new Date(Date.now() - daysAgo * 86_400_000) } });
+      return p;
+    };
+    const tag = `kw-${uid()}`;
+    const old = await mk(tag, 400);
+    await mk("", 0);
+    const me = { id: "none", audience: "CLINIC", keywords: [tag] };
+    expect((await blog.relatedPosts(me))[0].id).toBe(old.id);
+  });
+});

@@ -2418,6 +2418,10 @@ model BlogPost {
   /// The topic or brief the draft was written from.
   brief         String?
   authorName    String?
+  /// YouTube link embedded under the post's header (owner request Oct 2026).
+  videoUrl      String?
+  /// YouTube link suggested at the end; blank = picked from Setting blog.channelVideos.
+  suggestedVideoUrl String?
   createdById   String?
   publishedById String?
   publishedAt   DateTime?  @db.Timestamptz(3)

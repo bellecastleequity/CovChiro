@@ -1,5 +1,5 @@
 import { brand, type SettingsMap } from "@cm/config";
-import { checkBlogPost, DomainError, dollarAmountsIn, slugify, US_STATES, type BlogCheck } from "@cm/core";
+import { checkBlogPost, DomainError, dollarAmountsIn, pickChannelVideo, rankRelated, slugify, US_STATES, youtubeId, type BlogCheck, type ChannelVideo } from "@cm/core";
 import { prisma, type BlogPost } from "@cm/db";
 import { audit, clock, getSettings, requireAdmin, SYSTEM, type Actor } from "./context";
 import { siteFaq } from "./faq";
@@ -235,6 +235,10 @@ export interface PostEdit {
   body: string;
   audience: string;
   keywords: string;
+  /** YouTube link to embed (blank = none). */
+  videoUrl?: string;
+  /** YouTube link to suggest at the end (blank = picked from the channel list). */
+  suggestedVideoUrl?: string;
 }
 
 export async function createPost(actor: Actor, e: Pick<PostEdit, "title">) {
@@ -243,6 +247,14 @@ export async function createPost(actor: Actor, e: Pick<PostEdit, "title">) {
   const post = await prisma.blogPost.create({ data: { title, slug: await uniqueSlug(slugify(title)), description: "", body: "", createdById: actor.userId } });
   await audit(prisma, actor, "blog.created", "BlogPost", post.id);
   return post;
+}
+
+/** A YouTube link, stored as its canonical watch address; blank → null; anything else is refused. */
+function videoLink(raw: string | undefined, what: string): string | null {
+  if (!raw?.trim()) return null;
+  const id = youtubeId(raw);
+  if (!id) throw new DomainError("VALIDATION", `The ${what} must be a YouTube link (youtube.com/watch?v=…, youtu.be/…, or a Shorts link).`);
+  return `https://www.youtube.com/watch?v=${id}`;
 }
 
 export async function savePost(actor: Actor, id: string, e: PostEdit) {
@@ -260,6 +272,8 @@ export async function savePost(actor: Actor, id: string, e: PostEdit) {
     body: e.body.replace(/\r\n?/g, "\n").trim(),
     audience: asAudience(e.audience),
     keywords: e.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean).slice(0, 12),
+    videoUrl: videoLink(e.videoUrl, "video to show in the post"),
+    suggestedVideoUrl: videoLink(e.suggestedVideoUrl, "suggested video"),
   };
   if (before.status === "PUBLISHED") {
     const check = await checkPost(data);
@@ -320,10 +334,25 @@ export async function publicPost(slug: string) {
   return prisma.blogPost.findFirst({ where: { slug, ...published } });
 }
 
-export async function relatedPosts(post: Pick<BlogPost, "id" | "audience">, take = 3) {
-  return prisma.blogPost.findMany({
+/** "Keep reading": same audience (or both), shared search phrases first, then newest. */
+export async function relatedPosts(post: Pick<BlogPost, "id" | "audience" | "keywords">, take = 3) {
+  const candidates = await prisma.blogPost.findMany({
     where: { ...published, id: { not: post.id }, ...(post.audience !== "ALL" ? { audience: { in: [post.audience, "ALL"] } } : {}) },
     orderBy: { publishedAt: "desc" },
-    take,
+    take: 40,
   });
+  return rankRelated(post, candidates, take);
+}
+
+/** The post's embedded video and the channel video suggested at its end (owner request Oct 2026). */
+export async function postVideos(post: Pick<BlogPost, "slug" | "title" | "keywords" | "audience" | "videoUrl" | "suggestedVideoUrl">) {
+  const s = await getSettings();
+  const videos = s["blog.channelVideos"] as ChannelVideo[];
+  const embedId = youtubeId(post.videoUrl);
+  const embed = embedId ? { id: embedId, title: videos.find((v) => v.id === embedId)?.title ?? post.title } : null;
+  const pickedId = youtubeId(post.suggestedVideoUrl);
+  const suggested = pickedId && pickedId !== embedId
+    ? { id: pickedId, title: videos.find((v) => v.id === pickedId)?.title ?? "More from our channel" }
+    : pickChannelVideo({ ...post, videoId: embedId }, videos);
+  return { embed, suggested: suggested ? { id: suggested.id, title: suggested.title } : null, channelUrl: s["blog.youtubeChannelUrl"] || null };
 }

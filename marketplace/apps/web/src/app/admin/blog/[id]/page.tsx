@@ -4,6 +4,7 @@ import { ExternalLink } from "lucide-react";
 import { readingMinutes, wordCount } from "@cm/core";
 import { blog } from "@cm/services";
 import { Markdown } from "@/components/blog/markdown";
+import { YouTubeEmbed } from "@/components/blog/youtube";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -24,6 +25,7 @@ export default async function EditPost({ params, searchParams }: { params: Promi
   if (!found) notFound();
   const { post: p, check } = found;
   const live = p.status === "PUBLISHED";
+  const videos = await blog.postVideos(p);
   return (
     <>
       <Link href="/admin/blog" className="mb-4 inline-block text-sm font-medium text-slate-500 hover:text-slate-900">← All posts</Link>
@@ -58,6 +60,10 @@ export default async function EditPost({ params, searchParams }: { params: Promi
                 </Field>
                 <Field label="Search phrases"><Input name="keywords" defaultValue={p.keywords.join(", ")} /></Field>
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="YouTube video in the post" hint="Paste the video's link. It shows under the title. Blank = no video."><Input name="videoUrl" defaultValue={p.videoUrl ?? ""} placeholder="https://youtu.be/…" /></Field>
+                <Field label="Suggested video at the end" hint="Blank = we pick one from your channel list (Settings → Blog) that fits the post."><Input name="suggestedVideoUrl" defaultValue={p.suggestedVideoUrl ?? ""} placeholder="https://youtu.be/…" /></Field>
+              </div>
               <Field label="Article"><Textarea name="body" defaultValue={p.body} className="min-h-[480px] font-mono text-[13px] leading-6" /></Field>
               <div><SubmitButton>Save</SubmitButton></div>
             </ActionForm>
@@ -85,7 +91,9 @@ export default async function EditPost({ params, searchParams }: { params: Promi
             <CardBody className="max-h-[900px] overflow-y-auto">
               <h1 className="text-2xl font-semibold">{p.title}</h1>
               <p className="mt-2 text-slate-600">{p.description}</p>
+              {videos.embed ? <YouTubeEmbed id={videos.embed.id} title={videos.embed.title} className="mt-4" /> : null}
               {p.body ? <Markdown source={p.body} /> : <p className="mt-4 text-sm text-slate-500">No article text yet.</p>}
+              {videos.suggested ? <p className="mt-6 border-t border-slate-200 pt-4 text-sm text-slate-600">Watch next (end of post): <a href={`https://www.youtube.com/watch?v=${videos.suggested.id}`} target="_blank" rel="noopener" className="font-medium text-brand-700">{videos.suggested.title}</a>, then up to 3 related articles.</p> : null}
             </CardBody>
           </Card>
         </div>
