@@ -502,13 +502,14 @@ export const healthAction = formAction(async (fd) => {
 
 export const awardRewardPointsAction = formAction(async (fd) => {
   const { actor } = await requireActor("admin");
-  const audience = str(fd, "audience") === "CLINIC" ? "CLINIC" : "PROVIDER";
+  const audience = str(fd, "accountIdType") === "CLINIC" ? "CLINIC" : "PROVIDER";
   const { rewards } = await import("@cm/services");
-  const acct = await rewards.accountByEmail(actor, audience, str(fd, "email"));
+  const accountId = optStr(fd, "accountId");
+  if (!accountId) throw new DomainError("VALIDATION", "Search for the provider or clinic and pick them from the list.");
   const points = Math.round(Number(str(fd, "points")));
-  await rewards.awardPoints(actor, { accountType: audience, accountId: acct.accountId, points, note: str(fd, "note") });
+  await rewards.awardPoints(actor, { accountType: audience, accountId, points, note: str(fd, "note") });
   revalidatePath("/admin/rewards");
-  return { ok: `${points > 0 ? "Gave" : "Took"} ${Math.abs(points)} points ${points > 0 ? "to" : "from"} ${acct.name}.` };
+  return { ok: `${points > 0 ? "Gave" : "Took"} ${Math.abs(points)} points ${points > 0 ? "to" : "from"} ${optStr(fd, "accountIdName") ?? "them"}.` };
 });
 
 export const stateLicenseCheckAction = formAction(async (fd) => {
@@ -665,11 +666,11 @@ export const includeChargeAction = formAction(async (fd) => {
 });
 
 /* Rewards & Badges */
-/** Search-as-you-type for "Give a badge": providers by name or login email (admins only). */
-export async function findProvidersAction(q: string) {
+/** Search-as-you-type for the admin pickers (give or take points, give a badge): providers and/or clinics by name or login email. */
+export async function findAccountsAction(q: string, types: ("PROVIDER" | "CLINIC")[]) {
   const { actor } = await requireActor("admin");
-  const { badges } = await import("@cm/services");
-  return badges.findProviders(actor, q);
+  const { rewards } = await import("@cm/services");
+  return rewards.findAccounts(actor, q, types.filter((t) => t === "PROVIDER" || t === "CLINIC"));
 }
 
 export const awardBadgeAction = formAction(async (fd) => {

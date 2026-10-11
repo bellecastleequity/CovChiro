@@ -50,30 +50,8 @@ export async function archiveCustomBadge(actor: Actor, key: string, archived: bo
 /** Give a badge to a provider (found by login email). Giving it again is a no-op. */
 /** Admin "Give a badge" search: providers by name (display or legal), or by login email. */
 export async function findProviders(actor: Actor, raw: string) {
-  requireAdmin(actor);
-  const q = raw.trim().slice(0, 80);
-  if (q.length < 2) return [];
-  const ci = { contains: q, mode: "insensitive" as const };
-  // Every word must match somewhere in the name, so "julia ross" and "ross julia" both work.
-  const words = q.split(/\s+/).filter(Boolean).slice(0, 4);
-  const rows = await prisma.provider.findMany({
-    where: {
-      OR: [
-        { AND: words.map((w) => ({ OR: [{ displayName: { contains: w, mode: "insensitive" as const } }, { legalName: { contains: w, mode: "insensitive" as const } }] })) },
-        { user: { email: ci } },
-      ],
-    },
-    select: { id: true, displayName: true, legalName: true, status: true, homeCity: true, homeState: true, professions: { select: { professionCode: true } }, user: { select: { email: true } } },
-    orderBy: { displayName: "asc" },
-    take: 8,
-  });
-  return rows.map((p) => ({
-    id: p.id,
-    name: p.displayName,
-    legalName: p.legalName && p.legalName !== p.displayName ? p.legalName : null,
-    sub: [p.professions.map((x) => x.professionCode).join("/"), [p.homeCity, p.homeState].filter(Boolean).join(", "), p.status.toLowerCase().replace(/_/g, " ")].filter(Boolean).join(" · "),
-    email: p.user.email,
-  }));
+  const { findAccounts } = await import("./rewards");
+  return findAccounts(actor, raw, ["PROVIDER"]);
 }
 
 export async function awardBadge(actor: Actor, input: { providerId?: string | null; email?: string | null; badgeKey: string; note?: string | null; tell?: boolean }) {

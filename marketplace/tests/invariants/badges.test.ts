@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "@cm/db";
-import { badges, badgesFor } from "@cm/services";
+import { badges, badgesFor, rewards } from "@cm/services";
 import type { Actor } from "@cm/services";
-import { makeProvider, uid } from "../factories";
+import { makeClinic, makeProvider, uid } from "../factories";
 
 async function admin(): Promise<Actor> {
   const u = await prisma.user.create({ data: { email: `a-${uid()}@test.dev`, name: "Admin", role: "PLATFORM_ADMIN", emailVerifiedAt: new Date() } });
@@ -69,4 +69,23 @@ describe("Rewards & Badges: custom badges and badges given by hand", () => {
     await expect(badges.awardBadge(a, { providerId: `nope${tag}`, badgeKey: "reliable" })).rejects.toThrow(/wasn't found/);
     await expect(badges.awardBadge(a, { badgeKey: "reliable" })).rejects.toThrow(/pick them from the list/);
   });
+
+  it("give or take points: finds providers and clinics by name or login email", async () => {
+    const a = await admin();
+    const tag = uid();
+    const p = await makeProvider();
+    await prisma.provider.update({ where: { id: p.id }, data: { displayName: `Dr. Remy Stone${tag}` } });
+    const c = await makeClinic();
+    await prisma.clinicOrg.update({ where: { id: c.org.id }, data: { displayName: `Stone${tag} Family Chiropractic`, legalName: `Stone${tag} Chiro LLC` } });
+    const both = await rewards.findAccounts(a, `stone${tag}`);
+    expect(both.find((h) => h.type === "PROVIDER")?.id).toBe(p.id);
+    expect(both.find((h) => h.type === "CLINIC")?.id).toBe(c.org.id);
+    expect((await rewards.findAccounts(a, `family stone${tag}`)).map((h) => h.id)).toEqual([c.org.id]);
+    expect((await rewards.findAccounts(a, c.user.email)).map((h) => `${h.type}:${h.id}`)).toContain(`CLINIC:${c.org.id}`);
+    // Badges: providers only.
+    expect((await badges.findProviders(a, `stone${tag}`)).map((h) => h.type)).toEqual(["PROVIDER"]);
+    await rewards.awardPoints(a, { accountType: "CLINIC", accountId: c.org.id, points: 50, note: "Contest" });
+    expect(await prisma.rewardEvent.count({ where: { accountType: "CLINIC", accountId: c.org.id, kind: "manual" } })).toBe(1);
+  });
 });
+

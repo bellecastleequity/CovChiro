@@ -315,3 +315,70 @@ export async function recordLesson(actor: Actor, lesson: string, allLessons: str
     notifyClinic(prisma, accountId, { template: "rewards_level", title: `Your clinic reached ${level}!`, body: "Thanks for booking with us. See your points and what's next on your Rewards page.", link: "/clinic/rewards", ctaLabel: "See our rewards", email: false }).then(() => undefined),
   );
 }
+
+export interface AccountHit {
+  type: RewardAudience;
+  id: string;
+  name: string;
+  /** Legal name when it differs from the shown name. */
+  legalName: string | null;
+  sub: string;
+  email: string | null;
+}
+
+/**
+ * Admin pickers (give or take points, give a badge): providers and/or clinics by name, or by a
+ * login email. Every typed word must appear in the name (display or legal), so word order doesn't matter.
+ */
+export async function findAccounts(actor: Actor, raw: string, types: RewardAudience[] = ["PROVIDER", "CLINIC"]): Promise<AccountHit[]> {
+  requireAdmin(actor);
+  const q = raw.trim().slice(0, 80);
+  if (q.length < 2) return [];
+  const ci = (v: string) => ({ contains: v, mode: "insensitive" as const });
+  const words = q.split(/\s+/).filter(Boolean).slice(0, 4);
+  const [providers, clinics] = await Promise.all([
+    types.includes("PROVIDER")
+      ? prisma.provider.findMany({
+          where: { OR: [{ AND: words.map((w) => ({ OR: [{ displayName: ci(w) }, { legalName: ci(w) }] })) }, { user: { email: ci(q) } }] },
+          select: { id: true, displayName: true, legalName: true, status: true, homeCity: true, homeState: true, professions: { select: { professionCode: true } }, user: { select: { email: true } } },
+          orderBy: { displayName: "asc" },
+          take: 8,
+        })
+      : [],
+    types.includes("CLINIC")
+      ? prisma.clinicOrg.findMany({
+          where: { OR: [{ AND: words.map((w) => ({ OR: [{ displayName: ci(w) }, { legalName: ci(w) }] })) }, { billingEmail: ci(q) }, { members: { some: { user: { email: ci(q) } } } }] },
+          select: {
+            id: true,
+            displayName: true,
+            legalName: true,
+            status: true,
+            billingEmail: true,
+            locations: { where: { active: true }, select: { city: true, state: true }, take: 1 },
+            members: { where: { role: "CLINIC_OWNER" }, select: { user: { select: { email: true } } }, take: 1 },
+          },
+          orderBy: { displayName: "asc" },
+          take: 8,
+        })
+      : [],
+  ]);
+  const status = (s: string) => s.toLowerCase().replace(/_/g, " ");
+  return [
+    ...providers.map((p) => ({
+      type: "PROVIDER" as const,
+      id: p.id,
+      name: p.displayName,
+      legalName: p.legalName && p.legalName !== p.displayName ? p.legalName : null,
+      sub: [p.professions.map((x) => x.professionCode).join("/"), [p.homeCity, p.homeState].filter(Boolean).join(", "), status(p.status)].filter(Boolean).join(" · "),
+      email: p.user.email,
+    })),
+    ...clinics.map((c) => ({
+      type: "CLINIC" as const,
+      id: c.id,
+      name: c.displayName,
+      legalName: c.legalName && c.legalName !== c.displayName ? c.legalName : null,
+      sub: [c.locations[0] ? `${c.locations[0].city}, ${c.locations[0].state}` : "", status(c.status)].filter(Boolean).join(" · "),
+      email: c.members[0]?.user.email ?? c.billingEmail ?? null,
+    })),
+  ];
+}

@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import { requireActor } from "@/lib/session";
 import { archiveCustomBadgeAction, awardBadgeAction, awardRewardPointsAction, revokeBadgeAction, saveCustomBadgeAction } from "../actions";
 import { BadgeList } from "@/components/provider-profile";
-import { ProviderSearch } from "@/components/admin/provider-search";
+import { AccountSearch } from "@/components/admin/account-search";
 import { dateLabel } from "@/lib/format";
 
 export const metadata = { title: "Rewards & Badges" };
@@ -69,13 +69,7 @@ export default async function AdminRewards({ searchParams }: { searchParams: Pro
           <CardHeader title="Give or take points" description="A bonus, a contest prize, or a correction. They see your reason in their points history." />
           <CardBody>
             <ActionForm action={awardRewardPointsAction} className="space-y-3">
-              <Field label="Who">
-                <Select name="audience" defaultValue={audience}>
-                  <option value="PROVIDER">Provider</option>
-                  <option value="CLINIC">Clinic</option>
-                </Select>
-              </Field>
-              <Field label="Their login email"><Input name="email" type="email" required /></Field>
+              <Field label="Provider or clinic" hint="Search by provider name, clinic name or login email."><AccountSearch types={["PROVIDER", "CLINIC"]} name="accountId" placeholder="Type a name or email" /></Field>
               <Field label="Points" hint="Negative to take points away."><Input name="points" type="number" step={1} required /></Field>
               <Field label="Reason"><Input name="note" maxLength={200} required placeholder="e.g. October giveaway winner" /></Field>
               <SubmitButton>Save</SubmitButton>
@@ -85,10 +79,10 @@ export default async function AdminRewards({ searchParams }: { searchParams: Pro
       </div>
       <div id="badges" className="mt-8 grid gap-6 lg:grid-cols-3">
         <Card className="h-fit">
-          <CardHeader title="Give a badge" description="Shown on the provider's profile and candidate cards, like an earned badge. License, insurance and NPI badges only come from verified credentials, so they can't be given here." />
+          <CardHeader title="Give a badge" description="Badges are for providers. Shown on the provider's profile and candidate cards, like an earned badge. License, insurance and NPI badges only come from verified credentials, so they can't be given here." />
           <CardBody>
             <ActionForm action={awardBadgeAction} className="space-y-3" resetOnSuccess>
-              <Field label="Provider" hint="Search by name (or login email)."><ProviderSearch /></Field>
+              <Field label="Provider" hint="Search by name or login email."><AccountSearch types={["PROVIDER"]} name="providerId" placeholder="Type a provider's name or email" /></Field>
               <Field label="Badge">
                 <Select name="badgeKey" required defaultValue="">
                   <option value="" disabled>Pick a badge…</option>
