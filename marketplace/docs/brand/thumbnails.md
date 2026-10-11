@@ -5,7 +5,8 @@ Owner's rules (Oct 2026). Follow them for every new thumbnail, reel cover and so
 ## Where to make them (owner decision, Oct 2026)
 - Default: build them here in code (HTML/SVG rendered to PNG). That keeps the real logo, fonts, colors and app screens exact, has no credit limits, and a series comes from one template.
 - Use Canva only when a design needs something we can't make here, mainly realistic photos of people. Even then, put in the real logo and app screens and check every AI-made detail (logos, prices, names, placeholders) before saving.
-- Later: once we have a library of licensed people photos stored in the project, photo-based designs move here too.
+- The YouTube thumbnail renderer and a first people library (cut-outs from the approved Canva set) live in marketing/thumbnails/. New series start from that template.
+- Later: add licensed people photos to marketing/thumbnails/people/ so photo-based designs never need Canva.
 
 ## People
 - Show the range of people in America: a mix of ethnicities, ages and genders across a set of thumbnails. Don't repeat the same look from one design to the next.
