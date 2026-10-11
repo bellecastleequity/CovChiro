@@ -34,7 +34,7 @@ import { assertProviderEligibleForShift, eligibilityOptions, evaluateProviderFor
 import { logMatchRun, rankEvaluated } from "./matching";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
 import { depositPaidCents, refundAssignment } from "./payments";
-import { quoteShift, validatePromoForClinic } from "./pricing";
+import { discountFields, quoteShift, validatePromoForClinic } from "./pricing";
 import { referralCreditFor } from "./referrals";
 
 // ======================================================================
@@ -188,6 +188,10 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT, opts: { nee
     coverageCents: q.base.clinicPriceCents,
     discountCents: q.promo?.discountCents ?? 0,
     promoCode: q.promo?.code ?? null,
+    /** Partner clinic program: discount on this shift and the price before the rate lock (null when the lock didn't lower it). */
+    partnerDiscountCents: q.partner?.discountCents ?? 0,
+    partnerPercent: q.partner?.percent ?? null,
+    partnerLockedFromCents: q.partner?.lockedFromCents ?? null,
     premiums: q.base.premiums,
     tier: q.base.tier,
     hours: q.base.hours,
@@ -195,7 +199,7 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT, opts: { nee
     lunchMinutes: q.base.lunchMinutes,
     overtimeHours: q.base.overtimeHours,
     billableHours: q.base.billableHours,
-    subtotalCents: q.base.clinicPriceCents - (q.promo?.discountCents ?? 0),
+    subtotalCents: q.base.clinicPriceCents - (q.promo?.discountCents ?? 0) - (q.partner?.discountCents ?? 0),
     travel,
     volume: q.volume ? await clinicVolumeView(q.volume, input.locationId, input.expectedPatients ?? null) : null,
     // Other live bookings at this location overlapping this time (fine when more providers are needed).
@@ -317,8 +321,7 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
         premiumsApplied: q.base.premiums as unknown as Prisma.InputJsonValue,
         declaredTier: q.volume?.tier ?? null,
         volumeTerms: q.volume ? (q.volume.terms as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
-        promoCodeId: q.promo?.id ?? null,
-        promoDiscountCents: q.promo?.discountCents ?? 0,
+        ...discountFields(q),
         ...(supervisionRequired && input.supervisionAttestation
           ? { supervisionAttestation: parseAttestation(input.supervisionAttestation) as unknown as Prisma.InputJsonValue, supervisionAttestedById: actor.userId, supervisionAttestedAt: new Date() }
           : {}),
@@ -451,8 +454,7 @@ export async function updateDraftShift(actor: Actor, shiftId: string, raw: Shift
         premiumsApplied: q.base.premiums as unknown as Prisma.InputJsonValue,
         declaredTier: q.volume?.tier ?? null,
         volumeTerms: q.volume ? (q.volume.terms as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
-        promoCodeId: q.promo?.id ?? null,
-        promoDiscountCents: q.promo?.discountCents ?? 0,
+        ...discountFields(q),
         ...(supervisionRequired && input.supervisionAttestation
           ? { supervisionAttestation: parseAttestation(input.supervisionAttestation) as unknown as Prisma.InputJsonValue, supervisionAttestedById: actor.userId, supervisionAttestedAt: new Date() }
           : {}),
@@ -1097,7 +1099,7 @@ export async function cancelAssignment(
     await db.payout.updateMany({ where: { assignmentId: a.id, status: { in: ["PENDING", "SCHEDULED", "ON_HOLD"] } }, data: { status: "CANCELLED" } });
     await airfarePayout(db, a, air, now);
     await db.promoRedemption.updateMany({ where: { shiftId: a.shiftId, voidedAt: null }, data: { voidedAt: now } });
-    if (a.shift.promoCodeId && a.shift.promoDiscountCents > 0) {
+    if (a.shift.promoCodeId && a.shift.promoDiscountCents - a.shift.partnerDiscountCents > 0) {
       await db.promoCode.update({ where: { id: a.shift.promoCodeId }, data: { usedCount: { decrement: 1 } } });
     }
     if (outcome.countsAsLateCancel || outcome.countsAsNoShow) {

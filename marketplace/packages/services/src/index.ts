@@ -36,6 +36,7 @@ export * as emergency from "./emergency";
 export * as feedback from "./feedback";
 export * as ownside from "./ownside";
 export * as badges from "./badges";
+export * as partners from "./partners";
 export * as bookings from "./bookings";
 export * as standing from "./standing";
 export * as dispatch from "./dispatch";

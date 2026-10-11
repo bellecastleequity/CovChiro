@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/misc";
 import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { AccountModeration } from "@/components/admin/account-moderation";
+import { AdminPartnerCard } from "@/components/admin/partner-card";
 import { approveClinicAction, clinicStatusAction, clinicVerificationAdminAction, excludeChargeAction, includeChargeAction, payInFullAction, retryChargeAction } from "../../actions";
 import { Textarea } from "@/components/ui/form";
 
@@ -45,6 +46,7 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
         </div>
         <div className="space-y-6">
           <Card><CardHeader title="Team" /><CardBody className="space-y-1 text-sm">{c.members.map((m) => <div key={m.id}>{m.user.name} · {m.user.email} · {m.role === "CLINIC_OWNER" ? "owner" : "staff"}{m.user.provider ? <> · <Link className="text-brand-700" href={`/admin/providers/${m.user.provider.id}`}>also takes shifts</Link></> : null}</div>)}</CardBody></Card>
+          <AdminPartnerCard clinicOrgId={c.id} />
           <Card>
             <CardHeader title="Onboarding" description={c.adminApprovedAt ? `Approved by admin ${dateLabel(c.adminApprovedAt)}` : "Approve to skip the remaining setup steps."} />
             <CardBody className="space-y-3 text-sm">

@@ -8,6 +8,7 @@ import { prisma } from "@cm/db";
 import { DomainError } from "@cm/core";
 import {
   hiring,
+  partners,
   standing,
   dispatch,
   bookings,
@@ -540,4 +541,17 @@ export const addProviderSideAction = formAction(async (fd) => {
   const s = await getSession();
   if (s) await auth.switchWorkspace(s.sessionId, "PROVIDER");
   redirect("/provider?welcome=1");
+});
+
+export const signPartnerAddendumAction = formAction(async (fd) => {
+  const { actor } = await requireActor("clinic");
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || null;
+  await partners.signPartnerAddendum(
+    actor,
+    { id: str(fd, "id"), typedName: str(fd, "typedName"), title: fd.get("title") ? str(fd, "title") : null, consent: fd.get("consent") === "on", agree: fd.get("agree") === "on", viewedHash: str(fd, "viewedHash") },
+    { ip, userAgent: h.get("user-agent") },
+  );
+  revalidatePath("/clinic");
+  redirect("/clinic/partner?signed=1");
 });

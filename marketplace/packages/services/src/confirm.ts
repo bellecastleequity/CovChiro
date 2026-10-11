@@ -81,20 +81,22 @@ export async function confirmInTx(
     : travelEstimate(drive, { lodgingAllowed: shift.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s);
 
   // Promo: redeem now (counts only confirmed shifts). If it ran out since posting, drop it.
+  // promoDiscountCents carries promo + partner discount; only the promo part can run out.
+  const partnerDiscount = Math.min(shift.partnerDiscountCents, shift.promoDiscountCents);
   let discount = shift.promoDiscountCents;
-  if (shift.promoCodeId && discount > 0) {
+  if (shift.promoCodeId && discount - partnerDiscount > 0) {
     const updated = await db.$executeRaw(
       Prisma.sql`UPDATE "PromoCode" SET "usedCount" = "usedCount" + 1 WHERE id = ${shift.promoCodeId} AND ("maxUses" IS NULL OR "usedCount" < "maxUses")`,
     );
     if (updated === 1) {
       await db.promoRedemption.upsert({
         where: { shiftId },
-        create: { promoCodeId: shift.promoCodeId, clinicOrgId: shift.location.clinicOrgId, shiftId, discountCents: discount },
-        update: { voidedAt: null, discountCents: discount },
+        create: { promoCodeId: shift.promoCodeId, clinicOrgId: shift.location.clinicOrgId, shiftId, discountCents: discount - partnerDiscount },
+        update: { voidedAt: null, discountCents: discount - partnerDiscount },
       });
     } else {
-      discount = 0;
-      await db.shift.update({ where: { id: shiftId }, data: { promoDiscountCents: 0 } });
+      discount = partnerDiscount;
+      await db.shift.update({ where: { id: shiftId }, data: { promoDiscountCents: partnerDiscount } });
     }
   }
 
@@ -125,6 +127,7 @@ export async function confirmInTx(
       clinicPriceCents: shift.clinicPriceCents,
       providerPayCents: shift.providerPayCents,
       promoDiscountCents: discount,
+      partnerDiscountCents: partnerDiscount,
       mileageCents: travel.mileageCents,
       lodgingEstimateCents: travel.lodgingEstimateCents,
       flyIn,

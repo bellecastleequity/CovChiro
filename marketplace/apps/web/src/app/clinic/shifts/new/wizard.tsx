@@ -56,6 +56,9 @@ interface Quote {
   coverageCents: number;
   discountCents: number;
   promoCode: string | null;
+  partnerDiscountCents?: number;
+  partnerPercent?: number | null;
+  partnerLockedFromCents?: number | null;
   premiums: { kind: string; percent: number }[];
   tier: string;
   hours: number;
@@ -648,6 +651,8 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 {quote.premiums.map((p) => <div key={p.kind} className="flex justify-between text-xs text-slate-500"><span>incl. {p.kind.toLowerCase()} premium</span><span>+{p.percent}%</span></div>)}
                 {rateActive && ratePrice?.ok ? <div className="flex justify-between rounded-lg bg-amber-50 px-2 py-1.5 font-semibold text-amber-900"><span>Your rate (clinic-set)</span><span className="tabular-nums">{money(ratePrice.clinicPriceCents)}</span></div> : null}
                 {quote.discountCents ? <div className="flex justify-between text-emerald-700"><span>Promo {quote.promoCode}</span><span className="tabular-nums">−{money(quote.discountCents)}</span></div> : null}
+                {quote.partnerLockedFromCents ? <div className="flex justify-between text-xs text-slate-500"><span>Partner rate lock (today&apos;s rate {money(quote.partnerLockedFromCents)})</span><span>locked</span></div> : null}
+                {quote.partnerDiscountCents ? <div className="flex justify-between text-emerald-700"><span>Partner discount ({quote.partnerPercent}%)</span><span className="tabular-nums">−{money(quote.partnerDiscountCents)}</span></div> : null}
                 {quote.days && quote.days.length > 1 ? (
                   <>
                     {quote.days.map((d) => <div key={d.date} className="flex justify-between text-xs text-slate-600"><span>{d.date}{d.premiums.length ? ` (${d.premiums.map((p) => `${p.kind.toLowerCase()} +${p.percent}%`).join(", ")})` : ""}</span><span className="tabular-nums">{money(d.subtotalCents)}</span></div>)}

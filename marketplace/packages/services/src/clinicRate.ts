@@ -91,6 +91,9 @@ export async function prepareClinicRate(
       instantBook: false,
       promoCodeId: null,
       promoDiscountCents: 0,
+      // A clinic-set rate is the clinic's own price: no partner discount on top.
+      partnerDiscountCents: 0,
+      partnershipId: null,
       rateTerms: {
         text,
         acceptedAt: now.toISOString(),
@@ -153,6 +156,10 @@ export async function releaseClinicRateShift(shiftId: string, actor: Actor, why:
         premiumsApplied: q.base.premiums as unknown as Prisma.InputJsonValue,
         declaredTier: q.volume?.tier ?? null,
         volumeTerms: q.volume ? (q.volume.terms as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+        // Back at the market price, a partner clinic gets its partner pricing like any other shift.
+        promoDiscountCents: q.partner?.discountCents ?? 0,
+        partnerDiscountCents: q.partner?.discountCents ?? 0,
+        partnershipId: q.partner?.id ?? null,
       },
     });
     await audit(db, actor, "shift.clinic_rate_released", "Shift", shiftId, { clinicPriceCents: sh.clinicPriceCents, providerPayCents: sh.providerPayCents }, { clinicPriceCents: q.base.clinicPriceCents, providerPayCents: q.base.providerPayCents, why });

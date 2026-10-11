@@ -697,3 +697,32 @@ export const archiveCustomBadgeAction = formAction(async (fd) => {
   revalidatePath("/admin/rewards");
   return { ok: archived ? "Archived: no longer offered or shown." : "Restored." };
 });
+
+// ---------- partner clinics ----------
+
+export const offerPartnershipAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const { partners } = await import("@cm/services");
+  const id = str(fd, "clinicOrgId");
+  const p = await partners.offerPartnership(actor, id);
+  revalidatePath(`/admin/clinics/${id}`);
+  return { ok: `Offer sent: ${p.discountPercent}% off, ${p.termMonths}-month terms. The clinic owner signs it from their dashboard.` };
+});
+
+export const withdrawPartnerOfferAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const { partners } = await import("@cm/services");
+  await partners.withdrawOffer(actor, str(fd, "id"));
+  revalidatePath(`/admin/clinics/${str(fd, "clinicOrgId")}`);
+  return { ok: "Offer withdrawn." };
+});
+
+export const endPartnershipAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const { partners } = await import("@cm/services");
+  const when = str(fd, "when") === "now" ? "now" : "term_end";
+  const endedAt = await partners.endPartnership(actor, str(fd, "id"), { when, reason: str(fd, "reason") });
+  revalidatePath(`/admin/clinics/${str(fd, "clinicOrgId")}`);
+  revalidatePath("/admin/partners");
+  return { ok: when === "now" ? "Partnership ended. New shifts are at regular prices." : `Partnership ends ${endedAt.toLocaleDateString("en-US", { timeZone: "America/New_York", dateStyle: "medium" })}.` };
+});

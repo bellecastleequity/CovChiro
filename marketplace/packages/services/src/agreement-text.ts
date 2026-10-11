@@ -221,6 +221,67 @@ function commonSections(brandName: string, co: string, law: string) {
   ];
 }
 
+export interface PartnerTerms {
+  discountPercent: number;
+  termMonths: number;
+  releaseHours: number;
+  noticeDays: number;
+}
+
+/**
+ * Clinic Partner Addendum (partner clinic program). Signed in the app by the clinic owner;
+ * the exact text is stored with the partnership. ATTORNEY REVIEW: working draft for counsel.
+ */
+export function renderPartnerAddendum(brandName: string, party: AgreementParty, t: PartnerTerms, s: SettingsMap, effectiveDate: string): AgreementDoc {
+  const co = s["agreements.companyLegalName"];
+  const coLines = [`${co} (“${brandName}”, “we”, “us”)`, ...(s["agreements.companyAddress"] ? [s["agreements.companyAddress"]] : [])];
+  const term = `${t.termMonths} month${t.termMonths === 1 ? "" : "s"}`;
+  return {
+    kind: "CLINIC",
+    version: 1,
+    title: `${brandName} Clinic Partner Addendum`,
+    parties: [
+      { label: "Company", lines: coLines },
+      { label: "Clinic", lines: [`${party.legalName} (“Clinic”, “you”)`, ...(party.address ? [party.address] : []), `Signing for the Clinic: ${party.signerName}${party.signerTitle ? `, ${party.signerTitle}` : ""} (${party.signerEmail})`] },
+    ],
+    sections: [
+      {
+        heading: "1. What this addendum is",
+        paragraphs: [
+          `This addendum is effective ${effectiveDate} and adds to the ${brandName} Clinic Platform Agreement between us. Everything in that agreement still applies. Where the two differ on the subjects below, this addendum controls.`,
+        ],
+      },
+      {
+        heading: "2. You book your coverage with us",
+        paragraphs: [
+          `During each term, the Clinic books all temporary and per diem provider coverage for its locations listed in its ${brandName} account through ${brandName}.`,
+          `This doesn't cover hiring permanent staff, your own employees, or owners and associates who already work at the Clinic.`,
+          `Unfilled shifts: if a shift you posted is still unfilled ${hrs(t.releaseHours)} before it starts, or we tell you we can't fill it, you may arrange coverage for that shift elsewhere. That isn't a breach of this addendum.`,
+        ],
+      },
+      {
+        heading: "3. Partner pricing",
+        paragraphs: [
+          `Partner discount: ${t.discountPercent}% off the coverage price of each shift booked while this addendum is in force. It comes out of ${brandName}'s fee and never reduces what providers are paid. It doesn't apply to mileage, lodging, airfare or shifts posted at a clinic-set rate, and together with any promo code it can't exceed the share of our fee our promotions allow.`,
+          `Rate lock: during each term, the coverage price for a shift won't be higher than the rate card in effect when that term started, except that it is never less than what the provider is paid for that shift. Premiums (such as urgent, weekend and holiday) still apply as a percentage of that price. If our prices go down, you get the lower price.`,
+        ],
+      },
+      {
+        heading: "4. Term, renewal and ending",
+        paragraphs: [
+          `The first term is ${term} from the date you sign. It then renews automatically for further ${term} terms unless either party gives notice at least ${t.noticeDays} days before the current term ends, in which case the partnership ends at the end of that term.`,
+          `If the Clinic books temporary coverage outside ${brandName} in breach of section 2, we may end the partnership on notice, and the Clinic agrees to repay the partner discounts it received during the current term. The parties agree that amount is a reasonable estimate of our loss, not a penalty.`,
+          `When the partnership ends, partner pricing stops for shifts posted after that date. Shifts already booked keep the price they were booked at.`,
+        ],
+      },
+      {
+        heading: "5. Signing",
+        paragraphs: [`By signing, the person named above confirms they are authorized to bind the Clinic to this addendum.`],
+      },
+    ],
+  };
+}
+
 /** Canonical plain text of a document: what the signature's SHA-256 covers. */
 export function agreementText(doc: AgreementDoc): string {
   const lines = [`${doc.title} — version ${doc.version}`, ""];

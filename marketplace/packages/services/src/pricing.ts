@@ -1,7 +1,9 @@
 import {
   DomainError,
   hoursBetween,
+  lockedClinicPriceCents,
   paidHours,
+  partnerDiscountCents,
   round2,
   normalizeCode,
   promoDiscountCents,
@@ -101,6 +103,8 @@ export interface ShiftQuote {
   rateCardId: string;
   rateRegionId: string;
   promo: { id: string; code: string; discountCents: number } | null;
+  /** Partner clinic program: the partnership in force when priced, its discount (from margin) and whether the rate lock lowered the price. */
+  partner: { id: string; percent: number; discountCents: number; lockedFromCents: number | null } | null;
   /** Volume-priced (Addendum 03): the tier booked, its terms, and both tier prices for the clinic. */
   volume: {
     tier: VolumeTier;
@@ -164,10 +168,25 @@ export async function quoteShift(
   }
   card ??= await findRateCard(db, input.professionCode, rateRegionId, tier, pricedAt);
   if (!card) throw new DomainError("VALIDATION", `No ${profession.displayName} rate card for this area yet.`);
+  // Partner clinic: the clinic price can't go above the card in effect when the current term started
+  // (never below today's provider pay; provider pay always follows today's card).
+  const partnership = await (await import("./partners")).activePartnership(db, location.clinicOrgId, pricedAt);
+  let clinicCardCents = card.clinicPriceCents;
+  if (partnership) {
+    const lockAt = partnership.term.termStart;
+    const lockedCard = await findRateCard(db, input.professionCode, rateRegionId, tier, lockAt, volume ? volume.tier : null);
+    clinicCardCents = lockedClinicPriceCents(card, lockedCard);
+    if (volume) {
+      for (const vt of ["LIGHT", "BUSY"] as const) {
+        const locked = await findRateCard(db, input.professionCode, rateRegionId, tier, lockAt, vt);
+        volume.clinicPrices[vt] = lockedClinicPriceCents({ clinicPriceCents: volume.clinicPrices[vt], providerPayCents: volume.providerPays[vt] }, locked);
+      }
+    }
+  }
   const base = quoteBase(
     { startsAt: input.startsAt, endsAt: input.endsAt, lunchMinutes: input.lunchMinutes ?? 0 },
     profession.pricingModel,
-    { clinicPriceCents: card.clinicPriceCents, providerPayCents: card.providerPayCents, minHours: card.minHours },
+    { clinicPriceCents: clinicCardCents, providerPayCents: card.providerPayCents, minHours: card.minHours },
     { pricedAt, timeZone: location.timeZone, boosted: !!input.boosted, professionCode: input.professionCode },
     s,
   );
@@ -176,5 +195,20 @@ export async function quoteShift(
     const p = await validatePromoForClinic(db, input.promoCode, location.clinicOrgId, pricedAt);
     promo = { id: p.id, code: p.code, discountCents: promoDiscountCents(p, base, s["promo.maxShareOfMarginPercent"]) };
   }
-  return { base, pricingModel: profession.pricingModel, rateCardId: card.id, rateRegionId, promo, volume };
+  const partner: ShiftQuote["partner"] = partnership
+    ? {
+        id: partnership.id,
+        percent: partnership.discountPercent,
+        discountCents: partnerDiscountCents(base, partnership.discountPercent, promo?.discountCents ?? 0, s["promo.maxShareOfMarginPercent"]),
+        lockedFromCents: clinicCardCents < card.clinicPriceCents ? card.clinicPriceCents : null,
+      }
+    : null;
+  return { base, pricingModel: profession.pricingModel, rateCardId: card.id, rateRegionId, promo, partner, volume };
+}
+
+/** The discount fields a shift stores from its quote: promoDiscountCents carries promo + partner (everything totals use). */
+export function discountFields(q: Pick<ShiftQuote, "promo" | "partner">) {
+  const promo = q.promo?.discountCents ?? 0;
+  const partner = q.partner?.discountCents ?? 0;
+  return { promoCodeId: q.promo?.id ?? null, promoDiscountCents: promo + partner, partnerDiscountCents: partner, partnershipId: q.partner?.id ?? null };
 }

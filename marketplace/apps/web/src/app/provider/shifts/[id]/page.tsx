@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Car, Clock, MapPin, Plane, Shirt, Star, Users } from "lucide-react";
 import { prisma } from "@cm/db";
-import { evaluateProviderForShift, getSettings, ownside, sameProvider } from "@cm/services";
+import { evaluateProviderForShift, getSettings, ownside, partners, sameProvider } from "@cm/services";
 import { parseVolumeTerms, providerView } from "@cm/core";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
   // Fly-in: lodging every night (the night before each day); airfare once per trip, shown on its own.
   const pay = providerView({ clinicPriceCents: 0, providerPayCents: shift.providerPayCents, promoDiscountCents: 0, mileageCents: mileage, lodgingCents: flyIn ? (shift.flyInNightlyCents ?? 0) : 0 });
   const skills = await prisma.skill.findMany({ where: { id: { in: [...shift.requiredSkillIds, ...shift.preferredSkillIds] } } });
+  const partner = (await partners.partnerClinicIds([shift.location.clinicOrgId])).has(shift.location.clinicOrgId);
   const clinicRating = await prisma.rating.aggregate({ where: { raterType: "PROVIDER", revealedAt: { not: null }, assignment: { shift: { location: { clinicOrgId: shift.location.clinicOrgId } } } }, _avg: { stars: true }, _count: true });
   const tz = shift.location.timeZone;
   const volTerms = parseVolumeTerms(shift.volumeTerms);
@@ -45,7 +46,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
   const dayNo = groupDays.findIndex((d) => d.id === shift.id) + 1;
   return (
     <>
-      <PageHeader back={{ href: "/provider/shifts", label: "Find shifts" }} eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} coverage · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} coverage`} title={`${dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}`} description={`${timeRange(shift.startsAt, shift.endsAt, tz)} · ${shift.location.clinicOrg.displayName}`} />
+      <PageHeader back={{ href: "/provider/shifts", label: "Find shifts" }} eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} coverage · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} coverage`} title={`${dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}`} description={<>{timeRange(shift.startsAt, shift.endsAt, tz)} · {shift.location.clinicOrg.displayName}{partner ? <span className="ml-2 inline-flex items-center rounded-full bg-accent-50 px-2 py-0.5 text-xs font-semibold text-accent-800 ring-1 ring-accent-200">Partner clinic</span> : null}</>} />
       {shift.rateMode === "CLINIC" && !shift.releasedAt ? (
         <Alert tone="info" className="mb-5" title="Clinic-set rate">The clinic set its own rate for this shift. It isn't filled automatically: apply if the pay works for you and the clinic chooses who to confirm.</Alert>
       ) : null}

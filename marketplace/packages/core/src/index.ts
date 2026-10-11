@@ -5,6 +5,7 @@ export * from "./eligibility";
 export * from "./holidays";
 export * from "./pricing";
 export * from "./promo";
+export * from "./partner";
 export * from "./scoring";
 export * from "./deadlines";
 export * from "./stateMachines";

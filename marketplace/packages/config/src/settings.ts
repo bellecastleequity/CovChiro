@@ -157,6 +157,19 @@ export const SETTINGS = {
   // ---------- states (§14) ----------
   "states.minVerifiedDoctorsWarning": def({ group: "States", label: "Warn when enabling a state with fewer verified doctors than", schema: z.number().int().min(0), default: 10, flag: null }),
 
+  // ---------- partner clinics ----------
+  "partner.discountPercent": def({
+    group: "Partner clinics",
+    label: "Partner discount (% off coverage)",
+    help: "Comes out of the platform margin only and never reduces provider pay or travel. Promo + partner discounts together stay within the promo cap (Promo codes → Max discount as % of platform margin). New offers use this; signed partnerships keep their own %.",
+    schema: z.number().int().min(0).max(50),
+    default: 5,
+    flag: "OWNER_DECISION",
+  }),
+  "partner.termMonths": def({ group: "Partner clinics", label: "Partnership term (months)", help: "Each term renews automatically until ended. Clinic prices are locked at the rate card in effect when the term started.", schema: z.number().int().min(1).max(60), default: 12, flag: "OWNER_DECISION" }),
+  "partner.releaseHours": def({ group: "Partner clinics", label: "Unfilled-shift carve-out (hours before start)", help: "A partner may book coverage elsewhere for a shift we haven't filled this many hours before it starts, without breaching exclusivity.", schema: z.number().int().min(1).max(168), default: 4, flag: "ATTORNEY_REVIEW" }),
+  "partner.noticeDays": def({ group: "Partner clinics", label: "Notice to end before renewal (days)", schema: z.number().int().min(0).max(180), default: 30, flag: "ATTORNEY_REVIEW" }),
+
   // ---------- promo codes ----------
   "promo.maxShareOfMarginPercent": def({
     group: "Promo codes",
@@ -600,6 +613,14 @@ export const SETTINGS = {
 
   // ---------- feature flags (ATTORNEY REVIEW items ship OFF) ----------
   "features.preLicensureEnabled": def({ group: "Features", label: "Student / not-yet-licensed signup path and /join recruitment pages", schema: z.boolean(), default: true, flag: null }),
+  "features.partnerProgram": def({
+    group: "Features",
+    label: "Partner clinic program",
+    help: "Off: no partner discount or rate lock is applied anywhere and clinics don't see partner offers. Partnerships are offered per clinic from Admin → Clinics.",
+    schema: z.boolean(),
+    default: false,
+    flag: "OWNER_DECISION",
+  }),
   "features.onCallEnabled": def({ group: "Features", label: "On Call auto-accept (requires On Call Terms in the Provider Agreement)", schema: z.boolean(), default: false, flag: "ATTORNEY_REVIEW" }),
   "site.instagramUrl": def({ group: "Help & support", label: "Instagram link (website footer)", help: "Leave blank to hide the icon.", schema: z.union([z.literal(""), z.string().url()]), default: "https://www.instagram.com/coverageoncall", flag: null }),
   "site.youtubeUrl": def({ group: "Help & support", label: "YouTube link (website footer)", help: "Leave blank to hide the icon.", schema: z.union([z.literal(""), z.string().url()]), default: "https://www.youtube.com/@coverageoncall", flag: null }),

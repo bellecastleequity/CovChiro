@@ -570,6 +570,7 @@ model ClinicOrg {
   /// What the admin asked for (NEEDS_INFO) or why it was rejected; shown to the clinic.
   verificationNote       String?
   verifications          ClinicVerification[]
+  partnerships           ClinicPartnership[]
 }
 
 /// One submission of the clinic verification form, with the automatic check results and the decision.
@@ -843,7 +844,11 @@ model Shift {
   rescueOfShiftId             String?
   promoCodeId                 String?
   promoCode                   PromoCode?       @relation(fields: [promoCodeId], references: [id])
+  /// All margin-funded discounts (promo + partner); see partnerDiscountCents for the partner share.
   promoDiscountCents          Int              @default(0)
+  /// Partner clinic program: the part of promoDiscountCents from the clinic's partnership.
+  partnerDiscountCents        Int              @default(0)
+  partnershipId               String?
   /// Clinic-set rate (beta): "MARKET" (rate engine) or "CLINIC" (clinic's own lower price, not auto-filled).
   rateMode                    String           @default("MARKET")
   /// Market price/pay for this shift when the clinic set its own rate (for the floor, reports and release).
@@ -882,6 +887,7 @@ model Shift {
   recruitLinks ShiftRecruitLink[]
   changes      ShiftChange[]
 
+  @@index([partnershipId])
   @@index([professionCode, state, status, startsAt])
   @@index([locationId, startsAt])
   @@index([rateMode, releaseAt])
@@ -1064,6 +1070,8 @@ model Assignment {
   clinicPriceCents     Int
   providerPayCents     Int
   promoDiscountCents   Int                       @default(0)
+  /// Partner clinic program share of promoDiscountCents (for the partner report).
+  partnerDiscountCents Int                       @default(0)
   mileageCents         Int
   lodgingEstimateCents Int                       @default(0)
   lodgingApprovedCents Int                       @default(0)
@@ -2832,4 +2840,50 @@ model BadgeAward {
 
   @@unique([providerId, badgeKey])
   @@index([badgeKey])
+}
+
+// ============================ partner clinics ============================
+
+enum PartnershipStatus {
+  OFFERED
+  ACTIVE
+  ENDED
+  WITHDRAWN
+}
+
+/// Partner clinic program: the clinic books all its temporary coverage with us; in return a
+/// discount from our margin (never provider pay) and a rate lock for each term. Offered by an
+/// admin, active once the clinic owner e-signs the Partner Addendum; renews each term until ended.
+model ClinicPartnership {
+  id              String            @id @default(cuid())
+  clinicOrgId     String
+  clinicOrg       ClinicOrg         @relation(fields: [clinicOrgId], references: [id], onDelete: Cascade)
+  status          PartnershipStatus @default(OFFERED)
+  discountPercent Int
+  termMonths      Int
+  /// Unfilled-shift carve-out: a shift still unfilled this many hours before it starts may be booked elsewhere.
+  releaseHours    Int
+  noticeDays      Int
+  offeredById     String?
+  offeredAt       DateTime          @default(now()) @db.Timestamptz(3)
+  /// Signing time: the first term starts here (and the rate lock is taken here).
+  startsAt        DateTime?         @db.Timestamptz(3)
+  endedAt         DateTime?         @db.Timestamptz(3)
+  endedById       String?
+  endReason       String?
+  // In-house e-signature evidence, as for the platform agreements.
+  signerUserId    String?
+  typedSignature  String?
+  signerTitle     String?
+  signerEmail     String?
+  signerIp        String?
+  signerAgent     String?
+  consentAt       DateTime?         @db.Timestamptz(3)
+  document        Json?
+  documentText    String?
+  documentHash    String?
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+
+  @@index([clinicOrgId, status])
 }

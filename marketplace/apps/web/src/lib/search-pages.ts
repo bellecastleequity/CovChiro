@@ -21,6 +21,7 @@ const ADMIN: SearchPage[] = [
   { label: "Card disputes (chargebacks)", href: "/admin/payments/chargebacks", section: "Money", keywords: "chargeback dispute bank card stripe evidence" },
   { label: "1099 report", href: "/admin/payments/1099", section: "Money", keywords: "1099 w9 w-9 tax taxes irs contractor nec year end" },
   { label: "Promo codes", href: "/admin/promo", section: "Money", keywords: "discount coupon welcome offer campaign landing" },
+  { label: "Partner clinics", href: "/admin/partners", section: "Money", keywords: "partner partnership exclusive exclusivity discount rate lock addendum" },
   { label: "Referrals", href: "/admin/referrals", section: "Money", keywords: "refer earn invite bonus credit friend" },
   { label: "Timesheets", href: "/admin/timesheets", section: "Admin", keywords: "time clock punches punch in out lunch sign off approval hours" },
   { label: "Rates", href: "/admin/rates", section: "Pricing", keywords: "prices rate cards regions pay half day full day hourly" },
