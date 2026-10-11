@@ -1,5 +1,6 @@
 import { brand } from "@cm/config";
 import {
+  phonesOnFile,
   isPersonalInjuryPractice,
   activationDue, escalationTopic, leadScore, nurtureDue, outreachStepDue, providerGrowthState, prospectStageFromAccount, ruleSegment, US_STATES, wantsOptOut,
   type GrowthCadence, type ProspectStage,
@@ -366,6 +367,7 @@ export async function clinicChecklist(orgId: string) {
     { key: "email", label: "Email confirmed", done: !!owner?.emailVerifiedAt, url: "/clinic/settings" },
     { key: "location", label: "Clinic location", done: org.locations.length > 0 || !!org.adminApprovedAt, url: "/clinic/locations" },
     { key: "payment", label: "Payment method", done: org.hasPaymentMethod, url: "/clinic/billing" },
+    { key: "phones", label: "Two phone numbers", done: phonesOnFile("CLINIC", [org.phone, org.backupPhone]), url: "/clinic/settings#phones" },
     { key: "agreement", label: "Clinic agreement", done: !!org.agreementSignedAt || !!org.adminApprovedAt, url: "/clinic/settings" },
     ...((await getSettings())["clinicVerify.enabled"]
       ? [{ key: "verification", label: "Clinic verification", done: org.verificationStatus === "VERIFIED", url: "/clinic/settings/verification" }]

@@ -25,7 +25,7 @@ async function LocationForm({ loc }: { loc?: Loc }) {
     <ActionForm action={locationAction} className="grid gap-4 sm:grid-cols-2" resetOnSuccess={!loc}>
       {loc ? <input type="hidden" name="locationId" value={loc.id} /> : null}
       <Field label="Location name"><Input name="name" defaultValue={loc?.name} placeholder="Main office" required /></Field>
-      <Field label={<>Front desk phone<InfoTip label="About the front desk phone">Shown only to the provider booked at this location, so they can call if they&apos;re running late or can&apos;t find you.</InfoTip></>}><Input name="phone" defaultValue={loc?.phone ?? ""} type="tel" /></Field>
+      <Field label={<>Front desk phone<InfoTip label="About the front desk phone">For our team only, to reach this location about a shift. It&apos;s never shown to providers; they reach you through Messages on the site.</InfoTip></>}><Input name="phone" defaultValue={loc?.phone ?? ""} type="tel" /></Field>
       <Field label="Street address, city, state, ZIP" hint="Verified with our mapping service — your state comes from this address." className="sm:col-span-2">
         <AddressInput name="address" defaultValue={loc ? `${loc.addressLine1}, ${loc.city}, ${loc.state} ${loc.zip}` : ""} placeholder="Start typing the address…" required browserKey={env().GOOGLE_MAPS_BROWSER_KEY} />
       </Field>

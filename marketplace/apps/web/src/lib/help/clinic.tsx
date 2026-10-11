@@ -494,6 +494,25 @@ const A: HelpArticle[] = [
   },
   // ---------------- account ----------------
   {
+    slug: "phone-numbers",
+    category: "account",
+    title: "Your clinic's phone numbers",
+    summary: "Two different numbers on file are required to post shifts and choose providers. Only our team uses them.",
+    keywords: "phone number numbers second backup required post shifts privacy shared",
+    links: [{ href: "/clinic/settings#phones", label: "Phone numbers in Settings" }],
+    body: () => (
+      <Ul
+        items={[
+          "Your clinic keeps two different phone numbers on file: a main number and a second one (an owner's or manager's mobile, or another line).",
+          "Until both are saved you can't post shifts, choose an applicant or invite a provider. You can still save drafts.",
+          "While you have shifts posted or booked, you can change a number (the new one saves straight away) but you can't remove one.",
+          "Only our team uses these numbers. We never share them with providers, and we never share providers' numbers with your clinic or staff. Talk with providers through Messages.",
+          "Only the clinic owner can change them; staff see the last four digits.",
+        ]}
+      />
+    ),
+  },
+  {
     slug: "phone-app",
     category: "account",
     title: "Phone app, notifications and calendar",

@@ -2,10 +2,11 @@ import { notFound } from "next/navigation";
 import { DateTime } from "luxon";
 import { flyInAirfareCents, flyInNightlyCents } from "@cm/core";
 import { prisma } from "@cm/db";
-import { agreementCurrent, getSettings, postingOptions } from "@cm/services";
+import { agreementCurrent, getSettings, phones, postingOptions } from "@cm/services";
 import { LinkButton } from "@/components/ui/button";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { requireActor } from "@/lib/session";
+import { PhoneBanner } from "@/components/shell/phone-banner";
 import { PostShiftWizard, type DraftInit } from "./wizard";
 
 export const metadata = { title: "Post a shift" };
@@ -63,8 +64,9 @@ export default async function NewShift({ searchParams }: { searchParams: Promise
   return (
     <>
       <PageHeader back={{ href: "/clinic/shifts", label: "Shifts" }} title={draft ? "Edit draft shift" : "Post a shift"} description={draft ? "Change anything, then save the draft or post it. Prices are recalculated from our regional rate card." : "Prices come from our regional rate card and how busy the day is. You'll see the total, and what closing would cost instead, before posting."} />
+      <PhoneBanner actor={actor} />
       <PostShiftWizard
-        canPost={org.status === "ACTIVE" && org.hasPaymentMethod && agreementCurrent("CLINIC", org.agreementSignedAt, org.agreementVersion)}
+        canPost={org.status === "ACTIVE" && org.hasPaymentMethod && agreementCurrent("CLINIC", org.agreementSignedAt, org.agreementVersion) && phones.clinicPhonesOk(org)}
         defaultMinYears={org.minYearsExperience}
         mileage={{ rateLabel: `$${(settings["pricing.mileageRateCentsPerMile"] / 100).toFixed(2)}`, roundTrip: settings["pricing.mileageRoundTrip"] }}
         defaultCode={code ?? welcome?.code ?? ""}

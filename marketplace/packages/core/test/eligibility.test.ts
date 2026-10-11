@@ -352,3 +352,16 @@ describe("F14 own clinic (clinic owners who also take shifts)", () => {
     expect(evaluateEligibility(provider({ ownClinicOrgIds: ["org-mine"] }), s, pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
   });
 });
+
+describe("F15 phone number on file", () => {
+  it("a provider without a phone number can't apply for or accept shifts", () => {
+    const r = evaluateEligibility(provider({ phoneOnFile: false }), shift(), pair(), OPTS);
+    expect(r.eligible).toBe(false);
+    expect(codes(r)).toContain("PHONE_MISSING");
+    expect(ok(provider({ phoneOnFile: true }), shift())).toBe(true);
+    expect(ok(provider(), shift())).toBe(true);
+  });
+  it("never releases a booking: credential-only checks ignore it", () => {
+    expect(evaluateEligibility(provider({ phoneOnFile: false }), shift(), pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
+  });
+});

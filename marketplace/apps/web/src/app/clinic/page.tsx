@@ -11,6 +11,7 @@ import { Alert, Checklist, Empty, PageHeader, Stat } from "@/components/ui/misc"
 import { dateLabel, money, timeRange, firstName } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { VerificationBanner } from "@/components/clinic/verification-banner";
+import { PhoneBanner } from "@/components/shell/phone-banner";
 import { PartnerCard } from "@/components/clinic/partner-card";
 
 export default async function ClinicHome({ searchParams }: { searchParams: Promise<{ code?: string; welcome?: string }> }) {
@@ -36,6 +37,7 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
       <PageHeader eyebrow={org.displayName} title={`Welcome${org.status === "ONBOARDING" ? "" : " back"}, ${firstName(user.name)}`} actions={<LinkButton href="/clinic/shifts/new"><PlusCircle className="size-4" />Post a shift</LinkButton>} />
       {!needsSetup ? <RewardsChip audience="CLINIC" accountId={org.id} href="/clinic/rewards" /> : null}
       {rs["referrals.enabled"] ? <GroundFloor userId={user.id} kind="clinic" justJoined={welcome === "1" || Date.now() - +user.createdAt < 14 * 86_400_000} /> : null}
+      <PhoneBanner actor={actor} />
       <VerificationBanner clinicOrgId={org.id} />
       {!needsSetup ? <PartnerCard actor={actor} /> : null}
       {sheets.length ? (

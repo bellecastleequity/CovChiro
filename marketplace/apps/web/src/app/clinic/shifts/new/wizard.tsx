@@ -607,7 +607,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                     {!autoPost || rateActive ? <p>We&apos;ll save {days.length > 1 ? "them" : "it"} and text and email you the moment a provider is available, so you can post in one tap.</p> : null}
                   </div>
                 ) : null}
-                {!canPost ? <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="size-4 shrink-0" /><span>Finish setup to post: a payment method and the current Clinic Platform Agreement (<a href="/clinic/settings#agreement" className="font-medium underline">sign in Settings</a>). You can save a draft now.</span></p> : null}
+                {!canPost ? <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="size-4 shrink-0" /><span>Finish setup to post: a payment method, the current Clinic Platform Agreement and two phone numbers (<a href="/clinic/settings" className="font-medium underline">Settings</a>). You can save a draft now.</span></p> : null}
                 <div className="flex flex-wrap gap-2">
                   <ActionForm action={draft ? updateDraftAction : createShiftAction} successMessage={false}>
                     {draft ? <input type="hidden" name="shiftId" value={draft.id} /> : null}

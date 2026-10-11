@@ -91,7 +91,8 @@ function digestEmail(kind: Kind, from: DateTime, bookings: Booking[], dailyToo =
     const address = `${loc.addressLine1}${loc.addressLine2 ? `, ${loc.addressLine2}` : ""}, ${loc.city}, ${loc.state} ${loc.zip}`;
     const day = a.startsAt.toLocaleDateString("en-US", { timeZone: tz, weekday: "long", month: "short", day: "numeric" });
     const time = (d: Date) => d.toLocaleTimeString("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" });
-    const contact = [loc.onSiteContactName, loc.phone].filter(Boolean).join(" · ");
+    // Clinic phone numbers are for our team only (core phones.ts): never sent to providers.
+    const contact = loc.onSiteContactName ?? "";
     return {
       title: `${kind === "weekly" ? `${day} · ` : ""}${time(a.startsAt)}–${time(a.endsAt)} · ${loc.clinicOrg.displayName}`,
       lines: [address, ...(contact ? [`On-site contact: ${contact}`] : [])],

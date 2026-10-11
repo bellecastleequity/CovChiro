@@ -90,6 +90,7 @@ export async function createClinic(c: DemoClinic, passwordHash: string, i: numbe
       displayName: c.name,
       billingEmail: user.email,
       phone: `+1407555${String(3000 + i).padStart(4, "0")}`,
+      backupPhone: `+1407556${String(3000 + i).padStart(4, "0")}`,
       status: c.noPayment ? "ONBOARDING" : "ACTIVE",
       hasPaymentMethod: !c.noPayment,
       paymentMethodLabel: c.noPayment ? null : "Visa •••• 4242 (test)",
@@ -307,6 +308,11 @@ export async function keepDemoAgreementsCurrent() {
     where: { OR: [{ agreementVersion: null }, { agreementVersion: { lt: AGREEMENT_VERSION.PROVIDER } }], agreementSignedAt: { not: null }, user: { email: { endsWith: "@sandbox.test" } } },
     data: { agreementVersion: AGREEMENT_VERSION.PROVIDER, agreementSignedAt: now },
   });
+  // Demo clinics keep two phone numbers on file (required to post since Oct 2026).
+  for (const o of await prisma.clinicOrg.findMany({ where: { OR: [{ phone: null }, { backupPhone: null }], members: { some: { user: { email: { endsWith: "@sandbox.test" } } } } }, select: { id: true, phone: true, backupPhone: true } })) {
+    const n = 1000 + (parseInt(o.id.slice(-6), 36) % 9000);
+    await prisma.clinicOrg.update({ where: { id: o.id }, data: { phone: o.phone ?? `+1407557${n}`, backupPhone: o.backupPhone ?? `+1407558${n}` } });
+  }
   // Demo clinics that never submitted the form stay verified (the test site predates verification).
   await prisma.clinicOrg.updateMany({
     where: { verificationStatus: "NOT_STARTED", verifications: { none: {} }, members: { some: { user: { email: { endsWith: "@sandbox.test" } } } } },

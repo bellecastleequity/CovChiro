@@ -24,7 +24,7 @@ export default async function Privacy() {
       h: "What we collect",
       p: [
         [
-          "Account details: name, email, phone number, password (stored only as a secure hash), and the role you sign up as.",
+          "Account details: name, email, phone number (providers keep one on file, clinics two, so our team can reach you about shifts), password (stored only as a secure hash), and the role you sign up as.",
           "Provider profile and credentials: professional details, home base (address, used to work out distance and drive time), licenses, malpractice policy details and documents, NPI, skills, availability, a photo and an optional bio.",
           "Clinic details: clinic and location names and addresses, team members, and the shifts you post.",
           "Bookings and work records: applications, offers, bookings, time-clock punches, visit counts (numbers only), timesheet sign-offs, ratings, private feedback and messages sent through the platform.",
@@ -61,7 +61,7 @@ export default async function Privacy() {
       h: "Who we share it with",
       p: [
         [
-          "Between clinics and providers, as needed for a booking: clinics see a provider's professional profile, verified credentials (never license numbers or home address), ratings and reliability; booked providers see the clinic's address, arrival notes and on-site contact.",
+          "Between clinics and providers, as needed for a booking: clinics see a provider's professional profile, verified credentials (never license numbers or home address), ratings and reliability; booked providers see the clinic's address, arrival notes and on-site contact name. Phone numbers are never shared between them: a provider's number is never shown to a clinic or its staff, and a clinic's numbers are never shown to providers. Only our team uses them.",
           "Service providers who work for us under contract: hosting and database (Namecheap, Neon), payments and tax forms (Stripe), email (SendGrid), texting (Twilio), maps and sign-in (Google), spam protection (Cloudflare), analytics on public pages (Google Analytics), and AI providers (such as OpenAI, Anthropic or Google) for the tasks described above.",
           "When required by law, to protect people's safety, or to enforce our agreements, and to a buyer if the business is sold (under this policy).",
         ],

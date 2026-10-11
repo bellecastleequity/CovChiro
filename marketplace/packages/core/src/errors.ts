@@ -16,6 +16,7 @@ export type ErrorCode =
   | "BELOW_PAY_FLOOR"
   | "CLINIC_NOT_VERIFIED"
   | "OWN_CLINIC"
+  | "PHONE_MISSING"
   | "TOO_FAR"
   | "OVER_TRAVEL_BUDGET"
   | "BLOCKED"

@@ -529,7 +529,10 @@ model ClinicOrg {
   legalName                  String
   displayName                String
   logoUrl                    String?
+  /// Main phone. With backupPhone: two different numbers required to post or pick providers (core phones.ts). Our team only, never shown to providers.
   phone                      String?
+  /// Second phone (owner decision Oct 2026: clinics keep two numbers on file).
+  backupPhone                String?
   billingEmail               String?
   stripeCustomerId           String?      @unique
   hasPaymentMethod           Boolean      @default(false)

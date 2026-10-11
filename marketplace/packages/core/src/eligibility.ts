@@ -56,6 +56,8 @@ export interface ProviderFacts {
   payoutsEnabled: boolean;
   /** Signed the current Provider Agreement (any older version doesn't count). */
   agreementCurrent: boolean;
+  /** A phone number on file (core phones.ts; F15). Absent = not checked. */
+  phoneOnFile?: boolean;
   licenses: LicenseFact[];
   malpractice: MalpracticeFact[];
   skills: ProviderSkillFact[];
@@ -148,7 +150,7 @@ export interface EligibilityOptions {
   now?: Date;
 }
 
-export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14";
+export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15";
 
 export interface EligibilityFailure {
   filter: FilterId;
@@ -306,6 +308,9 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
 
   // F14 — a clinic owner who also takes shifts is never matched to their own clinic's shifts.
   if (shift.clinicOrgId && provider.ownClinicOrgIds?.includes(shift.clinicOrgId)) fail("F14", "OWN_CLINIC", "This is your own clinic's shift");
+
+  // F15 — a phone number on file (owner decision Oct 2026). Booked shifts are untouched: credential-only checks stop above.
+  if (provider.phoneOnFile === false) fail("F15", "PHONE_MISSING", "Add your phone number (Profile) to apply for or accept shifts");
 
   // F9 — blocks, either direction.
   if (pair.blocked) fail("F9", "BLOCKED", "Blocked");

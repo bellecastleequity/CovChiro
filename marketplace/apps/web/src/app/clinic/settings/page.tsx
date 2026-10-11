@@ -1,6 +1,7 @@
 import { textingEnabled } from "@cm/integrations";
 import Link from "next/link";
-import { AGREEMENT_VERSION, latestSignedAgreement, clinicProfile } from "@cm/services";
+import { AGREEMENT_VERSION, latestSignedAgreement, clinicProfile, phones } from "@cm/services";
+import { formatUsPhone, maskPhone, PHONE_PRIVACY_NOTE } from "@cm/core";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
@@ -10,7 +11,7 @@ import { dateLabel } from "@/lib/format";
 import { getSession, requireActor } from "@/lib/session";
 import { AddProviderSideCard } from "@/components/workspace/add-side";
 import { GoogleAccountCard } from "@/components/site/google-account";
-import { agreementAction, clinicPhoneConfirmAction, experienceAction, clinicPhoneStartAction, orgAction, passwordAction } from "../actions";
+import { agreementAction, clinicPhonesAction, clinicPhoneConfirmAction, experienceAction, clinicPhoneStartAction, orgAction, passwordAction } from "../actions";
 
 export const metadata = { title: "Settings" };
 
@@ -22,6 +23,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const signed = org.agreementVersion === AGREEMENT_VERSION.CLINIC && org.agreementSignedAt;
   const signedCopy = await latestSignedAgreement("CLINIC", org.id);
   const texting = textingEnabled();
+  const phonesOk = phones.clinicPhonesOk(org);
   // Owners can add a provider side to this login (picking up shifts at other clinics on their days off).
   const canAddProvider = owner && !(await getSession())?.workspaces.provider;
   return (
@@ -42,10 +44,25 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <ActionForm action={orgAction} className="grid gap-4 sm:grid-cols-2">
               <Field label="Legal business name"><Input name="legalName" defaultValue={org.legalName} required disabled={!owner} /></Field>
               <Field label="Display name"><Input name="displayName" defaultValue={org.displayName} required disabled={!owner} /></Field>
-              <Field label="Phone"><Input name="phone" defaultValue={org.phone ?? ""} disabled={!owner} /></Field>
               <Field label="Billing email"><Input name="billingEmail" type="email" defaultValue={org.billingEmail ?? ""} disabled={!owner} /></Field>
               {owner ? <div className="sm:col-span-2"><SubmitButton>Save</SubmitButton></div> : null}
             </ActionForm>
+          </CardBody>
+        </Card>
+        <Card id="phones">
+          <CardHeader title="Phone numbers" description={`Two different numbers are required before you can post shifts or choose providers. ${PHONE_PRIVACY_NOTE}`} />
+          <CardBody className="space-y-3">
+            {!phonesOk ? <Alert tone="warning" title="Two phone numbers needed">Add both numbers to post shifts and choose providers.</Alert> : null}
+            {owner ? (
+              <ActionForm action={clinicPhonesAction} className="grid gap-4 sm:grid-cols-2">
+                <Field required label={<>Main clinic phone<InfoTip label="About the main phone">The number we call first about your shifts, bookings and billing. {PHONE_PRIVACY_NOTE}</InfoTip></>}><Input name="phone" type="tel" inputMode="tel" autoComplete="tel" defaultValue={formatUsPhone(org.phone)} placeholder="(407) 555-0123" /></Field>
+                <Field required label={<>Second phone<InfoTip label="About the second phone">A different number (an owner&apos;s or manager&apos;s mobile, or another line) so we can still reach you if the first doesn&apos;t answer.</InfoTip></>}><Input name="backupPhone" type="tel" inputMode="tel" defaultValue={formatUsPhone(org.backupPhone)} placeholder="(407) 555-0124" /></Field>
+                <p className="text-xs text-slate-500 sm:col-span-2">While you have shifts posted or booked, you can change a number but not remove it. A new number saves straight away.</p>
+                <div className="sm:col-span-2"><SubmitButton>Save phone numbers</SubmitButton></div>
+              </ActionForm>
+            ) : (
+              <p className="text-sm text-slate-600">{phonesOk ? <>On file: {maskPhone(org.phone)} and {maskPhone(org.backupPhone)}.</> : "Not on file yet."} Only the clinic owner can change these.</p>
+            )}
           </CardBody>
         </Card>
         <Card id="texts">

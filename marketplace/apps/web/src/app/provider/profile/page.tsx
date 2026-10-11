@@ -15,7 +15,7 @@ import { GoogleAccountCard } from "@/components/site/google-account";
 import { AddClinicSideCard } from "@/components/workspace/add-side";
 import { agreementAction, flyInAction, passwordAction, payFloorAction, profileAction, studentModeAction } from "../actions";
 import { breaks, getSettings, payfloors, schools } from "@cm/services";
-import { flyInAirfareCents, flyInNightlyCents, regionName } from "@cm/core";
+import { flyInAirfareCents, flyInNightlyCents, formatUsPhone, PHONE_PRIVACY_NOTE, regionName } from "@cm/core";
 import { money } from "@/lib/format";
 import { PauseCircle, PlayCircle } from "lucide-react";
 import { StudentFields } from "@/components/provider/student-fields";
@@ -65,7 +65,7 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
             <ActionForm action={profileAction} className="grid gap-4 sm:grid-cols-2">
               <Field label={<>Legal name (as on your license)<InfoTip label="About legal name">Must match your license exactly. We verify your license, NPI and malpractice policy against it. Clinics see your display name, not this.</InfoTip></>}><Input name="legalName" defaultValue={p.legalName} required /></Field>
               <Field label="Display name" hint='e.g. "Dr. Jane Rivera"'><Input name="displayName" defaultValue={p.displayName} required /></Field>
-              <Field label={<>Mobile phone<InfoTip label="About your phone">For account and shift alerts from us. It&apos;s never shown to clinics; you and clinics talk through Messages on the site.</InfoTip></>} hint={user.phoneVerifiedAt ? "Verified. Change it on the On Call page." : textingEnabled() ? "Verify it on the On Call page to get text offers." : "Alerts come by email for now."}><Input name="phone" type="tel" defaultValue={user.phone ?? ""} required readOnly={!!user.phoneVerifiedAt} /></Field>
+              <Field required label={<>Mobile phone<InfoTip label="About your phone">Required to apply for or accept shifts. {PHONE_PRIVACY_NOTE} You and clinics talk through Messages on the site. With upcoming shifts you can change your number but not remove it.</InfoTip></>} hint={`${PHONE_PRIVACY_NOTE}${user.phoneVerifiedAt ? " Verified for texts; a new number needs verifying again on the On Call page." : textingEnabled() ? " Verify it on the On Call page to get text offers." : ""}`}><Input name="phone" type="tel" inputMode="tel" autoComplete="tel" defaultValue={formatUsPhone(user.phone)} placeholder="(407) 555-0123" /></Field>
               <Field label="Headline" hint='e.g. "Sports & family chiropractor · 12 years"' className="sm:col-span-2"><Input name="headline" defaultValue={p.headline ?? ""} maxLength={120} /></Field>
               <Field label="LinkedIn profile" hint="linkedin.com/in/your-name"><Input name="linkedinUrl" defaultValue={p.linkedinUrl ?? ""} placeholder="https://www.linkedin.com/in/…" /></Field>
               {p.professions.map((x) => (

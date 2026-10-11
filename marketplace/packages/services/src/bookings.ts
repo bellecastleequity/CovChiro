@@ -1,4 +1,5 @@
 import { DomainError } from "@cm/core";
+import { assertClinicPhones } from "./phones";
 import { prisma } from "@cm/db";
 import { audit, getSettings, requireClinic, requireProvider, type Actor } from "./context";
 import { confirmProvider } from "./confirm";
@@ -158,7 +159,7 @@ export async function confirmAllDays(actor: Actor, groupId: string, providerId: 
 }
 
 export async function confirmForAllDays(actor: Actor, shiftId: string, providerId: string) {
-  requireClinic(actor);
+  await assertClinicPhones(requireClinic(actor));
   const sh = await prisma.shift.findUniqueOrThrow({ where: { id: shiftId } });
   const locked = await lockedGroupId(prisma, shiftId);
   if (locked) {

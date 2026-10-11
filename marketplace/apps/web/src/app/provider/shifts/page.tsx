@@ -10,6 +10,7 @@ import { Empty, PageHeader } from "@/components/ui/misc";
 import { buttonClass } from "@/components/ui/button";
 import { dateLabel, money, timeRange, lunchLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
+import { PhoneBanner } from "@/components/shell/phone-banner";
 import { CanTake } from "../can-take";
 
 export const metadata = { title: "Find shifts" };
@@ -23,6 +24,7 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
   return (
     <>
       <PageHeader title="Find shifts" description={<>Showing shifts you're licensed for — <CanTake canTake={canTake} /></>} />
+      <PhoneBanner actor={actor} />
       <form className="mb-5 flex flex-wrap gap-2">
         <Select name="profession" defaultValue={f.profession ?? ""} className="w-auto">
           <option value="">All my professions</option>

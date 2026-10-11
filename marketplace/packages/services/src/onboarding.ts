@@ -140,7 +140,8 @@ export async function recomputeProviderStatus(providerId: string) {
 export const ProviderProfileInput = z.object({
   legalName: z.string().trim().min(2).max(120),
   displayName: z.string().trim().min(2).max(120),
-  phone: z.string().trim().min(7).max(30),
+  /** Blank = remove (refused while they have live bookings; phones.setProviderPhone). */
+  phone: z.string().trim().max(30).optional().nullable(),
   bio: z.string().trim().max(1500).optional().nullable(),
   homeAddress: z.string().trim().min(5).max(300),
   /** Google place ID from the address autocomplete, when the provider picked a suggestion. */
@@ -180,6 +181,8 @@ export async function setFlyInStates(actor: Actor, states: string[]) {
 export async function updateProviderProfile(actor: Actor, raw: z.input<typeof ProviderProfileInput>) {
   const providerId = requireProvider(actor);
   const input = ProviderProfileInput.parse(raw);
+  // Phone on file first (required to apply/accept, core F15), so a refused change saves nothing. A changed number needs texting verified again.
+  if (input.phone !== undefined) await (await import("./phones")).setProviderPhone(actor, input.phone);
   const current = await prisma.provider.findUniqueOrThrow({ where: { id: providerId } });
   const linkedin = input.linkedinUrl ? normalizeLinkedIn(input.linkedinUrl) : null;
   if (input.linkedinUrl && !linkedin) throw new DomainError("VALIDATION", "Enter your LinkedIn profile URL, like linkedin.com/in/your-name.");
@@ -237,9 +240,6 @@ export async function updateProviderProfile(actor: Actor, raw: z.input<typeof Pr
       prisma.providerProfession.updateMany({ where: { providerId, professionCode }, data: { yearsInPractice: years } }),
     ),
   ]);
-  // Phone changes go through SMS verification (auth.startPhoneVerification).
-  const u = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId! } });
-  if (!u.phone && input.phone) await prisma.user.update({ where: { id: u.id }, data: { phone: input.phone } });
   await recomputeProviderStatus(providerId);
 }
 
@@ -605,7 +605,8 @@ export const OrgInput = z.object({
 
 export async function updateOrg(actor: Actor, raw: z.input<typeof OrgInput>) {
   const orgId = requireClinic(actor, { ownerOnly: true });
-  const input = OrgInput.parse(raw);
+  // Phone numbers have their own rules (phones.setClinicPhones): never changed here.
+  const { phone: _phone, ...input } = OrgInput.parse(raw);
   await prisma.clinicOrg.update({ where: { id: orgId }, data: input });
 }
 

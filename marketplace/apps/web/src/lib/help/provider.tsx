@@ -390,9 +390,27 @@ const A: HelpArticle[] = [
     links: [{ href: "/provider/messages", label: "Open Messages" }],
     body: () => (
       <P>
-        Use Messages for anything about a shift. Phone numbers, emails, social handles and arranging work off the platform are never delivered. Everything you need to arrive (address, contact,
-        front desk phone) is on the booked shift page. Never include patient information.
+        Use Messages for anything about a shift. Phone numbers, emails, social handles and arranging work off the platform are never delivered. Everything you need to arrive (address, on-site contact,
+        arrival notes) is on the booked shift page. Phone numbers are never shared either way: your number is never shown to clinics, and theirs isn&apos;t shown to you. If you&apos;re running late, use Messages or Need help now and our team will reach the clinic. Never include patient information.
       </P>
+    ),
+  },
+  {
+    slug: "phone-number",
+    category: "account",
+    title: "Your phone number",
+    summary: "A phone number on file is required to apply for or accept shifts. Only our team uses it.",
+    keywords: "phone number mobile required apply accept privacy shared clinic",
+    links: [{ href: "/provider/profile", label: "Profile" }],
+    body: () => (
+      <Ul
+        items={[
+          "Keep one phone number on your Profile. Without it you can't apply for, accept or be offered shifts.",
+          "With upcoming shifts you can change your number (the new one saves straight away) but you can't remove it.",
+          "A new number needs verifying again on the On Call page to get text offers.",
+          "Only our team uses your number. It's never shown to clinics or their staff, and clinics' numbers aren't shown to you. Talk with clinics through Messages.",
+        ]}
+      />
     ),
   },
   {

@@ -2,6 +2,7 @@ import { getSettings, latestSignedAgreement, overdue } from "@cm/services";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@cm/db";
+import { formatUsPhone, phonesOnFile } from "@cm/core";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -11,7 +12,7 @@ import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { AccountModeration } from "@/components/admin/account-moderation";
 import { AdminPartnerCard } from "@/components/admin/partner-card";
-import { approveClinicAction, clinicStatusAction, clinicVerificationAdminAction, excludeChargeAction, includeChargeAction, payInFullAction, retryChargeAction } from "../../actions";
+import { adminClinicPhonesAction, approveClinicAction, clinicStatusAction, clinicVerificationAdminAction, excludeChargeAction, includeChargeAction, payInFullAction, retryChargeAction } from "../../actions";
 import { Textarea } from "@/components/ui/form";
 
 export default async function AdminClinic({ params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +28,7 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
     ["Clinic location added", c.locations.some((l) => l.active), false],
     ["Clinic Agreement signed", !!c.agreementSignedAt, false],
     ["Payment method on file", c.hasPaymentMethod, true],
+    ["Two phone numbers on file", phonesOnFile("CLINIC", [c.phone, c.backupPhone]), true],
   ];
   const [due, settings] = await Promise.all([overdue.overdueForClinic(id), getSettings()]);
   const lastVerification = await prisma.clinicVerification.findFirst({ where: { clinicOrgId: id }, orderBy: { submittedAt: "desc" }, select: { id: true, status: true } });
@@ -46,6 +48,17 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
         </div>
         <div className="space-y-6">
           <Card><CardHeader title="Team" /><CardBody className="space-y-1 text-sm">{c.members.map((m) => <div key={m.id}>{m.user.name} · {m.user.email} · {m.role === "CLINIC_OWNER" ? "owner" : "staff"}{m.user.provider ? <> · <Link className="text-brand-700" href={`/admin/providers/${m.user.provider.id}`}>also takes shifts</Link></> : null}</div>)}</CardBody></Card>
+          <Card id="phones">
+            <CardHeader title="Phone numbers" description="Two different numbers are required to post or choose providers. Our team only: never shown to providers." />
+            <CardBody>
+              <ActionForm action={adminClinicPhonesAction} className="space-y-2">
+                <input type="hidden" name="clinicOrgId" value={c.id} />
+                <Input name="phone" type="tel" defaultValue={formatUsPhone(c.phone)} placeholder="Main phone" aria-label="Main phone" />
+                <Input name="backupPhone" type="tel" defaultValue={formatUsPhone(c.backupPhone)} placeholder="Second phone" aria-label="Second phone" />
+                <SubmitButton variant="outline">Save phone numbers</SubmitButton>
+              </ActionForm>
+            </CardBody>
+          </Card>
           <AdminPartnerCard clinicOrgId={c.id} />
           <Card>
             <CardHeader title="Onboarding" description={c.adminApprovedAt ? `Approved by admin ${dateLabel(c.adminApprovedAt)}` : "Approve to skip the remaining setup steps."} />

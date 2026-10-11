@@ -9,6 +9,7 @@ import { DomainError } from "@cm/core";
 import {
   hiring,
   partners,
+  phones,
   standing,
   dispatch,
   bookings,
@@ -334,9 +335,16 @@ export const experienceAction = formAction(async (fd) => {
 
 export const orgAction = formAction(async (fd) => {
   const { actor } = await me();
-  await updateOrg(actor, { legalName: str(fd, "legalName"), displayName: str(fd, "displayName"), phone: optStr(fd, "phone"), billingEmail: optStr(fd, "billingEmail") });
+  await updateOrg(actor, { legalName: str(fd, "legalName"), displayName: str(fd, "displayName"), billingEmail: optStr(fd, "billingEmail") });
   revalidatePath("/clinic", "layout");
   return "Saved.";
+});
+
+export const clinicPhonesAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await phones.setClinicPhones(actor, optStr(fd, "phone"), optStr(fd, "backupPhone"));
+  revalidatePath("/clinic", "layout");
+  return "Phone numbers saved. Only our team uses them.";
 });
 
 export const paymentSetupAction = formAction(async () => {

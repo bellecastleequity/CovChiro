@@ -6,6 +6,9 @@ import { AGREEMENT_VERSION, type Actor } from "@cm/services";
 /** Test data builders. Every provider/clinic is unique per call. */
 
 export const uid = () => randomBytes(5).toString("hex");
+let phoneSeq = 0;
+/** A distinct valid U.S. number per call (phones are required to post and to apply/accept). */
+export const testPhone = () => `+1407${String(2000000 + (process.pid % 1000) * 7000 + phoneSeq++ % 7000).padStart(7, "0")}`;
 const FAR = new Date("2031-01-01T00:00:00Z");
 
 /** A weekday at 9:00–17:00 Eastern, `days` from now (always a Wednesday so no weekend premium). */
@@ -20,6 +23,8 @@ export function futureWeekday(days: number, startHourUtc = 13, hours = 8) {
 }
 
 export interface ProviderOpts {
+  /** Phone on file (default: a test number; null = none). */
+  phone?: string | null;
   licenses?: { professionCode: string; state: string; status?: LicenseStatus; expiresAt?: Date }[];
   malpractice?: { covered: string[]; status?: LicenseStatus; expiresAt?: Date; perOccurrenceCents?: number; aggregateCents?: number }[] | null;
   professions?: { code: string; status?: "ONBOARDING" | "ACTIVE" | "PAUSED" }[];
@@ -36,7 +41,7 @@ export async function makeProvider(o: ProviderOpts = {}) {
   const home = o.home ?? { lat: 28.55, lng: -81.36, state: "FL" };
   const licenses = o.licenses ?? [{ professionCode: "DC", state: "FL" }];
   const profs = o.professions ?? [...new Set(licenses.map((l) => l.professionCode))].map((code) => ({ code, status: "ACTIVE" as const }));
-  const user = await prisma.user.create({ data: { email: `p-${id}@test.dev`, name: `Provider ${id}`, role: "PROVIDER", emailVerifiedAt: new Date() } });
+  const user = await prisma.user.create({ data: { email: `p-${id}@test.dev`, name: `Provider ${id}`, role: "PROVIDER", emailVerifiedAt: new Date(), phone: o.phone === undefined ? testPhone() : o.phone } });
   const p = await prisma.provider.create({
     data: {
       userId: user.id,
@@ -87,6 +92,8 @@ export async function makeProvider(o: ProviderOpts = {}) {
 }
 
 export interface ClinicOpts {
+  /** Main + second phone (default: two test numbers). */
+  phones?: [string | null, string | null];
   state?: "FL" | "GA" | "AL";
   zip?: string;
   lat?: number;
@@ -117,6 +124,8 @@ export async function makeClinic(o: ClinicOpts = {}) {
       legalName: `Clinic ${id} LLC`,
       displayName: `Clinic ${id}`,
       billingEmail: user.email,
+      phone: o.phones === undefined ? testPhone() : o.phones[0],
+      backupPhone: o.phones === undefined ? testPhone() : o.phones[1],
       status: "ACTIVE",
       hasPaymentMethod: true,
       stripeCustomerId: `cus_test_${id}`,

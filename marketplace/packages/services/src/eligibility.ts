@@ -1,5 +1,6 @@
 import { agreementCurrent } from "./agreements";
 import {
+  phonesOnFile,
   clinicCleared,
   DomainError,
   evaluateEligibility,
@@ -160,7 +161,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
       openDates: true,
       payFloors: true,
       // Clinics this login owns (clinic owner who also takes shifts): never their own shifts (F14).
-      user: { select: { clinicMembers: { select: { clinicOrgId: true } } } },
+      user: { select: { phone: true, clinicMembers: { select: { clinicOrgId: true } } } },
       assignments: {
         where: { status: { in: ["CONFIRMED", "IN_PROGRESS"] }, ...(excludeShiftId ? { shiftId: { not: excludeShiftId } } : {}) },
         select: { shiftId: true, startsAt: true, endsAt: true, bufferMinutes: true },
@@ -182,6 +183,7 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
         professions: p.professions.map((x) => ({ professionCode: x.professionCode, status: x.status, yearsInPractice: x.yearsInPractice })),
         payoutsEnabled: p.stripePayoutsEnabled,
         agreementCurrent: agreementCurrent("PROVIDER", p.agreementSignedAt, p.agreementVersion),
+        phoneOnFile: phonesOnFile("PROVIDER", [p.user.phone]),
         licenses: p.licenses.map((l) => ({ professionCode: l.professionCode, state: l.state, status: l.status, expiresAt: l.expiresAt })),
         malpractice: p.malpractice.map((m) => ({
           status: m.status,

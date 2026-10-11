@@ -6,6 +6,7 @@ import { DomainError } from "@cm/core";
 import { redirect } from "next/navigation";
 import {
   accounts,
+  phones,
   schools,
   hiring,
   addAdjustment, admin, adminAssign, dispatch, emergency, adminCharge, cancelAssignment, cancelPayout, cancelShiftByClinic, inviteProviders, issuePayment, leads, promo, resolveDispute,
@@ -129,6 +130,13 @@ export const approveProviderAction = formAction(async (fd) => {
   rv("/admin");
   return r;
 });
+export const adminClinicPhonesAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await phones.setClinicPhones(actor, optStr(fd, "phone"), optStr(fd, "backupPhone"), { clinicOrgId: str(fd, "clinicOrgId") });
+  rv(`/admin/clinics/${str(fd, "clinicOrgId")}`);
+  return "Phone numbers saved.";
+});
+
 export const approveClinicAction = formAction(async (fd) => {
   const { actor } = await me();
   const r = await admin.approveClinic(actor, str(fd, "clinicOrgId"));

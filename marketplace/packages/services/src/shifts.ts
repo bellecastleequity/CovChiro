@@ -27,6 +27,7 @@ import {
 } from "@cm/core";
 import { isInvariantViolation, prisma, Prisma } from "@cm/db";
 import { agreementAccepted } from "./agreements";
+import { assertClinicPhones } from "./phones";
 import { audit, clock, getSettings, lockShift, SYSTEM, requireAdmin, requireClinic, requireProvider, tx, type Actor, type Db } from "./context";
 import { confirmInTx, confirmProvider } from "./confirm";
 import { Effects } from "./effects";
@@ -289,6 +290,7 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
       throw new DomainError("FORBIDDEN", "Please sign the current Clinic Platform Agreement in Settings before posting shifts.");
     }
     if (opts.post) await assertNoOpenChargeback(orgId);
+    if (opts.post) await assertClinicPhones(orgId, db);
     const { supervisionRequired, loc } = await validateShiftInput(db, orgId, input, opts.post);
     if (input.clinicRate && !opts.post) throw new DomainError("VALIDATION", "A clinic-set rate is applied when you post. Post the shift now, or switch back to the market price to save a draft.");
     const q = await quoteShift(db, { ...input, promoCode: input.clinicRate ? null : input.promoCode?.trim() || (await autoCredit(db, orgId)) });
@@ -396,6 +398,7 @@ export async function postShift(actor: Actor, shiftId: string, opts: { skipSuppl
       throw new DomainError("FORBIDDEN", "Please sign the current Clinic Platform Agreement in Settings before posting shifts.");
     }
     await assertNoOpenChargeback(orgId);
+    await assertClinicPhones(orgId, db);
     await validateShiftInput(
       db,
       orgId,
@@ -809,7 +812,8 @@ export async function shiftCandidates(actor: Actor, shiftId: string) {
 }
 
 export async function selectApplicant(actor: Actor, shiftId: string, providerId: string) {
-  await clinicShift(actor, shiftId);
+  const own = await clinicShift(actor, shiftId);
+  if (actor.role !== "PLATFORM_ADMIN") await assertClinicPhones(own.location.clinicOrgId);
   const { lockedGroupId } = await import("./sameProvider");
   if (await lockedGroupId(prisma, shiftId)) return (await import("./bookings")).confirmForAllDays(actor, shiftId, providerId).then(() => ({ assignmentId: "" }));
   const app = await prisma.application.findUnique({ where: { shiftId_providerId: { shiftId, providerId } } });
@@ -823,6 +827,7 @@ export async function selectApplicant(actor: Actor, shiftId: string, providerId:
 
 export async function inviteProviders(actor: Actor, shiftId: string, providerIds: string[]) {
   const shift = await clinicShift(actor, shiftId);
+  if (actor.role !== "PLATFORM_ADMIN") await assertClinicPhones(shift.location.clinicOrgId);
   const { lockedGroupId, groupCoverage } = await import("./sameProvider");
   const lockedGroup = await lockedGroupId(prisma, shiftId);
   if (lockedGroup) {
