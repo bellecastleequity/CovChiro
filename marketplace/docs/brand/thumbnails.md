@@ -2,8 +2,14 @@
 
 Owner's rules (Oct 2026). Follow them for every new thumbnail, reel cover and social graphic.
 
+## Where to make them (owner decision, Oct 2026)
+- Default: build them here in code (HTML/SVG rendered to PNG). That keeps the real logo, fonts, colors and app screens exact, has no credit limits, and a series comes from one template.
+- Use Canva only when a design needs something we can't make here, mainly realistic photos of people. Even then, put in the real logo and app screens and check every AI-made detail (logos, prices, names, placeholders) before saving.
+- Later: once we have a library of licensed people photos stored in the project, photo-based designs move here too.
+
 ## People
 - Show the range of people in America: a mix of ethnicities, ages and genders across a set of thumbnails. Don't repeat the same look from one design to the next.
+- The owner approved the casting in the "Shake Up The Industry" ad set (Oct 2026, Canva designs DAHXtqvDvAo feed / DAHXtj4GIh0 story) as the benchmark: several ethnicities, ages and genders, and a mix of specialties in each group shot.
 - Never use a real person's likeness without a signed release.
 
 ## Specialties
