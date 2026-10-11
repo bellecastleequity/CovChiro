@@ -176,9 +176,9 @@ export const importProspectsAction = formAction(async (fd) => {
   return `Imported: ${r.inserted} new, ${r.updated} updated, ${r.skipped} skipped.${apolloNote(r.apollo)}`;
 });
 
-function apolloNote(a: { notUs: number; unverifiedEmails: number; merged: number } | null) {
+function apolloNote(a: { notUs: number; unverifiedEmails: number; merged: number; misplaced: number } | null) {
   if (!a) return "";
-  const bits = [a.notUs && `${a.notUs} outside the U.S. left out`, a.unverifiedEmails && `${a.unverifiedEmails} unverified emails not used`, a.merged && `${a.merged} extra contacts at the same clinic merged`].filter(Boolean);
+  const bits = [a.notUs && `${a.notUs} outside the U.S. left out`, a.unverifiedEmails && `${a.unverifiedEmails} unverified emails not used`, a.merged && `${a.merged} extra contacts at the same clinic merged`, a.misplaced && `${a.misplaced} placed by the contact's location because Apollo's company address was elsewhere (see each clinic's notes)`].filter(Boolean);
   return ` Read as an Apollo export${bits.length ? `: ${bits.join("; ")}` : ""}.`;
 }
 

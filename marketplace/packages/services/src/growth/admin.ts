@@ -446,7 +446,7 @@ const HEADER_ALIASES: Record<string, string> = {
 async function apolloAware(rows: string[][], side: "clinic" | "provider") {
   if (!rows.length || !isApolloExport(rows[0])) return { rows, apollo: null };
   const r = fromApolloExport(rows, side, (await getSettings())["growth.apollo.allowLikelyEmails"]);
-  return { rows: r.rows, apollo: { notUs: r.notUs, unverifiedEmails: r.unverifiedEmails, merged: r.merged } };
+  return { rows: r.rows, apollo: { notUs: r.notUs, unverifiedEmails: r.unverifiedEmails, merged: r.merged, misplaced: r.misplaced } };
 }
 
 /** CSV of public business information. Same email (or same name + ZIP) updates instead of duplicating. */

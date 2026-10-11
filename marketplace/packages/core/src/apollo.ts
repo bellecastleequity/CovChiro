@@ -186,7 +186,7 @@ export function apolloTitleRole(title: string | null | undefined): "owner" | "as
   return OWNER_TITLE.test(title) ? "owner" : "";
 }
 
-export interface ApolloExportResult { rows: string[][]; notUs: number; unverifiedEmails: number; merged: number }
+export interface ApolloExportResult { rows: string[][]; notUs: number; unverifiedEmails: number; merged: number; misplaced: number }
 
 /**
  * An Apollo export → rows in our own import format (header row first). side "clinic" gives
@@ -199,21 +199,25 @@ export function fromApolloExport(rows: string[][], side: "clinic" | "provider", 
     for (const n of names) { const i = keys.indexOf(n); const v = i >= 0 ? r[i]?.trim() : ""; if (v) return v; }
     return "";
   };
-  const out: ApolloExportResult = { rows: [], notUs: 0, unverifiedEmails: 0, merged: 0 };
+  const out: ApolloExportResult = { rows: [], notUs: 0, unverifiedEmails: 0, merged: 0, misplaced: 0 };
   const byCompany = new Map<string, number>();
   out.rows.push(side === "clinic"
     ? ["clinic_name", "owner_name", "email", "phone", "website", "address", "city", "state", "zip", "notes"]
     : ["first_name", "last_name", "email", "website", "city", "state", "zip", "practice_role"]);
   for (const r of rows.slice(1)) {
-    const country = side === "clinic" ? col(r, "company_country", "country") : col(r, "country", "company_country");
-    const stateRaw = side === "clinic" ? col(r, "company_state", "state") : col(r, "state", "company_state");
-    const region = apolloRegion(stateRaw, country || "United States");
+    const personRegion = col(r, "state") ? apolloRegion(col(r, "state"), col(r, "country") || "United States") : null;
+    const companyRegion = col(r, "company_state") ? apolloRegion(col(r, "company_state"), col(r, "company_country") || "United States") : null;
+    // Apollo sometimes attaches a same-named company elsewhere (another state, another country). For a
+    // clinic, where our contact works wins: the company's street/ZIP are then dropped.
+    const misplaced = side === "clinic" && !!personRegion && !!col(r, "company_state", "company_country") && companyRegion !== personRegion;
+    if (misplaced) out.misplaced++;
+    const region = side === "clinic" ? (misplaced ? personRegion : companyRegion ?? personRegion) : personRegion ?? companyRegion;
     if (!region || CA_PROVINCES[region]) { out.notUs++; continue; }
     const rawEmail = col(r, "email");
     const email = usableApolloEmail({ email: rawEmail || null, emailStatus: col(r, "email_status") || null }, allowLikely) ?? "";
     if (rawEmail && !email) out.unverifiedEmails++;
-    const fullAddress = col(r, "company_address");
-    const zip = col(r, "company_postal_code", "company_zip", "postal_code", "zip") || (fullAddress.match(/\b(\d{5})(?:-\d{4})?\b(?!.*\b\d{5}\b)/)?.[1] ?? "");
+    const fullAddress = misplaced ? "" : col(r, "company_address");
+    const zip = (misplaced ? "" : col(r, "company_postal_code", "company_zip")) || col(r, "postal_code", "zip") || (fullAddress.match(/\b(\d{5})(?:-\d{4})?\b(?!.*\b\d{5}\b)/)?.[1] ?? "");
     const first = col(r, "first_name"), last = col(r, "last_name"), title = col(r, "title");
     if (side === "provider") {
       out.rows.push([first, last, email, col(r, "website"), col(r, "city", "company_city"), region, zip, apolloTitleRole(title)]);
@@ -222,10 +226,16 @@ export function fromApolloExport(rows: string[][], side: "clinic" | "provider", 
     const name = col(r, "company_name", "company");
     if (!name) continue;
     const owner = [first, last].filter(Boolean).join(" ");
+    // A misplaced company's website and phone are usually the other business's: kept only when the
+    // contact's verified email is on that website's domain.
+    const site = col(r, "website");
+    const siteDomain = site.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#]/)[0];
+    const trusted = !misplaced || (!!email && !!siteDomain && email.toLowerCase().endsWith(`@${siteDomain}`));
     const row = [
-      name, owner, email, col(r, "company_phone", "corporate_phone", "phone"), col(r, "website"),
-      col(r, "company_street", "company_address_1") || (fullAddress ? fullAddress.split(",")[0].trim() : ""),
-      col(r, "company_city", "city"), region, zip, owner && title ? `Apollo contact: ${owner}, ${title}` : "",
+      name, owner, email, trusted ? col(r, "company_phone", "corporate_phone", "phone") : "", trusted ? site : "",
+      misplaced ? "" : col(r, "company_street", "company_address_1") || (fullAddress ? fullAddress.split(",")[0].trim() : ""),
+      misplaced ? col(r, "city") : col(r, "company_city", "city"), region, zip,
+      [owner && title ? `Apollo contact: ${owner}, ${title}` : "", misplaced ? `Apollo listed the company in ${[col(r, "company_city"), col(r, "company_state"), col(r, "company_country")].filter(Boolean).join(", ")}; location taken from the contact (check the website and phone).` : ""].filter(Boolean).join(" "),
     ];
     const key = `${name.toLowerCase()}|${zip}`;
     const seen = byCompany.get(key);

@@ -93,7 +93,17 @@ describe("Apollo CSV exports", () => {
       ["clinic_name", "owner_name", "email", "phone", "website", "address", "city", "state", "zip", "notes"],
       ["Bayside Chiropractic", "Ana Rivera", "ana@baysidechiro.com", "+1 813-555-0100", "http://baysidechiro.com", "100 Bay St", "Tampa", "FL", "33602", "Apollo contact: Ana Rivera, Owner"],
     ]);
-    expect(r).toMatchObject({ notUs: 1, unverifiedEmails: 1, merged: 1 });
+    expect(r).toMatchObject({ notUs: 1, unverifiedEmails: 1, merged: 1, misplaced: 0 });
+  });
+  it("keeps a clinic where the contact works when Apollo attached a company in another state or country", () => {
+    const r = fromApolloExport([
+      header,
+      ["Sam", "Cole", "Office Manager", "Mayer Chiropractic Clinic", "sam@mayerchiro.com", "Verified", "", "https://mayerchiro.com", "", "Florida", "United States", "Vancouver, Washington, United States, 98661", "Vancouver", "Washington", "United States", "+1 727-555-0100"],
+      ["Ann", "Burr", "Office Manager", "Coastal Chiropractic", "ann@ccspine.com", "Verified", "", "", "Palm Bay", "Florida", "United States", "1 Christchurch Road, Bournemouth, England, United Kingdom, BH1 3JP", "Bournemouth", "England", "United Kingdom", ""],
+    ], "clinic", false);
+    expect(r.rows.slice(1).map((x) => x.slice(3, 9))).toEqual([["+1 727-555-0100", "https://mayerchiro.com", "", "", "FL", ""], ["", "", "", "Palm Bay", "FL", ""]]);
+    expect(r.rows[1][9]).toMatch(/Vancouver, Washington, United States; location taken from the contact/);
+    expect(r).toMatchObject({ misplaced: 2, notUs: 0 });
   });
   it("maps providers with a practice role from the title", () => {
     const r = fromApolloExport(rows, "provider", false);
