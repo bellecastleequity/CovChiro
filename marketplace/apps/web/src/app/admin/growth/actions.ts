@@ -164,7 +164,7 @@ export const importProviderProspectsAction = formAction(async (fd) => {
   const r = await growth.importProviderProspects(actor, csv, str(fd, "source") || `CSV import ${new Date().toISOString().slice(0, 10)}`, str(fd, "professionCode") || "DC");
   rv();
   const why = Object.entries(r.reasons).map(([k, n]) => `${n} × ${growth.PROVIDER_IMPORT_REASONS[k] ?? k}`).join("; ");
-  return `Imported: ${r.inserted} new, ${r.updated} updated, ${r.withEmail} with a usable email, ${r.skipped} skipped.${why ? ` Details: ${why}.` : ""}`;
+  return `Imported: ${r.inserted} new, ${r.updated} updated, ${r.withEmail} with a usable email, ${r.skipped} skipped.${why ? ` Details: ${why}.` : ""}${apolloNote(r.apollo)}`;
 });
 
 export const importProspectsAction = formAction(async (fd) => {
@@ -173,8 +173,14 @@ export const importProspectsAction = formAction(async (fd) => {
   const csv = file instanceof File && file.size ? await file.text() : str(fd, "csv");
   const r = await growth.importProspects(actor, csv, str(fd, "source") || `CSV import ${new Date().toISOString().slice(0, 10)}`);
   rv();
-  return `Imported: ${r.inserted} new, ${r.updated} updated, ${r.skipped} skipped.`;
+  return `Imported: ${r.inserted} new, ${r.updated} updated, ${r.skipped} skipped.${apolloNote(r.apollo)}`;
 });
+
+function apolloNote(a: { notUs: number; unverifiedEmails: number; merged: number } | null) {
+  if (!a) return "";
+  const bits = [a.notUs && `${a.notUs} outside the U.S. left out`, a.unverifiedEmails && `${a.unverifiedEmails} unverified emails not used`, a.merged && `${a.merged} extra contacts at the same clinic merged`].filter(Boolean);
+  return ` Read as an Apollo export${bits.length ? `: ${bits.join("; ")}` : ""}.`;
+}
 
 export const runProspectingAction = formAction(async (fd) => {
   const { actor } = await me();

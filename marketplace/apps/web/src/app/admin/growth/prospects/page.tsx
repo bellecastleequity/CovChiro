@@ -100,7 +100,7 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Import clinics (CSV, optional)" description="Automatic discovery is the main source; use this for lists you already have. Header row required. Recognised: clinic_name (or name), owner_name, email, phone, website, address, city, county, state, zip, lat, lng, locations, doctors, practice_type, ownership, multidisciplinary, notes. Same email, or same name + ZIP, updates the existing row." />
+          <CardHeader title="Import clinics (CSV, optional)" description="Automatic discovery is the main source; use this for lists you already have. Header row required. Recognised: clinic_name (or name), owner_name, email, phone, website, address, city, county, state, zip, lat, lng, locations, doctors, practice_type, ownership, multidisciplinary, notes. Same email, or same name + ZIP, updates the existing row. An Apollo.io people or company export (CSV) can be uploaded as it is: only verified emails and U.S. rows are used, one contact per clinic." />
           <CardBody>
             <ActionForm action={importProspectsAction} className="space-y-3" resetOnSuccess>
               <Field label="Source label" hint="Where this list came from, e.g. 'FL Board public directory, Sept 2026'."><Input name="source" /></Field>

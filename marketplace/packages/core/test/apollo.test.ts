@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apolloBudget, apolloLocation, apolloRegion, apolloSearchBody, estimateApolloCredits, isDecisionMakerTitle, mapApolloOrganization, mapApolloPerson, usableApolloEmail } from "../src";
+import { apolloBudget, apolloTitleRole, fromApolloExport, isApolloExport, apolloLocation, apolloRegion, apolloSearchBody, estimateApolloCredits, isDecisionMakerTitle, mapApolloOrganization, mapApolloPerson, usableApolloEmail } from "../src";
 
 describe("Apollo regions", () => {
   it("maps Apollo's state / country names to our region codes", () => {
@@ -72,5 +72,36 @@ describe("Apollo credit budget", () => {
     expect(apolloBudget({ ...b, paused: true, estimate: 0, approved: true })).toEqual({ ok: false, reason: "paused" });
     // Free calls (people search) still respect a pause but not the credit caps.
     expect(apolloBudget({ ...b, usedToday: 50, estimate: 0, approved: false })).toEqual({ ok: true, reason: null });
+  });
+});
+
+describe("Apollo CSV exports", () => {
+  const header = ["First Name", "Last Name", "Title", "Company Name", "Email", "Email Status", "Corporate Phone", "Website", "City", "State", "Country", "Company Address", "Company City", "Company State", "Company Country", "Company Phone"];
+  const rows = [
+    header,
+    ["Ana", "Rivera", "Owner", "Bayside Chiropractic", "ana@baysidechiro.com", "Verified", "", "http://baysidechiro.com", "Tampa", "Florida", "United States", "100 Bay St, Tampa, Florida 33602, United States", "Tampa", "Florida", "United States", "+1 813-555-0100"],
+    ["Ben", "Lee", "Office Manager", "Bayside Chiropractic", "ben@baysidechiro.com", "Unavailable", "", "http://baysidechiro.com", "Tampa", "Florida", "United States", "100 Bay St, Tampa, Florida 33602, United States", "Tampa", "Florida", "United States", "+1 813-555-0100"],
+    ["Cara", "Diaz", "Associate Chiropractor", "North Spine", "cara@northspine.com", "Extrapolated", "", "", "Toronto", "Ontario", "Canada", "", "Toronto", "Ontario", "Canada", ""],
+  ];
+  it("recognises an export", () => {
+    expect(isApolloExport(header)).toBe(true);
+    expect(isApolloExport(["clinic_name", "email"])).toBe(false);
+  });
+  it("maps clinics: U.S. only, one row per company, verified emails only", () => {
+    const r = fromApolloExport(rows, "clinic", false);
+    expect(r.rows).toEqual([
+      ["clinic_name", "owner_name", "email", "phone", "website", "address", "city", "state", "zip", "notes"],
+      ["Bayside Chiropractic", "Ana Rivera", "ana@baysidechiro.com", "+1 813-555-0100", "http://baysidechiro.com", "100 Bay St", "Tampa", "FL", "33602", "Apollo contact: Ana Rivera, Owner"],
+    ]);
+    expect(r).toMatchObject({ notUs: 1, unverifiedEmails: 1, merged: 1 });
+  });
+  it("maps providers with a practice role from the title", () => {
+    const r = fromApolloExport(rows, "provider", false);
+    expect(r.rows.slice(1)).toEqual([
+      ["Ana", "Rivera", "ana@baysidechiro.com", "http://baysidechiro.com", "Tampa", "FL", "33602", "owner"],
+      ["Ben", "Lee", "", "http://baysidechiro.com", "Tampa", "FL", "33602", ""],
+    ]);
+    expect(apolloTitleRole("Associate Chiropractor")).toBe("associate");
+    expect(apolloTitleRole("Chiropractor")).toBe("");
   });
 });

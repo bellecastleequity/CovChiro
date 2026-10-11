@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { acceptProviderEmail, addressKey, DomainError, matchesProfile, PI_PRACTICE_PHRASES, providerImportHeader, providerImportRow, renderTemplate, titleCase, validateAiCopy, type ProviderCandidate } from "@cm/core";
+import { acceptProviderEmail, addressKey, DomainError, fromApolloExport, isApolloExport, matchesProfile, PI_PRACTICE_PHRASES, providerImportHeader, providerImportRow, renderTemplate, titleCase, validateAiCopy, type ProviderCandidate } from "@cm/core";
 import { nppesProvider, type NppesRecord } from "@cm/integrations";
 import { prisma, type Prisma, type ProspectStage } from "@cm/db";
 import { brand } from "@cm/config";
@@ -442,12 +442,19 @@ const HEADER_ALIASES: Record<string, string> = {
   practice_type: "practiceType", type: "practiceType", ownership: "ownership", multidisciplinary: "multidisciplinary", notes: "notes", lat: "lat", lng: "lng", latitude: "lat", longitude: "lng",
 };
 
+/** An Apollo export is converted to our own import columns first (its trial plan has no API). */
+async function apolloAware(rows: string[][], side: "clinic" | "provider") {
+  if (!rows.length || !isApolloExport(rows[0])) return { rows, apollo: null };
+  const r = fromApolloExport(rows, side, (await getSettings())["growth.apollo.allowLikelyEmails"]);
+  return { rows: r.rows, apollo: { notUs: r.notUs, unverifiedEmails: r.unverifiedEmails, merged: r.merged } };
+}
+
 /** CSV of public business information. Same email (or same name + ZIP) updates instead of duplicating. */
 export async function importProspects(actor: Actor, csv: string, source: string) {
   requireAdmin(actor);
   if (csv.length > 5_000_000) throw new DomainError("VALIDATION", "CSV too large (5 MB max).");
-  const rows = parseCsv(csv);
-  if (rows.length < 2) throw new DomainError("VALIDATION", "Paste a CSV with a header row and at least one clinic.");
+  const { rows, apollo } = await apolloAware(parseCsv(csv), "clinic");
+  if (rows.length < 2) throw new DomainError("VALIDATION", apollo ? "No U.S. clinics in this Apollo export." : "Paste a CSV with a header row and at least one clinic.");
   const headers = rows[0].map((h) => HEADER_ALIASES[h.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")] ?? null);
   if (!headers.includes("clinicName")) throw new DomainError("VALIDATION", 'The header row needs a clinic name column (e.g. "clinic_name" or "name").');
   let inserted = 0, updated = 0, skipped = 0;
@@ -471,8 +478,8 @@ export async function importProspects(actor: Actor, csv: string, source: string)
       inserted++;
     }
   }
-  await logAgent("clinicProspecting", "csv_import", { humanOverrideBy: actor.userId, contextRef: source, output: `inserted ${inserted}, updated ${updated}, skipped ${skipped}` });
-  return { inserted, updated, skipped };
+  await logAgent("clinicProspecting", "csv_import", { humanOverrideBy: actor.userId, contextRef: source, output: `inserted ${inserted}, updated ${updated}, skipped ${skipped}${apollo ? " (Apollo export)" : ""}` });
+  return { inserted, updated, skipped, apollo };
 }
 
 /** Why a provider CSV row was skipped or its email not used (shown after an import). */
@@ -502,14 +509,14 @@ export const PROVIDER_IMPORT_REASONS: Record<string, string> = {
 export async function importProviderProspects(actor: Actor, csv: string, source: string, professionCode = "DC") {
   requireAdmin(actor);
   if (csv.length > 5_000_000) throw new DomainError("VALIDATION", "CSV too large (5 MB max).");
-  const rows = parseCsv(csv);
-  if (rows.length < 2) throw new DomainError("VALIDATION", "Paste a CSV with a header row and at least one provider.");
+  const { rows, apollo } = await apolloAware(parseCsv(csv), "provider");
+  if (rows.length < 2) throw new DomainError("VALIDATION", apollo ? "No U.S. providers in this Apollo export." : "Paste a CSV with a header row and at least one provider.");
   if (rows.length > 2001) throw new DomainError("VALIDATION", "Up to 2,000 providers per import. Split the file.");
   const headers = rows[0].map(providerImportHeader);
   if (!headers.includes("npi") && !(headers.includes("firstName") && headers.includes("lastName"))) throw new DomainError("VALIDATION", 'The header row needs an "npi" column, or "first_name" and "last_name" (plus "state").');
   const profile = await registryProfile(professionCode);
   const reg = nppesProvider();
-  const out = { inserted: 0, updated: 0, withEmail: 0, emailRejected: 0, skipped: 0, reasons: {} as Record<string, number> };
+  const out = { inserted: 0, updated: 0, withEmail: 0, emailRejected: 0, skipped: 0, reasons: {} as Record<string, number>, apollo };
   const note = (reason: string) => { out.reasons[reason] = (out.reasons[reason] ?? 0) + 1; };
   const skip = (reason: string) => { out.skipped++; note(reason); };
   for (const cells of rows.slice(1)) {

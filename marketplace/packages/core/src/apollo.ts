@@ -162,3 +162,76 @@ export function apolloBudget(p: { estimate: number; usedToday: number; usedMonth
   if (p.estimate > p.largeJob && !p.approved) return { ok: false, reason: "needs_approval" };
   return { ok: true, reason: null };
 }
+
+// ---------------- Apollo CSV exports (owner request Oct 2026) ----------------
+// Apollo's trial plan has no API access, so its exports (Search → select → Export → CSV) are read by the
+// ordinary clinic and provider CSV imports. Same rules as the API path: only "verified" emails (or
+// "likely" when allowed), U.S. rows only (Canada needs a CASL basis recorded per prospect).
+
+const exportKey = (h: string) => h.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+
+/** True when a CSV header row looks like an Apollo people or company export. */
+export function isApolloExport(header: string[]): boolean {
+  const k = new Set(header.map(exportKey));
+  return (k.has("company") || k.has("company_name")) && (k.has("email_status") || k.has("apollo_contact_id") || k.has("apollo_account_id") || k.has("company_linkedin_url"));
+}
+
+const OWNER_TITLE = /\b(owner|founder|co-?founder|president|ceo|chief executive|proprietor|principal|clinic director|practice director)\b/i;
+const ASSOCIATE_TITLE = /\bassociate\b/i;
+
+/** "Owner" / "Associate Chiropractor" → the import's practice_role, else "". */
+export function apolloTitleRole(title: string | null | undefined): "owner" | "associate" | "" {
+  if (!title) return "";
+  if (ASSOCIATE_TITLE.test(title)) return "associate";
+  return OWNER_TITLE.test(title) ? "owner" : "";
+}
+
+export interface ApolloExportResult { rows: string[][]; notUs: number; unverifiedEmails: number; merged: number }
+
+/**
+ * An Apollo export → rows in our own import format (header row first). side "clinic" gives
+ * clinic_name/owner_name/…/notes and keeps one row per company (the first with a usable email);
+ * side "provider" gives first_name/last_name/…/practice_role. Rows outside the U.S. are dropped.
+ */
+export function fromApolloExport(rows: string[][], side: "clinic" | "provider", allowLikely: boolean): ApolloExportResult {
+  const keys = rows[0].map(exportKey);
+  const col = (r: string[], ...names: string[]) => {
+    for (const n of names) { const i = keys.indexOf(n); const v = i >= 0 ? r[i]?.trim() : ""; if (v) return v; }
+    return "";
+  };
+  const out: ApolloExportResult = { rows: [], notUs: 0, unverifiedEmails: 0, merged: 0 };
+  const byCompany = new Map<string, number>();
+  out.rows.push(side === "clinic"
+    ? ["clinic_name", "owner_name", "email", "phone", "website", "address", "city", "state", "zip", "notes"]
+    : ["first_name", "last_name", "email", "website", "city", "state", "zip", "practice_role"]);
+  for (const r of rows.slice(1)) {
+    const country = side === "clinic" ? col(r, "company_country", "country") : col(r, "country", "company_country");
+    const stateRaw = side === "clinic" ? col(r, "company_state", "state") : col(r, "state", "company_state");
+    const region = apolloRegion(stateRaw, country || "United States");
+    if (!region || CA_PROVINCES[region]) { out.notUs++; continue; }
+    const rawEmail = col(r, "email");
+    const email = usableApolloEmail({ email: rawEmail || null, emailStatus: col(r, "email_status") || null }, allowLikely) ?? "";
+    if (rawEmail && !email) out.unverifiedEmails++;
+    const fullAddress = col(r, "company_address");
+    const zip = col(r, "company_postal_code", "company_zip", "postal_code", "zip") || (fullAddress.match(/\b(\d{5})(?:-\d{4})?\b(?!.*\b\d{5}\b)/)?.[1] ?? "");
+    const first = col(r, "first_name"), last = col(r, "last_name"), title = col(r, "title");
+    if (side === "provider") {
+      out.rows.push([first, last, email, col(r, "website"), col(r, "city", "company_city"), region, zip, apolloTitleRole(title)]);
+      continue;
+    }
+    const name = col(r, "company_name", "company");
+    if (!name) continue;
+    const owner = [first, last].filter(Boolean).join(" ");
+    const row = [
+      name, owner, email, col(r, "company_phone", "corporate_phone", "phone"), col(r, "website"),
+      col(r, "company_street", "company_address_1") || (fullAddress ? fullAddress.split(",")[0].trim() : ""),
+      col(r, "company_city", "city"), region, zip, owner && title ? `Apollo contact: ${owner}, ${title}` : "",
+    ];
+    const key = `${name.toLowerCase()}|${zip}`;
+    const seen = byCompany.get(key);
+    if (seen === undefined) { byCompany.set(key, out.rows.length); out.rows.push(row); continue; }
+    out.merged++;
+    if (!out.rows[seen][2] && email) out.rows[seen] = row; // prefer a contact with a usable email
+  }
+  return out;
+}
