@@ -8,4 +8,4 @@ Other folder: OUT=/some/dir node marketing/thumbnails/thumbs.cjs
 
 - Edit the list `T` in thumbs.cjs: file name, audience pill, headline (*word* = teal), sub-line, person, and the visual (phone / desk / phone2 / shield).
 - App screens come from dist/marketing/screenshots/ (test-site sample data). Website screens are in screens/.
-- people/ are transparent cut-outs of the AI-generated models from the "Shake Up The Industry" Canva set (Oct 2026). Some are cropped on one side (asian-nurse, latina-nurse, pt-man, older-man, older-doc): put them where a phone covers that edge. glasses-man has a gap on the left; use as a head-and-shoulders crop only.
+- people/ are transparent cut-outs of the AI-generated models from the "Shake Up The Industry" Canva set (Oct 2026). Several have a hard edge where Canva cropped them; EDGES in thumbs.cjs says how each is handled (phone/browser slid over the edge, bled off the canvas, lowered, or left out of browser layouts). Add an EDGES entry for any new cut-out with a hard edge.

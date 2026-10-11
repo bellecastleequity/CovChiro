@@ -42,6 +42,18 @@ const T = [
   ["30-no-patient-data", B, "No patient data. *Ever.*", "Coverage without the privacy risk.", "exec-woman", { shield: true }],
   ["31-need-help-now", B, "Need help *now?*", "A real person, within minutes.", "phone-woman", { phone: `${HERE}/screens/help-phone.png` }],
 ];
+// Cut-outs from Canva previews: some have a hard, straight edge where Canva cropped them.
+// left: hidden under the phone/browser; right: bled off the canvas edge. Clean ones need nothing.
+// left: fraction of the width (from the left) to keep under the device; right: true = bleed off the canvas.
+// deskSink: lower the person by this fraction of their height in browser layouts (hides a cut near the bottom).
+// deskDrop: the cut can't be hidden behind a browser window, so browser layouts go without this person.
+const EDGES = {
+  "asian-nurse": { left: 0.08, deskDrop: true }, "black-nurse": { left: 0.23, deskDrop: true },
+  chiro: { left: 0.18, deskSink: 0.25 }, "glasses-man": { left: 0.38, deskDrop: true },
+  "latina-nurse": { left: 0.07, deskDrop: true }, "older-doc": { left: 0.15, deskDrop: true },
+  "older-man": { left: 0.08, deskDrop: true }, "pt-man": { left: 0.08, deskDrop: true },
+  "smile-man": { left: 0.14, right: true, deskDrop: true }, "phone-man": { right: true },
+};
 const url = (p) => "file://" + p;
 const css = `
 @font-face{font-family:Inter;font-weight:100 900;src:url(file://${M}/apps/web/.next/static/media/83afe278b6a6bb3c-s.p.2bn3s6zvc0dyp.woff2)}
@@ -72,17 +84,19 @@ body{width:1280px;height:720px;overflow:hidden}
 const PHONE_AR = 390 / 844;
 function phoneBox(img, x, y, h, rot = 0, z = 3) {
   const w = (h - 20) * PHONE_AR + 20;
-  return `<div class="phone" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rot}deg);z-index:${z}"><img src="${url(img)}"></div>`;
+  return `<div class="phone dev" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rot}deg);z-index:${z}"><img src="${url(img)}"></div>`;
 }
 function browserBox(img, x, y, w, address = "coverageoncall.com", z = 1) {
   const h = (w * 900) / 1440 + 34;
-  return `<div class="browser" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:${z}"><div class="bar"><i></i><i></i><i></i><span>${address}</span></div><img src="${url(img)}"></div>`;
+  return `<div class="browser dev" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:${z}"><div class="bar"><i></i><i></i><i></i><span>${address}</span></div><img src="${url(img)}"></div>`;
 }
 function layout([file, aud, head, sub, person, v]) {
   const h = head.replace(/\*(.+?)\*/g, "<b>$1</b>");
   let visual = "";
   if (v.phone2) {
     visual = phoneBox(v.phone, 760, 70, 600, -6, 2) + phoneBox(v.phone2, 980, 110, 600, 5, 3);
+  } else if (v.desk) {
+    visual = browserBox(v.desk, 650, 140, 590, v.url);
   } else if (v.shield) {
     visual = `<div class="shield"><svg viewBox="0 0 24 24" width="160" height="160" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m4.5 4.5 15 15"/></svg></div>`;
   } else if (v.desk) {
@@ -91,12 +105,17 @@ function layout([file, aud, head, sub, person, v]) {
     visual = phoneBox(v.phone, person ? 700 : 880, 62, 610, person ? -4 : -3);
   }
   let ppl = "";
-  if (person) {
+  const edges = person ? EDGES[person] || {} : {};
+  // A hard left edge can't be hidden behind the shield or two phones: those go without a person.
+  if (person && !(edges.left && (v.shield || v.phone2)) && !(v.desk && edges.deskDrop)) {
     const ph = person === "phone-man" ? 470 : person === "phone-woman" ? 560 : 640;
-    // Person sits to the right; the phone/browser overlaps their left edge (some cut-outs are cropped there).
-    const right = v.desk ? -10 : v.shield ? 20 : -20;
-    ppl = `<img class="person" src="${url(`${HERE}/people/${person}.png`)}" style="height:${ph}px;right:${right}px;z-index:2">`;
-    if (v.desk) ppl = ppl.replace("z-index:2", "z-index:4");
+    const coverL = v.desk && edges.deskSink ? 0 : edges.left || 0;
+    const z = v.desk ? (coverL ? 0 : 4) : 2;
+    ppl = `<img class="person" data-left="${coverL}" data-right="${edges.right ? 1 : 0}" src="${url(`${HERE}/people/${person}.png`)}" style="height:${ph}px;right:-20px;bottom:${v.desk && edges.deskSink ? -Math.round(ph * edges.deskSink) : 0}px;z-index:${z}">`;
+  } else if (v.desk) {
+    visual = browserBox(v.desk, 650, 140, 590, v.url);
+  } else if (v.shield) {
+    visual = visual.replace('class="shield"', 'class="shield" style="left:820px;top:190px"');
   }
   return `<div id="c"><img class="logo" src="${url(`${M}/apps/web/public/brand/logo-white.svg`)}">
     <div class="pill">${aud}</div>
@@ -116,6 +135,24 @@ function layout([file, aud, head, sub, person, v]) {
     await p.evaluate(async () => {
       await document.fonts.ready;
       await Promise.all([...document.images].map((i) => (i.complete ? 0 : new Promise((r) => (i.onload = i.onerror = r)))));
+      // People with a hard left edge: slide the phone/browser over their left third (it sits on top);
+      // a hard right edge bleeds off the canvas.
+      const per = document.querySelector(".person"), dev = document.querySelector(".dev");
+      if (per && dev) {
+        const coverL = +per.dataset.left, pw = per.offsetWidth, W = 1280;
+        const bleed = +per.dataset.right ? Math.round(pw * 0.08) : 20;
+        per.style.right = -bleed + "px";
+        if (coverL) {
+          const left = W + bleed - pw, dw = dev.offsetWidth;
+          // The phone is tilted, so give its edge 26px of slack.
+          const target = left + pw * coverL + 26;
+          const minX = dev.classList.contains("browser") ? 600 : 660, maxX = 920;
+          const dx = Math.max(minX, Math.min(maxX, Math.round(target - dw)));
+          dev.style.left = dx + "px";
+          dev.style.zIndex = 3;
+          if (dx + dw < target) { per.style.right = "auto"; per.style.left = Math.round(dx + dw - 26 - pw * coverL) + "px"; }
+        }
+      }
       // Headline: shrink until headline + sub fit above the URL line.
       const h = document.querySelector(".h"), txt = document.querySelector(".text");
       let fs = 96;
