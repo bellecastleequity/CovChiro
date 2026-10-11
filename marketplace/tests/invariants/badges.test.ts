@@ -52,4 +52,21 @@ describe("Rewards & Badges: custom badges and badges given by hand", () => {
     await expect(badges.saveCustomBadge(p.actor, { label: "Mine", description: "I made this myself.", tone: "gray" })).rejects.toThrow();
     await expect(badges.awardBadge(a, { email: `nobody-${uid()}@test.dev`, badgeKey: "reliable" })).rejects.toThrow(/No provider login/);
   });
+
+  it("finds providers by name (any word order) or email, and gives a badge to the one picked", async () => {
+    const a = await admin();
+    const tag = uid();
+    const p = await makeProvider();
+    await prisma.provider.update({ where: { id: p.id }, data: { displayName: `Dr. Jordan Vale${tag}, DC`, legalName: `Jordan Q Vale${tag}` } });
+    expect((await badges.findProviders(a, `vale${tag} jordan`)).map((h) => h.id)).toContain(p.id);
+    expect((await badges.findProviders(a, `Q Vale${tag}`)).map((h) => h.id)).toContain(p.id);
+    expect((await badges.findProviders(a, p.user.email.slice(0, 12))).map((h) => h.id)).toContain(p.id);
+    expect(await badges.findProviders(a, "x")).toEqual([]);
+    await expect(badges.findProviders(p.actor, `Vale${tag}`)).rejects.toThrow();
+    const r = await badges.awardBadge(a, { providerId: p.id, badgeKey: "reliable", tell: false });
+    expect(r).toMatchObject({ already: false, label: "Reliable" });
+    expect(await prisma.badgeAward.count({ where: { providerId: p.id, badgeKey: "reliable" } })).toBe(1);
+    await expect(badges.awardBadge(a, { providerId: `nope${tag}`, badgeKey: "reliable" })).rejects.toThrow(/wasn't found/);
+    await expect(badges.awardBadge(a, { badgeKey: "reliable" })).rejects.toThrow(/pick them from the list/);
+  });
 });

@@ -48,12 +48,45 @@ export async function archiveCustomBadge(actor: Actor, key: string, archived: bo
 }
 
 /** Give a badge to a provider (found by login email). Giving it again is a no-op. */
-export async function awardBadge(actor: Actor, input: { email: string; badgeKey: string; note?: string | null; tell?: boolean }) {
+/** Admin "Give a badge" search: providers by name (display or legal), or by login email. */
+export async function findProviders(actor: Actor, raw: string) {
+  requireAdmin(actor);
+  const q = raw.trim().slice(0, 80);
+  if (q.length < 2) return [];
+  const ci = { contains: q, mode: "insensitive" as const };
+  // Every word must match somewhere in the name, so "julia ross" and "ross julia" both work.
+  const words = q.split(/\s+/).filter(Boolean).slice(0, 4);
+  const rows = await prisma.provider.findMany({
+    where: {
+      OR: [
+        { AND: words.map((w) => ({ OR: [{ displayName: { contains: w, mode: "insensitive" as const } }, { legalName: { contains: w, mode: "insensitive" as const } }] })) },
+        { user: { email: ci } },
+      ],
+    },
+    select: { id: true, displayName: true, legalName: true, status: true, homeCity: true, homeState: true, professions: { select: { professionCode: true } }, user: { select: { email: true } } },
+    orderBy: { displayName: "asc" },
+    take: 8,
+  });
+  return rows.map((p) => ({
+    id: p.id,
+    name: p.displayName,
+    legalName: p.legalName && p.legalName !== p.displayName ? p.legalName : null,
+    sub: [p.professions.map((x) => x.professionCode).join("/"), [p.homeCity, p.homeState].filter(Boolean).join(", "), p.status.toLowerCase().replace(/_/g, " ")].filter(Boolean).join(" · "),
+    email: p.user.email,
+  }));
+}
+
+export async function awardBadge(actor: Actor, input: { providerId?: string | null; email?: string | null; badgeKey: string; note?: string | null; tell?: boolean }) {
   requireAdmin(actor);
   const def = (await assignableBadges()).find((b) => b.key === input.badgeKey);
   if (!def) throw new DomainError("VALIDATION", "Pick a badge.");
-  const user = await prisma.user.findFirst({ where: { email: { equals: input.email.trim(), mode: "insensitive" } }, select: { id: true, provider: { select: { id: true, displayName: true } } } });
-  if (!user?.provider) throw new DomainError("NOT_FOUND", "No provider login with that email.");
+  const user = input.providerId
+    ? await prisma.user.findFirst({ where: { provider: { id: input.providerId } }, select: { id: true, provider: { select: { id: true, displayName: true } } } })
+    : input.email?.trim()
+      ? await prisma.user.findFirst({ where: { email: { equals: input.email.trim(), mode: "insensitive" } }, select: { id: true, provider: { select: { id: true, displayName: true } } } })
+      : null;
+  if (!input.providerId && !input.email?.trim()) throw new DomainError("VALIDATION", "Search for the provider and pick them from the list.");
+  if (!user?.provider) throw new DomainError("NOT_FOUND", input.providerId ? "That provider wasn't found." : "No provider login with that email.");
   const existing = await prisma.badgeAward.findUnique({ where: { providerId_badgeKey: { providerId: user.provider.id, badgeKey: def.key } } });
   if (existing) return { name: user.provider.displayName, label: def.label, already: true };
   const note = input.note?.trim().slice(0, 200) || null;

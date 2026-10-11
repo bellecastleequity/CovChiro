@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { requireActor } from "@/lib/session";
 import { archiveCustomBadgeAction, awardBadgeAction, awardRewardPointsAction, revokeBadgeAction, saveCustomBadgeAction } from "../actions";
 import { BadgeList } from "@/components/provider-profile";
+import { ProviderSearch } from "@/components/admin/provider-search";
 import { dateLabel } from "@/lib/format";
 
 export const metadata = { title: "Rewards & Badges" };
@@ -87,7 +88,7 @@ export default async function AdminRewards({ searchParams }: { searchParams: Pro
           <CardHeader title="Give a badge" description="Shown on the provider's profile and candidate cards, like an earned badge. License, insurance and NPI badges only come from verified credentials, so they can't be given here." />
           <CardBody>
             <ActionForm action={awardBadgeAction} className="space-y-3" resetOnSuccess>
-              <Field label="Provider's login email"><Input name="email" type="email" required /></Field>
+              <Field label="Provider" hint="Search by name (or login email)."><ProviderSearch /></Field>
               <Field label="Badge">
                 <Select name="badgeKey" required defaultValue="">
                   <option value="" disabled>Pick a badge…</option>

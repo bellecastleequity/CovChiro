@@ -665,10 +665,17 @@ export const includeChargeAction = formAction(async (fd) => {
 });
 
 /* Rewards & Badges */
+/** Search-as-you-type for "Give a badge": providers by name or login email (admins only). */
+export async function findProvidersAction(q: string) {
+  const { actor } = await requireActor("admin");
+  const { badges } = await import("@cm/services");
+  return badges.findProviders(actor, q);
+}
+
 export const awardBadgeAction = formAction(async (fd) => {
   const { actor } = await requireActor("admin");
   const { badges } = await import("@cm/services");
-  const r = await badges.awardBadge(actor, { email: str(fd, "email"), badgeKey: str(fd, "badgeKey"), note: optStr(fd, "note"), tell: bool(fd, "tell") });
+  const r = await badges.awardBadge(actor, { providerId: optStr(fd, "providerId"), badgeKey: str(fd, "badgeKey"), note: optStr(fd, "note"), tell: bool(fd, "tell") });
   revalidatePath("/admin/rewards");
   return { ok: r.already ? `${r.name} already has the ${r.label} badge.` : `Gave ${r.name} the ${r.label} badge.` };
 });
