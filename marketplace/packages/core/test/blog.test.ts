@@ -51,21 +51,20 @@ describe("publish checks", () => {
   it("a sound post passes", () => {
     expect(checkBlogPost(good).errors).toEqual([]);
   });
-  it("blocks thin posts, bad slugs and short descriptions", () => {
+  it("blocks only a bad slug; thin posts and short descriptions are warnings", () => {
     const r = checkBlogPost({ ...good, slug: "Bad Slug", description: "short", body: "## A\n\ntoo short" });
     expect(r.errors.join(" ")).toMatch(/slug/);
-    expect(r.errors.join(" ")).toMatch(/too short/);
-    expect(r.errors.join(" ")).toMatch(/at least 300/);
+    expect(r.errors).toHaveLength(1);
+    expect(r.warnings.join(" ")).toMatch(/Meta description is short/);
+    expect(r.warnings.join(" ")).toMatch(/300\+/);
   });
-  it("blocks guarantees, contact details and patient details", () => {
-    expect(checkBlogPost({ ...good, body: good.body + " We guarantee coverage." }).errors.join(" ")).toMatch(/guarantee/);
-    expect(checkBlogPost({ ...good, body: good.body + " Call 813-555-0100." }).errors.join(" ")).toMatch(/phone/);
-    expect(checkBlogPost({ ...good, body: good.body + " A patient named Jane came in." }).errors.join(" ")).toMatch(/patient/);
-  });
-  it("allows only dollar figures from approved facts", () => {
-    const body = good.body + " Overtime is $100 per hour.";
-    expect(checkBlogPost({ ...good, body }).errors.join(" ")).toMatch(/\$100/);
-    expect(checkBlogPost({ ...good, body }, { knownDollarAmounts: dollarAmountsIn("Overtime: $100/hr") }).errors).toEqual([]);
+  it("flags (doesn't block) guarantees, contact details, patient details and unknown dollar figures: a person publishes", () => {
+    for (const [extra, re] of [[" We guarantee coverage.", /Guarantee/], [" Call 813-555-0100.", /phone/], [" A patient named Jane came in.", /patient/], [" Overtime is $100 per hour.", /\$100/]] as const) {
+      const r = checkBlogPost({ ...good, body: good.body + extra });
+      expect(r.errors).toEqual([]);
+      expect(r.warnings.join(" ")).toMatch(re);
+    }
+    expect(checkBlogPost({ ...good, body: good.body + " Overtime is $100 per hour." }, { knownDollarAmounts: dollarAmountsIn("Overtime: $100/hr") }).warnings.join(" ")).not.toMatch(/\$100/);
   });
   it("warns (doesn't block) on legal citations and outside links", () => {
     const r = checkBlogPost({ ...good, body: good.body + " See [the board](https://floridaschiropracticmedicine.gov) and F.S. 460." });

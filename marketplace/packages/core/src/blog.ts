@@ -192,20 +192,20 @@ export function checkBlogPost(p: BlogDraft, opts: { knownDollarAmounts?: string[
   if (!SLUG_RE.test(p.slug) || p.slug.length > 90) errors.push("Web address (slug) may use only lowercase letters, numbers and single hyphens.");
 
   const d = p.description.trim();
-  if (d.length < 50) errors.push("Meta description is too short (50 characters minimum).");
-  else if (d.length > 200) errors.push("Meta description is too long (200 characters max).");
+  if (d.length < 50) warnings.push("Meta description is short; search results show about 120–155 characters.");
+  else if (d.length > 200) warnings.push(`Meta description is ${d.length} characters; search results cut it off at about 155.`);
   else if (d.length > 160) warnings.push(`Meta description is ${d.length} characters; search results usually show about 155.`);
 
-  if (words < 300) errors.push(`The post is ${words} words; publish at least 300 so it's genuinely useful.`);
+  if (words < 300) warnings.push(`The post is ${words} words; longer posts (300+) tend to do better in search.`);
   else if (words > 3000) warnings.push(`The post is ${words} words; consider splitting it.`);
   if (!/^#{2,3}\s/m.test(p.body)) warnings.push("Add a few ## section headings; they help readers and search engines.");
 
-  if (PROHIBITED_CLAIMS.test(all)) errors.push("Remove guarantee or results language (e.g. “guaranteed”, “risk-free”, “increase your revenue”, “30% more”).");
-  if (PHONE.test(all) || EMAIL.test(all)) errors.push("Remove phone numbers and email addresses; link to /contact instead.");
+  if (PROHIBITED_CLAIMS.test(all)) warnings.push("Guarantee or results language found (e.g. “guaranteed”, “risk-free”, “increase your revenue”, “30% more”). Fine if you mean it.");
+  if (PHONE.test(all) || EMAIL.test(all)) warnings.push("Remove phone numbers and email addresses; link to /contact instead.");
   const known = new Set((opts.knownDollarAmounts ?? []).map((m) => m.replace(/\s/g, "")));
   const unknown = [...new Set(dollarsIn(all).filter((m) => !known.has(m)))];
-  if (unknown.length) errors.push(`Remove dollar figures that don't come from our published pricing: ${unknown.join(", ")}. Link to /for-clinics for prices.`);
-  if (PATIENT_DETAIL.test(all)) errors.push("Remove anything that looks like patient details. No patient information is allowed anywhere on the site.");
+  if (unknown.length) warnings.push(`Remove dollar figures that don't come from our published pricing: ${unknown.join(", ")}. Link to /for-clinics for prices.`);
+  if (PATIENT_DETAIL.test(all)) warnings.push("Remove anything that looks like patient details. No patient information is allowed anywhere on the site.");
 
   if (LEGAL_CITE.test(all)) warnings.push("Mentions a statute or board rule. Check the citation against the official source before publishing.");
   const external = [...new Set((p.body.match(/\]\((https:\/\/[^)\s]+)\)/g) ?? []).map((m) => m.slice(2, -1)))];

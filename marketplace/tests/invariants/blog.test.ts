@@ -55,24 +55,23 @@ describe("blog: AI drafts, people publish", () => {
     expect(await prisma.aiUsage.count({ where: { agent: "blog" } })).toBeGreaterThan(0);
   });
 
-  it("publishing is refused while the content checks fail, and allowed once fixed", async () => {
+  it("content checks are advice only: a person decides, so a flagged post still publishes", async () => {
     setLlmProvider(fakeModel(CLEAN + " Clinics see a guaranteed 30% more revenue at $499 a day."));
     const { post, check } = await blog.draftPost(admin, { topic: "Revenue", audience: "CLINIC" });
-    expect(check.errors.join(" ")).toMatch(/guarantee/);
-    expect(check.errors.join(" ")).toMatch(/\$499/);
-    await expect(blog.publishPost(admin, post.id)).rejects.toThrow(/Fix before publishing/);
-    await blog.savePost(admin, post.id, { title: post.title, slug: post.slug, description: post.description, body: CLEAN.replace("# Repeated title\n\n", ""), audience: "CLINIC", keywords: "ce coverage" });
+    expect(check.errors).toEqual([]);
+    expect(check.warnings.join(" ")).toMatch(/Guarantee/);
+    expect(check.warnings.join(" ")).toMatch(/\$499/);
     const live = await blog.publishPost(admin, post.id);
     expect(live.status).toBe("PUBLISHED");
     expect(live.authorName).toMatch(/team$/);
     expect((await blog.publicPost(live.slug))?.id).toBe(post.id);
   });
 
-  it("a live post can't be edited into something unpublishable, or deleted while live", async () => {
+  it("a live post keeps a valid web address and can't be deleted while live", async () => {
     setLlmProvider(fakeModel(CLEAN));
     const { post } = await blog.draftPost(admin, { topic: "Live edits", audience: "ALL" });
     await blog.publishPost(admin, post.id);
-    await expect(blog.savePost(admin, post.id, { title: post.title, slug: post.slug, description: post.description, body: "too short", audience: "ALL", keywords: "" })).rejects.toThrow(/must stay publishable/);
+    await expect(blog.savePost(admin, post.id, { title: "", slug: "", description: post.description, body: "too short", audience: "ALL", keywords: "" })).rejects.toThrow(/Add a title or web address/);
     await expect(blog.deletePost(admin, post.id)).rejects.toThrow(/Unpublish/);
     await blog.setPostStatus(admin, post.id, "DRAFT");
     expect(await blog.publicPost(post.slug)).toBeNull();
