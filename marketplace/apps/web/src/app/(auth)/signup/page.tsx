@@ -16,8 +16,10 @@ import { signupAction } from "../actions";
 
 export const metadata = { title: "Create your account" };
 
-export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string; student?: string; campaign?: string; c?: string; ref?: string; google?: string }> }) {
-  const { role: r, code, profession, student: st, campaign, c, ref: refParam, google: problem } = await searchParams;
+export default async function Signup({ searchParams }: { searchParams: Promise<{ role?: string; code?: string; profession?: string; student?: string; campaign?: string; c?: string; ref?: string; google?: string; school?: string }> }) {
+  const { role: r, code, profession, student: st, campaign, c, ref: refParam, google: problem, school: schoolSlug } = await searchParams;
+  // From a school page (/chiropractic-students/<slug>): preselect that school and its state.
+  const fromSchool = schoolSlug ? schools.schoolPage(schoolSlug) : null;
   const googleNote = problem ? google.GOOGLE_PROBLEMS[problem as keyof typeof google.GOOGLE_PROBLEMS] : null;
   const inv = await referrals.invitation(refParam ?? (await cookies()).get("cm_ref")?.value);
   const role = r === "provider" ? "provider" : "clinic";
@@ -27,7 +29,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
   const professions = await prisma.profession.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
   const schoolGroups = await schools.schoolOptions();
   // Growth campaign links (/join/<code>) and prospect tokens survive switching tabs.
-  const keep = `${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}${profession ? `&profession=${encodeURIComponent(profession)}` : ""}${inv ? `&ref=${inv.code}` : ""}`;
+  const keep = `${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}${profession ? `&profession=${encodeURIComponent(profession)}` : ""}${inv ? `&ref=${inv.code}` : ""}${fromSchool ? `&school=${fromSchool.slug}` : ""}`;
   return (
     <>
       {settings["seo.gaMeasurementId"] && !isSandbox() ? <GoogleAnalytics id={settings["seo.gaMeasurementId"]} /> : null}
@@ -92,7 +94,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
         </Field>
         {student ? (
           <>
-            <StudentFields schools={schoolGroups} />
+            <StudentFields schools={schoolGroups} defaultSchool={fromSchool?.name} defaultStates={fromSchool ? [fromSchool.state] : undefined} />
             <Field label="How did you hear about us?" htmlFor="source">
               <Select id="source" name="source" defaultValue="">
                 {SOURCE_OPTIONS.map(([v, l]) => (

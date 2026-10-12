@@ -22,6 +22,12 @@ describe("search pages", () => {
     expect(paths.some((p) => p.startsWith("/physical-therapy/"))).toBe(false);
   });
 
+  it("lists the chiropractic student hub and one page per school (Palmer Florida, Life University …)", async () => {
+    const paths = (await seo.publicPaths()).map((p) => p.path);
+    expect(paths).toEqual(expect.arrayContaining(["/chiropractic-students", "/chiropractic-students/palmer-florida", "/chiropractic-students/life-university", "/chiropractic-students/keiser-university"]));
+    expect(paths.filter((p) => p.startsWith("/chiropractic-students/"))).toHaveLength(18);
+  });
+
   it("has a stable IndexNow key and pings new blog posts", async () => {
     const k = await seo.indexNowKey();
     expect(k).toMatch(/^[0-9a-f]{32}$/);

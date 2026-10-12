@@ -108,6 +108,7 @@ export async function SiteFooter() {
             <li><Link href="/for-providers">Why join</Link></li>
             <li><Link href="/signup?role=provider">Create a profile</Link></li>
             <li><Link href="/chiropractic">Chiropractic</Link></li>
+            <li><Link href="/chiropractic-students">Chiropractic students &amp; alumni</Link></li>
           </ul>
         </div>
         <div className="text-sm">

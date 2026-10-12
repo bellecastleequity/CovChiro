@@ -7,6 +7,7 @@ import { submitIndexNow } from "@cm/integrations";
 import { clock, getSettings, invalidateSettings, requireAdmin, type Actor } from "./context";
 import { absoluteUrl, notify } from "./notify";
 import { publicPosts } from "./blog";
+import { schoolPages } from "./schools";
 import { updateSetting } from "./admin";
 
 /**
@@ -14,7 +15,7 @@ import { updateSetting } from "./admin";
  * pings, keyword topics for the blog queue, and post-shift Google review requests.
  */
 
-const STATIC = ["/", "/for-clinics", "/for-providers", "/how-it-works", "/states", "/faq", "/contact", "/tools/cost-of-closing", "/personal-injury-clinics", "/blog", "/privacy", "/terms"];
+const STATIC = ["/", "/for-clinics", "/for-providers", "/how-it-works", "/states", "/faq", "/contact", "/tools/cost-of-closing", "/personal-injury-clinics", "/chiropractic-students", "/blog", "/privacy", "/terms"];
 
 export type PublicPath = { path: string; priority: number; changeFrequency: "weekly" | "monthly"; lastModified?: Date };
 
@@ -35,6 +36,7 @@ export async function publicPaths(): Promise<PublicPath[]> {
     ...STATIC.map((p) => ({ path: p, changeFrequency: (p === "/blog" ? "weekly" : "monthly") as "weekly" | "monthly", priority: p === "/" ? 1 : 0.7 })),
     ...professions.filter((p) => p.slug).map((p) => ({ path: `/${p.slug}`, changeFrequency: "monthly" as const, priority: p.active ? 0.8 : 0.4 })),
     ...landing.map((u) => ({ path: u, changeFrequency: "monthly" as const, priority: u.split("/").length === 3 ? 0.9 : 0.8 })),
+    ...schoolPages().map((s) => ({ path: `/chiropractic-students/${s.slug}`, changeFrequency: "monthly" as const, priority: 0.6 })),
     ...posts.map((p) => ({ path: `/blog/${p.slug}`, lastModified: p.updatedAt, changeFrequency: "monthly" as const, priority: 0.6 })),
   ];
 }

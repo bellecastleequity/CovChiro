@@ -81,3 +81,41 @@ export async function setSchoolActive(actor: Actor, id: string, active: boolean)
   await prisma.school.update({ where: { id }, data: { active } });
   await audit(prisma, actor, active ? "school.shown" : "school.hidden", "School", id, null, { active });
 }
+
+// ---------------- Public school pages (owner request Oct 2026: SEO for students and alumni) ----------------
+
+/** Short names and web addresses for the chiropractic school pages (/chiropractic-students/<slug>). */
+const DC_SCHOOL_PAGES: Record<string, { slug: string; short: string }> = {
+  "Cleveland University–Kansas City": { slug: "cleveland-university-kansas-city", short: "Cleveland University–Kansas City" },
+  "D'Youville University (Chiropractic)": { slug: "dyouville-university", short: "D'Youville" },
+  "Keiser University College of Chiropractic Medicine": { slug: "keiser-university", short: "Keiser University" },
+  "Life Chiropractic College West": { slug: "life-chiropractic-college-west", short: "Life West" },
+  "Life University": { slug: "life-university", short: "Life University" },
+  "Logan University": { slug: "logan-university", short: "Logan University" },
+  "National University of Health Sciences (Illinois)": { slug: "nuhs-illinois", short: "National University (Illinois)" },
+  "National University of Health Sciences (Florida)": { slug: "nuhs-florida", short: "National University (Florida)" },
+  "Northeast College of Health Sciences": { slug: "northeast-college", short: "Northeast College" },
+  "Northwestern Health Sciences University": { slug: "northwestern-health-sciences", short: "Northwestern Health Sciences" },
+  "Palmer College of Chiropractic (Davenport)": { slug: "palmer-davenport", short: "Palmer Davenport" },
+  "Palmer College of Chiropractic (Florida)": { slug: "palmer-florida", short: "Palmer Florida" },
+  "Palmer College of Chiropractic (West)": { slug: "palmer-west", short: "Palmer West" },
+  "Parker University": { slug: "parker-university", short: "Parker University" },
+  "Sherman College of Chiropractic": { slug: "sherman-college", short: "Sherman College" },
+  "Southern California University of Health Sciences": { slug: "scuhs", short: "SCU Health Sciences" },
+  "Texas Chiropractic College": { slug: "texas-chiropractic-college", short: "Texas Chiropractic College" },
+  "University of Western States": { slug: "university-of-western-states", short: "University of Western States" },
+};
+
+export interface SchoolPage { slug: string; name: string; short: string; city: string; state: string }
+
+/** Every chiropractic school with a public page (built-in list; no database needed). */
+export function schoolPages(): SchoolPage[] {
+  return (SCHOOL_CATALOG.DC ?? []).flatMap((s) => {
+    const p = DC_SCHOOL_PAGES[s.name];
+    return p ? [{ ...s, ...p }] : [];
+  });
+}
+
+export function schoolPage(slug: string): SchoolPage | null {
+  return schoolPages().find((s) => s.slug === slug) ?? null;
+}
