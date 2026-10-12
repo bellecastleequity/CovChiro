@@ -5,6 +5,7 @@ import { getSettings } from "@cm/services";
 import { SiteFooter, SiteHeader } from "@/components/site/header";
 import { JsonLd } from "@/components/site/json-ld";
 import { GoogleAnalytics } from "@/components/site/google-analytics";
+import { ChatBubble } from "@/components/chat/chat-bubble";
 import { siteUrl } from "@/lib/seo";
 
 // Reads live Settings (analytics ID, social links, FAQ answers), so public pages render
@@ -31,6 +32,7 @@ export default async function PublicLayout({ children }: { children: React.React
       <SiteHeader />
       <main className="flex-1">{children}</main>
       <SiteFooter />
+      {s?.["chat.enabled"] !== false ? <ChatBubble mode="visitor" /> : null}
     </div>
   );
 }

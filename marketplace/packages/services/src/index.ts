@@ -51,6 +51,7 @@ export { siteFaq } from "./faq";
 export * as growth from "./growth";
 export * as accounts from "./accounts";
 export * as schools from "./schools";
+export * as chat from "./chat";
 export * as blog from "./blog";
 export * as spam from "./spam";
 export * as referrals from "./referrals";

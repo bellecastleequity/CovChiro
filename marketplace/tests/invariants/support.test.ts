@@ -61,3 +61,23 @@ describe("help center support requests", () => {
     expect(support.cleanPhone("555-0142")).toBeNull();
   });
 });
+
+describe("chat bubble", () => {
+  it("hands a question the assistant can't answer to a person, and the team's reply shows in the chat", async () => {
+    const { chat } = await import("@cm/services");
+    const p = await makeProvider();
+    // No AI under test: the assistant never guesses, it offers a person.
+    expect(await chat.assistantAnswer(p.actor, "Why hasn't my payout for last Tuesday arrived?")).toEqual({ answer: null });
+    await expect(chat.assistantAnswer(p.actor, "Patient John Smith DOB 01/02/1960 MRN 12345")).rejects.toThrow(/patient information/);
+    const { requestId } = await chat.talkToPerson(p.actor, [{ from: "me", text: "Why hasn't my payout for last Tuesday arrived?" }, { from: "assistant", text: "That's one for our team." }]);
+    const req = await prisma.supportRequest.findUniqueOrThrow({ where: { id: requestId }, include: { messages: true } });
+    expect(req).toMatchObject({ audience: "PROVIDER", status: "OPEN" });
+    expect(req.subject).toMatch(/^Chat: Why hasn't my payout/);
+    expect(req.messages[0].body).toMatch(/Me: Why hasn't my payout[\s\S]*Assistant: That's one for our team/);
+    await support.adminReply(admin, requestId, "Checking now, it was sent this morning.");
+    await chat.chatSend(p.actor, requestId, "Thank you!");
+    expect((await chat.chatThread(p.actor, requestId)).lines).toEqual([{ from: "team", text: "Checking now, it was sent this morning." }, { from: "me", text: "Thank you!" }]);
+    const other = await makeProvider();
+    await expect(chat.chatThread(other.actor, requestId)).rejects.toThrow(/not found/i);
+  });
+});

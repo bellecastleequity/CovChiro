@@ -1,11 +1,12 @@
 import { prisma } from "@cm/db";
-import { agreementCurrent, feedback, support } from "@cm/services";
+import { agreementCurrent, chat, feedback, support } from "@cm/services";
 import Link from "next/link";
 import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-link";
 import { getSession, requireActor } from "@/lib/session";
 import { shortCached } from "@/lib/short-cache";
+import { ChatBubble } from "@/components/chat/chat-bubble";
 import { providerSetupStatus } from "@/lib/setup";
 
 export default async function ProviderLayout({ children }: { children: React.ReactNode }) {
@@ -41,6 +42,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
     { href: "/provider/academy", label: "Training", icon: "academy" },
     { href: "/provider/help", label: "Help", icon: "help", badge: await support.answeredCount(user.id).catch(() => 0) },
   ];
+  const chatOn = await chat.chatEnabled().catch(() => false);
   return (
     <AppShell items={items} root="/provider" userId={user.id} userName={user.name} userPhoto={me?.photoUrl ?? null} subtitle="Provider" setup={setup} otherSide={sides?.clinic ? { to: "CLINIC", label: "Switch to my clinic" } : null} addSide={sides && !sides.clinic ? { href: "/provider/add-clinic", label: "Add my clinic" } : null}>
       {needsAgreement ? (
@@ -49,6 +51,7 @@ export default async function ProviderLayout({ children }: { children: React.Rea
         </Alert>
       ) : null}
       {children}
+      {chatOn ? <ChatBubble mode="member" userId={user.id} inApp /> : null}
     </AppShell>
   );
 }

@@ -1,11 +1,12 @@
 import { prisma } from "@cm/db";
 import Link from "next/link";
-import { agreementCurrent, support } from "@cm/services";
+import { agreementCurrent, chat, support } from "@cm/services";
 import { Alert } from "@/components/ui/misc";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-link";
 import { getSession, requireActor } from "@/lib/session";
 import { shortCached } from "@/lib/short-cache";
+import { ChatBubble } from "@/components/chat/chat-bubble";
 import { clinicSetupStatus } from "@/lib/setup";
 
 export default async function ClinicLayout({ children }: { children: React.ReactNode }) {
@@ -37,6 +38,7 @@ export default async function ClinicLayout({ children }: { children: React.React
     { href: "/clinic/academy", label: "Training", icon: "academy" },
     { href: "/clinic/help", label: "Help", icon: "help", badge: await support.answeredCount(user.id).catch(() => 0) },
   ];
+  const chatOn = await chat.chatEnabled().catch(() => false);
   return (
     <AppShell items={items} root="/clinic" userId={user.id} userName={user.name} subtitle={org.displayName} setup={setup} otherSide={sides?.provider ? { to: "PROVIDER", label: "Switch to taking shifts" } : null} addSide={!sides?.provider && actor.role === "CLINIC_OWNER" ? { href: "/clinic/add-provider", label: "Add my provider profile" } : null}>
       {!agreementCurrent("CLINIC", org.agreementSignedAt, org.agreementVersion) ? (
@@ -45,6 +47,7 @@ export default async function ClinicLayout({ children }: { children: React.React
         </Alert>
       ) : null}
       {children}
+      {chatOn ? <ChatBubble mode="member" userId={user.id} inApp /> : null}
     </AppShell>
   );
 }
