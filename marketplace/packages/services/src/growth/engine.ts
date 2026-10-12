@@ -4,7 +4,7 @@ import { caslBlock, contactDecision, renderTemplate, validateAiCopy, type Channe
 import { llmProvider } from "@cm/integrations";
 import { prisma, type PromptTemplate } from "@cm/db";
 import { clock, getSettings } from "../context";
-import { absoluteUrl, notifyAdmins, sendEmail } from "../notify";
+import { absoluteUrl, lastEmailError, notifyAdmins, sendEmail } from "../notify";
 import { smsProvider } from "@cm/integrations";
 import { brand } from "@cm/config";
 import { DateTime } from "luxon";
@@ -318,6 +318,10 @@ export async function compose(agent: string, prompt: PromptTemplate, vars: Recor
 
 // ---------------- sending ----------------
 
+/** A failed step email is tried this many times in all, at least this far apart. */
+const EMAIL_RETRY_LIMIT = 3;
+const EMAIL_RETRY_AFTER_MS = 6 * 3600_000;
+
 /** Thrown when a send is blocked for a reason that clears on its own; the sweep simply tries again later. */
 export class Deferred extends Error {}
 
@@ -346,6 +350,16 @@ export async function sendGrowthEmail(r: Recipient, msg: { subject: string; body
     const row = await prisma.communication.create({ data: { ...base, status: "BLOCKED", blockReason: d.reason } });
     return { ok: false, blocked: true, reason: d.reason, communicationId: row.id };
   }
+  // A step whose email keeps failing (bad address, provider refusal) is retried a few times, spaced
+  // out, then left alone: the sweeps run every 15 minutes and would otherwise retry it all day.
+  if (o.dedupeKey) {
+    const failures = await prisma.communication.findMany({
+      where: { entityType: r.type, entityId: r.id, channel: "EMAIL", status: "FAILED", agent: o.agent, promptKey: o.prompt?.key ?? null, subject: o.prompt ? undefined : msg.subject, createdAt: { gte: new Date(+clock.now() - 14 * 86_400_000) } },
+      orderBy: { createdAt: "desc" }, take: EMAIL_RETRY_LIMIT, select: { createdAt: true },
+    });
+    if (failures.length >= EMAIL_RETRY_LIMIT) return { ok: false, blocked: true, reason: "send_failed_gave_up", communicationId: null };
+    if (failures[0] && +clock.now() - +failures[0].createdAt < EMAIL_RETRY_AFTER_MS) throw new Deferred("send_failed_retry_later");
+  }
   let row;
   try {
     row = await prisma.communication.create({ data: { ...base, status: "SENT", dedupeKey: o.dedupeKey ?? null } });
@@ -362,7 +376,7 @@ export async function sendGrowthEmail(r: Recipient, msg: { subject: string; body
     unsubscribeUrl: o.purpose === "TRANSACTIONAL" ? undefined : unsubscribeUrl(r.type, r.id),
     footerNote: o.purpose === "COMMERCIAL" ? `${brand().name} · ${s["growth.postalAddress"]}` : undefined,
   });
-  if (!ok) await prisma.communication.update({ where: { id: row.id }, data: { status: "FAILED", error: "email service rejected the message", dedupeKey: null } });
+  if (!ok) await prisma.communication.update({ where: { id: row.id }, data: { status: "FAILED", error: (lastEmailError ?? "email service rejected the message").slice(0, 500), dedupeKey: null } });
   if (ok && r.type === "PROSPECT") await prisma.clinicProspect.update({ where: { id: r.id }, data: { lastContactedAt: clock.now() } });
   if (ok && r.type === "PROVIDER_PROSPECT") await prisma.providerProspect.update({ where: { id: r.id }, data: { lastContactedAt: clock.now() } });
   return { ok, blocked: false, reason: ok ? null : "send_failed", communicationId: row.id };

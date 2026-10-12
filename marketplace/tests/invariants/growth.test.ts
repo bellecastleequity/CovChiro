@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@cm/db";
-import { devOutbox, setLlmProvider, type LlmProvider } from "@cm/integrations";
+import { devOutbox, mailProvider, setLlmProvider, type LlmProvider } from "@cm/integrations";
 import { admin as adminSvc, auth, growth, invalidateSettings, leads, setClock } from "@cm/services";
 import { futureWeekday, makeClinic, makeProvider, uid } from "../factories";
 
@@ -87,6 +87,37 @@ describe("provider pipeline: pre-licensure → credentials → coverage-ready", 
     await setting("growth.pausedOutbound", false);
     await growth.growthTick();
     expect((await comms(p.id)).map((x) => x.status)).toEqual(["SENT"]);
+  });
+});
+
+describe("failed sends don't loop", () => {
+  it("a rejected welcome email is retried at most 3 times, 6 hours apart, with the provider's own error kept", async () => {
+    const m = mailProvider() as { send: (x: unknown) => Promise<boolean>; lastError?: string | null };
+    const real = m.send;
+    m.send = async () => ((m.lastError = "SendGrid 403: test rejection"), false);
+    try {
+      const p = await makeProvider({ licenses: [], malpractice: null, professions: [{ code: "DC", status: "ONBOARDING" }], status: "ONBOARDING" });
+      const failed = async () => (await comms(p.id)).filter((x) => x.promptKey === "PROVIDER_WELCOME" && x.status === "FAILED");
+      await growth.growthTick();
+      expect((await failed()).map((x) => x.error)).toEqual([expect.stringContaining("SendGrid 403: test rejection")]);
+      // The next sweeps (every 15 minutes) leave it alone until 6 hours have passed.
+      setClock(() => new Date(Date.now() + 15 * 60_000));
+      await growth.growthTick();
+      expect(await failed()).toHaveLength(1);
+      setClock(() => new Date(Date.now() + 7 * 3600_000));
+      await growth.growthTick();
+      setClock(() => new Date(Date.now() + 14 * 3600_000));
+      await growth.growthTick();
+      expect(await failed()).toHaveLength(3);
+      // Three strikes: it gives up instead of trying every sweep for two weeks.
+      setClock(() => new Date(Date.now() + 21 * 3600_000));
+      await growth.growthTick();
+      setClock(() => new Date(Date.now() + 28 * 3600_000));
+      await growth.growthTick();
+      expect(await failed()).toHaveLength(3);
+    } finally {
+      m.send = real;
+    }
   });
 });
 

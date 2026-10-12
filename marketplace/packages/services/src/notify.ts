@@ -61,16 +61,22 @@ ${cta}
   return { html, text };
 }
 
+/** Why the most recent sendEmail failed (the email provider's own message), for callers that log it. */
+export let lastEmailError: string | null = null;
+
 export async function sendEmail(to: string, c: EmailContent): Promise<boolean> {
   const { html, text } = renderEmail(c);
   const mailer = mailProvider();
+  lastEmailError = null;
   try {
     const replyTo = (await getSettings().catch(() => null))?.["email.replyTo"] || undefined;
     const ok = await mailer.send({ to, subject: c.subject, html, text, unsubscribeUrl: c.unsubscribeUrl, ...(c.essential ? { essential: true } : {}), ...(replyTo && replyTo.toLowerCase() !== to.toLowerCase() ? { replyTo } : {}) });
-    await recordChannel("email", ok, ok ? null : ((mailer as { lastError?: string | null }).lastError ?? "the email provider refused the message"));
+    if (!ok) lastEmailError = (mailer as { lastError?: string | null }).lastError ?? "the email provider refused the message";
+    await recordChannel("email", ok, ok ? null : lastEmailError);
     return ok;
   } catch (e) {
     console.error("email send failed", e);
+    lastEmailError = (e as Error).message;
     await recordChannel("email", false, (e as Error).message);
     return false;
   }
