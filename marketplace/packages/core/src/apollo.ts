@@ -186,7 +186,34 @@ export function apolloTitleRole(title: string | null | undefined): "owner" | "as
   return OWNER_TITLE.test(title) ? "owner" : "";
 }
 
-export interface ApolloExportResult { rows: string[][]; notUs: number; unverifiedEmails: number; merged: number; misplaced: number }
+const BUSINESS_WORDS = new Set(["center", "centre", "clinic", "clinics", "chiropractic", "medical", "health", "healthcare", "wellness", "group", "office", "practice", "spine", "rehab", "therapy", "inc", "llc", "pa", "pllc", "associates"]);
+
+/** True when Apollo's "person" is really the company (e.g. first "Boynton", last "Center"). */
+export function companyAsPerson(first: string, last: string, company: string): boolean {
+  const parts = [first, last].map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (!parts.length) return false;
+  const words = new Set(company.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+  return parts.some((p) => BUSINESS_WORDS.has(p)) && parts.every((p) => words.has(p));
+}
+
+// Domains that point to a different kind of business, or to a school mailbox rather than the clinic.
+const OTHER_BUSINESS = /(dental|dentist|dds|orthodont|smile|teeth|lawfirm|lawgroup|legal|attorney|lawyer|veterinar|animalhosp|realty|realtor|insurance|salon)/;
+
+/**
+ * A clinic contact's email from an Apollo export is kept unless its domain is a school/government
+ * address or clearly another kind of business the clinic's name doesn't mention (Apollo once matched
+ * a dental office's address to a chiropractic clinic). Clinics often use a shorter domain than their
+ * website (tswchiro.com for Tampa Spine & Wellness), so a mismatch alone isn't a reason.
+ */
+export function unrelatedClinicEmail(email: string, company: string): boolean {
+  const domain = email.trim().toLowerCase().split("@")[1] ?? "";
+  if (!domain) return true;
+  if (/\.(edu|gov|mil)$/.test(domain)) return true;
+  const hit = domain.split(".")[0].match(OTHER_BUSINESS)?.[1];
+  return !!hit && !company.toLowerCase().includes(hit);
+}
+
+export interface ApolloExportResult { rows: string[][]; notUs: number; unverifiedEmails: number; merged: number; misplaced: number; otherDomainEmails: number }
 
 /**
  * An Apollo export → rows in our own import format (header row first). side "clinic" gives
@@ -199,7 +226,7 @@ export function fromApolloExport(rows: string[][], side: "clinic" | "provider", 
     for (const n of names) { const i = keys.indexOf(n); const v = i >= 0 ? r[i]?.trim() : ""; if (v) return v; }
     return "";
   };
-  const out: ApolloExportResult = { rows: [], notUs: 0, unverifiedEmails: 0, merged: 0, misplaced: 0 };
+  const out: ApolloExportResult = { rows: [], notUs: 0, unverifiedEmails: 0, merged: 0, misplaced: 0, otherDomainEmails: 0 };
   const byCompany = new Map<string, number>();
   out.rows.push(side === "clinic"
     ? ["clinic_name", "owner_name", "email", "phone", "website", "address", "city", "state", "zip", "notes"]
@@ -225,14 +252,18 @@ export function fromApolloExport(rows: string[][], side: "clinic" | "provider", 
     }
     const name = col(r, "company_name", "company");
     if (!name) continue;
-    const owner = [first, last].filter(Boolean).join(" ");
+    // Apollo sometimes files the company itself as the "person" (first "Boynton", last "Center"): no owner name then.
+    const owner = companyAsPerson(first, last, name) ? "" : [first, last].filter(Boolean).join(" ");
     // A misplaced company's website and phone are usually the other business's: kept only when the
     // contact's verified email is on that website's domain.
     const site = col(r, "website");
     const siteDomain = site.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#]/)[0];
     const trusted = !misplaced || (!!email && !!siteDomain && email.toLowerCase().endsWith(`@${siteDomain}`));
+    // Never another business's or a school's mailbox (Apollo once matched a dental office's address).
+    const clinicEmail = email && unrelatedClinicEmail(email, name) ? "" : email;
+    if (email && !clinicEmail) out.otherDomainEmails++;
     const row = [
-      name, owner, email, trusted ? col(r, "company_phone", "corporate_phone", "phone") : "", trusted ? site : "",
+      name, owner, clinicEmail, trusted ? col(r, "company_phone", "corporate_phone", "phone") : "", trusted ? site : "",
       misplaced ? "" : col(r, "company_street", "company_address_1") || (fullAddress ? fullAddress.split(",")[0].trim() : ""),
       misplaced ? col(r, "city") : col(r, "company_city", "city"), region, zip,
       [owner && title ? `Apollo contact: ${owner}, ${title}` : "", misplaced ? `Apollo listed the company in ${[col(r, "company_city"), col(r, "company_state"), col(r, "company_country")].filter(Boolean).join(", ")}; location taken from the contact (check the website and phone).` : ""].filter(Boolean).join(" "),

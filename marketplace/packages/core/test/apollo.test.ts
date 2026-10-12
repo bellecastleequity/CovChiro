@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apolloBudget, apolloTitleRole, fromApolloExport, isApolloExport, apolloLocation, apolloRegion, apolloSearchBody, estimateApolloCredits, isDecisionMakerTitle, mapApolloOrganization, mapApolloPerson, usableApolloEmail } from "../src";
+import { apolloBudget, apolloTitleRole, companyAsPerson, unrelatedClinicEmail, fromApolloExport, isApolloExport, apolloLocation, apolloRegion, apolloSearchBody, estimateApolloCredits, isDecisionMakerTitle, mapApolloOrganization, mapApolloPerson, usableApolloEmail } from "../src";
 
 describe("Apollo regions", () => {
   it("maps Apollo's state / country names to our region codes", () => {
@@ -93,7 +93,7 @@ describe("Apollo CSV exports", () => {
       ["clinic_name", "owner_name", "email", "phone", "website", "address", "city", "state", "zip", "notes"],
       ["Bayside Chiropractic", "Ana Rivera", "ana@baysidechiro.com", "+1 813-555-0100", "http://baysidechiro.com", "100 Bay St", "Tampa", "FL", "33602", "Apollo contact: Ana Rivera, Owner"],
     ]);
-    expect(r).toMatchObject({ notUs: 1, unverifiedEmails: 1, merged: 1, misplaced: 0 });
+    expect(r).toMatchObject({ notUs: 1, unverifiedEmails: 1, merged: 1, misplaced: 0, otherDomainEmails: 0 });
   });
   it("keeps a clinic where the contact works when Apollo attached a company in another state or country", () => {
     const r = fromApolloExport([
@@ -104,6 +104,23 @@ describe("Apollo CSV exports", () => {
     expect(r.rows.slice(1).map((x) => x.slice(3, 9))).toEqual([["+1 727-555-0100", "https://mayerchiro.com", "", "", "FL", ""], ["", "", "", "Palm Bay", "FL", ""]]);
     expect(r.rows[1][9]).toMatch(/Vancouver, Washington, United States; location taken from the contact/);
     expect(r).toMatchObject({ misplaced: 2, notUs: 0 });
+  });
+  it("drops an email on another business's domain and a company filed as the person", () => {
+    const r = fromApolloExport([
+      header,
+      ["Boynton", "Center", "Dr. Pierre Tallerie, D.C. | Business Owner", "Boynton Beach Medical Center, Inc", "smile@boyntonbeachdentalcenter.com", "Verified", "", "https://boyntonbeachmedical.com", "Boynton Beach", "Florida", "United States", "706 W Boynton Beach Blvd, Boynton Beach, Florida, United States, 33426", "Boynton Beach", "Florida", "United States", ""],
+      ["Ann", "Lee", "Owner", "Lee Chiropractic", "info@leechiro.com", "Verified", "", "https://leechiropractic.com", "Tampa", "Florida", "United States", "", "Tampa", "Florida", "United States", ""],
+    ], "clinic", false);
+    expect(r.rows[1].slice(0, 3)).toEqual(["Boynton Beach Medical Center, Inc", "", ""]);
+    expect(r.rows[2][2]).toBe("info@leechiro.com"); // a generic office mailbox is still fine
+    expect(r.otherDomainEmails).toBe(1);
+    expect(companyAsPerson("Boynton", "Center", "Boynton Beach Medical Center, Inc")).toBe(true);
+    expect(companyAsPerson("Ana", "Rivera", "Rivera Chiropractic")).toBe(false);
+    expect(companyAsPerson("Jack", "Lynady", "Jack Lynady D.C., P.A.")).toBe(false);
+    expect(unrelatedClinicEmail("doctor@tswchiro.com", "Tampa Spine & Wellness")).toBe(false);
+    expect(unrelatedClinicEmail("dalton@logan.edu", "Seven Bridges Chiropractic")).toBe(true);
+    expect(unrelatedClinicEmail("hi@smilechiro.com", "Smile Chiropractic")).toBe(false);
+    expect(unrelatedClinicEmail("dr@pierceclinicstpete.com", "Pierce Clinic Of Chiropractic")).toBe(false);
   });
   it("maps providers with a practice role from the title", () => {
     const r = fromApolloExport(rows, "provider", false);
