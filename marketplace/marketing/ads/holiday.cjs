@@ -1,5 +1,6 @@
 // "Now Is The Time" holiday coverage ad set (Oct 2026): 5 feed slides (1080x1350) + 5 story frames
-// (1080x1920) in the house theme. Real logo, real app screens, people from marketing/thumbnails/people.
+// (1080x1920) in the house theme. Real logo and real app screens; no people (owner, Oct 2026: the
+// cut-out library has been used enough).
 // Run: node marketing/ads/holiday.cjs   (OUT=dir to change the output folder)
 const fs = require("fs");
 const path = require("path");
@@ -8,7 +9,6 @@ const M = path.resolve(__dirname, "../..");
 const OUT = process.env.OUT || path.join(__dirname, "out", "holiday");
 const url = (p) => "file://" + p;
 const screen = (n) => url(`${M}/dist/marketing/screenshots/${n}.png`);
-const person = (n) => url(`${M}/marketing/thumbnails/people/${n}.png`);
 const LOGO = url(`${M}/apps/web/public/brand/logo-white.svg`);
 
 const css = (W, H) => `
@@ -89,21 +89,31 @@ function slide(n, f) {
     ${inner}
     ${opts.fade === false ? "" : `<div class="fade" style="z-index:5;height:${story ? 380 : 170}px"></div>`}
     ${opts.url === false ? "" : `<div class="url" style="z-index:6;top:${bottom - 40}px">coverageoncall.com</div>`}</div>`;
-  const ppl = (name, h, right, bottomPx = 0, z = 2, style = "") => `<img class="person" src="${person(name)}" style="height:${h}px;right:${right}px;bottom:${bottomPx}px;z-index:${z};${style}">`;
 
   if (n === 1) {
+    // A big "calendar page" for the busiest day, stamped covered.
+    const cw = story ? 640 : 520, cx = story ? (W - cw) / 2 : W - cw - 80;
     return frame(head("Now is<br><b>the time.</b>", "Plan your holiday schedule and book your coverage before the rush.", top + 150)
-      + ppl("lead", story ? 1060 : 760, story ? -60 : -40, 0, 2));
+      + `<div data-after="${story ? 120 : 70}" style="position:absolute;left:${cx}px;width:${cw}px;transform:rotate(-4deg);z-index:3">
+          <div class="card" style="position:relative;overflow:hidden;padding:0;width:${cw}px">
+            <div style="background:#22C4BE;color:#141238;font-family:Outfit,Inter;font-weight:700;font-size:${cw * 0.09}px;letter-spacing:.12em;text-align:center;padding:${cw * 0.04}px 0">DECEMBER</div>
+            <div style="font-family:Outfit,Inter;font-weight:700;font-size:${cw * 0.5}px;line-height:1;text-align:center;color:#282472;padding:${cw * 0.05}px 0 ${cw * 0.02}px">24</div>
+            <div style="text-align:center;color:#64748b;font-size:${cw * 0.055}px;padding-bottom:${cw * 0.07}px">Thursday</div>
+          </div>
+          <div style="position:absolute;right:${-cw * 0.1}px;top:${cw * 0.62}px;transform:rotate(12deg);background:#141238;border:4px solid #22C4BE;color:#22C4BE;border-radius:999px;padding:${cw * 0.03}px ${cw * 0.06}px;font-weight:800;font-size:${cw * 0.07}px;letter-spacing:.06em;box-shadow:0 18px 40px rgba(0,0,0,.4)">✓ COVERED</div>
+        </div>`
+      + FLAKE(story ? 90 : 120, story ? bottom - 220 : bottom - 330, story ? 150 : 110, -10, 0.18));
   }
   if (n === 2) {
     return frame(head("Holiday weeks<br><b>fill fast.</b>", "It's one of the busiest times of the year for coverage requests. Book early for the best match.")
-      + `<div data-after="44" style="position:absolute;left:0;top:0">${calendar(64, 0, story ? 952 : 700)}</div>`
-      + ppl("manager", story ? 600 : 640, story ? -40 : -70, 0, 4));
+      + `<div data-after="${story ? 80 : 44}" style="position:absolute;left:0;top:0">${calendar(64, 0, W - 128)}</div>`);
   }
   if (n === 3) {
+    const chip = (t, x, y, rot) => `<div class="card" style="left:${x}px;top:${y}px;padding:22px 30px;font-size:${story ? 34 : 30}px;font-weight:700;color:#282472;transform:rotate(${rot}deg);z-index:6;display:flex;gap:14px;align-items:center">${CHECK}${t}</div>`;
     return frame(head("Every holiday date,<br><b>one booking.</b>", story ? "Add all the days you'll be out at once. Keep the same provider for every day if you'd like." : "Add every day you'll be out at once. Same provider for all of them, if you'd like.")
-      + phone("c03-post-shift-phone", story ? 520 : 560, story ? top + 640 : top + 500, story ? 1040 : 800, 4)
-      + ppl("exec-woman", story ? 940 : 760, 0, 0, 2, `right:auto;left:${story ? 40 : 20}px`), { url: !story });
+      + phone("c03-post-shift-phone", story ? 330 : 470, story ? top + 640 : top + 500, story ? 1040 : 800, 3)
+      + chip("Dec 21 – Dec 24 · 4 days", 40, story ? top + 860 : top + 620, -3)
+      + chip("Same provider, every day", 40, story ? top + 1010 : top + 760, 2), { url: !story });
   }
   if (n === 4) {
     const items = ["Licensed, malpractice-verified providers", "Your price shown before you post", "Live arrival times on the day", "Digital timesheet, one-tap sign-off"];
@@ -111,14 +121,13 @@ function slide(n, f) {
       + `<div data-after="50" style="position:absolute;left:64px;width:${story ? 950 : 540}px;z-index:4">${items.map((t) => `<div class="check">${CHECK}<span>${t}</span></div>`).join("")}</div>`
       + phone("c04-applicants-phone", story ? 470 : 640, story ? top + 1000 : top + 520, story ? 860 : 760, 4));
   }
-  // 5: CTA with a group: hard left edges are covered by the person to their left; the ends bleed off the canvas.
-  const gh = story ? 820 : 600, by = 0;
-  const group = [["older-doc", -70, 1], ["black-nurse", 210, 2], ["asian-nurse", 430, 3], ["smile-man", W - 330, 4]]
-    .map(([nm, left, z]) => `<img class="person" src="${person(nm)}" style="height:${nm === "smile-man" ? gh * 0.97 : gh}px;left:${left}px;bottom:${by}px;z-index:${z}">`).join("");
+  // 5: CTA with the clinic's dashboard and "today" screen (provider on the way).
   return frame(head("Enjoy the holidays.<br><b>We've got your office.</b>", null, top + 150)
     + `<div class="btn" data-after="44" style="z-index:7">Book holiday coverage →</div>`
     + `<div class="url" data-after="170" style="z-index:7;font-size:30px">coverageoncall.com</div>`
-    + group, { url: false });
+    + phone("c01-dashboard-phone", story ? 120 : 150, story ? top + 860 : top + 770, story ? 900 : 700, -6, 2)
+    + phone("c05-today-provider-phone", story ? 520 : 560, story ? top + 800 : top + 720, story ? 900 : 700, 5, 3)
+    + FLAKE(story ? 860 : 900, story ? top + 640 : top + 520, 90, 20, 0.2), { url: false });
 }
 
 (async () => {

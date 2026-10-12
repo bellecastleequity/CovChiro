@@ -12,6 +12,7 @@ Owner's rules (Oct 2026). Follow them for every new thumbnail, reel cover and so
 - Show the range of people in America: a mix of ethnicities, ages and genders across a set of thumbnails. Don't repeat the same look from one design to the next.
 - The owner approved the casting in the "Shake Up The Industry" ad set (Oct 2026, Canva designs DAHXtqvDvAo feed / DAHXtj4GIh0 story) as the benchmark: several ethnicities, ages and genders, and a mix of specialties in each group shot.
 - Never use a real person's likeness without a signed release.
+- Owner, Oct 2026: the people cut-outs in marketing/thumbnails/people have been used enough. Don't reuse them in new ads: go without people (real app screens, calendars, icons, graphics), or make new people in Canva when a design truly needs them.
 
 ## Specialties
 - Use imagery that works for any healthcare specialty, so the thumbnails don't need redoing when we add professions. Good choices: a provider in neutral clinical attire or scrubs, a front desk, a phone with the app, a calendar or shift card.
