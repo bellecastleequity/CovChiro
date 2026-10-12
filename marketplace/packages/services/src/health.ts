@@ -4,7 +4,7 @@ import { brand } from "@cm/config";
 import { missingMigrations, prisma } from "@cm/db";
 import { clock, getSettings, requireAdmin, type Actor } from "./context";
 import { absoluteUrl, notify, sendEmail } from "./notify";
-import { healthKey } from "./healthstate";
+import { healthKey, recordWatchdog } from "./healthstate";
 import { researchPause } from "./growth/aihealth";
 import { aiSpendCents } from "./growth/engine";
 
@@ -144,6 +144,7 @@ export async function systemHealthSweep(opts: { force?: boolean } = {}) {
 /** Public watchdog summary for an uptime monitor: no details, just whether anything critical is open. */
 export async function healthSummary() {
   void systemHealthSweep().catch(() => undefined); // keeps alerts flowing even when cron has stopped
+  void recordWatchdog();
   const { issues } = await currentIssues();
   const status = issues.some((i) => i.severity === "critical") ? "critical" : issues.length ? "warning" : "ok";
   return { status, checks: issues.map((i) => i.key) };
@@ -156,7 +157,8 @@ export async function healthBoard(actor: Actor) {
   const { facts, issues } = await currentIssues();
   const state = ((await prisma.setting.findUnique({ where: { key: healthKey.state } }))?.value as AlertState | null) ?? {};
   const lastRun = d(((await prisma.setting.findUnique({ where: { key: healthKey.lastRun } }))?.value as { at?: string } | null)?.at);
-  return { facts, issues: issues.map((i) => ({ ...i, since: d(state[i.key]?.since), lastAlertAt: d(state[i.key]?.lastAlertAt) })), lastRun };
+  const watchdogAt = d(((await prisma.setting.findUnique({ where: { key: healthKey.watchdog } }))?.value as { at?: string } | null)?.at);
+  return { facts, issues: issues.map((i) => ({ ...i, since: d(state[i.key]?.since), lastAlertAt: d(state[i.key]?.lastAlertAt) })), lastRun, watchdogAt };
 }
 
 export async function runHealthNow(actor: Actor) {

@@ -35,7 +35,7 @@ async function track(key: string, ok: boolean, error?: string | null) {
   }
 }
 
-export const healthKey = { tick: "health.tick", job: (n: string) => `health.job.${n}`, channel: (c: "email" | "sms") => `health.channel.${c}`, state: "health.alertState", lastRun: "health.lastRun" };
+export const healthKey = { tick: "health.tick", job: (n: string) => `health.job.${n}`, channel: (c: "email" | "sms") => `health.channel.${c}`, state: "health.alertState", lastRun: "health.lastRun", watchdog: "health.watchdog" };
 
 /** Every background tick (cron request or worker loop). Written at most once a minute per process. */
 let lastTickWrite = 0;
@@ -48,3 +48,12 @@ export async function recordTick() {
 
 export const recordJobResult = (name: string, ok: boolean, error?: string | null) => track(healthKey.job(name), ok, error);
 export const recordChannel = (channel: "email" | "sms", ok: boolean, error?: string | null) => track(healthKey.channel(channel), ok, error);
+
+/** The outside uptime monitor (GET /api/health) checked in. Written at most once a minute per process. */
+let lastWatchdogWrite = 0;
+export async function recordWatchdog() {
+  const now = +clock.now();
+  if (Math.abs(now - lastWatchdogWrite) < 50_000) return;
+  lastWatchdogWrite = now;
+  await put(healthKey.watchdog, { at: new Date(now).toISOString() }).catch(() => undefined);
+}

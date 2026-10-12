@@ -96,3 +96,15 @@ describe("admin email routing", () => {
     expect(await adminInbox("support_urgent")).toBeNull(); // support.ts already emails the support inbox
   });
 });
+
+describe("outside watchdog", () => {
+  it("shows the uptime monitor as connected once it checks /api/health", async () => {
+    await prisma.setting.deleteMany({ where: { key: "health.watchdog" } });
+    expect((await health.healthBoard(admin)).watchdogAt).toBeNull();
+    await health.healthSummary(); // what GET /api/health runs on every monitor check
+    await new Promise((r) => setTimeout(r, 200));
+    const at = (await health.healthBoard(admin)).watchdogAt;
+    expect(at).toBeInstanceOf(Date);
+    expect(Date.now() - +at!).toBeLessThan(60_000);
+  });
+});

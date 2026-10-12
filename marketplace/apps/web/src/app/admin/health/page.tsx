@@ -20,7 +20,9 @@ const ago = (d: Date | null) => {
 
 export default async function HealthPage() {
   const { actor } = await requireActor("admin");
-  const { facts, issues, lastRun } = await health.healthBoard(actor);
+  const { facts, issues, lastRun, watchdogAt } = await health.healthBoard(actor);
+  // UptimeRobot checks every 5 minutes; 30 minutes of silence means it stopped (or was removed).
+  const watchdogLive = !!watchdogAt && Date.now() - +watchdogAt < 30 * 60_000;
   const failingJobs = facts.jobs.filter((j) => j.failStreak > 0).sort((a, b) => b.failStreak - a.failStreak);
   const ch = (label: string, c: typeof facts.email) =>
     c ? (c.failStreak ? <Badge tone="red">{label}: {c.failStreak} failing</Badge> : <Badge tone="green">{label}: OK · last sent {ago(c.lastOkAt)}</Badge>) : <Badge>{label}: nothing sent yet</Badge>;
@@ -101,13 +103,21 @@ export default async function HealthPage() {
       </div>
 
       <Card className="mt-6">
-        <CardHeader title="Outside watchdog (recommended)" description="If the whole site or its hosting goes down, nothing inside it can email you. A free uptime monitor covers that." />
+        <CardHeader
+          title={watchdogLive ? "Outside watchdog" : "Outside watchdog (recommended)"}
+          description="If the whole site or its hosting goes down, nothing inside it can email you. A free uptime monitor covers that."
+          action={watchdogLive ? <Badge tone="green">Connected · last check {ago(watchdogAt)}</Badge> : watchdogAt ? <Badge tone="amber">No check since {ago(watchdogAt)}</Badge> : null}
+        />
         <CardBody className="space-y-2 text-sm text-slate-700">
-          <ol className="list-decimal space-y-1 pl-5">
+          {watchdogAt && !watchdogLive ? <p>Your uptime monitor last checked {ago(watchdogAt)}. If it's paused or was removed, turn it back on.</p> : null}
+          <details open={!watchdogLive}>
+          <summary className="cursor-pointer text-slate-600">{watchdogLive ? "Setup steps" : "How to set it up"}</summary>
+          <ol className="mt-2 list-decimal space-y-1 pl-5">
             <li>Create a free account at UptimeRobot (or any uptime monitor).</li>
             <li>Add an HTTP(s) monitor for <code className="rounded bg-slate-100 px-1">{absoluteUrl("/api/health")}</code>, every 5 minutes, alerting your email and phone.</li>
             <li>It shows DOWN when the site is unreachable or a critical problem is open (HTTP 503). Each check also runs these health checks, so alert emails still go out even if the background cron has stopped.</li>
           </ol>
+          </details>
           <p className="text-xs text-slate-500">Alert recipients, texting and timing: <Link href="/admin/settings#s-health.enabled" className="text-brand-700 hover:underline">Settings → System health</Link>.</p>
         </CardBody>
       </Card>
