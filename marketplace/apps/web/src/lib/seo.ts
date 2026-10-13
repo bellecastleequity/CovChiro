@@ -45,15 +45,25 @@ export function priceRange(groups: RateGroup[]) {
   return all.length ? { low: Math.min(...all), high: Math.max(...all) } : null;
 }
 
-/** Words for titles: the first live profession × state (falls back to generic wording). */
+/**
+ * Words for titles and descriptions. One open state → that state ("Chiropractic Coverage Florida");
+ * more than one (open states, Oct 2026) → nationwide wording. Falls back to generic wording.
+ */
 export async function marketWords() {
   const first = (await liveMarket().catch(() => []))[0];
-  if (!first) return { service: "Healthcare", noun: "Provider", nounLower: "provider", state: "", suffix: "", slug: "", stateSlug: "" };
+  if (!first) return { service: "Healthcare", noun: "Provider", nounLower: "provider", state: "", scope: "", where: "", suffix: "", slug: "", stateSlug: "" };
+  const enabledStates = new Set((await prisma.stateConfig.findMany({ where: { enabled: true }, select: { state: true } })).map((s) => s.state));
+  const openStates = (await prisma.professionStateConfig.findMany({ where: { professionCode: first.profession.code, enabled: true }, select: { state: true } })).filter((r) => enabledStates.has(r.state)).length;
+  const nationwide = openStates > 1;
   return {
     service: serviceWord(first.profession.slug),
     noun: first.profession.displayName,
     nounLower: first.profession.displayName.toLowerCase(),
-    state: first.state.name,
+    state: nationwide ? "" : first.state.name,
+    /** Title words after "<Service> Coverage": "Nationwide" or the one state's name. */
+    scope: nationwide ? "Nationwide" : first.state.name,
+    /** Sentence words: " across the U.S." or " in Florida". */
+    where: nationwide ? " across the U.S." : ` in ${first.state.name}`,
     suffix: first.profession.credentialSuffix,
     slug: first.profession.slug,
     stateSlug: first.state.slug,

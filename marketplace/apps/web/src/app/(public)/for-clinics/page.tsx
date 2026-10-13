@@ -8,7 +8,7 @@ import { money } from "@/lib/format";
 
 export async function generateMetadata(): Promise<Metadata> {
   const w = await marketWords();
-  const where = w.state ? ` in ${w.state}` : "";
+  const where = w.where;
   return {
     title: `${w.service} Coverage Pricing for Clinics${where}`,
     description: `Set per-shift prices for temporary ${w.nounLower} coverage${where}: half and full days, Light or Busy, mileage at cost and a flat lodging rate. No negotiating, shown before you post.`,
