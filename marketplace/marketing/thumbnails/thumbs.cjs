@@ -41,6 +41,9 @@ const T = [
   ["29-rewards", P, "Earn *rewards* every shift", "Points, levels and badges on your profile.", "older-man", { phone: raw("p13-public-profile-phone") }],
   ["30-no-patient-data", B, "No patient data. *Ever.*", "Coverage without the privacy risk.", "exec-woman", { shield: true }],
   ["31-need-help-now", B, "Need help *now?*", "A real person, within minutes.", "phone-woman", { phone: `${HERE}/screens/help-phone.png` }],
+  // Enroll-now reels (Oct 2026): no people (owner), screens from the reels themselves.
+  ["32-ready-before-you-need-it", C, "Ready *before you need it*", "Enroll in minutes. Pay only when booked.", null, { phone: `${HERE}/screens/enroll-rb-verified-phone.png`, phone2: `${HERE}/screens/enroll-rb-price-phone.png` }],
+  ["33-six-am-sick-call", C, "6 AM.<br>*A sick call?*", "Enrolled? Post the day in a minute.", null, { phone: `${HERE}/screens/enroll-am-price-phone.png`, phone2: `${HERE}/screens/enroll-am-posted-phone.png` }],
 ];
 // Cut-outs from Canva previews: some have a hard, straight edge where Canva cropped them.
 // left: hidden under the phone/browser; right: bled off the canvas edge. Clean ones need nothing.
