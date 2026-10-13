@@ -97,6 +97,7 @@ export async function SiteFooter() {
             <li><Link href="/signup?role=clinic">Post a shift</Link></li>
             <li><Link href="/how-it-works">How it works</Link></li>
             <li><Link href="/personal-injury-clinics">Personal injury clinics</Link></li>
+            <li><Link href="/temporary-chiropractor-coverage">Locum coverage &amp; costs</Link></li>
             {live.map(({ profession: p, state: s }) => (
               <li key={`${p.slug}/${s.slug}`}><Link href={`/${p.slug}/${s.slug}`}>{serviceWord(p.slug)} coverage in {s.name}</Link></li>
             ))}

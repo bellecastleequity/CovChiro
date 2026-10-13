@@ -53,6 +53,7 @@ export async function GET() {
     `- Pricing for clinics: ${base}/for-clinics`,
     `- For providers (per diem and locum shifts): ${base}/for-providers`,
     `- Cost of closing calculator: ${base}/tools/cost-of-closing`,
+    `- Temporary & locum chiropractor coverage, how it works and what it costs: ${base}/temporary-chiropractor-coverage`,
     `- FAQ: ${base}/faq`,
     `- Blog: ${base}/blog`,
   ].join("\n");

@@ -15,7 +15,7 @@ import { updateSetting } from "./admin";
  * pings, keyword topics for the blog queue, and post-shift Google review requests.
  */
 
-const STATIC = ["/", "/for-clinics", "/for-providers", "/how-it-works", "/states", "/faq", "/contact", "/tools/cost-of-closing", "/personal-injury-clinics", "/chiropractic-students", "/blog", "/privacy", "/terms"];
+const STATIC = ["/", "/for-clinics", "/for-providers", "/how-it-works", "/states", "/faq", "/contact", "/tools/cost-of-closing", "/personal-injury-clinics", "/temporary-chiropractor-coverage", "/chiropractic-students", "/blog", "/privacy", "/terms"];
 
 export type PublicPath = { path: string; priority: number; changeFrequency: "weekly" | "monthly"; lastModified?: Date };
 

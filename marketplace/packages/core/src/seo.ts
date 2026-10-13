@@ -76,7 +76,7 @@ export function jsonLd(data: Ld | Ld[]): string {
   return JSON.stringify(data).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 }
 
-export function organizationLd(o: { name: string; url: string; logo: string; email?: string; sameAs?: string[]; legalName?: string }): Ld {
+export function organizationLd(o: { name: string; url: string; logo: string; email?: string; sameAs?: string[]; legalName?: string; alternateName?: string[] }): Ld {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -84,14 +84,15 @@ export function organizationLd(o: { name: string; url: string; logo: string; ema
     name: o.name,
     url: o.url,
     logo: o.logo,
+    ...(o.alternateName?.length ? { alternateName: o.alternateName } : {}),
     ...(o.legalName ? { legalName: o.legalName } : {}),
     ...(o.email ? { email: o.email, contactPoint: [{ "@type": "ContactPoint", contactType: "customer support", email: o.email, availableLanguage: "English" }] } : {}),
     ...(o.sameAs?.length ? { sameAs: o.sameAs } : {}),
   };
 }
 
-export function websiteLd(o: { name: string; url: string }): Ld {
-  return { "@context": "https://schema.org", "@type": "WebSite", "@id": `${o.url}#website`, name: o.name, url: o.url, publisher: { "@id": `${o.url}#organization` } };
+export function websiteLd(o: { name: string; url: string; alternateName?: string[] }): Ld {
+  return { "@context": "https://schema.org", "@type": "WebSite", "@id": `${o.url}#website`, name: o.name, ...(o.alternateName?.length ? { alternateName: o.alternateName } : {}), url: o.url, publisher: { "@id": `${o.url}#organization` } };
 }
 
 export function serviceLd(o: { name: string; description: string; url: string; siteUrl: string; serviceType: string; areaServed: string[]; lowPriceCents?: number; highPriceCents?: number }): Ld {
