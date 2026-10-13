@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  activationDue, contactDecision, escalationTopic, leadScore, nurtureDue, outreachStepDue, providerGrowthState, prospectStageFromAccount,
+  activationDue, contactDecision, emailFailureCounts, escalationTopic, leadScore, nurtureDue, outreachStepDue, providerGrowthState, prospectStageFromAccount,
   renderTemplate, ruleSegment, validateAiCopy, wantsOptOut, type ContactContext, type GrowthCadence,
 } from "../src";
 import { config, d, FAR } from "./fixtures";
@@ -216,5 +216,22 @@ describe("reply keywords", () => {
     expect(escalationTopic("the provider was harassing staff")).toBe("safety");
     expect(escalationTopic("can a DC prescribe this?")).toBe("clinical_scope");
     expect(escalationTopic("how much is a full day?")).toBeNull();
+  });
+});
+
+describe("emailFailureCounts", () => {
+  it("counts refusals about the message or address only", () => {
+    expect(emailFailureCounts("SendGrid 400: Does not contain a valid address. (from info@x.com)")).toBe(true);
+    for (const e of [
+      "SendGrid 401: Maximum credits exceeded (from info@x.com)",
+      "SendGrid 403: The from address does not match a verified Sender Identity",
+      "SendGrid 429: too many requests",
+      "SendGrid 503: Service Unavailable",
+      "fetch failed",
+      "connect ECONNREFUSED 1.2.3.4:443",
+      "email service rejected the message",
+      "",
+      null,
+    ]) expect(emailFailureCounts(e), String(e)).toBe(false);
   });
 });

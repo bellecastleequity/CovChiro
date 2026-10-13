@@ -1,8 +1,8 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { defaultSettings, env } from "@cm/config";
-import { caslBlock, contactDecision, renderTemplate, validateAiCopy, type Channel, type Purpose } from "@cm/core";
+import { caslBlock, contactDecision, emailFailureCounts, renderTemplate, validateAiCopy, type Channel, type Purpose } from "@cm/core";
 import { llmProvider } from "@cm/integrations";
-import { prisma, type PromptTemplate } from "@cm/db";
+import { prisma, type Prisma, type PromptTemplate } from "@cm/db";
 import { clock, getSettings } from "../context";
 import { absoluteUrl, lastEmailError, notifyAdmins, sendEmail } from "../notify";
 import { smsProvider } from "@cm/integrations";
@@ -322,6 +322,32 @@ export async function compose(agent: string, prompt: PromptTemplate, vars: Recor
 const EMAIL_RETRY_LIMIT = 3;
 const EMAIL_RETRY_AFTER_MS = 6 * 3600_000;
 
+/**
+ * Earlier failures of this step's email to this recipient (last 14 days): "gave_up" after
+ * EMAIL_RETRY_LIMIT failures about the recipient or message (core emailFailureCounts; our own
+ * account or the provider being down never counts), "wait" within EMAIL_RETRY_AFTER_MS of any
+ * failure (so an outage isn't hammered every sweep), else null.
+ */
+async function failedSendState(r: Recipient, agent: string, promptKey: string | null, subject?: string): Promise<"gave_up" | "wait" | null> {
+  const failures = await prisma.communication.findMany({
+    where: { entityType: r.type, entityId: r.id, channel: "EMAIL", status: "FAILED", agent, promptKey, subject: promptKey ? undefined : subject, createdAt: { gte: new Date(+clock.now() - 14 * 86_400_000) } },
+    orderBy: { createdAt: "desc" }, take: 50, select: { createdAt: true, error: true },
+  });
+  if (failures.filter((f) => emailFailureCounts(f.error)).length >= EMAIL_RETRY_LIMIT) return "gave_up";
+  if (failures[0] && +clock.now() - +failures[0].createdAt < EMAIL_RETRY_AFTER_MS) return "wait";
+  return null;
+}
+
+/** Records giving up on a step once: the BLOCKED row takes the step's dedupeKey, so later sweeps skip it quietly. */
+async function recordGaveUp(data: Omit<Prisma.CommunicationUncheckedCreateInput, "status">) {
+  try {
+    return await prisma.communication.create({ data: { ...data, status: "BLOCKED", blockReason: "send_failed_gave_up" } });
+  } catch (e) {
+    if ((e as { code?: string }).code === "P2002") return null;
+    throw e;
+  }
+}
+
 /** Thrown when a send is blocked for a reason that clears on its own; the sweep simply tries again later. */
 export class Deferred extends Error {}
 
@@ -353,12 +379,12 @@ export async function sendGrowthEmail(r: Recipient, msg: { subject: string; body
   // A step whose email keeps failing (bad address, provider refusal) is retried a few times, spaced
   // out, then left alone: the sweeps run every 15 minutes and would otherwise retry it all day.
   if (o.dedupeKey) {
-    const failures = await prisma.communication.findMany({
-      where: { entityType: r.type, entityId: r.id, channel: "EMAIL", status: "FAILED", agent: o.agent, promptKey: o.prompt?.key ?? null, subject: o.prompt ? undefined : msg.subject, createdAt: { gte: new Date(+clock.now() - 14 * 86_400_000) } },
-      orderBy: { createdAt: "desc" }, take: EMAIL_RETRY_LIMIT, select: { createdAt: true },
-    });
-    if (failures.length >= EMAIL_RETRY_LIMIT) return { ok: false, blocked: true, reason: "send_failed_gave_up", communicationId: null };
-    if (failures[0] && +clock.now() - +failures[0].createdAt < EMAIL_RETRY_AFTER_MS) throw new Deferred("send_failed_retry_later");
+    const state = await failedSendState(r, o.agent, o.prompt?.key ?? null, msg.subject);
+    if (state === "gave_up") {
+      const row = await recordGaveUp({ ...base, dedupeKey: o.dedupeKey });
+      return { ok: false, blocked: true, reason: "send_failed_gave_up", communicationId: row?.id ?? null };
+    }
+    if (state === "wait") throw new Deferred("send_failed_retry_later");
   }
   let row;
   try {
@@ -408,6 +434,15 @@ export async function composeAndSend(agent: AgentKey, r: Recipient, key: string,
     if (pre.transient) throw new Deferred(pre.reason!);
     await prisma.communication.create({ data: { entityType: r.type, entityId: r.id, channel: "EMAIL", agent, purpose: o.purpose, promptKey: key, toAddress: normEmail(r.email), status: "BLOCKED", blockReason: pre.reason, dedupeKey: o.dedupeKey } });
     await logAgent(agent, "send_blocked", { entityType: r.type, entityId: r.id, promptKey: key, channel: "EMAIL", sendStatus: "blocked", output: pre.reason });
+    return "blocked";
+  }
+  // A step that keeps failing is decided before composing, so no AI is spent on it every sweep.
+  const failed = await failedSendState(r, agent, key);
+  if (failed === "wait") throw new Deferred("send_failed_retry_later");
+  if (failed === "gave_up") {
+    if (await recordGaveUp({ entityType: r.type, entityId: r.id, channel: "EMAIL", direction: "OUT", agent, purpose: o.purpose, promptKey: key, toAddress: normEmail(r.email), dedupeKey: o.dedupeKey })) {
+      await logAgent(agent, "send_blocked", { entityType: r.type, entityId: r.id, promptKey: key, channel: "EMAIL", sendStatus: "blocked", output: "send_failed_gave_up" });
+    }
     return "blocked";
   }
   const prompt = await pickPrompt(key, o.professionCode ?? null);

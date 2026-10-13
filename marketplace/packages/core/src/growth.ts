@@ -296,3 +296,17 @@ export function escalationTopic(text: string): "legal" | "payment_dispute" | "sa
   if (/\b(scope of practice|diagnos|prescrib|medical advice)\w*/i.test(text)) return "clinical_scope";
   return null;
 }
+
+/**
+ * Does a failed email count toward giving up on that recipient? Only a refusal about the
+ * message or address does. Our own account or the provider's service failing (bad key, out of
+ * credits, rate limits, outages, network) says nothing about the recipient, so those never
+ * count, and neither does a failure with no error recorded (older rows). Oct 2026: a SendGrid
+ * "401 Maximum credits exceeded" outage made every clinic outreach step give up.
+ */
+export function emailFailureCounts(error: string | null | undefined): boolean {
+  const e = (error ?? "").trim();
+  if (!e || /^(email service rejected the message|the email provider refused the message)$/i.test(e)) return false;
+  if (/\b(401|403|408|429|5\d\d)\b/.test(e)) return false;
+  return !/credit|quota|rate.?limit|too many requests|unauthori[sz]ed|forbidden|permission|api key|suspend|timed? ?out|timeout|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|socket|network|unavailable/i.test(e);
+}

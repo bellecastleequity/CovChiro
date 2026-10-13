@@ -94,12 +94,12 @@ describe("failed sends don't loop", () => {
   it("a rejected welcome email is retried at most 3 times, 6 hours apart, with the provider's own error kept", async () => {
     const m = mailProvider() as { send: (x: unknown) => Promise<boolean>; lastError?: string | null };
     const real = m.send;
-    m.send = async () => ((m.lastError = "SendGrid 403: test rejection"), false);
+    m.send = async () => ((m.lastError = "SendGrid 400: Does not contain a valid address."), false);
     try {
       const p = await makeProvider({ licenses: [], malpractice: null, professions: [{ code: "DC", status: "ONBOARDING" }], status: "ONBOARDING" });
       const failed = async () => (await comms(p.id)).filter((x) => x.promptKey === "PROVIDER_WELCOME" && x.status === "FAILED");
       await growth.growthTick();
-      expect((await failed()).map((x) => x.error)).toEqual([expect.stringContaining("SendGrid 403: test rejection")]);
+      expect((await failed()).map((x) => x.error)).toEqual([expect.stringContaining("SendGrid 400: Does not contain a valid address.")]);
       // The next sweeps (every 15 minutes) leave it alone until 6 hours have passed.
       setClock(() => new Date(Date.now() + 15 * 60_000));
       await growth.growthTick();
@@ -115,6 +115,29 @@ describe("failed sends don't loop", () => {
       setClock(() => new Date(Date.now() + 28 * 3600_000));
       await growth.growthTick();
       expect(await failed()).toHaveLength(3);
+      // Giving up is recorded once, not on every sweep.
+      expect((await comms(p.id)).filter((x) => x.promptKey === "PROVIDER_WELCOME" && x.blockReason === "send_failed_gave_up")).toHaveLength(1);
+    } finally {
+      m.send = real;
+    }
+  });
+
+  it("our own account failing (out of credits) never makes it give up: the email goes once the account works", async () => {
+    const m = mailProvider() as { send: (x: unknown) => Promise<boolean>; lastError?: string | null };
+    const real = m.send;
+    m.send = async () => ((m.lastError = "SendGrid 401: Maximum credits exceeded (from info@coverageoncall.com)"), false);
+    try {
+      const p = await makeProvider({ licenses: [], malpractice: null, professions: [{ code: "DC", status: "ONBOARDING" }], status: "ONBOARDING" });
+      const welcome = async () => (await comms(p.id)).filter((x) => x.promptKey === "PROVIDER_WELCOME");
+      for (const h of [0, 7, 14, 21, 28]) {
+        setClock(() => new Date(Date.now() + h * 3600_000));
+        await growth.growthTick();
+      }
+      expect((await welcome()).map((x) => x.status)).toEqual(["FAILED", "FAILED", "FAILED", "FAILED", "FAILED"]);
+      m.send = real;
+      setClock(() => new Date(Date.now() + 35 * 3600_000));
+      await growth.growthTick();
+      expect((await welcome()).filter((x) => x.status === "SENT")).toHaveLength(1);
     } finally {
       m.send = real;
     }
