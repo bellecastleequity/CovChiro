@@ -2,6 +2,11 @@
 
 Owner's rules (Oct 2026). Follow them for every new thumbnail, reel cover and social graphic.
 
+## Style rule (owner, Oct 2026)
+- Every thumbnail and graphic uses our local, in-code style (marketing/thumbnails/thumbs.cjs): navy/teal gradient, Outfit headline with the teal second half, audience pill, real logo, real app screens in a phone or browser frame, coverageoncall.com at the bottom. The owner rejected the Canva-made layouts; replace them with local renders.
+- Canva is only for making realistic people assets when a design truly needs a person. The design itself is always the local template.
+- No people by default: render with NOPEOPLE=1 (the owner retired the existing cut-outs).
+
 ## Where to make them (owner decision, Oct 2026)
 - Default: build them here in code (HTML/SVG rendered to PNG). That keeps the real logo, fonts, colors and app screens exact, has no credit limits, and a series comes from one template.
 - Use Canva only when a design needs something we can't make here, mainly realistic photos of people. Even then, put in the real logo and app screens and check every AI-made detail (logos, prices, names, placeholders) before saving.

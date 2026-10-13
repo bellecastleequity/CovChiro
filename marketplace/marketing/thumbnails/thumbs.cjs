@@ -30,7 +30,7 @@ const T = [
   ["18-no-more-paper", C, "No more *paper timesheets*", "Digital time clock and one-tap sign-off.", "exec-woman", { desk: raw("c07-timesheets-desk") }],
   ["19-same-provider-every-week", C, "Same provider *every week*", "Standing bookings, booked automatically.", "chiro", { desk: raw("c09-my-providers-desk") }],
   ["20-pi-clinics", C, "PI clinic? *Stay open.*", "Don't lose patients to a missed day.", "lead", { desk: `${HERE}/screens/pi-clinics-desk.png`, url: "coverageoncall.com/personal-injury-clinics" }],
-  ["21-provider-signup", P, "Set up in *minutes*", "License, malpractice, payouts. Done.", "pt-man", { phone: raw("p01-dashboard-phone") }],
+  ["21-provider-signup", P, "Sign up & get *verified*", "License, malpractice, payouts. All online.", "pt-man", { phone: raw("p12-credentials-phone") }],
   ["22-set-your-minimum-pay", P, "Set your *minimum pay*", "Only see shifts that pay what you want.", "latina-nurse", { phone: raw("p03-shift-detail-phone") }],
   ["23-go-on-call", P, "Go *On Call*", "Get confirmed instantly for nearby shifts.", "black-nurse", { phone: raw("p17-on-call-phone") }],
   ["24-clinic-signup", C, "Get your clinic *ready today*", "A short checklist, then post your first shift.", "manager", { desk: raw("c01-dashboard-desk") }],
