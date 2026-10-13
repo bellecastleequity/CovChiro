@@ -14,8 +14,13 @@ export async function GET() {
   const demo = jar.get(SESSION_COOKIE)?.value;
   const admin = back ? await auth.sessionFromToken(back) : null;
   if (!admin || admin.user.role !== "PLATFORM_ADMIN") {
-    // Nothing to return to: go to the admin area (it asks to sign in if needed).
-    return new NextResponse(null, { status: 303, headers: { Location: "/admin/sandbox" } });
+    // Nothing to return to (the 12-hour return cookie ran out or that admin session ended). Sign the demo
+    // account out first: sent to /admin while still signed in as a demo provider, the admin area would just
+    // bounce back to /provider.
+    if (demo) await auth.destroySession(demo).catch(() => undefined);
+    jar.delete(SESSION_COOKIE);
+    jar.delete(ADMIN_RETURN_COOKIE);
+    return new NextResponse(null, { status: 303, headers: { Location: "/login?next=%2Fadmin%2Fsandbox" } });
   }
   if (demo && demo !== back) await auth.destroySession(demo).catch(() => undefined);
   await setSessionCookie(back!);
