@@ -14,8 +14,8 @@ export const metadata = { title: "Payout setup" };
 
 const TAX: Record<string, { tone: "green" | "amber" | "red" | "gray"; label: string }> = {
   COMPLETE: { tone: "green", label: "Complete" },
-  LAST4: { tone: "amber", label: "Full number still needed" },
-  MISSING: { tone: "red", label: "Missing" },
+  LAST4: { tone: "amber", label: "One step left" },
+  MISSING: { tone: "amber", label: "One step left" },
   UNKNOWN: { tone: "gray", label: "Being checked" },
 };
 
@@ -26,21 +26,21 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
   const site = absoluteUrl("/").replace(/^https?:\/\//, "").replace(/\/$/, "");
   return (
     <>
-      <PageHeader title="Payout setup" description="We pay you through Stripe Connect. Stripe securely collects your bank details and tax information (the details on a W-9) and handles your 1099. We never see your SSN, EIN or account numbers." />
+      <PageHeader title="Payout setup" description="We pay you through Stripe, a secure payments company. Your bank details go to Stripe, not to us, and Stripe sends your year-end tax form." />
       <Card className="mb-6 max-w-xl">
-        <CardHeader title="How you're paid (for your 1099)" description="Choose before you start the Stripe steps: your 1099 goes to whichever tax ID Stripe has." />
+        <CardHeader title="Who gets paid" description="Choose before you start the Stripe steps." />
         <CardBody>
           {p.stripePayoutsEnabled ? (
             <div className="space-y-2 text-sm">
-              <div>Paid as: <b>{p.taxEntity === "COMPANY" ? "my company (EIN)" : "myself (SSN)"}</b></div>
-              <div className="flex items-center gap-2">Tax info with Stripe: <Badge tone={TAX[p.taxInfoStatus]?.tone ?? "gray"}>{TAX[p.taxInfoStatus]?.label ?? p.taxInfoStatus}</Badge></div>
-              {p.taxInfoStatus === "LAST4" || p.taxInfoStatus === "MISSING" ? <p className="text-amber-800">Stripe still needs your full {p.taxEntity === "COMPANY" ? "EIN" : "SSN"} for your 1099. Open the Stripe dashboard below and finish the tax step.</p> : null}
+              <div>Paid as: <b>{p.taxEntity === "COMPANY" ? "my company" : "myself"}</b></div>
+              <div className="flex items-center gap-2">Year-end tax form: <Badge tone={TAX[p.taxInfoStatus]?.tone ?? "gray"}>{TAX[p.taxInfoStatus]?.label ?? p.taxInfoStatus}</Badge></div>
+              {p.taxInfoStatus === "LAST4" || p.taxInfoStatus === "MISSING" ? <p className="text-amber-800">Stripe needs one more detail to send your 1099. Open the Stripe dashboard below and finish the last step.</p> : null}
               <p className="text-xs text-slate-500">Need to switch between yourself and your company? Contact support: the 1099 follows the Stripe account.</p>
             </div>
           ) : (
             <ActionForm action={taxEntityAction} className="space-y-2 text-sm">
-              <label className="flex items-start gap-2"><input type="radio" name="taxEntity" value="INDIVIDUAL" defaultChecked={p.taxEntity !== "COMPANY"} className="mt-1" /><span><b>Myself</b>, as an individual / sole proprietor (SSN). Most providers.</span></label>
-              <label className="flex items-start gap-2"><input type="radio" name="taxEntity" value="COMPANY" defaultChecked={p.taxEntity === "COMPANY"} className="mt-1" /><span><b>My company</b>, such as an LLC, PA or PC with its own EIN. Stripe asks for the company&apos;s details and owner.</span></label>
+              <label className="flex items-start gap-2"><input type="radio" name="taxEntity" value="INDIVIDUAL" defaultChecked={p.taxEntity !== "COMPANY"} className="mt-1" /><span><b>Myself</b>, as an individual or sole proprietor. Most providers.</span></label>
+              <label className="flex items-start gap-2"><input type="radio" name="taxEntity" value="COMPANY" defaultChecked={p.taxEntity === "COMPANY"} className="mt-1" /><span><b>My company</b>, such as an LLC, PA or PC. Stripe asks for the company&apos;s details.</span></label>
               <SubmitButton size="sm" variant="outline">Save</SubmitButton>
             </ActionForm>
           )}
@@ -65,7 +65,7 @@ export default async function Payouts({ searchParams }: { searchParams: Promise<
             <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
               <div className="font-medium text-slate-800">Before you start</div>
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
-                <li>Have your {p.taxEntity === "COMPANY" ? "company's EIN, its legal name and address" : "SSN"} and bank details ready.</li>
+                <li>Have your {p.taxEntity === "COMPANY" ? "company's legal name, address and bank details" : "bank details"} ready. Stripe asks the standard questions for a 1099, the same as any contract work.</li>
                 <li>Business type: <b>{p.taxEntity === "COMPANY" ? "Company" : "Individual / sole proprietorship"}</b> (change it above if that&apos;s wrong).</li>
                 <li>If asked for a website or description: <b>{site}</b> or &ldquo;Independent contractor providing clinic coverage shifts through {brand().name}.&rdquo;</li>
               </ul>

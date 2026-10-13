@@ -396,7 +396,7 @@ export const taxEntityAction = formAction(async (fd) => {
   const { actor } = await requireActor("provider");
   const e = await setTaxEntity(actor, str(fd, "taxEntity") === "COMPANY" ? "COMPANY" : "INDIVIDUAL");
   revalidatePath("/provider/payouts");
-  return e === "COMPANY" ? "Saved: Stripe will ask for your company's details and EIN." : "Saved: Stripe will ask for your own details and SSN.";
+  return e === "COMPANY" ? "Saved: Stripe will ask for your company's details." : "Saved: Stripe will ask for your own details.";
 });
 
 export const flyInAction = formAction(async (fd) => {

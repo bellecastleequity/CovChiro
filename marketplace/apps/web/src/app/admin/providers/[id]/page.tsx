@@ -32,7 +32,8 @@ export default async function AdminProvider({ params }: { params: Promise<{ id: 
       [`${x.displayName}: verified malpractice`, x.malpractice, true],
     ]),
     ["Stripe payouts", c.payouts, true],
-    [`Tax info with Stripe (${p.taxEntity === "COMPANY" ? "company EIN" : "SSN"}): ${p.taxInfoStatus === "COMPLETE" ? "complete" : p.taxInfoStatus === "LAST4" ? "last 4 only" : p.taxInfoStatus === "MISSING" ? "missing" : "not checked"}`, p.taxInfoStatus === "COMPLETE", false],
+    // Tax form details only matter once payouts are on; a new sign-up never needs this line.
+    ...(c.payouts ? [[`Tax form (1099) details with Stripe: ${p.taxInfoStatus === "COMPLETE" ? "complete" : p.taxInfoStatus === "LAST4" || p.taxInfoStatus === "MISSING" ? "one step left" : "not checked"}`, p.taxInfoStatus === "COMPLETE", false] as [string, boolean, boolean]] : []),
   ];
   return (
     <>
