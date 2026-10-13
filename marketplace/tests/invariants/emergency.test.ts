@@ -17,8 +17,9 @@ let area = 0;
 async function scenario(n: number, hoursBefore = 3) {
   const base = { lat: 30 + 2.5 * area++, lng: -60.0 }; // away from the dispatch suite's spots
   const clinic = await makeClinic({ state: "FL", lat: base.lat, lng: base.lng });
-  // Mid-October (daylight time): 3h before a 9am start is 6am, outside quiet hours.
-  const shift = await makeShift(clinic.location.id, { days: 14 + area });
+  // 15:00 UTC start (10-11 AM Eastern): "3h before" stays outside quiet hours (9 PM-6 AM ET) in both daylight
+  // and standard time. At 13:00 UTC it failed once the shifts landed after the Nov 1 clock change.
+  const shift = await makeShift(clinic.location.id, { days: 14 + area, startHourUtc: 15 });
   at(new Date(+shift.startsAt - hoursBefore * 3_600_000));
   const providers = [];
   for (let i = 0; i < n; i++) providers.push(await makeProvider({ home: { lat: base.lat + 0.012 * (i + 1), lng: base.lng, state: "FL" } }));
