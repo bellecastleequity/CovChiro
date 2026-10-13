@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { Check, MapPin } from "lucide-react";
-import { breadcrumbLd, citiesByRateGroup, faqLd, serviceLd, type ServiceArea, type StateAreas } from "@cm/core";
+import { breadcrumbLd, citiesByRateGroup, faqLd, hasAreaPages, serviceLd, type ServiceArea, type StateAreas } from "@cm/core";
 import { brand } from "@cm/config";
 import type { SettingsMap } from "@cm/config";
 import { LinkButton } from "@/components/ui/button";
 import { JsonLd } from "@/components/site/json-ld";
 import { money } from "@/lib/format";
-import { priceRange, serviceWord, siteUrl, type RateGroup } from "@/lib/seo";
+import { priceRange, serviceWord, siteUrl, type RateGroup, type StateFacts } from "@/lib/seo";
 
 type Prof = { code: string; displayName: string; slug: string; credentialSuffix: string; volumePricingEnabled: boolean };
 
@@ -21,25 +21,34 @@ function rows(g: RateGroup, s: SettingsMap) {
     .map((c) => ({ key: `${c.durationTier}:${c.volumeTier}`, label: `${DUR[c.durationTier] ?? c.durationTier}${c.volumeTier ? ` · ${c.volumeTier === "LIGHT" ? "Light" : "Busy"} (up to ${visits(c.durationTier, c.volumeTier)} visits)` : ""}`, cents: c.clinicPriceCents }));
 }
 
-export function landingFaq(p: Prof, st: StateAreas, s: SettingsMap, where: string): [string, string][] {
+/** "$1,000,000 per claim and $3,000,000 aggregate", or null when not on file. */
+function malpracticeWords(f: StateFacts | null) {
+  if (!f?.perClaimCents) return null;
+  return `${money(f.perClaimCents)} per claim${f.aggregateCents ? ` and ${money(f.aggregateCents)} aggregate` : ""}`;
+}
+
+export function landingFaq(p: Prof, st: StateAreas, s: SettingsMap, where: string, facts: StateFacts | null = null): [string, string][] {
   const noun = p.displayName.toLowerCase();
+  const mal = malpracticeWords(facts);
   return [
     [`How fast can I get a ${noun} to cover my practice in ${where}?`, `Post the day and hours and we start matching right away with licensed ${noun}s who work in your area. Many requests are filled the same day; planned coverage (vacations, conferences) is best posted a week or more ahead.`],
-    [`Is every covering ${noun} licensed in ${st.name}?`, `Yes. Before they can apply or be offered a shift, each ${p.credentialSuffix}'s ${st.name} license is verified, along with malpractice coverage at or above ${st.name}'s limits. Licenses are re-checked when you book and again before each shift.`],
+    [`Is every covering ${noun} licensed in ${st.name}?`, `Yes. Before they can apply or be offered a shift, each ${p.credentialSuffix}'s ${st.name} license is verified, along with malpractice coverage ${mal ? `of at least ${mal}` : `at or above ${st.name}'s limits`}. Licenses are re-checked when you book and again before each shift.`],
     [`What does ${serviceWord(p.slug).toLowerCase()} coverage cost in ${where}?`, `You pay a set price per half or full day based on your ZIP code${p.volumePricingEnabled ? " and how busy the day is (Light or Busy)" : ""}, shown before you post. Mileage is passed through at ${money(s["pricing.mileageRateCentsPerMile"], { exact: true })} a mile; if a provider stays overnight, lodging is a flat ${money(s["pricing.lodgingNightlyCents"])} a night. No negotiating.`],
     ["What kinds of coverage can I book?", "Single days, half days, several days in a row, recurring days (a standing booking), vacations, holidays, sick days, maternity or paternity leave, conferences, and an open associate seat while you hire."],
     ["Do covering providers see my patients' records on your platform?", `No. ${brand().name} never stores patient information. Your provider works in your own systems on the day, the same way an associate would.`],
   ];
 }
 
-export function CoverageLanding({ p, st, area, groups, s, path }: { p: Prof; st: StateAreas; area: ServiceArea | null; groups: RateGroup[]; s: SettingsMap; path: string }) {
+export function CoverageLanding({ p, st, area, groups, s, path, facts = null }: { p: Prof; st: StateAreas; area: ServiceArea | null; groups: RateGroup[]; s: SettingsMap; path: string; facts?: StateFacts | null }) {
   const base = siteUrl();
   const service = serviceWord(p.slug);
   const where = area ? area.name : st.name;
   const noun = p.displayName.toLowerCase();
   const cities = area ? area.cities : st.areas.flatMap((a) => a.cities);
   const byGroup = citiesByRateGroup(cities, groups);
-  const faq = landingFaq(p, st, s, where);
+  const faq = landingFaq(p, st, s, where, facts);
+  const mal = malpracticeWords(facts);
+  const clinicSignup = `/signup?role=clinic&utm_source=site&utm_campaign=state-${st.slug}`;
   const range = priceRange(groups);
   const crumbs = [
     { name: brand().name, url: base },
@@ -74,12 +83,25 @@ export function CoverageLanding({ p, st, area, groups, s, path }: { p: Prof; st:
           Temporary and locum {noun}s for {where} practices: vacations, holidays, sick days, leave, conferences, or an open associate seat. Every {p.credentialSuffix} holds a verified {st.name} license and malpractice coverage before they can take a shift.{area ? ` ${area.blurb}` : ""}
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <LinkButton href="/signup?role=clinic" size="lg">Request coverage</LinkButton>
+          <LinkButton href={clinicSignup} size="lg">Request coverage</LinkButton>
           <LinkButton href={`/signup?role=provider&profession=${p.code}`} size="lg" variant="outline">I&apos;m a {noun}: join</LinkButton>
         </div>
       </div>
 
-      {!area ? (
+      {!area && !hasAreaPages(st) ? (
+        <section className="mt-12">
+          <h2 className="text-2xl font-semibold">Where we cover in {st.name}</h2>
+          <p className="mt-2 text-slate-600">{st.areas[0].blurb} Including:</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {cities.map((c) => (
+              <span key={c.name} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-sm font-medium text-slate-700 ring-1 ring-slate-200"><MapPin className="size-3.5 text-accent-600" />{c.name}</span>
+            ))}
+          </div>
+          <p className="mt-3 text-sm text-slate-500">Anywhere else in {st.name}: post the shift and we&apos;ll show you who can reach you.</p>
+        </section>
+      ) : null}
+
+      {!area && hasAreaPages(st) ? (
         <section className="mt-12">
           <h2 className="text-2xl font-semibold">Where we cover in {st.name}</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
@@ -100,8 +122,8 @@ export function CoverageLanding({ p, st, area, groups, s, path }: { p: Prof; st:
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           {groups.filter((g) => !area || byGroup.has(g.id)).map((g) => (
             <div key={g.id} className={`rounded-2xl border p-6 ${g.tier === 1 ? "border-brand-200 bg-brand-50/40" : "border-slate-200"}`}>
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{g.tier === 1 ? "Major cities" : "Smaller cities & towns"}</div>
-              {byGroup.get(g.id)?.length ? (
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{g.label ?? (g.tier === 1 ? "Major cities" : "Smaller cities & towns")}</div>
+              {byGroup.get(g.id)?.length && (area || !g.label) ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {byGroup.get(g.id)!.map((c) => (
                     <span key={c.name} className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-sm font-medium text-slate-700 ring-1 ring-slate-200"><MapPin className="size-3.5 text-accent-600" />{c.name}</span>
@@ -127,6 +149,15 @@ export function CoverageLanding({ p, st, area, groups, s, path }: { p: Prof; st:
             "Replacement search if a provider cancels",
           ].map((t) => <li key={t} className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-accent-600" />{t}</li>)}
         </ul>
+      </section>
+
+      <section className="mt-12 rounded-2xl border border-slate-200 p-6">
+        <h2 className="text-2xl font-semibold">Licensing for covering {noun}s in {st.name}</h2>
+        <p className="mt-2 text-slate-600">
+          A covering {p.credentialSuffix} must hold an active {st.name} license to treat your patients, even for one day. We verify it before they can apply, check it again when you book, and verify malpractice coverage {mal ? <>of at least <strong>{mal}</strong></> : <>at or above {st.name}&apos;s limits</>}.
+          {facts?.lookupUrl ? <> You can also look up any license yourself through the <a href={facts.lookupUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 underline">licensing board directory</a>.</> : null}
+        </p>
+        <p className="mt-2 text-sm text-slate-500">Licensed in another state too? Providers enroll once and add each state they hold a license in.</p>
       </section>
 
       <section className="mt-12 grid gap-6 md:grid-cols-3">

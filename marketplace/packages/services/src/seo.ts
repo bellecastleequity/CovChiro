@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { DateTime } from "luxon";
 import { brand } from "@cm/config";
-import { stateAreasByCode } from "@cm/core";
+import { hasAreaPages, stateAreasByCode } from "@cm/core";
 import { prisma } from "@cm/db";
 import { submitIndexNow } from "@cm/integrations";
 import { clock, getSettings, invalidateSettings, requireAdmin, type Actor } from "./context";
@@ -30,7 +30,7 @@ export async function publicPaths(): Promise<PublicPath[]> {
   const open = new Set(states.map((s) => s.state));
   const landing = live.filter((l) => open.has(l.state)).flatMap((l) => {
     const st = stateAreasByCode(l.state);
-    return st ? [`/${l.profession.slug}/${st.slug}`, ...st.areas.map((a) => `/${l.profession.slug}/${st.slug}/${a.slug}`)] : [];
+    return st ? [`/${l.profession.slug}/${st.slug}`, ...(hasAreaPages(st) ? st.areas : []).map((a) => `/${l.profession.slug}/${st.slug}/${a.slug}`)] : [];
   });
   return [
     ...STATIC.map((p) => ({ path: p, changeFrequency: (p === "/blog" ? "weekly" : "monthly") as "weekly" | "monthly", priority: p === "/" ? 1 : 0.7 })),

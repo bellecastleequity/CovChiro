@@ -25,7 +25,7 @@ export async function GET() {
       [
         `## ${service} coverage in ${st.name}`,
         `- Page: ${base}/${p.slug}/${st.slug}`,
-        ...st.areas.map((a) => `- ${a.name} (${a.cities.map((c) => c.name).join(", ")}): ${base}/${p.slug}/${st.slug}/${a.slug}`),
+        ...(st.areas.length > 1 ? st.areas : []).map((a) => `- ${a.name} (${a.cities.map((c) => c.name).join(", ")}): ${base}/${p.slug}/${st.slug}/${a.slug}`),
         range ? `- Clinic price: ${usd(range.low)}–${usd(range.high)} per half or full day depending on ZIP code${p.volumePricingEnabled ? " and patient volume (Light or Busy day)" : ""}, before travel. Full rate card: ${base}/for-clinics` : "",
         `- Every ${p.credentialSuffix} has a verified ${st.name} license and malpractice coverage before they can take a shift; licenses are re-checked at booking and before each shift.`,
       ].filter(Boolean).join("\n"),

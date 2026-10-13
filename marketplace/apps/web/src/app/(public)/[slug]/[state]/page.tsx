@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getSettings } from "@cm/services";
 import { CoverageLanding } from "@/components/site/coverage-landing";
-import { landingPair, serviceWord, stateRates } from "@/lib/seo";
+import { landingPair, serviceWord, stateFacts, stateRates } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +25,6 @@ export default async function StateLanding({ params }: P) {
   const { slug, state } = await params;
   const pair = await landingPair(slug, state);
   if (!pair) notFound();
-  const [groups, s] = await Promise.all([stateRates(pair.profession.code, pair.state.code), getSettings()]);
-  return <CoverageLanding p={pair.profession} st={pair.state} area={null} groups={groups} s={s} path={`/${pair.profession.slug}/${pair.state.slug}`} />;
+  const [groups, s, facts] = await Promise.all([stateRates(pair.profession.code, pair.state.code), getSettings(), stateFacts(pair.profession.code, pair.state.code)]);
+  return <CoverageLanding p={pair.profession} st={pair.state} area={null} groups={groups} s={s} facts={facts} path={`/${pair.profession.slug}/${pair.state.slug}`} />;
 }

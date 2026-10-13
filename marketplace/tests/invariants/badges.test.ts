@@ -13,7 +13,7 @@ describe("Rewards & Badges: custom badges and badges given by hand", () => {
   it("creates a custom badge, gives it, shows it with the earned badges, edits, archives and removes it", async () => {
     const a = await admin();
     const p = await makeProvider();
-    const name = `Above ${uid()}`;
+    const name = `Above ${uid().replace(/\d/g, (d) => "abcdefghij"[+d])}`; // no digits: a 10-digit run reads as a phone number
     const b = await badges.saveCustomBadge(a, { label: name, description: "Went above and beyond for a clinic.", tone: "amber" });
     expect(b.key).toMatch(/^custom_above_/);
 

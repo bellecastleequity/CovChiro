@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { areaBySlug } from "@cm/core";
 import { getSettings } from "@cm/services";
 import { CoverageLanding } from "@/components/site/coverage-landing";
-import { landingPair, serviceWord, stateRates } from "@/lib/seo";
+import { landingPair, serviceWord, stateFacts, stateRates } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +32,6 @@ export default async function AreaLanding({ params }: P) {
   const { slug, state, area } = await params;
   const x = await load(slug, state, area);
   if (!x) notFound();
-  const [groups, s] = await Promise.all([stateRates(x.profession.code, x.state.code), getSettings()]);
-  return <CoverageLanding p={x.profession} st={x.state} area={x.area} groups={groups} s={s} path={`/${x.profession.slug}/${x.state.slug}/${x.area.slug}`} />;
+  const [groups, s, facts] = await Promise.all([stateRates(x.profession.code, x.state.code), getSettings(), stateFacts(x.profession.code, x.state.code)]);
+  return <CoverageLanding p={x.profession} st={x.state} area={x.area} groups={groups} s={s} facts={facts} path={`/${x.profession.slug}/${x.state.slug}/${x.area.slug}`} />;
 }

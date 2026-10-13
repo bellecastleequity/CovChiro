@@ -4,55 +4,24 @@
  * state-agnostic; the pages decide what's live from the database.
  */
 
+import { STATE_AREAS } from "./serviceAreas";
+
 export interface AreaCity { name: string; zip3: string }
 /** cities: largest first (titles use the first three). */
 export interface ServiceArea { slug: string; name: string; blurb: string; cities: AreaCity[] }
 export interface StateAreas { code: string; slug: string; name: string; areas: ServiceArea[] }
 
-/** Regions a state is marketed in. A city's ZIP3 decides its rate group (RateRegion.zip3List). */
-export const SERVICE_AREAS: StateAreas[] = [
-  {
-    code: "FL",
-    slug: "florida",
-    name: "Florida",
-    areas: [
-      {
-        slug: "north-florida",
-        name: "North Florida",
-        blurb: "From the First Coast to the Panhandle.",
-        cities: [
-          { name: "Jacksonville", zip3: "322" }, { name: "Tallahassee", zip3: "323" }, { name: "Gainesville", zip3: "326" }, { name: "St. Augustine", zip3: "320" },
-          { name: "Pensacola", zip3: "325" }, { name: "Panama City", zip3: "324" },
-        ],
-      },
-      {
-        slug: "central-florida",
-        name: "Central Florida",
-        blurb: "Orlando, Tampa Bay, the Space Coast and everything between.",
-        cities: [
-          { name: "Orlando", zip3: "328" }, { name: "Tampa", zip3: "336" }, { name: "St. Petersburg", zip3: "337" }, { name: "Kissimmee", zip3: "347" }, { name: "Sanford", zip3: "327" },
-          { name: "Brandon", zip3: "335" }, { name: "Clearwater", zip3: "337" }, { name: "Lakeland", zip3: "338" }, { name: "Daytona Beach", zip3: "321" },
-          { name: "Melbourne", zip3: "329" }, { name: "Ocala", zip3: "344" }, { name: "Sarasota", zip3: "342" },
-        ],
-      },
-      {
-        slug: "south-florida",
-        name: "South Florida",
-        blurb: "Miami-Dade, Broward, Palm Beach, the Treasure Coast and Southwest Florida.",
-        cities: [
-          { name: "Miami", zip3: "331" }, { name: "Fort Lauderdale", zip3: "333" }, { name: "West Palm Beach", zip3: "334" }, { name: "Boca Raton", zip3: "334" },
-          { name: "Port St. Lucie", zip3: "349" }, { name: "Fort Myers", zip3: "339" }, { name: "Naples", zip3: "341" }, { name: "Key West", zip3: "330" },
-        ],
-      },
-    ],
-  },
-];
+/** Regions a state is marketed in (data in serviceAreas.ts). A city's ZIP3 decides its rate group (RateRegion.zip3List). */
+export const SERVICE_AREAS: StateAreas[] = STATE_AREAS;
+
+/** A state with more than one area gets a page per area; one area = the state page lists its cities. */
+export const hasAreaPages = (st: StateAreas) => st.areas.length > 1;
 
 export const stateAreasByCode = (code: string) => SERVICE_AREAS.find((s) => s.code === code) ?? null;
 export const stateAreasBySlug = (slug: string) => SERVICE_AREAS.find((s) => s.slug === slug.toLowerCase()) ?? null;
 export function areaBySlug(stateSlug: string, areaSlug: string) {
   const st = stateAreasBySlug(stateSlug);
-  const area = st?.areas.find((a) => a.slug === areaSlug.toLowerCase()) ?? null;
+  const area = st && hasAreaPages(st) ? (st.areas.find((a) => a.slug === areaSlug.toLowerCase()) ?? null) : null;
   return st && area ? { state: st, area } : null;
 }
 

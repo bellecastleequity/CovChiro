@@ -98,9 +98,13 @@ export async function SiteFooter() {
             <li><Link href="/how-it-works">How it works</Link></li>
             <li><Link href="/personal-injury-clinics">Personal injury clinics</Link></li>
             <li><Link href="/temporary-chiropractor-coverage">Locum coverage &amp; costs</Link></li>
-            {live.map(({ profession: p, state: s }) => (
-              <li key={`${p.slug}/${s.slug}`}><Link href={`/${p.slug}/${s.slug}`}>{serviceWord(p.slug)} coverage in {s.name}</Link></li>
-            ))}
+            {live.length > 3
+              ? [...new Map(live.map((x) => [x.profession.slug, x.profession])).values()].map((p) => (
+                  <li key={p.slug}><Link href="/states">{serviceWord(p.slug)} coverage by state</Link></li>
+                ))
+              : live.map(({ profession: p, state: s }) => (
+                  <li key={`${p.slug}/${s.slug}`}><Link href={`/${p.slug}/${s.slug}`}>{serviceWord(p.slug)} coverage in {s.name}</Link></li>
+                ))}
           </ul>
         </div>
         <div className="text-sm">

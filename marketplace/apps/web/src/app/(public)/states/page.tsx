@@ -1,4 +1,4 @@
-import { CA_PROVINCES, US_STATES } from "@cm/core";
+import { CA_PROVINCES, US_STATES, stateAreasByCode } from "@cm/core";
 import { prisma } from "@cm/db";
 import Link from "next/link";
 import { getSettings } from "@cm/services";
@@ -9,10 +9,18 @@ export const metadata = { title: "Where we're available", description: "States a
 export const dynamic = "force-dynamic";
 
 export default async function States() {
-  const [pairs, professions] = await Promise.all([
+  const [pairs, professions, openStates] = await Promise.all([
     prisma.professionStateConfig.findMany({ where: { enabled: true } }),
     prisma.profession.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.stateConfig.findMany({ where: { enabled: true }, select: { state: true } }),
   ]);
+  const open = new Set(openStates.map((s) => s.state));
+  /** The state's landing page for its first live, active profession (same rule as the landing routes). */
+  const pageFor = (code: string) => {
+    const st = stateAreasByCode(code);
+    const p = professions.find((x) => x.active && open.has(code) && pairs.some((r) => r.state === code && r.professionCode === x.code));
+    return st && p ? `/${p.slug}/${st.slug}` : null;
+  };
   const spots = (await getSettings())["enrollment.trailblazerSpots"];
   const active = professions.filter((p) => p.active);
   const byState = new Map<string, string[]>();
@@ -24,12 +32,19 @@ export default async function States() {
       <div className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
         {Object.entries(US_STATES).map(([code, name]) => {
           const live = byState.get(code);
-          return (
-            <div key={code} className={`rounded-xl border p-3 text-sm ${live ? "border-brand-300 bg-brand-50" : "border-slate-200 text-slate-400"}`}>
+          const href = live ? pageFor(code) : null;
+          const body = (
+            <>
               <div className="font-semibold">{code}</div>
               <div className="truncate text-xs">{name}</div>
               {live ? <div className="mt-1 text-xs font-medium text-brand-700">{live.map((c) => { const p = professions.find((x) => x.code === c); return p ? serviceWord(p.slug) : c; }).join(", ")}</div> : null}
-            </div>
+            </>
+          );
+          const cls = `rounded-xl border p-3 text-sm ${live ? "border-brand-300 bg-brand-50" : "border-slate-200 text-slate-400"}`;
+          return href ? (
+            <Link key={code} href={href} className={`${cls} transition hover:border-brand-500 hover:shadow-sm`}>{body}</Link>
+          ) : (
+            <div key={code} className={cls}>{body}</div>
           );
         })}
       </div>

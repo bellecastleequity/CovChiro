@@ -48,7 +48,7 @@ export default async function ProfessionPage({ params }: { params: Promise<{ slu
               <p key={st!.code} className="mt-2 text-sm">
                 <Link href={`/${p.slug}/${st!.slug}`} className="font-medium text-brand-700 hover:underline">{serviceWord(p.slug)} coverage in {st!.name}</Link>
                 {": "}
-                {st!.areas.map((a, i) => <span key={a.slug}>{i ? " · " : ""}<Link href={`/${p.slug}/${st!.slug}/${a.slug}`} className="text-brand-700 hover:underline">{a.name}</Link></span>)}
+                {(st!.areas.length > 1 ? st!.areas : []).map((a, i) => <span key={a.slug}>{i ? " · " : ""}<Link href={`/${p.slug}/${st!.slug}/${a.slug}`} className="text-brand-700 hover:underline">{a.name}</Link></span>)}
               </p>
             ))}
             <div className="mt-8 flex flex-wrap gap-3">
