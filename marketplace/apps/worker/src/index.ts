@@ -60,10 +60,10 @@ function withTimers() {
     else {
       // Dev fallback for cron jobs: once an hour, only runs during the 2 AM ET hour.
       const { tz } = j.schedule;
-      const hour = Number(j.schedule.cron.split(" ")[1]);
+      const hours = j.schedule.cron.split(" ")[1].split(",").map(Number);
       timers.push(setInterval(() => {
         const h = Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hourCycle: "h23", timeZone: tz }).format(new Date()));
-        if (h === hour) fire(j.name);
+        if (hours.includes(h)) fire(j.name);
       }, 3_600_000));
     }
   }

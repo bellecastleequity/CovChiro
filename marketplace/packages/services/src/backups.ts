@@ -26,6 +26,12 @@ const SKIP = new Set(["spatial_ref_sys"]);
 const BATCH = 2000;
 const q = (ident: string) => `"${ident.replace(/"/g, '""')}"`;
 
+const EXPORT_TIMEOUT_MIN = 15;
+/** An export still "running" after this long was cut off (the app process stopped part-way). */
+const STALE_RUN_MS = 60 * 60_000;
+/** The morning retry runs only when no backup has finished in this long. */
+const RETRY_IF_OLDER_MS = 20 * 3_600_000;
+
 /** Every row of every table as NDJSON (keyset-paged by id where there is one). */
 async function exportRows() {
   const tables = (await prisma.$queryRaw<{ t: string }[]>`SELECT table_name::text AS t FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY 1`).map((r) => r.t).filter((t) => !SKIP.has(t));
@@ -66,7 +72,12 @@ export async function exportBackup(actor: Actor = SYSTEM, opts: { tier?: string;
   const now = clock.now();
   const run = await prisma.backupRun.create({ data: { kind: "EXPORT", tier: opts.tier ?? (actor.role === "SYSTEM" ? tierFor(now) : "manual"), label: opts.label ?? null, createdById: actor.userId } });
   try {
-    const { ndjson, counts } = await exportRows();
+    // A hung database read must end as FAILED (with a reason), never sit at "Running" forever.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Timed out after ${EXPORT_TIMEOUT_MIN} minutes reading the database.`)), EXPORT_TIMEOUT_MIN * 60_000);
+    });
+    const { ndjson, counts } = await Promise.race([exportRows(), timeout]).finally(() => clearTimeout(timer));
     const file = sealBackup(ndjson, backupKeyBuffer());
     const key = await storage().put("backups", file, "application/octet-stream");
     const rowCount = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -94,7 +105,9 @@ export async function pruneExports() {
       removed++;
     }
   }
-  return removed;
+  // Failed or cut-off runs have no file; drop them from the list after a week.
+  const failed = await prisma.backupRun.updateMany({ where: { kind: "EXPORT", status: "FAILED", startedAt: { lt: new Date(+clock.now() - 7 * 86_400_000) } }, data: { status: "DELETED" } });
+  return removed + failed.count;
 }
 
 // ---------------- Neon restore points ----------------
@@ -190,7 +203,9 @@ export async function backupsOverview(actor: Actor) {
       neonInfo = { connected: false, historyHours: null, error: e instanceof Error ? e.message : String(e), project: null };
     }
   }
-  return { exports, points, restores, neon: neonInfo, keyFromSessionSecret: !env().BACKUP_KEY };
+  const s = await getSettings();
+  const keep = { daily: s["backups.keepDaily"], weekly: s["backups.keepWeekly"], monthly: s["backups.keepMonthly"], manual: s["backups.keepManual"] };
+  return { exports, points, restores, neon: neonInfo, keyFromSessionSecret: !env().BACKUP_KEY, keep };
 }
 
 export async function backupFile(actor: Actor, id: string) {
@@ -203,11 +218,41 @@ export async function backupFile(actor: Actor, id: string) {
   return { data: f.data, name: `coverageoncall-backup-${stamp(r.startedAt)}.cmbk` };
 }
 
+/**
+ * Exports left at RUNNING past STALE_RUN_MS never finished: the process running them was stopped
+ * (host restart or memory limit) before it could record success or failure. Mark them FAILED so
+ * the page and System health say so.
+ */
+export async function markInterruptedExports() {
+  const r = await prisma.backupRun.updateMany({
+    where: { kind: "EXPORT", status: "RUNNING", startedAt: { lt: new Date(+clock.now() - STALE_RUN_MS) } },
+    data: { status: "FAILED", error: "Didn't finish: the app stopped part-way through (a host restart or memory limit). The morning retry makes a new one.", finishedAt: clock.now() },
+  });
+  return r.count;
+}
+
+/**
+ * Job (4:40 and 6:40 AM ET): if the nightly export didn't finish, try again while the site is quiet.
+ * Skips when any backup (nightly or manual) finished in the last 20 hours or one is running now.
+ */
+export async function retryNightlyBackup() {
+  const s = await getSettings();
+  if (!s["backups.enabled"]) return "off";
+  const interrupted = await markInterruptedExports();
+  const since = new Date(+clock.now() - RETRY_IF_OLDER_MS);
+  const recent = await prisma.backupRun.findFirst({ where: { kind: "EXPORT", OR: [{ status: "DONE", startedAt: { gte: since } }, { status: "RUNNING" }] } });
+  if (recent) return { interrupted, retried: false };
+  const r = await exportBackup(SYSTEM).then((x) => ({ rows: x.rowCount, bytes: x.sizeBytes })).catch((e) => ({ error: String(e) }));
+  await pruneExports();
+  return { interrupted, retried: true, export: r };
+}
+
 /** Job (nightly): export, restore point, prune. A failure emails the admins (export) and never stops the rest. */
 export async function nightlyBackup() {
   const s = await getSettings();
   if (!s["backups.enabled"]) return "off";
   const out: Record<string, unknown> = {};
+  out.interrupted = await markInterruptedExports();
   out.export = await exportBackup(SYSTEM).then((r) => ({ rows: r.rowCount, bytes: r.sizeBytes })).catch((e) => ({ error: String(e) }));
   if (neonApi()) out.restorePoint = await createRestorePoint(SYSTEM).then((r) => r.neonBranchId).catch((e) => ({ error: String(e) }));
   out.prunedExports = await pruneExports();

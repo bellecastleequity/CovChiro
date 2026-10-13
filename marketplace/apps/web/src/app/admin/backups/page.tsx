@@ -103,7 +103,7 @@ export default async function Backups() {
       </Card>
 
       <Card className="mt-6">
-        <CardHeader title="Exports" description={`Encrypted with ${o.keyFromSessionSecret ? "a key made from SESSION_SECRET" : "BACKUP_KEY"}; keep a copy of that value somewhere safe, or the files can't be opened. Kept: 14 daily, 8 weekly, 12 monthly (Settings → Backups).`} />
+        <CardHeader title="Exports" description={`Encrypted with ${o.keyFromSessionSecret ? "a key made from SESSION_SECRET" : "BACKUP_KEY"}; keep a copy of that value somewhere safe, or the files can't be opened. Kept: ${o.keep.daily} daily, ${o.keep.weekly} weekly, ${o.keep.monthly} monthly, ${o.keep.manual} manual (Settings → Backups).`} />
         <Table>
           <thead><tr><Th>When</Th><Th>Kind</Th><Th>Size</Th><Th>Rows</Th><Th></Th></tr></thead>
           <tbody>

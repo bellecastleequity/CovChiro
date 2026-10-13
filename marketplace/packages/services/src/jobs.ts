@@ -1,5 +1,5 @@
 import { purgeSpam } from "./spam";
-import { nightlyBackup } from "./backups";
+import { nightlyBackup, retryNightlyBackup } from "./backups";
 import { referralSweep } from "./referrals";
 import { punchReminderSweep, timeclockSweep } from "./timeclock";
 import { rewardsSweep } from "./rewards";
@@ -98,6 +98,8 @@ export const JOBS: Job[] = [
   { name: "referralSweep", schedule: { everySeconds: 3600 }, run: () => referralSweep() },
   // Backups: encrypted export + Neon restore point + pruning, nightly at 3:10 ET.
   { name: "dbBackup", schedule: { cron: "10 3 * * *", tz: "America/New_York" }, run: () => nightlyBackup(), leaseMinutes: 30, long: true },
+  // The nightly export can be cut off by the host; these retry it if nothing finished overnight.
+  { name: "dbBackupRetry", schedule: { cron: "40 4,6 * * *", tz: "America/New_York" }, run: () => retryNightlyBackup(), leaseMinutes: 30, long: true },
   // Clinic changes to confirmed shifts not answered in time: provider released (no penalty), shift reopens.
   // Clinic-set rate (beta): unfilled shifts whose clinic chose release go to market at their release time.
   { name: "clinicRateRelease", schedule: { everySeconds: 300 }, run: () => releaseDueClinicRates() },
@@ -154,9 +156,10 @@ export function jobsDueAt(now: Date): Job[] {
   const minuteOfDay = Math.floor(+now / 60_000);
   return JOBS.filter((j) => {
     if ("everySeconds" in j.schedule) return j.schedule.everySeconds <= 60 || minuteOfDay % Math.round(j.schedule.everySeconds / 60) === 0;
-    const [min, hour] = j.schedule.cron.split(" ").map(Number);
+    // "M H * * *": one minute, one hour or a comma list of hours ("40 4,6 * * *").
+    const [minField, hourField] = j.schedule.cron.split(" ");
     const local = DateTime.fromJSDate(now, { zone: j.schedule.tz });
-    return local.hour === hour && local.minute === min;
+    return local.minute === Number(minField) && hourField.split(",").map(Number).includes(local.hour);
   });
 }
 

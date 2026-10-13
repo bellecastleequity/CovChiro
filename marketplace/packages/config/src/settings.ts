@@ -194,10 +194,10 @@ export const SETTINGS = {
 
   // ---------- backups ----------
   "backups.enabled": def({ group: "Backups", label: "Nightly database backup (export + Neon restore point)", schema: z.boolean(), default: true, flag: null }),
-  "backups.keepDaily": def({ group: "Backups", label: "Daily exports to keep", schema: z.number().int().min(1).max(60), default: 14, flag: null }),
-  "backups.keepWeekly": def({ group: "Backups", label: "Weekly (Sunday) exports to keep", schema: z.number().int().min(0).max(52), default: 8, flag: null }),
-  "backups.keepMonthly": def({ group: "Backups", label: "Monthly (1st of the month) exports to keep", schema: z.number().int().min(0).max(60), default: 12, flag: null }),
-  "backups.keepManual": def({ group: "Backups", label: "\"Back up now\" exports to keep", schema: z.number().int().min(1).max(60), default: 10, flag: null }),
+  "backups.keepDaily": def({ group: "Backups", label: "Daily exports to keep", schema: z.number().int().min(1).max(60), default: 3, flag: null }),
+  "backups.keepWeekly": def({ group: "Backups", label: "Weekly (Sunday) exports to keep", schema: z.number().int().min(0).max(52), default: 2, flag: null }),
+  "backups.keepMonthly": def({ group: "Backups", label: "Monthly (1st of the month) exports to keep", schema: z.number().int().min(0).max(60), default: 3, flag: null }),
+  "backups.keepManual": def({ group: "Backups", label: "\"Back up now\" exports to keep", schema: z.number().int().min(1).max(60), default: 3, flag: null }),
   "backups.keepRestorePoints": def({ group: "Backups", label: "Neon restore points to keep", help: "Each is a Neon branch; free Neon plans allow about 10 branches in total.", schema: z.number().int().min(1).max(30), default: 5, flag: null }),
 
   // ---------- time clock ----------

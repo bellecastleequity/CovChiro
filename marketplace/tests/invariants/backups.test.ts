@@ -58,10 +58,10 @@ describe("database export and restore", () => {
 
   it("keeps the newest exports per tier and deletes older files", async () => {
     await prisma.backupRun.deleteMany({ where: { kind: "EXPORT" } });
-    for (let i = 0; i < 12; i++) await backups.exportBackup(admin);
-    expect(await backups.pruneExports()).toBe(2);
+    for (let i = 0; i < 5; i++) await backups.exportBackup(admin);
+    expect(await backups.pruneExports()).toBe(2); // keeps the newest 3 manual (default)
     const kept = await prisma.backupRun.findMany({ where: { kind: "EXPORT", status: "DONE" } });
-    expect(kept).toHaveLength(10);
+    expect(kept).toHaveLength(3);
     const gone = await prisma.backupRun.findFirstOrThrow({ where: { kind: "EXPORT", status: "DELETED" } });
     expect(gone.storageKey).toBeNull();
   }, 120_000);
@@ -93,5 +93,27 @@ describe("Neon restore points and restore", () => {
     setNeonApi(null);
     await expect(backups.createRestorePoint(admin)).rejects.toThrow(/NEON_API_KEY/);
     expect((await backups.backupsOverview(admin)).neon.connected).toBe(false);
+  });
+});
+
+describe("nightly backup that never finished", () => {
+  it("marks a stuck run as failed and the morning retry makes a new backup", async () => {
+    await prisma.backupRun.deleteMany({ where: { kind: "EXPORT" } });
+    const stuck = await prisma.backupRun.create({ data: { kind: "EXPORT", tier: "daily", startedAt: new Date(Date.now() - 2 * 3_600_000) } });
+    const r = (await backups.retryNightlyBackup()) as { interrupted: number; retried: boolean };
+    expect(r).toMatchObject({ interrupted: 1, retried: true });
+    expect(await prisma.backupRun.findUniqueOrThrow({ where: { id: stuck.id } })).toMatchObject({ status: "FAILED", error: expect.stringContaining("Didn't finish") });
+    expect(await prisma.backupRun.count({ where: { kind: "EXPORT", status: "DONE" } })).toBe(1);
+    // A backup finished recently: the second retry of the morning does nothing.
+    expect(await backups.retryNightlyBackup()).toMatchObject({ retried: false });
+  });
+
+  it("runs the retry at 4:40 and 6:40 AM Eastern only", async () => {
+    const { jobsDueAt } = await import("@cm/services");
+    const at = (iso: string) => jobsDueAt(new Date(iso)).some((j) => j.name === "dbBackupRetry");
+    expect(at("2026-10-13T08:40:00Z")).toBe(true); // 4:40 EDT
+    expect(at("2026-10-13T10:40:00Z")).toBe(true); // 6:40 EDT
+    expect(at("2026-10-13T09:40:00Z")).toBe(false);
+    expect(jobsDueAt(new Date("2026-10-13T07:10:00Z")).some((j) => j.name === "dbBackup")).toBe(true); // 3:10 EDT still works
   });
 });
