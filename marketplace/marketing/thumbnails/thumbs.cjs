@@ -132,8 +132,10 @@ function layout([file, aud, head, sub, person, v]) {
   const b = await chromium.launch();
   const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
   const only = process.env.ONLY ? process.env.ONLY.split(",") : null;
-  for (const t of T) {
+  for (let t of T) {
     if (only && !only.some((o) => t[0].startsWith(o))) continue;
+    // NOPEOPLE=1: render without the people cut-outs (owner, Oct 2026: they've been used enough).
+    if (process.env.NOPEOPLE) t = [...t.slice(0, 4), null, t[5]];
     fs.writeFileSync(path.join(OUT, "_page.html"), `<html><head><style>${css}</style></head><body>${layout(t)}</body></html>`);
     await p.goto("file://" + path.join(OUT, "_page.html"));
     await p.evaluate(async () => {
