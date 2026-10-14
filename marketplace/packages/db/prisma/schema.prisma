@@ -772,6 +772,9 @@ model StandingBooking {
   endedReason      String?
   /// Last date shifts have been generated for.
   generatedThrough DateTime? @db.Date
+  /// A change waiting for the provider: { weekdays, startTime, endTime, endsOn, notes }.
+  pendingChange    Json?
+  pendingChangeAt  DateTime? @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
   shifts           Shift[]

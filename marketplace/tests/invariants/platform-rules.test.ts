@@ -101,6 +101,77 @@ describe("standing bookings", () => {
     expect(after.filter((s) => +s.startsAt <= cutoff).every((s) => s.status === "CONFIRMED")).toBe(true);
   });
 
+  it("a change to days or hours waits for the provider; accepting books the new days and frees the dropped ones", async () => {
+    const { clinic, provider } = await pair(60);
+    const p = await actorOf(provider.id);
+    const start = new Date(Date.now() + 1 * 86_400_000).toISOString().slice(0, 10);
+    const b = await standing.proposeStanding(clinic.actor, { providerId: provider.id, locationId: clinic.location.id, professionCode: "DC", weekdays: [2, 4], startTime: "13:00", endTime: "17:00", startsOn: start });
+    await standing.respondStanding(p, b.id, true);
+    const tz = clinic.location.timeZone;
+    const live = () => prisma.shift.findMany({ where: { standingBookingId: b.id, status: { not: "CANCELLED" } }, include: { assignments: true }, orderBy: { startsAt: "asc" } });
+    const wd = (d: Date) => Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(d).replace(/Mon|Tue|Wed|Thu|Fri|Sat|Sun/, (x) => String(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(x) + 1)));
+    const before = await live();
+    expect(new Set(before.map((x) => wd(x.startsAt)))).toEqual(new Set([2, 4]));
+
+    // Ramp up: Mon/Wed/Thu (Tue dropped). Nothing changes until the provider accepts.
+    const r = await standing.proposeStandingChange(clinic.actor, b.id, { weekdays: [1, 3, 4], startTime: "13:00", endTime: "17:00", endsOn: null });
+    expect(r).toMatchObject({ applied: false, needsConsent: true });
+    expect((await live()).length).toBe(before.length);
+    const [row] = await standing.providerStanding(p);
+    expect(row.pending).toMatchObject({ weekdays: [1, 3, 4] });
+
+    const a = await standing.respondStandingChange(p, b.id, true);
+    expect(a.added).toBeGreaterThan(0);
+    const after = await live();
+    const freeFrom = Date.now() + 48 * 3_600_000;
+    // Tuesdays more than 48 h away were cancelled at no charge; any sooner Tuesday stays booked.
+    expect(after.filter((x) => wd(x.startsAt) === 2).every((x) => +x.startsAt <= freeFrom)).toBe(true);
+    expect(a.released + a.kept.length).toBe(before.filter((x) => wd(x.startsAt) === 2).length);
+    expect(after.some((x) => wd(x.startsAt) === 1) && after.some((x) => wd(x.startsAt) === 3)).toBe(true);
+    expect(after.every((x) => x.assignments.some((y) => y.providerId === provider.id && y.status === "CONFIRMED"))).toBe(true);
+    const cancelledTue = await prisma.shift.findMany({ where: { standingBookingId: b.id, status: "CANCELLED" }, include: { assignments: true } });
+    expect(cancelledTue.every((x) => x.assignments.every((y) => y.cancelledBy === "CLINIC"))).toBe(true);
+    expect(await prisma.payout.count({ where: { assignmentId: { in: cancelledTue.flatMap((x) => x.assignments.map((y) => y.id)) }, kind: "LATE_CANCEL" } })).toBe(0);
+    expect((await prisma.standingBooking.findUniqueOrThrow({ where: { id: b.id } })).pendingChange).toBeNull();
+    // Idempotent afterwards.
+    expect(await standing.generateStanding(b.id)).toBe(0);
+  });
+
+  it("notes and a later end date apply at once; declining or withdrawing a change keeps the old pattern", async () => {
+    const { clinic, provider } = await pair(60);
+    const p = await actorOf(provider.id);
+    const start = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    const end = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
+    const later = new Date(Date.now() + 40 * 86_400_000).toISOString().slice(0, 10);
+    const b = await standing.proposeStanding(clinic.actor, { providerId: provider.id, locationId: clinic.location.id, professionCode: "DC", weekdays: [5], startTime: "13:00", endTime: "17:00", startsOn: start, endsOn: end });
+    // Still a proposal: edited in place.
+    await standing.proposeStandingChange(clinic.actor, b.id, { weekdays: [3, 5], startTime: "13:00", endTime: "17:00", endsOn: end });
+    expect((await prisma.standingBooking.findUniqueOrThrow({ where: { id: b.id } })).weekdays).toEqual([3, 5]);
+    await standing.respondStanding(p, b.id, true);
+    const count = () => prisma.shift.count({ where: { standingBookingId: b.id, status: { not: "CANCELLED" } } });
+    const n = await count();
+
+    const r = await standing.proposeStandingChange(clinic.actor, b.id, { weekdays: [3, 5], startTime: "13:00", endTime: "17:00", endsOn: later, notes: "Park in the back" });
+    expect(r).toMatchObject({ applied: true, needsConsent: false });
+    const row = await prisma.standingBooking.findUniqueOrThrow({ where: { id: b.id } });
+    expect(row.pendingChange).toBeNull();
+    expect(row.notes).toBe("Park in the back");
+    expect(await count()).toBeGreaterThanOrEqual(n);
+
+    // Ending earlier needs consent; the provider declines → nothing changes.
+    await standing.proposeStandingChange(clinic.actor, b.id, { weekdays: [3, 5], startTime: "13:00", endTime: "17:00", endsOn: end, notes: "Park in the back" });
+    await standing.respondStandingChange(p, b.id, false);
+    const kept = await prisma.standingBooking.findUniqueOrThrow({ where: { id: b.id } });
+    expect(kept.pendingChange).toBeNull();
+    expect(kept.endsOn!.toISOString().slice(0, 10)).toBe(later);
+
+    // New hours, then withdrawn by the clinic.
+    await standing.proposeStandingChange(clinic.actor, b.id, { weekdays: [3, 5], startTime: "12:00", endTime: "17:00", endsOn: later });
+    await standing.withdrawStandingChange(clinic.actor, b.id);
+    expect((await prisma.standingBooking.findUniqueOrThrow({ where: { id: b.id } })).startTime).toBe("13:00");
+    await expect(standing.respondStandingChange(p, b.id, true)).rejects.toThrow(/no change waiting/);
+  });
+
   it("only with a provider the clinic has completed a shift with", async () => {
     const clinic = await makeClinic();
     const stranger = await makeProvider();

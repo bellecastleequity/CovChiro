@@ -49,3 +49,4 @@ export * from "./apollo";
 export * from "./phones";
 export * from "./idcheck";
 export * from "./exclusions";
+export * from "./standing";

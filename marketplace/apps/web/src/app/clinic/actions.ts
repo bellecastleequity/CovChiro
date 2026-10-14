@@ -188,6 +188,27 @@ export const endStandingAction = formAction(async (fd) => {
   return r.cancelled ? `Ended. ${r.cancelled} later shift${r.cancelled === 1 ? " was" : "s were"} cancelled at no charge.` : "Done.";
 });
 
+export const changeStandingAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await standing.proposeStandingChange(actor, str(fd, "standingId"), {
+    weekdays: fd.getAll("weekdays").map(Number),
+    startTime: str(fd, "startTime"),
+    endTime: str(fd, "endTime"),
+    endsOn: optStr(fd, "endsOn"),
+    notes: optStr(fd, "notes"),
+  });
+  revalidatePath("/clinic", "layout");
+  if (r.needsConsent) return "Sent to the provider. Your current schedule keeps running until they accept.";
+  return "Saved.";
+});
+
+export const withdrawStandingChangeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  await standing.withdrawStandingChange(actor, str(fd, "standingId"));
+  revalidatePath("/clinic/standing");
+  return "Change withdrawn. Nothing changes.";
+});
+
 export const requestHireAction = formAction(async (fd) => {
   const { actor } = await me();
   await hiring.requestHire(actor, { providerId: str(fd, "providerId"), positionType: str(fd, "positionType"), message: optStr(fd, "message"), callbackPhone: optStr(fd, "callbackPhone"), callbackTimes: optStr(fd, "callbackTimes") });

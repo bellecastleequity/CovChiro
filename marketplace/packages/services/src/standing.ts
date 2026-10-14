@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import { z } from "zod";
-import { DomainError, phonesOnFile } from "@cm/core";
-import { prisma } from "@cm/db";
+import { DomainError, phonesOnFile, standingChangeNeedsConsent, standingShiftFits, type StandingPattern } from "@cm/core";
+import { Prisma, prisma } from "@cm/db";
 import { agreementCurrent } from "./agreements";
 import { assertClinicPhones, clinicPhonesOk } from "./phones";
 import { confirmProvider } from "./confirm";
@@ -136,13 +136,13 @@ export async function endStanding(actor: Actor, id: string, reason: string) {
   const b = await prisma.standingBooking.findUnique({ where: { id }, include: { shifts: { where: { status: { notIn: ["CANCELLED", "COMPLETED", "UNFILLED"] } }, include: { assignments: { where: { status: { in: ["CONFIRMED"] } } } } } } });
   if (!b || (isProvider ? b.providerId !== requireProvider(actor) : b.clinicOrgId !== requireClinic(actor))) throw new DomainError("NOT_FOUND", "Standing booking not found");
   if (b.status === "PROPOSED" && !isProvider) {
-    await prisma.standingBooking.update({ where: { id }, data: { status: "WITHDRAWN", endedAt: clock.now(), endedByType: "CLINIC" } });
+    await prisma.standingBooking.update({ where: { id }, data: { status: "WITHDRAWN", endedAt: clock.now(), endedByType: "CLINIC", pendingChange: Prisma.DbNull, pendingChangeAt: null } });
     return { cancelled: 0 };
   }
   if (b.status !== "ACTIVE") throw new DomainError("CONFLICT", "This standing booking isn't active.");
   const s = await getSettings();
   const cutoff = new Date(+clock.now() + s["standing.endNoticeDays"] * 86_400_000);
-  await prisma.standingBooking.update({ where: { id }, data: { status: "ENDED", endedAt: clock.now(), endedByType: isProvider ? "PROVIDER" : "CLINIC", endedReason: reason.slice(0, 500), endsOn: dateOnly(isoOf(cutoff)) } });
+  await prisma.standingBooking.update({ where: { id }, data: { status: "ENDED", endedAt: clock.now(), endedByType: isProvider ? "PROVIDER" : "CLINIC", endedReason: reason.slice(0, 500), endsOn: dateOnly(isoOf(cutoff)), pendingChange: Prisma.DbNull, pendingChangeAt: null } });
   // Shifts inside the notice period stay booked; later ones are released at no charge to either side.
   let cancelled = 0;
   for (const sh of b.shifts.filter((x) => x.startsAt > cutoff)) {
@@ -160,9 +160,136 @@ export async function endStanding(actor: Actor, id: string, reason: string) {
   return { cancelled };
 }
 
+/* ---------- Changing a standing booking (owner, Oct 2026) ----------
+ * A clinic can change the days, hours, end date or notes. While still PROPOSED the proposal is
+ * simply updated. Once ACTIVE, a change to the provider's schedule (days, hours, an earlier end)
+ * waits for them to accept (core standingChangeNeedsConsent); the old pattern keeps running until
+ * then. Notes and a later end date apply at once. When a change takes effect, booked days that no
+ * longer fit are released at no charge if they're more than payments.clinicFreeCancelHours away
+ * (sooner ones stay booked), and the new days are booked right away. */
+
+export const StandingChangeInput = z
+  .object({
+    weekdays: z.array(z.coerce.number().int().min(1).max(7)).min(1, "Pick at least one day of the week."),
+    startTime: z.string().regex(HHMM, "Use a start time like 09:00"),
+    endTime: z.string().regex(HHMM, "Use an end time like 17:00"),
+    endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+  })
+  .refine((v) => v.endTime > v.startTime, { message: "The end time must be after the start time.", path: ["endTime"] });
+export type StandingChangeInputT = z.input<typeof StandingChangeInput>;
+
+interface StandingChange extends StandingPattern { notes: string | null }
+
+const patternOf = (b: { weekdays: number[]; startTime: string; endTime: string; endsOn: Date | null }): StandingPattern => ({ weekdays: [...b.weekdays].sort(), startTime: b.startTime, endTime: b.endTime, endsOn: b.endsOn ? isoOf(b.endsOn) : null });
+const untilWords = (endsOn: string | null) => (endsOn ? `until ${DateTime.fromISO(endsOn).toFormat("MMM d")}` : "with no end date");
+export const describeChange = (from: StandingPattern, to: StandingPattern) => {
+  const a = `${describePattern(from)}, ${untilWords(from.endsOn)}`;
+  const b = `${describePattern(to)}, ${untilWords(to.endsOn)}`;
+  return a === b ? b : `${a} → ${b}`;
+};
+
+export async function proposeStandingChange(actor: Actor, id: string, raw: StandingChangeInputT) {
+  const orgId = requireClinic(actor);
+  const input = StandingChangeInput.parse(raw);
+  const b = await prisma.standingBooking.findFirst({ where: { id, clinicOrgId: orgId, status: { in: ["PROPOSED", "ACTIVE"] } } });
+  if (!b) throw new DomainError("NOT_FOUND", "Standing booking not found");
+  const loc = await prisma.clinicLocation.findUniqueOrThrow({ where: { id: b.locationId } });
+  const today = DateTime.now().setZone(loc.timeZone).toISODate()!;
+  const to: StandingChange = { weekdays: [...new Set(input.weekdays)].sort(), startTime: input.startTime, endTime: input.endTime, endsOn: input.endsOn ?? null, notes: input.notes ?? null };
+  const from = patternOf(b);
+  const startsOn = isoOf(b.startsOn);
+  if (to.endsOn && (to.endsOn < today || to.endsOn < startsOn)) throw new DomainError("VALIDATION", "The end date must be after today and after the start date.");
+  if (from.startTime !== to.startTime || from.endTime !== to.endTime) {
+    const firstDay = nextMatchingDay(startsOn > today ? startsOn : today, to.weekdays);
+    const first = occurrence(firstDay, to.startTime, to.endTime, loc.timeZone);
+    await validateShiftInput(prisma, orgId, { locationId: loc.id, professionCode: b.professionCode, startsAt: first.startsAt, endsAt: first.endsAt, requiredSkillIds: [], preferredSkillIds: [], instantBook: false, lodgingAllowed: false, lunchMinutes: 0 }, true);
+  }
+  const provider = await prisma.provider.findUniqueOrThrow({ where: { id: b.providerId } });
+  const org = await prisma.clinicOrg.findUniqueOrThrow({ where: { id: orgId } });
+  if (b.status === "PROPOSED") {
+    await prisma.standingBooking.update({ where: { id }, data: { weekdays: to.weekdays, startTime: to.startTime, endTime: to.endTime, endsOn: to.endsOn ? dateOnly(to.endsOn) : null, notes: to.notes } });
+    await notify(prisma, provider.userId, { template: "standing_proposed", title: `${org.displayName} updated their standing booking request`, body: `${describeChange(from, to)} at ${loc.name}, ${loc.city}.`, link: "/provider/standing", ctaLabel: "Review" });
+    await audit(prisma, actor, "standing.proposal_updated", "StandingBooking", id, from, to);
+    return { applied: true, needsConsent: false };
+  }
+  if (!standingChangeNeedsConsent(from, to)) {
+    const r = await applyStandingChange(id, to);
+    if (from.endsOn !== to.endsOn) await notify(prisma, provider.userId, { template: "standing_changed", title: `${org.displayName} extended your standing booking`, body: `${describePattern(to)} at ${loc.name}, now ${untilWords(to.endsOn)}.`, link: "/provider/standing" });
+    await audit(prisma, actor, "standing.changed", "StandingBooking", id, from, to);
+    return { applied: true, needsConsent: false, ...r };
+  }
+  await prisma.standingBooking.update({ where: { id }, data: { pendingChange: { ...to }, pendingChangeAt: clock.now() } });
+  await notify(prisma, provider.userId, {
+    template: "standing_change_proposed",
+    title: `${org.displayName} would like to change your standing booking`,
+    body: `${describeChange(from, to)} at ${loc.name}. Your current schedule stays as it is until you accept.`,
+    link: "/provider/standing",
+    ctaLabel: "Review",
+  });
+  await audit(prisma, actor, "standing.change_proposed", "StandingBooking", id, from, to);
+  return { applied: false, needsConsent: true };
+}
+
+export async function respondStandingChange(actor: Actor, id: string, accept: boolean) {
+  const providerId = requireProvider(actor);
+  const b = await prisma.standingBooking.findFirst({ where: { id, providerId, status: "ACTIVE" } });
+  if (!b?.pendingChange) throw new DomainError("NOT_FOUND", "There's no change waiting on this standing booking.");
+  const to = b.pendingChange as unknown as StandingChange;
+  const from = patternOf(b);
+  const provider = await prisma.provider.findUniqueOrThrow({ where: { id: providerId } });
+  if (!accept) {
+    await prisma.standingBooking.update({ where: { id }, data: { pendingChange: Prisma.DbNull, pendingChangeAt: null } });
+    await notifyClinic(prisma, b.clinicOrgId, { template: "standing_change_declined", title: `${provider.displayName} declined the change to your standing booking`, body: `Your standing booking stays ${describePattern(from)}, ${untilWords(from.endsOn)}. You can post other days as separate shifts.`, link: "/clinic/standing" });
+    await audit(prisma, actor, "standing.change_declined", "StandingBooking", id, null, to);
+    return { applied: false, released: 0, kept: [] as Date[], added: 0, freeCancelHours: 0 };
+  }
+  const r = await applyStandingChange(id, to);
+  const kept = r.kept.length ? ` ${r.kept.length === 1 ? "One day that no longer fits is" : `${r.kept.length} days that no longer fit are`} less than ${r.freeCancelHours} hours away and stay booked (${r.kept.map(dayWords).join(", ")}).` : "";
+  await notifyClinic(prisma, b.clinicOrgId, { template: "standing_change_accepted", title: `${provider.displayName} accepted the change to your standing booking`, body: `Now ${describePattern(to)}, ${untilWords(to.endsOn)}.${r.released ? ` ${r.released} booked day${r.released === 1 ? "" : "s"} no longer in the pattern ${r.released === 1 ? "was" : "were"} released at no charge.` : ""}${kept}`, link: "/clinic/standing" });
+  await audit(prisma, actor, "standing.change_accepted", "StandingBooking", id, from, { ...to, released: r.released, kept: r.kept.length, added: r.added });
+  return { applied: true, ...r };
+}
+
+export async function withdrawStandingChange(actor: Actor, id: string) {
+  const orgId = requireClinic(actor);
+  const b = await prisma.standingBooking.findFirst({ where: { id, clinicOrgId: orgId } });
+  if (!b?.pendingChange) throw new DomainError("NOT_FOUND", "There's no change waiting on this standing booking.");
+  await prisma.standingBooking.update({ where: { id }, data: { pendingChange: Prisma.DbNull, pendingChangeAt: null } });
+  const provider = await prisma.provider.findUniqueOrThrow({ where: { id: b.providerId } });
+  const org = await prisma.clinicOrg.findUniqueOrThrow({ where: { id: orgId } });
+  await notify(prisma, provider.userId, { template: "standing_change_withdrawn", title: `${org.displayName} withdrew their change request`, body: `Your standing booking stays ${describePattern(b)}.`, link: "/provider/standing" });
+  await audit(prisma, actor, "standing.change_withdrawn", "StandingBooking", id);
+}
+
+const dayWords = (d: Date) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+/** Puts a change into effect: releases booked days that no longer fit (free window only), then books the new ones. */
+async function applyStandingChange(id: string, to: StandingChange) {
+  const b = await prisma.standingBooking.update({
+    where: { id },
+    data: { weekdays: to.weekdays, startTime: to.startTime, endTime: to.endTime, endsOn: to.endsOn ? dateOnly(to.endsOn) : null, notes: to.notes, generatedThrough: null, pendingChange: Prisma.DbNull, pendingChangeAt: null },
+  });
+  const loc = await prisma.clinicLocation.findUniqueOrThrow({ where: { id: b.locationId } });
+  const freeCancelHours = (await getSettings())["payments.clinicFreeCancelHours"];
+  const freeFrom = +clock.now() + freeCancelHours * 3_600_000;
+  const live = await prisma.shift.findMany({ where: { standingBookingId: id, startsAt: { gt: clock.now() }, status: { notIn: ["CANCELLED", "COMPLETED", "UNFILLED", "IN_PROGRESS"] } }, orderBy: { startsAt: "asc" } });
+  const pattern = patternOf(b);
+  let released = 0;
+  const kept: Date[] = [];
+  for (const sh of live.filter((x) => !standingShiftFits(pattern, loc.timeZone, x.startsAt, x.endsAt))) {
+    if (+sh.startsAt <= freeFrom) { kept.push(sh.startsAt); continue; }
+    if (sh.status === "DRAFT") await prisma.shift.update({ where: { id: sh.id }, data: { status: "CANCELLED", cancelledAt: clock.now(), cancelReason: "Standing booking changed" } });
+    else await cancelShiftByClinic(clinicActorFor(b), sh.id, "Standing booking changed");
+    released++;
+  }
+  const added = await generateStanding(id);
+  return { released, kept, added, freeCancelHours };
+}
+
 /** Books every occurrence up to the horizon that doesn't have a shift yet. Idempotent. */
 export async function generateStanding(id: string) {
-  const b = await prisma.standingBooking.findUnique({ where: { id }, include: { shifts: { select: { startsAt: true } } } });
+  const b = await prisma.standingBooking.findUnique({ where: { id }, include: { shifts: { where: { status: { not: "CANCELLED" } }, select: { startsAt: true } } } });
   if (!b || b.status !== "ACTIVE") return 0;
   const loc = await prisma.clinicLocation.findUniqueOrThrow({ where: { id: b.locationId } });
   // Booking a standing day is posting a shift: the clinic needs the current agreement (the provider's is checked by eligibility).
@@ -174,13 +301,14 @@ export async function generateStanding(id: string) {
   let day = DateTime.max(now.plus({ days: 1 }).startOf("day"), DateTime.fromISO(isoOf(b.startsOn), { zone: loc.timeZone }), b.generatedThrough ? DateTime.fromISO(isoOf(b.generatedThrough), { zone: loc.timeZone }).plus({ days: 1 }) : DateTime.fromMillis(0))!;
   let last = now.plus({ weeks: s["standing.horizonWeeks"] }).startOf("day");
   if (b.endsOn) last = DateTime.min(last, DateTime.fromISO(isoOf(b.endsOn), { zone: loc.timeZone }))!;
-  const have = new Set(b.shifts.map((x) => +x.startsAt));
+  // One standing shift per local day: a day that already has one (e.g. kept at the old hours after a change) is skipped.
+  const have = new Set(b.shifts.map((x) => DateTime.fromJSDate(x.startsAt, { zone: loc.timeZone }).toISODate()));
   const actor = clinicActorFor(b);
   let made = 0;
   for (; day <= last; day = day.plus({ days: 1 })) {
     if (!b.weekdays.includes(day.weekday)) continue;
     const occ = occurrence(day.toISODate()!, b.startTime, b.endTime, loc.timeZone);
-    if (have.has(+occ.startsAt) || +occ.startsAt - +clock.now() < 24 * 3_600_000) continue;
+    if (have.has(day.toISODate()) || +occ.startsAt - +clock.now() < 24 * 3_600_000) continue;
     await bookOccurrence(b, actor, occ).catch(() => undefined);
     made++;
   }
@@ -229,7 +357,7 @@ export async function providerStanding(actor: Actor) {
   return withNames(rows);
 }
 
-async function withNames<T extends { providerId: string; clinicOrgId: string; locationId: string; id: string }>(rows: T[]) {
+async function withNames<T extends { providerId: string; clinicOrgId: string; locationId: string; id: string; weekdays: number[]; startTime: string; endTime: string; endsOn: Date | null; pendingChange: Prisma.JsonValue }>(rows: T[]) {
   const [providers, orgs, locs, upcoming] = await Promise.all([
     prisma.provider.findMany({ where: { id: { in: rows.map((r) => r.providerId) } }, select: { id: true, displayName: true } }),
     prisma.clinicOrg.findMany({ where: { id: { in: rows.map((r) => r.clinicOrgId) } }, select: { id: true, displayName: true } }),
@@ -239,7 +367,7 @@ async function withNames<T extends { providerId: string; clinicOrgId: string; lo
   const p = new Map(providers.map((x) => [x.id, x.displayName]));
   const o = new Map(orgs.map((x) => [x.id, x.displayName]));
   const l = new Map(locs.map((x) => [x.id, x]));
-  return rows.map((r) => ({ ...r, providerName: p.get(r.providerId) ?? "Provider", clinicName: o.get(r.clinicOrgId) ?? "Clinic", location: l.get(r.locationId)!, upcoming: upcoming.filter((u) => u.standingBookingId === r.id) }));
+  return rows.map((r) => ({ ...r, pattern: patternOf(r), pending: (r.pendingChange ?? null) as unknown as StandingChange | null, providerName: p.get(r.providerId) ?? "Provider", clinicName: o.get(r.clinicOrgId) ?? "Clinic", location: l.get(r.locationId)!, upcoming: upcoming.filter((u) => u.standingBookingId === r.id) }));
 }
 
 /** Providers a clinic can offer a standing booking to: completed a shift together, not blocked. */

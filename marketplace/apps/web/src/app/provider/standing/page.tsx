@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/form";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { endStandingAction, respondStandingAction } from "../actions";
+import { endStandingAction, respondStandingAction, respondStandingChangeAction } from "../actions";
 
 export const metadata = { title: "Standing bookings" };
 export const dynamic = "force-dynamic";
@@ -44,6 +44,26 @@ export default async function ProviderStanding() {
                     <input type="hidden" name="decision" value="decline" />
                     <SubmitButton variant="outline">Decline</SubmitButton>
                   </ActionForm>
+                </div>
+              ) : null}
+              {b.status === "ACTIVE" && b.pending ? (
+                <div className="space-y-2 rounded-xl bg-amber-50 p-3 text-amber-900 ring-1 ring-amber-200">
+                  <p className="font-medium">{b.clinicName} would like to change this standing booking</p>
+                  <p>{standing.describeChange(b.pattern, b.pending)}</p>
+                  {b.pending.notes && b.pending.notes !== b.notes ? <p className="whitespace-pre-line text-amber-800">{b.pending.notes}</p> : null}
+                  <p className="text-xs text-amber-800">Nothing changes until you accept. If you accept, days that no longer fit are released (days in the next {s["payments.clinicFreeCancelHours"]} hours stay booked) and the new days are booked for you straight away.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <ActionForm action={respondStandingChangeAction}>
+                      <input type="hidden" name="standingId" value={b.id} />
+                      <input type="hidden" name="decision" value="accept" />
+                      <SubmitButton size="sm">Accept change</SubmitButton>
+                    </ActionForm>
+                    <ActionForm action={respondStandingChangeAction} confirm="Decline this change? Your current schedule stays as it is.">
+                      <input type="hidden" name="standingId" value={b.id} />
+                      <input type="hidden" name="decision" value="decline" />
+                      <SubmitButton size="sm" variant="outline">Decline</SubmitButton>
+                    </ActionForm>
+                  </div>
                 </div>
               ) : null}
               {b.upcoming.some((u) => u.assignments.some((a) => a.providerId === b.providerId)) ? (

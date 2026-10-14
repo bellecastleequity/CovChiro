@@ -66,6 +66,16 @@ export const endStandingAction = formAction(async (fd) => {
   return r.cancelled ? `Ended. ${r.cancelled} later shift${r.cancelled === 1 ? " was" : "s were"} released.` : "Ended.";
 });
 
+export const respondStandingChangeAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const accept = str(fd, "decision") === "accept";
+  const r = await standing.respondStandingChange(actor, str(fd, "standingId"), accept);
+  revalidatePath("/provider", "layout");
+  if (!accept) return "Declined. Your schedule stays as it was, and the clinic has been told.";
+  const parts = [r.added ? `${r.added} new day${r.added === 1 ? "" : "s"} booked` : "", r.released ? `${r.released} day${r.released === 1 ? "" : "s"} no longer in the pattern released` : "", r.kept?.length ? `${r.kept.length} day${r.kept.length === 1 ? "" : "s"} in the next ${r.freeCancelHours} hours kept as booked` : ""].filter(Boolean);
+  return `Accepted.${parts.length ? ` ${parts.join("; ")}.` : ""}`;
+});
+
 export const withdrawAction = formAction(async (fd) => {
   const { actor } = await me();
   await withdrawApplication(actor, str(fd, "applicationId"));

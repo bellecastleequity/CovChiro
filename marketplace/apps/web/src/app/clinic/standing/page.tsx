@@ -9,7 +9,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Empty, PageHeader } from "@/components/ui/misc";
 import { dateLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
-import { endStandingAction, proposeStandingAction } from "../actions";
+import { changeStandingAction, endStandingAction, proposeStandingAction, withdrawStandingChangeAction } from "../actions";
 
 export const metadata = { title: "Standing bookings" };
 export const dynamic = "force-dynamic";
@@ -54,6 +54,37 @@ export default async function ClinicStanding({ searchParams }: { searchParams: P
                   </div>
                 ) : null}
                 {b.upcoming.some((u) => !u.assignments.some((a) => a.providerId === b.providerId)) ? <p className="text-xs text-amber-700">Amber days couldn&apos;t be booked with {b.providerName}, so we posted them for other providers.</p> : null}
+                {b.status === "ACTIVE" && b.pending ? (
+                  <div className="space-y-2 rounded-xl bg-amber-50 p-3 text-amber-900 ring-1 ring-amber-200">
+                    <p><span className="font-medium">Change waiting for {b.providerName}:</span> {standing.describeChange(b.pattern, b.pending)}. Your current schedule keeps running until they accept.</p>
+                    <ActionForm action={withdrawStandingChangeAction} confirm="Withdraw this change? The standing booking stays as it is.">
+                      <input type="hidden" name="standingId" value={b.id} />
+                      <SubmitButton size="sm" variant="outline">Withdraw change</SubmitButton>
+                    </ActionForm>
+                  </div>
+                ) : null}
+                {b.status === "ACTIVE" || b.status === "PROPOSED" ? (
+                  <details className="rounded-xl ring-1 ring-slate-200 [&[open]>summary]:border-b [&[open]>summary]:border-slate-200">
+                    <summary className="cursor-pointer select-none px-3 py-2 font-medium text-brand-700">{b.status === "PROPOSED" ? "Edit this request" : "Change days, hours or end date"}</summary>
+                    <ActionForm action={changeStandingAction} className="space-y-3 p-3">
+                      <input type="hidden" name="standingId" value={b.id} />
+                      {b.status === "ACTIVE" ? <p className="text-xs text-slate-500">Adding or removing days, new hours or an earlier end date go to {b.providerName} to accept first. A later end date or a new note applies right away. Once accepted, booked days that no longer fit are cancelled at no charge if they&apos;re more than {s["payments.clinicFreeCancelHours"]} hours away (sooner ones stay booked), and new days are booked straight away.</p> : null}
+                      <fieldset>
+                        <legend className="mb-1.5 text-sm font-medium text-slate-700">Every<RequiredMark /></legend>
+                        <div className="flex flex-wrap gap-x-4 gap-y-2">
+                          {DAYS.map(([n, label]) => <Checkbox key={n} name="weekdays" value={n} label={label} defaultChecked={(b.pending ?? b.pattern).weekdays.includes(n)} />)}
+                        </div>
+                      </fieldset>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        <Field label="From" htmlFor={`st-${b.id}`}><Input id={`st-${b.id}`} name="startTime" type="time" defaultValue={(b.pending ?? b.pattern).startTime} required /></Field>
+                        <Field label="To" htmlFor={`et-${b.id}`}><Input id={`et-${b.id}`} name="endTime" type="time" defaultValue={(b.pending ?? b.pattern).endTime} required /></Field>
+                        <Field label="Ending (optional)" htmlFor={`eo-${b.id}`}><Input id={`eo-${b.id}`} name="endsOn" type="date" defaultValue={(b.pending ?? b.pattern).endsOn ?? ""} /></Field>
+                      </div>
+                      <Field label="Note to the provider (optional)" htmlFor={`n-${b.id}`}><Textarea id={`n-${b.id}`} name="notes" maxLength={1000} defaultValue={(b.pending?.notes ?? b.notes) ?? ""} /></Field>
+                      <SubmitButton size="sm">{b.status === "PROPOSED" ? "Update request" : "Save change"}</SubmitButton>
+                    </ActionForm>
+                  </details>
+                ) : null}
                 {b.status === "ACTIVE" || b.status === "PROPOSED" ? (
                   <ActionForm action={endStandingAction} className="flex flex-wrap items-center gap-2" confirm={b.status === "PROPOSED" ? "Withdraw this proposal?" : `End this standing booking? Shifts in the next ${s["standing.endNoticeDays"]} days stay booked; later ones are cancelled at no charge.`}>
                     <input type="hidden" name="standingId" value={b.id} />
