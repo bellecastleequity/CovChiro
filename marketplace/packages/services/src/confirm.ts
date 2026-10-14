@@ -1,10 +1,11 @@
-import { assertTransition, clinicTotalCents, depositCents, depositPercentFor, DomainError, providerTotalCents, SELECTABLE_SHIFT_STATUSES, travelEstimate, travelBufferMinutes } from "@cm/core";
+import { assertTransition, idDueAt, type IdStatus, clinicTotalCents, depositCents, depositPercentFor, DomainError, providerTotalCents, SELECTABLE_SHIFT_STATUSES, travelEstimate, travelBufferMinutes } from "@cm/core";
 import { Prisma, isInvariantViolation, type SelectionMethod } from "@cm/db";
 import { audit, clock, getSettings, lockShift, tx, type Actor, type Db } from "./context";
 import { Effects } from "./effects";
 import { assertProviderEligibleForShift } from "./eligibility";
 import { notify, notifyClinic } from "./notify";
 import { chargeDeposit } from "./payments";
+import { idCheckRules } from "./idcheck";
 
 /**
  * Confirmation transaction (SPEC §7.8). Locks the shift row, re-checks
@@ -112,10 +113,14 @@ export async function confirmInTx(
   const clinicTotal = clinicTotalCents(breakdown);
   const payInFull = (await db.clinicOrg.findUnique({ where: { id: shift.location.clinicOrgId }, select: { payInFull: true } }))?.payInFull ?? false;
   const providerTotal = providerTotalCents(breakdown);
+  // Photo ID check: an unverified provider booked ahead verifies by a deadline (idcheck.ts), or the booking is released.
+  const idStatus = (await db.provider.findUniqueOrThrow({ where: { id: providerId }, select: { idStatus: true } })).idStatus as IdStatus;
+  const idDue = idDueAt(idCheckRules(s), idStatus, shift.startsAt, now);
   const assignment = await db.assignment.create({
     data: {
       shiftId,
       providerId,
+      idDueAt: idDue,
       state: shift.state,
       professionCode: shift.professionCode,
       startsAt: shift.startsAt,
@@ -191,8 +196,8 @@ export async function confirmInTx(
         airfareCents
           ? ` This is a fly-in booking: book your flights after ${new Date(+now + s["flyIn.airfareRefundHours"] * 3_600_000).toLocaleString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}, when the clinic's change window ends. Your $${(airfareCents / 100).toFixed(0)} airfare allowance and lodging are included in your pay.`
           : ""
-      }`,
-      link: `/provider/assignments/${assignment.id}`,
+      }${idDue ? ` One step left: verify your ID (about 2 minutes, on your phone) by ${idDue.toLocaleString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}, or this booking goes to another provider.` : ""}`,
+      link: idDue ? "/provider/verify-id" : `/provider/assignments/${assignment.id}`,
       ctaLabel: "View shift details",
       // Standing-booking days are expected: in-app only (the daily/weekly digests list them).
       email: method !== "STANDING",

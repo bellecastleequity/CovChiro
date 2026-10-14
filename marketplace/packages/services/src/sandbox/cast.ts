@@ -318,5 +318,11 @@ export async function keepDemoAgreementsCurrent() {
     where: { verificationStatus: "NOT_STARTED", verifications: { none: {} }, members: { some: { user: { email: { endsWith: "@sandbox.test" } } } } },
     data: { verificationStatus: "VERIFIED", verifiedAt: now, verifiedUntil: new Date(+now + 5 * 365 * 86_400_000), verificationGraceUntil: null },
   });
+  // Demo providers count as ID-verified (so the bots can take short-notice shifts with the ID check on),
+  // unless an admin asked one to verify again (idReviewedById set) to try the real flow.
+  await prisma.provider.updateMany({
+    where: { idStatus: "NONE", idSessionId: null, idReviewedById: null, user: { email: { endsWith: "@sandbox.test" } } },
+    data: { idStatus: "VERIFIED", idVerifiedAt: now, idNote: "Demo account" },
+  });
   return { clinics: orgs.count, providers: providers.count };
 }

@@ -365,3 +365,26 @@ describe("F15 phone number on file", () => {
     expect(evaluateEligibility(provider({ phoneOnFile: false }), shift(), pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(true);
   });
 });
+
+describe("F16 federal exclusion list", () => {
+  it("a confirmed excluded provider can't take shifts, and booked ones are released (credential checks fail too)", () => {
+    expect(codes(evaluateEligibility(provider({ excluded: true }), shift(), pair(), OPTS))).toContain("EXCLUDED_PROVIDER");
+    expect(evaluateEligibility(provider({ excluded: true }), shift(), pair(), { ...OPTS, credentialsOnly: true }).eligible).toBe(false);
+    expect(ok(provider({ excluded: false }), shift())).toBe(true);
+  });
+});
+
+describe("F17 photo ID before short-notice shifts", () => {
+  const rules = { enabled: true, acceptWithinHours: 48, deadlineHours: 24, maxAttempts: 2 };
+  const s = shift();
+  const now = (hoursBefore: number) => new Date(+s.startsAt - hoursBefore * 3_600_000);
+  it("blocks an unverified provider only for shifts starting within the window", () => {
+    expect(codes(evaluateEligibility(provider({ idCheck: { rules, status: "NONE" } }), s, pair(), { ...OPTS, now: now(30) }))).toContain("ID_NOT_VERIFIED");
+    expect(evaluateEligibility(provider({ idCheck: { rules, status: "NONE" } }), s, pair(), { ...OPTS, now: now(72) }).eligible).toBe(true);
+    expect(evaluateEligibility(provider({ idCheck: { rules, status: "VERIFIED" } }), s, pair(), { ...OPTS, now: now(2) }).eligible).toBe(true);
+    expect(evaluateEligibility(provider({ idCheck: { rules: { ...rules, enabled: false }, status: "NONE" } }), s, pair(), { ...OPTS, now: now(2) }).eligible).toBe(true);
+  });
+  it("never releases a booking: credential-only checks ignore it", () => {
+    expect(evaluateEligibility(provider({ idCheck: { rules, status: "FAILED" } }), s, pair(), { ...OPTS, now: now(2), credentialsOnly: true }).eligible).toBe(true);
+  });
+});

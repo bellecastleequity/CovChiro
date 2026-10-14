@@ -1,4 +1,6 @@
 import { purgeSpam } from "./spam";
+import { idCheckSweep } from "./idcheck";
+import { exclusionSweep } from "./exclusions";
 import { nightlyBackup, retryNightlyBackup } from "./backups";
 import { referralSweep } from "./referrals";
 import { punchReminderSweep, timeclockSweep } from "./timeclock";
@@ -92,6 +94,10 @@ export const JOBS: Job[] = [
   // Admin announcements: sent in batches so large audiences never time out.
   { name: "announcements", schedule: { everySeconds: 60 }, long: true, run: () => announcementSweep() },
   { name: "clinicVerification", schedule: { everySeconds: 3600 }, long: true, run: () => clinicVerifySweep() },
+  // Photo ID check: catch-up on Stripe results, reminders and booking deadlines (idcheck.ts).
+  { name: "idChecks", schedule: { everySeconds: 300 }, run: () => idCheckSweep() },
+  // Federal exclusion lists: OIG download when due + checks of new providers (exclusions.ts).
+  { name: "exclusions", schedule: { everySeconds: 3600 }, long: true, run: () => exclusionSweep() },
   { name: "rewardsSweep", schedule: { everySeconds: 3600 }, long: true, run: () => rewardsSweep() },
   { name: "volumeSweep", schedule: { everySeconds: 300 }, run: () => volumeSweep() },
   { name: "recruitSweep", schedule: { everySeconds: 600 }, run: () => recruitSweep() },

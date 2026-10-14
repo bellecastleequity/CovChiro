@@ -17,6 +17,8 @@ export type ErrorCode =
   | "CLINIC_NOT_VERIFIED"
   | "OWN_CLINIC"
   | "PHONE_MISSING"
+  | "EXCLUDED_PROVIDER"
+  | "ID_NOT_VERIFIED"
   | "TOO_FAR"
   | "OVER_TRAVEL_BUDGET"
   | "BLOCKED"

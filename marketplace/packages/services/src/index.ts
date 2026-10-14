@@ -10,6 +10,8 @@ export * as sameProvider from "./sameProvider";
 export * as announcements from "./announcements";
 export * as clinicVerify from "./clinicVerify";
 export * as boardcheck from "./boardcheck";
+export * as idcheck from "./idcheck";
+export * as exclusions from "./exclusions";
 export * as google from "./google";
 export * as emaildns from "./emaildns";
 export * as concentration from "./concentration";

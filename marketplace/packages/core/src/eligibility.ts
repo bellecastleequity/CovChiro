@@ -1,3 +1,4 @@
+import { idNeededBeforeAccepting, type IdCheckRules, type IdStatus } from "./idcheck";
 import type { FlyInFacts } from "./flyin";
 import { DateTime } from "luxon";
 import type { ErrorCode } from "./errors";
@@ -58,6 +59,10 @@ export interface ProviderFacts {
   agreementCurrent: boolean;
   /** A phone number on file (core phones.ts; F15). Absent = not checked. */
   phoneOnFile?: boolean;
+  /** Confirmed on a federal healthcare exclusion list (exclusions.ts; F16). Absent = not checked. */
+  excluded?: boolean;
+  /** Photo ID check (idcheck.ts; F17). Absent = not checked. */
+  idCheck?: { rules: IdCheckRules; status: IdStatus } | null;
   licenses: LicenseFact[];
   malpractice: MalpracticeFact[];
   skills: ProviderSkillFact[];
@@ -150,7 +155,7 @@ export interface EligibilityOptions {
   now?: Date;
 }
 
-export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15";
+export type FilterId = "F0" | "F1" | "F1b" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17";
 
 export interface EligibilityFailure {
   filter: FilterId;
@@ -294,6 +299,9 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
     fail("F2", "MALPRACTICE_INVALID", `No verified malpractice policy covering ${shift.professionCode} in ${shift.state} at the required limits through the shift end`);
   }
 
+  // F16 — on a federal healthcare exclusion list (confirmed). Checked with credentials, so booked shifts are released too.
+  if (provider.excluded) fail("F16", "EXCLUDED_PROVIDER", "On a federal healthcare exclusion list");
+
   if (opts.credentialsOnly) return { eligible: failures.length === 0, failures };
 
   // F3 — account + profession status.
@@ -311,6 +319,11 @@ export function evaluateEligibility(provider: ProviderFacts, shift: ShiftFacts, 
 
   // F15 — a phone number on file (owner decision Oct 2026). Booked shifts are untouched: credential-only checks stop above.
   if (provider.phoneOnFile === false) fail("F15", "PHONE_MISSING", "Add your phone number (Profile) to apply for or accept shifts");
+
+  // F17 — photo ID check before a short-notice shift (idcheck.ts). Later shifts are booked first and checked by a deadline.
+  if (provider.idCheck && idNeededBeforeAccepting(provider.idCheck.rules, provider.idCheck.status, shift.startsAt, opts.now ?? new Date())) {
+    fail("F17", "ID_NOT_VERIFIED", "Verify your ID (Profile → Verify your ID, about 2 minutes) to take shifts starting this soon");
+  }
 
   // F9 — blocks, either direction.
   if (pair.blocked) fail("F9", "BLOCKED", "Blocked");

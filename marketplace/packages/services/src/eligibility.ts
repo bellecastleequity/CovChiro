@@ -15,11 +15,13 @@ import {
   type PairFacts,
   type ProviderFacts,
   type ShiftFacts,
+  type IdStatus,
 } from "@cm/core";
 import type { SettingsMap } from "@cm/config";
 import { Prisma } from "@cm/db";
 import { geoProvider, type DriveResult } from "@cm/integrations";
 import { clock, getSettings, type Db } from "./context";
+import { idCheckRules } from "./idcheck";
 
 /**
  * THE eligibility implementation (INV-1 profession + state, INV-3, INV-8,
@@ -169,6 +171,8 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
     },
   });
   const out = new Map<string, LoadedProvider>();
+  const st = await getSettings(db);
+  const idRules = idCheckRules(st);
   for (const p of rows) {
     out.set(p.id, {
       userId: p.userId,
@@ -184,6 +188,8 @@ export async function loadProviders(db: Db, providerIds: string[], excludeShiftI
         payoutsEnabled: p.stripePayoutsEnabled,
         agreementCurrent: agreementCurrent("PROVIDER", p.agreementSignedAt, p.agreementVersion),
         phoneOnFile: phonesOnFile("PROVIDER", [p.user.phone]),
+        excluded: st["exclusions.enabled"] && p.exclusionStatus === "EXCLUDED",
+        idCheck: idRules.enabled ? { rules: idRules, status: p.idStatus as IdStatus } : null,
         licenses: p.licenses.map((l) => ({ professionCode: l.professionCode, state: l.state, status: l.status, expiresAt: l.expiresAt })),
         malpractice: p.malpractice.map((m) => ({
           status: m.status,

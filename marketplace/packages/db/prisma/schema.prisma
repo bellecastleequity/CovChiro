@@ -257,6 +257,23 @@ model Provider {
   profileCompleteAt        DateTime?                              @db.Timestamptz(3)
   status                   ProviderStatus                         @default(ONBOARDING)
   adminNotes               String?
+  /// Photo ID check (core idcheck.ts) done in Stripe Identity; Stripe holds the images, we keep the outcome only.
+  /// NONE | PENDING | PROCESSING | VERIFIED | NEEDS_REVIEW | FAILED
+  idStatus                 String                                 @default("NONE")
+  idSessionId              String?
+  idAttempts               Int                                    @default(0)
+  idVerifiedAt             DateTime?                              @db.Timestamptz(3)
+  /// Plain reason for admins (never the ID's details).
+  idNote                   String?
+  idReviewedById           String?
+  /// Federal exclusion lists (core exclusions.ts): UNCHECKED | CLEAR | POSSIBLE_MATCH | EXCLUDED.
+  exclusionStatus          String                                 @default("UNCHECKED")
+  exclusionCheckedAt       DateTime?                              @db.Timestamptz(3)
+  exclusionNote            String?
+  /// The listing that matched (core exclusionRowKey).
+  exclusionMatchKey        String?
+  /// Listings an admin marked "not the same person"; never flagged again.
+  exclusionClearedKeys     String[]                               @default([])
   createdAt                DateTime                               @default(now()) @db.Timestamptz(3)
 
   /// Public profile (About me = bio).
@@ -1099,6 +1116,9 @@ model Assignment {
   etaMiles             Float?
   etaUpdatedAt         DateTime?                 @db.Timestamptz(3)
   etaNearNotifiedAt    DateTime?                 @db.Timestamptz(3)
+  /// Photo ID check deadline for an unverified provider (start − idcheck.deadlineHours); released at it if still unverified.
+  idDueAt              DateTime?                 @db.Timestamptz(3)
+  idRemindedAt         DateTime?                 @db.Timestamptz(3)
   /// The clinic confirmed the provider arrived.
   arrivedAt            DateTime?                 @db.Timestamptz(3)
   checkinAlertedAt     DateTime?                 @db.Timestamptz(3)
@@ -2403,30 +2423,30 @@ enum BlogStatus {
 /// Public blog post. AI may draft; only an admin publishes, and only when core
 /// checkBlogPost has no errors. Body is a safe Markdown subset (core blog.ts).
 model BlogPost {
-  id            String     @id @default(cuid())
-  slug          String     @unique
-  title         String
+  id                String     @id @default(cuid())
+  slug              String     @unique
+  title             String
   /// Meta description for search results.
-  description   String
-  body          String
+  description       String
+  body              String
   /// CLINIC | PROVIDER | ALL
-  audience      String     @default("ALL")
-  keywords      String[]   @default([])
-  status        BlogStatus @default(DRAFT)
-  aiGenerated   Boolean    @default(false)
-  aiModel       String?
+  audience          String     @default("ALL")
+  keywords          String[]   @default([])
+  status            BlogStatus @default(DRAFT)
+  aiGenerated       Boolean    @default(false)
+  aiModel           String?
   /// The topic or brief the draft was written from.
-  brief         String?
-  authorName    String?
+  brief             String?
+  authorName        String?
   /// YouTube link embedded under the post's header (owner request Oct 2026).
-  videoUrl      String?
+  videoUrl          String?
   /// YouTube link suggested at the end; blank = picked from Setting blog.channelVideos.
   suggestedVideoUrl String?
-  createdById   String?
-  publishedById String?
-  publishedAt   DateTime?  @db.Timestamptz(3)
-  createdAt     DateTime   @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime   @updatedAt @db.Timestamptz(3)
+  createdById       String?
+  publishedById     String?
+  publishedAt       DateTime?  @db.Timestamptz(3)
+  createdAt         DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @db.Timestamptz(3)
 
   @@index([status, publishedAt])
 }
@@ -2893,4 +2913,29 @@ model ClinicPartnership {
   updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
 
   @@index([clinicOrgId, status])
+}
+
+// ============================ federal exclusion lists ============================
+
+/// One listing from HHS-OIG's LEIE or the SAM.gov exclusions extract (core exclusions.ts); a source is replaced whole on each refresh.
+model ExclusionRecord {
+  id           String   @id @default(cuid())
+  /// LEIE | SAM
+  source       String
+  lastName     String
+  firstName    String
+  middleName   String   @default("")
+  businessName String   @default("")
+  npi          String?
+  state        String?
+  specialty    String   @default("")
+  exclType     String   @default("")
+  exclDate     String?
+  /// core exclusionNameKey(first, last)
+  nameKey      String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([npi])
+  @@index([nameKey])
+  @@index([source])
 }

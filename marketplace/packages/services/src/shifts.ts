@@ -1076,8 +1076,9 @@ export async function cancelAssignment(
    * unconfirmed: the system releases a provider who didn't reconfirm — treated as the provider's (late) cancel.
    * onBehalf: the platform records a provider-fault event (a no-show) for them.
    * quiet: the caller sends its own clinic/admin messages (emergency cover).
+   * idCheck (with unconfirmed): released because the photo ID check wasn't done by its deadline (idcheck.ts).
    */
-  opts: { by: "PROVIDER" | "PLATFORM"; lapse?: boolean; noShow?: boolean; unconfirmed?: boolean; onBehalf?: boolean; quiet?: boolean } = { by: "PROVIDER" },
+  opts: { by: "PROVIDER" | "PLATFORM"; lapse?: boolean; noShow?: boolean; unconfirmed?: boolean; onBehalf?: boolean; quiet?: boolean; idCheck?: boolean } = { by: "PROVIDER" },
 ) {
   const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId }, include: { shift: { include: { location: true } }, provider: true } });
   if (opts.unconfirmed || opts.onBehalf) {
@@ -1127,12 +1128,20 @@ export async function cancelAssignment(
     template: "backfill",
     title: reopen ? `We've had a cancellation for ${day} — we're already finding a replacement` : "Your covering provider didn't show",
     body: reopen
-      ? `${a.provider.displayName} ${opts.unconfirmed ? "didn't confirm they're still coming" : "can no longer make it"} on ${day}. No need to worry — we're finding a replacement urgently as we speak, and we'll email you the moment your new provider is confirmed. Your deposit for ${a.provider.displayName} is being refunded.`
+      ? `${a.provider.displayName} ${opts.idCheck ? "didn't complete a required check in time" : opts.unconfirmed ? "didn't confirm they're still coming" : "can no longer make it"} on ${day}. No need to worry — we're finding a replacement urgently as we speak, and we'll email you the moment your new provider is confirmed. Your deposit for ${a.provider.displayName} is being refunded.`
       : "Your deposit is being refunded in full. Our team will follow up.",
     link: `/clinic/shifts/${a.shiftId}`,
     sms: true,
   });
-  if (opts.unconfirmed) {
+  if (opts.idCheck) {
+    await notify(prisma, a.provider.userId, {
+      template: "id_check_released",
+      title: `Released from your ${day} shift`,
+      body: "Your ID wasn't verified by the deadline, so the shift has gone to another provider. This counts as a late cancellation. Verify your ID now so it doesn't happen again.",
+      link: "/provider/verify-id",
+      sms: true,
+    });
+  } else if (opts.unconfirmed) {
     await notify(prisma, a.provider.userId, {
       template: "reconfirm_released",
       title: `Released from your ${day} shift`,

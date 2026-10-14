@@ -181,6 +181,14 @@ export async function handleStripeEvent(rawBody: string, signature: string | nul
       await recordStripeDispute(obj as never);
       break;
     }
+    case "identity.verification_session.verified":
+    case "identity.verification_session.requires_input":
+    case "identity.verification_session.processing":
+    case "identity.verification_session.canceled": {
+      const { handleIdentityEvent } = await import("./idcheck");
+      await handleIdentityEvent(obj as never);
+      break;
+    }
     case "transfer.reversed": {
       const t = await prisma.payoutTransfer.findUnique({ where: { stripeTransferId: obj.id } });
       if (t) {
