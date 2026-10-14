@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { DateTime } from "luxon";
 import { prisma } from "@cm/db";
 import {
+  idcheck,
   attendance,
   bookings,
   standing,
@@ -317,6 +318,13 @@ export const exceptionAction = formAction(async (fd) => {
 export const stripeAction = formAction(async () => {
   const { actor } = await me();
   redirect(await providerStripeLink(actor));
+});
+
+/** Photo ID check: opens Stripe Identity's own page (the ID never touches our server). */
+export const idCheckAction = formAction(async () => {
+  const { actor } = await me();
+  const { url } = await idcheck.startIdCheck(actor);
+  redirect(url);
 });
 
 export const agreementAction = formAction(async () => {

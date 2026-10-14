@@ -414,6 +414,25 @@ const A: HelpArticle[] = [
     ),
   },
   {
+    slug: "id-check",
+    category: "account",
+    title: "Verifying your ID",
+    summary: "A one-time, 2-minute photo ID check with Stripe. Your ID goes to Stripe, not to us.",
+    keywords: "id identity driver's license drivers license selfie verify verification stripe photo check",
+    links: [{ href: "/provider/verify-id", label: "Verify your ID" }],
+    body: () => (
+      <Ul
+        items={[
+          "You photograph your driver's license (or state ID or passport) and take a selfie, in Stripe's secure screen. It takes about 2 minutes on your phone.",
+          "Your ID and selfie go to Stripe, the payments company we already use, not to us. We only keep the result: verified, and that the name matches your license.",
+          "You do it once. It's needed before you apply for or accept a shift starting soon, and by a deadline (shown on the booking) for any shift you book further ahead. If it isn't done by then, the shift goes to another provider.",
+          "If a try doesn't go through, the screen tells you why (for example a blurry photo or an expired ID) and you can try again. After a couple of tries our team takes a look.",
+          "We also check every provider against the federal healthcare exclusion lists. There's nothing for you to do.",
+        ]}
+      />
+    ),
+  },
+  {
     slug: "phone-app",
     category: "account",
     title: "Phone app, notifications and calendar",

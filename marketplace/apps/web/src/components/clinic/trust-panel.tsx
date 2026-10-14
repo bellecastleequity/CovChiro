@@ -1,4 +1,4 @@
-import { BadgeCheck, Clock, ShieldCheck, Star } from "lucide-react";
+import { BadgeCheck, Clock, IdCard, ShieldCheck, Star } from "lucide-react";
 import { trust } from "@cm/services";
 import { dateLabel } from "@/lib/format";
 
@@ -35,6 +35,12 @@ export async function TrustPanel({ providerId, professionCode, state, tz }: { pr
             </>
           ) : "Malpractice verification pending"}
         </Row>
+        {t.idVerifiedAt ? (
+          <Row icon={IdCard} ok>Photo ID matched to their license name {dateLabel(t.idVerifiedAt, tz, long)}</Row>
+        ) : null}
+        {t.exclusionCheckedAt ? (
+          <Row icon={ShieldCheck} ok>Not on the federal healthcare exclusion lists (checked {dateLabel(t.exclusionCheckedAt, tz, long)})</Row>
+        ) : null}
         <Row icon={Star} ok>
           {t.completedShifts} shift{t.completedShifts === 1 ? "" : "s"} completed on the platform
           {t.rating ? ` · ${t.rating.toFixed(1)}★ from ${t.ratingCount} rating${t.ratingCount === 1 ? "" : "s"}` : ""}

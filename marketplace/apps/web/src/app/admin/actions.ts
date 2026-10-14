@@ -742,3 +742,51 @@ export const endPartnershipAction = formAction(async (fd) => {
   revalidatePath("/admin/partners");
   return { ok: when === "now" ? "Partnership ended. New shifts are at regular prices." : `Partnership ends ${endedAt.toLocaleDateString("en-US", { timeZone: "America/New_York", dateStyle: "medium" })}.` };
 });
+
+// ---------------- ID check + exclusion lists ----------------
+
+export const idDecisionAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const { idcheck } = await import("@cm/services");
+  const decision = str(fd, "decision") as "verify" | "allow_retry" | "reset";
+  await idcheck.adminIdDecision(actor, str(fd, "providerId"), decision, optStr(fd, "note") ?? "");
+  revalidatePath(`/admin/providers/${str(fd, "providerId")}`);
+  return decision === "verify" ? "Marked as ID verified." : decision === "allow_retry" ? "They can try again." : "Asked to verify again.";
+});
+
+export const exclusionDecisionAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const { exclusions } = await import("@cm/services");
+  const decision = str(fd, "decision") as "not_same_person" | "confirm_excluded" | "clear";
+  await exclusions.adminExclusionDecision(actor, str(fd, "providerId"), decision, optStr(fd, "note") ?? "");
+  revalidatePath(`/admin/providers/${str(fd, "providerId")}`);
+  revalidatePath("/admin/verification/exclusions");
+  return decision === "confirm_excluded" ? "Confirmed as excluded. Their booked shifts are being released." : "Cleared.";
+});
+
+export const exclusionCheckProviderAction = formAction(async (fd) => {
+  await requireActor("admin");
+  const { exclusions } = await import("@cm/services");
+  const r = await exclusions.checkProviders({ providerId: str(fd, "providerId") });
+  revalidatePath(`/admin/providers/${str(fd, "providerId")}`);
+  return r.checked ? "Checked against the stored lists." : "No exclusion list is loaded yet. Download or upload one on Admin → Verification → Exclusion check.";
+});
+
+export const exclusionRefreshAction = formAction(async () => {
+  await requireActor("admin");
+  const { exclusions } = await import("@cm/services");
+  const r = await exclusions.refreshLeie({ force: true });
+  const c = await exclusions.checkProviders({ all: true });
+  revalidatePath("/admin/verification/exclusions");
+  return `${"loaded" in r && r.loaded ? `Downloaded ${r.loaded.toLocaleString()} OIG listings. ` : ""}Checked ${c.checked} provider${c.checked === 1 ? "" : "s"}: ${c.excluded} excluded, ${c.possible} to review.`;
+});
+
+export const exclusionImportAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const file = fd.get("file");
+  if (!(file instanceof File) || !file.size) throw new DomainError("VALIDATION", "Choose the exclusion list file (OIG UPDATED.csv or a SAM.gov extract).");
+  const { exclusions } = await import("@cm/services");
+  const r = await exclusions.importExclusionFile(actor, Buffer.from(await file.arrayBuffer()), file.name);
+  revalidatePath("/admin/verification/exclusions");
+  return `Loaded ${r.rows.toLocaleString()} ${r.source === "LEIE" ? "OIG" : "SAM.gov"} listings and checked ${r.checked} provider${r.checked === 1 ? "" : "s"}: ${r.excluded} excluded, ${r.possible} to review.`;
+});

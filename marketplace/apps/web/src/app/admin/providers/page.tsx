@@ -8,6 +8,10 @@ import { PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { pct } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 
+/** "Dr. Adriana Bedford Blaise" → "AB" (no headshot yet). */
+const initials = (name: string) =>
+  name.replace(/^dr\.?\s+/i, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
+
 export default async function Providers({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   await requireActor("admin");
   const { q } = await searchParams;
@@ -30,7 +34,19 @@ export default async function Providers({ searchParams }: { searchParams: Promis
               const rel = s ? (s.completedShifts + 5) / (s.completedShifts + 5 + 2 * s.lateCancels + 5 * s.noShows) : 1;
               return (
                 <tr key={p.id} className="hover:bg-slate-50">
-                  <Td><Link href={`/admin/providers/${p.id}`} className="font-medium text-slate-900 hover:text-brand-700">{p.displayName}</Link><div className="text-xs text-slate-500">{p.user.email}</div></Td>
+                  <Td>
+                    <div className="flex items-center gap-3">
+                      {p.photoUrl ? (
+                        <img src={`/api/files/${p.photoUrl}`} alt="" loading="lazy" className="size-9 shrink-0 rounded-full object-cover ring-1 ring-slate-200" />
+                      ) : (
+                        <div aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700">{initials(p.displayName)}</div>
+                      )}
+                      <div className="min-w-0">
+                        <Link href={`/admin/providers/${p.id}`} className="font-medium text-slate-900 hover:text-brand-700">{p.displayName}</Link>
+                        <div className="text-xs text-slate-500">{p.user.email}</div>
+                      </div>
+                    </div>
+                  </Td>
                   <Td>{p.professions.map((x) => x.professionCode).join(", ")}</Td>
                   <Td>{p.licenses.map((l) => `${l.professionCode}-${l.state}`).join(", ") || "—"}</Td>
                   <Td>{s?.completedShifts ?? 0}</Td>

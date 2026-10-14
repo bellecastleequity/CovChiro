@@ -13,13 +13,16 @@ export async function providerTrust(providerId: string, professionCode: string, 
     prisma.malpracticePolicy.findFirst({ where: { providerId, status: "VERIFIED", coveredProfessionCodes: { has: professionCode }, OR: [{ coveredStates: { isEmpty: true } }, { coveredStates: { has: state } }] }, orderBy: { expiresAt: "desc" } }),
     prisma.providerStats.findUnique({ where: { providerId } }),
     prisma.timesheet.findMany({ where: { assignment: { providerId }, status: { in: ["SUBMITTED", "APPROVED"] } }, select: { flags: true }, orderBy: { createdAt: "desc" }, take: 50 }),
-    prisma.provider.findUnique({ where: { id: providerId }, select: { coverageAttestedAt: true } }),
+    prisma.provider.findUnique({ where: { id: providerId }, select: { coverageAttestedAt: true, idStatus: true, idVerifiedAt: true, exclusionStatus: true, exclusionCheckedAt: true } }),
   ]);
   const lic = license ?? nationalCredential;
   const onTime = sheets.filter((t) => !t.flags.some((f) => /late|no punch-in|no punches/.test(f))).length;
   return {
     license: lic ? { state: lic.state, title: lic.credentialTitle, verifiedAt: lic.verifiedAt, expiresAt: lic.expiresAt, current: lic.expiresAt > now, boardCheckedAt: lic.boardCheckedAt, boardStatus: lic.boardStatus } : null,
     malpractice: malpractice ? { carrier: malpractice.carrier, verifiedAt: malpractice.verifiedAt, expiresAt: malpractice.expiresAt, current: malpractice.expiresAt > now, attestedAt: provider?.coverageAttestedAt ?? null } : null,
+    /** Photo ID check (Stripe Identity) and federal exclusion lists; only shown once they've passed. */
+    idVerifiedAt: provider?.idStatus === "VERIFIED" ? provider.idVerifiedAt : null,
+    exclusionCheckedAt: provider?.exclusionStatus === "CLEAR" ? provider.exclusionCheckedAt : null,
     completedShifts: stats?.completedShifts ?? 0,
     rating: stats && stats.ratingCount ? Math.round((stats.ratingSum / stats.ratingCount) * 10) / 10 : null,
     ratingCount: stats?.ratingCount ?? 0,

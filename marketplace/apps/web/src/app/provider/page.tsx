@@ -18,6 +18,7 @@ import { PendingChanges } from "@/components/provider/pending-changes";
 import { MarketWaiting } from "@/components/provider/market-waiting";
 import { BreakBanner } from "@/components/provider/break-banner";
 import { PhoneBanner } from "@/components/shell/phone-banner";
+import { IdCheckBanner } from "@/components/provider/id-check-banner";
 import { RewardsChip } from "@/components/rewards/rewards-chip";
 import { StatusBadge } from "@/components/ui/badge";
 import { dateLabel, money, relative, timeRange, firstName } from "@/lib/format";
@@ -66,6 +67,7 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
         } title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
       <PendingChanges providerId={actor.providerId!} />
       <PhoneBanner actor={actor} />
+      <IdCheckBanner actor={actor} />
       <BreakBanner providerId={actor.providerId!} />
       <MarketWaiting providerId={actor.providerId!} />
       <RewardsChip audience="PROVIDER" accountId={actor.providerId!} href="/provider/rewards" />
