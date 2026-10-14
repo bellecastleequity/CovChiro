@@ -78,6 +78,7 @@ const CLINIC: SearchPage[] = [
   { label: "Timesheets", href: "/clinic/timesheets", section: "Clinic", keywords: "time clock punches sign off approve hours" },
   { label: "My providers", href: "/clinic/providers", section: "Clinic", keywords: "favorites blocked doctors" },
   { label: "Refer & earn", href: "/clinic/refer", section: "Clinic", keywords: "referral invite link credit" },
+  { label: "Recurring postings", href: "/clinic/recurring", section: "Clinic", keywords: "recurring weekly repeat every week open shifts schedule" },
   { label: "Standing bookings", href: "/clinic/standing", section: "Clinic", keywords: "recurring weekly" },
   { label: "Locations", href: "/clinic/locations", section: "Clinic", keywords: "address offices photos arrival" },
   { label: "Team", href: "/clinic/team", section: "Clinic", keywords: "staff users invite" },

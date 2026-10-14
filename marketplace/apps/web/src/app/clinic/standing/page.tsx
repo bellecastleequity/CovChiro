@@ -33,7 +33,7 @@ export default async function ClinicStanding({ searchParams }: { searchParams: P
     <>
       <PageHeader
         title="Standing bookings"
-        description={`Want the same provider on a regular schedule? Set up a standing booking. We book each shift ${s["standing.horizonWeeks"]} weeks ahead at your usual rates, charged per shift like any other booking. To hire a provider directly instead, use Request to hire on their profile. Arranging work any other way breaches the Clinic Platform Agreement.`}
+        description={`Want the same provider on a regular schedule? Set up a standing booking. We book each shift ${s["standing.horizonWeeks"]} weeks ahead at your usual rates, charged per shift like any other booking. Want any available provider each week instead of one named provider? Use Recurring postings. To hire a provider directly instead, use Request to hire on their profile. Arranging work any other way breaches the Clinic Platform Agreement.`}
       />
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="space-y-4 lg:col-span-3">

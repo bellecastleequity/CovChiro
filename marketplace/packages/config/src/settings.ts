@@ -409,6 +409,17 @@ export const SETTINGS = {
     flag: "OWNER_DECISION",
   }),
 
+  // ---------- recurring open postings ----------
+  "recurring.horizonWeeks": def({ group: "Recurring postings", label: "Post recurring shifts this many weeks ahead", schema: z.number().int().min(1).max(8), default: 3, flag: null }),
+  "recurring.minLeadHours": def({
+    group: "Recurring postings",
+    label: "Never post a recurring day closer than this (hours)",
+    help: "Keeps recurring days out of the rush window; a closer day is skipped (post it by hand if needed).",
+    schema: z.number().int().min(24).max(336),
+    default: 72,
+    flag: null,
+  }),
+
   // ---------- direct hire (placement) ----------
   "placement.defaultFeeCents": def({
     group: "Direct hire",

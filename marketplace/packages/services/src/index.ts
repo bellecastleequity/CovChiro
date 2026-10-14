@@ -42,6 +42,7 @@ export * as partners from "./partners";
 export * as phones from "./phones";
 export * as bookings from "./bookings";
 export * as standing from "./standing";
+export * as recurring from "./recurring";
 export * as dispatch from "./dispatch";
 export * as oncall from "./oncall";
 export { badgesFor, providerPublicProfile } from "./profiles";

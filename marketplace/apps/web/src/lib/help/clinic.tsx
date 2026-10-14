@@ -126,6 +126,26 @@ const A: HelpArticle[] = [
     ),
   },
   {
+    slug: "recurring-postings",
+    category: "posting",
+    title: "Recurring postings: the same days every week",
+    summary: "Set your weekly days once and we keep them posted for any available provider.",
+    keywords: "recurring repeat weekly every week afternoons block schedule open shifts automatic posting regular",
+    links: [{ href: "/clinic/recurring", label: "Recurring postings" }, { href: "/clinic/standing", label: "Standing bookings" }],
+    body: (s) => (
+      <Ul
+        items={[
+          `Pick the days, hours, lunch and expected visits once. We post each matching day ${s["recurring.horizonWeeks"]} weeks ahead as a normal open shift at the usual rates, so it fills like any other shift: providers apply and you choose, or the best applicant is booked at your decision deadline.`,
+          `Days less than ${Math.ceil(s["recurring.minLeadHours"] / 24)} days away aren't posted automatically, so you never pay a rush premium by surprise. Need one of those days? Post it from Post shift.`,
+          "With \"Invite whoever covered it last\" on, the provider who most recently covered your recurring days gets an invitation as soon as each new day is posted. Anyone else can still apply.",
+          "If no provider is available for a day yet, it waits and posts itself the moment one is.",
+          "Change the days or hours any time: open days that no longer fit are taken down, booked days stay booked. Pause stops new posts; End can also take down open days nobody has taken.",
+          "Prefer one named provider who has worked with you on a fixed schedule? Use a standing booking instead.",
+        ]}
+      />
+    ),
+  },
+  {
     slug: "fly-in",
     category: "posting",
     title: "Fly-in coverage",

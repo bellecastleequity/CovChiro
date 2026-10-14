@@ -31,6 +31,7 @@ export default async function ClinicLayout({ children }: { children: React.React
     { href: "/clinic/providers", label: "My providers", icon: "providers" },
     { href: "/clinic/refer", label: "Refer & earn", icon: "refer" },
     { href: "/clinic/rewards", label: "Rewards", icon: "rewards" },
+    { href: "/clinic/recurring", label: "Recurring postings", icon: "recurring" },
     { href: "/clinic/standing", label: "Standing bookings", icon: "standing" },
     { href: "/clinic/locations", label: "Locations", icon: "locations" },
     { href: "/clinic/team", label: "Team", icon: "team" },

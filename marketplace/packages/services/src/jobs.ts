@@ -29,6 +29,7 @@ import { autoCompleteDue, failedDepositSweep, markUnfilled, nightlyCredentialSwe
 import { releaseDuePayouts } from "./payouts";
 import { settleDueInvites } from "./shifts";
 import { standingSweep } from "./standing";
+import { recurringSweep } from "./recurring";
 import { announcementSweep } from "./announcements";
 import { clinicVerifySweep } from "./clinicVerify";
 import { openAllMarkets } from "./markets";
@@ -83,6 +84,7 @@ export const JOBS: Job[] = [
   { name: "bookingDigests", schedule: { everySeconds: 60 }, run: () => sendBookingDigests() },
   // Standing bookings: keep each one booked out to the horizon.
   { name: "standingBookings", schedule: { everySeconds: 3600 }, run: () => standingSweep() },
+  { name: "recurringPostings", schedule: { everySeconds: 3600 }, run: () => recurringSweep() },
   // Growth.
   { name: "leadDrip", schedule: { everySeconds: 900 }, run: () => leads.runLeadDrip() },
   // Spam folder: delete filtered messages after spam.retentionDays.

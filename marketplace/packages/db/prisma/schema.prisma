@@ -749,6 +749,44 @@ model HireRequest {
 /// Ongoing work between a clinic and a provider, arranged through the platform:
 /// a weekly pattern that generates confirmed shifts a few weeks ahead, each
 /// priced, paid and cancellable like any other shift.
+/// A weekly pattern a clinic posts as ordinary open shifts a few weeks ahead (any eligible provider can take them).
+model RecurringPosting {
+  id                 String    @id @default(cuid())
+  clinicOrgId        String
+  locationId         String
+  professionCode     String
+  /// Days of the week, 1 = Monday … 7 = Sunday (ISO).
+  weekdays           Int[]
+  /// Local "HH:MM" at the location.
+  startTime          String
+  endTime            String
+  /// Unpaid lunch (0 = none) and its local start "HH:MM".
+  lunchMinutes       Int       @default(0)
+  lunchStartTime     String?
+  expectedPatients   Int?
+  /// Null = the clinic's default minimum years.
+  minYearsExperience Int?
+  notes              String?
+  startsOn           DateTime  @db.Date
+  endsOn             DateTime? @db.Date
+  /// Invite whoever covered this posting last before anyone else.
+  preferLastProvider Boolean   @default(true)
+  /// ACTIVE | PAUSED | ENDED
+  status             String    @default("ACTIVE")
+  createdById        String
+  /// Last date shifts have been posted for.
+  generatedThrough   DateTime? @db.Date
+  /// Why the last run couldn't post (cleared on the next success).
+  lastError          String?
+  lastErrorAt        DateTime? @db.Timestamptz(3)
+  endedAt            DateTime? @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+  shifts             Shift[]
+
+  @@index([clinicOrgId, status])
+}
+
 model StandingBooking {
   id               String    @id @default(cuid())
   clinicOrgId      String
@@ -811,93 +849,96 @@ enum ShiftStatus {
 }
 
 model Shift {
-  id                          String           @id @default(cuid())
+  id                          String            @id @default(cuid())
   locationId                  String
-  location                    ClinicLocation   @relation(fields: [locationId], references: [id])
+  location                    ClinicLocation    @relation(fields: [locationId], references: [id])
   shiftGroupId                String?
-  shiftGroup                  ShiftGroup?      @relation(fields: [shiftGroupId], references: [id])
+  shiftGroup                  ShiftGroup?       @relation(fields: [shiftGroupId], references: [id])
   /// Clinic preference: minimum years practicing this profession (0 = any).
-  minYearsExperience          Int              @default(0)
+  minYearsExperience          Int               @default(0)
   /// Generated from a standing booking (ongoing work between one clinic and one provider).
   standingBookingId           String?
-  standingBooking             StandingBooking? @relation(fields: [standingBookingId], references: [id])
+  standingBooking             StandingBooking?  @relation(fields: [standingBookingId], references: [id])
+  /// Posted by a recurring open posting (services/recurring.ts).
+  recurringPostingId          String?
+  recurringPosting            RecurringPosting? @relation(fields: [recurringPostingId], references: [id])
   /// Copy of location.state, set and kept in sync by trigger.
-  state                       String           @db.Char(2)
+  state                       String            @db.Char(2)
   professionCode              String
   /// INV-8 attestation: { supervisorName, supervisorProfessionCode, supervisorLicenseNumber, onSiteEntireShift }.
   supervisionAttestation      Json?
   supervisionAttestedById     String?
-  supervisionAttestedAt       DateTime?        @db.Timestamptz(3)
-  startsAt                    DateTime         @db.Timestamptz(3)
-  endsAt                      DateTime         @db.Timestamptz(3)
-  status                      ShiftStatus      @default(DRAFT)
-  requiredSkillIds            String[]         @default([])
-  preferredSkillIds           String[]         @default([])
+  supervisionAttestedAt       DateTime?         @db.Timestamptz(3)
+  startsAt                    DateTime          @db.Timestamptz(3)
+  endsAt                      DateTime          @db.Timestamptz(3)
+  status                      ShiftStatus       @default(DRAFT)
+  requiredSkillIds            String[]          @default([])
+  preferredSkillIds           String[]          @default([])
   expectedPatients            Int?
   notes                       String?
-  instantBook                 Boolean          @default(false)
+  instantBook                 Boolean           @default(false)
   maxTravelBudgetCents        Int?
   /// Unpaid lunch (0 = none). Priced on paid hours: core paidHours (pricing.maxDaySpanMinutes limit).
-  lunchMinutes                Int              @default(0)
-  lunchStartsAt               DateTime?        @db.Timestamptz(3)
-  lodgingAllowed              Boolean          @default(false)
+  lunchMinutes                Int               @default(0)
+  lunchStartsAt               DateTime?         @db.Timestamptz(3)
+  lodgingAllowed              Boolean           @default(false)
   lodgingCapCentsPerNight     Int?
   /// Fly-in coverage allowed (snapshot at posting; null = no): airfare per trip, lodging per night, and the last moment a fly-in provider can be added.
   flyInAirfareCents           Int?
   flyInNightlyCents           Int?
-  flyInUntil                  DateTime?        @db.Timestamptz(3)
+  flyInUntil                  DateTime?         @db.Timestamptz(3)
   // Pricing snapshot from the rate engine (INV-7)
   rateCardId                  String?
   durationTier                DurationTier?
   clinicPriceCents            Int
   providerPayCents            Int
-  premiumsApplied             Json             @default("[]")
+  premiumsApplied             Json              @default("[]")
   /// Volume tier from expectedPatients at posting (Addendum 03); null = not volume priced.
   declaredTier                VolumeTier?
   /// Terms in force at posting: { ceiling, grace, overageClinicCents, overageProviderCents }.
   volumeTerms                 Json?
-  boosted                     Boolean          @default(false)
+  boosted                     Boolean           @default(false)
   /// Emergency cover (no-show / late cancel): broadcast to everyone at once, wider radius, rescue bonus from margin.
-  emergencyAt                 DateTime?        @db.Timestamptz(3)
+  emergencyAt                 DateTime?         @db.Timestamptz(3)
   emergencySource             String?
   emergencyReason             String?
-  emergencyBonusPercent       Int              @default(0)
+  emergencyBonusPercent       Int               @default(0)
   emergencyBasePayCents       Int?
   /// Replacement for the remaining time of a shift whose provider didn't show.
   rescueOfShiftId             String?
   promoCodeId                 String?
-  promoCode                   PromoCode?       @relation(fields: [promoCodeId], references: [id])
+  promoCode                   PromoCode?        @relation(fields: [promoCodeId], references: [id])
   /// All margin-funded discounts (promo + partner); see partnerDiscountCents for the partner share.
-  promoDiscountCents          Int              @default(0)
+  promoDiscountCents          Int               @default(0)
   /// Partner clinic program: the part of promoDiscountCents from the clinic's partnership.
-  partnerDiscountCents        Int              @default(0)
+  partnerDiscountCents        Int               @default(0)
   partnershipId               String?
   /// Clinic-set rate (beta): "MARKET" (rate engine) or "CLINIC" (clinic's own lower price, not auto-filled).
-  rateMode                    String           @default("MARKET")
+  rateMode                    String            @default("MARKET")
   /// Market price/pay for this shift when the clinic set its own rate (for the floor, reports and release).
   marketClinicPriceCents      Int?
   marketProviderPayCents      Int?
   /// The clinic chose to release to market if unfilled; releaseAt = start − releaseHours (as shown at posting).
   releaseOnUnfilled           Boolean?
   releaseHours                Int?
-  releaseAt                   DateTime?        @db.Timestamptz(3)
-  releasedAt                  DateTime?        @db.Timestamptz(3)
+  releaseAt                   DateTime?         @db.Timestamptz(3)
+  releasedAt                  DateTime?         @db.Timestamptz(3)
   /// Receipt: { text, acceptedAt, acceptedById, acceptedByName, ip, floorPercent, ... } exactly as shown.
   rateTerms                   Json?
   /// Saved as a draft because no doctor could take it (open states): the clinic is told when one can.
-  waitingForProviderSince     DateTime?        @db.Timestamptz(3)
-  providerAvailableNotifiedAt DateTime?        @db.Timestamptz(3)
+  waitingForProviderSince     DateTime?         @db.Timestamptz(3)
+  providerAvailableNotifiedAt DateTime?         @db.Timestamptz(3)
   /// Clinic ticked "post it automatically": the waiting draft is posted the moment a provider can take it.
-  autoPostWhenAvailable       Boolean          @default(false)
+  autoPostWhenAvailable       Boolean           @default(false)
   // Matching timeline
-  postedAt                    DateTime?        @db.Timestamptz(3)
-  favoritesWindowEndsAt       DateTime?        @db.Timestamptz(3)
-  selectionDeadline           DateTime?        @db.Timestamptz(3)
-  cascadeStartedAt            DateTime?        @db.Timestamptz(3)
-  cancelledAt                 DateTime?        @db.Timestamptz(3)
+  postedAt                    DateTime?         @db.Timestamptz(3)
+  favoritesWindowEndsAt       DateTime?         @db.Timestamptz(3)
+  selectionDeadline           DateTime?         @db.Timestamptz(3)
+  cascadeStartedAt            DateTime?         @db.Timestamptz(3)
+  cancelledAt                 DateTime?         @db.Timestamptz(3)
   cancelReason                String?
   createdById                 String
-  createdAt                   DateTime         @default(now()) @db.Timestamptz(3)
+  createdAt                   DateTime          @default(now()) @db.Timestamptz(3)
 
   applications Application[]
   offers       Offer[]

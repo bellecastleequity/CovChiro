@@ -11,6 +11,7 @@ import {
   partners,
   phones,
   standing,
+  recurring,
   dispatch,
   bookings,
   emergency,
@@ -207,6 +208,55 @@ export const withdrawStandingChangeAction = formAction(async (fd) => {
   await standing.withdrawStandingChange(actor, str(fd, "standingId"));
   revalidatePath("/clinic/standing");
   return "Change withdrawn. Nothing changes.";
+});
+
+function recurringFields(fd: FormData) {
+  const lunch = Number(optStr(fd, "lunchMinutes") ?? 0);
+  return {
+    weekdays: fd.getAll("weekdays").map(Number),
+    startTime: str(fd, "startTime"),
+    endTime: str(fd, "endTime"),
+    lunchMinutes: lunch,
+    lunchStartTime: lunch ? optStr(fd, "lunchStartTime") : null,
+    expectedPatients: optStr(fd, "expectedPatients") ? Number(str(fd, "expectedPatients")) : null,
+    startsOn: str(fd, "startsOn"),
+    endsOn: optStr(fd, "endsOn"),
+    notes: optStr(fd, "notes"),
+    preferLastProvider: bool(fd, "preferLastProvider"),
+  };
+}
+
+const postedWords = (r: { posted: number; waiting: number; invited: number }) =>
+  [r.posted ? `${r.posted} shift${r.posted === 1 ? "" : "s"} posted` : "", r.waiting ? `${r.waiting} waiting for an available provider (posted automatically once one is)` : "", r.invited ? `your last provider invited to ${r.invited}` : ""].filter(Boolean).join("; ");
+
+export const createRecurringAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await recurring.createRecurring(actor, { locationId: str(fd, "locationId"), professionCode: str(fd, "professionCode"), ...recurringFields(fd) });
+  revalidatePath("/clinic", "layout");
+  const done = postedWords(r);
+  return done ? `Set up. ${done}. We'll keep posting each week.` : "Set up. The first days are posted as they come into range.";
+});
+
+export const updateRecurringAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await recurring.updateRecurring(actor, str(fd, "recurringId"), recurringFields(fd));
+  revalidatePath("/clinic", "layout");
+  return ["Saved.", r.takenDown ? `${r.takenDown} open day${r.takenDown === 1 ? "" : "s"} that no longer fit taken down.` : "", postedWords(r) ? `${postedWords(r)}.` : ""].filter(Boolean).join(" ");
+});
+
+export const pauseRecurringAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const paused = str(fd, "to") === "pause";
+  await recurring.setRecurringPaused(actor, str(fd, "recurringId"), paused);
+  revalidatePath("/clinic", "layout");
+  return paused ? "Paused. Days already posted stay up; no new ones are posted." : "Resumed.";
+});
+
+export const endRecurringAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await recurring.endRecurring(actor, str(fd, "recurringId"), bool(fd, "takeDown"));
+  revalidatePath("/clinic", "layout");
+  return r.takenDown ? `Ended. ${r.takenDown} open day${r.takenDown === 1 ? "" : "s"} taken down; booked days stay booked.` : "Ended. Days already posted stay up.";
 });
 
 export const requestHireAction = formAction(async (fd) => {
