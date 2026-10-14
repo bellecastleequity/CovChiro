@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@cm/db";
 import { devOutbox, mailProvider, setLlmProvider, type LlmProvider } from "@cm/integrations";
@@ -231,6 +232,43 @@ describe("clinic outreach: review mode, compliance, unsubscribe", () => {
     expect((await comms(b.id))[0].status).toBe("APPROVED");
     expect((await prisma.clinicProspect.findUniqueOrThrow({ where: { id: a.id } })).outreachStep).toBe(1);
     expect(sentTo((await prisma.clinicProspect.findUniqueOrThrow({ where: { id: b.id } })).email!).length).toBe(1);
+  });
+
+  it("an approved draft whose send fails releases its step, so outreach writes it again (and update 054 repairs old ones)", async () => {
+    await setting("growth.agents", { ...(await import("@cm/config")).defaultSettings()["growth.agents"], clinicOutreach: true });
+    const pr = await growth.saveProspect(admin, { clinicName: "Outage Chiropractic", ownerName: "Dr. Out Age", email: `outage-${uid()}@clinic.dev`, city: "Tampa", zip: "33602", providerCount: 1 });
+    await growth.growthTick();
+    const draft = (await comms(pr.id))[0];
+    expect(draft.status).toBe("PENDING_APPROVAL");
+    await growth.bulkDecide(admin, [draft.id], "approve");
+    const m = mailProvider() as { send: (x: unknown) => Promise<boolean>; lastError?: string | null };
+    const real = m.send;
+    m.send = async () => ((m.lastError = "SendGrid 401: Maximum credits exceeded"), false);
+    try {
+      await growth.approvedQueueSweep();
+    } finally {
+      m.send = real;
+    }
+    const after = await prisma.communication.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(after.status).toBe("FAILED");
+    expect(after.dedupeKey).toBeNull();
+    // Six hours on, the outreach agent drafts the step again for approval.
+    setClock(() => new Date(Date.now() + 7 * 3600_000));
+    await growth.growthTick();
+    expect((await comms(pr.id)).filter((x) => x.status === "PENDING_APPROVAL" && x.promptKey === draft.promptKey)).toHaveLength(1);
+
+    // Update 054: a draft left REJECTED (with its key) by the old code after a failed send is released;
+    // one a person rejected is not.
+    const fresh = (await comms(pr.id)).find((x) => x.status === "PENDING_APPROVAL")!;
+    await prisma.communication.update({ where: { id: fresh.id }, data: { status: "REJECTED", createdById: admin.userId } });
+    await prisma.communication.create({ data: { entityType: "PROSPECT", entityId: pr.id, channel: "EMAIL", agent: fresh.agent, purpose: fresh.purpose, promptKey: fresh.promptKey, status: "FAILED", error: "SendGrid 401", createdById: admin.userId } });
+    const other = await growth.saveProspect(admin, { clinicName: "Said No Chiropractic", email: `no-${uid()}@clinic.dev`, city: "Tampa" });
+    const rejected = await prisma.communication.create({ data: { entityType: "PROSPECT", entityId: other.id, channel: "EMAIL", agent: "clinicOutreach", purpose: "COMMERCIAL", promptKey: fresh.promptKey, status: "REJECTED", dedupeKey: `outreach:${other.id}:0`, createdById: admin.userId } });
+    const sql = readFileSync(new URL("../../packages/db/prisma/migrations/0057_release_failed_drafts/migration.sql", import.meta.url), "utf8");
+    await prisma.$executeRawUnsafe(sql);
+    await prisma.$executeRawUnsafe(sql);
+    expect(await prisma.communication.findUniqueOrThrow({ where: { id: fresh.id } })).toMatchObject({ status: "FAILED", dedupeKey: null });
+    expect(await prisma.communication.findUniqueOrThrow({ where: { id: rejected.id } })).toMatchObject({ status: "REJECTED", dedupeKey: `outreach:${other.id}:0` });
   });
 
   it("marketing email is blocked without a postal address (and waits rather than being dropped)", async () => {

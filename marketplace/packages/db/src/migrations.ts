@@ -62,6 +62,7 @@ export const EXPECTED_MIGRATIONS = [
   "0054_partner_clinics",
   "0055_contact_phones",
   "0056_blog_video",
+  "0057_release_failed_drafts",
 ] as const;
 
 /** Migrations the connected database hasn't applied yet (empty = up to date). */

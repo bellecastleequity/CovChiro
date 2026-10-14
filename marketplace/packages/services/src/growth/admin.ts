@@ -159,7 +159,11 @@ async function sendApproved(m: Prisma.CommunicationGetPayload<object>, userId: s
   }
   // Bulk sends wait out pause/caps/quiet hours (Deferred) instead of failing.
   const res = await sendGrowthEmail(r, { subject, body }, { agent: m.agent ?? "admin", purpose: m.purpose as "COMMERCIAL" | "RELATIONSHIP", prompt: m.promptKey ? { key: m.promptKey, version: m.promptVersion ?? 0 } : null, createdById: userId, deferTransient: how.bulk });
-  await prisma.communication.update({ where: { id: m.id }, data: { status: res.ok ? "APPROVED" : "REJECTED", createdById: userId } });
+  // A send that failed (not a compliance block) releases the step: the draft gives up its dedupeKey, so the
+  // outreach sweep writes that step again later (Oct 2026: approved drafts caught in the SendGrid outage were
+  // left REJECTED holding the key, and those prospects never got that step).
+  const failedSend = !res.ok && !res.blocked;
+  await prisma.communication.update({ where: { id: m.id }, data: { status: res.ok ? "APPROVED" : failedSend ? "FAILED" : "REJECTED", createdById: userId, ...(failedSend ? { dedupeKey: null } : {}) } });
   await logAgent(m.agent ?? "admin", "draft_approved", { entityType: m.entityType, entityId: m.entityId, promptKey: m.promptKey, promptVersion: m.promptVersion, humanOverrideBy: `${userId ?? "admin"}${how.edited ? " (edited)" : ""}${how.bulk ? " (bulk)" : ""}`, sendStatus: res.ok ? "sent" : res.blocked ? "blocked" : "failed", error: res.reason });
   if (res.ok && m.entityType === "PROSPECT" && m.promptKey && OUTREACH_SEQUENCE.includes(m.promptKey)) await advanceOutreach(m.entityId);
   if (res.ok && m.entityType === "PROVIDER_PROSPECT" && m.promptKey && PROVIDER_OUTREACH_SEQUENCE.includes(m.promptKey)) await advanceProviderOutreach(m.entityId);
@@ -223,7 +227,7 @@ export async function approvedQueueSweep(limit = 40) {
         return { sent, failed, held: e.message };
       }
       failed++;
-      await prisma.communication.update({ where: { id: m.id }, data: { status: "REJECTED", error: String((e as Error).message ?? e).slice(0, 300) } }).catch(() => undefined);
+      await prisma.communication.update({ where: { id: m.id }, data: { status: "FAILED", dedupeKey: null, error: String((e as Error).message ?? e).slice(0, 300) } }).catch(() => undefined);
     }
   }
   if (rows.length) await prisma.setting.deleteMany({ where: { key: "growth.approvedQueueHeld" } });
