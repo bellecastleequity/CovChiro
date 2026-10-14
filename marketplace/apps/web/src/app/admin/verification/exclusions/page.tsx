@@ -7,6 +7,7 @@ import { Field, Input } from "@/components/ui/form";
 import { Alert, Empty, PageHeader, Table, Td, Th } from "@/components/ui/misc";
 import { dateTimeLabel } from "@/lib/format";
 import { requireActor } from "@/lib/session";
+import { AutoRefresh } from "@/components/countdown";
 import { exclusionImportAction, exclusionRefreshAction } from "../../actions";
 
 export const metadata = { title: "Exclusion check" };
@@ -22,6 +23,16 @@ export default async function ExclusionCheck() {
         title="Exclusion check"
         description="Every provider is checked against the federal healthcare exclusion lists. A clinic that bills Medicare or Medicaid can be fined for using someone on them. An NPI on a list stops shifts at once; a same-name listing comes here for you to compare."
       />
+      {o.running || o.pending ? (
+        <Alert tone="info" className="mb-6" title={o.running ? "Loading now…" : "Queued, starting within a minute…"}>
+          {(o.running?.fileName ?? (o.pending?.kind === "file" ? o.pending.fileName : null)) ?? "OIG exclusion list download"}. Big lists take a few minutes; this page refreshes by itself. You can leave it.
+          <AutoRefresh seconds={20} />
+        </Alert>
+      ) : o.lastImport ? (
+        <Alert tone={o.lastImport.ok ? "success" : "error"} className="mb-6" title={o.lastImport.ok ? "Last load finished" : "Last load didn't work"}>
+          {o.lastImport.message} ({dateTimeLabel(new Date(o.lastImport.at))})
+        </Alert>
+      ) : null}
       {o.lastError ? <Alert tone="warning" className="mb-6" title="The automatic OIG download failed">{o.lastError.message} ({dateTimeLabel(new Date(o.lastError.at))}). Upload the file by hand below, or try again.</Alert> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6">
@@ -30,7 +41,7 @@ export default async function ExclusionCheck() {
             <CardBody className="space-y-3 text-sm">
               <p className="text-slate-600">Downloaded automatically every month from oig.hhs.gov. Free.</p>
               <ActionForm action={exclusionRefreshAction} successMessage>
-                <SubmitButton size="sm" variant="outline" pendingText="Downloading…">Download now and re-check everyone</SubmitButton>
+                <SubmitButton size="sm" variant="outline" pendingText="Queuing…" disabled={!!(o.running || o.pending)}>Download now and re-check everyone</SubmitButton>
               </ActionForm>
             </CardBody>
           </Card>
@@ -39,11 +50,11 @@ export default async function ExclusionCheck() {
             <CardBody className="space-y-3 text-sm">
               <ol className="list-decimal space-y-1 pl-5 text-slate-600">
                 <li>On <a className="font-medium text-brand-700" href="https://sam.gov/data-services/Exclusions/Public%20V2?privacy=Public" target="_blank" rel="noreferrer">SAM.gov Data Services → Exclusions → Public V2</a>, download the latest extract (free, monthly is plenty).</li>
-                <li>Upload it here as it is (.zip or .csv). An OIG UPDATED.csv works here too.</li>
+                <li>Upload the .zip here as it is (no need to unzip). It loads in the background. An OIG UPDATED.csv works here too.</li>
               </ol>
               <ActionForm action={exclusionImportAction} className="space-y-3" successMessage>
                 <Field label="Exclusion list file"><Input type="file" name="file" accept=".zip,.csv,.txt" required /></Field>
-                <SubmitButton size="sm" pendingText="Loading…">Load and check</SubmitButton>
+                <SubmitButton size="sm" pendingText="Uploading…" disabled={!!(o.running || o.pending)}>Upload and check</SubmitButton>
               </ActionForm>
             </CardBody>
           </Card>

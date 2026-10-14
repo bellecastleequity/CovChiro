@@ -773,20 +773,19 @@ export const exclusionCheckProviderAction = formAction(async (fd) => {
 });
 
 export const exclusionRefreshAction = formAction(async () => {
-  await requireActor("admin");
+  const { actor } = await requireActor("admin");
   const { exclusions } = await import("@cm/services");
-  const r = await exclusions.refreshLeie({ force: true });
-  const c = await exclusions.checkProviders({ all: true });
+  await exclusions.queueLeieRefresh(actor);
   revalidatePath("/admin/verification/exclusions");
-  return `${"loaded" in r && r.loaded ? `Downloaded ${r.loaded.toLocaleString()} OIG listings. ` : ""}Checked ${c.checked} provider${c.checked === 1 ? "" : "s"}: ${c.excluded} excluded, ${c.possible} to review.`;
+  return "Downloading in the background. This page updates when it's done (a few minutes).";
 });
 
 export const exclusionImportAction = formAction(async (fd) => {
   const { actor } = await requireActor("admin");
   const file = fd.get("file");
-  if (!(file instanceof File) || !file.size) throw new DomainError("VALIDATION", "Choose the exclusion list file (OIG UPDATED.csv or a SAM.gov extract).");
+  if (!(file instanceof File) || !file.size) throw new DomainError("VALIDATION", "Choose the exclusion list file (the SAM.gov .zip or an OIG UPDATED.csv).");
   const { exclusions } = await import("@cm/services");
-  const r = await exclusions.importExclusionFile(actor, Buffer.from(await file.arrayBuffer()), file.name);
+  await exclusions.queueExclusionFile(actor, Buffer.from(await file.arrayBuffer()), file.name);
   revalidatePath("/admin/verification/exclusions");
-  return `Loaded ${r.rows.toLocaleString()} ${r.source === "LEIE" ? "OIG" : "SAM.gov"} listings and checked ${r.checked} provider${r.checked === 1 ? "" : "s"}: ${r.excluded} excluded, ${r.possible} to review.`;
+  return "Uploaded. It's loading in the background; this page updates when it's done (a few minutes).";
 });

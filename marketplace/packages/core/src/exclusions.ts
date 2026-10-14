@@ -31,7 +31,11 @@ export interface ExclusionRow {
 
 /** Minimal CSV reader: quoted fields, doubled quotes, commas and newlines inside quotes. */
 export function csvRows(text: string): string[][] {
-  const out: string[][] = [];
+  return [...csvRecords(text)];
+}
+
+/** The same, one row at a time (a SAM.gov extract is 100,000+ rows: never hold them all as arrays). */
+export function* csvRecords(text: string): Generator<string[]> {
   let row: string[] = [];
   let field = "";
   let quoted = false;
@@ -46,13 +50,12 @@ export function csvRows(text: string): string[][] {
     else if (c === "\n" || c === "\r") {
       if (c === "\r" && text[i + 1] === "\n") i++;
       row.push(field); field = "";
-      if (row.some((x) => x.trim())) out.push(row);
+      if (row.some((x) => x.trim())) yield row;
       row = [];
     } else field += c;
   }
   row.push(field);
-  if (row.some((x) => x.trim())) out.push(row);
-  return out;
+  if (row.some((x) => x.trim())) yield row;
 }
 
 const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z]/g, "");
@@ -91,16 +94,17 @@ function isoDate(s: string | undefined): string | null {
  * that are Active and not terminated before `today`.
  */
 export function parseExclusionFile(text: string, today = new Date()): { source: ExclusionSource; rows: ExclusionRow[]; skipped: number } {
-  const all = csvRows(text.replace(/^﻿/, ""));
-  if (!all.length) throw new Error("The file is empty.");
-  const head = all[0].map((h) => h.trim().toUpperCase());
+  const rest = csvRecords(text.replace(/^\uFEFF/, ""));
+  const first = rest.next();
+  if (first.done) throw new Error("The file is empty.");
+  const head = first.value.map((h) => h.trim().toUpperCase());
   const col = (...names: string[]) => names.map((n) => head.indexOf(n)).find((i) => i >= 0) ?? -1;
   const at = (r: string[], i: number) => (i >= 0 ? (r[i] ?? "").trim() : "");
   const rows: ExclusionRow[] = [];
   let skipped = 0;
   if (head.includes("LASTNAME") && head.includes("EXCLTYPE")) {
     const c = { last: col("LASTNAME"), first: col("FIRSTNAME"), mid: col("MIDNAME"), bus: col("BUSNAME"), gen: col("GENERAL"), spec: col("SPECIALTY"), npi: col("NPI"), state: col("STATE"), type: col("EXCLTYPE"), date: col("EXCLDATE"), rein: col("REINDATE") };
-    for (const r of all.slice(1)) {
+    for (const r of rest) {
       if (isoDate(at(r, c.rein))) { skipped++; continue; }
       const last = at(r, c.last), first = at(r, c.first), npi = validNpi(at(r, c.npi));
       if (!(last && first) && !npi) { skipped++; continue; }
@@ -111,12 +115,13 @@ export function parseExclusionFile(text: string, today = new Date()): { source: 
   if (head.includes("EXCLUSION TYPE") || head.includes("EXCLUSION PROGRAM")) {
     const c = { cls: col("CLASSIFICATION"), name: col("NAME"), first: col("FIRST"), mid: col("MIDDLE"), last: col("LAST"), state: col("STATE / PROVINCE", "STATE"), npi: col("NPI"), type: col("EXCLUSION TYPE"), active: col("ACTIVE DATE"), term: col("TERMINATION DATE"), status: col("RECORD STATUS"), prog: col("EXCLUSION PROGRAM") };
     const todayIso = today.toISOString().slice(0, 10);
-    for (const r of all.slice(1)) {
+    for (const r of rest) {
       const status = at(r, c.status);
       const term = isoDate(at(r, c.term));
       if ((status && !/^active$/i.test(status)) || (term && term < todayIso)) { skipped++; continue; }
       const last = at(r, c.last), first = at(r, c.first), npi = validNpi(at(r, c.npi));
-      if (!(last && first) && !npi) { skipped++; continue; }
+      // Providers are people: firms, vessels and special entities only matter by NPI.
+      if ((!(last && first) && !npi) || (!npi && !/individual/i.test(at(r, c.cls)))) { skipped++; continue; }
       rows.push({ source: "SAM", lastName: last, firstName: first, middleName: at(r, c.mid), businessName: last && first ? "" : at(r, c.name), npi, state: at(r, c.state).toUpperCase() || null, specialty: at(r, c.cls), exclType: [at(r, c.type), at(r, c.prog)].filter(Boolean).join(" / "), exclDate: isoDate(at(r, c.active)) });
     }
     return { source: "SAM", rows, skipped };

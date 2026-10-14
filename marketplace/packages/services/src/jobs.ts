@@ -1,6 +1,6 @@
 import { purgeSpam } from "./spam";
 import { idCheckSweep } from "./idcheck";
-import { exclusionSweep } from "./exclusions";
+import { exclusionImportSweep, exclusionSweep } from "./exclusions";
 import { nightlyBackup, retryNightlyBackup } from "./backups";
 import { referralSweep } from "./referrals";
 import { punchReminderSweep, timeclockSweep } from "./timeclock";
@@ -98,6 +98,8 @@ export const JOBS: Job[] = [
   { name: "idChecks", schedule: { everySeconds: 300 }, run: () => idCheckSweep() },
   // Federal exclusion lists: OIG download when due + checks of new providers (exclusions.ts).
   { name: "exclusions", schedule: { everySeconds: 3600 }, long: true, run: () => exclusionSweep() },
+  // Queued exclusion list uploads / "Download now": loaded here, never inside a page request.
+  { name: "exclusionImports", schedule: { everySeconds: 60 }, long: true, run: () => exclusionImportSweep() },
   { name: "rewardsSweep", schedule: { everySeconds: 3600 }, long: true, run: () => rewardsSweep() },
   { name: "volumeSweep", schedule: { everySeconds: 300 }, run: () => volumeSweep() },
   { name: "recruitSweep", schedule: { everySeconds: 600 }, run: () => recruitSweep() },

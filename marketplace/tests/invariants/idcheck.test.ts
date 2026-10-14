@@ -5,6 +5,17 @@ import { admin as adminSvc, applyToShift, exclusions, getEligibleProviders, idch
 import { makeClinic, makeProvider, makeShift } from "../factories";
 
 const admin = { userId: null, role: "PLATFORM_ADMIN" as const };
+
+/** A one-file .zip (stored, no compression), the way the app reads uploads. */
+function zipOne(name: string, data: Buffer) {
+  const head = Buffer.alloc(30);
+  head.writeUInt32LE(0x04034b50, 0);
+  head.writeUInt16LE(20, 4);
+  head.writeUInt32LE(data.length, 18);
+  head.writeUInt32LE(data.length, 22);
+  head.writeUInt16LE(Buffer.byteLength(name), 26);
+  return Buffer.concat([head, Buffer.from(name), data]);
+}
 async function setting(key: string, value: unknown) {
   await adminSvc.updateSetting(admin, key, value);
   invalidateSettings();
@@ -163,8 +174,16 @@ describe("federal exclusion lists", () => {
       '"Classification","Name","Prefix","First","Middle","Last","Suffix","Address 1","Address 2","Address 3","Address 4","City","State / Province","Country","Zip Code","Open Data Flag","Blank (Deprecated)","Unique Entity ID","Exclusion Program","Excluding Agency","CT Code","Exclusion Type","Additional Comments","Active Date","Termination Date","Record Status","Cross-Reference","SAM Number","CAGE","NPI","Creation_Date"',
       '"Individual","","","ROBERT","","SAMLISTED","","","","","","ORLANDO","FL","USA","","","","","Reciprocal","HHS","","Prohibition/Restriction","","01/02/2020","Indefinite","Active","","S4MR","","","01/02/2020"',
     ].join("\n");
-    const r = await exclusions.importExclusionFile(admin, Buffer.from(sam), "SAM_Exclusions.csv");
-    expect(r.source).toBe("SAM");
+    // Uploaded as SAM ships it (a .zip), queued, then loaded by the background job.
+    await exclusions.queueExclusionFile(admin, zipOne("SAM_Exclusions_Public_Extract_V2.CSV", Buffer.from(sam)), "SAM_Exclusions_Public_Extract_V2.ZIP");
+    expect((await exclusions.exclusionOverview(admin)).pending).toMatchObject({ kind: "file" });
+    const r = await exclusions.exclusionImportSweep();
+    expect(r).toMatchObject({ ok: true, message: expect.stringMatching(/Loaded 1 SAM\.gov listings/) });
+    const o = await exclusions.exclusionOverview(admin);
+    expect(o.pending).toBeNull();
+    expect(o.running).toBeNull();
+    expect(o.lastImport?.ok).toBe(true);
     expect((await prisma.provider.findUniqueOrThrow({ where: { id: p.id } })).exclusionStatus).toBe("POSSIBLE_MATCH");
+    expect(await exclusions.exclusionImportSweep()).toEqual({ idle: true });
   });
 });

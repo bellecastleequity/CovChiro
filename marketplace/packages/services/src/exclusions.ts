@@ -1,6 +1,6 @@
 import { DomainError, exclusionNameKey, exclusionRowKey, legalNameParts, matchExclusion, parseExclusionFile, type ExclusionResult, type ExclusionRow, type ExclusionSource } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
-import { exclusionListFetcher } from "@cm/integrations";
+import { exclusionListFetcher, storageProvider } from "@cm/integrations";
 import { fileText } from "./boardcheck";
 import { audit, clock, getSettings, requireAdmin, SYSTEM, type Actor } from "./context";
 import { notifyAdmins } from "./notify";
@@ -54,9 +54,66 @@ export async function refreshLeie(opts: { force?: boolean } = {}) {
   return { loaded: parsed.rows.length };
 }
 
+// ---------------- background loading (the lists are too big to load inside a page request) ----------------
+
+type Pending = { kind: "file"; key: string; fileName: string; at: string } | { kind: "leie"; at: string };
+type Running = { kind: string; fileName?: string; startedAt: string };
+type LastImport = { at: string; kind: string; fileName?: string; ok: boolean; message: string };
+
+async function putSetting(key: string, value: unknown) {
+  await prisma.setting.upsert({ where: { key }, create: { key, value: value as Prisma.InputJsonValue }, update: { value: value as Prisma.InputJsonValue } });
+}
+
+/** Admin upload: saves the file and queues it; job exclusionImports loads it within a minute or so. */
+export async function queueExclusionFile(actor: Actor, file: Buffer, fileName: string) {
+  requireAdmin(actor);
+  if (!file.length) throw new DomainError("VALIDATION", "That file is empty.");
+  if (!/\.(zip|csv|txt)$/i.test(fileName)) throw new DomainError("VALIDATION", "Upload the .zip or .csv exactly as downloaded.");
+  const key = await storageProvider().put("exclusion-imports", file, "application/octet-stream");
+  await putSetting("exclusions.pending", { kind: "file", key, fileName, at: clock.now().toISOString() } satisfies Pending);
+  await audit(prisma, actor, "exclusions.queued", "Setting", "exclusions.pending", null, { fileName, bytes: file.length });
+}
+
+/** "Download now": queues a fresh OIG download for the background job. */
+export async function queueLeieRefresh(actor: Actor) {
+  requireAdmin(actor);
+  await putSetting("exclusions.pending", { kind: "leie", at: clock.now().toISOString() } satisfies Pending);
+}
+
+/** Every minute: runs a queued upload or download, then re-checks everyone. One at a time (job lease). */
+export async function exclusionImportSweep() {
+  const row = await prisma.setting.findUnique({ where: { key: "exclusions.pending" } });
+  if (!row) return { idle: true };
+  const job = row.value as Pending;
+  await prisma.setting.delete({ where: { key: "exclusions.pending" } }).catch(() => undefined);
+  const fileName = job.kind === "file" ? job.fileName : undefined;
+  await putSetting("exclusions.running", { kind: job.kind, fileName, startedAt: clock.now().toISOString() } satisfies Running);
+  let last: LastImport;
+  try {
+    if (job.kind === "leie") {
+      const r = await refreshLeie({ force: true });
+      const c = await checkProviders({ all: true });
+      last = { at: clock.now().toISOString(), kind: "leie", ok: true, message: `Downloaded ${"loaded" in r && r.loaded ? r.loaded.toLocaleString() : "the"} OIG listings and checked ${c.checked} provider${c.checked === 1 ? "" : "s"}: ${c.excluded} excluded, ${c.possible} to review.` };
+      await prisma.setting.deleteMany({ where: { key: "exclusions.lastError" } });
+    } else {
+      const stored = await storageProvider().read(job.key);
+      if (!stored) throw new Error("The uploaded file wasn't found. Upload it again.");
+      const r = await importExclusionFile(SYSTEM, stored.data, job.fileName);
+      await storageProvider().remove(job.key).catch(() => undefined);
+      last = { at: clock.now().toISOString(), kind: "file", fileName, ok: true, message: `Loaded ${r.rows.toLocaleString()} ${r.source === "LEIE" ? "OIG" : "SAM.gov"} listings from ${job.fileName} and checked ${r.checked} provider${r.checked === 1 ? "" : "s"}: ${r.excluded} excluded, ${r.possible} to review.` };
+    }
+  } catch (e) {
+    last = { at: clock.now().toISOString(), kind: job.kind, fileName, ok: false, message: e instanceof DomainError ? e.message : `It didn't load: ${(e as Error).message}` };
+    if (job.kind === "file") await storageProvider().remove(job.key).catch(() => undefined);
+  }
+  await putSetting("exclusions.lastImport", last);
+  await prisma.setting.deleteMany({ where: { key: "exclusions.running" } });
+  return last;
+}
+
 /** Admin upload: an OIG UPDATED.csv or a SAM.gov public exclusions extract (.csv or .zip). */
 export async function importExclusionFile(actor: Actor, file: Buffer, fileName: string) {
-  requireAdmin(actor);
+  if (actor.role !== "SYSTEM") requireAdmin(actor);
   let parsed;
   try {
     parsed = parseExclusionFile(fileText(file), clock.now());
@@ -190,11 +247,18 @@ export async function adminExclusionDecision(actor: Actor, providerId: string, d
 /** Admin → Verification → Exclusion check. */
 export async function exclusionOverview(actor: Actor) {
   requireAdmin(actor);
-  const [lists, flagged, counts, lastError] = await Promise.all([
+  const [lists, flagged, counts, lastError, pending, running, lastImport] = await Promise.all([
     exclusionLists(),
     prisma.provider.findMany({ where: { exclusionStatus: { in: ["EXCLUDED", "POSSIBLE_MATCH"] } }, select: { id: true, displayName: true, exclusionStatus: true, exclusionNote: true, exclusionCheckedAt: true }, orderBy: { exclusionCheckedAt: "desc" } }),
     prisma.provider.groupBy({ by: ["exclusionStatus"], _count: true }),
     prisma.setting.findUnique({ where: { key: "exclusions.lastError" } }),
+    prisma.setting.findUnique({ where: { key: "exclusions.pending" } }),
+    prisma.setting.findUnique({ where: { key: "exclusions.running" } }),
+    prisma.setting.findUnique({ where: { key: "exclusions.lastImport" } }),
   ]);
-  return { lists, flagged, counts: Object.fromEntries(counts.map((c) => [c.exclusionStatus, c._count])), lastError: (lastError?.value as { message: string; at: string } | null) ?? null };
+  return { lists, flagged, counts: Object.fromEntries(counts.map((c) => [c.exclusionStatus, c._count])), lastError: (lastError?.value as { message: string; at: string } | null) ?? null,
+    pending: (pending?.value as Pending | null) ?? null,
+    running: (running?.value as Running | null) ?? null,
+    lastImport: (lastImport?.value as LastImport | null) ?? null,
+  };
 }

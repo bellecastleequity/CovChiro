@@ -16,7 +16,7 @@ const config: NextConfig = {
   transpilePackages: ["@cm/config", "@cm/core", "@cm/db", "@cm/integrations", "@cm/services"],
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-neon", "@neondatabase/serverless", "@node-rs/argon2", "stripe"],
   poweredByHeader: false,
-  experimental: { serverActions: { bodySizeLimit: "12mb" } },
+  experimental: { serverActions: { bodySizeLimit: "40mb" } },
   // The old coveragechiropractor.com site 301s here with its paths kept (cPanel wildcard redirect).
   // Send each old page to its closest new page so its search ranking carries over.
   async redirects() {
