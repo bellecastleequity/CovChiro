@@ -1,4 +1,5 @@
 import "server-only";
+import { isSandbox } from "@cm/config";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -45,7 +46,15 @@ export async function requireActor(area: Area): Promise<{ actor: Actor; user: No
     (area === "provider" && s.actor.role === "PROVIDER") ||
     (area === "clinic" && (s.actor.role === "CLINIC_OWNER" || s.actor.role === "CLINIC_STAFF")) ||
     (area === "admin" && s.actor.role === "PLATFORM_ADMIN");
-  if (!ok) redirect(homeOf(s));
+  if (!ok) {
+    if (area === "admin") {
+      // Test site: still inside a demo account opened with "Act as" → back to the admin session (or sign-in).
+      if (isSandbox() && (await cookies()).get("cm_sandbox_admin")) redirect("/api/sandbox/return");
+      // Signed in with another account: the sign-in page says so and offers to switch (never a silent bounce).
+      redirect("/login?next=%2Fadmin");
+    }
+    redirect(homeOf(s));
+  }
   return { actor: s.actor, user: s.user };
 }
 

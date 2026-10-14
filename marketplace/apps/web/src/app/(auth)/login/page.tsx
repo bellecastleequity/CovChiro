@@ -15,8 +15,34 @@ export const metadata = { title: "Sign in" };
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string; reset?: string; google?: string }> }) {
   const s = await getSession();
-  if (s && s.mfaVerified) redirect(homeFor(s.actor.role));
   const { next, reset, google: problem } = await searchParams;
+  if (s && s.mfaVerified) {
+    const home = homeFor(s.actor.role);
+    const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+    // Headed somewhere in their own area (an email link): go straight there.
+    if (safeNext && (safeNext === home || safeNext.startsWith(`${home}/`) || safeNext.startsWith(`${home}?`))) redirect(safeNext);
+    // Otherwise say who's signed in instead of silently bouncing them home (Oct 2026: an admin signed in
+    // as a test provider kept landing on the provider screens), with a way to switch accounts.
+    const who = s.actor.role === "PLATFORM_ADMIN" ? "an admin" : s.actor.role === "PROVIDER" ? "a provider" : "a clinic";
+    return (
+      <>
+        <h1 className="text-xl font-semibold">You&apos;re already signed in</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Signed in as <b>{s.user.name || s.user.email}</b> ({s.user.email}), {who}.
+          {safeNext ? " That page needs a different account." : ""}
+        </p>
+        <div className="mt-6 space-y-3">
+          <form action="/api/auth/logout" method="post">
+            <input type="hidden" name="next" value={safeNext ?? "/login"} />
+            <button className="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Sign out and use another account</button>
+          </form>
+          <Link href={home} className="block w-full rounded-xl px-4 py-2.5 text-center text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
+            Continue as {s.user.name || s.user.email}
+          </Link>
+        </div>
+      </>
+    );
+  }
   const googleNote = problem ? google.GOOGLE_PROBLEMS[problem as keyof typeof google.GOOGLE_PROBLEMS] : null;
   return (
     <>

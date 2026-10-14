@@ -7,7 +7,10 @@ export async function POST(req: NextRequest) {
   if (token) await auth.destroySession(token);
   // Relative on purpose: behind cPanel/Passenger req.url is the internal
   // address (http://0.0.0.0:3000), which the browser can't open.
-  const res = new NextResponse(null, { status: 303, headers: { Location: "/?signedout=1" } });
+  // "Sign out and use another account" (login page): back to sign-in, keeping where they were headed.
+  const next = String((await req.formData().catch(() => null))?.get("next") ?? "");
+  const to = next === "/login" ? "/login" : next.startsWith("/") && !next.startsWith("//") ? `/login?next=${encodeURIComponent(next)}` : "/?signedout=1";
+  const res = new NextResponse(null, { status: 303, headers: { Location: to } });
   res.cookies.delete(SESSION_COOKIE);
   return res;
 }
