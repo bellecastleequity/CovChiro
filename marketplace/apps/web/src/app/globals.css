@@ -37,6 +37,19 @@
     0%, 60% { transform: translateX(-120%) skewX(-12deg); }
     100% { transform: translateX(420%) skewX(-12deg); }
   }
+  /* Page-load spinner (components/shell/page-loading.tsx): the logo's two arcs turn opposite ways
+     and the centre dot breathes; it fades in after a moment so quick loads don't flash it. */
+  --animate-spin-cw: spin-cw 1.1s cubic-bezier(0.5, 0.15, 0.5, 0.85) infinite;
+  --animate-spin-ccw: spin-ccw 1.6s cubic-bezier(0.5, 0.15, 0.5, 0.85) infinite;
+  --animate-dot-pulse: dot-pulse 1.1s ease-in-out infinite;
+  --animate-fade-in-late: fade-in 0.25s ease-out 0.15s both;
+  @keyframes spin-cw { to { transform: rotate(360deg); } }
+  @keyframes spin-ccw { to { transform: rotate(-360deg); } }
+  @keyframes dot-pulse {
+    0%, 100% { transform: scale(0.8); opacity: 0.75; }
+    50% { transform: scale(1.1); opacity: 1; }
+  }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 }
 
 @layer base {

@@ -17,7 +17,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Menu badges + banners, all in parallel and cached for a few seconds (lib/short-cache).
   const { pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, healthState, sandboxBadge, urgent } = await shortCached("admin-layout", async () => {
     const [pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, health, sandboxBadge, urgent] = await Promise.all([
-      Promise.all([prisma.license.count({ where: { status: "PENDING_VERIFICATION" } }), prisma.malpracticePolicy.count({ where: { status: "PENDING_VERIFICATION" } }), prisma.clinicVerification.count({ where: { status: "PENDING" } })]).then(([a, b, c]) => a + b + c),
+      // Same items the Verification page lists (admin.verificationQueue + pending clinics).
+      Promise.all([
+        prisma.license.count({ where: { status: "PENDING_VERIFICATION" } }),
+        prisma.malpracticePolicy.count({ where: { status: "PENDING_VERIFICATION" } }),
+        prisma.providerSkill.count({ where: { certificationStatus: "PENDING_VERIFICATION" } }),
+        prisma.provider.count({ where: { npiMismatch: true, npiVerifiedAt: null } }),
+        prisma.clinicVerification.count({ where: { status: "PENDING" } }),
+      ]).then((n) => n.reduce((a, b) => a + b, 0)),
       prisma.adminTask.count({ where: { resolvedAt: null } }),
       prisma.dispute.count({ where: { status: "OPEN" } }),
       missingMigrations(prisma),
