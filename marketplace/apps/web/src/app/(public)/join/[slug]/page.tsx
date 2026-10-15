@@ -3,7 +3,8 @@ import { GrowthJoin } from "../growth-join";
 import { JoinPage } from "../join-page";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Join the chiropractic coverage network" };
+// Campaign sign-up links (/join/<code>, often with ?c= tracking): not indexed.
+export const metadata = { title: "Join the chiropractic coverage network", robots: { index: false, follow: true } };
 
 /**
  * One /join/<code> route for both recruitment systems: a student-path

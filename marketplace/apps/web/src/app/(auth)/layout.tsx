@@ -2,6 +2,10 @@ import Link from "next/link";
 import { brand } from "@cm/config";
 import { Logo } from "@/components/site/header";
 
+// Sign-in, sign-up and account pages never belong in search results (Search Console flagged
+// /signup?role=… and /login variants as duplicates without a canonical): keep them out, follow links.
+export const metadata = { robots: { index: false, follow: true } };
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   const b = brand();
   return (
