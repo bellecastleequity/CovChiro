@@ -1,12 +1,14 @@
-// Voices the 844-84-TREAT jingles with the shared Google (Gemini TTS) voice presets and mixes
-// them over the music beds from beds.py.
+// Voices the 844-84-TREAT jingles and builds the music around the voice.
 //
-//   python3 marketing/jingles/beds.py          # once: renders the music beds + timing.json
-//   GEMINI_API_KEY=... node marketing/jingles/make-spots.mjs [warm|action]
+//   node marketing/jingles/make-spots.mjs [urban|warm|action]     (default: urban)
 //
-// Output: marketing/jingles/out/spot-<n>-<voice>-{spoken,sung}.mp3, mixed to -16 LUFS with the
-// music ducked under the voice (same mix rules as CoverageOnCall). Voice clips are cached in
-// out/voice/, so re-running only re-mixes.
+// 1. Voices each spot's body line, then picks how many bars of groove sit under it so the body
+//    finishes just before the hook (no squeezing the read to fit a fixed bed).
+// 2. Runs beds.py with that plan; timing.json comes back with the exact time of every hook note.
+// 3. Voices the hook as six separate punchy words, cuts the take into its six words, and puts each
+//    word on its melody note, so the voice and the jingle line up word for word.
+// 4. Mixes: music ducked under the voice, -16 LUFS. Output: out/spot-<spot>-<voice>.mp3.
+// Voice clips are cached in out/voice/ (delete a clip to re-voice it).
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -18,32 +20,34 @@ const out = path.join(here, 'out');
 const voiceDir = path.join(out, 'voice');
 fs.mkdirSync(voiceDir, { recursive: true });
 const FF = process.env.FFMPEG || 'ffmpeg';
-const preset = process.argv[2] || 'warm';
+const preset = process.argv[2] || 'urban';
 if (!VOICES[preset]) throw new Error(`Unknown voice "${preset}"`);
 
-// A third style on the same warm voice: asks Gemini to sing/chant the hook on the melody's rhythm.
-// TTS isn't a singer, so this is a "sung-ish" take; keep whichever sounds better.
-VOICES.warmSung = {
-  ...VOICES.warm,
-  style:
-    'Sing this short radio jingle warmly and melodically, like a friendly, calm commercial tag. Rising on the first numbers, landing gently and holding the last word',
-};
+// Must match beds.py.
+const BEAT = 60 / 92;
+const BAR = 4 * BEAT;
 
-const timing = JSON.parse(fs.readFileSync(path.join(out, 'timing.json'), 'utf8'));
-const HOOK = 'Eight four four... eight four... TREAT.';
+// The hook as six words, so the take cuts cleanly into one clip per melody note.
+const HOOK_WORDS = ['Eight', 'four', 'four', 'eight', 'four', 'TREAT'];
+const HOOK = 'Eight. Four. Four. Eight. Four. TREAT!';
+VOICES[`${preset}Hook`] = {
+  ...VOICES[preset],
+  style: `${VOICES[preset].style}. Say each word on its own like a rhythmic radio jingle chant: short and punchy, a clear pause after every word, and land the last word with confidence`,
+};
 
 // Body lines are compliance-checked: general education, names the profession, no promises.
 const SPOTS = [
-  { bed: '1-audio-logo', body: null },
-  { bed: '2-radio-tag-10s', body: 'Hurt in a car crash? Get checked within fourteen days. Call...' },
+  { name: '1-audio-logo', body: null },
+  { name: '2-radio-tag', body: 'Hurt in a car crash? Get checked within fourteen days. Call...' },
   {
-    bed: '3-ad-bed-15s',
+    name: '3-ad-15s',
     body: 'After a car accident, Florida PIP generally requires care within fourteen days. Therapy and Injury: chiropractic care, with or without a referral. Call...',
   },
 ];
 
 const dur = (f) => +execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString().trim();
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+const ff = (...args) => execFileSync(FF, ['-y', '-loglevel', 'error', ...args]);
 
 async function line(p, text) {
   const f = path.join(voiceDir, `${p}-${slug(text)}.wav`);
@@ -51,48 +55,150 @@ async function line(p, text) {
   return f;
 }
 
-/** Stretches/squeezes a clip toward a target length (within a natural-sounding 0.85x–1.15x). */
-function fit(file, target, tag) {
-  const d = dur(file);
-  const factor = Math.min(1.15, Math.max(0.85, d / target));
-  if (Math.abs(factor - 1) < 0.02) return file;
-  const o = file.replace(/\.wav$/, `.${tag}.wav`);
-  execFileSync(FF, ['-y', '-loglevel', 'error', '-i', file, '-af', `atempo=${factor.toFixed(3)}`, o]);
-  return o;
+function readWav(file) {
+  const b = fs.readFileSync(file);
+  let i = 12, rate = 24000, data;
+  while (i < b.length - 8) {
+    const id = b.toString('ascii', i, i + 4), size = b.readUInt32LE(i + 4);
+    if (id === 'fmt ') rate = b.readUInt32LE(i + 12);
+    if (id === 'data') { data = b.subarray(i + 8, i + 8 + size); break; }
+    i += 8 + size + (size % 2);
+  }
+  const s = new Float32Array(data.length / 2);
+  for (let k = 0; k < s.length; k++) s[k] = data.readInt16LE(k * 2) / 32768;
+  return { rate, s };
+}
+
+function writeWav(file, s, rate) {
+  const pcm = Buffer.alloc(s.length * 2);
+  for (let k = 0; k < s.length; k++) pcm.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(s[k] * 32767))), k * 2);
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVE', 8); h.write('fmt ', 12);
+  h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(rate, 24);
+  h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(pcm.length, 40);
+  fs.writeFileSync(file, Buffer.concat([h, pcm]));
+}
+
+/** Splits a take into `count` words by its pauses; returns each word as [{start, end}] pieces in samples. */
+function words(file, count) {
+  const { rate, s } = readWav(file);
+  const hop = Math.round(rate * 0.01);
+  const rms = [];
+  for (let k = 0; k + hop <= s.length; k += hop) {
+    let e = 0;
+    for (let j = k; j < k + hop; j++) e += s[j] * s[j];
+    rms.push(Math.sqrt(e / hop));
+  }
+  const thr = Math.max(...rms) * 0.03; // about -30 dB: keeps quiet consonant releases ("eigh-t", "trea-t")
+  let segs = [];
+  for (let f = 0, start = -1; f <= rms.length; f++) {
+    const on = f < rms.length && rms[f] > thr;
+    if (on && start < 0) start = f;
+    if (!on && start >= 0) { segs.push([[start, f]]); start = -1; }
+  }
+  segs = segs.filter((g) => g[0][1] - g[0][0] >= 3);
+  const gap = (j) => segs[j + 1][0][0] - segs[j].at(-1)[1];
+  // A word is the pieces between the long pauses the hook read leaves between words.
+  while (segs.length > count) {
+    let k = 0;
+    for (let j = 1; j < segs.length - 1; j++) if (gap(j) < gap(k)) k = j;
+    segs.splice(k, 2, [...segs[k], ...segs[k + 1]]);
+  }
+  while (segs.length < count) {
+    // A run-on read: split the longest word at its quietest frame.
+    let k = 0;
+    const span = (g) => g.at(-1)[1] - g[0][0];
+    segs.forEach((g, j) => { if (span(g) > span(segs[k])) k = j; });
+    const a = segs[k][0][0], b = segs[k].at(-1)[1];
+    let m = a + 5;
+    for (let f = a + 5; f < b - 5; f++) if (rms[f] < rms[m]) m = f;
+    segs.splice(k, 1, [[a, m]], [[m + 1, b]]);
+  }
+  const pad = (g) => g.map(([a, b], i) => ({ start: Math.max(0, (i ? Math.ceil((a + g[i - 1][1]) / 2) : a - 2) * hop), end: Math.min(s.length, (i + 1 < g.length ? Math.floor((b + g[i + 1][0]) / 2) : b + 3) * hop) }));
+  return { rate, s, segs: segs.map(pad) };
+}
+
+/** Joins a word's pieces with the silence inside it cut to 40 ms, with short fades. */
+function wordAudio(s, rate, pieces) {
+  const fade = Math.round(rate * 0.008), hole = new Float32Array(Math.round(rate * 0.04));
+  const parts = pieces.map(({ start, end }, i) => {
+    const p = s.slice(start, end);
+    for (let k = 0; k < fade && k < p.length; k++) { if (i) p[k] *= k / fade; p[p.length - 1 - k] *= k / fade; }
+    return i ? [hole, p] : [p];
+  }).flat();
+  const all = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  parts.reduce((o, p) => (all.set(p, o), o + p.length), 0);
+  for (let k = 0; k < fade; k++) all[k] *= k / fade;
+  return all;
+}
+
+/** One clip per hook word, each fitted to the time until the next note. */
+function hookClips(file, notes, spotLength) {
+  const { rate, s, segs } = words(file, notes.length);
+  return segs.map((pieces, i) => {
+    const slot = i + 1 < notes.length ? notes[i + 1].t - notes[i].t - 0.03 : spotLength - notes[i].t - 0.3;
+    let f = path.join(voiceDir, `${path.basename(file, '.wav')}.w${i}.wav`);
+    // Keep the word's natural span when it fits; otherwise cut the pause inside it (eigh..t) first.
+    const whole = [{ start: pieces[0].start, end: pieces.at(-1).end }];
+    const seg = (whole[0].end - whole[0].start) / rate <= slot ? wordAudio(s, rate, whole) : wordAudio(s, rate, pieces);
+    writeWav(f, seg, rate);
+    const len = seg.length / rate;
+    if (len > slot) {
+      const g2 = f.replace(/\.wav$/, '.fit.wav');
+      const factor = Math.min(1.45, len / slot);
+      ff('-i', f, '-af', `atempo=${factor.toFixed(3)},afade=t=out:st=${Math.max(0, slot - 0.03).toFixed(3)}:d=0.03,atrim=0:${slot.toFixed(3)}`, g2);
+      f = g2;
+    }
+    // Words hit the beat on their vowel, a few ms after the clip starts.
+    return { file: f, at: Math.max(0, notes[i].t - 0.035), word: HOOK_WORDS[i], len: Math.min(len, slot) };
+  });
 }
 
 function mix(bed, clips, outFile, length) {
-  // clips: [{ file, at }]. Voice on top, music ducked ~7 dB while the voice speaks, -16 LUFS.
   const inputs = ['-i', path.join(out, `${bed}.wav`), ...clips.flatMap((c) => ['-i', c.file])];
-  const delays = clips.map((c, i) => `[${i + 1}:a]aresample=44100,adelay=${Math.round(c.at * 1000)}:all=1,volume=1.0[v${i}]`);
-  const voices = clips.map((_, i) => `[v${i}]`).join('');
+  const delays = clips.map((c, i) => `[${i + 1}:a]aresample=44100,adelay=${Math.round(c.at * 1000)}:all=1[v${i}]`);
   const graph = [
     ...delays,
-    `${voices}amix=inputs=${clips.length}:normalize=0,apad=whole_dur=${length.toFixed(3)},asplit=2[vox][key]`,
-    `[0:a]aresample=44100,volume=0.55[bed]`,
-    `[bed][key]sidechaincompress=threshold=0.02:ratio=6:attack=15:release=350[duck]`,
+    `${clips.map((_, i) => `[v${i}]`).join('')}amix=inputs=${clips.length}:normalize=0,apad=whole_dur=${length.toFixed(3)},asplit=2[vox][key]`,
+    `[0:a]aresample=44100,volume=0.6[bed]`,
+    `[bed][key]sidechaincompress=threshold=0.03:ratio=4:attack=10:release=250[duck]`,
     `[duck][vox]amix=inputs=2:normalize=0:duration=longest,atrim=0:${length.toFixed(3)},loudnorm=I=-16:TP=-1.5:LRA=9[outa]`,
   ].join(';');
   execFileSync(FF, ['-y', '-loglevel', 'error', ...inputs, '-filter_complex', graph, '-map', '[outa]', '-b:a', '192k', outFile]);
   return outFile;
 }
 
+// 1. Bodies first: size each bed to its read.
+const plan = {}, bodies = {};
 for (const spot of SPOTS) {
-  const t = timing[spot.bed];
-  const hookLen = t.hookBeats * t.beat;
-  for (const style of ['spoken', 'sung']) {
-    const clips = [];
-    if (spot.body) {
-      // The body must finish just before the hook; squeeze gently if needed.
-      const body = fit(await line(preset, spot.body), t.hook - 0.45, 'fit');
-      clips.push({ file: body, at: 0.3 });
-      if (dur(body) + 0.3 > t.hook + 0.05) console.warn(`  note: ${spot.bed} body runs ${(dur(body) + 0.3 - t.hook).toFixed(2)}s into the hook`);
-    }
-    const hookVoice = style === 'sung' && preset === 'warm' ? 'warmSung' : preset;
-    if (style === 'sung' && preset !== 'warm') continue;
-    const tag = fit(await line(hookVoice, HOOK), hookLen, 'hook');
-    clips.push({ file: tag, at: t.hook });
-    const f = mix(spot.bed, clips, path.join(out, `spot-${spot.bed}-${preset}-${style}.mp3`), t.length);
-    console.log(`made ${path.relative(process.cwd(), f)} (${dur(f).toFixed(1)}s)`);
+  if (!spot.body) { plan[spot.name] = 0; continue; }
+  let file = await line(preset, spot.body);
+  const d = dur(file);
+  // The hook starts on beat 2 of bar n; the body needs 0.3 s lead-in and 0.15 s before the hook.
+  let bars = Math.max(1, Math.ceil((0.45 + d - BEAT) / BAR));
+  if (bars > 1 && 0.45 + d / 1.1 <= (bars - 1) * BAR + BEAT) bars -= 1; // a slight tighten saves a bar
+  const room = bars * BAR + BEAT - 0.45;
+  if (d > room) {
+    const tight = file.replace(/\.wav$/, '.fit.wav');
+    ff('-i', file, '-af', `atempo=${(d / room).toFixed(3)}`, tight);
+    file = tight;
   }
+  // End the body right before the hook so "Call..." leads straight into it.
+  bodies[spot.name] = { file, at: Math.max(0.3, bars * BAR + BEAT - 0.15 - dur(file)) };
+  plan[spot.name] = bars;
+}
+fs.writeFileSync(path.join(out, 'plan.json'), JSON.stringify(plan));
+
+// 2. Music around the voice.
+console.log(execFileSync('python3', [path.join(here, 'beds.py'), path.join(out, 'plan.json')]).toString().trim());
+const timing = JSON.parse(fs.readFileSync(path.join(out, 'timing.json'), 'utf8'));
+
+// 3 + 4. Hook words on the notes, then mix.
+const hookTake = await line(`${preset}Hook`, HOOK);
+for (const spot of SPOTS) {
+  const t = timing[spot.name];
+  const clips = hookClips(hookTake, t.hookNotes, t.length);
+  if (bodies[spot.name]) clips.unshift(bodies[spot.name]);
+  const f = mix(spot.name, clips, path.join(out, `spot-${spot.name}-${preset}.mp3`), t.length);
+  console.log(`made ${path.relative(process.cwd(), f)} (${dur(f).toFixed(1)}s): ${clips.map((c) => `${c.word ?? 'body'}@${c.at.toFixed(2)}`).join(' ')}`);
 }

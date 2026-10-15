@@ -1,6 +1,6 @@
 // Voice presets shared with CoverageOnCall (owner, Oct 2026): Gemini TTS via the Google API.
-// Therapy & Injury uses `warm` for spots and jingles (calm brand); `action` is kept for parity.
-//   node tts.mjs <warm|action> "<line>" <out.wav>
+// Therapy & Injury jingles use `urban` (Fenrir, professional-urban read); `warm` and `action` are kept for parity.
+//   node tts.mjs <warm|action|urban> "<line>" <out.wav>
 // Key: GEMINI_API_KEY in the environment, or a network secret that adds x-goog-api-key (never committed; never pasted in chat).
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -22,6 +22,16 @@ export const VOICES = {
     trim: true, // cut leading/trailing silence
     tempo: 1.1, // then speed up 10% (pitch kept)
   },
+  // Same male voice (Fenrir), professional-urban read for the Therapy & Injury jingles (owner, Oct 2026).
+  // On 3.1 flash: 2.5-pro gives no audio for the short hook words.
+  urban: {
+    model: 'gemini-3.1-flash-tts-preview',
+    voiceName: 'Fenrir',
+    style:
+      'Read this like a polished urban radio host voicing a sponsored spot on a hip-hop and R&B station: smooth, confident and cool, a relaxed groove with a little swagger, low warm tone, crisp professional diction, never shouting',
+    trim: true,
+    tempo: 1.0,
+  },
 };
 
 const FALLBACK_MODEL = 'gemini-3.1-flash-tts-preview';
@@ -31,7 +41,7 @@ const wav = (pcm, rate) => { const h = Buffer.alloc(44); h.write('RIFF', 0); h.w
 /** Makes one line. ffmpeg (FFMPEG env or on PATH) is needed for the action voice's trim + tempo. */
 export async function tts(preset, text, out) {
   const v = VOICES[preset];
-  if (!v) throw new Error(`Unknown voice "${preset}". Use warm or action.`);
+  if (!v) throw new Error(`Unknown voice "${preset}". Use ${Object.keys(VOICES).join(', ')}.`);
   if (fs.existsSync(out)) return out;
   // Key: GEMINI_API_KEY if set; otherwise the Claude Code cloud environment's network secret
   // adds the x-goog-api-key header to requests for generativelanguage.googleapis.com.
