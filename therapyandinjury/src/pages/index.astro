@@ -11,6 +11,7 @@ import { conditions } from '../lib/conditions';
 const everywhere = (label: string) => branches.filter((b) => b.status === 'open').every((b) => featureLabels(b).includes(label));
 const trust = [
   'Florida-licensed chiropractic physicians',
+  'No referral needed',
   'Auto accident (PIP) patients welcome',
   'Plain-language care plans',
   'Referrals to independent medical providers when needed',
@@ -36,6 +37,7 @@ import { services, steps } from '../lib/content';
           <a class="btn btn--primary" href="#locations">Find a location</a>
           <a class="btn btn--ghost" href="/auto-accident-injuries/">What to expect after an accident</a>
         </div>
+        <p class="hero__ref"><strong>We’ll see you with or without a referral.</strong></p>
         <p class="hero__note small muted">If you have a medical emergency, call 911 or go to the nearest emergency room.</p>
       </div>
       <div class="hero__art" aria-hidden="true">
@@ -129,15 +131,6 @@ import { services, steps } from '../lib/content';
     </div>
   </section>
 
-  <section class="section section--tight cta">
-    <div class="wrap cta__in">
-      <div>
-        <h2>Ready to get checked?</h2>
-        <p>Find your nearest location and send a quick appointment request.</p>
-      </div>
-      <a class="btn btn--primary" href="/locations/">Choose a location</a>
-    </div>
-  </section>
 </Base>
 
 <style>
@@ -163,6 +156,9 @@ import { services, steps } from '../lib/content';
   }
   .hero .lede {
     margin-bottom: 28px;
+  }
+  .hero__ref {
+    margin: 20px 0 0;
   }
   .hero__note {
     margin-top: 18px;
@@ -339,23 +335,4 @@ import { services, steps } from '../lib/content';
     height: auto;
   }
 
-  .cta {
-    background: var(--navy);
-    color: var(--white);
-  }
-  .cta h2 {
-    color: var(--white);
-    margin-bottom: 0.2em;
-  }
-  .cta p {
-    margin: 0;
-    color: #c9d3de;
-  }
-  .cta__in {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-    align-items: center;
-    justify-content: space-between;
-  }
 </style>

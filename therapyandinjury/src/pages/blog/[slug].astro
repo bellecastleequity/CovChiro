@@ -2,7 +2,6 @@
 import { render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import PageHero from '../../components/PageHero.astro';
-import CtaBand from '../../components/CtaBand.astro';
 import { posts, fmtDate } from '../../lib/blog';
 import { abs } from '../../lib/site';
 
@@ -38,5 +37,4 @@ const article = {
   <section class="section">
     <article class="wrap prose"><Content /></article>
   </section>
-  <CtaBand />
 </Base>

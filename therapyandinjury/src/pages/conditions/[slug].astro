@@ -1,7 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
 import PageHero from '../../components/PageHero.astro';
-import CtaBand from '../../components/CtaBand.astro';
 import FaqList from '../../components/FaqList.astro';
 import { conditions, type Condition } from '../../lib/conditions';
 import { abs, faqSchema } from '../../lib/site';
@@ -66,7 +65,6 @@ const article = {
       </aside>
     </div>
   </section>
-  <CtaBand />
 </Base>
 <style>
   .cg { display: grid; gap: 40px; grid-template-columns: minmax(0, 1fr); }

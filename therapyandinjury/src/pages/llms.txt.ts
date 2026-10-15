@@ -22,6 +22,7 @@ export const GET: APIRoute = async () => {
     '## Key facts',
     `- Website: ${site.domain}`,
     ok(site.mainPhone) ? `- Phone: ${site.mainPhone}` : null,
+    '- No referral is needed: patients are seen with or without a referral.',
     '- Most auto accident patients are billed to their auto insurance (Florida PIP / no-fault).',
     '- Florida PIP generally requires initial care within 14 days of a motor vehicle accident (Florida Statutes §627.736).',
     '- The website request form collects only name, phone, preferred time and an optional accident date. It never asks for medical details, insurance numbers or Social Security numbers.',

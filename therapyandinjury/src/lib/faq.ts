@@ -39,7 +39,7 @@ export const faqs: Faq[] = [
   {
     group: 'visit',
     q: 'Do I need a referral to see a chiropractic physician?',
-    a: 'In most cases you can request a chiropractic visit directly. [CONFIRM — any insurer-specific referral requirements]',
+    a: 'No. We’ll see you with or without a referral. Call us or request a visit online, and if you were in a car accident, try to be seen within 14 days.',
   },
   {
     group: 'visit',
