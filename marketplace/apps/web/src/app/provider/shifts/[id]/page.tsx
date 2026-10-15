@@ -111,7 +111,9 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
               ) : (
                 <>
                   <div className="flex justify-between"><span>Mileage</span><span className="tabular-nums">{money(pay.mileageCents)}</span></div>
-                  {shift.lodgingAllowed ? <div className="flex justify-between text-slate-500"><span>Lodging</span><span>{money(shift.lodgingCapCentsPerNight)}/night if your drive is long</span></div> : null}
+                  {shift.lodgingAllowed && shift.lodgingByClinic ? <div className="flex justify-between text-slate-500"><span>Lodging</span><span>The clinic books your stay{shift.lodgingStayKind === "RENTAL" ? " (rental)" : shift.lodgingStayKind === "HOTEL" ? " (hotel)" : ""}</span></div> : null}
+                  {shift.lodgingAllowed && !shift.lodgingByClinic ? <div className="flex justify-between text-slate-500"><span>Lodging</span><span>{money(shift.lodgingCapCentsPerNight)}/night if your drive is long</span></div> : null}
+                  {shift.lodgingAllowed && !shift.lodgingByClinic ? <p className="text-xs text-slate-500">Lodging is paid in advance: it&apos;s sent to your bank when you reconfirm, from 48 hours before the shift.</p> : null}
                   <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold"><span>Total</span><span className="tabular-nums text-brand-700">{money(pay.totalCents)}</span></div>
                 </>
               )}

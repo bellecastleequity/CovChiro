@@ -212,7 +212,7 @@ export async function attendanceSweep(now: Date = clock.now()) {
       await notify(prisma, a.provider.userId, {
         template: "reconfirm_ask",
         title: `Please confirm: ${dayOf(a)} at ${a.shift.location.clinicOrg.displayName}`,
-        body: `Tap to confirm you're still coming (${timeOf(a, a.startsAt)}, ${a.shift.location.city}). If we don't hear from you by ${dayOf({ ...a, startsAt: deadline })} ${timeOf(a, deadline)}, we'll give this shift to another provider.`,
+        body: `Tap to confirm you're still coming (${timeOf(a, a.startsAt)}, ${a.shift.location.city}). If we don't hear from you by ${dayOf({ ...a, startsAt: deadline })} ${timeOf(a, deadline)}, we'll give this shift to another provider.${a.flags.includes("LODGING_UPFRONT") && a.lodgingEstimateCents > 0 ? ` Your $${(a.lodgingEstimateCents / 100).toFixed(0)} lodging is sent to your bank as soon as you confirm.` : ""}`,
         link: `/c/${attendanceToken(a.id)}`,
         ctaLabel: "I'm still coming",
         sms: true,

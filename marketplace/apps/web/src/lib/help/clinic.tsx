@@ -263,6 +263,11 @@ const A: HelpArticle[] = [
               {Math.round(s["pricing.lodgingTriggerMinutes"] / 60)} hours, a flat {money(s["pricing.lodgingNightlyCents"])} a night is added. No receipts. Off: only providers within their own drive limit.
             </>,
           ],
+          ["Do I need to watch it with automatic matching?", "Only if you want to rule lodging out. Nearer providers rank well ahead of ones who'd stay over, so a provider who needs lodging is usually picked only when nobody closer applied. Each applicant card shows \"Stays over: +lodging\" so you can see it before you choose. Untick lodging to match local providers only, or set a max travel budget to cap mileage plus lodging."],
+          ["When lodging is charged", `In full with the deposit, so your provider has it before the hotel puts a hold on their card. We send it to them when they reconfirm, from ${hrs(s["reconfirm.askBeforeHours"])} before the start.`],
+          ["If the provider cancels or doesn't show", "Any lodging already sent is taken back. If they cancel, we hold your lodging payment for the replacement so you're never charged twice; it's refunded if the replacement lives nearby or nobody can be placed. A no-show's lodging is refunded."],
+          ["If you cancel", `More than ${hrs(s["lodging.clinicCancelKeepHours"])} before the start: lodging refunded in full. Later: your provider keeps ${s["lodging.clinicCancelKeepNights"]} night${s["lodging.clinicCancelKeepNights"] === 1 ? "" : "s"} (what hotels usually charge for a late cancellation) and the rest is refunded.`],
+          ["Booking the stay yourself", "Choose \"We'll book it ourselves\" under lodging (hotel, Airbnb/rental or other). Nothing is added for lodging; add where they'll stay on the shift page and only your confirmed provider sees it."],
         ]}
       />
     ),
@@ -447,8 +452,8 @@ const A: HelpArticle[] = [
     body: (s) => (
       <KeyFacts
         rows={[
-          ["At confirmation", `Deposit: ${s["payments.depositPercent"]}% of the booking`],
-          ["After the shift", `Balance (including mileage and any lodging), ${hrs(s["payments.autoCompleteHours"])} after the end`],
+          ["At confirmation", `Deposit: ${s["payments.depositPercent"]}% of the booking, plus all of the lodging if your provider stays over`],
+          ["After the shift", `Balance (including mileage), ${hrs(s["payments.autoCompleteHours"])} after the end`],
           ["Extra visits, if any", `After your ${hrs(s["pricing.volumeDisputeHours"])} window to check the count`],
           ["If a charge fails", `We tell you right away and you can tap Pay now on Billing. We retry the card${s["payments.payInFullEnabled"] ? `; if it's still unpaid after ${hrs(s["payments.payInFullAfterHours"])}, future bookings are charged in full at confirmation until we restore the normal deposit` : ""}`],
         ]}

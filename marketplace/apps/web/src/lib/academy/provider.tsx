@@ -344,7 +344,7 @@ const after: Lesson = {
         rows={[
           ["Shift pay", "From the rate card, with any weekend, holiday or short-notice premium"],
           ["Mileage", <>{money(s["pricing.mileageRateCentsPerMile"], { exact: true })}/mile {s["pricing.mileageRoundTrip"] ? "round trip" : "one way"}</>],
-          ["Lodging", <>{money(s["pricing.lodgingNightlyCents"])} a night when your drive is over {mins(s["pricing.lodgingTriggerMinutes"])} and the clinic allows lodging. No receipts.</>],
+          ["Lodging", <>{money(s["pricing.lodgingNightlyCents"])} a night when your drive is over {mins(s["pricing.lodgingTriggerMinutes"])} and the clinic allows lodging. No receipts. Paid in advance when you reconfirm (from {s["reconfirm.askBeforeHours"]} hours before), and taken back if you cancel.</>],
           ["Extra patients", <>{money(s["pricing.volumeOverageProviderCents"])} per visit past the day&apos;s limit + {s["pricing.volumeGraceVisits"]} grace</>],
         ]}
       />

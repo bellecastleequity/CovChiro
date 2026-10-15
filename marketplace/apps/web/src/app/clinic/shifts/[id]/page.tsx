@@ -24,7 +24,7 @@ import { requireActor } from "@/lib/session";
 import { VerificationBanner } from "@/components/clinic/verification-banner";
 import {
   blockAction, boostAction, cancelDispatchAction, confirmAllDaysAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
-  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, releaseClinicRateAction, reportNoShowAction, selectAction, withdrawShiftChangeAction, splitBookingAction, keepWaitingAction,
+  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, releaseClinicRateAction, reportNoShowAction, selectAction, stayDetailsAction, withdrawShiftChangeAction, splitBookingAction, keepWaitingAction,
 } from "../../actions";
 
 type Cand = Awaited<ReturnType<typeof shiftCandidates>>["applicants"][number];
@@ -44,6 +44,8 @@ function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; ap
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-slate-500">
             <span>{c.city}, {c.state}</span>
             {c.driveMinutes !== null ? <span className="flex items-center gap-1"><Car className="size-3" />{c.driveMinutes} min</span> : null}
+            {c.lodgingCents > 0 ? <span className="font-medium text-amber-700">Stays over: +{money(c.lodgingCents)} lodging</span> : null}
+            {c.mileageCents > 0 ? <span>+{money(c.mileageCents)} mileage</span> : null}
             <span className="flex items-center gap-1"><Star className="size-3 text-amber-500" />{c.ratingAvg ? `${c.ratingAvg.toFixed(1)} (${c.ratingCount})` : "No ratings yet"}</span>
             <span>Reliability {pct(c.reliability)}</span>
             <span>Match {Math.round(c.score * 100)}</span>
@@ -564,7 +566,10 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
               ) : (
                 <div className="flex justify-between"><span>Mileage</span><span className="tabular-nums">{live ? money(view.mileageCents) : "Set at confirmation"}</span></div>
               )}
-              {view.lodgingCents ? <div className="flex justify-between"><span>Lodging</span><span>{money(view.lodgingCents)}</span></div> : null}
+              {view.lodgingCents ? <div className="flex justify-between"><span>Lodging{live?.flags.includes("LODGING_UPFRONT") ? " (paid with the deposit)" : ""}</span><span>{money(view.lodgingCents)}</span></div> : null}
+              {live?.lodgingCreditCents ? <p className="text-xs text-emerald-700">{money(live.lodgingCreditCents)} of it came from the lodging you'd already paid for the previous provider, so it isn't charged again.</p> : null}
+              {!live && shift.lodgingHeldCents > 0 ? <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-800">{money(shift.lodgingHeldCents)} lodging held from your previous provider. It pays your replacement&apos;s lodging, or is refunded if they live nearby or nobody can be placed.</p> : null}
+              {shift.lodgingByClinic ? <div className="flex justify-between"><span>Lodging</span><span className="text-slate-500">Booked by you</span></div> : null}
               {view.airfareCents ? <div className="flex justify-between"><span>Airfare allowance (per trip)</span><span className="tabular-nums">{money(view.airfareCents)}</span></div> : null}
               {!live && shift.flyInAirfareCents !== null ? <p className="text-xs text-slate-500">Fly-in OK: a provider who flies in adds {money(shift.flyInAirfareCents)} airfare per trip and {money(shift.flyInNightlyCents)} a night instead of mileage.</p> : null}
               <div className="flex justify-between border-t border-slate-100 pt-2 font-semibold"><span>Total</span><span className="tabular-nums">{money(view.totalCents)}</span></div>
@@ -584,11 +589,33 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
               </CardBody>
             </Card>
           ) : null}
+          {shift.lodgingByClinic && !["CANCELLED", "COMPLETED", "UNFILLED"].includes(shift.status) ? (
+            <Card>
+              <CardHeader title="Your provider's stay" description="You book the stay for this shift. Only the provider you confirm sees these details." />
+              <CardBody>
+                <ActionForm action={stayDetailsAction}>
+                  <input type="hidden" name="shiftId" value={shift.id} />
+                  <Field label="Stay">
+                    <Select name="kind" defaultValue={shift.lodgingStayKind ?? "HOTEL"}>
+                      <option value="HOTEL">Hotel</option>
+                      <option value="RENTAL">Airbnb / rental</option>
+                      <option value="OTHER">Other</option>
+                    </Select>
+                  </Field>
+                  <Field label="Where they'll stay" className="mt-3" hint="Name, address and check-in details. No patient information.">
+                    <Textarea name="details" maxLength={600} defaultValue={shift.lodgingStayDetails ?? ""} placeholder="e.g. Hampton Inn, 123 Main St. Booked under the provider's name for the night before; check-in from 3 PM." />
+                  </Field>
+                  <SubmitButton variant="outline" className="mt-3 w-full">Save stay details</SubmitButton>
+                </ActionForm>
+              </CardBody>
+            </Card>
+          ) : null}
           {["DRAFT", "OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING", "CONFIRMED"].includes(shift.status) ? (
             <Card>
               <CardHeader title="Cancel shift" />
               <CardBody>
                 {live && hoursToStart < s["payments.clinicFreeCancelHours"] ? <Alert tone="warning" className="mb-3">Within {s["payments.clinicFreeCancelHours"]} hours of the start, the deposit is non-refundable and part of it compensates your provider.</Alert> : null}
+                {live?.lodgingEstimateCents && live.flags.includes("LODGING_UPFRONT") && hoursToStart < s["lodging.clinicCancelKeepHours"] ? <Alert tone="warning" className="mb-3">Your provider may already have their hotel: cancelling now, they keep {s["lodging.clinicCancelKeepNights"]} night{s["lodging.clinicCancelKeepNights"] === 1 ? "" : "s"} of lodging (what hotels usually charge for a late cancellation) and the rest of the lodging is refunded.</Alert> : null}
                 <ActionForm action={cancelShiftAction} confirm="Cancel this shift?">
                   <input type="hidden" name="shiftId" value={shift.id} />
                   <Textarea name="reason" placeholder="Reason (optional)" />

@@ -343,8 +343,8 @@ const money_: Lesson = {
           { title: "Provider confirmed", detail: `Deposit of ${s["payments.depositPercent"]}% of the total is charged`, tone: "brand" },
           { title: "Shift ends" },
           { title: `${hrs(s["payments.autoCompleteHours"])} later, the shift auto-completes`, detail: "Unless you've reported a problem" },
-          { title: "Balance charged", detail: "Including final mileage and any lodging", tone: "green" },
-          { title: "Lodging, if any", detail: `A flat $${(s["pricing.lodgingNightlyCents"] / 100).toFixed(0)} a night, included in the booking total` },
+          { title: "Balance charged", detail: "Including final mileage", tone: "green" },
+          { title: "Lodging, if any", detail: `A flat $${(s["pricing.lodgingNightlyCents"] / 100).toFixed(0)} a night, charged in full with the deposit; held for a replacement if the provider cancels` },
         ]}
       />
       <KeyFacts

@@ -19,7 +19,8 @@ import {
   shiftChanges,
   clinicRate,
   clinicVerify,
-  archiveLocation, auth, overdue, sameProvider, cancelShiftByClinic, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
+  archiveLocation, auth, overdue, sameProvider, cancelShiftByClinic,
+  updateStayDetails, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
 import { bool, formAction, optStr, str } from "@/lib/action";
@@ -66,6 +67,9 @@ async function shiftPayloadFrom(raw: any) {
     instantBook: !!raw.instantBook,
     maxTravelBudgetCents: raw.maxTravelBudget ? Math.round(Number(raw.maxTravelBudget) * 100) : null,
     lodgingAllowed: !!raw.lodgingAllowed,
+    lodgingByClinic: !!raw.lodgingByClinic,
+    lodgingStayKind: ["HOTEL", "RENTAL", "OTHER"].includes(raw.stayKind) ? raw.stayKind : null,
+    lodgingStayDetails: raw.stayDetails || null,
     flyIn: !!raw.flyIn,
     sameProvider: typeof raw.sameProvider === "boolean" ? raw.sameProvider : undefined,
     autoPostWhenAvailable: raw.autoPost !== false,
@@ -289,6 +293,14 @@ export const cancelShiftAction = formAction(async (fd) => {
   const out = await cancelShiftByClinic(actor, str(fd, "shiftId"), str(fd, "reason") || "Cancelled by clinic");
   revalidatePath("/clinic", "layout");
   return out && out.refundDepositCents === 0 && out.forfeitedDepositCents > 0 ? "Cancelled. Because it was within the late-cancellation window, the deposit is non-refundable." : "Cancelled.";
+});
+
+export const stayDetailsAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const kind = str(fd, "kind");
+  await updateStayDetails(actor, str(fd, "shiftId"), { kind: kind === "RENTAL" || kind === "OTHER" ? kind : "HOTEL", details: str(fd, "details") });
+  revalidatePath("/clinic", "layout");
+  return "Saved. Your provider sees it on their shift page.";
 });
 
 export const favoriteAction = formAction(async (fd) => {

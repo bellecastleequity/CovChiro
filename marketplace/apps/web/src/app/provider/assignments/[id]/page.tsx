@@ -160,8 +160,26 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
               {a.lodgingApprovedCents ? <div className="flex justify-between"><span>Lodging</span><span>{money(a.lodgingApprovedCents)}</span></div> : null}
               <div className="flex justify-between border-t border-slate-100 pt-2 font-semibold"><span>Total</span><span>{money(a.providerTotalCents)}</span></div>
               {a.payouts.map((p) => <div key={p.id} className="flex justify-between text-xs text-slate-500"><span>{p.description}</span><StatusBadge status={p.onHold ? "ON_HOLD" : p.status} /></div>)}
+              {(() => {
+                const adv = a.flags.includes("LODGING_UPFRONT") ? a.payouts.find((p) => p.kind === "LODGING") : null;
+                if (!adv || a.status !== "CONFIRMED") return null;
+                const msg =
+                  adv.status === "PAID" ? "Your lodging advance has been sent to your bank."
+                  : adv.status === "PROCESSING" ? "Your lodging advance is being sent."
+                  : adv.onHold ? "Your lodging advance is waiting for the clinic's payment to go through."
+                  : adv.status === "PENDING" ? "Reconfirm from 48 hours before the shift and your lodging is sent to your bank. The earlier you reconfirm, the more likely it's in your account before the hotel puts a hold on your card."
+                  : adv.releaseAt && +adv.releaseAt > Date.now() ? `Thanks for reconfirming. Your lodging is sent ${adv.releaseAt.toLocaleString("en-US", { timeZone: tz, weekday: "short", hour: "numeric", minute: "2-digit" })}.`
+                  : "Your lodging advance is on its way.";
+                return <p className="rounded-lg bg-accent-50 px-2 py-1.5 text-xs text-accent-800">{msg} If you cancel or don&apos;t show, the lodging is returned.</p>;
+              })()}
             </CardBody>
           </Card>
+          {a.shift.lodgingByClinic && ["CONFIRMED", "IN_PROGRESS"].includes(a.status) ? (
+            <Card>
+              <CardHeader title="Your stay" description={`The clinic books your ${a.shift.lodgingStayKind === "RENTAL" ? "rental" : a.shift.lodgingStayKind === "HOTEL" ? "hotel" : "stay"}.`} />
+              <CardBody className="whitespace-pre-line text-sm text-slate-700">{a.shift.lodgingStayDetails || "The clinic hasn't added the details yet. We'll let you know when they do."}</CardBody>
+            </Card>
+          ) : null}
           {a.status === "CONFIRMED" && a.graceEndsAt && a.graceEndsAt > new Date() ? (
             <Card className="border-brand-300">
               <CardHeader title="Booked by On Call" description="Conflict? Cancel now with no penalty — we'll find someone else right away." />
