@@ -64,7 +64,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
           <OrDivider />
         </div>
       ) : null}
-      <ActionForm action={signupAction} className="mt-6 space-y-4" successMessage={false}>
+      <ActionForm action={signupAction} className="mt-6 space-y-4" successMessage={false} saveKey="signup">
         <input type="hidden" name="role" value={role} />
         {student ? <input type="hidden" name="student" value="1" /> : null}
         <input type="hidden" name="code" value={code ?? ""} />

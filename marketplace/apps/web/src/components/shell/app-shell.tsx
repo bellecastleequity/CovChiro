@@ -17,6 +17,7 @@ import type { SetupStatus as SetupStatusData } from "@/lib/setup";
 import { getSession } from "@/lib/session";
 import { BottomNav, SideNav, type NavItem } from "./nav-link";
 import { ResendVerification } from "./resend-verification";
+import { FormDrafts } from "@/components/site/form-drafts";
 
 export async function AppShell({ items, root, userId, userName, userPhoto, subtitle, setup, otherSide, addSide, footnote, children }: { items: NavItem[]; root: string; userId: string; userName: string; userPhoto?: string | null; subtitle?: string; setup?: SetupStatusData | null; /** The login's other workspace (clinic owner who also takes shifts): a switch in the header and sidebar. */ otherSide?: { to: "CLINIC" | "PROVIDER"; label: string } | null; /** No other side yet: a link to add it (clinic owner → take shifts; provider → own clinic). */ addSide?: { href: string; label: string } | null; /** Small print under the sign-out link (admin: the installed release). */ footnote?: React.ReactNode; children: React.ReactNode }) {
   const b = brand();
@@ -38,6 +39,7 @@ export async function AppShell({ items, root, userId, userName, userPhoto, subti
   const placeholder = root === "/admin" ? "Search pages, settings, providers, clinics, shifts, leads…" : root === "/clinic" ? "Search pages, shifts, providers, locations…" : "Search pages and your shifts…";
   return (
     <div className="min-h-dvh bg-slate-50">
+      <FormDrafts signedIn />
       <aside className="fixed inset-y-0 left-0 hidden w-64 print:!hidden flex-col border-r border-slate-200 bg-white px-3 py-4 lg:flex">
         <Link href={root} className="px-3 pb-5">
           <Logo name={b.name} />

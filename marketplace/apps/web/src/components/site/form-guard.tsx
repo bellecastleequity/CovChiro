@@ -85,7 +85,7 @@ export function FormGuard({ visible = false }: { visible?: boolean } = {}) {
 
   return (
     <>
-      <input type="text" name="website" className="hidden" tabIndex={-1} autoComplete="off" aria-hidden defaultValue="" />
+      <input type="text" name="website" data-nosave className="hidden" tabIndex={-1} autoComplete="off" aria-hidden defaultValue="" />
       <input type="hidden" name="startedAt" value={startedAt} />
       {visible && state === "loading" ? (
         <div className="flex h-[65px] w-[300px] max-w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-4 text-sm text-slate-500">

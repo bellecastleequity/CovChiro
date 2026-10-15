@@ -4,6 +4,7 @@ import { Inter, Outfit } from "next/font/google";
 import { Analytics } from "@/components/site/analytics";
 import { SandboxBar } from "@/components/site/sandbox-bar";
 import { ChunkReload } from "@/components/site/chunk-reload";
+import { FormDrafts } from "@/components/site/form-drafts";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <Analytics />
         <ChunkReload />
+        <FormDrafts signedIn={false} />
       </body>
     </html>
   );

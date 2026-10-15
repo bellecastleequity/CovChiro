@@ -66,7 +66,7 @@ export default async function ClinicVerification() {
         {v.status === "REJECTED" ? null : !owner ? (
           <Alert tone="info">Only the clinic owner can submit verification. Ask them to sign in and open Settings → Clinic verification.</Alert>
         ) : (
-          <VerificationForm action={clinicVerificationAction} v={v} professions={professions} mode="clinic" />
+          <VerificationForm action={clinicVerificationAction} v={v} professions={professions} mode="clinic" saveKey={`verify-${actor.clinicOrgId}`} />
         )}
       </div>
     </>

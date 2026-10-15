@@ -13,18 +13,21 @@ export function VerificationForm({
   professions,
   mode,
   clinicOrgId,
+  saveKey,
 }: {
   action: ReturnType<typeof formAction>;
   v: Awaited<ReturnType<typeof clinicVerify.myVerification>>;
   professions: { code: string; displayName: string }[];
   mode: "clinic" | "admin";
   clinicOrgId?: string;
+  /** Keep unsaved entries on this device (clinic side). */
+  saveKey?: string;
 }) {
   const p = v.prefill;
   const rows = Array.from({ length: Math.max(3, p.owners.length + 1) }, (_, i) => p.owners[i] ?? null).slice(0, 6);
   const states = Object.entries(US_STATES);
   return (
-    <ActionForm action={action} className="space-y-6">
+    <ActionForm action={action} className="space-y-6" saveKey={saveKey}>
       {clinicOrgId ? <input type="hidden" name="clinicOrgId" value={clinicOrgId} /> : null}
       <Card>
         <CardHeader title="1. Your business" description={v.rule ? `As registered with ${v.rule.entityRegistry}.` : "As registered with your state."} />

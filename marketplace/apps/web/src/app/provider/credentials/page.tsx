@@ -56,7 +56,7 @@ export default async function Credentials() {
                     ))}
                   </ul>
                 ) : null}
-                <ActionForm action={licenseAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" resetOnSuccess>
+                <ActionForm action={licenseAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" resetOnSuccess saveKey={`license-${actor.providerId}`}>
                   <input type="hidden" name="professionCode" value={pp.professionCode} />
                   <Field label="State">
                     <Select name="state" required defaultValue="">
@@ -114,7 +114,7 @@ export default async function Credentials() {
             <div className="mb-5 rounded-xl bg-sky-50 p-4 text-sm text-sky-900 ring-1 ring-sky-200">
               <b>Please list us as a certificate holder.</b> Ask your carrier to add <b>{rs["agreements.companyLegalName"]}</b>{rs["agreements.companyAddress"] ? <>, {rs["agreements.companyAddress"]}</> : null} as a certificate holder on your policy, so we hear about any change or cancellation directly. Tell us within 24 hours if your coverage changes, lapses or is cancelled.
             </div>
-            <ActionForm action={malpracticeAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" resetOnSuccess>
+            <ActionForm action={malpracticeAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" resetOnSuccess saveKey={`malpractice-${actor.providerId}`}>
               <Field label="Carrier"><Input name="carrier" required /></Field>
               <Field label="Policy number"><Input name="policyNumber" required /></Field>
               <Field label="Expires"><Input name="expiresAt" type="date" required /></Field>

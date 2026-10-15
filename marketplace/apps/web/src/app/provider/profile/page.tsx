@@ -62,7 +62,7 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
         <Card>
           <CardHeader title="About you" />
           <CardBody>
-            <ActionForm action={profileAction} className="grid gap-4 sm:grid-cols-2">
+            <ActionForm action={profileAction} className="grid gap-4 sm:grid-cols-2" saveKey={`profile-${actor.providerId}`}>
               <Field label={<>Legal name (as on your license)<InfoTip label="About legal name">Must match your license exactly. We verify your license, NPI and malpractice policy against it. Clinics see your display name, not this.</InfoTip></>}><Input name="legalName" defaultValue={p.legalName} required /></Field>
               <Field label="Display name" hint='e.g. "Dr. Jane Rivera"'><Input name="displayName" defaultValue={p.displayName} required /></Field>
               <Field required label={<>Mobile phone<InfoTip label="About your phone">Required to apply for or accept shifts. {PHONE_PRIVACY_NOTE} You and clinics talk through Messages on the site. With upcoming shifts you can change your number but not remove it.</InfoTip></>} hint={`${PHONE_PRIVACY_NOTE}${user.phoneVerifiedAt ? " Verified for texts; a new number needs verifying again on the On Call page." : textingEnabled() ? " Verify it on the On Call page to get text offers." : ""}`}><Input name="phone" type="tel" inputMode="tel" autoComplete="tel" defaultValue={formatUsPhone(user.phone)} placeholder="(407) 555-0123" /></Field>

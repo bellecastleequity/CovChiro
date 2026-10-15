@@ -15,14 +15,14 @@ export const metadata = { title: "Locations" };
 
 type Loc = Awaited<ReturnType<typeof clinicProfile>>["org"]["locations"][number];
 
-async function LocationForm({ loc }: { loc?: Loc }) {
+async function LocationForm({ loc, saveKey }: { loc?: Loc; saveKey?: string }) {
   const [professions, skills] = await Promise.all([
     prisma.profession.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.skill.findMany({ where: { active: true, scopeSensitive: false }, orderBy: [{ professionCode: "asc" }, { name: "asc" }] }),
   ]);
   const chosen = loc?.professionCodes ?? ["DC"];
   return (
-    <ActionForm action={locationAction} className="grid gap-4 sm:grid-cols-2" resetOnSuccess={!loc}>
+    <ActionForm action={locationAction} className="grid gap-4 sm:grid-cols-2" resetOnSuccess={!loc} saveKey={saveKey}>
       {loc ? <input type="hidden" name="locationId" value={loc.id} /> : null}
       <Field label="Location name"><Input name="name" defaultValue={loc?.name} placeholder="Main office" required /></Field>
       <Field label={<>Front desk phone<InfoTip label="About the front desk phone">For our team only, to reach this location about a shift. It&apos;s never shown to providers; they reach you through Messages on the site.</InfoTip></>}><Input name="phone" defaultValue={loc?.phone ?? ""} type="tel" /></Field>
@@ -76,7 +76,7 @@ export default async function Locations() {
               description={`${l.addressLine1}, ${l.city}, ${l.state} ${l.zip}`}
               action={<div className="flex items-center gap-2">{l.rateRegion ? <Badge>{l.rateRegion.name}</Badge> : null}<ActionForm action={archiveLocationAction} confirm="Archive this location?" successMessage={false}><input type="hidden" name="locationId" value={l.id} /><button className="text-xs text-slate-400 hover:text-red-600">Archive</button></ActionForm></div>}
             />
-            <CardBody><LocationForm loc={l} /></CardBody>
+            <CardBody><LocationForm loc={l} saveKey={`location-${l.id}`} /></CardBody>
             <CardBody className="border-t border-slate-100">
               <div className="mb-3">
                 <div className="text-sm font-medium text-slate-700">Photos to help providers find you (optional)</div>
@@ -110,12 +110,12 @@ export default async function Locations() {
         {org.locations.length ? (
           <details className="group rounded-2xl border border-dashed border-slate-300 bg-white">
             <summary className="cursor-pointer list-none px-5 py-4 text-sm font-medium text-brand-700 hover:text-brand-800">+ Add another location</summary>
-            <div className="border-t border-slate-100 px-5 py-5"><LocationForm /></div>
+            <div className="border-t border-slate-100 px-5 py-5"><LocationForm saveKey={`location-new-${actor.clinicOrgId}`} /></div>
           </details>
         ) : (
           <Card>
             <CardHeader title="Add a location" />
-            <CardBody><LocationForm /></CardBody>
+            <CardBody><LocationForm saveKey={`location-new-${actor.clinicOrgId}`} /></CardBody>
           </Card>
         )}
       </div>

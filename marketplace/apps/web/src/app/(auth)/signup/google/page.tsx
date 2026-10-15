@@ -36,7 +36,7 @@ export default async function GoogleSignup({ searchParams }: { searchParams: Pro
         </Link>
       </div>
       {role ? (
-        <ActionForm action={googleSignupAction} className="mt-6 space-y-4" successMessage={false}>
+        <ActionForm action={googleSignupAction} className="mt-6 space-y-4" successMessage={false} saveKey="signup-google">
           <input type="hidden" name="role" value={role} />
           <input type="hidden" name="campaign" value={campaign ?? ""} />
           <input type="hidden" name="code" value={code ?? ""} />
