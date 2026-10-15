@@ -1,0 +1,35 @@
+---
+import Base from '../layouts/Base.astro';
+import Ph from '../components/Ph.astro';
+import { site } from '../lib/site';
+---
+<Base title="Accessibility Statement | Therapy & Injury" description="Therapy & Injury is committed to making this website usable for everyone, including people with disabilities.">
+  <section class="page-hero">
+    <div class="wrap">
+      <span class="eyebrow">Accessibility</span>
+      <h1>Accessibility Statement</h1>
+      <p class="lede">Last updated: <Ph value={site.lastUpdatedLegal} /></p>
+    </div>
+  </section>
+  <section class="section">
+    <div class="wrap prose">
+      <p>{site.legalName} wants everyone, including people with disabilities, to be able to use this website and request care. We aim to meet the <strong>Web Content Accessibility Guidelines (WCAG) 2.2, Level AA</strong>.</p>
+
+      <h2>What we do</h2>
+      <ul>
+        <li>Text and buttons meet WCAG AA color contrast.</li>
+        <li>Every page can be used with a keyboard, with a visible focus indicator and a “Skip to content” link.</li>
+        <li>Images that carry meaning have text alternatives; decorative images are hidden from screen readers.</li>
+        <li>Forms have visible labels, clear required fields, and error messages announced to assistive technology.</li>
+        <li>Pages use headings and landmarks so they can be navigated with a screen reader.</li>
+        <li>Layouts adapt to small screens and to text zoom up to 200%.</li>
+      </ul>
+
+      <h2>Known limitations</h2>
+      <p>Embedded Google Maps are provided by a third party and may not be fully accessible. Every location page also lists the full street address in text and links to directions.</p>
+
+      <h2>Need help or found a barrier?</h2>
+      <p>If anything on this site is hard to use, please tell us and we’ll help you another way, including booking by phone. Call <Ph value={site.mainPhone} /> or email <Ph value={site.mainEmail} />. We aim to respond within <Ph value="[RESPONSE TIME — e.g., 2 business days]" />.</p>
+    </div>
+  </section>
+</Base>

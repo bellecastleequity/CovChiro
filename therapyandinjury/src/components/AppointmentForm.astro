@@ -74,6 +74,10 @@ const tel = telHref(b.phone);
     const status = form.querySelector<HTMLElement>('[data-status]')!;
     const accident = form.querySelector<HTMLInputElement>('input[name="accident_date"]');
     if (accident) accident.max = new Date().toISOString().slice(0, 10);
+    if (new URLSearchParams(location.search).has('sent')) {
+      status.textContent = 'Thank you. Your request was sent and our team will call you soon.';
+      status.classList.add('is-ok');
+    }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

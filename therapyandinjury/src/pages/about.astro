@@ -1,0 +1,121 @@
+---
+import Base from '../layouts/Base.astro';
+import Ph from '../components/Ph.astro';
+import { site, abs } from '../lib/site';
+
+const schema = {
+  '@context': 'https://schema.org',
+  '@type': 'Person',
+  name: site.founder.name,
+  honorificSuffix: 'D.C.',
+  jobTitle: 'Chiropractic Physician',
+  worksFor: { '@type': 'Organization', name: site.brandName, legalName: site.legalName, url: site.domain },
+  url: abs('/about/'),
+};
+---
+<Base
+  title="About Therapy & Injury and Dr. Michael L. McPherson, D.C."
+  description="Therapy & Injury is a Florida chiropractic practice for injury and wellness care, founded by Michael L. McPherson, D.C., a Florida-licensed chiropractic physician."
+  schema={schema}
+>
+  <section class="page-hero">
+    <div class="page-hero__ring" aria-hidden="true"></div>
+    <div class="wrap">
+      <span class="eyebrow">About</span>
+      <h1>Calm, clear chiropractic care after an injury</h1>
+      <p class="lede">Therapy &amp; Injury is a Florida chiropractic practice focused on helping people recover after auto accidents and everyday injuries.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap prose">
+      <h2>Who we are</h2>
+      <p>
+        An accident can leave you sore, stressed, and unsure what to do next. We built Therapy &amp; Injury to be the opposite of that feeling: a calm, modern clinic where you are listened to, examined carefully, and told plainly what we find.
+      </p>
+      <p>
+        Each location carries its city’s name, starting with Ocala Therapy &amp; Injury, because each clinic is part of its community. Every location shares the same standards for chiropractic care, clear communication, and respect for your time.
+      </p>
+      <p>
+        We provide chiropractic care on-site. When a patient needs a medical evaluation, we refer them to an independent medical provider.
+      </p>
+      <p class="muted small">
+        Therapy &amp; Injury is operated by {site.legalName}
+      </p>
+    </div>
+  </section>
+
+  <section class="section section--gray" id="dr-mcpherson">
+    <div class="wrap doc">
+      <div class="doc__photo" role="img" aria-label="Photo placeholder for Michael L. McPherson, D.C.">
+        <img src="/brand/mark.svg" alt="" width="120" height="120" />
+        <span class="ph">[HEADSHOT — Dr. McPherson]</span>
+      </div>
+      <div class="prose">
+        <span class="eyebrow">Founder &amp; treating doctor</span>
+        <h2>{site.founder.name}</h2>
+        <p class="doc__title">Florida Chiropractic Physician</p>
+        <p><Ph value="[BIO — 2–3 sentences in Dr. McPherson’s own voice: why Dr. McPherson became a chiropractic physician and their approach to injury care.]" /></p>
+
+        <h3>Education &amp; credentials</h3>
+        <ul>
+          <li>Doctor of Chiropractic: <Ph value="[SCHOOL, YEAR]" /></li>
+          <li>Undergraduate: <Ph value="[SCHOOL, DEGREE, YEAR]" /></li>
+          <li>Florida chiropractic physician license: <Ph value={site.founder.licenseNumber} /></li>
+          <li>Additional training or certifications: <Ph value="[LIST ONLY VERIFIED CERTIFICATIONS, OR REMOVE]" /></li>
+          <li>Professional memberships: <Ph value="[LIST OR REMOVE]" /></li>
+        </ul>
+        <p class="muted small">
+          You can verify any Florida health care practitioner’s license at the{' '}
+          <a href="https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders" rel="noopener" target="_blank">Florida Department of Health license lookup<span class="sr-only"> (opens in a new tab)</span></a>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap prose">
+      <h2>What you can expect from us</h2>
+      <ul class="check-list">
+        <li><strong>Plain language.</strong> We explain what we find and what we recommend, and answer your questions.</li>
+        <li><strong>Your comfort first.</strong> Techniques are explained before they happen and adjusted to you.</li>
+        <li><strong>Honest scope.</strong> We provide chiropractic care and refer you to an independent medical provider when you need a medical evaluation.</li>
+        <li><strong>Respect for your time.</strong> Clear scheduling and a team that calls you back.</li>
+      </ul>
+      <div class="btn-row">
+        <a class="btn btn--primary" href="/locations/">Find a location</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .doc {
+    display: grid;
+    gap: 40px;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+  @media (min-width: 860px) {
+    .doc {
+      grid-template-columns: 320px minmax(0, 1fr);
+    }
+  }
+  .doc__photo {
+    aspect-ratio: 4 / 5;
+    border-radius: var(--radius-lg);
+    background: var(--white);
+    border: 2px dashed var(--line);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    max-width: 320px;
+  }
+  .doc__title {
+    font-weight: 600;
+    color: var(--slate-text);
+    margin-top: -0.4em;
+  }
+</style>

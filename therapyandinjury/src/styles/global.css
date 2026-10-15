@@ -181,6 +181,13 @@ a:hover {
 .prose {
   max-width: 70ch;
 }
+/* A .wrap that is also .prose stays aligned with the page grid; only its text is narrowed. */
+.wrap.prose {
+  max-width: var(--wrap);
+}
+.wrap.prose > * {
+  max-width: 70ch;
+}
 .prose h2 {
   margin-top: 1.8em;
 }
@@ -381,4 +388,8 @@ a:hover {
   content: '/';
   margin-right: 6px;
   color: var(--slate);
+}
+
+.prose .check-list {
+  padding-left: 0;
 }
