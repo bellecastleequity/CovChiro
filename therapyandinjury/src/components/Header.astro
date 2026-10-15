@@ -3,10 +3,10 @@ import Wordmark from './Wordmark.astro';
 import { bookingHref } from '../lib/site';
 interface Props { city?: string; ctaHref?: string }
 const { city, ctaHref = bookingHref() } = Astro.props;
-const ctaLabel = ctaHref.startsWith('http') ? 'Book an appointment' : 'Request an appointment';
+const ctaLabel = ctaHref.startsWith('http') ? 'Book online' : 'Request a visit';
 const path = Astro.url.pathname;
 const links = [
-  { href: '/auto-accident-injuries/', label: 'Auto Accident Injuries' },
+  { href: '/auto-accident-injuries/', label: 'Car Accidents' },
   { href: '/conditions/', label: 'Conditions' },
   { href: '/services/', label: 'Services' },
   { href: '/about/', label: 'About' },
@@ -74,6 +74,9 @@ const links = [
   .hdr__nav ul {
     display: flex;
     gap: 22px;
+  }
+  .hdr__nav a {
+    white-space: nowrap;
   }
   .hdr__nav a:not(.btn) {
     font-weight: 600;
@@ -156,7 +159,7 @@ const links = [
   .hdr__menu .btn {
     margin-top: 16px;
   }
-  @media (min-width: 1260px) {
+  @media (min-width: 1180px) {
     .hdr__nav {
       display: flex;
     }
