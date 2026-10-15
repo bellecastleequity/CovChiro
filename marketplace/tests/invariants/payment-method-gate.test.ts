@@ -14,7 +14,7 @@ describe("no payment method, no posting", () => {
     const { shiftId } = await createShift(clinic.actor, day, { post: false });
     expect((await prisma.shift.findUniqueOrThrow({ where: { id: shiftId } })).status).toBe("DRAFT");
     await expect(postShift(clinic.actor, shiftId)).rejects.toThrow(/Finish setup/);
-    await expect(bookings.createMultiDay(clinic.actor, [{ ...day, ...futureWeekday(26) }, { ...day, ...futureWeekday(33) }], { post: true })).rejects.toThrow(/Finish setup|payment method/);
+    await expect(bookings.createMultiDay(clinic.actor, [{ ...day, ...futureWeekday(40) }, { ...day, ...futureWeekday(47) }], { post: true })).rejects.toThrow(/Finish setup|payment method/);
     expect(await prisma.shift.count({ where: { location: { clinicOrgId: clinic.org.id }, status: { not: "DRAFT" } } })).toBe(0);
   });
 });
