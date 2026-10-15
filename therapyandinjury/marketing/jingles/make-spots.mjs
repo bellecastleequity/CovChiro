@@ -49,6 +49,29 @@ const SPOTS = [
     body: 'After a car accident, Florida PIP generally requires care within fourteen days. Therapy and Injury: chiropractic care, with or without a referral. Call...',
     phrases: ['After a car accident,', 'Florida PIP generally requires care within 14 days.', 'Therapy & Injury:', 'chiropractic care,', 'with or without a referral.', 'Call'],
   },
+  // "Don't Walk It Off" (30 s commercial). Longer spots list their script as `lines`: the whole script is
+  // voiced as ONE take (separate takes drift in pitch and even gender), then each line's start is found
+  // in the take for its caption. `say` is what the voice reads; `cap` is the on-screen caption.
+  {
+    name: '4-walk-it-off-30',
+    length: 30,
+    lines: [
+      { say: 'You walked away from the crash.', cap: 'You walked away from the crash.' },
+      { say: 'Said...', cap: 'Said,' },
+      { say: "I'm good.", cap: '“I’m good.”' },
+      { say: 'Next morning?', cap: 'Next morning?' },
+      { say: 'Stiff neck.', cap: 'Stiff neck.' },
+      { say: 'Tight back.', cap: 'Tight back.' },
+      { say: 'Headaches.', cap: 'Headaches.' },
+      { say: 'After a crash, symptoms can show up hours, even days later.', cap: 'After a crash, symptoms can show up hours, even days later.' },
+      { say: 'Florida PIP generally requires care within fourteen days.', cap: 'Florida PIP generally requires care within 14 days.' },
+      { say: "Don't walk it off.", cap: 'Don’t walk it off.' },
+      { say: 'Get checked.', cap: 'Get checked.' },
+      { say: 'Therapy and Injury.', cap: 'Therapy & Injury' },
+      { say: 'Chiropractic care, with or without a referral.', cap: 'Chiropractic care, with or without a referral.' },
+      { say: 'Call now...', cap: 'Call now' },
+    ],
+  },
 ];
 
 const dur = (f) => +execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString().trim();
@@ -179,6 +202,51 @@ function phraseStarts(file, count) {
   return [first, ...cuts].map((f) => (f * hop) / rate);
 }
 
+/**
+ * Start time (s) of each line in a one-take read. Candidates are speech onsets after a pause of 60 ms+;
+ * each line is matched to the candidate nearest where its text should start (by share of characters),
+ * favoring longer pauses, keeping the lines in order (dynamic programming).
+ */
+function lineStarts(file, lines) {
+  const { rate, s } = readWav(file);
+  const hop = Math.round(rate * 0.01), rms = [];
+  for (let k = 0; k + hop <= s.length; k += hop) {
+    let e = 0;
+    for (let j = k; j < k + hop; j++) e += s[j] * s[j];
+    rms.push(Math.sqrt(e / hop));
+  }
+  const thr = Math.max(...rms) * 0.03;
+  const first = rms.findIndex((v) => v > thr);
+  let last = rms.length - 1;
+  while (rms[last] <= thr) last--;
+  const cand = [];
+  for (let f = first, q = -1; f <= last; f++) {
+    if (rms[f] <= thr) { if (q < 0) q = f; }
+    else if (q >= 0) { if (f - q >= 6) cand.push({ t: f / 100, pause: (f - q) / 100 }); q = -1; }
+  }
+  const chars = lines.map((l) => l.length + 6); // +6: every line ends in a pause
+  const total = chars.reduce((a, b) => a + b, 0);
+  const t0 = first / 100, span = last / 100 - t0;
+  const expect = chars.map((_, i) => t0 + (span * chars.slice(0, i).reduce((a, b) => a + b, 0)) / total);
+  const cost = (i, j) => Math.abs(cand[j].t - expect[i]) - 1.2 * Math.min(cand[j].pause, 0.6);
+  // best[i][j]: lines 1..i placed, line i on candidate j.
+  const n = lines.length, m = cand.length, best = [], from = [];
+  for (let i = 1; i < n; i++) {
+    best[i] = []; from[i] = [];
+    for (let j = 0; j < m; j++) {
+      if (i === 1) { best[i][j] = cost(i, j); continue; }
+      let b = Infinity, k0 = -1;
+      for (let k = 0; k < j; k++) if (best[i - 1][k] < b) { b = best[i - 1][k]; k0 = k; }
+      best[i][j] = b + cost(i, j); from[i][j] = k0;
+    }
+  }
+  let j = best[n - 1].indexOf(Math.min(...best[n - 1]));
+  const starts = [];
+  for (let i = n - 1; i >= 1; i--) { starts[i] = cand[j].t; j = from[i][j]; }
+  starts[0] = t0;
+  return starts;
+}
+
 function mix(bed, clips, outFile, length) {
   const inputs = ['-i', path.join(out, `${bed}.wav`), ...clips.flatMap((c) => ['-i', c.file])];
   const delays = clips.map((c, i) => `[${i + 1}:a]aresample=44100,adelay=${Math.round(c.at * 1000)}:all=1[v${i}]`);
@@ -196,21 +264,29 @@ function mix(bed, clips, outFile, length) {
 // 1. Bodies first: size each bed to its read.
 const plan = {}, bodies = {};
 for (const spot of SPOTS) {
-  if (!spot.body) { plan[spot.name] = 0; continue; }
-  let file = await line(preset, spot.body);
+  if (!spot.body && !spot.lines) { plan[spot.name] = { bars: 0 }; continue; }
+  let file, starts;
+  if (spot.lines) {
+    file = await line(preset, spot.lines.map((l) => l.say).join(' '));
+    starts = lineStarts(file, spot.lines.map((l) => l.say));
+  } else file = await line(preset, spot.body);
   const d = dur(file);
   // The hook starts on beat 2 of bar n; the body needs 0.3 s lead-in and 0.15 s before the hook.
   let bars = Math.max(1, Math.ceil((0.45 + d - BEAT) / BAR));
   if (bars > 1 && 0.45 + d / 1.1 <= (bars - 1) * BAR + BEAT) bars -= 1; // a slight tighten saves a bar
+  // Fixed-length spots: the latest bar whose "TREAT" (3 beats into the hook) still has 1.2 s before the end.
+  if (spot.length) bars = Math.floor((spot.length - 1.2 - 3 * BEAT - BEAT) / BAR);
   const room = bars * BAR + BEAT - 0.45;
   if (d > room) {
     const tight = file.replace(/\.wav$/, '.fit.wav');
+    if (d / room > 1.12) console.warn(`  note: ${spot.name} read is ${(d - room).toFixed(1)}s long for its slot; sped up ${((d / room - 1) * 100).toFixed(0)}% (trim the copy if it sounds rushed)`);
     ff('-i', file, '-af', `atempo=${(d / room).toFixed(3)}`, tight);
     file = tight;
+    starts = starts?.map((x) => (x * room) / d);
   }
   // End the body right before the hook so "Call..." leads straight into it.
-  bodies[spot.name] = { file, at: Math.max(0.3, bars * BAR + BEAT - 0.15 - dur(file)) };
-  plan[spot.name] = bars;
+  bodies[spot.name] = { file, starts, at: Math.max(0.3, bars * BAR + BEAT - 0.15 - dur(file)) };
+  plan[spot.name] = { bars, length: spot.length };
 }
 fs.writeFileSync(path.join(out, 'plan.json'), JSON.stringify(plan));
 
@@ -232,7 +308,9 @@ for (const spot of SPOTS) {
     audio: path.basename(f),
     length: t.length,
     beat: t.beat,
-    phrases: b ? phraseStarts(b.file, spot.phrases.length).map((s0, i) => ({ text: spot.phrases[i], t: +(b.at + s0).toFixed(3) })) : [],
+    phrases: !b ? []
+      : spot.lines ? spot.lines.map((l, i) => ({ text: l.cap, t: +(b.at + b.starts[i]).toFixed(3) }))
+      : phraseStarts(b.file, spot.phrases.length).map((s0, i) => ({ text: spot.phrases[i], t: +(b.at + s0).toFixed(3) })),
     hook: clips.filter((c) => c.word).map((c, i) => ({ word: c.word, t: t.hookNotes[i].t })),
   };
 }

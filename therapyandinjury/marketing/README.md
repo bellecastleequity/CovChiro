@@ -38,6 +38,7 @@ Short videos built on the jingle spots, each in two sizes: 1080×1920 (Reels, St
 | `1-audio-logo` | ~4s | End card only: the number builds digit by digit as the hook says it. Bumper/pre-roll. |
 | `2-radio-tag` | ~10s | "Hurt in a car crash?" (dusk traffic) → "Get checked within 14 days" (driver with a stiff neck) → number. |
 | `3-ad-15s` | under 15s | Accident → Florida PIP 14-day timeline (with the "educational only" note) → Therapy & Injury brand → chiropractic care → "with or without a referral" → number. |
+| `4-walk-it-off-30` | 30.0s exactly | **"Don't Walk It Off."** One character throughout. He walks away from a crash saying "I'm good," then wakes up with a stiff neck, a tight back and a headache. The narrator explains that symptoms can show up days later, and a 14-day clock graphic counts up the PIP window. Then "Don't walk it off. Get checked." → Therapy & Injury → chiropractic care with or without a referral → "Call now" → jingle. |
 
 ```bash
 cd therapyandinjury
@@ -48,5 +49,6 @@ node marketing/video/render.mjs         # -> video/out/<spot>-<story|square>.mp4
 - `ad.html` is the single template. Captions are timed to the voice's phrase starts. Each digit of (844) 84-TREAT appears as the hook says it.
 - Every frame carries "Chiropractic care · Florida-licensed D.C." (Florida ad rule).
 - The photo scenes are AI-generated, illustrative and generic: no crash shown, no real people, and never presented as patients or testimonials.
-- Change the wording in `make-spots.mjs` (`body` and `phrases`) and the scene plan in `ad.html` (`PLANS`), then re-run both scripts.
+- Spots of 30s and longer list their script as `lines` (`say` and `cap`) with a fixed `length`. The whole script is voiced as one take, because separate takes drift in voice. Each line's caption start is found in the take, and the read is sped up (by at most ~12%) to fit the length.
+- Change the wording in `make-spots.mjs` (`body`/`phrases`, or `lines`) and the scene plan in `ad.html` (`PLANS`), then re-run both scripts.
 - To preview live in Chrome, open `video/ad.html?spot=3-ad-15s&format=story&preview=1` (render.mjs writes the `cues.js` it needs). Audio doesn't play in preview.

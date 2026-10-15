@@ -19,6 +19,16 @@
 
   #scenes { position: absolute; inset: 0; z-index: 0; }
   .scene { position: absolute; inset: -4%; background-size: cover; background-position: center; opacity: 0; will-change: transform, opacity; }
+  /* 14-day clock graphic scene */
+  .clock { background: radial-gradient(circle at 50% 36%, #12407a 0%, var(--navy) 45%, var(--navy-deep) 100%); }
+  .clock .dial { position: absolute; left: 50%; top: 34.5%; width: 640px; height: 640px; transform: translate(-50%, -50%); }
+  .square .clock .dial { top: 33%; width: 380px; height: 380px; }
+  .clock svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .clock .ctr { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .clock .day { font-size: 44px; font-weight: 800; letter-spacing: .3em; color: var(--teal); padding-left: .3em; }
+  .clock .n { font-size: 300px; font-weight: 900; letter-spacing: -0.06em; line-height: .9; }
+  .square .clock .day { font-size: 30px; }
+  .square .clock .n { font-size: 190px; }
   .shade { position: absolute; inset: 0;
     background: linear-gradient(180deg, rgb(6 26 54 / 55%) 0%, rgb(6 26 54 / 0%) 22%, rgb(6 26 54 / 10%) 45%, rgb(6 26 54 / 88%) 78%, rgb(6 26 54 / 96%) 100%); }
   .square .shade { background: linear-gradient(180deg, rgb(6 26 54 / 50%) 0%, rgb(6 26 54 / 0%) 25%, rgb(6 26 54 / 25%) 45%, rgb(6 26 54 / 92%) 100%); }
@@ -29,7 +39,7 @@
   .chip img { width: 64px; height: 64px; }
   .square .chip img { width: 56px; height: 56px; }
 
-  .caps { position: absolute; left: 72px; right: 72px; top: 1200px; }
+  .caps { position: absolute; left: 72px; right: 72px; top: 1330px; }
   .square .caps { left: 64px; right: 64px; top: auto; bottom: 150px; }
   .cap { position: absolute; left: 0; right: 0; bottom: 0; opacity: 0; }
   .cap .eyebrow { display: flex; align-items: center; gap: 16px; font-size: 30px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #c9d3de; margin-bottom: 26px; }
@@ -124,6 +134,37 @@ const PLANS = {
     ],
     end: p[5], endImg: 'clinic-consult',
   }),
+  // "Don't Walk It Off" (30 s). One hero: walks away "fine", wakes up hurting, learns the 14-day window, gets checked.
+  // p: 0 walked away, 1 Said, 2 I'm good, 3 Next morning, 4 Stiff neck, 5 Tight back, 6 Headaches,
+  //    7 symptoms later, 8 Florida PIP, 9 Don't walk it off, 10 Get checked, 11 Therapy & Injury, 12 Chiropractic care, 13 Call now
+  '4-walk-it-off-30': (p) => ({
+    scenes: [
+      { img: 'roadside-fine', from: 0, to: p[3], zoom: [1.04, 1.14], pan: [0, -24] },
+      { img: 'morning-neck', from: p[3], to: p[5], zoom: [1.14, 1.06], pan: [0, 18] },
+      { img: 'morning-back', from: p[5], to: p[6], zoom: [1.06, 1.12], pan: [-14, 0] },
+      { img: 'morning-headache', from: p[6], to: p[7], zoom: [1.06, 1.14], pan: [0, -10] },
+      { img: 'driver-neck', from: p[7], to: p[8], zoom: [1.14, 1.04], pan: [24, 0] },
+      { clock: true, from: p[8], to: p[9], zoom: [1.0, 1.04], pan: [0, 0] },
+      { img: 'walking-city', from: p[9], to: p[11], zoom: [1.04, 1.16], pan: [0, -30] },
+      { img: 'clinic-hero', from: p[11], to: p[13], zoom: [1.14, 1.04], pan: [0, 16] },
+    ],
+    caps: [
+      { from: p[0], to: p[1], html: 'You walked away from the <hl>crash.</hl>' },
+      { from: p[1], to: p[2], html: 'Said,' },
+      { from: p[2], to: p[3], html: '<hl>“I’m&nbsp;good.”</hl>' },
+      { from: p[3], to: p[4], html: 'Next <hl>morning?</hl>' },
+      { from: p[4], to: p[5], html: '<hl>Stiff&nbsp;neck.</hl>' },
+      { from: p[5], to: p[6], html: '<hl>Tight&nbsp;back.</hl>' },
+      { from: p[6], to: p[7], html: '<hl>Headaches.</hl>' },
+      { from: p[7], to: p[8], html: 'Symptoms can show up hours, even <hl>days&nbsp;later.</hl>', cls: 'md', eyebrow: 'After a crash' },
+      { from: p[8], to: p[9], html: 'Florida PIP generally requires care within <hl>14&nbsp;days.</hl>', cls: 'md', note: 'Educational only. Your policy and insurer determine coverage.' },
+      { from: p[9], to: p[10], html: 'Don’t walk it <hl>off.</hl>' },
+      { from: p[10], to: p[11], html: 'Get <hl>checked.</hl>' },
+      { from: p[11], to: p[12], brand: true },
+      { from: p[12], to: p[13], html: '<hl>Chiropractic</hl> care, with or without a referral.', cls: 'md' },
+    ],
+    end: p[13], endImg: 'clinic-hero',
+  }),
 };
 
 let C, plan, capEls = [], sceneEls = [];
@@ -136,7 +177,10 @@ function setCues(all) {
   sceneEls = plan.scenes.map((s) => {
     const d = document.createElement('div');
     d.className = 'scene';
-    d.style.backgroundImage = `url(scenes/${s.img}.jpg)`;
+    if (s.clock) {
+      d.classList.add('clock');
+      d.innerHTML = `<div class="dial"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="rgb(255 255 255 / 10%)" stroke-width="7"/><circle class="arc" cx="50" cy="50" r="44" fill="none" stroke="#19ccbe" stroke-width="7" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg><div class="ctr"><div class="day">DAY</div><div class="n">1</div></div></div>`;
+    } else d.style.backgroundImage = `url(scenes/${s.img}.jpg)`;
     scenes.appendChild(d);
     return d;
   });
@@ -156,7 +200,7 @@ function setCues(all) {
     return d;
   });
   return document.fonts.ready.then(() => Promise.all([...document.images].map((i) => i.decode().catch(() => {}))))
-    .then(() => Promise.all(plan.scenes.concat({ img: plan.endImg }).map((s) => new Promise((res) => { const i = new Image(); i.onload = i.onerror = res; i.src = `scenes/${s.img}.jpg`; }))))
+    .then(() => Promise.all(plan.scenes.filter((s) => s.img).concat({ img: plan.endImg }).map((s) => new Promise((res) => { const i = new Image(); i.onload = i.onerror = res; i.src = `scenes/${s.img}.jpg`; }))))
     .then(() => C.length);
 }
 
@@ -172,6 +216,14 @@ function setTime(t) {
     el.style.opacity = fade * out;
     el.style.zIndex = i;
     el.style.transform = `translate(${s.pan[0] * k}px, ${s.pan[1] * k}px) scale(${z})`;
+    if (s.clock) {
+      // Day 1 -> 14 over the line, the ring filling with it; the count settles on 14 as the line ends.
+      const c = easeOut(prog(t, s.from + 0.1, s.to - 0.6));
+      const day = Math.max(1, Math.round(1 + 13 * c));
+      el.querySelector('.n').textContent = day;
+      el.querySelector('.n').style.color = day === 14 ? 'var(--teal)' : '#fff';
+      el.querySelector('.arc').setAttribute('stroke-dashoffset', 100 - 100 * (day / 14));
+    }
   });
   // Captions: words rise in one after another, the whole caption lifts away at its end.
   plan.caps.forEach((c, i) => {
@@ -209,7 +261,8 @@ function setTime(t) {
     s.style.opacity = clamp(x * 3);
     s.style.transform = `translateY(${(1 - backOut(x)) * 50}px) scale(${(i === 8 ? 0.6 : 0.8) + (i === 8 ? 0.4 : 0.2) * backOut(x)})`;
   });
-  const url = document.getElementById('url'), up = easeOut(prog(t, H[5] + 0.35, H[5] + 0.75));
+  // The URL comes in once "(844)" is complete, so it stays up long enough to read.
+  const url = document.getElementById('url'), up = easeOut(prog(t, H[2] + 0.3, H[2] + 0.7));
   url.style.opacity = up; url.style.transform = `translateY(${(1 - up) * 16}px)`;
   // Rings pulse on every beat from the first hook word, and swell on TREAT.
   const sinceBeat = t >= H[0] ? ((t - H[0]) % beat) / beat : 1;

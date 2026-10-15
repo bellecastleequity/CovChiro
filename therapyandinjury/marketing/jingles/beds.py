@@ -1,5 +1,6 @@
 # Renders the 844-84-TREAT music beds: a professional-urban (R&B / hip-hop) groove at 92 bpm.
 #   python3 beds.py out/plan.json     (make-spots.mjs writes the plan and runs this for you)
+# Plan: { name: { bars, length? } }; `length` holds the end on a soft outro to an exact spot length.
 # The plan says how many bars of groove sit under each spot's spoken body, so the bed is built
 # around the voice instead of the voice being squeezed into the bed. Under the body there is no
 # lead melody (just drums, Rhodes chords, 808) so the words never fight a tune. The hook melody
@@ -132,7 +133,7 @@ def hook_section(mx, bar_start, groove=True):
     mx.add(hat(0.08, True), land)
     return notes, land + 2.5 * BEAT
 
-def render(name, body_bars):
+def render(name, body_bars, length=None):
     lead_in = 0.0
     mx = Mix(BAR * (body_bars + 3))
     for i in range(body_bars):
@@ -144,11 +145,21 @@ def render(name, body_bars):
         mx.buf = np.concatenate([mx.buf[int(shift * SR):], np.zeros(int(shift * SR))])
         for n in notes: n['t'] = round(n['t'] - shift, 4)
         end -= shift
+    if length and length > end:
+        # Fixed-length spots (e.g. a 30 s commercial): hold the end card on a soft outro to the exact length.
+        t = end - 0.6 * BEAT
+        mx.add(pad(PROG[0][0], length - t + 0.2, .07), t)
+        while t < length - 0.2:
+            mx.add(hat(0.05), t); mx.add(hat(0.035), t + BEAT / 2)
+            t += BEAT
+        end = length
+    elif length:
+        end = length  # the hook's tail is cut to the exact length (save() fades the last 0.35 s)
     mx.save(name, end)
     return {'bpm': BPM, 'beat': BEAT, 'bar': BAR, 'bodyBars': body_bars, 'hookNotes': notes, 'length': round(end, 4)}
 
 if __name__ == '__main__':
-    plan = json.load(open(sys.argv[1])) if len(sys.argv) > 1 else {'1-audio-logo': 0, '2-radio-tag': 2, '3-ad-15s': 4}
-    timing = {name: render(name, bars) for name, bars in plan.items()}
+    plan = json.load(open(sys.argv[1])) if len(sys.argv) > 1 else {'1-audio-logo': {'bars': 0}, '2-radio-tag': {'bars': 2}, '3-ad-15s': {'bars': 4}}
+    timing = {name: render(name, p['bars'], p.get('length')) for name, p in plan.items()}
     json.dump(timing, open(os.path.join(OUT, 'timing.json'), 'w'), indent=2)
     print('beds:', ', '.join(f"{k} {v['length']:.1f}s" for k, v in timing.items()))
