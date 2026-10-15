@@ -35,8 +35,9 @@ Most facts live in two data files. Edit those first:
 - [ ] `features`: turn on only what's true. Options are `sameDayAppointments`, `walkInsWelcome`, `eveningHours`, `onSiteXray`, and `languages` (add `"Español"` if a Spanish speaker is on staff). Each one shows as a chip on the location page. See `docs/competitor-research.md`.
 - [ ] `nearbyAreas`: confirm the list (currently Silver Springs, Belleview, Dunnellon, Marion Oaks, Summerfield, Anthony, Reddick)
 
-### Coming-soon locations: Orlando, Lake Mary, Deltona, DeLand
+### Coming-soon locations: Orlando, Lake Mary, Deltona, DeLand, Eustis
 - [ ] Confirm **DeLand** should be listed. It was in the brand pack but not the brief.
+- [ ] **Eustis** (Lake County) was added Oct 2026. Confirm `eustistherapyandinjury.com` is purchased, and confirm its nearby areas (Mount Dora, Tavares, Umatilla, Leesburg, Sorrento, Grand Island). There's no Eustis logo set in `brand-assets/`; the site builds its wordmark in code, so none is needed for the web.
 - [ ] `openingNote`, `phone`, `email`
 - [ ] When a location opens: set `status` to `"open"` and add `address`, `hours`, `doctors`, `gbpUrl` and `legalEntity`. Rebuild, upload, then run `npm run indexnow`. The location's page and its car-accident page then become indexable and join the sitemap automatically.
 

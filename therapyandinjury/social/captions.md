@@ -121,11 +121,11 @@ Moving boxes, groceries, or kids? 📦
 ## 12 · Our Florida locations — `posts/12-locations.html` (brand account)
 One brand, a clinic in your city. 🌴
 ✅ Ocala Therapy & Injury: open now
-🔜 Orlando, Lake Mary, Deltona, and DeLand: coming soon
+🔜 Orlando, Lake Mary, Deltona, DeLand, and Eustis: coming soon
 
 Each location is named for the community it serves. Find yours at the link in bio.
 
-`#Florida #Chiropractic #Ocala #Orlando #LakeMary #Deltona #DeLand`
+`#Florida #Chiropractic #Ocala #Orlando #LakeMary #Deltona #DeLand #Eustis`
 
 ---
 
