@@ -26,9 +26,9 @@ _Generated from `src/data/branches.json` by `social/gbp/generate.mjs`. Edit the 
 
 Add holiday hours before each holiday.
 
-## Business description (≤750 characters, 646 now)
+## Business description (≤750 characters, 655 now)
 ```
-DeLand Therapy & Injury provides chiropractic injury and wellness care in DeLand, Florida, for people recovering from auto accident injuries, neck and back pain, and everyday strain. Visits start with a chiropractic history and examination and a clear, plain-language explanation of what we find. Care may include chiropractic adjustments, rehabilitation and therapeutic exercise, and soft-tissue therapy. Patients who need a medical evaluation are referred to an independent medical provider. Chiropractic care by [TREATING DOCTOR(S) FOR DELAND]. Serving DeLand and nearby communities including Orange City, DeLeon Springs, Lake Helen, Glenwood.
+DeLand Therapy & Injury provides chiropractic injury and wellness care in DeLand, Florida, for people recovering from auto accident injuries, neck and back pain, and everyday strain. Visits start with a chiropractic history and examination and a clear, plain-language explanation of what we find. Care may include chiropractic adjustments, rehabilitation and therapeutic exercise, and soft-tissue therapy. Patients who need a medical evaluation are referred to an independent medical provider. Chiropractic care by Florida-licensed chiropractic physicians. Serving DeLand and nearby communities including Orange City, DeLeon Springs, Lake Helen, Glenwood.
 ```
 
 ## Services (add each under "Services")

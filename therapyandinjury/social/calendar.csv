@@ -6,7 +6,7 @@ week,date,day,time,platform,format,template,export_folder,topic,caption_ref,stat
 1,2026-10-23,Fri,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/02-brand-meaning.html,brand,Meaning of the mark,02,draft,
 2,2026-10-26,Mon,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/04-14-day-pip.html,brand,14-day PIP reminder,04,draft,
 2,2026-10-26,Mon,"[TIME — e.g., 11:30]",Instagram + Facebook,Story 1080x1920,stories/01-story-14-days.html,brand,14-day PIP reminder,S1,draft,
-2,2026-10-28,Wed,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/06-meet-the-doctor.html,brand,Meet the doctor,06,draft,
+2,2026-10-28,Wed,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/06-meet-the-doctor.html,brand,Meet the doctor,06,hold,Post only after the treating doctor is confirmed; otherwise swap in a wellness tip
 2,2026-10-28,Wed,"[TIME — e.g., 11:30]",Google Business Profile,Update post,export/ocala/ (any matching PNG),ocala,Ocala GBP post: 14-day PIP reminder,gbp/ocala.md,draft,"Post from the Ocala profile; copy the caption idea, add the website button"
 2,2026-10-30,Fri,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/07-headrest-tip.html,brand,Wellness tip: headrest,07,draft,
 3,2026-11-02,Mon,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/03-after-accident-checklist.html,brand,After-accident checklist,03,draft,

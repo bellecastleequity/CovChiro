@@ -22,7 +22,7 @@ import {
   doctorsFor,
   branchSchema,
   isPlaceholder,
-  abs,
+  isIndexable,
 } from '../lib/site';
 
 export function getStaticPaths() {
@@ -35,29 +35,21 @@ const open = isOpen(b);
 const tel = telHref(b.phone);
 const map = mapEmbedSrc(b);
 const doctors = doctorsFor(b);
+const entity = isPlaceholder(b.legalEntity) ? '' : b.legalEntity;
 const nearby = b.nearbyAreas;
 const nearbyText =
   nearby.length > 1 ? `${nearby.slice(0, -1).join(', ')}, and ${nearby.at(-1)}` : nearby.join('');
 const others = branches.filter((x) => x.slug !== b.slug);
 
 const title = open
-  ? `${name} | Chiropractor in ${b.city}, FL for Auto Injury Care`
+  ? `${name} | Chiropractor in ${b.city}, FL`
   : `${name} | Coming Soon to ${b.city}, FL`;
 const description = open
-  ? `${name} offers chiropractic care for auto accident (PIP) injuries, neck and back pain in ${b.city}, FL. ${doctors[0].name}. Request an appointment online.`
+  ? `${name}: chiropractic care for auto accident (PIP) injuries and neck and back pain in ${b.city}, FL. See hours and request an appointment online.`
   : `${name} is coming soon, bringing chiropractic injury and wellness care to ${b.city} and ${b.county} County, FL. Get notified when we open.`;
 
-const breadcrumbs = {
-  '@context': 'https://schema.org',
-  '@type': 'BreadcrumbList',
-  itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'Therapy & Injury', item: abs('/') },
-    { '@type': 'ListItem', position: 2, name: 'Locations', item: abs('/locations/') },
-    { '@type': 'ListItem', position: 3, name, item: abs(branchPath(b)) },
-  ],
-};
 ---
-<Base title={title} description={description} city={b.city} ctaHref="#request" ogImage={`/og/${b.slug}.png`} schema={[branchSchema(b), breadcrumbs]}>
+<Base title={title} description={description} city={b.city} ctaHref="#request" ogImage={`/og/${b.slug}.png`} schema={branchSchema(b)} breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)]]} noindex={!isIndexable(b)}>
   <section class="page-hero">
     <div class="page-hero__ring" aria-hidden="true"></div>
     <div class="wrap">
@@ -132,17 +124,21 @@ const breadcrumbs = {
 
         <div class="card fact">
           <Icon name="doc" size={40} />
-          <h2 class="fact__h">{doctors.length > 1 ? 'Your doctors' : 'Your doctor'}</h2>
-          <ul class="docs">
-            {doctors.map((d) => (
-              <li>
-                <strong>{d.name}</strong>
-                <span class="muted">{d.title}</span>
-              </li>
-            ))}
-          </ul>
-          {!open && b.doctors.length === 0 && <p class="small muted"><Ph value="[TREATING DOCTOR(S) FOR THIS LOCATION]" /></p>}
-          <a href="/about/">About our team</a>
+          <h2 class="fact__h">{doctors.length > 1 ? 'Your doctors' : 'Your care team'}</h2>
+          {doctors.length ? (
+            <ul class="docs">
+              {doctors.map((d) => (
+                <li>
+                  <strong>{d.name}</strong>
+                  <span class="muted">{d.title}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>Care at {name} is provided by a Florida-licensed chiropractic physician (D.C.).</p>
+          )}
+          {entity && <p class="small muted">{name} is operated by {entity}.</p>}
+          <a href="/about/">About Therapy &amp; Injury</a>
         </div>
 
         {map && (
@@ -179,7 +175,7 @@ const breadcrumbs = {
             We can see you for a chiropractic evaluation and help you understand the next steps. If you need a medical evaluation, we refer you to an independent medical provider.
           </p>
           <p>
-            Learn <a href="/auto-accident-injuries/">what to bring to your first visit after an accident</a>, or read about our <a href="/services/">chiropractic services</a>.
+            See <a href={`${branchPath(b)}car-accident-chiropractor/`}>car accident chiropractic care in {b.city}</a>, learn <a href="/auto-accident-injuries/">what to bring to your first visit after an accident</a>, or read about our <a href="/services/">chiropractic services</a>.
           </p>
         </Fragment>
       ) : (

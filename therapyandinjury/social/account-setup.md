@@ -19,7 +19,7 @@ Never recolor, stretch, crop, or add effects to the mark.
 **Bio (≤150 characters):**
 ```
 Chiropractic Injury & Wellness Care in Florida
-Michael L. McPherson, D.C.
+Florida-licensed chiropractic physicians (D.C.)
 Now open: Ocala · More cities soon
 👇 Find your location
 ```
@@ -36,16 +36,16 @@ Now open: Ocala · More cities soon
 
 **Intro (≤100 characters):**
 ```
-Chiropractic injury & wellness care across Florida. Michael L. McPherson, D.C.
+Chiropractic injury & wellness care across Florida.
 ```
 
 **About / description:**
 ```
-Therapy & Injury provides calm, chiropractic-focused care for people recovering from auto accident injuries, neck and back pain, and everyday strain. Each clinic is named for the city it serves, starting with Ocala Therapy & Injury. Chiropractic care by Michael L. McPherson, D.C., Florida Chiropractic Physician. Therapy & Injury is operated by Florida Therapy & Injury, P.A. Content on this page is educational and not medical advice.
+Therapy & Injury provides calm, chiropractic-focused care for people recovering from auto accident injuries, neck and back pain, and everyday strain. Each clinic is named for the city it serves, starting with Ocala Therapy & Injury. Care is provided by Florida-licensed chiropractic physicians. Therapy & Injury is owner-operated. Content on this page is educational and not medical advice.
 ```
 
 ## Rules for every post and reply
-- Name the profession: "chiropractic" or "D.C." with the name (the template footer does this; captions end with the sign-off).
+- Name the profession: "chiropractic" or "D.C." (the template footer does this; captions end with the sign-off). Add the treating doctor’s name with “D.C.” once confirmed.
 - No "best," "#1," guarantees, or results claims. No testimonials without the patient's written permission.
 - No free or discounted offers until the practice approves them with the required Florida disclaimer.
 - Never message, tag, or target people about a specific crash. General education only.

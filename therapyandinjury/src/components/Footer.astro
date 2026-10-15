@@ -1,8 +1,10 @@
 ---
 import Wordmark from './Wordmark.astro';
-import { site, branches, branchName, branchPath, isOpen } from '../lib/site';
+import { site, branches, branchName, branchPath, isOpen, isPlaceholder } from '../lib/site';
+import { conditions } from '../lib/conditions';
 interface Props { city?: string }
 const { city } = Astro.props;
+const here = city ? branches.find((b) => b.city === city) : undefined;
 const year = new Date().getFullYear();
 ---
 <footer class="ftr">
@@ -20,27 +22,36 @@ const year = new Date().getFullYear();
           ))}
         </ul>
       </nav>
+      <nav aria-label="Conditions">
+        <h2 class="ftr__h">Conditions</h2>
+        <ul>
+          {conditions.map((c) => <li><a href={`/conditions/${c.slug}/`}>{c.name}</a></li>)}
+        </ul>
+      </nav>
       <nav aria-label="Footer">
         <h2 class="ftr__h">Learn</h2>
         <ul>
           <li><a href="/auto-accident-injuries/">Auto Accident Injuries</a></li>
+          <li><a href="/what-to-do-after-a-car-accident/">What to Do After a Car Accident</a></li>
           <li><a href="/services/">Services</a></li>
+          <li><a href="/faq/">FAQ</a></li>
+          <li><a href="/blog/">Blog</a></li>
           <li><a href="/about/">About</a></li>
-          <li><a href="/locations/">All locations</a></li>
+          <li><a href="/contact/">Contact</a></li>
         </ul>
       </nav>
     </div>
 
     <div class="ftr__legal">
-      <p><strong>Therapy &amp; Injury is operated by {site.legalName}</strong></p>
-      <p>{site.founder.name}, {site.founder.title}</p>
+      <p><strong>{site.operatorLine}</strong> Chiropractic care is provided by Florida-licensed chiropractic physicians.</p>
+      {here && !isPlaceholder(here.legalEntity) && <p>{branchName(here)} is operated by {here.legalEntity}.</p>}
       <p class="ftr__disclaimer">
         The information on this website is for general educational purposes only and is not medical advice. Reading it does not create a doctor–patient relationship. Every injury is different; please consult a licensed provider about your situation. If you have a medical emergency, call 911.
       </p>
       <p class="ftr__links">
         <a href="/privacy/">Privacy Policy</a>
         <a href="/accessibility/">Accessibility Statement</a>
-        <span>© {year} {site.legalName}</span>
+        <span>© {year} {site.brandName}</span>
       </p>
     </div>
   </div>
@@ -63,7 +74,7 @@ const year = new Date().getFullYear();
   }
   @media (min-width: 820px) {
     .ftr__grid {
-      grid-template-columns: 1.6fr 1fr 1fr;
+      grid-template-columns: 1.5fr 1fr 1fr 1fr;
     }
   }
   .ftr__blurb {

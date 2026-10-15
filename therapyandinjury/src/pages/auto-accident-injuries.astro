@@ -2,33 +2,26 @@
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import Ph from '../components/Ph.astro';
+import FaqList from '../components/FaqList.astro';
+import { faqs } from '../lib/faq';
+import { abs, faqSchema } from '../lib/site';
 
-const faqs = [
-  {
-    q: 'Do I need a referral to see a chiropractic physician?',
-    a: 'In most cases you can request a chiropractic visit directly. [CONFIRM — any insurer-specific referral requirements]',
-  },
-  {
-    q: 'Will my visit be billed to my auto insurance?',
-    a: 'For auto accident injuries, our team can bill your PIP carrier directly. [CONFIRM BILLING PROCESS] Your insurer decides what is covered under your policy.',
-  },
-  {
-    q: 'The accident wasn’t my fault. Does that change anything?',
-    a: 'Florida PIP generally pays regardless of who caused the crash. Questions about claims against another driver are best directed to your insurer or an attorney.',
-  },
-  {
-    q: 'What if it has been more than 14 days since my accident?',
-    a: 'You can still request a chiropractic visit, but PIP benefits may not apply. Call us and we can talk through your options. [CONFIRM — self-pay / health insurance options]',
-  },
-  {
-    q: 'I feel fine. Should I still get checked?',
-    a: 'Some people notice stiffness, soreness, or headaches hours or days after a collision. A check-up gives you a baseline and keeps you inside the 14-day window if you need care later.',
-  },
-];
+const pageFaqs = faqs.filter((f) => f.group !== 'practice');
+const article = {
+  '@context': 'https://schema.org',
+  '@type': 'MedicalWebPage',
+  name: 'After a car accident in Florida: the 14-day PIP rule and your first visit',
+  url: abs('/auto-accident-injuries/'),
+  about: { '@type': 'Thing', name: 'Florida Personal Injury Protection (PIP) 14-day initial care rule' },
+  publisher: { '@id': abs('/#org') },
+  inLanguage: 'en-US',
+};
 ---
 <Base
-  title="After a Car Accident in Florida: The 14-Day PIP Window | Therapy & Injury"
+  title="Florida 14-Day PIP Rule & Your First Visit | Therapy & Injury"
   description="Hurt in a car accident in Florida? PIP generally requires initial care within 14 days. Learn what to bring and what to expect at your first chiropractic visit."
+  schema={[article, faqSchema(pageFaqs)]}
+  breadcrumbs={[['Auto accident injuries', '/auto-accident-injuries/']]}
 >
   <section class="page-hero">
     <div class="page-hero__ring" aria-hidden="true"></div>
@@ -91,14 +84,8 @@ const faqs = [
         <p class="muted small">First visits usually take about <Ph value="[FIRST VISIT LENGTH — e.g., 45–60 minutes]" />.</p>
 
         <h2 id="faq">Common questions</h2>
-        <div class="faq">
-          {faqs.map((f) => (
-            <details>
-              <summary>{f.q}</summary>
-              <p><Ph value={f.a} /></p>
-            </details>
-          ))}
-        </div>
+        <FaqList items={pageFaqs} />
+        <p><a href="/faq/">More questions and answers</a> · <a href="/what-to-do-after-a-car-accident/">What to do after a car accident</a></p>
       </article>
 
       <aside class="aa__aside" aria-label="Request a visit">
@@ -174,34 +161,5 @@ const faqs = [
   .timeline h3 {
     margin: 4px 0 4px !important;
     font-size: 1.05rem;
-  }
-  .faq details {
-    border-bottom: 1px solid var(--line);
-    padding: 4px 0;
-  }
-  .faq summary {
-    cursor: pointer;
-    font-weight: 700;
-    padding: 14px 32px 14px 0;
-    position: relative;
-    list-style: none;
-  }
-  .faq summary::-webkit-details-marker {
-    display: none;
-  }
-  .faq summary::after {
-    content: '+';
-    position: absolute;
-    right: 4px;
-    top: 10px;
-    font-size: 1.5rem;
-    font-weight: 400;
-    color: var(--navy);
-  }
-  .faq details[open] summary::after {
-    content: '–';
-  }
-  .faq p {
-    color: var(--slate-text);
   }
 </style>

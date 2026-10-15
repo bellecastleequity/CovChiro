@@ -3,7 +3,7 @@ import Base from '../layouts/Base.astro';
 import Ph from '../components/Ph.astro';
 import { site } from '../lib/site';
 ---
-<Base title="Accessibility Statement | Therapy & Injury" description="Therapy & Injury is committed to making this website usable for everyone, including people with disabilities.">
+<Base breadcrumbs={[["Accessibility", "/accessibility/"]]} title="Accessibility Statement | Therapy & Injury" description="Therapy & Injury is committed to making this website usable for everyone, including people with disabilities.">
   <section class="page-hero">
     <div class="wrap">
       <span class="eyebrow">Accessibility</span>
@@ -13,7 +13,7 @@ import { site } from '../lib/site';
   </section>
   <section class="section">
     <div class="wrap prose">
-      <p>{site.legalName} wants everyone, including people with disabilities, to be able to use this website and request care. We aim to meet the <strong>Web Content Accessibility Guidelines (WCAG) 2.2, Level AA</strong>.</p>
+      <p>{site.brandName} wants everyone, including people with disabilities, to be able to use this website and request care. We aim to meet the <strong>Web Content Accessibility Guidelines (WCAG) 2.2, Level AA</strong>.</p>
 
       <h2>What we do</h2>
       <ul>

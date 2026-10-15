@@ -1,0 +1,42 @@
+---
+import Base from '../../layouts/Base.astro';
+import PageHero from '../../components/PageHero.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import { conditions } from '../../lib/conditions';
+import { abs } from '../../lib/site';
+
+const list = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: 'Conditions',
+  itemListElement: conditions.map((c, i) => ({ '@type': 'ListItem', position: i + 1, name: c.name, url: abs(`/conditions/${c.slug}/`) })),
+};
+---
+<Base
+  title="Conditions We See: Whiplash, Neck & Back Pain | Therapy & Injury"
+  description="Plain-language guides to whiplash, neck pain, back pain, headaches, and delayed pain after a car accident, and how a chiropractic evaluation works in Florida."
+  schema={list}
+  breadcrumbs={[['Conditions', '/conditions/']]}
+>
+  <PageHero eyebrow="Conditions" title="Common injuries and pain we see" lede="Plain-language guides to what you may be feeling after an accident or from everyday strain, and when to get medical care first." crumbs={[['Conditions', '/conditions/']]} />
+  <section class="section">
+    <div class="wrap grid grid--2">
+      {conditions.map((c) => (
+        <a class="card cond" href={`/conditions/${c.slug}/`}>
+          <h2>{c.name}</h2>
+          <p>{c.lede}</p>
+          <span class="cond__more">Read the guide <span aria-hidden="true">→</span></span>
+        </a>
+      ))}
+    </div>
+    <p class="wrap small muted note">Educational information only, not medical advice. If you have a medical emergency, call 911.</p>
+  </section>
+  <CtaBand />
+</Base>
+<style>
+  .cond { text-decoration: none; display: flex; flex-direction: column; gap: 8px; }
+  .cond h2 { font-size: 1.35rem; margin: 0; }
+  .cond p { color: var(--slate-text); margin: 0; }
+  .cond__more { font-weight: 700; margin-top: auto; padding-top: 6px; }
+  .note { margin-top: 24px; }
+</style>

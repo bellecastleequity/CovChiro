@@ -1,0 +1,49 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import Ph from '../components/Ph.astro';
+import { site, branches, branchName, branchPath, isOpen, oneLineAddress, telHref, hoursSummary } from '../lib/site';
+const mainTel = telHref(site.mainPhone);
+---
+<Base
+  title="Contact Therapy & Injury | Chiropractic Locations in Florida"
+  description="Contact Therapy & Injury: phone numbers, addresses, and hours for each Florida location, plus how to request a chiropractic appointment online."
+  breadcrumbs={[['Contact', '/contact/']]}
+>
+  <PageHero eyebrow="Contact" title="Contact Therapy & Injury" lede="The fastest way to reach us is to call or send a request to the location you’d like to visit." crumbs={[['Contact', '/contact/']]} />
+  <section class="section">
+    <div class="wrap">
+      <div class="grid grid--2">
+        {branches.map((b) => (
+          <div class="card ct">
+            <h2>{branchName(b)}</h2>
+            {isOpen(b) ? (
+              <Fragment>
+                <p>{oneLineAddress(b)}</p>
+                <p>{hoursSummary(b)}</p>
+                <p>Phone: {telHref(b.phone) ? <a href={telHref(b.phone)}>{b.phone}</a> : <Ph value={b.phone} />}</p>
+                <a class="btn btn--primary" href={`${branchPath(b)}#request`}>Request an appointment</a>
+              </Fragment>
+            ) : (
+              <Fragment>
+                <p class="muted">Coming soon.</p>
+                <a class="btn btn--ghost" href={branchPath(b)}>Get notified</a>
+              </Fragment>
+            )}
+          </div>
+        ))}
+      </div>
+      <div class="prose ct__general">
+        <h2>General questions</h2>
+        <p>Phone: {mainTel ? <a href={mainTel}>{site.mainPhone}</a> : <Ph value={site.mainPhone} />} · Email: <Ph value={site.mainEmail} /></p>
+        <p class="small muted">Please don’t send medical details, insurance numbers, or Social Security numbers by email or web form. If you have a medical emergency, call 911.</p>
+      </div>
+    </div>
+  </section>
+</Base>
+<style>
+  .ct h2 { font-size: 1.3rem; }
+  .ct p { margin: 0 0 6px; }
+  .ct .btn { margin-top: 12px; }
+  .ct__general { margin-top: 48px; }
+</style>

@@ -1,0 +1,65 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import CtaBand from '../components/CtaBand.astro';
+import { abs } from '../lib/site';
+
+const path = '/what-to-do-after-a-car-accident/';
+const steps = [
+  { h: 'Check for injuries and call 911 if anyone is hurt', p: 'Your safety comes first. If anyone has severe pain, trouble breathing, a head injury, or can’t move normally, call 911 and don’t move them unless they’re in danger.' },
+  { h: 'Move to safety', p: 'If the vehicles can be driven and no one is hurt, move out of traffic. Turn on hazard lights.' },
+  { h: 'Call the police', p: 'Florida law requires reporting a crash that causes injury or death, or apparent property damage of $500 or more (Fla. Stat. §316.065). A police report can also help with your insurance claim. Ask for the report number.' },
+  { h: 'Exchange information and take photos', p: 'Get names, phone numbers, insurance companies, policy numbers, and license plates. Photograph the vehicles, the scene, and any visible injuries.' },
+  { h: 'Notify your auto insurer', p: 'Report the accident to your own insurer promptly and write down your claim number.' },
+  { h: 'Get checked within 14 days', p: 'Florida PIP generally requires initial care within 14 days of the accident for benefits to apply. Even if you feel fine, some symptoms appear later.' },
+  { h: 'Keep a simple record', p: 'Note new symptoms, missed work, and appointments. Keep receipts and paperwork in one folder.' },
+];
+const article = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'What to do after a car accident in Florida: a calm checklist',
+  description: 'Seven steps after a Florida car accident, from safety and police reports to the 14-day PIP window.',
+  url: abs(path),
+  author: { '@id': abs('/#org') },
+  publisher: { '@id': abs('/#org') },
+  image: abs('/og/default.png'),
+  inLanguage: 'en-US',
+};
+---
+<Base
+  title="What to Do After a Car Accident in Florida: A Calm Checklist"
+  description="Seven steps after a Florida car accident: safety, police report, photos, notifying your insurer, and getting checked within the 14-day PIP window."
+  schema={article}
+  ogType="article"
+  breadcrumbs={[['What to do after a car accident', path]]}
+>
+  <PageHero eyebrow="Car accident checklist" title="What to do after a car accident in Florida" lede="A calm, step-by-step checklist. Save it in your phone or glove box." crumbs={[['What to do after a car accident', path]]} />
+  <section class="section">
+    <div class="wrap prose">
+      <ol class="steps-list">
+        {steps.map((s) => (
+          <li>
+            <h2>{s.h}</h2>
+            <p>{s.p}</p>
+          </li>
+        ))}
+      </ol>
+      <div class="notice">
+        <p style="margin:0">Learn more about <a href="/auto-accident-injuries/">Florida’s 14-day PIP rule and your first visit</a>, or read about <a href="/conditions/delayed-pain-after-a-car-accident/">delayed pain after a car accident</a>.</p>
+      </div>
+      <p class="small muted" style="margin-top:1.5em">Educational information only, not medical, legal, or insurance advice. Requirements depend on your policy and current Florida law.</p>
+    </div>
+  </section>
+  <CtaBand />
+</Base>
+<style>
+  .steps-list { list-style: none; padding: 0 !important; counter-reset: s; }
+  .steps-list li { counter-increment: s; position: relative; padding-left: 60px; margin-bottom: 8px; }
+  .steps-list li::before {
+    content: counter(s); position: absolute; left: 0; top: 2px; width: 40px; height: 40px; border-radius: 50%;
+    background: var(--navy); color: var(--white); font-weight: 800; display: grid; place-items: center;
+    box-shadow: 0 0 0 5px var(--teal-soft);
+  }
+  .steps-list h2 { font-size: 1.25rem; margin: 6px 0 6px !important; }
+  .steps-list p { color: var(--slate-text); }
+</style>

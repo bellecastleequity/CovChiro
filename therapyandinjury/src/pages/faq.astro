@@ -1,0 +1,28 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import FaqList from '../components/FaqList.astro';
+import CtaBand from '../components/CtaBand.astro';
+import { faqs, faqGroups } from '../lib/faq';
+import { faqSchema } from '../lib/site';
+---
+<Base
+  title="FAQ: Car Accidents, Florida PIP & Chiropractic Visits"
+  description="Answers about Florida’s 14-day PIP rule, billing auto insurance, what to bring to your first chiropractic visit, and how Therapy & Injury works."
+  schema={faqSchema(faqs)}
+  breadcrumbs={[['FAQ', '/faq/']]}
+>
+  <PageHero eyebrow="FAQ" title="Frequently asked questions" lede="Straight answers about car accidents, Florida PIP, and visiting a Therapy & Injury location." crumbs={[['FAQ', '/faq/']]} />
+  <section class="section">
+    <div class="wrap prose">
+      {faqGroups.map((g) => (
+        <Fragment>
+          <h2>{g.title}</h2>
+          <FaqList items={faqs.filter((f) => f.group === g.key)} />
+        </Fragment>
+      ))}
+      <p class="small muted" style="margin-top:2em">Educational information only, not medical, legal, or insurance advice.</p>
+    </div>
+  </section>
+  <CtaBand />
+</Base>

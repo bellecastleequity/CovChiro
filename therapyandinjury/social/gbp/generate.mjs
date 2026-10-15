@@ -18,7 +18,7 @@ for (const b of branches) {
   const open = b.status === 'open';
   const url = `${site.domain}/${b.slug}/`;
   const utm = `${url}?utm_source=google&utm_medium=organic&utm_campaign=gbp-${b.slug}`;
-  const doctors = b.doctors.length ? b.doctors.map((d) => d.name).join(', ') : `[TREATING DOCTOR(S) FOR ${b.city.toUpperCase()}]`;
+  const doctors = b.doctors.length ? b.doctors.map((d) => d.name).join(', ') : 'Florida-licensed chiropractic physicians';
   const address = b.address ? `${b.address.street}\n${b.address.city}, ${b.address.state} ${b.address.zip}` : `[${b.city.toUpperCase()} ADDRESS]`;
   const hours = b.hours.length
     ? WEEK.map((d) => {

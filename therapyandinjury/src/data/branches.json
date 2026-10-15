@@ -4,6 +4,7 @@
     "city": "Ocala",
     "county": "Marion",
     "status": "open",
+    "legalEntity": "",
     "openingNote": "",
     "address": {
       "street": "2649 W Silver Springs Blvd",
@@ -30,12 +31,7 @@
         "closes": "18:00"
       }
     ],
-    "doctors": [
-      {
-        "name": "Michael L. McPherson, D.C.",
-        "title": "Chiropractic Physician"
-      }
-    ],
+    "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "[OCALA GOOGLE BUSINESS PROFILE URL]",
     "domains": [
@@ -60,6 +56,7 @@
     "city": "Orlando",
     "county": "Orange",
     "status": "coming soon",
+    "legalEntity": "",
     "openingNote": "[ORLANDO OPENING DATE]",
     "address": null,
     "phone": "[ORLANDO PHONE]",
@@ -89,6 +86,7 @@
     "city": "Lake Mary",
     "county": "Seminole",
     "status": "coming soon",
+    "legalEntity": "",
     "openingNote": "[LAKE MARY OPENING DATE]",
     "address": null,
     "phone": "[LAKE MARY PHONE]",
@@ -117,6 +115,7 @@
     "city": "Deltona",
     "county": "Volusia",
     "status": "coming soon",
+    "legalEntity": "",
     "openingNote": "[DELTONA OPENING DATE]",
     "address": null,
     "phone": "[DELTONA PHONE]",
@@ -145,6 +144,7 @@
     "city": "DeLand",
     "county": "Volusia",
     "status": "coming soon",
+    "legalEntity": "",
     "openingNote": "[DELAND OPENING DATE]",
     "address": null,
     "phone": "[DELAND PHONE]",

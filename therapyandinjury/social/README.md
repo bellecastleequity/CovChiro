@@ -28,7 +28,7 @@ npm run social:export -- ocala   # one city ("brand" for the brand account)
 Each export pulls the city, address, and hours from `src/data/branches.json`. "Now open" templates are exported only for open branches.
 
 ## Compliance built in
-- Every template footer says "Chiropractic · Michael L. McPherson, D.C."
+- Every template footer says "Chiropractic care · Florida-licensed D.C."
 - Health tips carry "Educational only, not medical advice."
 - No offers, testimonials, "best"/"#1" claims, or guarantees.
 - All accident content is general education. Never target or reply to a specific crash or person.

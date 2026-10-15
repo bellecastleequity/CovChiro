@@ -1,12 +1,10 @@
 <?php
 /**
- * Appointment request handler — [PLACEHOLDER BACKEND]
+ * Appointment request handler (plain email, owner decision Oct 2026).
  *
  * Minimal handler for Namecheap cPanel hosting. It emails each request to the
- * branch's inbox. Before launch:
- *   1. Fill in $RECIPIENTS with real branch inboxes (and the FROM address on your domain).
- *   2. Decide whether plain email is acceptable for these requests, or switch to a
- *      HIPAA-eligible form service / encrypted inbox (see TODO.md).
+ * branch's inbox. Before launch, fill in $RECIPIENTS with real branch inboxes and
+ * $FROM with an address on therapyandinjury.com (see TODO.md).
  * Until $RECIPIENTS is filled in, this returns 503 and the site tells visitors to call.
  *
  * Accepts ONLY: branch, type, name, phone, preferred_time, accident_date, consent.

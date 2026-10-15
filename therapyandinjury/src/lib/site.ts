@@ -10,6 +10,8 @@ export type Branch = {
   city: string;
   county: string;
   status: 'open' | 'coming soon';
+  /** The location's own professional entity (e.g. its PLLC), shown on its page once set. */
+  legalEntity: string;
   openingNote: string;
   address: { street: string; city: string; state: string; zip: string } | null;
   phone: string;
@@ -74,10 +76,73 @@ export const hoursSummary = (b: Branch) => {
   return [...groups].map(([time, days]) => `${days.join(', ')} · ${time}`).join('; ');
 };
 
-export const doctorsFor = (b: Branch): Doctor[] =>
-  b.doctors.length ? b.doctors : [{ name: site.founder.name, title: 'Chiropractic Physician' }];
+/** Treating doctors listed in branches.json. Empty until the practice confirms who they are. */
+export const doctorsFor = (b: Branch): Doctor[] => b.doctors;
+
+/**
+ * Only open locations are indexed. Coming-soon pages stay reachable (city domains point to them)
+ * but are noindex and left out of the sitemap, IndexNow and llms.txt, so search engines never
+ * see thin pages without an address.
+ */
+export const isIndexable = (b: Branch) => isOpen(b);
+export const indexableBranches = branches.filter(isIndexable);
 
 export const abs = (path: string) => new URL(path, site.domain).toString();
+
+/** Organization + WebSite JSON-LD, emitted on every page (same @id everywhere). */
+export const orgSchema = () => {
+  const sameAs = [site.social.instagram, site.social.facebook, ...branches.map((b) => b.gbpUrl)].filter((u) => !isPlaceholder(u));
+  return [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      '@id': abs('/#org'),
+      name: site.brandName,
+      alternateName: site.alternateNames,
+      url: site.domain,
+      logo: { '@type': 'ImageObject', url: abs('/brand/favicon-512.png'), width: 512, height: 512 },
+      image: abs('/og/default.png'),
+      slogan: site.tagline,
+      areaServed: { '@type': 'State', name: 'Florida' },
+      ...(sameAs.length ? { sameAs } : {}),
+      subOrganization: indexableBranches.map((b) => ({ '@id': abs(`${branchPath(b)}#business`) })),
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      '@id': abs('/#website'),
+      name: site.brandName,
+      alternateName: site.alternateNames,
+      url: site.domain,
+      publisher: { '@id': abs('/#org') },
+      inLanguage: 'en-US',
+    },
+  ];
+};
+
+/** BreadcrumbList JSON-LD from [name, path] pairs (Home is added first). */
+export const breadcrumbSchema = (trail: [string, string][]) => ({
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [['Home', '/'] as [string, string], ...trail].map(([name, path], i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name,
+    item: abs(path),
+  })),
+});
+
+/** FAQPage JSON-LD. Answers may contain [PLACEHOLDER] text; those questions are left out until filled. */
+export const faqSchema = (faqs: { q: string; a: string }[]) => {
+  const ready = faqs.filter((f) => !/\[[^\]]+\]/.test(f.a));
+  return ready.length
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: ready.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+      }
+    : null;
+};
 
 const SCHEMA_DAY: Record<string, string> = Object.fromEntries(WEEK.map((d) => [d, `https://schema.org/${d}`]));
 
@@ -92,18 +157,13 @@ export const branchSchema = (b: Branch) => {
     image: abs(`/og/${b.slug}.png`),
     logo: abs('/brand/favicon-512.png'),
     areaServed: [b.city, ...b.nearbyAreas].map((name) => ({ '@type': 'City', name })),
-    parentOrganization: {
-      '@type': 'Organization',
-      name: site.brandName,
-      legalName: site.legalName,
-      url: site.domain,
-    },
-    employee: doctorsFor(b).map((d) => ({
-      '@type': 'Person',
-      name: d.name,
-      jobTitle: d.title,
-    })),
+    parentOrganization: { '@id': abs('/#org') },
+    hasMap: b.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(oneLineAddress(b))}` : undefined,
   };
+  if (!isPlaceholder(b.legalEntity)) schema.legalName = b.legalEntity;
+  if (b.doctors.length) {
+    schema.employee = b.doctors.map((d) => ({ '@type': 'Person', name: d.name, jobTitle: d.title }));
+  }
   if (b.address) {
     schema.address = {
       '@type': 'PostalAddress',

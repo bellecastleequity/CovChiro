@@ -26,9 +26,9 @@ _Generated from `src/data/branches.json` by `social/gbp/generate.mjs`. Edit the 
 
 Add holiday hours before each holiday.
 
-## Business description (≤750 characters, 648 now)
+## Business description (≤750 characters, 656 now)
 ```
-Orlando Therapy & Injury provides chiropractic injury and wellness care in Orlando, Florida, for people recovering from auto accident injuries, neck and back pain, and everyday strain. Visits start with a chiropractic history and examination and a clear, plain-language explanation of what we find. Care may include chiropractic adjustments, rehabilitation and therapeutic exercise, and soft-tissue therapy. Patients who need a medical evaluation are referred to an independent medical provider. Chiropractic care by [TREATING DOCTOR(S) FOR ORLANDO]. Serving Orlando and nearby communities including Winter Park, Maitland, Kissimmee, Winter Garden.
+Orlando Therapy & Injury provides chiropractic injury and wellness care in Orlando, Florida, for people recovering from auto accident injuries, neck and back pain, and everyday strain. Visits start with a chiropractic history and examination and a clear, plain-language explanation of what we find. Care may include chiropractic adjustments, rehabilitation and therapeutic exercise, and soft-tissue therapy. Patients who need a medical evaluation are referred to an independent medical provider. Chiropractic care by Florida-licensed chiropractic physicians. Serving Orlando and nearby communities including Winter Park, Maitland, Kissimmee, Winter Garden.
 ```
 
 ## Services (add each under "Services")

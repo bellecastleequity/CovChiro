@@ -13,6 +13,7 @@ const schema = {
 const soon = branches.filter((b) => b.status !== 'open');
 ---
 <Base
+  breadcrumbs={[['Locations', '/locations/']]}
   title="Locations | Therapy & Injury Chiropractic Clinics in Florida"
   description={`Find a Therapy & Injury chiropractic location in Florida: ${branches.map((b) => b.city).join(', ')}. See hours, directions, and request an appointment.`}
   schema={schema}

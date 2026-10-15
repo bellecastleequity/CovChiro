@@ -1,0 +1,31 @@
+---
+/**
+ * Google Analytics 4, off until site.seo.gaMeasurementId is set (G-XXXXXXXXXX).
+ * Same rules as CoverageOnCall: automatic page views are off and a cleaned page view is
+ * sent instead, keeping only utm_* and gclid. Form fields are never sent to Google.
+ */
+import { site } from '../lib/site';
+const id = site.seo.gaMeasurementId;
+const valid = /^G-[A-Z0-9]{4,15}$/.test(id);
+---
+{valid && (
+  <Fragment>
+    <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${id}`}></script>
+    <script is:inline define:vars={{ id }}>
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function () { dataLayer.push(arguments); };
+      gtag('js', new Date());
+      gtag('config', id, { send_page_view: false });
+      var keep = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid'];
+      var src = new URLSearchParams(location.search), q = new URLSearchParams();
+      keep.forEach(function (k) { if (src.get(k)) q.set(k, src.get(k)); });
+      var qs = q.toString();
+      gtag('event', 'page_view', {
+        send_to: id,
+        page_location: location.origin + location.pathname + (qs ? '?' + qs : ''),
+        page_path: location.pathname,
+        page_title: document.title,
+      });
+    </script>
+  </Fragment>
+)}

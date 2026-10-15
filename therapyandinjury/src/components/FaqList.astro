@@ -1,0 +1,45 @@
+---
+import Ph from './Ph.astro';
+interface Props { items: { q: string; a: string }[]; headingLevel?: 'h3' | 'h2' }
+const { items } = Astro.props;
+---
+<div class="faq">
+  {items.map((f) => (
+    <details>
+      <summary>{f.q}</summary>
+      <p><Ph value={f.a} /></p>
+    </details>
+  ))}
+</div>
+
+<style>
+  .faq details {
+    border-bottom: 1px solid var(--line);
+    padding: 4px 0;
+  }
+  .faq summary {
+    cursor: pointer;
+    font-weight: 700;
+    padding: 14px 32px 14px 0;
+    position: relative;
+    list-style: none;
+  }
+  .faq summary::-webkit-details-marker {
+    display: none;
+  }
+  .faq summary::after {
+    content: '+';
+    position: absolute;
+    right: 4px;
+    top: 10px;
+    font-size: 1.5rem;
+    font-weight: 400;
+    color: var(--navy);
+  }
+  .faq details[open] summary::after {
+    content: '–';
+  }
+  .faq p {
+    color: var(--slate-text);
+  }
+</style>

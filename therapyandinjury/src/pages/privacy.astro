@@ -3,7 +3,7 @@ import Base from '../layouts/Base.astro';
 import Ph from '../components/Ph.astro';
 import { site } from '../lib/site';
 ---
-<Base title="Privacy Policy | Therapy & Injury" description="How Therapy & Injury and Florida Therapy & Injury, P.A. collect and use information submitted through this website.">
+<Base breadcrumbs={[["Privacy Policy", "/privacy/"]]} title="Privacy Policy | Therapy & Injury" description="How Therapy & Injury collects, uses, and protects information submitted through therapyandinjury.com and its location pages.">
   <section class="page-hero">
     <div class="wrap">
       <span class="eyebrow">Legal</span>
@@ -15,7 +15,7 @@ import { site } from '../lib/site';
     <div class="wrap prose">
       <p class="notice"><span class="ph">[DRAFT — HAVE YOUR ATTORNEY OR COMPLIANCE ADVISOR REVIEW BEFORE LAUNCH]</span></p>
 
-      <p>This policy explains how {site.legalName} (“Therapy &amp; Injury,” “we,” “us”) handles information collected through {new URL(site.domain).host} and its location pages.</p>
+      <p>This policy explains how Therapy &amp; Injury and its locations (“we,” “us”) handle information collected through {new URL(site.domain).host} and its location pages.</p>
 
       <h2>Information we collect</h2>
       <p>Our appointment request form asks only for your <strong>name</strong>, <strong>phone number</strong>, <strong>preferred appointment time</strong>, the <strong>location</strong> you chose, and, if you choose to share it, the <strong>date of your accident</strong>. Please do not send medical details, insurance or claim numbers, or Social Security numbers through this website.</p>
@@ -32,7 +32,7 @@ import { site } from '../lib/site';
       <p>Only service providers that help us run this website and respond to your request (for example, our web host and email provider: <Ph value="[LIST PROVIDERS — e.g., Namecheap hosting, form/email service]" />), or when required by law.</p>
 
       <h2>Cookies, analytics, and third-party content</h2>
-      <p>This website does not use advertising cookies. <Ph value="[IF YOU ADD ANALYTICS, NAME THE TOOL HERE — currently none]" /> Location pages include an embedded Google Map; Google may collect information when the map loads under <a href="https://policies.google.com/privacy" rel="noopener" target="_blank">Google’s Privacy Policy<span class="sr-only"> (opens in a new tab)</span></a>.</p>
+      <p>This website does not use advertising cookies. {site.seo.gaMeasurementId ? <Fragment>We use Google Analytics to understand which pages are visited, in aggregate; it never receives what you type into our forms.</Fragment> : <Fragment>We do not currently use analytics.</Fragment>} Location pages include an embedded Google Map; Google may collect information when the map loads under <a href="https://policies.google.com/privacy" rel="noopener" target="_blank">Google’s Privacy Policy<span class="sr-only"> (opens in a new tab)</span></a>.</p>
 
       <h2>Your health information</h2>
       <p>Once you become a patient, your health information is protected under federal and Florida law and our <Ph value="[LINK TO NOTICE OF PRIVACY PRACTICES]" />. This website policy covers only information submitted through the website.</p>

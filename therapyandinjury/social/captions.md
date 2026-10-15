@@ -1,10 +1,10 @@
 # Launch post captions & hashtags
 
 Replace `{City}` with the branch city (or post from the brand account as "Therapy & Injury").
-Every caption ends with the sign-off so the profession and the D.C. are always named.
+Every caption ends with the sign-off so the profession is always named. Once a location's treating doctor is confirmed, add their name with “D.C.” to the sign-off.
 
 **Sign-off (paste at the end of every caption):**
-> {City} Therapy & Injury · Chiropractic care by Michael L. McPherson, D.C. · Educational only, not medical advice.
+> {City} Therapy & Injury · Chiropractic care by Florida-licensed chiropractic physicians (D.C.) · Educational only, not medical advice.
 
 **Base hashtags (pick 5–8 per post):**
 `#{City}FL #{City}Florida #Chiropractic #Chiropractor #ChiropracticCare #InjuryRecovery #NeckPain #BackPain #Wellness #FloridaChiropractor`
@@ -66,8 +66,8 @@ Missing something? Come anyway. We’ll help you sort it out.
 
 `#FirstVisit #Chiropractic #FloridaPIP #{City}FL #InjuryRecovery`
 
-## 06 · Meet the doctor — `posts/06-meet-the-doctor.html`
-Meet Michael L. McPherson, D.C., Florida chiropractic physician and founder of Therapy & Injury. [ONE OR TWO SENTENCES FROM DR. MCPHERSON — e.g., what they enjoy about helping patients]
+## 06 · Meet the doctor — `posts/06-meet-the-doctor.html` (HOLD until the doctor is confirmed)
+Meet [DOCTOR NAME], D.C., Florida-licensed chiropractic physician at {City} Therapy & Injury. [ONE OR TWO SENTENCES FROM THE DOCTOR]
 
 Say hi when you visit us in {City}! 👋
 

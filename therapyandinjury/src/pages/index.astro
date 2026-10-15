@@ -3,28 +3,14 @@ import Base from '../layouts/Base.astro';
 import LocationPicker from '../components/LocationPicker.astro';
 import BranchCard from '../components/BranchCard.astro';
 import Icon from '../components/Icon.astro';
-import { site, branches, abs } from '../lib/site';
+import { branches } from '../lib/site';
+import { conditions } from '../lib/conditions';
 import { services, steps } from '../lib/content';
 
-const schema = [
-  {
-    '@context': 'https://schema.org',
-    '@type': 'Organization',
-    '@id': abs('/#org'),
-    name: site.brandName,
-    legalName: site.legalName,
-    url: site.domain,
-    logo: abs('/brand/favicon-512.png'),
-    slogan: site.tagline,
-    founder: { '@type': 'Person', name: site.founder.name, jobTitle: 'Chiropractic Physician' },
-  },
-  { '@context': 'https://schema.org', '@type': 'WebSite', name: site.brandName, url: site.domain },
-];
 ---
 <Base
   title="Therapy & Injury | Chiropractic Injury & Wellness Care in Florida"
-  description="Chiropractic care for auto accident injuries, neck and back pain, and whole-body recovery. Locations across Florida, starting in Ocala. Michael L. McPherson, D.C."
-  schema={schema}
+  description="Florida chiropractic care for auto accident injuries and neck and back pain. PIP generally requires care within 14 days of a crash. Now open in Ocala."
 >
   <section class="hero">
     <div class="wrap hero__in">
@@ -97,7 +83,21 @@ const schema = [
     </div>
   </section>
 
-  <section class="section story">
+  <section class="section">
+    <div class="wrap">
+      <span class="eyebrow">Guides</span>
+      <h2>Understand what you’re feeling</h2>
+      <p class="lede">Plain-language guides to common injuries, and what to do after a crash.</p>
+      <ul class="guides">
+        <li><a href="/what-to-do-after-a-car-accident/">What to do after a car accident in Florida</a></li>
+        <li><a href="/auto-accident-injuries/">Florida’s 14-day PIP rule</a></li>
+        {conditions.map((c) => <li><a href={`/conditions/${c.slug}/`}>{c.name}</a></li>)}
+        <li><a href="/faq/">Frequently asked questions</a></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section section--gray story">
     <div class="wrap story__in">
       <div class="story__art">
         <img src="/brand/mark.svg" alt="The Therapy & Injury mark: a navy ring with a teal arrow sweeping up and around it" width="320" height="320" loading="lazy" />
@@ -245,6 +245,36 @@ const schema = [
     font-weight: 700;
   }
 
+  .guides {
+    list-style: none;
+    padding: 0;
+    margin: 28px 0 0;
+    display: grid;
+    gap: 12px;
+  }
+  @media (min-width: 720px) {
+    .guides {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (min-width: 1000px) {
+    .guides {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  .guides a {
+    display: block;
+    height: 100%;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font-weight: 600;
+    text-decoration: none;
+    background: var(--white);
+  }
+  .guides a:hover {
+    border-color: var(--teal);
+  }
   .story__in {
     display: grid;
     gap: 40px;
