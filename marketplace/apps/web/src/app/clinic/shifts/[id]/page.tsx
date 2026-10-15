@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Ban, Car, Heart, MessageSquare, Radar, Star, Zap } from "lucide-react";
+import { env } from "@cm/config";
 import { prisma } from "@cm/db";
 import { clinicView } from "@cm/core";
 import { dispatch, getSettings, sameProvider, shiftCandidates, shiftChanges, stay, supply as supplySvc, timeclock, volume } from "@cm/services";
@@ -591,7 +592,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
               </CardBody>
             </Card>
           ) : null}
-          {stayView ? <StayCard view={stayView} /> : null}
+          {stayView ? <StayCard view={stayView} browserKey={env().GOOGLE_MAPS_BROWSER_KEY} /> : null}
           {["DRAFT", "OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING", "CONFIRMED"].includes(shift.status) ? (
             <Card>
               <CardHeader title="Cancel shift" />

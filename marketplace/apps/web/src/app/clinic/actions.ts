@@ -315,7 +315,8 @@ export const stayDetailsAction = formAction(async (fd) => {
     removeFile: fd.get("removeFile") === "on",
   });
   revalidatePath("/clinic", "layout");
-  return out.sharedWith ? `Saved and shared with ${out.sharedWith}.` : "Saved. Your provider will see it once they're confirmed.";
+  const saved = out.sharedWith ? `Saved and shared with ${out.sharedWith}.` : "Saved. Your provider will see it once they're confirmed.";
+  return out.warnings.length ? `${saved} Please check the dates: ${out.warnings.join(" ")}` : saved;
 });
 
 export const favoriteAction = formAction(async (fd) => {

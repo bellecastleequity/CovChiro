@@ -6,13 +6,14 @@ import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, PhiNotice, Select, Textarea } from "@/components/ui/form";
 import { Alert } from "@/components/ui/misc";
+import { AddressInput } from "@/components/ui/address-input";
 
 type View = Awaited<ReturnType<typeof stay.clinicStayView>>;
 
 const local = (d: Date | null, tz: string) => (d ? DateTime.fromJSDate(d, { zone: tz }).toFormat("yyyy-MM-dd'T'HH:mm") : "");
 
 /** Clinic-booked stay: the details form, who to book it for, and whether the provider has seen it. */
-export function StayCard({ view }: { view: View }) {
+export function StayCard({ view, browserKey }: { view: View; browserKey?: string | null }) {
   const { shift, live } = view;
   const tz = shift.location.timeZone;
   return (
@@ -44,6 +45,12 @@ export function StayCard({ view }: { view: View }) {
         ) : (
           <p className="mb-4 text-sm text-slate-600">You can book ahead; the guest name to use appears here once a provider is confirmed. If the provider you get lives nearby, no stay is needed.</p>
         )}
+        {view.dateWarnings.length ? (
+          <Alert tone="warning" title="Check the stay dates" className="mb-4">
+            {view.dateWarnings.map((w) => <span key={w} className="block">{w}</span>)}
+            <span className="mt-1 block text-xs">Stays normally start within 24 hours before the shift and end within 24 hours after it. You can still save if the dates are right.</span>
+          </Alert>
+        ) : null}
         <ActionForm action={stayDetailsAction} className="space-y-3">
           <input type="hidden" name="shiftId" value={shift.id} />
           <div className="grid gap-3 sm:grid-cols-[11rem_1fr]">
@@ -58,8 +65,8 @@ export function StayCard({ view }: { view: View }) {
               <Input name="place" maxLength={200} defaultValue={shift.stayPlace ?? ""} placeholder="e.g. Hampton Inn Downtown" />
             </Field>
           </div>
-          <Field label="Address">
-            <Input name="address" maxLength={300} defaultValue={shift.stayAddress ?? ""} placeholder="Street, city, state ZIP" />
+          <Field label="Address" hint="Start typing the place or its address and pick it from the list.">
+            <AddressInput name="address" defaultValue={shift.stayAddress ?? ""} placeholder="Start typing the hotel or address…" browserKey={browserKey} />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Check-in">

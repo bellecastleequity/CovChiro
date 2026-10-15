@@ -156,3 +156,23 @@ export function stayReminderDue(startsAt: Date, now: Date, marks: number[]): num
   const due = [...marks].sort((a, b) => a - b).find((m) => left <= m);
   return due ?? null;
 }
+
+export type StayDateIssue = "CHECKIN_AFTER_START" | "CHECKIN_TOO_EARLY" | "CHECKOUT_BEFORE_START" | "CHECKOUT_TOO_LATE";
+
+/**
+ * Stay dates vs the shift (or the whole multi-day booking): check-in should be within `windowHours`
+ * before the start, check-out between the start and `windowHours` after the end. Advice only.
+ */
+export function stayDateIssues(stay: { checkIn: Date | null; checkOut: Date | null }, work: { startsAt: Date; endsAt: Date }, windowHours = 24): StayDateIssue[] {
+  const out: StayDateIssue[] = [];
+  const w = windowHours * HOUR;
+  if (stay.checkIn) {
+    if (+stay.checkIn > +work.startsAt) out.push("CHECKIN_AFTER_START");
+    else if (+stay.checkIn < +work.startsAt - w) out.push("CHECKIN_TOO_EARLY");
+  }
+  if (stay.checkOut) {
+    if (+stay.checkOut < +work.startsAt) out.push("CHECKOUT_BEFORE_START");
+    else if (+stay.checkOut > +work.endsAt + w) out.push("CHECKOUT_TOO_LATE");
+  }
+  return out;
+}

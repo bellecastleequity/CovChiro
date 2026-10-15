@@ -93,4 +93,18 @@ describe("clinic-booked stay details", () => {
     expect((await notes(p.user.id, "stay_ack_nudge")).length).toBe(1);
     expect(assignmentId).toBeTruthy();
   });
+
+  it("warns (but saves) when the stay dates don't line up with the shift", async () => {
+    const { clinic, shiftId, startsAt } = await booked();
+    const tz = (await prisma.shift.findUniqueOrThrow({ where: { id: shiftId }, include: { location: true } })).location.timeZone;
+    const { DateTime } = await import("luxon");
+    const local = (d: Date) => DateTime.fromJSDate(d, { zone: tz }).toFormat("yyyy-MM-dd'T'HH:mm");
+    const good = await stay.saveStayDetails(clinic.actor, shiftId, input({ checkIn: local(new Date(+startsAt - 17 * H)), checkOut: local(new Date(+startsAt + 2 * H)) }));
+    expect(good.warnings).toEqual([]);
+    const late = await stay.saveStayDetails(clinic.actor, shiftId, input({ checkIn: local(new Date(+startsAt + 24 * H)), checkOut: local(new Date(+startsAt + 48 * H)) }));
+    expect(late.warnings.length).toBe(2);
+    expect(late.warnings[0]).toMatch(/after the shift starts/);
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: shiftId } })).stayCheckIn).not.toBeNull();
+    expect((await stay.clinicStayView(clinic.actor, shiftId)).dateWarnings.length).toBe(2);
+  });
 });

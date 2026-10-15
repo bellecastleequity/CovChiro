@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { DomainError, HOUR, STAY_KINDS, STAY_MISSING_WORDS, stayAccessVisible, stayLabel, stayMissing, stayReminderDue, staySharedWith, type StayKind } from "@cm/core";
+import { DomainError, HOUR, STAY_KINDS, stayDateIssues, type StayDateIssue, STAY_MISSING_WORDS, stayAccessVisible, stayLabel, stayMissing, stayReminderDue, staySharedWith, type StayKind } from "@cm/core";
 import { prisma, type Assignment, type Shift } from "@cm/db";
 import { storageProvider } from "@cm/integrations";
 import { audit, getSettings, requireAdmin, requireClinic, requireProvider, SYSTEM, type Actor } from "./context";
@@ -54,6 +54,27 @@ async function clinicShift(actor: Actor, shiftId: string) {
   return shift;
 }
 
+/**
+ * Advice when the stay doesn't line up with the work: check-in within 24 h before the start, check-out
+ * between the start and 24 h after the end. A multi-day booking is measured as one stay (first start, last end).
+ */
+export async function stayDateWarnings(shift: Pick<Shift, "id" | "startsAt" | "endsAt" | "shiftGroupId" | "stayCheckIn" | "stayCheckOut">, tz: string): Promise<string[]> {
+  let work = { startsAt: shift.startsAt, endsAt: shift.endsAt };
+  if (shift.shiftGroupId) {
+    const days = await prisma.shift.findMany({ where: { shiftGroupId: shift.shiftGroupId, status: { not: "CANCELLED" } }, select: { startsAt: true, endsAt: true } });
+    if (days.length) work = { startsAt: new Date(Math.min(...days.map((d) => +d.startsAt))), endsAt: new Date(Math.max(...days.map((d) => +d.endsAt))) };
+  }
+  const t = (d: Date) => d.toLocaleString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const what = shift.shiftGroupId ? "the booking" : "the shift";
+  const words: Record<StayDateIssue, string> = {
+    CHECKIN_AFTER_START: `Check-in (${shift.stayCheckIn ? t(shift.stayCheckIn) : ""}) is after ${what} starts (${t(work.startsAt)}). Your provider usually needs to check in the evening before. Please check the dates.`,
+    CHECKIN_TOO_EARLY: `Check-in (${shift.stayCheckIn ? t(shift.stayCheckIn) : ""}) is more than 24 hours before ${what} starts (${t(work.startsAt)}). Is the extra night intended? If not, please check the dates.`,
+    CHECKOUT_BEFORE_START: `Check-out (${shift.stayCheckOut ? t(shift.stayCheckOut) : ""}) is before ${what} starts (${t(work.startsAt)}), so the stay wouldn't cover the night before. Please check the dates.`,
+    CHECKOUT_TOO_LATE: `Check-out (${shift.stayCheckOut ? t(shift.stayCheckOut) : ""}) is more than 24 hours after ${what} ends (${t(work.endsAt)}). Is the extra night intended? If not, please check the dates.`,
+  };
+  return stayDateIssues({ checkIn: shift.stayCheckIn, checkOut: shift.stayCheckOut }, work).map((i) => words[i]);
+}
+
 /** The clinic saves the stay details. They're saved for the booked provider (if any), who is told. */
 export async function saveStayDetails(actor: Actor, shiftId: string, input: StayInput) {
   const shift = await clinicShift(actor, shiftId);
@@ -93,7 +114,8 @@ export async function saveStayDetails(actor: Actor, shiftId: string, input: Stay
       sms: true,
     });
   }
-  return { sharedWith: live?.provider.displayName ?? null };
+  const warnings = await stayDateWarnings({ ...shift, stayCheckIn: checkIn, stayCheckOut: checkOut }, tz);
+  return { sharedWith: live?.provider.displayName ?? null, warnings };
 }
 
 /** Everything the clinic's stay card needs, including who to book it for. */
@@ -104,6 +126,7 @@ export async function clinicStayView(actor: Actor, shiftId: string) {
   const facts = { place: shift.stayPlace, address: shift.stayAddress, checkInAt: shift.stayCheckIn, bookedUnder: shift.stayBookedUnder, forAssignmentId: shift.stayForAssignmentId };
   return {
     shift,
+    dateWarnings: await stayDateWarnings(shift, shift.location.timeZone),
     live: live
       ? {
           id: live.id,

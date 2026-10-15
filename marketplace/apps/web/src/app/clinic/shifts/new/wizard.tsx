@@ -288,6 +288,37 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
   const supOk = !prof?.supervisionRequired || (sup.supervisorName.length > 1 && sup.supervisorLicenseNumber.length > 2 && sup.onSiteEntireShift && !!sup.supervisorProfessionCode);
   const daysOk = days.every((d) => d.date && d.start && d.end) && new Set(days.map((d) => d.date)).size === days.length;
   const canNext = [!!locationId, !!prof?.enabled && supOk, daysOk, !volumePriced || visitsNum != null, true][step];
+  // Why Continue (or Post) is greyed out: the fields still to fill in on this step.
+  const stillNeeded: string[] = (() => {
+    const out: string[] = [];
+    if (step === 0 && !locationId) out.push("choose a location");
+    if (step === 1) {
+      if (!prof) out.push("choose the type of provider you need");
+      else if (!prof.enabled) out.push("pick a provider type that's available in your state");
+      else if (prof.supervisionRequired) {
+        if (sup.supervisorName.length <= 1) out.push("supervisor's name");
+        if (!sup.supervisorProfessionCode) out.push("supervisor's profession");
+        if (sup.supervisorLicenseNumber.length <= 2) out.push("supervisor's license number");
+        if (!sup.onSiteEntireShift) out.push("confirm the supervisor is on site for the whole shift");
+      }
+    }
+    if (step === 2) {
+      days.forEach((d, i) => {
+        const label = days.length > 1 ? `day ${i + 1}: ` : "";
+        if (!d.date) out.push(`${label}date`);
+        if (!d.start) out.push(`${label}start time`);
+        if (!d.end) out.push(`${label}end time`);
+      });
+      if (new Set(days.map((d) => d.date)).size !== days.length) out.push("two days have the same date: change or remove one");
+    }
+    if (step === 3 && volumePriced && visitsNum == null) out.push("expected patient visits");
+    if (step === STEPS.length - 1) {
+      if (volumePriced && !volumeAck) out.push("tick \"I understand the final price may go up…\"");
+      if (rateActive && !ratePrice?.ok) out.push("a clinic-set rate within the allowed range");
+      if (rateActive && ratePrice?.ok && !rateAck) out.push("accept the clinic-set rate terms");
+    }
+    return out;
+  })();
   // Re-price (and recount available providers) as the shift changes, from the When step on.
   useEffect(() => {
     if (step < 2 || !daysOk) return;
@@ -670,6 +701,12 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 <Button type="button" disabled={!canNext} onClick={() => { const next = step + 1; setStep(next); if (next >= 3) refreshQuote(); }}>Continue</Button>
               ) : null}
             </div>
+            {stillNeeded.length ? (
+              <p role="status" className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                <span>{step < STEPS.length - 1 ? "To continue, fill in: " : "To post, still needed: "}{stillNeeded.join("; ")}.</span>
+              </p>
+            ) : null}
           </CardBody>
         </Card>
       </div>

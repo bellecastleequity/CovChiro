@@ -109,3 +109,15 @@ describe("clinic-booked stay details", () => {
     expect(stayReminderDue(START, at(-1), [72, 48, 24])).toBeNull();
   });
 });
+
+describe("stay dates vs the shift", () => {
+  it("flags check-in after the start or over 24 h early, check-out before the start or over 24 h after the end", async () => {
+    const { stayDateIssues } = await import("../src");
+    const work = { startsAt: START, endsAt: new Date(+START + 8 * H) };
+    expect(stayDateIssues({ checkIn: at(18), checkOut: new Date(+START - 2 * H) }, work)).toEqual(["CHECKOUT_BEFORE_START"]);
+    expect(stayDateIssues({ checkIn: at(18), checkOut: new Date(+START + 2 * H) }, work)).toEqual([]);
+    expect(stayDateIssues({ checkIn: at(-1), checkOut: null }, work)).toEqual(["CHECKIN_AFTER_START"]);
+    expect(stayDateIssues({ checkIn: at(30), checkOut: new Date(+START + 40 * H) }, work)).toEqual(["CHECKIN_TOO_EARLY", "CHECKOUT_TOO_LATE"]);
+    expect(stayDateIssues({ checkIn: null, checkOut: null }, work)).toEqual([]);
+  });
+});
