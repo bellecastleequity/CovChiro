@@ -1,0 +1,64 @@
+---
+/**
+ * Phone-first action bar pinned to the bottom of small screens, the way every major
+ * Florida injury-clinic site does it: call, request, directions. Hidden on desktop.
+ */
+import { site, type Branch, telHref, directionsUrl, isOpen } from '../lib/site';
+interface Props { branch?: Branch }
+const { branch: b } = Astro.props;
+const tel = b ? telHref(b.phone) : telHref(site.mainPhone);
+const dir = b && isOpen(b) ? directionsUrl(b) : '';
+const requestHref = b ? '#request' : '/locations/';
+---
+<nav class="mab" aria-label="Quick actions">
+  {tel && <a class="mab__btn" href={tel}><span aria-hidden="true">📞</span> Call</a>}
+  <a class="mab__btn mab__btn--primary" href={requestHref}>{b && !isOpen(b) ? 'Get notified' : b ? 'Request visit' : 'Find a location'}</a>
+  {dir && <a class="mab__btn" href={dir} rel="noopener" target="_blank"><span aria-hidden="true">📍</span> Directions<span class="sr-only"> (opens in a new tab)</span></a>}
+</nav>
+<style>
+  .mab {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: rgb(255 255 255 / 97%);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -6px 20px rgb(11 45 91 / 8%);
+  }
+  .mab__btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 48px;
+    border-radius: 999px;
+    border: 2px solid var(--navy);
+    font-weight: 700;
+    text-decoration: none;
+    color: var(--navy);
+    background: var(--white);
+  }
+  .mab__btn--primary {
+    background: var(--teal);
+    border-color: var(--teal);
+    flex: 1.4;
+  }
+  @media (min-width: 900px) {
+    .mab {
+      display: none;
+    }
+  }
+  :global(body) {
+    padding-bottom: 76px;
+  }
+  @media (min-width: 900px) {
+    :global(body) {
+      padding-bottom: 0;
+    }
+  }
+</style>

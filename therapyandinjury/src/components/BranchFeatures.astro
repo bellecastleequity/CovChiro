@@ -1,0 +1,34 @@
+---
+import { type Branch, featureLabels } from '../lib/site';
+interface Props { branch: Branch }
+const labels = featureLabels(Astro.props.branch);
+---
+{labels.length > 0 && (
+  <ul class="bf" aria-label="At this location">
+    {labels.map((l) => <li>{l}</li>)}
+  </ul>
+)}
+<style>
+  .bf {
+    list-style: none;
+    padding: 0;
+    margin: 18px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .bf li {
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--white);
+    border: 1px solid var(--line);
+  }
+  .bf li::before {
+    content: '✓';
+    color: #0fa89c;
+    font-weight: 800;
+    margin-right: 6px;
+  }
+</style>

@@ -17,6 +17,17 @@ export type Branch = {
   phone: string;
   email: string;
   hours: Hours[];
+  /**
+   * Visit conveniences competitors lead with (same-day, walk-ins, Spanish, X-ray).
+   * Each shows on the site ONLY when set to true / listed, so nothing is claimed until confirmed.
+   */
+  features: {
+    sameDayAppointments: boolean;
+    walkInsWelcome: boolean;
+    eveningHours: boolean;
+    onSiteXray: boolean;
+    languages: string[];
+  };
   doctors: Doctor[];
   mapEmbed: string;
   gbpUrl: string;
@@ -74,6 +85,19 @@ export const hoursSummary = (b: Branch) => {
     groups.set(key, [...(groups.get(key) ?? []), h.day.slice(0, 3)]);
   }
   return [...groups].map(([time, days]) => `${days.join(', ')} · ${time}`).join('; ');
+};
+
+/** Confirmed conveniences for a location, as short labels (empty until the practice turns them on). */
+export const featureLabels = (b: Branch): string[] => {
+  const f = b.features;
+  const otherLangs = f.languages.filter((l) => l !== 'English');
+  return [
+    f.sameDayAppointments && 'Same-day appointments',
+    f.walkInsWelcome && 'Walk-ins welcome',
+    f.eveningHours && 'Evening hours',
+    f.onSiteXray && 'X-rays on-site',
+    ...otherLangs.map((l) => (l === 'Español' ? 'Hablamos español' : `${l} spoken`)),
+  ].filter(Boolean) as string[];
 };
 
 /** Treating doctors listed in branches.json. Empty until the practice confirms who they are. */
@@ -161,6 +185,7 @@ export const branchSchema = (b: Branch) => {
     hasMap: b.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(oneLineAddress(b))}` : undefined,
   };
   if (!isPlaceholder(b.legalEntity)) schema.legalName = b.legalEntity;
+  if (b.features.languages.length) schema.knowsLanguage = b.features.languages.map((l) => (l === 'Español' ? 'es' : l === 'English' ? 'en' : l));
   if (b.doctors.length) {
     schema.employee = b.doctors.map((d) => ({ '@type': 'Person', name: d.name, jobTitle: d.title }));
   }

@@ -3,8 +3,19 @@ import Base from '../layouts/Base.astro';
 import LocationPicker from '../components/LocationPicker.astro';
 import BranchCard from '../components/BranchCard.astro';
 import Icon from '../components/Icon.astro';
-import { branches } from '../lib/site';
+import { branches, featureLabels } from '../lib/site';
 import { conditions } from '../lib/conditions';
+
+// Trust strip: only statements that are true for every location today. Conveniences like
+// same-day visits or Spanish appear only when a location turns them on in branches.json.
+const everywhere = (label: string) => branches.filter((b) => b.status === 'open').every((b) => featureLabels(b).includes(label));
+const trust = [
+  'Florida-licensed chiropractic physicians',
+  'Auto accident (PIP) patients welcome',
+  'Plain-language care plans',
+  'Referrals to independent medical providers when needed',
+  ...['Same-day appointments', 'Walk-ins welcome', 'Hablamos español'].filter(everywhere),
+];
 import { services, steps } from '../lib/content';
 
 ---
@@ -31,6 +42,12 @@ import { services, steps } from '../lib/content';
         <img src="/brand/mark.svg" alt="" width="420" height="420" />
       </div>
     </div>
+  </section>
+
+  <section class="trust" aria-label="Why patients choose us">
+    <ul class="wrap trust__list">
+      {trust.map((t) => <li>{t}</li>)}
+    </ul>
   </section>
 
   <section id="locations" class="section section--gray">
@@ -170,6 +187,27 @@ import { services, steps } from '../lib/content';
     }
   }
 
+  .trust {
+    background: var(--navy);
+    color: var(--white);
+    padding-block: 18px;
+  }
+  .trust__list {
+    list-style: none;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .trust__list li::before {
+    content: '✓';
+    color: var(--teal);
+    font-weight: 800;
+    margin-right: 8px;
+  }
   .loc__head {
     display: grid;
     gap: 24px;

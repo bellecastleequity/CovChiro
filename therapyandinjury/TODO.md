@@ -32,6 +32,7 @@ Most facts live in two data files. Edit those first:
 - [ ] `legalEntity`: the location's PLLC name, once formed
 - [ ] `gbpUrl`: Google Business Profile link, once the profile is verified
 - [ ] `geo.lat` / `geo.lng`: from Google Maps (right-click the pin to copy). Improves local SEO.
+- [ ] `features`: turn on only what's true. Options are `sameDayAppointments`, `walkInsWelcome`, `eveningHours`, `onSiteXray`, and `languages` (add `"Español"` if a Spanish speaker is on staff). Each one shows as a chip on the location page. See `docs/competitor-research.md`.
 - [ ] `nearbyAreas`: confirm the list (currently Silver Springs, Belleview, Dunnellon, Marion Oaks, Summerfield, Anthony, Reddick)
 
 ### Coming-soon locations: Orlando, Lake Mary, Deltona, DeLand
@@ -60,6 +61,7 @@ Most facts live in two data files. Edit those first:
 
 ## 2. Compliance flags (Florida advertising)
 - [ ] **Doctor name in ads:** Florida chiropractic advertising rules may require ads to include the chiropractic physician's name. Until a doctor is named, ads say "chiropractic" and "Florida-licensed D.C." Confirm with counsel before running paid ads, and add the name once known.
+- [ ] **Competitor tactics to avoid until counsel approves:** free transportation, "no out-of-pocket cost" claims, and waiving PIP copays or deductibles (patient-brokering and kickback risk, Fla. Stat. §817.505 and §456.054). See `docs/competitor-research.md`.
 - [ ] **Free or discounted offers:** none in any copy right now. If you add one, Florida requires a specific disclaimer (Fla. Stat. §456.062). Have it reviewed before posting.
 - [ ] **Brand pack wording:** the `05-stacked-with-tagline` lockups say "INJURY TREATMENT CENTER" and "Expert Injury Care." I didn't use them, because "expert" can read as a specialty claim. Confirm with counsel before using those files.
 - [ ] **Brand pack typeface:** the pre-made lockups use a Nexa-style face, not Inter. Pick one for signage so they match.

@@ -31,6 +31,15 @@
         "closes": "18:00"
       }
     ],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "[OCALA GOOGLE BUSINESS PROFILE URL]",
@@ -62,6 +71,15 @@
     "phone": "[ORLANDO PHONE]",
     "email": "[ORLANDO EMAIL]",
     "hours": [],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "",
@@ -92,6 +110,15 @@
     "phone": "[LAKE MARY PHONE]",
     "email": "[LAKE MARY EMAIL]",
     "hours": [],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "",
@@ -121,6 +148,15 @@
     "phone": "[DELTONA PHONE]",
     "email": "[DELTONA EMAIL]",
     "hours": [],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "",
@@ -150,6 +186,15 @@
     "phone": "[DELAND PHONE]",
     "email": "[DELAND EMAIL]",
     "hours": [],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "",

@@ -7,6 +7,7 @@ import Base from '../layouts/Base.astro';
 import AppointmentForm from '../components/AppointmentForm.astro';
 import BranchCard from '../components/BranchCard.astro';
 import Icon from '../components/Icon.astro';
+import BranchFeatures from '../components/BranchFeatures.astro';
 import Ph from '../components/Ph.astro';
 import {
   type Branch,
@@ -49,7 +50,7 @@ const description = open
   : `${name} is coming soon, bringing chiropractic injury and wellness care to ${b.city} and ${b.county} County, FL. Get notified when we open.`;
 
 ---
-<Base title={title} description={description} city={b.city} ctaHref="#request" ogImage={`/og/${b.slug}.png`} schema={branchSchema(b)} breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)]]} noindex={!isIndexable(b)}>
+<Base title={title} description={description} city={b.city} ctaHref="#request" ogImage={`/og/${b.slug}.png`} schema={branchSchema(b)} breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)]]} noindex={!isIndexable(b)} branch={b}>
   <section class="page-hero">
     <div class="page-hero__ring" aria-hidden="true"></div>
     <div class="wrap">
@@ -72,6 +73,7 @@ const description = open
           <span class="badge badge--soon">Coming soon</span> We’re preparing to open in {b.city}. Expected opening: <Ph value={b.openingNote} fallback="[OPENING DATE]" />.
         </p>
       )}
+      <BranchFeatures branch={b} />
       <div class="btn-row bh__ctas">
         <a class="btn btn--primary" href="#request">{open ? 'Request an appointment' : 'Get notified'}</a>
         {tel && <a class="btn btn--ghost" href={tel}>Call {b.phone}</a>}

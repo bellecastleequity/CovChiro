@@ -8,6 +8,7 @@ import PageHero from '../../components/PageHero.astro';
 import FaqList from '../../components/FaqList.astro';
 import AppointmentForm from '../../components/AppointmentForm.astro';
 import Ph from '../../components/Ph.astro';
+import BranchFeatures from '../../components/BranchFeatures.astro';
 import { conditions } from '../../lib/conditions';
 import { type Branch, indexableBranches, branchName, branchPath, oneLineAddress, telHref, hoursSummary, abs, faqSchema } from '../../lib/site';
 
@@ -46,6 +47,7 @@ const service = {
   title={`Car Accident Chiropractor in ${b.city}, FL | ${name}`}
   description={`Hurt in a car accident in ${b.city}? ${name} offers chiropractic evaluations and care for auto injuries. PIP generally requires care within 14 days.`}
   city={b.city}
+  branch={b}
   ctaHref="#request"
   ogImage={`/og/${b.slug}.png`}
   schema={[service, faqSchema(faqs)]}
@@ -57,6 +59,7 @@ const service = {
     lede={`${name} provides chiropractic evaluations and care for people hurt in car accidents in ${b.city} and ${b.county} County. Florida PIP generally requires initial care within 14 days of the crash.`}
     crumbs={[['Locations', '/locations/'], [b.city, branchPath(b)], ['Car accident chiropractor', path]]}
   >
+    <BranchFeatures branch={b} />
     <div class="btn-row" style="margin-top:24px">
       <a class="btn btn--primary" href="#request">Request an appointment</a>
       {tel && <a class="btn btn--ghost" href={tel}>Call {b.phone}</a>}
