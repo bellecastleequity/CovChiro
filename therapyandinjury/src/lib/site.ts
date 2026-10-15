@@ -115,7 +115,9 @@ export const abs = (path: string) => new URL(path, site.domain).toString();
 
 /** Organization + WebSite JSON-LD, emitted on every page (same @id everywhere). */
 export const orgSchema = () => {
-  const sameAs = [site.social.instagram, site.social.facebook, ...branches.map((b) => b.gbpUrl)].filter((u) => !isPlaceholder(u));
+  // sameAs also carries profile URLs from business directories (e.g. Black-owned business
+  // directories) so search engines connect those listings to this site without any visible text.
+  const sameAs = [site.social.instagram, site.social.facebook, ...branches.map((b) => b.gbpUrl), ...site.directoryListings].filter((u) => !isPlaceholder(u));
   return [
     {
       '@context': 'https://schema.org',

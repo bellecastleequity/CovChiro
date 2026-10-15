@@ -60,6 +60,11 @@ Add holiday hours before each holiday.
 ${description}
 \`\`\`
 
+## Attributes (Edit profile → Business information → More)
+${site.ownership?.blackOwned ? '- [ ] **From the business → "Identifies as Black-owned"**: turn this on. It shows on Google Search and Maps, makes the listing eligible for Black-owned filters and searches, and never appears on the website.\n' : ''}- [ ] Accessibility: wheelchair-accessible entrance, parking, and restroom (only if true)
+- [ ] Amenities: restroom, Wi-Fi (only if true)
+- [ ] Appointments: "Appointment required" or "Walk-ins welcome", matching \`features\` in branches.json
+
 ## Services (add each under "Services")
 - Chiropractic injury evaluation
 - Chiropractic adjustments

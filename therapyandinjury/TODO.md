@@ -60,6 +60,14 @@ Most facts live in two data files. Edit those first:
 
 ---
 
+## Black-owned visibility (off-site; see `docs/black-owned-visibility.md`)
+- [ ] For each location's Google Business Profile, turn on "Identifies as Black-owned"
+- [ ] Yelp: claim each location and turn on the "Black-owned" attribute
+- [ ] List with Black-owned business directories and local Black chambers, and paste each profile URL into `site.json` → `directoryListings`
+- [ ] Optional: Florida Office of Supplier Diversity MBE certification
+
+---
+
 ## 2. Compliance flags (Florida advertising)
 - [ ] **Doctor name in ads:** Florida chiropractic advertising rules may require ads to include the chiropractic physician's name. Until a doctor is named, ads say "chiropractic" and "Florida-licensed D.C." Confirm with counsel before running paid ads, and add the name once known.
 - [ ] **Competitor tactics to avoid until counsel approves:** free transportation, "no out-of-pocket cost" claims, and waiving PIP copays or deductibles (patient-brokering and kickback risk, Fla. Stat. §817.505 and §456.054). See `docs/competitor-research.md`.

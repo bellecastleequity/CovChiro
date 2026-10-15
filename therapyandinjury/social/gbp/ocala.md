@@ -36,6 +36,12 @@ Add holiday hours before each holiday.
 Ocala Therapy & Injury provides chiropractic injury and wellness care in Ocala, Florida, for people recovering from auto accident injuries, neck and back pain, and everyday strain. Visits start with a chiropractic history and examination and a clear, plain-language explanation of what we find. Care may include chiropractic adjustments, rehabilitation and therapeutic exercise, and soft-tissue therapy. Patients who need a medical evaluation are referred to an independent medical provider. Chiropractic care by Florida-licensed chiropractic physicians. Serving Ocala and nearby communities including Silver Springs, Belleview, Dunnellon, Marion Oaks.
 ```
 
+## Attributes (Edit profile → Business information → More)
+- [ ] **From the business → "Identifies as Black-owned"**: turn this on. It shows on Google Search and Maps, makes the listing eligible for Black-owned filters and searches, and never appears on the website.
+- [ ] Accessibility: wheelchair-accessible entrance, parking, and restroom (only if true)
+- [ ] Amenities: restroom, Wi-Fi (only if true)
+- [ ] Appointments: "Appointment required" or "Walk-ins welcome", matching `features` in branches.json
+
 ## Services (add each under "Services")
 - Chiropractic injury evaluation
 - Chiropractic adjustments
