@@ -82,9 +82,9 @@ describe("clinic-booked stay details", () => {
     expect((await clinicNotes(clinic.org.id, "stay_details_reminder")).length).toBe(2);
     // Other bookings may be swept too; check this booking's own once-only record.
     await stay.staySweep(new Date(+startsAt - 20 * H));
-    expect(await prisma.digestSend.findUnique({ where: { key: `stay:${assignmentId}:admin` } })).not.toBeNull();
+    expect(await prisma.digestSend.findUnique({ where: { key: `stay:${shiftId}:${p.id}:admin` } })).not.toBeNull();
     await stay.staySweep(new Date(+startsAt - 19 * H));
-    expect(await prisma.digestSend.count({ where: { key: { startsWith: `stay:${assignmentId}:` } } })).toBe(3);
+    expect(await prisma.digestSend.count({ where: { key: { startsWith: `stay:${shiftId}:${p.id}:` } } })).toBe(3);
     // Complete now: the provider is nudged once to tap Got it.
     const legal = (await prisma.provider.findUniqueOrThrow({ where: { id: p.id } })).legalName;
     await stay.saveStayDetails(clinic.actor, shiftId, input({ bookedUnder: legal, checkIn: "2030-01-01T15:00" }));
@@ -106,5 +106,24 @@ describe("clinic-booked stay details", () => {
     expect(late.warnings[0]).toMatch(/after the shift starts/);
     expect((await prisma.shift.findUniqueOrThrow({ where: { id: shiftId } })).stayCheckIn).not.toBeNull();
     expect((await stay.clinicStayView(clinic.actor, shiftId)).dateWarnings.length).toBe(2);
+  });
+
+  it("a two-day booking is one trip: one provider, stay saved once for both days, one notice, one Got it", async () => {
+    const clinic = await makeClinic();
+    const first = futureWeekday(16);
+    const days = [0, 1].map((i) => ({ locationId: clinic.location.id, professionCode: "DC", startsAt: new Date(+first.startsAt + i * 86_400_000), endsAt: new Date(+first.endsAt + i * 86_400_000), lodgingAllowed: true, lodgingByClinic: true, lodgingStayKind: "HOTEL" as const, sameProvider: false }));
+    const { bookings } = await import("@cm/services");
+    const { groupId, shiftIds } = await bookings.createMultiDay(clinic.actor, days, { post: true });
+    // Booking the stay yourself means one provider for every day, even if "same provider" wasn't ticked.
+    expect((await prisma.shiftGroup.findUniqueOrThrow({ where: { id: groupId! } })).sameProviderRequired).toBe(true);
+    const p = await makeProvider({ home: TAMPA, maxDriveMinutes: 90, willingOvernight: true });
+    const ids: string[] = [];
+    for (const id of shiftIds) ids.push((await adminAssign(admin, id, p.id)).assignmentId);
+    expect((await clinicNotes(clinic.org.id, "stay_details_needed")).length).toBe(1);
+    await stay.saveStayDetails(clinic.actor, shiftIds[0], input({ bookedUnder: "Jane", checkIn: "2030-01-01T15:00" }));
+    expect((await view(ids[1]))).toMatchObject({ status: "READY", place: "Hampton Inn" });
+    expect((await notes(p.user.id, "stay_details")).length).toBe(1);
+    await stay.ackStay(p.actor, ids[0]);
+    expect((await prisma.assignment.findUniqueOrThrow({ where: { id: ids[1] } })).stayAckAt).not.toBeNull();
   });
 });

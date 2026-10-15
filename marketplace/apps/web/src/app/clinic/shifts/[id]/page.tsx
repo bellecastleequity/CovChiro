@@ -142,9 +142,13 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
     ? await prisma.shift.findMany({
         where: { shiftGroupId: shift.shiftGroupId },
         orderBy: { startsAt: "asc" },
-        select: { id: true, startsAt: true, endsAt: true, status: true, assignments: { where: { status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] } }, select: { provider: { select: { displayName: true } } } } },
+        select: { id: true, startsAt: true, endsAt: true, status: true, clinicPriceCents: true, promoDiscountCents: true, assignments: { where: { status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] } }, select: { clinicTotalCents: true, provider: { select: { displayName: true } } } } },
       })
     : [];
+  // Whole multi-day booking: each booked day's total, else the day's coverage price (travel is added per day at confirmation).
+  const liveDays = groupDays.filter((d) => d.status !== "CANCELLED");
+  const bookingTotalCents = liveDays.reduce((t, d) => t + (d.assignments[0]?.clinicTotalCents ?? d.clinicPriceCents - d.promoDiscountCents), 0);
+  const bookingUnbooked = liveDays.some((d) => !d.assignments.length);
   const multiApplicants = shift.shiftGroupId
     ? Object.values(
         (await prisma.application.findMany({ where: { status: "ACTIVE", shift: { shiftGroupId: shift.shiftGroupId } }, select: { providerId: true, provider: { select: { displayName: true } } } })).reduce<Record<string, { providerId: string; name: string; days: number }>>((m, x) => {
@@ -550,7 +554,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
         </div>
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Price" />
+            <CardHeader title={liveDays.length > 1 ? `Price · day ${dayNo} of ${liveDays.length}` : "Price"} />
             <CardBody className="space-y-2 text-sm">
               <div className="flex justify-between"><span>Coverage</span><span className="tabular-nums">{money(view.coverageCents)}</span></div>
               {(() => {
@@ -575,7 +579,13 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
               {shift.lodgingByClinic ? <div className="flex justify-between"><span>Lodging</span><span className="text-slate-500">Booked by you</span></div> : null}
               {view.airfareCents ? <div className="flex justify-between"><span>Airfare allowance (per trip)</span><span className="tabular-nums">{money(view.airfareCents)}</span></div> : null}
               {!live && shift.flyInAirfareCents !== null ? <p className="text-xs text-slate-500">Fly-in OK: a provider who flies in adds {money(shift.flyInAirfareCents)} airfare per trip and {money(shift.flyInNightlyCents)} a night instead of mileage.</p> : null}
-              <div className="flex justify-between border-t border-slate-100 pt-2 font-semibold"><span>Total</span><span className="tabular-nums">{money(view.totalCents)}</span></div>
+              <div className="flex justify-between border-t border-slate-100 pt-2 font-semibold"><span>{liveDays.length > 1 ? "This day" : "Total"}</span><span className="tabular-nums">{money(view.totalCents)}</span></div>
+              {liveDays.length > 1 ? (
+                <>
+                  <div className="flex justify-between rounded-lg bg-brand-50 px-2 py-1.5 font-semibold text-brand-800"><span>Whole booking ({liveDays.length} days)</span><span className="tabular-nums">{money(bookingTotalCents)}</span></div>
+                  {bookingUnbooked ? <p className="text-xs text-slate-500">Days not booked yet show the coverage price; mileage{shift.lodgingAllowed && !shift.lodgingByClinic ? " and any lodging" : ""} are added for each day when a provider is confirmed.</p> : null}
+                </>
+              ) : null}
               {live?.payments.filter((p) => p.type !== "REFUND").map((p) => <div key={p.id} className="flex justify-between text-xs text-slate-500"><span>{p.type.toLowerCase()}</span><span>{money(p.amountCents, { exact: true })} · {p.status.toLowerCase()}</span></div>)}
             </CardBody>
           </Card>

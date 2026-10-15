@@ -20,7 +20,7 @@ export function StayCard({ view, browserKey }: { view: View; browserKey?: string
     <Card id="stay">
       <CardHeader
         title="Your provider's stay"
-        description="You book and pay for the stay (hotel, Airbnb, apartment or other) when your provider lives far enough away to stay the night before. Only the provider you confirm sees these details."
+        description={`You book and pay for the stay (hotel, Airbnb, apartment or other) when your provider lives far enough away to stay the night before.${shift.shiftGroupId ? " One stay covers every day of this booking: saving here updates all the days your provider covers." : ""} Only the provider you confirm sees these details.`}
       />
       <CardBody>
         {live ? (

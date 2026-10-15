@@ -32,6 +32,24 @@ export interface StayInput {
 
 const LIVE = ["CONFIRMED", "IN_PROGRESS"] as const;
 
+/** A multi-day booking is one trip: its days share the stay when the same provider covers them. */
+const tripKey = (sh: { id: string; shiftGroupId: string | null }) => sh.shiftGroupId ?? sh.id;
+
+/** The days the stay saved on `shiftId` applies to: itself plus the booking's other days covered by the same provider (or, unbooked, the other unbooked days). */
+async function stayDays(shift: { id: string; shiftGroupId: string | null }) {
+  const days = await prisma.shift.findMany({
+    where: shift.shiftGroupId ? { shiftGroupId: shift.shiftGroupId, status: { notIn: ["CANCELLED", "COMPLETED", "UNFILLED"] } } : { id: shift.id },
+    include: { assignments: { where: { status: { in: [...LIVE] } }, include: { provider: true } } },
+    orderBy: { startsAt: "asc" },
+  });
+  const mine = days.find((d) => d.id === shift.id);
+  const who = mine?.assignments[0]?.providerId ?? null;
+  return days.filter((d) => d.id === shift.id || (d.assignments[0]?.providerId ?? null) === who);
+}
+
+/** Claim a once-only notice. */
+const once = async (key: string, userId: string) => (await prisma.digestSend.createMany({ data: [{ key, userId }], skipDuplicates: true })).count === 1;
+
 /** This booking needs a stay: fly-in, or a drive past the lodging trigger. */
 export function needsStay(a: Pick<Assignment, "flyIn" | "driveMinutes">, s: { "pricing.lodgingTriggerMinutes": number }): boolean {
   return a.flyIn || a.driveMinutes > s["pricing.lodgingTriggerMinutes"];
@@ -83,7 +101,8 @@ export async function saveStayDetails(actor: Actor, shiftId: string, input: Stay
   const checkIn = localTime(input.checkIn, tz);
   const checkOut = localTime(input.checkOut, tz);
   if (checkIn && checkOut && checkOut <= checkIn) throw new DomainError("VALIDATION", "Check-out has to be after check-in.");
-  const live = await prisma.assignment.findFirst({ where: { shiftId, status: { in: [...LIVE] } }, include: { provider: true } });
+  const days = await stayDays(shift);
+  const live = days.find((d) => d.id === shiftId)?.assignments[0] ?? null;
   if (input.removeFile && shift.stayFileKey) await storageProvider().remove(shift.stayFileKey).catch(() => undefined);
   const now = new Date();
   const data = {
@@ -98,24 +117,27 @@ export async function saveStayDetails(actor: Actor, shiftId: string, input: Stay
     lodgingStayDetails: clip(input.notes, 600),
     stayFileKey: input.fileKey ?? (input.removeFile ? null : shift.stayFileKey),
     stayUpdatedAt: now,
-    stayForAssignmentId: live?.id ?? null,
   };
-  await prisma.shift.update({ where: { id: shiftId }, data });
-  if (live) await prisma.assignment.update({ where: { id: live.id }, data: { stayAckAt: null } });
-  await audit(prisma, actor, "shift.stay_details", "Shift", shiftId, null, { ...data, stayAccess: data.stayAccess ? "(set)" : null, forAssignmentId: live?.id ?? null });
+  // Saved for every day of the trip this provider covers (each day keeps its own booking id).
+  for (const d of days) {
+    const a = d.assignments[0] ?? null;
+    await prisma.shift.update({ where: { id: d.id }, data: { ...data, stayForAssignmentId: a?.id ?? null } });
+    if (a) await prisma.assignment.update({ where: { id: a.id }, data: { stayAckAt: null } });
+  }
+  await audit(prisma, actor, "shift.stay_details", "Shift", shiftId, null, { ...data, stayAccess: data.stayAccess ? "(set)" : null, forAssignmentId: live?.id ?? null, days: days.map((d) => d.id) });
   const s = await getSettings();
   if (live && needsStay(live, s)) {
     await notify(prisma, live.provider.userId, {
       template: "stay_details",
       title: shift.stayUpdatedAt ? "Your stay details were updated" : "Your stay is booked",
-      body: `${shift.location.name} ${shift.stayUpdatedAt ? "updated" : "added"} where you're staying for your ${shift.startsAt.toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric" })} shift${data.stayPlace ? ` (${data.stayPlace})` : ""}. Open the shift to see the details and tap "Got it".`,
-      link: `/provider/assignments/${live.id}`,
+      body: `${shift.location.name} ${shift.stayUpdatedAt ? "updated" : "added"} where you're staying for ${days.length > 1 ? `your ${days.length}-day booking from ${days[0].startsAt.toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric" })}` : `your ${shift.startsAt.toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric" })} shift`}${data.stayPlace ? ` (${data.stayPlace})` : ""}. Open the shift to see the details and tap "Got it".`,
+      link: `/provider/assignments/${days[0].assignments[0]?.id ?? live.id}`,
       ctaLabel: "See your stay",
       sms: true,
     });
   }
   const warnings = await stayDateWarnings({ ...shift, stayCheckIn: checkIn, stayCheckOut: checkOut }, tz);
-  return { sharedWith: live?.provider.displayName ?? null, warnings };
+  return { sharedWith: live?.provider.displayName ?? null, warnings, days: days.length };
 }
 
 /** Everything the clinic's stay card needs, including who to book it for. */
@@ -185,19 +207,26 @@ export async function ackStay(actor: Actor, assignmentId: string) {
   const a = await prisma.assignment.findFirst({ where: { id: assignmentId, providerId }, include: { shift: { include: { location: true } } } });
   if (!a) throw new DomainError("NOT_FOUND", "Shift not found");
   if (!staySharedWith({ forAssignmentId: a.shift.stayForAssignmentId }, a.id)) throw new DomainError("CONFLICT", "The clinic is still updating your stay.");
-  await prisma.assignment.update({ where: { id: a.id }, data: { stayAckAt: new Date() } });
+  // One "Got it" covers every day of the trip.
+  await prisma.assignment.updateMany({
+    where: { providerId, status: { in: [...LIVE] }, ...(a.shift.shiftGroupId ? { shift: { shiftGroupId: a.shift.shiftGroupId } } : { id: a.id }) },
+    data: { stayAckAt: new Date() },
+  });
   await audit(prisma, actor, "assignment.stay_ack", "Assignment", a.id);
   return "Thanks, the clinic can see you've got your stay details.";
 }
 
 /** Booking confirmation file: the clinic, and the provider it was saved for while booked. */
 export async function canViewStayFile(actor: Actor, key: string) {
-  const shift = await prisma.shift.findFirst({ where: { stayFileKey: key }, include: { location: { select: { clinicOrgId: true } } } });
-  if (!shift) return false;
-  if (actor.clinicOrgId && actor.clinicOrgId === shift.location.clinicOrgId) return true;
+  const shifts = await prisma.shift.findMany({ where: { stayFileKey: key }, include: { location: { select: { clinicOrgId: true } } } });
+  if (!shifts.length) return false;
+  if (actor.clinicOrgId && shifts.some((s) => s.location.clinicOrgId === actor.clinicOrgId)) return true;
   if (!actor.providerId) return false;
-  const a = await prisma.assignment.findFirst({ where: { shiftId: shift.id, providerId: actor.providerId, status: { in: [...LIVE] } }, select: { id: true } });
-  return !!a && staySharedWith({ forAssignmentId: shift.stayForAssignmentId }, a.id);
+  for (const shift of shifts) {
+    const a = await prisma.assignment.findFirst({ where: { shiftId: shift.id, providerId: actor.providerId, status: { in: [...LIVE] } }, select: { id: true } });
+    if (a && staySharedWith({ forAssignmentId: shift.stayForAssignmentId }, a.id)) return true;
+  }
+  return false;
 }
 
 /**
@@ -214,6 +243,8 @@ export async function stayOnConfirmed(assignmentId: string) {
     if (sh.stayUpdatedAt) await prisma.shift.update({ where: { id: sh.id }, data: { stayForAssignmentId: a.id } });
     const missing = stayMissing({ place: sh.stayPlace, address: sh.stayAddress, checkInAt: sh.stayCheckIn, bookedUnder: sh.stayBookedUnder, forAssignmentId: a.id }, a.id);
     if (!missing.length) return;
+    // A multi-day trip confirms day by day: one notice for the whole trip.
+    if (!(await once(`stay-needed:${tripKey(sh)}:${a.providerId}`, sh.location.clinicOrgId))) return;
     await notifyClinic(prisma, sh.location.clinicOrgId, {
       template: "stay_details_needed",
       title: "Your provider needs a place to stay",
@@ -224,6 +255,7 @@ export async function stayOnConfirmed(assignmentId: string) {
     return;
   }
   if (sh.stayForAssignmentId !== a.id) {
+    if (!(await once(`stay-moved:${tripKey(sh)}:${a.providerId}`, sh.location.clinicOrgId))) return;
     await notifyClinic(prisma, sh.location.clinicOrgId, {
       template: "stay_update_for_replacement",
       title: "Move the stay to your new provider",
@@ -246,7 +278,6 @@ export async function staySweep(now = new Date()) {
     where: { status: "CONFIRMED", startsAt: { gt: now, lte: new Date(+now + horizon * HOUR) }, shift: { lodgingAllowed: true, lodgingByClinic: true } },
     include: { provider: true, shift: { include: { location: true } } },
   });
-  const once = async (key: string, userId: string) => (await prisma.digestSend.createMany({ data: [{ key, userId }], skipDuplicates: true })).count === 1;
   let reminded = 0, alerted = 0, nudged = 0;
   for (const a of rows) {
     if (!needsStay(a, s)) continue;
@@ -255,7 +286,7 @@ export async function staySweep(now = new Date()) {
     const day = a.startsAt.toLocaleDateString("en-US", { timeZone: sh.location.timeZone, weekday: "short", month: "short", day: "numeric" });
     if (missing.length) {
       const mark = stayReminderDue(a.startsAt, now, s["stay.reminderHours"]);
-      if (mark !== null && (await once(`stay:${a.id}:h${mark}`, sh.location.clinicOrgId))) {
+      if (mark !== null && (await once(`stay:${tripKey(sh)}:${a.providerId}:h${mark}`, sh.location.clinicOrgId))) {
         reminded++;
         await notifyClinic(prisma, sh.location.clinicOrgId, {
           template: "stay_details_reminder",
@@ -266,7 +297,7 @@ export async function staySweep(now = new Date()) {
           sms: true,
         });
       }
-      if (stayReminderDue(a.startsAt, now, [s["stay.adminAlertHours"]]) !== null && (await once(`stay:${a.id}:admin`, "admins"))) {
+      if (stayReminderDue(a.startsAt, now, [s["stay.adminAlertHours"]]) !== null && (await once(`stay:${tripKey(sh)}:${a.providerId}:admin`, "admins"))) {
         alerted++;
         await notifyAdmins(prisma, {
           template: "stay_details_missing",
@@ -277,7 +308,7 @@ export async function staySweep(now = new Date()) {
           sms: true,
         });
       }
-    } else if (!a.stayAckAt && stayReminderDue(a.startsAt, now, [s["reconfirm.askBeforeHours"]]) !== null && (await once(`stay:${a.id}:ack`, a.provider.userId))) {
+    } else if (!a.stayAckAt && stayReminderDue(a.startsAt, now, [s["reconfirm.askBeforeHours"]]) !== null && (await once(`stay:${tripKey(sh)}:${a.providerId}:ack`, a.provider.userId))) {
       nudged++;
       await notify(prisma, a.provider.userId, {
         template: "stay_ack_nudge",

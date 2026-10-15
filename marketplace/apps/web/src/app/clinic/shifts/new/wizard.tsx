@@ -256,7 +256,8 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
         stayKind,
         stayDetails,
         flyIn: flyInActive,
-        sameProvider: days.length > 1 ? sameProviderOn : false,
+        // A stay the clinic books is one reservation, so one provider covers every day.
+        sameProvider: days.length > 1 ? sameProviderOn || (lodgingAllowed && lodgingByClinic) : false,
         autoPost,
         maxTravelBudget: maxTravelBudget || null,
         promoCode: promoCode.trim() || null,
@@ -436,12 +437,14 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 {days.length > 1 && !draft ? (
                   <div className="rounded-xl border border-slate-200 p-4">
                     <Checkbox
-                      checked={sameProviderOn}
+                      checked={sameProviderOn || (lodgingAllowed && lodgingByClinic)}
+                      disabled={lodgingAllowed && lodgingByClinic}
                       onChange={(e) => setSameProviderOn(e.target.checked)}
                       label={<>Same provider for all {days.length} days <span className="font-normal text-slate-500">(recommended for continuity)</span></>}
                     />
+                    {lodgingAllowed && lodgingByClinic ? <p className="ml-7 mt-1 text-xs font-medium text-accent-700">On because you&apos;re booking the stay yourself: one provider, one reservation for the whole trip.</p> : null}
                     <div className="ml-7 mt-2 space-y-1 text-xs text-slate-600">
-                      {sameProviderOn ? (
+                      {sameProviderOn || (lodgingAllowed && lodgingByClinic) ? (
                         <>
                           <p><b>How it fills:</b> only providers who are free and qualified for <i>every</i> day can apply, and you confirm one provider for the whole booking. Fewer providers can take every day, so it can take longer to fill than separate days, especially for long bookings.</p>
                           <p><b>If no one provider is free for all days</b> by the decision deadline, we&apos;ll ask you to split it so each day gets covered, and split it automatically if you don&apos;t answer within {sameProvider.waitHours} hours (or straight away when the first day is less than {sameProvider.splitNowHours} hours off). You can also split it yourself any time from the booking page.</p>
@@ -563,7 +566,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                         </label>
                         <label className="flex items-start gap-2 text-sm">
                           <input type="radio" name="lodgingBy" className="mt-1 size-4 text-brand-600" checked={lodgingByClinic} onChange={() => setLodgingByClinic(true)} />
-                          <span>We&apos;ll book it ourselves: nothing is added for lodging</span>
+                          <span>We&apos;ll book it ourselves: nothing is added for lodging{days.length > 1 ? `. One provider then covers all ${days.length} days, so you book one stay for the whole trip` : ""}</span>
                         </label>
                         {lodgingByClinic ? (
                           <div className="grid gap-2 sm:grid-cols-[10rem_1fr]">

@@ -45,7 +45,8 @@ export async function createMultiDay(actor: Actor, days: ShiftInputT[], opts: { 
   }
   const fly = await flyInFields(parsed[0].locationId, parsed.map((d) => ({ ...d, flyIn: parsed.some((x) => x.flyIn) })));
   // Same provider for all days (default from Settings when the form doesn't say).
-  const sameProvider = parsed.some((d) => d.sameProvider === true) || (parsed.every((d) => d.sameProvider === undefined) && (await getSettings())["bookings.sameProviderDefault"]);
+  // A clinic-booked stay is one reservation for the whole trip, so one provider covers every day.
+  const sameProvider = parsed.some((d) => d.sameProvider === true || (d.lodgingAllowed && d.lodgingByClinic)) || (parsed.every((d) => d.sameProvider === undefined) && (await getSettings())["bookings.sameProviderDefault"]);
   const group = await prisma.shiftGroup.create({ data: { locationId: parsed[0].locationId, sameProviderRequired: sameProvider } });
   const shiftIds: string[] = [];
   for (const [i, d] of parsed.entries()) {

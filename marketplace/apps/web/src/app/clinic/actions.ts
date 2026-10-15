@@ -315,7 +315,8 @@ export const stayDetailsAction = formAction(async (fd) => {
     removeFile: fd.get("removeFile") === "on",
   });
   revalidatePath("/clinic", "layout");
-  const saved = out.sharedWith ? `Saved and shared with ${out.sharedWith}.` : "Saved. Your provider will see it once they're confirmed.";
+  const span = out.days > 1 ? ` for all ${out.days} days of this booking` : "";
+  const saved = out.sharedWith ? `Saved${span} and shared with ${out.sharedWith}.` : `Saved${span}. Your provider will see it once they're confirmed.`;
   return out.warnings.length ? `${saved} Please check the dates: ${out.warnings.join(" ")}` : saved;
 });
 
