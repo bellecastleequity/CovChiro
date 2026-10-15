@@ -33,7 +33,8 @@ export async function ogPng(opts: { name: string; line: string; badge?: string }
         border: '110px solid #F4F6F8', display: 'flex',
       }),
       h('div', { position: 'absolute', left: 0, top: 0, bottom: 0, width: 18, background: '#19CCBE', display: 'flex' }),
-      h('div', { display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 80px 0 96px', width: 820 }, [
+      // Absolutely positioned so it paints above the decorative ring.
+      h('div', { position: 'absolute', left: 0, top: 0, bottom: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 80px 0 96px', width: 900 }, [
         h('img', { width: 120, height: 120, marginBottom: 40 }, undefined, { src: mark, width: 120, height: 120 }),
         h('div', { fontSize: opts.name.length > 22 ? 62 : 72, fontWeight: 800, color: '#0B2D5B', letterSpacing: -2, lineHeight: 1.05 }, opts.name),
         h('div', { fontSize: 24, fontWeight: 600, color: '#57667A', letterSpacing: 4, textTransform: 'uppercase', marginTop: 22 },

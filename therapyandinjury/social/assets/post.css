@@ -1,0 +1,120 @@
+/* Shared styles for 1080x1080 posts and 1080x1920 stories. Brand colors + Inter only. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=block');
+
+:root {
+  --navy: #0b2d5b;
+  --teal: #19ccbe;
+  --teal-soft: #e3f8f6;
+  --slate: #57667a;
+  --gray: #f4f6f8;
+  --white: #fff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #d9dee5; }
+body { font-family: 'Inter', system-ui, sans-serif; color: var(--navy); }
+
+.canvas {
+  position: relative;
+  width: 1080px;
+  height: 1080px;
+  overflow: hidden;
+  background: var(--white);
+  display: flex;
+  flex-direction: column;
+  padding: 96px 96px 0;
+}
+.canvas.story { height: 1920px; padding: 160px 96px 0; }
+.canvas.navy { background: var(--navy); color: var(--white); }
+.canvas.gray { background: var(--gray); }
+
+/* Content always sits above the decorative ring. */
+.canvas > *:not(.ring) { position: relative; z-index: 1; }
+
+/* Decorative brand ring echo (a plain circle outline — never a modified mark). */
+.ring {
+  position: absolute;
+  z-index: 0;
+  border-radius: 50%;
+  border: 120px solid var(--gray);
+  pointer-events: none;
+}
+.navy .ring { border-color: rgb(255 255 255 / 5%); }
+.gray .ring { border-color: rgb(11 45 91 / 5%); }
+
+.mark { width: 140px; height: 140px; }
+.mark.xl { width: 520px; height: 520px; }
+.mark.lg { width: 300px; height: 300px; }
+
+.eyebrow {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--slate);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.navy .eyebrow { color: #c9d3de; }
+.eyebrow::before { content: ''; width: 56px; height: 6px; border-radius: 3px; background: var(--teal); }
+
+h1 {
+  font-size: 92px;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  font-weight: 800;
+  margin-top: 28px;
+}
+h1.md { font-size: 76px; }
+h1.sm { font-size: 64px; }
+.navy h1 { color: var(--white); }
+.hl { background: linear-gradient(transparent 66%, rgb(25 204 190 / 45%) 66%); }
+.navy .hl { color: var(--teal); background: none; }
+
+.body { font-size: 36px; line-height: 1.4; font-weight: 500; color: var(--slate); margin-top: 28px; max-width: 860px; }
+.navy .body { color: #dfe6ee; }
+
+.list { list-style: none; margin-top: 40px; display: flex; flex-direction: column; gap: 22px; }
+.list li { display: flex; gap: 22px; align-items: flex-start; font-size: 40px; font-weight: 600; line-height: 1.25; }
+.list .n {
+  flex: none; width: 56px; height: 56px; border-radius: 50%;
+  background: var(--navy); color: var(--white);
+  display: grid; place-items: center; font-size: 28px; font-weight: 800;
+  box-shadow: 0 0 0 7px var(--teal-soft);
+}
+.navy .list .n { background: var(--teal); color: var(--navy); box-shadow: none; }
+.list small { display: block; font-size: 27px; font-weight: 500; color: var(--slate); margin-top: 6px; }
+.navy .list small { color: #c9d3de; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 12px;
+  background: var(--teal); color: var(--navy);
+  font-weight: 800; font-size: 30px; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 16px 32px; border-radius: 999px; width: fit-content;
+}
+
+.big-num {
+  font-size: 380px; font-weight: 800; letter-spacing: -0.06em; line-height: 0.85; color: var(--navy);
+}
+.navy .big-num { color: var(--teal); }
+
+/* Footer lockup on every template: identifies the profession and the D.C. (Florida ad rule). */
+.foot {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 36px 0 64px;
+  border-top: 2px solid var(--gray);
+}
+.story .foot { padding-bottom: 140px; }
+.navy .foot { border-top-color: rgb(255 255 255 / 12%); }
+.foot img { width: 76px; height: 76px; }
+.foot .who { display: flex; flex-direction: column; gap: 6px; }
+.foot .name { font-size: 34px; font-weight: 700; letter-spacing: -0.01em; }
+.foot .dc { font-size: 22px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate); }
+.navy .foot .dc { color: #c9d3de; }
+
+.note { font-size: 22px; color: var(--slate); margin-top: 18px; font-weight: 500; }
+.navy .note { color: #c9d3de; }
+.ph { background: #fff3c4; color: #5c4400; border-radius: 6px; padding: 0 8px; }
