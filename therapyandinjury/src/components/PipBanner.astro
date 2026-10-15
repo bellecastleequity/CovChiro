@@ -5,6 +5,7 @@
  * until a number is set, "Call us" goes to the Contact page.
  */
 import { site, type Branch, telHref } from '../lib/site';
+import TimerBadge from './TimerBadge.astro';
 interface Props { branch?: Branch }
 const { branch } = Astro.props;
 const phone = branch?.phone ?? site.mainPhone;
@@ -13,7 +14,7 @@ const tel = telHref(phone);
 <aside class="pip" aria-label="Car accident reminder">
   <div class="wrap pip__in">
     <p class="pip__msg">
-      <span class="pip__days" aria-hidden="true">14<small>days</small></span>
+      <span class="pip__days"><TimerBadge size={40} variant="on-teal" /></span>
       <span class="pip__long">
         <strong>Hurt in a car accident? Get checked within 14 days.</strong>
         <span class="pip__sub">We’ll see you with or without a referral.</span>
@@ -50,23 +51,7 @@ const tel = telHref(phone);
   }
   .pip__days {
     flex: none;
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: var(--navy);
-    color: var(--white);
-    font-weight: 800;
-    font-size: 1.05rem;
-    line-height: 1;
-  }
-  .pip__days small {
-    font-size: 0.55rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    margin-top: -10px;
+    display: block;
   }
   .pip__sub {
     display: block;
@@ -105,8 +90,12 @@ const tel = telHref(phone);
     .pip__msg {
       font-size: 0.85rem;
     }
-    .pip__days {
-      display: none;
+    .pip__msg {
+      gap: 8px;
+    }
+    .pip__days :global(svg) {
+      width: 30px;
+      height: auto;
     }
     .pip__call {
       padding: 8px 12px;

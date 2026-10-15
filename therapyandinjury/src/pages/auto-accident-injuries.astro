@@ -3,6 +3,7 @@ import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import Ph from '../components/Ph.astro';
 import FaqList from '../components/FaqList.astro';
+import TimerBadge from '../components/TimerBadge.astro';
 import { faqs } from '../lib/faq';
 import { abs, faqSchema } from '../lib/site';
 
@@ -39,7 +40,10 @@ const article = {
           <strong>Emergency?</strong> If you have severe pain, a severe headache, trouble breathing, chest or abdominal pain, numbness or weakness, confusion, or lost consciousness, call 911 or go to the nearest emergency room.
         </div>
 
-        <h2 id="pip">The 14-day rule, in plain language</h2>
+        <div class="pip-head">
+          <TimerBadge size={64} variant="on-teal" />
+          <h2 id="pip">The 14-day rule, in plain language</h2>
+        </div>
         <p>
           Florida is a “no-fault” state. Most drivers carry <strong>Personal Injury Protection (PIP)</strong> on their own auto policy, which generally helps pay for injury care after a crash, no matter who caused it.
         </p>
@@ -101,6 +105,15 @@ const article = {
 </Base>
 
 <style>
+  .pip-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 1.6em;
+  }
+  .pip-head h2 {
+    margin: 0 !important;
+  }
   .aa__grid {
     display: grid;
     gap: 40px;

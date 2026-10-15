@@ -4,6 +4,7 @@
  * "with or without a referral", call + request buttons.
  */
 import { site, type Branch, telHref, isOpen, bookingHref } from '../lib/site';
+import TimerBadge from './TimerBadge.astro';
 interface Props { branch?: Branch }
 const { branch } = Astro.props;
 const phone = branch?.phone ?? site.mainPhone;
@@ -14,7 +15,7 @@ const external = requestHref.startsWith('http');
 <section class="section section--tight cta" aria-labelledby="cta-title">
   <div class="wrap cta__in">
     <div class="cta__copy">
-      <span class="cta__days" aria-hidden="true">14<small>days</small></span>
+      <span class="cta__days"><TimerBadge size={84} variant="on-navy" /></span>
       <div>
         <h2 id="cta-title">Hurt in a car accident? Get checked within 14 days.</h2>
         <p>Florida PIP generally requires initial care within 14 days of a crash. We’ll see you with or without a referral. Call us or request a visit online.</p>
@@ -56,23 +57,7 @@ const external = requestHref.startsWith('http');
   }
   .cta__days {
     flex: none;
-    display: grid;
-    place-items: center;
-    width: 84px;
-    height: 84px;
-    border-radius: 50%;
-    border: 6px solid var(--teal);
-    color: var(--white);
-    font-weight: 800;
-    font-size: 1.9rem;
-    line-height: 1;
-  }
-  .cta__days small {
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-top: -14px;
+    display: block;
   }
   .btn--light {
     background: var(--white);
