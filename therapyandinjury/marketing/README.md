@@ -28,3 +28,25 @@ Output goes in `marketing/jingles/out/` (git-ignored): `spot-1-audio-logo-<voice
 - **Ad bed:** "After a car accident, Florida PIP generally requires care within fourteen days. Therapy and Injury: chiropractic care, with or without a referral. Call… [hook]"
 
 Every spot names the profession ("chiropractic"), makes no promise of results, and is general education. Spots never target a specific crash or person.
+
+# Video ads (`video/`)
+
+Short videos built on the jingle spots, each in two sizes: 1080×1920 (Reels, Stories, TikTok, Shorts) and 1080×1080 (feeds).
+
+| Video | Length | Story |
+|---|---|---|
+| `1-audio-logo` | ~4s | End card only: the number builds digit by digit as the hook says it. Bumper/pre-roll. |
+| `2-radio-tag` | ~10s | "Hurt in a car crash?" (dusk traffic) → "Get checked within 14 days" (driver with a stiff neck) → number. |
+| `3-ad-15s` | under 15s | Accident → Florida PIP 14-day timeline (with the "educational only" note) → Therapy & Injury brand → chiropractic care → "with or without a referral" → number. |
+
+```bash
+cd therapyandinjury
+node marketing/jingles/make-spots.mjs   # audio + jingles/out/cues-urban.json (caption and hook timings)
+node marketing/video/images.mjs         # photo scenes -> video/scenes/ (already committed; only re-run for new ones)
+node marketing/video/render.mjs         # -> video/out/<spot>-<story|square>.mp4
+```
+- `ad.html` is the single template. Captions are timed to the voice's phrase starts. Each digit of (844) 84-TREAT appears as the hook says it.
+- Every frame carries "Chiropractic care · Florida-licensed D.C." (Florida ad rule).
+- The photo scenes are AI-generated, illustrative and generic: no crash shown, no real people, and never presented as patients or testimonials.
+- Change the wording in `make-spots.mjs` (`body` and `phrases`) and the scene plan in `ad.html` (`PLANS`), then re-run both scripts.
+- To preview live in Chrome, open `video/ad.html?spot=3-ad-15s&format=story&preview=1` (render.mjs writes the `cues.js` it needs). Audio doesn't play in preview.

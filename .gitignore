@@ -2,3 +2,5 @@ php_backend/logs/
 php_backend/secrets.php
 php_backend/vendor/
 therapyandinjury/marketing/jingles/out/
+therapyandinjury/marketing/video/out/
+therapyandinjury/marketing/video/cues.js

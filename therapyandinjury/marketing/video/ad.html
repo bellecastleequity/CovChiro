@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>844-84-TREAT video ad</title>
+<!--
+  One template for every video ad. render.mjs opens it as ad.html?spot=<name>&format=<story|square>,
+  calls setCues(cues) with out/cues-<voice>.json from the jingles, then setTime(t) once per frame.
+  Everything on screen is a pure function of t, so frames render deterministically.
+  Open it in Chrome with &preview=1 to watch it play live (needs cues.js next to it; render.mjs writes one).
+-->
+<style>
+  :root { --navy: #0b2d5b; --navy-deep: #061a36; --teal: #19ccbe; --slate: #57667a; --gray: #f4f6f8; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #000; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: #fff; -webkit-font-smoothing: antialiased; }
+  #stage { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: var(--navy-deep); }
+  .square #stage { height: 1080px; }
+
+  #scenes { position: absolute; inset: 0; z-index: 0; }
+  .scene { position: absolute; inset: -4%; background-size: cover; background-position: center; opacity: 0; will-change: transform, opacity; }
+  .shade { position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgb(6 26 54 / 55%) 0%, rgb(6 26 54 / 0%) 22%, rgb(6 26 54 / 10%) 45%, rgb(6 26 54 / 88%) 78%, rgb(6 26 54 / 96%) 100%); }
+  .square .shade { background: linear-gradient(180deg, rgb(6 26 54 / 50%) 0%, rgb(6 26 54 / 0%) 25%, rgb(6 26 54 / 25%) 45%, rgb(6 26 54 / 92%) 100%); }
+
+  /* Brand chip, top-left, under the platform UI's top band. */
+  .chip { position: absolute; left: 72px; top: 230px; display: flex; align-items: center; gap: 18px; font-weight: 800; font-size: 34px; letter-spacing: -0.01em; }
+  .square .chip { top: 64px; left: 64px; font-size: 30px; }
+  .chip img { width: 64px; height: 64px; }
+  .square .chip img { width: 56px; height: 56px; }
+
+  .caps { position: absolute; left: 72px; right: 72px; top: 1200px; }
+  .square .caps { left: 64px; right: 64px; top: auto; bottom: 150px; }
+  .cap { position: absolute; left: 0; right: 0; bottom: 0; opacity: 0; }
+  .cap .eyebrow { display: flex; align-items: center; gap: 16px; font-size: 30px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #c9d3de; margin-bottom: 26px; }
+  .cap .eyebrow::before { content: ''; width: 56px; height: 6px; border-radius: 3px; background: var(--teal); }
+  .cap h2 { font-size: 104px; line-height: 1.0; font-weight: 900; letter-spacing: -0.04em; text-shadow: 0 6px 40px rgb(0 0 0 / 35%); }
+  .cap h2.md { font-size: 84px; line-height: 1.04; }
+  .square .cap h2 { font-size: 84px; }
+  .square .cap h2.md { font-size: 66px; }
+  .w { display: inline-block; opacity: 0; will-change: transform, opacity; }
+  .hl { color: var(--navy); background: var(--teal); padding: 0 .14em; border-radius: .12em; margin: 0 -.04em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  .cap .note { font-size: 26px; font-weight: 500; color: #c9d3de; margin-top: 26px; }
+  .square .cap .note { font-size: 22px; margin-top: 18px; }
+  .brandup { display: flex; flex-direction: column; align-items: flex-start; gap: 34px; }
+  .brandup img { width: 200px; height: 200px; }
+  .square .brandup img { width: 150px; height: 150px; }
+
+  /* End card. */
+  .end { position: absolute; inset: 0; background: var(--navy); opacity: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; overflow: hidden; }
+  .end .bgimg { position: absolute; inset: -4%; background-size: cover; background-position: center; opacity: .16; filter: blur(6px) saturate(.6); }
+  .ring { position: absolute; border-radius: 50%; border: 110px solid rgb(255 255 255 / 5%); left: 50%; top: 50%; }
+  .end > *:not(.ring):not(.bgimg) { position: relative; }
+  .end .mk { width: 230px; height: 230px; margin-bottom: 70px; }
+  .square .end .mk { width: 150px; height: 150px; margin-bottom: 40px; }
+  .end .call { display: flex; align-items: center; gap: 16px; font-size: 40px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; color: var(--teal); margin-bottom: 28px; opacity: 0; }
+  .square .end .call { font-size: 32px; margin-bottom: 18px; }
+  .num { font-size: 132px; font-weight: 900; letter-spacing: -0.045em; line-height: 1; white-space: nowrap; }
+  .square .num { font-size: 116px; }
+  .num span { display: inline-block; opacity: 0; }
+  .num .treat { color: var(--teal); }
+  .end .url { margin-top: 44px; font-size: 38px; font-weight: 600; color: #dfe6ee; opacity: 0; letter-spacing: -0.01em; }
+  .square .end .url { margin-top: 28px; font-size: 32px; }
+
+  .legal { position: absolute; left: 0; right: 0; top: 1560px; text-align: center; font-size: 24px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgb(255 255 255 / 72%); }
+  .square .legal { top: auto; bottom: 46px; font-size: 20px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="scenes"></div>
+  <div class="shade"></div>
+  <div class="chip" id="chip"><img src="mark-white.svg" alt="" /><span>Therapy &amp; Injury</span></div>
+  <div class="caps" id="caps"></div>
+  <div class="end" id="end">
+    <div class="bgimg" id="endbg"></div>
+    <div class="ring" id="r1" style="width:1500px;height:1500px"></div>
+    <div class="ring" id="r2" style="width:860px;height:860px;border-width:70px"></div>
+    <img class="mk" id="mk" src="mark-white.svg" alt="" />
+    <div class="call" id="call">Call</div>
+    <div class="num" id="num"><span>(</span><span>8</span><span>4</span><span>4</span><span>)</span><span>&nbsp;</span><span>8</span><span>4</span><span class="treat">-TREAT</span></div>
+    <div class="url" id="url">therapyandinjury.com</div>
+  </div>
+  <div class="legal">Chiropractic care · Florida-licensed D.C.</div>
+</div>
+<script>
+const q = new URLSearchParams(location.search);
+const SPOT = q.get('spot') || '3-ad-15s';
+document.documentElement.className = q.get('format') === 'square' ? 'square' : 'story';
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const backOut = (x) => { const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+
+// Scenes (photo + Ken Burns) and captions per spot, keyed to the voice's phrase times (p[i]).
+// `hl` words get the teal highlight. Captions pop in with their phrase.
+const PLANS = {
+  '1-audio-logo': () => ({ scenes: [], caps: [], end: 0, endImg: 'spine-model' }),
+  '2-radio-tag': (p) => ({
+    scenes: [
+      { img: 'city-traffic', from: 0, to: p[1], zoom: [1.06, 1.16], pan: [0, -20] },
+      { img: 'driver-neck', from: p[1], to: p[2], zoom: [1.12, 1.04], pan: [20, 0] },
+    ],
+    caps: [
+      { from: p[0], to: p[1], html: 'Hurt in a car <hl>crash?</hl>' },
+      { from: p[1], to: p[2], html: 'Get checked within <hl>14&nbsp;days.</hl>', eyebrow: 'Florida PIP' },
+    ],
+    end: p[2], endImg: 'clinic-consult',
+  }),
+  '3-ad-15s': (p) => ({
+    scenes: [
+      { img: 'city-traffic', from: 0, to: p[1], zoom: [1.05, 1.14], pan: [0, -20] },
+      { img: 'driver-neck', from: p[1], to: p[2], zoom: [1.14, 1.04], pan: [24, 0] },
+      { img: 'clinic-consult', from: p[2], to: p[4], zoom: [1.04, 1.13], pan: [0, 16] },
+      { img: 'phone-call', from: p[4], to: p[5], zoom: [1.12, 1.05], pan: [-16, 0] },
+    ],
+    caps: [
+      { from: p[0], to: p[1], html: 'After a car <hl>accident,</hl>' },
+      { from: p[1], to: p[2], html: 'Florida PIP generally requires care within <hl>14&nbsp;days.</hl>', cls: 'md', eyebrow: 'Know your timeline', note: 'Educational only. Your policy and insurer determine coverage.' },
+      { from: p[2], to: p[3], brand: true },
+      { from: p[3], to: p[4], html: '<hl>Chiropractic</hl> care,' },
+      { from: p[4], to: p[5], html: 'With or without a <hl>referral.</hl>' },
+    ],
+    end: p[5], endImg: 'clinic-consult',
+  }),
+};
+
+let C, plan, capEls = [], sceneEls = [];
+const numSpans = [...document.querySelectorAll('#num span')];
+
+function setCues(all) {
+  C = all[SPOT];
+  plan = PLANS[SPOT](C.phrases.map((x) => x.t).concat(C.length));
+  const scenes = document.getElementById('scenes');
+  sceneEls = plan.scenes.map((s) => {
+    const d = document.createElement('div');
+    d.className = 'scene';
+    d.style.backgroundImage = `url(scenes/${s.img}.jpg)`;
+    scenes.appendChild(d);
+    return d;
+  });
+  document.getElementById('endbg').style.backgroundImage = `url(scenes/${plan.endImg}.jpg)`;
+  const caps = document.getElementById('caps');
+  capEls = plan.caps.map((c) => {
+    const d = document.createElement('div');
+    d.className = 'cap';
+    if (c.brand) {
+      d.innerHTML = `<div class="brandup"><img class="w" src="mark-white.svg" alt=""><h2><span class="w">Therapy</span> <span class="w">&amp;</span> <span class="w hl">Injury</span></h2></div>`;
+    } else {
+      const words = c.html.replace(/<hl>(.*?)<\/hl>/g, (_, w) => w.split(' ').map((x) => `\u0001${x}`).join(' ')).split(' ');
+      const h = words.map((w) => (w[0] === '\u0001' ? `<span class="w hl">${w.slice(1)}</span>` : `<span class="w">${w}</span>`)).join(' ');
+      d.innerHTML = `${c.eyebrow ? `<div class="eyebrow w">${c.eyebrow}</div>` : ''}<h2 class="${c.cls || ''}">${h}</h2>${c.note ? `<div class="note w">${c.note}</div>` : ''}`;
+    }
+    caps.appendChild(d);
+    return d;
+  });
+  return document.fonts.ready.then(() => Promise.all([...document.images].map((i) => i.decode().catch(() => {}))))
+    .then(() => Promise.all(plan.scenes.concat({ img: plan.endImg }).map((s) => new Promise((res) => { const i = new Image(); i.onload = i.onerror = res; i.src = `scenes/${s.img}.jpg`; }))))
+    .then(() => C.length);
+}
+
+function setTime(t) {
+  const H = C.hook.map((h) => h.t), beat = C.beat;
+  // Scenes: crossfade in over 0.22 s with a small punch-in on the cut, slow Ken Burns while held.
+  plan.scenes.forEach((s, i) => {
+    const el = sceneEls[i], k = prog(t, s.from, s.to + 0.25);
+    const fade = s.from === 0 ? 1 : easeOut(prog(t, s.from - 0.05, s.from + 0.22));
+    const out = t > s.to + 0.25 ? 0 : 1;
+    const punch = 1 + 0.05 * (1 - easeOut(prog(t, s.from - 0.05, s.from + 0.35)));
+    const z = (s.zoom[0] + (s.zoom[1] - s.zoom[0]) * k) * (s.from === 0 ? 1 : punch);
+    el.style.opacity = fade * out;
+    el.style.zIndex = i;
+    el.style.transform = `translate(${s.pan[0] * k}px, ${s.pan[1] * k}px) scale(${z})`;
+  });
+  // Captions: words rise in one after another, the whole caption lifts away at its end.
+  plan.caps.forEach((c, i) => {
+    // The outgoing caption is gone before the next one starts, so two captions never overlap.
+    const el = capEls[i], a = c.from - 0.04, b = c.to - 0.15;
+    const on = t >= a - 0.01 && t < b + 0.11;
+    el.style.opacity = on ? 1 - easeOut(prog(t, b, b + 0.1)) : 0;
+    el.style.transform = `translateY(${-40 * easeOut(prog(t, b, b + 0.1))}px)`;
+    if (!on) return;
+    const ws = el.querySelectorAll('.w');
+    const step = Math.min(0.09, (b - a - 0.3) / Math.max(1, ws.length));
+    ws.forEach((w, j) => {
+      const x = prog(t, a + j * step, a + j * step + 0.28);
+      w.style.opacity = easeOut(clamp(x * 1.6));
+      w.style.transform = `translateY(${(1 - backOut(x)) * 70}px) scale(${0.92 + 0.08 * backOut(x)})`;
+    });
+  });
+  // Brand chip leaves when the end card arrives.
+  const e = easeOut(prog(t, plan.end - 0.1, plan.end + 0.3));
+  document.getElementById('chip').style.opacity = 1 - e;
+  // End card: slides up over the last scene; the number builds word by word on the hook.
+  const end = document.getElementById('end');
+  end.style.opacity = plan.end === 0 ? 1 : e;
+  end.style.transform = `translateY(${(1 - e) * 120}px)`;
+  const mk = backOut(prog(t, plan.end, plan.end + 0.45));
+  document.getElementById('mk').style.transform = `scale(${0.6 + 0.4 * mk}) rotate(${(1 - mk) * -25}deg)`;
+  document.getElementById('mk').style.opacity = clamp(mk * 2);
+  const call = document.getElementById('call'), cp = easeOut(prog(t, plan.end + 0.05, plan.end + 0.35));
+  call.style.opacity = cp; call.style.transform = `translateY(${(1 - cp) * 20}px)`;
+  // Spans: ( 8 4 4 ) _ 8 4 -TREAT. Each spoken word reveals its digit just after the word starts (text a
+  // hair after the sound reads as in sync); "(" and ")" ride with the first and third.
+  const show = [0, 0, 1, 2, 2, 3, 3, 4, 5]; // which hook word reveals each span
+  numSpans.forEach((s, i) => {
+    const h = H[show[i]] + 0.03, x = prog(t, h, h + (i === 8 ? 0.32 : 0.22));
+    s.style.opacity = clamp(x * 3);
+    s.style.transform = `translateY(${(1 - backOut(x)) * 50}px) scale(${(i === 8 ? 0.6 : 0.8) + (i === 8 ? 0.4 : 0.2) * backOut(x)})`;
+  });
+  const url = document.getElementById('url'), up = easeOut(prog(t, H[5] + 0.35, H[5] + 0.75));
+  url.style.opacity = up; url.style.transform = `translateY(${(1 - up) * 16}px)`;
+  // Rings pulse on every beat from the first hook word, and swell on TREAT.
+  const sinceBeat = t >= H[0] ? ((t - H[0]) % beat) / beat : 1;
+  const pulse = Math.exp(-sinceBeat * 5) * (t >= H[0] ? 1 : 0) + 0.6 * Math.exp(-Math.max(0, t - H[5]) * 3) * (t >= H[5] ? 1 : 0);
+  document.getElementById('r1').style.transform = `translate(-50%,-50%) scale(${1 + 0.035 * pulse})`;
+  document.getElementById('r2').style.transform = `translate(-50%,-50%) scale(${1 + 0.06 * pulse})`;
+  document.getElementById('num').style.transform = `scale(${1 + 0.02 * pulse})`;
+}
+
+if (q.get('preview')) {
+  const s = document.createElement('script');
+  s.src = 'cues.js';
+  s.onload = () => setCues(window.CUES).then((len) => { const t0 = performance.now(); (function f() { const t = ((performance.now() - t0) / 1000) % (len + 1); setTime(t); requestAnimationFrame(f); })(); });
+  document.body.appendChild(s);
+}
+</script>
+</body>
+</html>

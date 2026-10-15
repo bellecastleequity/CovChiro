@@ -38,10 +38,16 @@ VOICES[`${preset}Hook`] = {
 // Body lines are compliance-checked: general education, names the profession, no promises.
 const SPOTS = [
   { name: '1-audio-logo', body: null },
-  { name: '2-radio-tag', body: 'Hurt in a car crash? Get checked within fourteen days. Call...' },
+  // `phrases` are the on-screen captions for the video ads (marketing/video), one per spoken phrase.
+  {
+    name: '2-radio-tag',
+    body: 'Hurt in a car crash? Get checked within fourteen days. Call...',
+    phrases: ['Hurt in a car crash?', 'Get checked within 14 days.', 'Call'],
+  },
   {
     name: '3-ad-15s',
     body: 'After a car accident, Florida PIP generally requires care within fourteen days. Therapy and Injury: chiropractic care, with or without a referral. Call...',
+    phrases: ['After a car accident,', 'Florida PIP generally requires care within 14 days.', 'Therapy & Injury:', 'chiropractic care,', 'with or without a referral.', 'Call'],
   },
 ];
 
@@ -154,6 +160,25 @@ function hookClips(file, notes, spotLength) {
   });
 }
 
+/** Start time (s) of each of `count` phrases in a read: phrases begin after its longest pauses. */
+function phraseStarts(file, count) {
+  const { rate, s } = readWav(file);
+  const hop = Math.round(rate * 0.01), rms = [];
+  for (let k = 0; k + hop <= s.length; k += hop) {
+    let e = 0;
+    for (let j = k; j < k + hop; j++) e += s[j] * s[j];
+    rms.push(Math.sqrt(e / hop));
+  }
+  const thr = Math.max(...rms) * 0.03, pauses = [];
+  let first = rms.findIndex((v) => v > thr);
+  for (let f = first, q = -1; f < rms.length; f++) {
+    if (rms[f] <= thr) { if (q < 0) q = f; }
+    else if (q >= 0) { pauses.push({ len: f - q, end: f }); q = -1; }
+  }
+  const cuts = pauses.sort((a, b) => b.len - a.len).slice(0, count - 1).map((p) => p.end).sort((a, b) => a - b);
+  return [first, ...cuts].map((f) => (f * hop) / rate);
+}
+
 function mix(bed, clips, outFile, length) {
   const inputs = ['-i', path.join(out, `${bed}.wav`), ...clips.flatMap((c) => ['-i', c.file])];
   const delays = clips.map((c, i) => `[${i + 1}:a]aresample=44100,adelay=${Math.round(c.at * 1000)}:all=1[v${i}]`);
@@ -195,10 +220,21 @@ const timing = JSON.parse(fs.readFileSync(path.join(out, 'timing.json'), 'utf8')
 
 // 3 + 4. Hook words on the notes, then mix.
 const hookTake = await line(`${preset}Hook`, HOOK);
+const cues = {};
 for (const spot of SPOTS) {
   const t = timing[spot.name];
   const clips = hookClips(hookTake, t.hookNotes, t.length);
   if (bodies[spot.name]) clips.unshift(bodies[spot.name]);
   const f = mix(spot.name, clips, path.join(out, `spot-${spot.name}-${preset}.mp3`), t.length);
   console.log(`made ${path.relative(process.cwd(), f)} (${dur(f).toFixed(1)}s): ${clips.map((c) => `${c.word ?? 'body'}@${c.at.toFixed(2)}`).join(' ')}`);
+  const b = bodies[spot.name];
+  cues[spot.name] = {
+    audio: path.basename(f),
+    length: t.length,
+    beat: t.beat,
+    phrases: b ? phraseStarts(b.file, spot.phrases.length).map((s0, i) => ({ text: spot.phrases[i], t: +(b.at + s0).toFixed(3) })) : [],
+    hook: clips.filter((c) => c.word).map((c, i) => ({ word: c.word, t: t.hookNotes[i].t })),
+  };
 }
+// Caption and beat timings for the video ads.
+fs.writeFileSync(path.join(out, `cues-${preset}.json`), JSON.stringify(cues, null, 2));
