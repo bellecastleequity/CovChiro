@@ -7,6 +7,7 @@
  */
 import { site, type Branch, branchName, isOpen, hoursSummary, telHref } from '../lib/site';
 import Ph from './Ph.astro';
+import PhoneLink from './PhoneLink.astro';
 interface Props { branch: Branch }
 const { branch: b } = Astro.props;
 const open = isOpen(b);
@@ -64,7 +65,7 @@ const tel = telHref(b.phone);
   <button type="submit" class="btn btn--primary btn--block">{open ? 'Send request' : 'Notify me'}</button>
   <p class="af__status" role="status" aria-live="polite" data-status></p>
   <p class="af__alt small muted">
-    Prefer to call? {tel ? <a href={tel}>{b.phone}</a> : <Ph value={b.phone} />}
+    Prefer to call? <PhoneLink branch={b} />
   </p>
 </form>
 

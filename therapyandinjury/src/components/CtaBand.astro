@@ -3,12 +3,12 @@
  * Closing call-to-action on every page (rendered by Base): the 14-day window,
  * "with or without a referral", call + request buttons.
  */
-import { site, type Branch, telHref, isOpen, bookingHref } from '../lib/site';
+import { type Branch, isOpen, bookingHref, callFor } from '../lib/site';
 import TimerBadge from './TimerBadge.astro';
 interface Props { branch?: Branch }
 const { branch } = Astro.props;
-const phone = branch?.phone ?? site.mainPhone;
-const tel = telHref(phone);
+const call = callFor(branch);
+const tel = call.tel;
 const requestHref = bookingHref(branch);
 const external = requestHref.startsWith('http');
 ---
@@ -22,7 +22,7 @@ const external = requestHref.startsWith('http');
       </div>
     </div>
     <div class="btn-row">
-      <a class="btn btn--primary" href={tel || '/contact/'}>{tel ? `Call ${phone}` : 'Call us'}</a>
+      <a class="btn btn--primary" href={tel || '/contact/'}>{tel ? `Call ${call.label}` : 'Call us'}</a>
       <a class="btn btn--light" href={requestHref}>{branch && !isOpen(branch) ? 'Get notified' : external ? 'Book online' : 'Request a visit'}</a>
     </div>
   </div>

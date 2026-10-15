@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import Ph from '../components/Ph.astro';
+import PhoneLink from '../components/PhoneLink.astro';
 import { site } from '../lib/site';
 ---
 <Base breadcrumbs={[["Privacy Policy", "/privacy/"]]} title="Privacy Policy | Therapy & Injury" description="How Therapy & Injury collects, uses, and protects information submitted through therapyandinjury.com and its location pages.">
@@ -47,7 +48,7 @@ import { site } from '../lib/site';
       <p>This website is not directed to children under 13. A parent or guardian should request appointments for minors.</p>
 
       <h2>Contact us</h2>
-      <p>Questions about this policy: <Ph value={site.mainEmail} /> or <Ph value={site.mainPhone} />.</p>
+      <p>Questions about this policy: <Ph value={site.mainEmail} /> or <PhoneLink />.</p>
     </div>
   </section>
 </Base>

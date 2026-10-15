@@ -18,7 +18,8 @@ Most facts live in two data files. Edit those first:
 ## 1. Facts to fill in
 
 ### Brand (`src/data/site.json`)
-- [ ] `mainPhone`, `mainEmail`
+- [x] `mainPhone`: brand main line **(844) 84-TREAT / (844) 848-7328** (Oct 2026). Make sure it's a one-time purchase, move it to your HIPAA-compliant phone system, and route it to the front desk.
+- [ ] `mainEmail`
 - [ ] `social.instagram`, `social.facebook`: profile URLs once the accounts exist
 - [ ] `seo.gaMeasurementId`: GA4 ID (G-XXXXXXXXXX), if you want analytics
 - [ ] `seo.googleSiteVerification`: from Google Search Console (HTML tag method, the `content` value only)
@@ -26,7 +27,7 @@ Most facts live in two data files. Edit those first:
 - [ ] `lastUpdatedLegal`: date the privacy and accessibility pages were reviewed
 
 ### Ocala (`src/data/branches.json`)
-- [ ] `phone`
+- [ ] `phone`: Ocala's local 352 number. Until it's set, Ocala pages show the main line, but Ocala's Google listing and schema still need the local number.
 - [ ] `email`: also add it to `$RECIPIENTS` in `public/api/appointment.php` (see §3)
 - [ ] `doctors`: treating doctor, once confirmed
 - [ ] `legalEntity`: the location's PLLC name, once formed

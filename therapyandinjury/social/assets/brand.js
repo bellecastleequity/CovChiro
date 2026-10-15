@@ -14,7 +14,7 @@
   const fields = {
     address: '2649 W Silver Springs Blvd, Ocala, FL 34475',
     hours: 'Mon, Wed, Thu · 1–6 pm',
-    phone: '[PHONE]',
+    phone: '(844) 84-TREAT',
     url: 'therapyandinjury.com/' + (city ? city.toLowerCase().replace(/\s+/g, '-') : ''),
   };
   for (const k of Object.keys(fields)) set(`[data-${k}]`, q.get(k) ?? fields[k]);

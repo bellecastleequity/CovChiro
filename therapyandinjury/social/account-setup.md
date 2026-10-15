@@ -14,7 +14,7 @@ Never recolor, stretch, crop, or add effects to the mark.
 | Name | Therapy & Injury · Chiropractic |
 | Category | Chiropractor |
 | Website / link | `https://therapyandinjury.com/locations/` |
-| Contact | [MAIN PHONE] · [MAIN EMAIL] |
+| Contact | (844) 84-TREAT · (844) 848-7328 · [MAIN EMAIL] |
 
 **Bio (≤150 characters):**
 ```
@@ -31,7 +31,7 @@ Now open: Ocala · More cities soon
 | Username | `@therapyandinjury` |
 | Category | Chiropractor |
 | Website | `https://therapyandinjury.com/` |
-| Phone / email | [MAIN PHONE] · [MAIN EMAIL] |
+| Phone / email | (844) 848-7328 (84-TREAT) · [MAIN EMAIL] |
 | Button | "Book now" → `https://therapyandinjury.com/locations/` |
 
 **Intro (≤100 characters):**
@@ -49,4 +49,4 @@ Therapy & Injury provides calm, chiropractic-focused care for people recovering 
 - No "best," "#1," guarantees, or results claims. No testimonials without the patient's written permission.
 - No free or discounted offers until the practice approves them with the required Florida disclaimer.
 - Never message, tag, or target people about a specific crash. General education only.
-- Never confirm in public that someone is a patient, even when replying to a review. Use: "Thank you for the feedback. Please call us at [PHONE] so we can help."
+- Never confirm in public that someone is a patient, even when replying to a review. Use: "Thank you for the feedback. Please call us at (844) 84-TREAT so we can help."

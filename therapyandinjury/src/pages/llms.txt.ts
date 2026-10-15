@@ -21,7 +21,7 @@ export const GET: APIRoute = async () => {
     '',
     '## Key facts',
     `- Website: ${site.domain}`,
-    ok(site.mainPhone) ? `- Phone: ${site.mainPhone}` : null,
+    ok(site.mainPhone) ? `- Main phone: ${site.mainPhoneVanity && ok(site.mainPhoneVanity) ? `${site.mainPhoneVanity} (${site.mainPhone})` : site.mainPhone}` : null,
     site.ownership.blackOwned ? `- ${site.brandName} is a Black-owned business.` : null,
     '- No referral is needed: patients are seen with or without a referral.',
     '- Most auto accident patients are billed to their auto insurance (Florida PIP / no-fault).',

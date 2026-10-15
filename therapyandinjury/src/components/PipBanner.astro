@@ -4,12 +4,12 @@
  * and a call button. Uses the location's phone on location pages, else the main number;
  * until a number is set, "Call us" goes to the Contact page.
  */
-import { site, type Branch, telHref } from '../lib/site';
+import { type Branch, callFor } from '../lib/site';
 import TimerBadge from './TimerBadge.astro';
 interface Props { branch?: Branch }
 const { branch } = Astro.props;
-const phone = branch?.phone ?? site.mainPhone;
-const tel = telHref(phone);
+const call = callFor(branch);
+const tel = call.tel;
 ---
 <aside class="pip" aria-label="Car accident reminder">
   <div class="wrap pip__in">
@@ -25,7 +25,7 @@ const tel = telHref(phone);
       </span>
     </p>
     <a class="pip__call" href={tel || '/contact/'}>
-      <span aria-hidden="true">📞</span> {tel ? <Fragment>Call {phone}</Fragment> : 'Call us'}
+      <span aria-hidden="true">📞</span> {tel ? <Fragment>Call<span class="pip__num"> {call.label}</span></Fragment> : 'Call us'}
     </a>
   </div>
 </aside>
@@ -96,6 +96,9 @@ const tel = telHref(phone);
     .pip__days :global(svg) {
       width: 30px;
       height: auto;
+    }
+    .pip__num {
+      display: none;
     }
     .pip__call {
       padding: 8px 12px;

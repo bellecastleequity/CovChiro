@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import Ph from '../components/Ph.astro';
+import PhoneLink from '../components/PhoneLink.astro';
 import { site } from '../lib/site';
 ---
 <Base breadcrumbs={[["Accessibility", "/accessibility/"]]} title="Accessibility Statement | Therapy & Injury" description="Therapy & Injury is committed to making this website usable for everyone, including people with disabilities.">
@@ -29,7 +30,7 @@ import { site } from '../lib/site';
       <p>Embedded Google Maps are provided by a third party and may not be fully accessible. Every location page also lists the full street address in text and links to directions.</p>
 
       <h2>Need help or found a barrier?</h2>
-      <p>If anything on this site is hard to use, please tell us and we’ll help you another way, including booking by phone. Call <Ph value={site.mainPhone} /> or email <Ph value={site.mainEmail} />. We aim to respond within <Ph value="[RESPONSE TIME — e.g., 2 business days]" />.</p>
+      <p>If anything on this site is hard to use, please tell us and we’ll help you another way, including booking by phone. Call <PhoneLink /> or email <Ph value={site.mainEmail} />. We aim to respond within <Ph value="[RESPONSE TIME — e.g., 2 business days]" />.</p>
     </div>
   </section>
 </Base>

@@ -7,7 +7,8 @@
   ],
   "tagline": "Chiropractic Injury & Wellness Care",
   "operatorLine": "Therapy & Injury is owner-operated.",
-  "mainPhone": "[MAIN PHONE]",
+  "mainPhone": "(844) 848-7328",
+  "mainPhoneVanity": "(844) 84-TREAT",
   "mainEmail": "[MAIN EMAIL]",
   "formEndpoint": "/api/appointment.php",
   "patientLinks": {

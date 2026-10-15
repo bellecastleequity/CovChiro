@@ -8,6 +8,7 @@ import AppointmentForm from '../components/AppointmentForm.astro';
 import BranchCard from '../components/BranchCard.astro';
 import Icon from '../components/Icon.astro';
 import BranchFeatures from '../components/BranchFeatures.astro';
+import PhoneLink from '../components/PhoneLink.astro';
 import PatientLinks from '../components/PatientLinks.astro';
 import Ph from '../components/Ph.astro';
 import {
@@ -19,7 +20,7 @@ import {
   oneLineAddress,
   mapEmbedSrc,
   directionsUrl,
-  telHref,
+  callFor,
   weekHours,
   doctorsFor,
   branchSchema,
@@ -35,7 +36,7 @@ export function getStaticPaths() {
 const { branch: b } = Astro.props as { branch: Branch };
 const name = branchName(b);
 const open = isOpen(b);
-const tel = telHref(b.phone);
+const call = callFor(b);
 const map = mapEmbedSrc(b);
 const doctors = doctorsFor(b);
 const entity = isPlaceholder(b.legalEntity) ? '' : b.legalEntity;
@@ -78,7 +79,7 @@ const description = open
       <BranchFeatures branch={b} />
       <div class="btn-row bh__ctas">
         <a class="btn btn--primary" href={bookingHref(b)}>{!open ? 'Get notified' : bookingHref(b).startsWith('http') ? 'Book an appointment' : 'Request an appointment'}</a>
-        {tel && <a class="btn btn--ghost" href={tel}>Call {b.phone}</a>}
+        {call.tel && <a class="btn btn--ghost" href={call.tel}>Call {call.label}</a>}
         {open && b.address && <a class="btn btn--ghost" href={directionsUrl(b)} rel="noopener" target="_blank">Get directions<span class="sr-only"> (opens Google Maps in a new tab)</span></a>}
       </div>
     </div>
@@ -101,7 +102,8 @@ const description = open
           <div class="card fact">
             <Icon name="phone" size={40} />
             <h2 class="fact__h">Phone</h2>
-            <p>{tel ? <a href={tel}>{b.phone}</a> : <Ph value={b.phone} />}</p>
+            <p><PhoneLink branch={b} /></p>
+            {call.isMain && open && <p class="small muted">Our main line. A local {b.city} number is coming soon.</p>}
             {!isPlaceholder(b.gbpUrl) && <a href={b.gbpUrl} rel="noopener" target="_blank">Google Business Profile<span class="sr-only"> (opens in a new tab)</span></a>}
             {isPlaceholder(b.gbpUrl) && open && <p class="small"><Ph value={b.gbpUrl} /></p>}
           </div>

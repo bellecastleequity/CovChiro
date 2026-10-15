@@ -60,7 +60,27 @@ export const mapEmbedSrc = (b: Branch) => {
 export const directionsUrl = (b: Branch) =>
   b.address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(oneLineAddress(b))}` : '';
 
-export const telHref = (phone: string) => (isPlaceholder(phone) ? '' : `tel:${phone.replace(/[^\d+]/g, '')}`);
+export const telHref = (phone: string) => {
+  if (isPlaceholder(phone)) return '';
+  const digits = phone.replace(/\D/g, '');
+  return `tel:${digits.length === 10 ? `+1${digits}` : `+${digits}`}`;
+};
+
+/** The brand's main line, e.g. (844) 84-TREAT · 848-7328. */
+export const mainLine = {
+  digits: site.mainPhone,
+  vanity: isPlaceholder(site.mainPhoneVanity) ? '' : site.mainPhoneVanity,
+  tel: telHref(site.mainPhone),
+};
+
+/**
+ * Which number to call: a location's own local number once it's set, otherwise the brand's
+ * main line. (Location schema/Google listings only ever use the location's own number.)
+ */
+export const callFor = (b?: Branch) => {
+  if (b && !isPlaceholder(b.phone)) return { tel: telHref(b.phone), label: b.phone, digits: b.phone, isMain: false };
+  return { tel: mainLine.tel, label: mainLine.vanity || mainLine.digits, digits: mainLine.digits, isMain: true };
+};
 
 export const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -150,6 +170,18 @@ export const orgSchema = () => {
       logo: { '@type': 'ImageObject', url: abs('/brand/favicon-512.png'), width: 512, height: 512 },
       image: abs('/og/default.png'),
       slogan: site.tagline,
+      ...(mainLine.tel
+        ? {
+            telephone: mainLine.digits,
+            contactPoint: {
+              '@type': 'ContactPoint',
+              telephone: mainLine.tel.replace('tel:', ''),
+              contactType: 'customer service',
+              areaServed: 'US-FL',
+              availableLanguage: ['en'],
+            },
+          }
+        : {}),
       areaServed: { '@type': 'State', name: 'Florida' },
       ...(sameAs.length ? { sameAs } : {}),
       subOrganization: indexableBranches.map((b) => ({ '@id': abs(`${branchPath(b)}#business`) })),

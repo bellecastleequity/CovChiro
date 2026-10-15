@@ -1,6 +1,7 @@
 ---
 import Wordmark from './Wordmark.astro';
 import { site, branches, branchName, branchPath, isOpen, isPlaceholder } from '../lib/site';
+import PhoneLink from './PhoneLink.astro';
 import { conditions } from '../lib/conditions';
 interface Props { city?: string }
 const { city } = Astro.props;
@@ -12,6 +13,7 @@ const year = new Date().getFullYear();
     <div class="ftr__grid">
       <div class="ftr__brand">
         <Wordmark city={city} reverse size="md" />
+        <p class="ftr__phone">Main line: <PhoneLink /></p>
         <p class="ftr__blurb">Calm, chiropractic-focused care for people recovering from auto accident injuries, neck and back pain, and everyday strain.</p>
       </div>
       <nav aria-label="Locations">
@@ -78,8 +80,17 @@ const year = new Date().getFullYear();
       grid-template-columns: 1.5fr 1fr 1fr 1fr;
     }
   }
+  .ftr__phone {
+    margin: 18px 0 0;
+    font-weight: 600;
+    color: var(--white);
+  }
+  .ftr__phone :global(a) {
+    color: var(--white);
+    text-decoration-color: var(--teal);
+  }
   .ftr__blurb {
-    margin-top: 18px;
+    margin-top: 10px;
     max-width: 42ch;
     color: #c9d3de;
   }

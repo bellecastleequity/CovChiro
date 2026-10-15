@@ -9,8 +9,9 @@ import FaqList from '../../components/FaqList.astro';
 import AppointmentForm from '../../components/AppointmentForm.astro';
 import Ph from '../../components/Ph.astro';
 import BranchFeatures from '../../components/BranchFeatures.astro';
+import PhoneLink from '../../components/PhoneLink.astro';
 import { conditions } from '../../lib/conditions';
-import { type Branch, indexableBranches, branchName, branchPath, oneLineAddress, telHref, hoursSummary, abs, faqSchema, bookingHref } from '../../lib/site';
+import { type Branch, indexableBranches, branchName, branchPath, oneLineAddress, callFor, hoursSummary, abs, faqSchema, bookingHref } from '../../lib/site';
 
 export function getStaticPaths() {
   return indexableBranches.map((b) => ({ params: { city: b.slug }, props: { b } }));
@@ -18,7 +19,7 @@ export function getStaticPaths() {
 const { b } = Astro.props as { b: Branch };
 const name = branchName(b);
 const path = `${branchPath(b)}car-accident-chiropractor/`;
-const tel = telHref(b.phone);
+const call = callFor(b);
 const faqs = [
   {
     q: `How soon should I see a chiropractor after a car accident in ${b.city}?`,
@@ -62,7 +63,7 @@ const service = {
     <BranchFeatures branch={b} />
     <div class="btn-row" style="margin-top:24px">
       <a class="btn btn--primary" href={bookingHref(b)}>{bookingHref(b).startsWith('http') ? 'Book an appointment' : 'Request an appointment'}</a>
-      {tel && <a class="btn btn--ghost" href={tel}>Call {b.phone}</a>}
+      {call.tel && <a class="btn btn--ghost" href={call.tel}>Call {call.label}</a>}
     </div>
   </PageHero>
 
@@ -87,7 +88,7 @@ const service = {
         <p>Photo ID, your auto insurer’s name and policy card, your claim number if you have one, the police or crash report if available, and a list of current medications. Missing something? Come anyway. <a href="/auto-accident-injuries/">More about the 14-day PIP rule</a>.</p>
 
         <h2>Visiting {name}</h2>
-        <p>{oneLineAddress(b)}<br />{hoursSummary(b)}<br />Phone: {tel ? <a href={tel}>{b.phone}</a> : <Ph value={b.phone} />}</p>
+        <p>{oneLineAddress(b)}<br />{hoursSummary(b)}<br />Phone: <PhoneLink branch={b} /></p>
         <p>We serve {b.city} and nearby communities including {b.nearbyAreas.join(', ')}. <a href={branchPath(b)}>Location details, map, and directions</a>.</p>
 
         <h2>Questions</h2>

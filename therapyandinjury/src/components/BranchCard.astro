@@ -1,9 +1,9 @@
 ---
 import Ph from './Ph.astro';
-import { type Branch, branchName, branchPath, isOpen, oneLineAddress, hoursSummary, telHref } from '../lib/site';
+import PhoneLink from './PhoneLink.astro';
+import { type Branch, branchName, branchPath, isOpen, oneLineAddress, hoursSummary } from '../lib/site';
 interface Props { branch: Branch }
 const { branch: b } = Astro.props;
-const tel = telHref(b.phone);
 ---
 <article class="bc card">
   <div class="bc__top">
@@ -15,7 +15,7 @@ const tel = telHref(b.phone);
     <dl class="bc__facts">
       {b.address && (<div><dt class="sr-only">Address</dt><dd>{oneLineAddress(b)}</dd></div>)}
       {b.hours.length > 0 && (<div><dt class="sr-only">Hours</dt><dd>{hoursSummary(b)}</dd></div>)}
-      <div><dt class="sr-only">Phone</dt><dd>{tel ? <a href={tel}>{b.phone}</a> : <Ph value={b.phone} />}</dd></div>
+      <div><dt class="sr-only">Phone</dt><dd><PhoneLink branch={b} /></dd></div>
     </dl>
   ) : (
     <p class="bc__facts">Opening <Ph value={b.openingNote} fallback="[OPENING DATE]" />. Serving {b.city} and nearby communities.</p>
