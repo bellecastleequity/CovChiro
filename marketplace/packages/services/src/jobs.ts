@@ -80,6 +80,8 @@ export const JOBS: Job[] = [
   { name: "payoutRelease", schedule: { everySeconds: 900 }, run: () => releaseDuePayouts() },
   // Reconfirmation (48h/24h) and day-of "On my way" check-in.
   { name: "attendance", schedule: { everySeconds: 60 }, run: () => attendanceSweep() },
+  // Clinic-booked stays: remind the clinic of missing details, alert admins, nudge the provider to tap "Got it".
+  { name: "stayDetails", schedule: { everySeconds: 900 }, run: () => import("./stay").then((m) => m.staySweep()) },
   // Provider booking emails: each provider's local send time, so check every tick.
   { name: "bookingDigests", schedule: { everySeconds: 60 }, run: () => sendBookingDigests() },
   // Standing bookings: keep each one booked out to the horizon.

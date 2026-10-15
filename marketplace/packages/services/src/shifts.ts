@@ -1026,24 +1026,6 @@ export function stayFields(input: { lodgingAllowed: boolean; lodgingByClinic?: b
   return { lodgingByClinic: by, lodgingStayKind: by ? (input.lodgingStayKind ?? "HOTEL") : null, lodgingStayDetails: by ? input.lodgingStayDetails?.trim().slice(0, 600) || null : null };
 }
 
-/** The clinic adds or changes where its booked provider stays (clinic-booked lodging). */
-export async function updateStayDetails(actor: Actor, shiftId: string, input: { kind: "HOTEL" | "RENTAL" | "OTHER"; details: string }) {
-  const shift = await clinicShift(actor, shiftId);
-  if (!shift.lodgingByClinic) throw new DomainError("VALIDATION", "This shift doesn't use a stay booked by your clinic.");
-  const details = input.details.trim().slice(0, 600) || null;
-  await prisma.shift.update({ where: { id: shiftId }, data: { lodgingStayKind: input.kind, lodgingStayDetails: details } });
-  await audit(prisma, actor, "shift.stay_details", "Shift", shiftId, { kind: shift.lodgingStayKind, details: shift.lodgingStayDetails }, { kind: input.kind, details });
-  const live = await prisma.assignment.findFirst({ where: { shiftId, status: { in: ["CONFIRMED", "IN_PROGRESS"] } }, include: { provider: true } });
-  if (live && details) {
-    await notify(prisma, live.provider.userId, {
-      template: "stay_details",
-      title: "Your stay is booked",
-      body: `${shift.location.name} added where you're staying for your ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric" })} shift. The details are on the shift page.`,
-      link: `/provider/assignments/${live.id}`,
-    });
-  }
-}
-
 export async function cancelShiftByClinic(actor: Actor, shiftId: string, reason: string) {
   const shift = await clinicShift(actor, shiftId);
   if (!shiftIsCancellable(shift.status)) throw new DomainError("INVALID_TRANSITION", "This shift can no longer be cancelled.");

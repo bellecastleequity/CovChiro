@@ -154,7 +154,7 @@ describe("lodging paid up front", () => {
     // Confirmation tells them who books it and where it is.
     const note = await prisma.notification.findFirstOrThrow({ where: { userId: p.user.id, template: "shift_confirmed_provider" }, orderBy: { createdAt: "desc" } });
     expect(note.body).toContain("books and pays for your stay (a hotel)");
-    expect(note.body).toContain("on the shift page");
+    expect(note.body).toContain("as soon as they add where you're staying");
   });
 
   it("a failed deposit keeps the advance on hold until the clinic pays", async () => {

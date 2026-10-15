@@ -84,3 +84,28 @@ describe("clinic-booked stays", () => {
     expect(stayByClinicLine("RENTAL")).toContain("an Airbnb, apartment or rental");
   });
 });
+
+describe("clinic-booked stay details", () => {
+  it("lists what's missing, including moving the reservation to a replacement", async () => {
+    const { stayMissing, staySharedWith } = await import("../src");
+    const full = { place: "Hampton Inn", address: "1 Main St", checkInAt: d("2026-11-09T20:00:00Z"), bookedUnder: "Jane Doe", forAssignmentId: "a1" };
+    expect(stayMissing(full, "a1")).toEqual([]);
+    expect(stayMissing({ ...full, forAssignmentId: null }, "a1")).toEqual([]);
+    expect(stayMissing({ ...full, address: " ", bookedUnder: null }, "a1")).toEqual(["address", "bookedUnder"]);
+    expect(stayMissing(full, "a2")).toEqual(["newProvider"]);
+    expect(staySharedWith(full, "a1")).toBe(true);
+    expect(staySharedWith(full, "a2")).toBe(false);
+    expect(staySharedWith({ forAssignmentId: null }, "a2")).toBe(true);
+  });
+
+  it("access codes only from 48 hours before; reminders at the latest mark passed", async () => {
+    const { stayAccessVisible, stayReminderDue } = await import("../src");
+    expect(stayAccessVisible(START, at(50), 48)).toBe(false);
+    expect(stayAccessVisible(START, at(47), 48)).toBe(true);
+    expect(stayReminderDue(START, at(100), [72, 48, 24])).toBeNull();
+    expect(stayReminderDue(START, at(70), [72, 48, 24])).toBe(72);
+    expect(stayReminderDue(START, at(40), [72, 48, 24])).toBe(48);
+    expect(stayReminderDue(START, at(5), [72, 48, 24])).toBe(24);
+    expect(stayReminderDue(START, at(-1), [72, 48, 24])).toBeNull();
+  });
+});

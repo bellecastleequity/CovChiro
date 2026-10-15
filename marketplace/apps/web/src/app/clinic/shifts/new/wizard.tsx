@@ -543,8 +543,8 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                                 <option value="OTHER">Other</option>
                               </Select>
                             </Field>
-                            <Field label="Where they'll stay (optional)" hint="Shown only to the provider you confirm. You can add it later on the shift page.">
-                              <Input value={stayDetails} onChange={(e) => setStayDetails(e.target.value)} maxLength={600} placeholder="e.g. Hampton Inn on Main St, booked for the night before" />
+                            <Field label="Notes for your provider (optional)" hint="Once a provider is confirmed, add the place, address, check-in and the name it's booked under on the shift page. Only the provider you confirm sees them.">
+                              <Input value={stayDetails} onChange={(e) => setStayDetails(e.target.value)} maxLength={600} placeholder="e.g. We use the Hampton Inn on Main St" />
                             </Field>
                           </div>
                         ) : null}

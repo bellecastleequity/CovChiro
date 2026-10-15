@@ -5,6 +5,7 @@ import { eligibilityOptions, loadProviders, loadShift } from "./eligibility";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
 import { chargeBalance, chargeLodging, refundAssignment } from "./payments";
 import { scheduleShiftPayout } from "./payouts";
+import { staySummary } from "./stay";
 import { cancelAssignment } from "./shifts";
 
 /**
@@ -188,6 +189,7 @@ export async function nightlyCredentialSweep(now = new Date()) {
 
 /** 24h before each shift: re-verify eligibility (SPEC INV-1 #8). */
 export async function preShiftChecks(now = new Date()) {
+  const s = await getSettings();
   const upcoming = await prisma.assignment.findMany({
     where: { status: "CONFIRMED", startsAt: { gt: now, lte: new Date(+now + 24 * HOUR) }, NOT: { flags: { has: "PRECHECKED" } } },
     select: { id: true },
@@ -200,7 +202,7 @@ export async function preShiftChecks(now = new Date()) {
     await notify(prisma, a.provider.userId, {
       template: "reminder_24h",
       title: `Reminder: shift tomorrow at ${a.shift.location.name}`,
-      body: `${a.shift.location.addressLine1}, ${a.shift.location.city}. Starts ${a.startsAt.toLocaleTimeString("en-US", { timeZone: a.shift.location.timeZone, hour: "numeric", minute: "2-digit" })}.`,
+      body: `${a.shift.location.addressLine1}, ${a.shift.location.city}. Starts ${a.startsAt.toLocaleTimeString("en-US", { timeZone: a.shift.location.timeZone, hour: "numeric", minute: "2-digit" })}.${(() => { const t = staySummary(a, s); return t ? ` ${t}` : ""; })()}`,
       link: `/provider/assignments/${a.id}`,
       sms: true,
     });

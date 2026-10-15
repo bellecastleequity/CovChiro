@@ -1,3 +1,4 @@
+import { staySummary } from "./stay";
 import { brand } from "@cm/config";
 import { prisma, type Prisma } from "@cm/db";
 import { DateTime } from "luxon";
@@ -72,7 +73,7 @@ export async function sendBookingDigests(now: Date = clock.now()) {
       const key = `${kind}:${provider.id}:${w.key}`;
       const claimed = await prisma.digestSend.createMany({ data: [{ key, userId: provider.userId }], skipDuplicates: true });
       if (!claimed.count) continue;
-      const ok = await sendEmail(provider.user.email, digestEmail(kind, w.from, bookings, s["digests.daily"].enabled));
+      const ok = await sendEmail(provider.user.email, digestEmail(kind, w.from, bookings, s["digests.daily"].enabled, s));
       if (ok) sent++;
       else await prisma.digestSend.delete({ where: { key } }).catch(() => {});
     }
@@ -82,7 +83,7 @@ export async function sendBookingDigests(now: Date = clock.now()) {
 
 type Booking = Prisma.AssignmentGetPayload<{ include: { shift: { include: { location: { include: { clinicOrg: true } } } } } }>;
 
-function digestEmail(kind: Kind, from: DateTime, bookings: Booking[], dailyToo = false): EmailContent {
+function digestEmail(kind: Kind, from: DateTime, bookings: Booking[], dailyToo = false, s?: Awaited<ReturnType<typeof getSettings>>): EmailContent {
   const n = bookings.length;
   const plural = `${n} booking${n === 1 ? "" : "s"}`;
   const items = bookings.map((a) => {
@@ -95,7 +96,7 @@ function digestEmail(kind: Kind, from: DateTime, bookings: Booking[], dailyToo =
     const contact = loc.onSiteContactName ?? "";
     return {
       title: `${kind === "weekly" ? `${day} · ` : ""}${time(a.startsAt)}–${time(a.endsAt)} · ${loc.clinicOrg.displayName}`,
-      lines: [address, ...(contact ? [`On-site contact: ${contact}`] : [])],
+      lines: [address, ...(contact ? [`On-site contact: ${contact}`] : []), ...((s && staySummary(a, s)) ? [staySummary(a, s)!] : [])],
       links: [
         { label: "Get directions", url: directionsUrl(address) },
         { label: "Apple Maps", url: appleMapsUrl(address) },

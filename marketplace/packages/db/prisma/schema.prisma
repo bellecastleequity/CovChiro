@@ -889,8 +889,21 @@ model Shift {
   lodgingByClinic             Boolean           @default(false)
   /// HOTEL | RENTAL | OTHER (when lodgingByClinic).
   lodgingStayKind             String?
-  /// Where the provider stays; shown to the booked provider only.
+  /// Notes about the stay; shown to the booked provider only.
   lodgingStayDetails          String?
+  /// Clinic-booked stay details (shown to the provider the stay was saved for; access only from stay.accessFromHours before).
+  stayPlace                   String?
+  stayAddress                 String?
+  stayCheckIn                 DateTime?         @db.Timestamptz(3)
+  stayCheckOut                DateTime?         @db.Timestamptz(3)
+  stayConfirmation            String?
+  stayBookedUnder             String?
+  stayAccess                  String?
+  /// Booking confirmation file (clinics/<orgId>/stays/…).
+  stayFileKey                 String?
+  stayUpdatedAt               DateTime?         @db.Timestamptz(3)
+  /// The booking the stay was last saved for; another live booking means the clinic must move it to the new provider.
+  stayForAssignmentId         String?
   /// Fly-in coverage allowed (snapshot at posting; null = no): airfare per trip, lodging per night, and the last moment a fly-in provider can be added.
   flyInAirfareCents           Int?
   flyInNightlyCents           Int?
@@ -1149,6 +1162,8 @@ model Assignment {
   lodgingApprovedCents Int                       @default(0)
   /// Part of this booking's lodging paid from the shift's hold (an earlier provider's lodging the clinic already paid).
   lodgingCreditCents   Int                       @default(0)
+  /// The provider tapped "Got it" on the clinic-booked stay details (cleared when the clinic changes them).
+  stayAckAt            DateTime?                 @db.Timestamptz(3)
   /// Fly-in booking (provider flies in): airfare allowance on the first day they cover in the booking, 0 on the rest.
   flyIn                Boolean                   @default(false)
   airfareCents         Int                       @default(0)

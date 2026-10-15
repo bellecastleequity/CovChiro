@@ -200,18 +200,8 @@ export async function confirmInTx(
   await audit(db, actor, "shift.confirmed", "Shift", shiftId, { status: shift.status }, { status: "CONFIRMED", providerId, method, assignmentId: assignment.id });
 
   effects.add(() => chargeDeposit(assignment.id));
-  if (stayByClinic && !shift.lodgingStayDetails) {
-    effects.add(async () => {
-      const { prisma } = await import("@cm/db");
-      await notifyClinic(prisma, shift.location.clinicOrgId, {
-        template: "stay_details_needed",
-        title: "Your provider needs a place to stay",
-        body: `Your confirmed provider for ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric" })} lives far enough away to stay over, and you chose to book the stay. Add where they'll stay (${stayLabel(shift.lodgingStayKind)}) on the shift page.`,
-        link: `/clinic/shifts/${shiftId}`,
-        ctaLabel: "Add stay details",
-      });
-    });
-  }
+  // Clinic-booked stay: tell the clinic who to book it for (or to move it to this replacement).
+  if (stayByClinic) effects.add(() => import("./stay").then((m) => m.stayOnConfirmed(assignment.id)));
   // Booked inside the 48-hour window: the lodging advance goes out right after the deposit.
   if (travel.lodgingEstimateCents) effects.add(() => sendDueLodgingAdvance(assignment.id));
   effects.add(async () => {
@@ -228,7 +218,7 @@ export async function confirmInTx(
         travel.lodgingEstimateCents
           ? ` Your $${(travel.lodgingEstimateCents / 100).toFixed(0)} lodging is paid in advance: we send it to your bank when you reconfirm, from 48 hours before the shift. The earlier you reconfirm, the more likely it's in your account before the hotel puts a hold on your card.`
           : stayByClinic
-            ? ` The clinic books and pays for your stay (${stayLabel(shift.lodgingStayKind)}).${shift.lodgingStayDetails ? " Where you're staying is on the shift page." : " We'll let you know as soon as they add where you're staying."}`
+            ? ` The clinic books and pays for your stay (${stayLabel(shift.lodgingStayKind)}), in your legal name. ${shift.stayPlace && !shift.stayForAssignmentId ? "Where you're staying is on the shift page." : "We'll let you know as soon as they add where you're staying."}`
             : ""
       }${idDue ? ` One step left: verify your ID (about 2 minutes, on your phone) by ${idDue.toLocaleString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}, or this booking goes to another provider.` : ""}`,
       link: idDue ? "/provider/verify-id" : `/provider/assignments/${assignment.id}`,

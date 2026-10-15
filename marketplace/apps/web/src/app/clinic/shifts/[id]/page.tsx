@@ -3,11 +3,12 @@ import Link from "next/link";
 import { Ban, Car, Heart, MessageSquare, Radar, Star, Zap } from "lucide-react";
 import { prisma } from "@cm/db";
 import { clinicView } from "@cm/core";
-import { dispatch, getSettings, sameProvider, shiftCandidates, shiftChanges, supply as supplySvc, timeclock, volume } from "@cm/services";
+import { dispatch, getSettings, sameProvider, shiftCandidates, shiftChanges, stay, supply as supplySvc, timeclock, volume } from "@cm/services";
 import { clinicApproveAction, clinicConfirmVisitsAction, clinicReportAction, clinicReportVisitsAction } from "@/app/timeclock-actions";
 import { ClinicVisitPanel } from "@/components/timeclock/visit-count";
 import { SignOffForm } from "@/components/timeclock/signoff-form";
 import { TrustPanel } from "@/components/clinic/trust-panel";
+import { StayCard } from "@/components/clinic/stay-card";
 import { bookAgainAction } from "../../actions";
 import { TimesheetPanel, TimesheetStatus } from "@/components/timeclock/timesheet-panel";
 import { AutoRefresh, Countdown } from "@/components/countdown";
@@ -24,7 +25,7 @@ import { requireActor } from "@/lib/session";
 import { VerificationBanner } from "@/components/clinic/verification-banner";
 import {
   blockAction, boostAction, cancelDispatchAction, confirmAllDaysAction, cancelShiftAction, disputeAction, favoriteAction, findSomeoneNowAction, instantConfirmAction, inviteAction, openThreadAction,
-  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, releaseClinicRateAction, reportNoShowAction, selectAction, stayDetailsAction, withdrawShiftChangeAction, splitBookingAction, keepWaitingAction,
+  markArrivedAction, postDraftAction, privateFeedbackAction, ratingAction, releaseClinicRateAction, reportNoShowAction, selectAction, withdrawShiftChangeAction, splitBookingAction, keepWaitingAction,
 } from "../../actions";
 
 type Cand = Awaited<ReturnType<typeof shiftCandidates>>["applicants"][number];
@@ -107,6 +108,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
   const s = await getSettings();
   const tz = shift.location.timeZone;
   const live = shift.assignments.find((a) => ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "DISPUTED"].includes(a.status));
+  const stayView = shift.lodgingByClinic && !["CANCELLED", "COMPLETED", "UNFILLED"].includes(shift.status) ? await stay.clinicStayView(actor, shift.id) : null;
   const visitView = live && +live.startsAt <= Date.now() ? await volume.visitViewForClinic(actor, live.id) : null;
   const sheet = live && s["timeclock.enabled"] && +live.startsAt - Date.now() < s["timeclock.earliestInMinutes"] * 60_000 ? await timeclock.timesheetForClinic(actor, live.id) : null;
   const selectable = ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"].includes(shift.status);
@@ -589,32 +591,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
               </CardBody>
             </Card>
           ) : null}
-          {shift.lodgingByClinic && !["CANCELLED", "COMPLETED", "UNFILLED"].includes(shift.status) ? (
-            <Card>
-              <CardHeader title="Your provider's stay" description="You book and pay for the stay (hotel, Airbnb, apartment or other) if your provider lives far enough away to stay over. Only the provider you confirm sees these details." />
-              <CardBody>
-                {live ? (
-                  live.flyIn || live.driveMinutes > s["pricing.lodgingTriggerMinutes"]
-                    ? <Alert tone={shift.lodgingStayDetails ? "info" : "warning"} className="mb-3">{live.provider.displayName} lives {live.flyIn ? "out of state and flies in" : `${live.driveMinutes} minutes away`}, so they need a place to stay the night before.{shift.lodgingStayDetails ? "" : " Add where they'll stay below."}</Alert>
-                    : <p className="mb-3 text-sm text-slate-600">{live.provider.displayName} lives nearby ({live.driveMinutes} minutes away), so no stay is needed for this shift.</p>
-                ) : null}
-                <ActionForm action={stayDetailsAction}>
-                  <input type="hidden" name="shiftId" value={shift.id} />
-                  <Field label="Stay">
-                    <Select name="kind" defaultValue={shift.lodgingStayKind ?? "HOTEL"}>
-                      <option value="HOTEL">Hotel</option>
-                      <option value="RENTAL">Airbnb, apartment or rental</option>
-                      <option value="OTHER">Other</option>
-                    </Select>
-                  </Field>
-                  <Field label="Where they'll stay" className="mt-3" hint="Name, address and check-in details. No patient information.">
-                    <Textarea name="details" maxLength={600} defaultValue={shift.lodgingStayDetails ?? ""} placeholder="e.g. Hampton Inn, 123 Main St. Booked under the provider's name for the night before; check-in from 3 PM." />
-                  </Field>
-                  <SubmitButton variant="outline" className="mt-3 w-full">Save stay details</SubmitButton>
-                </ActionForm>
-              </CardBody>
-            </Card>
-          ) : null}
+          {stayView ? <StayCard view={stayView} /> : null}
           {["DRAFT", "OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING", "CONFIRMED"].includes(shift.status) ? (
             <Card>
               <CardHeader title="Cancel shift" />

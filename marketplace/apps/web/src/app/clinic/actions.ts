@@ -20,7 +20,7 @@ import {
   clinicRate,
   clinicVerify,
   archiveLocation, auth, overdue, sameProvider, cancelShiftByClinic,
-  updateStayDetails, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
+  stay, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
 import { bool, formAction, optStr, str } from "@/lib/action";
@@ -297,10 +297,25 @@ export const cancelShiftAction = formAction(async (fd) => {
 
 export const stayDetailsAction = formAction(async (fd) => {
   const { actor } = await me();
+  const shiftId = str(fd, "shiftId");
   const kind = str(fd, "kind");
-  await updateStayDetails(actor, str(fd, "shiftId"), { kind: kind === "RENTAL" || kind === "OTHER" ? kind : "HOTEL", details: str(fd, "details") });
+  const orgId = actor.clinicOrgId!;
+  const fileKey = await saveUpload(fd.get("file"), `clinics/${orgId}/stays/${shiftId}`);
+  const out = await stay.saveStayDetails(actor, shiftId, {
+    kind: kind === "HOTEL" || kind === "RENTAL" ? kind : "OTHER",
+    place: str(fd, "place"),
+    address: str(fd, "address"),
+    checkIn: str(fd, "checkIn"),
+    checkOut: str(fd, "checkOut"),
+    confirmation: str(fd, "confirmation"),
+    bookedUnder: str(fd, "bookedUnder"),
+    access: str(fd, "access"),
+    notes: str(fd, "details"),
+    fileKey,
+    removeFile: fd.get("removeFile") === "on",
+  });
   revalidatePath("/clinic", "layout");
-  return "Saved. Your provider sees it on their shift page.";
+  return out.sharedWith ? `Saved and shared with ${out.sharedWith}.` : "Saved. Your provider will see it once they're confirmed.";
 });
 
 export const favoriteAction = formAction(async (fd) => {

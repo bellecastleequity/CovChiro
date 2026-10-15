@@ -8,6 +8,7 @@ import { prisma } from "@cm/db";
 import {
   idcheck,
   attendance,
+  stay,
   bookings,
   standing,
   dispatch,
@@ -21,6 +22,13 @@ import { getSession, requireActor } from "@/lib/session";
 import { saveUpload } from "@/lib/upload";
 
 const me = () => requireActor("provider");
+
+export const ackStayAction = formAction(async (fd) => {
+  const { actor } = await me();
+  const r = await stay.ackStay(actor, str(fd, "assignmentId"));
+  revalidatePath("/provider", "layout");
+  return r;
+});
 
 export const reconfirmAction = formAction(async (fd) => {
   const { actor } = await me();

@@ -106,3 +106,53 @@ export function stayLabel(kind: string | null | undefined): string {
 export function stayByClinicLine(kind: string | null | undefined): string {
   return `The clinic books and pays for your stay (${stayLabel(kind)}) if you'd need to stay over. No lodging allowance; you don't pay for it.`;
 }
+
+// ---------------- clinic-booked stay details ----------------
+
+export interface StayFacts {
+  place: string | null;
+  address: string | null;
+  checkInAt: Date | null;
+  bookedUnder: string | null;
+  /** The booking the stay was last saved for (null = saved before anyone was confirmed). */
+  forAssignmentId: string | null;
+}
+
+export type StayMissing = "place" | "address" | "checkIn" | "bookedUnder" | "newProvider";
+
+export const STAY_MISSING_WORDS: Record<StayMissing, string> = {
+  place: "the place's name",
+  address: "the address",
+  checkIn: "the check-in date and time",
+  bookedUnder: "the name it's booked under",
+  newProvider: "the reservation moved to your new provider's name",
+};
+
+/** What the clinic still has to add before the booked provider has everything they need. */
+export function stayMissing(f: StayFacts, liveAssignmentId: string): StayMissing[] {
+  const out: StayMissing[] = [];
+  if (f.forAssignmentId && f.forAssignmentId !== liveAssignmentId) out.push("newProvider");
+  if (!f.place?.trim()) out.push("place");
+  if (!f.address?.trim()) out.push("address");
+  if (!f.checkInAt) out.push("checkIn");
+  if (!f.bookedUnder?.trim()) out.push("bookedUnder");
+  return out;
+}
+
+/** The provider sees the details only once they were saved for them (or before anyone was booked). */
+export function staySharedWith(f: Pick<StayFacts, "forAssignmentId">, assignmentId: string): boolean {
+  return !f.forAssignmentId || f.forAssignmentId === assignmentId;
+}
+
+/** Door codes and access instructions are shown from this many hours before the start. */
+export function stayAccessVisible(startsAt: Date, now: Date, accessFromHours: number): boolean {
+  return +startsAt - +now <= accessFromHours * HOUR;
+}
+
+/** The reminder mark (hours before the start) that is due now, latest first; null when none. */
+export function stayReminderDue(startsAt: Date, now: Date, marks: number[]): number | null {
+  const left = (+startsAt - +now) / HOUR;
+  if (left <= 0) return null;
+  const due = [...marks].sort((a, b) => a - b).find((m) => left <= m);
+  return due ?? null;
+}

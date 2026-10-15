@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { storageProvider } from "@cm/integrations";
-import { canViewLocationPhoto } from "@cm/services";
+import { canViewLocationPhoto, stay } from "@cm/services";
 import { getSession } from "@/lib/session";
 
 /**
@@ -17,7 +17,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ key
   const photo = key.startsWith("photos/");
   const clinicDoc = !!s.actor.clinicOrgId && key.startsWith(`clinics/${s.actor.clinicOrgId}/`);
   const locationPhoto = key.startsWith("locations/") && (await canViewLocationPhoto(s.actor, key));
-  if (!isAdmin && !own && !clinicDoc && !photo && !locationPhoto) return new NextResponse("Not found", { status: 404 });
+  // Clinic-booked stay confirmation: also the provider it was saved for.
+  const stayFile = !clinicDoc && !!s.actor.providerId && key.startsWith("clinics/") && key.includes("/stays/") && (await stay.canViewStayFile(s.actor, key));
+  if (!isAdmin && !own && !clinicDoc && !photo && !locationPhoto && !stayFile) return new NextResponse("Not found", { status: 404 });
   const st = storageProvider();
   const signed = await st.signedUrl(key, 10);
   if (signed) return NextResponse.redirect(signed);
