@@ -1,0 +1,56 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import PatientLinks from '../components/PatientLinks.astro';
+import { branches, branchName, branchPath, isOpen, patientLink } from '../lib/site';
+const open = branches.filter(isOpen);
+const ownLinks = open.filter((b) => b.patientLinks.booking || b.patientLinks.intake);
+---
+<Base
+  title="Patient Center: Book Online, Forms & Portal | Therapy & Injury"
+  description="Book a chiropractic appointment online, complete new patient paperwork before your visit, or sign in to the Therapy & Injury patient portal."
+  breadcrumbs={[['Patient center', '/patients/']]}
+>
+  <PageHero eyebrow="Patients" title="Patient center" lede="Book online, finish your new patient paperwork before you arrive, or sign in to your patient portal. Prefer to talk? Call us. We’ll see you with or without a referral." crumbs={[['Patient center', '/patients/']]} />
+  <section class="section">
+    <div class="wrap pc">
+      <div class="card">
+        <h2 class="pc__h">Online services</h2>
+        <PatientLinks />
+      </div>
+      {ownLinks.length > 0 && (
+        <div class="prose">
+          <h2>Booking by location</h2>
+          <ul>
+            {ownLinks.map((b) => (
+              <li>
+                <a href={branchPath(b)}>{branchName(b)}</a>
+                {patientLink('booking', b) && <Fragment> · <a href={patientLink('booking', b)} target="_blank" rel="noopener">Book online<span class="sr-only"> (opens in a new tab)</span></a></Fragment>}
+                {patientLink('intake', b) && <Fragment> · <a href={patientLink('intake', b)} target="_blank" rel="noopener">Paperwork<span class="sr-only"> (opens in a new tab)</span></a></Fragment>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div class="prose">
+        <h2>Before your first visit</h2>
+        <ul class="check-list">
+          <li>Complete your new patient paperwork online, if you can.</li>
+          <li>Bring photo ID and your auto insurance information. If you were in an accident, bring your claim number and the police report if you have it.</li>
+          <li>Wear comfortable clothing that lets you move easily.</li>
+        </ul>
+        <p><a href="/auto-accident-injuries/">More about your first visit after an accident</a></p>
+      </div>
+    </div>
+  </section>
+</Base>
+<style>
+  .pc__h {
+    font-size: 1.3rem;
+  }
+  .pc {
+    display: grid;
+    gap: 40px;
+    max-width: 860px;
+  }
+</style>

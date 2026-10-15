@@ -24,6 +24,7 @@ export async function publicPaths(): Promise<PublicPath[]> {
     { path: '/faq/', priority: 0.6, changefreq: 'monthly' },
     { path: '/about/', priority: 0.5, changefreq: 'monthly' },
     { path: '/contact/', priority: 0.5, changefreq: 'monthly' },
+    { path: '/patients/', priority: 0.6, changefreq: 'monthly' },
     { path: '/blog/', priority: 0.6, changefreq: 'weekly', lastmod: blog[0]?.data.updated ?? blog[0]?.data.pubDate },
     ...blog.map((p): PublicPath => ({ path: `/blog/${p.id}/`, priority: 0.5, changefreq: 'yearly', lastmod: p.data.updated ?? p.data.pubDate })),
     { path: '/privacy/', priority: 0.2, changefreq: 'yearly' },

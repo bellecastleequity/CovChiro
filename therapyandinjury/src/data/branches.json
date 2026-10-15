@@ -43,6 +43,10 @@
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "[OCALA GOOGLE BUSINESS PROFILE URL]",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
     "domains": [
       "ocalatherapyandinjury.com"
     ],
@@ -83,6 +87,10 @@
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
     "domains": [
       "orlandotherapyandinjury.com"
     ],
@@ -122,6 +130,10 @@
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
     "domains": [
       "lakemarytherapyandinjury.com"
     ],
@@ -160,6 +172,10 @@
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
     "domains": [
       "deltonatherapyandinjury.com"
     ],
@@ -198,6 +214,10 @@
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
     "domains": [
       "delandtherapyandinjury.com"
     ],
@@ -236,6 +256,10 @@
     "doctors": [],
     "mapEmbed": "",
     "gbpUrl": "",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
     "domains": [
       "eustistherapyandinjury.com"
     ],

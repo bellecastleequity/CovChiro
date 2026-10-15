@@ -8,6 +8,7 @@ import AppointmentForm from '../components/AppointmentForm.astro';
 import BranchCard from '../components/BranchCard.astro';
 import Icon from '../components/Icon.astro';
 import BranchFeatures from '../components/BranchFeatures.astro';
+import PatientLinks from '../components/PatientLinks.astro';
 import Ph from '../components/Ph.astro';
 import {
   type Branch,
@@ -24,6 +25,7 @@ import {
   branchSchema,
   isPlaceholder,
   isIndexable,
+  bookingHref,
 } from '../lib/site';
 
 export function getStaticPaths() {
@@ -50,7 +52,7 @@ const description = open
   : `${name} is coming soon, bringing chiropractic injury and wellness care to ${b.city} and ${b.county} County, FL. Get notified when we open.`;
 
 ---
-<Base title={title} description={description} city={b.city} ctaHref="#request" ogImage={`/og/${b.slug}.png`} schema={branchSchema(b)} breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)]]} noindex={!isIndexable(b)} branch={b}>
+<Base title={title} description={description} city={b.city} ctaHref={bookingHref(b)} ogImage={`/og/${b.slug}.png`} schema={branchSchema(b)} breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)]]} noindex={!isIndexable(b)} branch={b}>
   <section class="page-hero">
     <div class="page-hero__ring" aria-hidden="true"></div>
     <div class="wrap">
@@ -75,7 +77,7 @@ const description = open
       )}
       <BranchFeatures branch={b} />
       <div class="btn-row bh__ctas">
-        <a class="btn btn--primary" href="#request">{open ? 'Request an appointment' : 'Get notified'}</a>
+        <a class="btn btn--primary" href={bookingHref(b)}>{!open ? 'Get notified' : bookingHref(b).startsWith('http') ? 'Book an appointment' : 'Request an appointment'}</a>
         {tel && <a class="btn btn--ghost" href={tel}>Call {b.phone}</a>}
         {open && b.address && <a class="btn btn--ghost" href={directionsUrl(b)} rel="noopener" target="_blank">Get directions<span class="sr-only"> (opens Google Maps in a new tab)</span></a>}
       </div>
@@ -142,6 +144,14 @@ const description = open
           {entity && <p class="small muted">{name} is operated by {entity}.</p>}
           <a href="/about/">About Therapy &amp; Injury</a>
         </div>
+
+        {open && (
+          <div class="card fact">
+            <Icon name="calendar" size={40} />
+            <h2 class="fact__h">Before your visit</h2>
+            <PatientLinks branch={b} compact />
+          </div>
+        )}
 
         {map && (
           <div class="map">

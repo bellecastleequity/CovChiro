@@ -55,7 +55,7 @@ Also run `node social/gbp/generate.mjs` to create its Google Business Profile sh
 
 ## Project map
 ```
-src/data/site.json         brand-wide facts (phone, legal name, form endpoint)
+src/data/site.json         brand-wide facts (phone, form endpoint, Carepatron patientLinks, SEO ids)
 src/data/branches.json     one entry per location (drives most of the site)
 src/lib/site.ts            helpers: names, hours, schema
 src/lib/content.ts         shared service and "how care works" copy

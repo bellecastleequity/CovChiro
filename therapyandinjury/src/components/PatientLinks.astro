@@ -1,0 +1,71 @@
+---
+/**
+ * Carepatron patient links: book online, new-patient paperwork, patient portal.
+ * Links open Carepatron (HIPAA-compliant) in a new tab. Unset links show their placeholder.
+ */
+import Ph from './Ph.astro';
+import { site, type Branch, patientLink, isOpen } from '../lib/site';
+interface Props { branch?: Branch; compact?: boolean }
+const { branch, compact = false } = Astro.props;
+const items = [
+  { kind: 'booking' as const, title: 'Book an appointment online', text: 'Pick a time that works for you.', label: 'Book online' },
+  { kind: 'intake' as const, title: 'New patient paperwork', text: 'Fill out your forms before your first visit to save time at check-in.', label: 'Start paperwork' },
+  { kind: 'portal' as const, title: 'Patient portal', text: 'Existing patients: view appointments, forms, and messages.', label: 'Open portal' },
+].filter((i) => !(i.kind === 'booking' && branch && !isOpen(branch)));
+---
+<div class:list={['pl', { 'pl--compact': compact }]}>
+  {items.map((i) => {
+    const href = patientLink(i.kind, branch);
+    return (
+      <div class="pl__item">
+        <div>
+          <h3 class="pl__title">{i.title}</h3>
+          {!compact && <p class="pl__text">{i.text}</p>}
+        </div>
+        {href ? (
+          <a class="btn btn--ghost pl__btn" href={href} target="_blank" rel="noopener">
+            {i.label}<span class="sr-only"> (opens Carepatron in a new tab)</span>
+          </a>
+        ) : (
+          <span class="pl__missing"><Ph value={site.patientLinks[i.kind]} /></span>
+        )}
+      </div>
+    );
+  })}
+  <p class="pl__note small muted">Online booking, forms, and the portal are provided securely through Carepatron. Please keep medical details out of website forms and email.</p>
+</div>
+<style>
+  .pl {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .pl__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .pl__title {
+    font-size: 1.05rem;
+    margin: 0;
+  }
+  .pl__text {
+    margin: 4px 0 0;
+    color: var(--slate-text);
+    font-size: 0.95rem;
+  }
+  .pl__btn {
+    min-height: 44px;
+    padding: 8px 18px;
+  }
+  .pl__missing {
+    font-size: 0.85rem;
+  }
+  .pl__note {
+    margin: 0;
+  }
+</style>

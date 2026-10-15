@@ -31,6 +31,8 @@ export type Branch = {
   doctors: Doctor[];
   mapEmbed: string;
   gbpUrl: string;
+  /** Optional per-location Carepatron links; blank = use the brand-wide link in site.json. */
+  patientLinks: { booking: string; intake: string };
   domains: string[];
   nearbyAreas: string[];
   geo: { lat: number | null; lng: number | null };
@@ -98,6 +100,25 @@ export const featureLabels = (b: Branch): string[] => {
     f.onSiteXray && 'X-rays on-site',
     ...otherLangs.map((l) => (l === 'Español' ? 'Hablamos español' : `${l} spoken`)),
   ].filter(Boolean) as string[];
+};
+
+/**
+ * Carepatron (EHR/EMR) links: online booking, new-patient paperwork, patient portal.
+ * A location's own link wins over the brand-wide one in site.json. Returns '' while the
+ * value is still a [PLACEHOLDER], so buttons fall back to the request form / are hidden.
+ */
+export type PatientLinkKind = 'booking' | 'intake' | 'portal';
+export const patientLink = (kind: PatientLinkKind, b?: Branch): string => {
+  const own = kind !== 'portal' && b ? b.patientLinks?.[kind] : '';
+  if (!isPlaceholder(own)) return own as string;
+  const brand = site.patientLinks[kind];
+  return isPlaceholder(brand) ? '' : brand;
+};
+
+/** Where "Request an appointment" goes: Carepatron booking when set (open locations only), else the form. */
+export const bookingHref = (b?: Branch): string => {
+  if (b && !isOpen(b)) return '#request';
+  return patientLink('booking', b) || (b ? '#request' : '/locations/');
 };
 
 /** Treating doctors listed in branches.json. Empty until the practice confirms who they are. */

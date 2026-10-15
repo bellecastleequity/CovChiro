@@ -3,16 +3,17 @@
  * Phone-first action bar pinned to the bottom of small screens, the way every major
  * Florida injury-clinic site does it: call, request, directions. Hidden on desktop.
  */
-import { site, type Branch, telHref, directionsUrl, isOpen } from '../lib/site';
+import { site, type Branch, telHref, directionsUrl, isOpen, bookingHref } from '../lib/site';
 interface Props { branch?: Branch }
 const { branch: b } = Astro.props;
 const tel = b ? telHref(b.phone) : telHref(site.mainPhone);
 const dir = b && isOpen(b) ? directionsUrl(b) : '';
-const requestHref = b ? '#request' : '/locations/';
+const requestHref = bookingHref(b);
+const external = requestHref.startsWith('http');
 ---
 <nav class="mab" aria-label="Quick actions">
   {tel && <a class="mab__btn" href={tel}><span aria-hidden="true">📞</span> Call</a>}
-  <a class="mab__btn mab__btn--primary" href={requestHref}>{b && !isOpen(b) ? 'Get notified' : b ? 'Request visit' : 'Find a location'}</a>
+  <a class="mab__btn mab__btn--primary" href={requestHref}>{b && !isOpen(b) ? 'Get notified' : external ? 'Book online' : b ? 'Request visit' : 'Find a location'}</a>
   {dir && <a class="mab__btn" href={dir} rel="noopener" target="_blank"><span aria-hidden="true">📍</span> Directions<span class="sr-only"> (opens in a new tab)</span></a>}
 </nav>
 <style>

@@ -58,6 +58,7 @@ export const GET: APIRoute = async () => {
     `- FAQ: ${abs('/faq/')}`,
     `- About: ${abs('/about/')}`,
     `- Contact: ${abs('/contact/')}`,
+    `- Patient center (online booking, new patient paperwork, patient portal): ${abs('/patients/')}`,
     `- Blog: ${abs('/blog/')}`,
     ...blog.map((p) => `  - ${p.data.title}: ${abs(`/blog/${p.id}/`)}`),
     '',

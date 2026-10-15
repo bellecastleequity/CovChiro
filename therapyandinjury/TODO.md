@@ -60,6 +60,13 @@ Most facts live in two data files. Edit those first:
 
 ---
 
+## Carepatron (EHR/EMR) links
+- [ ] In `src/data/site.json` → `patientLinks`, paste the three Carepatron URLs: `booking` (online scheduling), `intake` (new patient paperwork), and `portal` (patient portal). Then rebuild.
+  - Once `booking` is set, every "Request an appointment" button on an open location (header, hero, phone action bar, closing call-to-action) becomes "Book an appointment" and opens Carepatron. Until then, those buttons use the website request form.
+  - The links appear on the Patient Center page (`/patients/`), in each open location's "Before your visit" card, and in the footer.
+- [ ] Optional: if a location has its own Carepatron booking page or intake form, put it in that location's `patientLinks` in `branches.json`; it overrides the brand-wide link. The portal link is always brand-wide.
+- [ ] Ask Carepatron for a signed BAA (business associate agreement), and keep the privacy policy's Carepatron section accurate.
+
 ## Black-owned visibility (off-site; see `docs/black-owned-visibility.md`)
 - [ ] For each location's Google Business Profile, turn on "Identifies as Black-owned"
 - [ ] Yelp: claim each location and turn on the "Black-owned" attribute

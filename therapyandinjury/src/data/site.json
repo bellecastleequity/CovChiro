@@ -10,6 +10,11 @@
   "mainPhone": "[MAIN PHONE]",
   "mainEmail": "[MAIN EMAIL]",
   "formEndpoint": "/api/appointment.php",
+  "patientLinks": {
+    "booking": "[CAREPATRON ONLINE BOOKING URL]",
+    "intake": "[CAREPATRON NEW PATIENT PAPERWORK URL]",
+    "portal": "[CAREPATRON PATIENT PORTAL URL]"
+  },
   "social": {
     "instagram": "[INSTAGRAM URL]",
     "facebook": "[FACEBOOK URL]"

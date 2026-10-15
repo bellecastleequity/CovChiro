@@ -1,7 +1,9 @@
 ---
 import Wordmark from './Wordmark.astro';
+import { bookingHref } from '../lib/site';
 interface Props { city?: string; ctaHref?: string }
-const { city, ctaHref = '/locations/' } = Astro.props;
+const { city, ctaHref = bookingHref() } = Astro.props;
+const ctaLabel = ctaHref.startsWith('http') ? 'Book an appointment' : 'Request an appointment';
 const path = Astro.url.pathname;
 const links = [
   { href: '/auto-accident-injuries/', label: 'Auto Accident Injuries' },
@@ -9,6 +11,7 @@ const links = [
   { href: '/services/', label: 'Services' },
   { href: '/about/', label: 'About' },
   { href: '/locations/', label: 'Locations' },
+  { href: '/patients/', label: 'Patients' },
 ];
 ---
 <header class="hdr">
@@ -22,7 +25,7 @@ const links = [
           <li><a href={l.href} aria-current={path.startsWith(l.href) ? 'page' : undefined}>{l.label}</a></li>
         ))}
       </ul>
-      <a class="btn btn--primary hdr__cta" href={ctaHref}>Request an appointment</a>
+      <a class="btn btn--primary hdr__cta" href={ctaHref}>{ctaLabel}</a>
     </nav>
     <details class="hdr__menu">
       <summary><span class="sr-only">Menu</span><span class="hdr__burger" aria-hidden="true"></span></summary>
@@ -31,7 +34,7 @@ const links = [
           {city && <li><a href="/">Therapy &amp; Injury home</a></li>}
           {links.map((l) => <li><a href={l.href} aria-current={path.startsWith(l.href) ? 'page' : undefined}>{l.label}</a></li>)}
         </ul>
-        <a class="btn btn--primary btn--block" href={ctaHref}>Request an appointment</a>
+        <a class="btn btn--primary btn--block" href={ctaHref}>{ctaLabel}</a>
       </nav>
     </details>
   </div>
@@ -153,7 +156,7 @@ const links = [
   .hdr__menu .btn {
     margin-top: 16px;
   }
-  @media (min-width: 1200px) {
+  @media (min-width: 1260px) {
     .hdr__nav {
       display: flex;
     }
