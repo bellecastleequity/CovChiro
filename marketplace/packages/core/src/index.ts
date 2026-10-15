@@ -1,5 +1,6 @@
 export * from "./errors";
 export * from "./time";
+export * from "./lodging";
 export * from "./clinicRate";
 export * from "./eligibility";
 export * from "./holidays";
