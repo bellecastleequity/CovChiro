@@ -2,7 +2,7 @@
 //
 //   node marketing/jingles/make-spots.mjs        # once: the spots + out/cues-urban.json
 //   node marketing/video/images.mjs              # once: the photo scenes (cached in scenes/)
-//   node marketing/video/render.mjs [voice]      # default voice: urban
+//   node marketing/video/render.mjs [voice] [spot...]   # default voice: urban; all spots unless named
 //
 // Output: marketing/video/out/<spot>-<story|square>.mp4 (1080x1920 for Reels/Stories/TikTok/Shorts,
 // 1080x1080 for feeds). H.264 + AAC, faststart. Needs Playwright (Chromium) and ffmpeg.
@@ -55,6 +55,7 @@ async function render(spot, format) {
   console.log(`made ${path.relative(process.cwd(), file)} (${(frames / FPS).toFixed(1)}s, ${format})`);
 }
 
-const jobs = Object.keys(cues).flatMap((spot) => Object.keys(FORMATS).map((f) => [spot, f]));
+const only = process.argv.slice(3); // optional spot names after the voice, e.g. `render.mjs urban 4-walk-it-off-30`
+const jobs = Object.keys(cues).filter((s) => !only.length || only.includes(s)).flatMap((spot) => Object.keys(FORMATS).map((f) => [spot, f]));
 await Promise.all([0, 1, 2].map(async (w) => { for (let j = w; j < jobs.length; j += 3) await render(...jobs[j]); }));
 await browser.close();

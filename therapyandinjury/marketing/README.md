@@ -38,17 +38,23 @@ Short videos built on the jingle spots, each in two sizes: 1080×1920 (Reels, St
 | `1-audio-logo` | ~4s | End card only: the number builds digit by digit as the hook says it. Bumper/pre-roll. |
 | `2-radio-tag` | ~10s | "Hurt in a car crash?" (dusk traffic) → "Get checked within 14 days" (driver with a stiff neck) → number. |
 | `3-ad-15s` | under 15s | Accident → Florida PIP 14-day timeline (with the "educational only" note) → Therapy & Injury brand → chiropractic care → "with or without a referral" → number. |
-| `4-walk-it-off-30` | 30.0s exactly | **"Don't Walk It Off."** One character throughout. He walks away from a crash saying "I'm good," then wakes up with a stiff neck, a tight back and a headache. The narrator explains that symptoms can show up days later, and a 14-day clock graphic counts up the PIP window. Then "Don't walk it off. Get checked." → Therapy & Injury → chiropractic care with or without a referral → "Call now" → jingle. |
+| `4-walk-it-off-30` | 30.0s exactly | **"Don't Walk It Off."** One character throughout. He walks away from a crash saying "I'm good," then wakes up with a stiff neck, a tight back and a headache. The narrator explains that symptoms can show up days later, and a 14-day clock graphic counts up the PIP window. Then "Don't walk it off. Get checked." → chiropractic care with or without a referral → **"Visit therapyandinjury.com, or call now"** → jingle. |
+| `5-walk-it-off-60` | 60.0s exactly | **"Don't Walk It Off," long version.** Act 1 is the 30s story, plus "Even called home: 'I'm fine. For real.'" It ends on "So don't walk it off. Call…" and a **mid-spot jingle**. Act 2 covers the first visit (a conversation, a chiropractic exam, a clear plan), what to bring as an animated checklist, and the referral line. Then the clock callback ("Don't wait out the clock"), "Get checked," **"Visit therapyandinjury.com, or call now"** and the final jingle. |
 
 ```bash
 cd therapyandinjury
 node marketing/jingles/make-spots.mjs   # audio + jingles/out/cues-urban.json (caption and hook timings)
 node marketing/video/images.mjs         # photo scenes -> video/scenes/ (already committed; only re-run for new ones)
-node marketing/video/render.mjs         # -> video/out/<spot>-<story|square>.mp4
+node marketing/video/render.mjs         # -> video/out/<spot>-<story|square>.mp4 (add `urban <spot>` to render one)
 ```
 - `ad.html` is the single template. Captions are timed to the voice's phrase starts. Each digit of (844) 84-TREAT appears as the hook says it.
 - Every frame carries "Chiropractic care · Florida-licensed D.C." (Florida ad rule).
 - The photo scenes are AI-generated, illustrative and generic: no crash shown, no real people, and never presented as patients or testimonials.
-- Spots of 30s and longer list their script as `lines` (`say` and `cap`) with a fixed `length`. The whole script is voiced as one take, because separate takes drift in voice. Each line's caption start is found in the take, and the read is sped up (by at most ~12%) to fit the length.
+- Spots of 30s and longer list their script as `lines` (`say` and `cap`) with a fixed `length`. The whole script is voiced as one take, because separate takes drift in voice.
+  - Gemini gives a rough start time for each line (cached as `<take>.align.json`), and each one is snapped to the nearest real pause in the take.
+  - The read is fitted to the length: sped up by at most ~12%, or slowed by up to 5% so there's no dead air.
+- A line marked `hookAfter` (in the 60) splits the take into two acts with a mid-spot jingle between them.
+- Voice clips are cached under a slug plus a hash of the full text, so scripts that start the same way don't collide.
+- The website is voiced as "Therapy and Injury dot com" so the TTS reads it cleanly.
 - Change the wording in `make-spots.mjs` (`body`/`phrases`, or `lines`) and the scene plan in `ad.html` (`PLANS`), then re-run both scripts.
 - To preview live in Chrome, open `video/ad.html?spot=3-ad-15s&format=story&preview=1` (render.mjs writes the `cues.js` it needs). Audio doesn't play in preview.

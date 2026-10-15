@@ -52,9 +52,20 @@
   .hl { color: var(--navy); background: var(--teal); padding: 0 .14em; border-radius: .12em; margin: 0 -.04em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
   .cap .note { font-size: 26px; font-weight: 500; color: #c9d3de; margin-top: 26px; }
   .square .cap .note { font-size: 22px; margin-top: 18px; }
+  .urlcap { font-size: 92px !important; letter-spacing: -0.045em; margin-top: 10px; white-space: nowrap; }
+  .square .urlcap { font-size: 80px !important; }
+  .orcall { font-size: 52px; font-weight: 800; margin-top: 26px; color: #dfe6ee; }
+  .square .orcall { font-size: 42px; margin-top: 16px; }
+  .checks { display: flex; flex-direction: column; gap: 30px; }
+  .checks .w { display: flex; align-items: center; gap: 28px; font-size: 70px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
+  .checks .w::before { content: '✓'; flex: none; width: 84px; height: 84px; border-radius: 50%; background: var(--teal); color: var(--navy); display: grid; place-items: center; font-size: 50px; font-weight: 900; }
+  .square .checks { gap: 18px; }
+  .square .checks .w { font-size: 54px; gap: 22px; }
+  .square .checks .w::before { width: 64px; height: 64px; font-size: 38px; }
   .brandup { display: flex; flex-direction: column; align-items: flex-start; gap: 34px; }
   .brandup img { width: 200px; height: 200px; }
   .square .brandup img { width: 150px; height: 150px; }
+  .brandup.sm { gap: 22px; } .brandup.sm img { width: 120px; height: 120px; } .square .brandup.sm img { width: 84px; height: 84px; }
 
   /* End card. */
   .end { position: absolute; inset: 0; background: var(--navy); opacity: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; overflow: hidden; }
@@ -136,7 +147,7 @@ const PLANS = {
   }),
   // "Don't Walk It Off" (30 s). One hero: walks away "fine", wakes up hurting, learns the 14-day window, gets checked.
   // p: 0 walked away, 1 Said, 2 I'm good, 3 Next morning, 4 Stiff neck, 5 Tight back, 6 Headaches,
-  //    7 symptoms later, 8 Florida PIP, 9 Don't walk it off, 10 Get checked, 11 Therapy & Injury, 12 Chiropractic care, 13 Call now
+  //    7 symptoms later, 8 Florida PIP, 9 Don't walk it off, 10 Get checked, 11 Chiropractic care, 12 visit the website / call now
   '4-walk-it-off-30': (p) => ({
     scenes: [
       { img: 'roadside-fine', from: 0, to: p[3], zoom: [1.04, 1.14], pan: [0, -24] },
@@ -160,11 +171,64 @@ const PLANS = {
       { from: p[8], to: p[9], html: 'Florida PIP generally requires care within <hl>14&nbsp;days.</hl>', cls: 'md', note: 'Educational only. Your policy and insurer determine coverage.' },
       { from: p[9], to: p[10], html: 'Don’t walk it <hl>off.</hl>' },
       { from: p[10], to: p[11], html: 'Get <hl>checked.</hl>' },
-      { from: p[11], to: p[12], brand: true },
-      { from: p[12], to: p[13], html: '<hl>Chiropractic</hl> care, with or without a referral.', cls: 'md' },
+      { from: p[11], to: p[12], html: '<hl>Chiropractic</hl> care, with or without a referral.', cls: 'md' },
+      { from: p[12], to: C.hook[0].t - 0.75, url: true },
     ],
-    end: p[13], endImg: 'clinic-hero',
+    end: C.hook[0].t - 0.75, endImg: 'clinic-hero',
   }),
+  // "Don't Walk It Off" (60 s): act 1 is the 30 s story (+ "even called home"), the jingle mid-spot, then act 2:
+  // the first visit in three steps, what to bring, referral line, the clock callback, and the final jingle.
+  // p: 0 walked away, 1 Said, 2 I'm good, 3 called home, 4 I'm fine, 5 Next morning, 6 Stiff neck, 7 Tight back,
+  //    8 Headaches, 9 symptoms later, 10 PIP, 11 don't walk it off/Call, 12 first visit, 13 conversation, 14 exam,
+  //    15 plan, 16 what to bring, 17 referral, 18 don't wait out the clock, 19 Get checked, 20 visit the website / call now
+  '5-walk-it-off-60': (p) => {
+    const mid = C.midHook[0].t - 0.75;
+    return {
+      scenes: [
+        { img: 'roadside-fine', from: 0, to: p[3], zoom: [1.04, 1.16], pan: [0, -24] },
+        { img: 'phone-home', from: p[3], to: p[5], zoom: [1.12, 1.04], pan: [16, 0] },
+        { img: 'morning-neck', from: p[5], to: p[7], zoom: [1.14, 1.06], pan: [0, 18] },
+        { img: 'morning-back', from: p[7], to: p[8], zoom: [1.06, 1.12], pan: [-14, 0] },
+        { img: 'morning-headache', from: p[8], to: p[9], zoom: [1.06, 1.14], pan: [0, -10] },
+        { img: 'driver-neck', from: p[9], to: p[10], zoom: [1.14, 1.04], pan: [24, 0] },
+        { clock: true, from: p[10], to: p[11], zoom: [1.0, 1.04], pan: [0, 0] },
+        { img: 'walking-city', from: p[11], to: p[12], zoom: [1.04, 1.12], pan: [0, -24] },
+        { img: 'front-desk', from: p[12], to: p[13], zoom: [1.04, 1.12], pan: [0, -16] },
+        { img: 'clinic-talk', from: p[13], to: p[14], zoom: [1.12, 1.05], pan: [12, 0] },
+        { img: 'clinic-hero', from: p[14], to: p[15], zoom: [1.05, 1.12], pan: [0, 12] },
+        { img: 'clinic-plan', from: p[15], to: p[16], zoom: [1.12, 1.05], pan: [-12, 0] },
+        { img: 'front-desk', from: p[16], to: p[17], zoom: [1.14, 1.2], pan: [0, 10], dim: true },
+        { img: 'clinic-hero', from: p[17], to: p[18], zoom: [1.12, 1.04], pan: [0, 16] },
+        { clock: true, from: p[18], to: p[19], zoom: [1.0, 1.03], pan: [0, 0], fast: true },
+        { img: 'walking-city', from: p[19], to: p[21], zoom: [1.08, 1.16], pan: [0, -20] },
+      ],
+      caps: [
+        { from: p[0], to: p[1], html: 'You walked away from the <hl>crash.</hl>' },
+        { from: p[1], to: p[2], html: 'Said,' },
+        { from: p[2], to: p[3], html: '<hl>“I’m&nbsp;good.”</hl>' },
+        { from: p[3], to: p[4], html: 'Even called <hl>home.</hl>' },
+        { from: p[4], to: p[5], html: '<hl>“I’m&nbsp;fine.</hl> <hl>For&nbsp;real.”</hl>' },
+        { from: p[5], to: p[6], html: 'Next <hl>morning?</hl>' },
+        { from: p[6], to: p[7], html: '<hl>Stiff&nbsp;neck.</hl>' },
+        { from: p[7], to: p[8], html: '<hl>Tight&nbsp;back.</hl>' },
+        { from: p[8], to: p[9], html: '<hl>Headaches.</hl>' },
+        { from: p[9], to: p[10], html: 'Symptoms can show up hours, even <hl>days&nbsp;later.</hl>', cls: 'md', eyebrow: 'After a crash' },
+        { from: p[10], to: p[11], html: 'Florida PIP generally requires care within <hl>14&nbsp;days.</hl>', cls: 'md', note: 'Educational only. Your policy and insurer determine coverage.' },
+        { from: p[11], to: mid, html: 'So don’t walk it <hl>off.</hl>' },
+        { from: p[12], to: p[13], html: 'At Therapy &amp; Injury, your first visit is <hl>simple.</hl>', cls: 'md' },
+        { from: p[13], to: p[14], html: 'A conversation about how you got <hl>hurt.</hl>', cls: 'md', eyebrow: 'Step 1 of 3' },
+        { from: p[14], to: p[15], html: 'A chiropractic <hl>exam.</hl>', eyebrow: 'Step 2 of 3' },
+        { from: p[15], to: p[16], html: 'A clear plan, in plain <hl>language.</hl>', cls: 'md', eyebrow: 'Step 3 of 3' },
+        { from: p[16], to: p[17], list: ['Photo ID', 'Auto insurance card', 'Crash report, if you have one'], eyebrow: 'What to bring', times: [0, 0.45, 1.5, 3.3] },
+        { from: p[17], to: p[18], html: '<hl>Chiropractic</hl> care, with or without a referral.', cls: 'md' },
+        { from: p[18], to: p[19], html: 'Don’t wait out the <hl>clock.</hl>' },
+        { from: p[19], to: p[20], html: 'Get <hl>checked.</hl>' },
+        { from: p[20], to: C.hook[0].t - 0.75, url: true },
+      ],
+      mid: { from: mid, out: p[12] - 0.05 },
+      end: C.hook[0].t - 0.75, endImg: 'clinic-hero',
+    };
+  },
 };
 
 let C, plan, capEls = [], sceneEls = [];
@@ -189,7 +253,11 @@ function setCues(all) {
   capEls = plan.caps.map((c) => {
     const d = document.createElement('div');
     d.className = 'cap';
-    if (c.brand) {
+    if (c.url) {
+      d.innerHTML = `<div class="brandup sm"><img class="w" src="mark-white.svg" alt=""><div class="eyebrow w">Visit</div></div><h2 class="urlcap"><span class="w hl">therapyandinjury.com</span></h2><div class="orcall w">or call now</div>`;
+    } else if (c.list) {
+      d.innerHTML = `<div class="eyebrow w">${c.eyebrow}</div><div class="checks">${c.list.map((x) => `<div class="w">${x}</div>`).join('')}</div>`;
+    } else if (c.brand) {
       d.innerHTML = `<div class="brandup"><img class="w" src="mark-white.svg" alt=""><h2><span class="w">Therapy</span> <span class="w">&amp;</span> <span class="w hl">Injury</span></h2></div>`;
     } else {
       const words = c.html.replace(/<hl>(.*?)<\/hl>/g, (_, w) => w.split(' ').map((x) => `\u0001${x}`).join(' ')).split(' ');
@@ -205,7 +273,11 @@ function setCues(all) {
 }
 
 function setTime(t) {
-  const H = C.hook.map((h) => h.t), beat = C.beat;
+  // 60 s spots run the end card twice: mid-spot for the first jingle (then it clears for act 2), and at the end.
+  const midOn = plan.mid && t < plan.mid.out + 0.05;
+  const cardAt = midOn ? plan.mid.from : plan.end;
+  const H = (midOn ? C.midHook : C.hook).map((h) => h.t), beat = C.beat;
+  const cardOut = midOn ? 1 - easeOut(prog(t, plan.mid.out - 0.35, plan.mid.out)) : 1;
   // Scenes: crossfade in over 0.22 s with a small punch-in on the cut, slow Ken Burns while held.
   plan.scenes.forEach((s, i) => {
     const el = sceneEls[i], k = prog(t, s.from, s.to + 0.25);
@@ -216,9 +288,10 @@ function setTime(t) {
     el.style.opacity = fade * out;
     el.style.zIndex = i;
     el.style.transform = `translate(${s.pan[0] * k}px, ${s.pan[1] * k}px) scale(${z})`;
+    if (s.dim) el.style.filter = 'blur(10px) brightness(.55)';
     if (s.clock) {
       // Day 1 -> 14 over the line, the ring filling with it; the count settles on 14 as the line ends.
-      const c = easeOut(prog(t, s.from + 0.1, s.to - 0.6));
+      const c = easeOut(prog(t, s.from + 0.1, s.fast ? s.from + 0.9 : s.to - 0.6));
       const day = Math.max(1, Math.round(1 + 13 * c));
       el.querySelector('.n').textContent = day;
       el.querySelector('.n').style.color = day === 14 ? 'var(--teal)' : '#fff';
@@ -236,22 +309,24 @@ function setTime(t) {
     const ws = el.querySelectorAll('.w');
     const step = Math.min(0.09, (b - a - 0.3) / Math.max(1, ws.length));
     ws.forEach((w, j) => {
-      const x = prog(t, a + j * step, a + j * step + 0.28);
+      // `times`: per-element offsets (s) so each item pops as it's said (checklists).
+      const at = c.times ? a + c.times[j] : a + j * step;
+      const x = prog(t, at, at + 0.28);
       w.style.opacity = easeOut(clamp(x * 1.6));
       w.style.transform = `translateY(${(1 - backOut(x)) * 70}px) scale(${0.92 + 0.08 * backOut(x)})`;
     });
   });
   // Brand chip leaves when the end card arrives.
-  const e = easeOut(prog(t, plan.end - 0.1, plan.end + 0.3));
+  const e = easeOut(prog(t, cardAt - 0.1, cardAt + 0.3)) * cardOut;
   document.getElementById('chip').style.opacity = 1 - e;
   // End card: slides up over the last scene; the number builds word by word on the hook.
   const end = document.getElementById('end');
   end.style.opacity = plan.end === 0 ? 1 : e;
   end.style.transform = `translateY(${(1 - e) * 120}px)`;
-  const mk = backOut(prog(t, plan.end, plan.end + 0.45));
+  const mk = backOut(prog(t, cardAt, cardAt + 0.45));
   document.getElementById('mk').style.transform = `scale(${0.6 + 0.4 * mk}) rotate(${(1 - mk) * -25}deg)`;
   document.getElementById('mk').style.opacity = clamp(mk * 2);
-  const call = document.getElementById('call'), cp = easeOut(prog(t, plan.end + 0.05, plan.end + 0.35));
+  const call = document.getElementById('call'), cp = easeOut(prog(t, cardAt + 0.05, cardAt + 0.35));
   call.style.opacity = cp; call.style.transform = `translateY(${(1 - cp) * 20}px)`;
   // Spans: ( 8 4 4 ) _ 8 4 -TREAT. Each spoken word reveals its digit just after the word starts (text a
   // hair after the sound reads as in sync); "(" and ")" ride with the first and third.

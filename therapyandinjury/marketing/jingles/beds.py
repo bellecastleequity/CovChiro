@@ -1,6 +1,6 @@
 # Renders the 844-84-TREAT music beds: a professional-urban (R&B / hip-hop) groove at 92 bpm.
 #   python3 beds.py out/plan.json     (make-spots.mjs writes the plan and runs this for you)
-# Plan: { name: { bars, length? } }; `length` holds the end on a soft outro to an exact spot length.
+# Plan: { name: { bars, length?, mid? } }; `mid` puts a mid-spot hook at that bar; `length` holds the end on a soft outro to an exact spot length.
 # The plan says how many bars of groove sit under each spot's spoken body, so the bed is built
 # around the voice instead of the voice being squeezed into the bed. Under the body there is no
 # lead melody (just drums, Rhodes chords, 808) so the words never fight a tune. The hook melody
@@ -133,12 +133,18 @@ def hook_section(mx, bar_start, groove=True):
     mx.add(hat(0.08, True), land)
     return notes, land + 2.5 * BEAT
 
-def render(name, body_bars, length=None):
+def render(name, body_bars, length=None, mid=None):
+    # mid: bar index of a mid-spot hook (60 s spots). It takes that bar and the next (TREAT lands there).
     lead_in = 0.0
     mx = Mix(BAR * (body_bars + 3))
+    mid_notes = None
     for i in range(body_bars):
+        if mid is not None and i in (mid, mid + 1):
+            continue
         ch, root = PROG[i % 4]
-        groove_bar(mx, lead_in + i * BAR, i, ch, root, light=(i == 0 and body_bars > 1))
+        groove_bar(mx, lead_in + i * BAR, i, ch, root, light=(i == 0 and body_bars > 1) or (mid is not None and i == mid + 2))
+    if mid is not None:
+        mid_notes, _ = hook_section(mx, lead_in + mid * BAR)
     notes, end = hook_section(mx, lead_in + body_bars * BAR, groove=body_bars > 0)
     if body_bars == 0:  # audio logo: start the hook right away
         shift = BEAT - 0.2
@@ -156,10 +162,12 @@ def render(name, body_bars, length=None):
     elif length:
         end = length  # the hook's tail is cut to the exact length (save() fades the last 0.35 s)
     mx.save(name, end)
-    return {'bpm': BPM, 'beat': BEAT, 'bar': BAR, 'bodyBars': body_bars, 'hookNotes': notes, 'length': round(end, 4)}
+    out = {'bpm': BPM, 'beat': BEAT, 'bar': BAR, 'bodyBars': body_bars, 'hookNotes': notes, 'length': round(end, 4)}
+    if mid_notes: out['midHookNotes'] = mid_notes
+    return out
 
 if __name__ == '__main__':
     plan = json.load(open(sys.argv[1])) if len(sys.argv) > 1 else {'1-audio-logo': {'bars': 0}, '2-radio-tag': {'bars': 2}, '3-ad-15s': {'bars': 4}}
-    timing = {name: render(name, p['bars'], p.get('length')) for name, p in plan.items()}
+    timing = {name: render(name, p['bars'], p.get('length'), p.get('mid')) for name, p in plan.items()}
     json.dump(timing, open(os.path.join(OUT, 'timing.json'), 'w'), indent=2)
     print('beds:', ', '.join(f"{k} {v['length']:.1f}s" for k, v in timing.items()))
