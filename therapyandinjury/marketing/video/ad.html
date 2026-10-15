@@ -83,6 +83,22 @@
   .end .url { margin-top: 44px; font-size: 38px; font-weight: 600; color: #dfe6ee; opacity: 0; letter-spacing: -0.01em; }
   .square .end .url { margin-top: 28px; font-size: 32px; }
 
+  /* Wide 16:9 (YouTube): captions bottom-left over a left-to-right shade, people sit on the right. */
+  .wide #stage { width: 1920px; height: 1080px; }
+  .wide .shade { background: linear-gradient(90deg, rgb(6 26 54 / 88%) 0%, rgb(6 26 54 / 55%) 38%, rgb(6 26 54 / 0%) 62%),
+    linear-gradient(180deg, rgb(6 26 54 / 35%) 0%, rgb(6 26 54 / 0%) 20%, rgb(6 26 54 / 0%) 60%, rgb(6 26 54 / 70%) 100%); }
+  .wide .chip { top: 64px; left: 110px; }
+  .wide .caps { left: 110px; right: auto; width: 1080px; top: auto; bottom: 150px; }
+  .wide .cap h2 { font-size: 96px; }
+  .wide .cap h2.md { font-size: 74px; }
+  .wide .clock .dial { left: 74%; top: 47%; width: 600px; height: 600px; }
+  .wide .clock .n { font-size: 270px; }
+  .wide .end .mk { width: 190px; height: 190px; margin-bottom: 48px; }
+  .wide .num { font-size: 150px; }
+  .wide .checks .w { font-size: 64px; }
+  .wide .checks .w::before { width: 76px; height: 76px; font-size: 44px; }
+  .wide .brandup.sm img { width: 100px; height: 100px; }
+  .wide .legal { top: auto; bottom: 44px; font-size: 22px; }
   .legal { position: absolute; left: 0; right: 0; top: 1560px; text-align: center; font-size: 24px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgb(255 255 255 / 72%); }
   .square .legal { top: auto; bottom: 46px; font-size: 20px; }
 </style>
@@ -107,7 +123,10 @@
 <script>
 const q = new URLSearchParams(location.search);
 const SPOT = q.get('spot') || '3-ad-15s';
-document.documentElement.className = q.get('format') === 'square' ? 'square' : 'story';
+const FORMAT = ['square', 'wide'].includes(q.get('format')) ? q.get('format') : 'story';
+document.documentElement.className = FORMAT;
+// Wide (16:9, YouTube) uses its own photo set, recreated from the vertical scenes.
+const sceneUrl = (img) => `scenes/${FORMAT === 'wide' ? 'wide/' : ''}${img}.jpg`;
 
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const prog = (t, a, b) => clamp((t - a) / (b - a));
@@ -244,11 +263,11 @@ function setCues(all) {
     if (s.clock) {
       d.classList.add('clock');
       d.innerHTML = `<div class="dial"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="rgb(255 255 255 / 10%)" stroke-width="7"/><circle class="arc" cx="50" cy="50" r="44" fill="none" stroke="#19ccbe" stroke-width="7" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg><div class="ctr"><div class="day">DAY</div><div class="n">1</div></div></div>`;
-    } else d.style.backgroundImage = `url(scenes/${s.img}.jpg)`;
+    } else d.style.backgroundImage = `url(${sceneUrl(s.img)})`;
     scenes.appendChild(d);
     return d;
   });
-  document.getElementById('endbg').style.backgroundImage = `url(scenes/${plan.endImg}.jpg)`;
+  document.getElementById('endbg').style.backgroundImage = `url(${sceneUrl(plan.endImg)})`;
   const caps = document.getElementById('caps');
   capEls = plan.caps.map((c) => {
     const d = document.createElement('div');
@@ -268,7 +287,7 @@ function setCues(all) {
     return d;
   });
   return document.fonts.ready.then(() => Promise.all([...document.images].map((i) => i.decode().catch(() => {}))))
-    .then(() => Promise.all(plan.scenes.filter((s) => s.img).concat({ img: plan.endImg }).map((s) => new Promise((res) => { const i = new Image(); i.onload = i.onerror = res; i.src = `scenes/${s.img}.jpg`; }))))
+    .then(() => Promise.all(plan.scenes.filter((s) => s.img).concat({ img: plan.endImg }).map((s) => new Promise((res) => { const i = new Image(); i.onload = i.onerror = res; i.src = sceneUrl(s.img); }))))
     .then(() => C.length);
 }
 

@@ -31,7 +31,7 @@ Every spot names the profession ("chiropractic"), makes no promise of results, a
 
 # Video ads (`video/`)
 
-Short videos built on the jingle spots, each in two sizes: 1080×1920 (Reels, Stories, TikTok, Shorts) and 1080×1080 (feeds).
+Short videos built on the jingle spots. Every spot comes in 1080×1920 (Reels, Stories, TikTok, Shorts) and 1080×1080 (feeds). The 15, 30 and 60 also come in **1920×1080 for YouTube** (`-wide.mp4`). The wide versions use their own photo set in `video/scenes/wide/`, recreated from the vertical scenes with `node marketing/video/images.mjs wide`.
 
 | Video | Length | Story |
 |---|---|---|
@@ -40,6 +40,7 @@ Short videos built on the jingle spots, each in two sizes: 1080×1920 (Reels, St
 | `3-ad-15s` | under 15s | Accident → Florida PIP 14-day timeline (with the "educational only" note) → Therapy & Injury brand → chiropractic care → "with or without a referral" → number. |
 | `4-walk-it-off-30` | 30.0s exactly | **"Don't Walk It Off."** One character throughout. He walks away from a crash saying "I'm good," then wakes up with a stiff neck, a tight back and a headache. The narrator explains that symptoms can show up days later, and a 14-day clock graphic counts up the PIP window. Then "Don't walk it off. Get checked." → chiropractic care with or without a referral → **"Visit therapyandinjury.com, or call now"** → jingle. |
 | `5-walk-it-off-60` | 60.0s exactly | **"Don't Walk It Off," long version.** Act 1 is the 30s story, plus "Even called home: 'I'm fine. For real.'" It ends on "So don't walk it off. Call…" and a **mid-spot jingle**. Act 2 covers the first visit (a conversation, a chiropractic exam, a clear plan), what to bring as an animated checklist, and the referral line. Then the clock callback ("Don't wait out the clock"), "Get checked," **"Visit therapyandinjury.com, or call now"** and the final jingle. |
+| `6-walk-it-off-60-radio` | 60.0s, **audio only** | Radio cut of the 60. The provider ("an exam by a Florida-licensed chiropractor") and the coverage caveat ("Coverage depends on your policy") are spoken, because nothing is on screen. Exports a broadcast WAV (48 kHz, 16-bit) and an MP3. Station copy: `jingles/radio-60-script.md`. |
 
 ```bash
 cd therapyandinjury
@@ -53,6 +54,7 @@ node marketing/video/render.mjs         # -> video/out/<spot>-<story|square>.mp4
 - Spots of 30s and longer list their script as `lines` (`say` and `cap`) with a fixed `length`. The whole script is voiced as one take, because separate takes drift in voice.
   - Gemini gives a rough start time for each line (cached as `<take>.align.json`), and each one is snapped to the nearest real pause in the take.
   - The read is fitted to the length: sped up by at most ~12%, or slowed by up to 5% so there's no dead air.
+- When a 60 is split into two acts, act 1 may be tightened by up to 7% if that lands the mid-spot jingle a bar earlier and gives act 2 room. The build prints a note if any act is sped up more than 12%.
 - A line marked `hookAfter` (in the 60) splits the take into two acts with a mid-spot jingle between them.
 - Voice clips are cached under a slug plus a hash of the full text, so scripts that start the same way don't collide.
 - The website is voiced as "Therapy and Injury dot com" so the TTS reads it cleanly.

@@ -4,8 +4,8 @@
 //   node marketing/video/images.mjs              # once: the photo scenes (cached in scenes/)
 //   node marketing/video/render.mjs [voice] [spot...]   # default voice: urban; all spots unless named
 //
-// Output: marketing/video/out/<spot>-<story|square>.mp4 (1080x1920 for Reels/Stories/TikTok/Shorts,
-// 1080x1080 for feeds). H.264 + AAC, faststart. Needs Playwright (Chromium) and ffmpeg.
+// Output: marketing/video/out/<spot>-<story|square|wide>.mp4 (1080x1920 for Reels/Stories/TikTok/Shorts,
+// 1080x1080 for feeds, 1920x1080 for YouTube on the 15/30/60). H.264 + AAC, faststart. Needs Playwright (Chromium) and ffmpeg.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, execSync } from 'node:child_process';
@@ -18,7 +18,9 @@ const out = path.join(here, 'out');
 fs.mkdirSync(out, { recursive: true });
 const voice = process.argv[2] || 'urban';
 const FPS = 30;
-const FORMATS = { story: { width: 1080, height: 1920 }, square: { width: 1080, height: 1080 } };
+const FORMATS = { story: { width: 1080, height: 1920 }, square: { width: 1080, height: 1080 }, wide: { width: 1920, height: 1080 } };
+// Wide (YouTube 16:9) needs the scenes/wide/ photo set; these spots have it.
+const WIDE_SPOTS = ['3-ad-15s', '4-walk-it-off-30', '5-walk-it-off-60'];
 
 let chromium;
 try { ({ chromium } = await import('playwright')); }
@@ -56,6 +58,8 @@ async function render(spot, format) {
 }
 
 const only = process.argv.slice(3); // optional spot names after the voice, e.g. `render.mjs urban 4-walk-it-off-30`
-const jobs = Object.keys(cues).filter((s) => !only.length || only.includes(s)).flatMap((spot) => Object.keys(FORMATS).map((f) => [spot, f]));
+const jobs = Object.keys(cues)
+  .filter((s) => !cues[s].audioOnly && (!only.length || only.includes(s)))
+  .flatMap((spot) => Object.keys(FORMATS).filter((f) => f !== 'wide' || WIDE_SPOTS.includes(spot)).map((f) => [spot, f]));
 await Promise.all([0, 1, 2].map(async (w) => { for (let j = w; j < jobs.length; j += 3) await render(...jobs[j]); }));
 await browser.close();

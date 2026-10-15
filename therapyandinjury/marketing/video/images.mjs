@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'scenes');
 const MODEL = 'gemini-3.1-flash-image';
 const LOOK =
-  'Photorealistic, cinematic commercial photography, shallow depth of field, rich contrast, cool navy-blue and teal color grade with warm highlights, modern and premium, vertical 9:16 frame, no text, no logos, no watermarks';
+  'Photorealistic, cinematic commercial photography, shallow depth of field, rich contrast, cool navy-blue and teal color grade with warm highlights, modern and premium, no text, no logos, no watermarks';
 
 export const SCENES = {
   'city-traffic': 'A Florida city boulevard at blue-hour dusk seen from street level, palm trees, soft red and white car light trails, wet asphalt reflections, calm and moody, no accident',
@@ -30,10 +30,10 @@ export const SCENES = {
   'clinic-hero': { ref: ['driver-neck', 'clinic-consult'], prompt: 'In the bright chiropractic clinic from the second reference photo, the friendly woman chiropractor in navy scrubs from the second reference photo gently examines the neck and shoulder of the man from the first reference photo (same face, hair and beard, wearing a navy jacket), who sits on a treatment table looking relieved and at ease' },
 };
 
-async function gen(name, spec) {
+async function gen(name, spec, outDir = dir, aspectRatio = '9:16') {
   const { prompt, ref = [] } = typeof spec === 'string' ? { prompt: spec } : spec;
   const refs = ref.map((r) => ({ inlineData: { mimeType: 'image/jpeg', data: fs.readFileSync(path.join(dir, `${r}.jpg`)).toString('base64') } }));
-  const out = path.join(dir, `${name}.jpg`);
+  const out = path.join(outDir, `${name}.jpg`);
   if (fs.existsSync(out)) return out;
   for (let a = 0; a < 4; a++) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
@@ -41,7 +41,7 @@ async function gen(name, spec) {
       headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
       body: JSON.stringify({
         contents: [{ parts: [...refs, { text: `${prompt}. ${LOOK}.` }] }],
-        generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '9:16' } },
+        generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio } },
       }),
     });
     const j = await r.json();
@@ -54,6 +54,23 @@ async function gen(name, spec) {
 }
 
 fs.mkdirSync(dir, { recursive: true });
+// `node images.mjs wide`: 16:9 versions for YouTube (scenes/wide/), each recreated from its vertical scene.
+const WIDE = ['city-traffic', 'driver-neck', 'clinic-consult', 'phone-call', 'roadside-fine', 'phone-home', 'morning-neck', 'morning-back',
+  'morning-headache', 'walking-city', 'front-desk', 'clinic-talk', 'clinic-plan', 'clinic-hero'];
+if (process.argv[2] === 'wide') {
+  const wdir = path.join(dir, 'wide');
+  fs.mkdirSync(wdir, { recursive: true });
+  const made = await Promise.all(WIDE.map(async (name, i) => {
+    await new Promise((r) => setTimeout(r, i * 1500)); // stagger to stay under the rate limit
+    return gen(name, {
+      ref: [name],
+      prompt: 'Recreate this exact photo as a wide horizontal 16:9 cinematic frame: the same people with the same faces, hair, beards and clothing, the same setting, lighting and color grade. Extend the scene naturally to the sides. Place the people in the right half of the frame, leaving calm, uncluttered space on the left third for on-screen text',
+    }, wdir, '16:9');
+  }));
+  console.log(made.map((f) => path.basename(f)).join(', '));
+  process.exit(0);
+}
+
 // Scenes without references first, since later scenes use them as references.
 const entries = Object.entries(SCENES);
 const done = await Promise.all(entries.filter(([, s]) => !s.ref).map(([n, s]) => gen(n, s)));

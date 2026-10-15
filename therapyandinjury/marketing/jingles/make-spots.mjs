@@ -95,11 +95,42 @@ const SPOTS = [
       { say: 'A conversation about how you got hurt.', cap: 'A conversation about how you got hurt.' },
       { say: 'A chiropractic exam.', cap: 'A chiropractic exam.' },
       { say: 'And a clear plan, in plain language.', cap: 'A clear plan, in plain language.' },
-      { say: 'Bring your photo ID, your auto insurance card, and your crash report if you have one.', cap: 'What to bring' },
+      { say: 'Bring your photo ID, insurance card, and crash report, if you have one.', cap: 'What to bring' },
       { say: 'Chiropractic care, with or without a referral.', cap: 'Chiropractic care, with or without a referral.' },
       { say: "Don't wait out the clock.", cap: 'Don’t wait out the clock.' },
       { say: 'Get checked.', cap: 'Get checked.' },
       { say: 'Visit Therapy and Injury dot com, or call now...', cap: 'therapyandinjury.com' },
+    ],
+  },
+  // Radio cut of the 60 (audio only, no video): everything the video shows on screen is said instead.
+  // "Florida-licensed chiropractor" replaces the on-screen D.C. line; "Coverage depends on your policy"
+  // replaces the on-screen PIP note.
+  {
+    name: '6-walk-it-off-60-radio',
+    length: 60,
+    audioOnly: true,
+    lines: [
+      { say: 'You walked away from the crash.' },
+      { say: 'Said...' },
+      { say: "I'm good." },
+      { say: 'Even called home.' },
+      { say: "I'm fine. For real." },
+      { say: 'Next morning?' },
+      { say: 'Stiff neck.' },
+      { say: 'Tight back.' },
+      { say: 'Headaches.' },
+      { say: 'After a crash, symptoms can show up hours, even days later.' },
+      { say: 'And Florida PIP generally requires care within fourteen days.' },
+      { say: 'Coverage depends on your policy.' },
+      { say: "So don't walk it off. Call...", hookAfter: true },
+      { say: 'At Therapy and Injury, your first visit is simple.' },
+      { say: 'A conversation about how you got hurt.' },
+      { say: 'An exam by a Florida-licensed chiropractor.' },
+      { say: 'And a clear plan, in plain language.' },
+      { say: 'Bring your photo ID, insurance card, and crash report, if you have one.' },
+      { say: 'Chiropractic care, with or without a referral.' },
+      { say: "Don't wait out the clock." },
+      { say: 'Visit Therapy and Injury dot com, or call now...' },
     ],
   },
 ];
@@ -315,7 +346,8 @@ function mix(bed, clips, outFile, length) {
     `[bed][key]sidechaincompress=threshold=0.03:ratio=4:attack=10:release=250[duck]`,
     `[duck][vox]amix=inputs=2:normalize=0:duration=longest,atrim=0:${length.toFixed(3)},loudnorm=I=-16:TP=-1.5:LRA=9[outa]`,
   ].join(';');
-  execFileSync(FF, ['-y', '-loglevel', 'error', ...inputs, '-filter_complex', graph, '-map', '[outa]', '-b:a', '192k', outFile]);
+  const codec = outFile.endsWith('.wav') ? ['-ar', '48000', '-c:a', 'pcm_s16le'] : ['-b:a', '192k'];
+  execFileSync(FF, ['-y', '-loglevel', 'error', ...inputs, '-filter_complex', graph, '-map', '[outa]', ...codec, outFile]);
   return outFile;
 }
 
@@ -329,8 +361,17 @@ async function twoActs(spot, file, starts, m) {
   const fa = file.replace(/\.wav$/, '.act1.wav'), fb0 = file.replace(/\.wav$/, '.act2.wav');
   writeWav(fa, s.slice(0, cut), rate);
   writeWav(fb0, s.slice(cut), rate);
-  const dA = dur(fa);
-  const mid = Math.ceil((0.45 + dA - BEAT) / BAR);
+  let fA = fa, dA = dur(fa);
+  let mid = Math.ceil((0.45 + dA - BEAT) / BAR);
+  // A slight tighten (up to 7%) that lands the mid-spot hook a bar earlier gives act 2 that bar.
+  const roomA = (mid - 1) * BAR + BEAT - 0.45;
+  if (dA / roomA <= 1.07) {
+    mid -= 1;
+    fA = fa.replace(/\.wav$/, '.fit.wav');
+    ff('-i', fa, '-af', `atempo=${(dA / roomA).toFixed(3)}`, fA);
+  }
+  const kA = fA === fa ? 1 : roomA / dA;
+  dA = dur(fA);
   const atA = Math.max(0.3, mid * BAR + BEAT - 0.15 - dA);
   const startB = (mid + 1) * BAR + 1.6; // TREAT lands on bar mid+1; act 2 starts as it rings out
   const bars = Math.floor((spot.length - 1.2 - 4 * BEAT) / BAR);
@@ -348,8 +389,8 @@ async function twoActs(spot, file, starts, m) {
   const atB = Math.max(startB, bars * BAR + BEAT - 0.15 - dB);
   const cutS = cut / rate;
   bodies[spot.name] = {
-    clips: [{ file: fa, at: atA }, { file: fb, at: atB }],
-    times: starts.map((x, i) => (i <= m ? atA + x : atB + (x - cutS) * k)),
+    clips: [{ file: fA, at: atA }, { file: fb, at: atB }],
+    times: starts.map((x, i) => (i <= m ? atA + x * kA : atB + (x - cutS) * k)),
     actTwo: startB,
   };
   plan[spot.name] = { bars, length: spot.length, mid };
@@ -402,16 +443,19 @@ for (const spot of SPOTS) {
   if (b?.clips) clips.unshift(...b.clips, ...midClips);
   else if (b) clips.unshift(b);
   const f = mix(spot.name, clips, path.join(out, `spot-${spot.name}-${preset}.mp3`), t.length);
+  // Radio cuts also get an uncompressed broadcast WAV (48 kHz, 16-bit) for stations.
+  if (spot.audioOnly) mix(spot.name, clips, path.join(out, `spot-${spot.name}-${preset}.wav`), t.length);
   console.log(`made ${path.relative(process.cwd(), f)} (${dur(f).toFixed(1)}s): ${clips.map((c) => `${c.word ?? 'body'}@${c.at.toFixed(2)}`).join(' ')}`);
   cues[spot.name] = {
     audio: path.basename(f),
     length: t.length,
     beat: t.beat,
     phrases: !b ? []
-      : b.times ? spot.lines.map((l, i) => ({ text: l.cap, t: +b.times[i].toFixed(3) }))
+      : b.times ? spot.lines.map((l, i) => ({ text: l.cap ?? l.say, t: +b.times[i].toFixed(3) }))
       : spot.lines ? spot.lines.map((l, i) => ({ text: l.cap, t: +(b.at + b.starts[i]).toFixed(3) }))
       : phraseStarts(b.file, spot.phrases.length).map((s0, i) => ({ text: spot.phrases[i], t: +(b.at + s0).toFixed(3) })),
     hook: t.hookNotes.map((n, i) => ({ word: HOOK_WORDS[i], t: n.t })),
+    ...(spot.audioOnly && { audioOnly: true }),
     ...(t.midHookNotes && { midHook: t.midHookNotes.map((n, i) => ({ word: HOOK_WORDS[i], t: n.t })) }),
   };
 }
