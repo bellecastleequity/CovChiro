@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClinicLogo } from "@/components/clinic/clinic-logo";
 import { BedDouble, Car, Clock, Plane, Search, Users, Zap } from "lucide-react";
 import { stayLabel } from "@cm/core";
 import { prisma } from "@cm/db";
@@ -65,7 +66,7 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
                     <div className="text-xs text-slate-500">{s.flyIn ? `${s.pay.lodgingCents ? `incl. ${money(s.pay.lodgingCents)} lodging · ` : ""}+ ${money(s.flyIn.airfareCents)} airfare per trip` : <>incl. {money(s.pay.mileageCents)} mileage{s.pay.lodgingCents ? ` + ${money(s.pay.lodgingCents)} lodging` : ""}</>}</div>
                   </div>
                 </div>
-                <div className="mt-3 text-sm font-medium">{s.clinicName}</div>
+                <div className="mt-3 flex items-center gap-2 text-sm font-medium"><ClinicLogo logoUrl={s.clinicLogoUrl} name={s.clinicName} size="sm" />{s.clinicName}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                   <span>{s.city}, {s.state}</span>
                   {s.stayByClinic ? <span className="flex items-center gap-1 font-medium text-accent-700"><BedDouble className="size-3.5" />Stay booked by the clinic ({stayLabel(s.stayByClinic).replace(/^an? /, "")})</span> : null}

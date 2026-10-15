@@ -20,7 +20,7 @@ import {
   clinicRate,
   clinicVerify,
   archiveLocation, auth, overdue, sameProvider, cancelShiftByClinic,
-  stay, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
+  stay, setClinicLogo, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
 } from "@cm/services";
 import { bool, formAction, optStr, str } from "@/lib/action";
@@ -438,6 +438,19 @@ export const orgAction = formAction(async (fd) => {
   await updateOrg(actor, { legalName: str(fd, "legalName"), displayName: str(fd, "displayName"), billingEmail: optStr(fd, "billingEmail") });
   revalidatePath("/clinic", "layout");
   return "Saved.";
+});
+
+export const clinicLogoAction = formAction(async (fd) => {
+  const { actor } = await me();
+  if (fd.get("remove") === "on") {
+    await setClinicLogo(actor, null);
+    revalidatePath("/clinic", "layout");
+    return "Logo removed.";
+  }
+  const key = await saveUpload(fd.get("logo"), `photos/clinic-logos/${actor.clinicOrgId}`, { required: true, images: true });
+  await setClinicLogo(actor, key);
+  revalidatePath("/clinic", "layout");
+  return "Logo saved. Providers see it next to your clinic's name.";
 });
 
 export const clinicPhonesAction = formAction(async (fd) => {

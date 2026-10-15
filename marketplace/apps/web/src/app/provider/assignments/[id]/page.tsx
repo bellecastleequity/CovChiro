@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { ClinicLogo } from "@/components/clinic/clinic-logo";
 import { MapPin, User } from "lucide-react";
 import { prisma } from "@cm/db";
 import { getSettings, stay, timeclock, volume } from "@cm/services";
@@ -45,7 +46,7 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
     : 1;
   return (
     <>
-      <PageHeader back={{ href: "/provider/assignments", label: "My shifts" }} eyebrow={loc.clinicOrg.displayName} title={dateLabel(a.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })} description={`${timeRange(a.startsAt, a.endsAt, tz)}${a.shift.lunchMinutes ? ` · ${lunchLabel(a.shift.lunchMinutes, a.shift.lunchStartsAt, tz)}` : ""}`} actions={<StatusBadge status={a.status} />} />
+      <PageHeader back={{ href: "/provider/assignments", label: "My shifts" }} eyebrow={<span className="inline-flex items-center gap-2"><ClinicLogo logoUrl={loc.clinicOrg.logoUrl} name={loc.clinicOrg.displayName} size="sm" />{loc.clinicOrg.displayName}</span>} title={dateLabel(a.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })} description={`${timeRange(a.startsAt, a.endsAt, tz)}${a.shift.lunchMinutes ? ` · ${lunchLabel(a.shift.lunchMinutes, a.shift.lunchStartsAt, tz)}` : ""}`} actions={<StatusBadge status={a.status} />} />
       <PendingChanges providerId={actor.providerId!} assignmentId={a.id} />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

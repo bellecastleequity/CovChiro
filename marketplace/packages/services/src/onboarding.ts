@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { DomainError, taxInfoStatus, licensedPairs, scanContactInfo, NATIONAL_CREDENTIAL, normalizeLinkedIn, US_STATES } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
-import { esignProvider, GeoServiceError, geoProvider, lookupNpi, paymentsProvider, testSigningEnabled } from "@cm/integrations";
+import { esignProvider, GeoServiceError, geoProvider, lookupNpi, paymentsProvider, storageProvider, testSigningEnabled } from "@cm/integrations";
 import { AGREEMENT_VERSION, agreementAccepted, buildAgreementFor, sha256, type AgreementDoc } from "./agreements";
 import { audit, getSettings, requireClinic, requireProvider, SYSTEM, type Actor } from "./context";
 import { absoluteUrl, notify, sendEmail } from "./notify";
@@ -608,6 +608,16 @@ export async function updateOrg(actor: Actor, raw: z.input<typeof OrgInput>) {
   // Phone numbers have their own rules (phones.setClinicPhones): never changed here.
   const { phone: _phone, ...input } = OrgInput.parse(raw);
   await prisma.clinicOrg.update({ where: { id: orgId }, data: input });
+}
+
+/** Clinic logo (owner only): a stored image key under photos/clinic-logos/, shown to providers next to the clinic's name. null removes it. */
+export async function setClinicLogo(actor: Actor, key: string | null) {
+  const orgId = requireClinic(actor, { ownerOnly: true });
+  if (key && !key.startsWith(`photos/clinic-logos/${orgId}/`)) throw new DomainError("VALIDATION", "Upload the logo again.");
+  const org = await prisma.clinicOrg.findUniqueOrThrow({ where: { id: orgId }, select: { logoUrl: true } });
+  await prisma.clinicOrg.update({ where: { id: orgId }, data: { logoUrl: key } });
+  if (org.logoUrl && org.logoUrl !== key) await storageProvider().remove(org.logoUrl).catch(() => undefined);
+  await audit(prisma, actor, key ? "clinic.logo_set" : "clinic.logo_removed", "ClinicOrg", orgId);
 }
 
 export const EXPERIENCE_LEVELS = [0, 2, 5, 10] as const;

@@ -638,6 +638,7 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
       city: sh.location.city,
       state: sh.state,
       clinicName: sh.location.clinicOrg.displayName,
+      clinicLogoUrl: sh.location.clinicOrg.logoUrl,
       clinicOrgId: sh.location.clinicOrgId,
       driveMinutes: ev.drive?.minutes ?? null,
       pay: providerView({ clinicPriceCents: 0, providerPayCents: sh.providerPayCents, promoDiscountCents: 0, mileageCents: mileage, lodgingCents: trip.lodgingEstimateCents }),

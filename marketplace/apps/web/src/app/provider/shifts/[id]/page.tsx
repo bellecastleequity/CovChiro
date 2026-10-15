@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { ClinicLogo } from "@/components/clinic/clinic-logo";
 import { BedDouble, Car, Clock, MapPin, Plane, Shirt, Star, Users } from "lucide-react";
 import { prisma } from "@cm/db";
 import { evaluateProviderForShift, getSettings, ownside, partners, sameProvider } from "@cm/services";
@@ -46,7 +47,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
   const dayNo = groupDays.findIndex((d) => d.id === shift.id) + 1;
   return (
     <>
-      <PageHeader back={{ href: "/provider/shifts", label: "Find shifts" }} eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} coverage · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} coverage`} title={`${dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}`} description={<>{timeRange(shift.startsAt, shift.endsAt, tz)} · {shift.location.clinicOrg.displayName}{partner ? <span className="ml-2 inline-flex items-center rounded-full bg-accent-50 px-2 py-0.5 text-xs font-semibold text-accent-800 ring-1 ring-accent-200">Partner clinic</span> : null}</>} />
+      <PageHeader back={{ href: "/provider/shifts", label: "Find shifts" }} eyebrow={groupDays.length > 1 && dayNo ? `${shift.professionCode} coverage · Day ${dayNo} of ${groupDays.length}` : `${shift.professionCode} coverage`} title={`${dateLabel(shift.startsAt, tz, { weekday: "long", month: "long", day: "numeric" })}`} description={<><ClinicLogo logoUrl={shift.location.clinicOrg.logoUrl} name={shift.location.clinicOrg.displayName} size="sm" className="mr-2 inline-block align-middle" />{timeRange(shift.startsAt, shift.endsAt, tz)} · {shift.location.clinicOrg.displayName}{partner ? <span className="ml-2 inline-flex items-center rounded-full bg-accent-50 px-2 py-0.5 text-xs font-semibold text-accent-800 ring-1 ring-accent-200">Partner clinic</span> : null}</>} />
       {shift.rateMode === "CLINIC" && !shift.releasedAt ? (
         <Alert tone="info" className="mb-5" title="Clinic-set rate">The clinic set its own rate for this shift. It isn't filled automatically: apply if the pay works for you and the clinic chooses who to confirm.</Alert>
       ) : null}

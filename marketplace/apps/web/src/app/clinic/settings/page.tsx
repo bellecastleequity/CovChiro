@@ -11,7 +11,8 @@ import { dateLabel } from "@/lib/format";
 import { getSession, requireActor } from "@/lib/session";
 import { AddProviderSideCard } from "@/components/workspace/add-side";
 import { GoogleAccountCard } from "@/components/site/google-account";
-import { agreementAction, clinicPhonesAction, clinicPhoneConfirmAction, experienceAction, clinicPhoneStartAction, orgAction, passwordAction } from "../actions";
+import { ClinicLogo } from "@/components/clinic/clinic-logo";
+import { agreementAction, clinicLogoAction, clinicPhonesAction, clinicPhoneConfirmAction, experienceAction, clinicPhoneStartAction, orgAction, passwordAction } from "../actions";
 
 export const metadata = { title: "Settings" };
 
@@ -47,6 +48,25 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               <Field label="Billing email"><Input name="billingEmail" type="email" defaultValue={org.billingEmail ?? ""} disabled={!owner} /></Field>
               {owner ? <div className="sm:col-span-2"><SubmitButton>Save</SubmitButton></div> : null}
             </ActionForm>
+          </CardBody>
+        </Card>
+        <Card id="logo">
+          <CardHeader title="Clinic logo" description="Shown to providers next to your clinic's name on shifts, offers and bookings. JPG, PNG or WebP, up to 10 MB; a square image works best." />
+          <CardBody>
+            <div className="flex flex-wrap items-center gap-4">
+              <ClinicLogo logoUrl={org.logoUrl} name={org.displayName} size="lg" />
+              {owner ? (
+                <ActionForm action={clinicLogoAction} className="flex flex-1 flex-wrap items-end gap-3" resetOnSuccess>
+                  <Field label={org.logoUrl ? "Replace logo" : "Upload logo"} className="min-w-56 flex-1">
+                    <Input type="file" name="logo" accept="image/jpeg,image/png,image/webp" />
+                  </Field>
+                  <SubmitButton>Save logo</SubmitButton>
+                  {org.logoUrl ? <Checkbox name="remove" label="Remove my logo" /> : null}
+                </ActionForm>
+              ) : (
+                <p className="text-sm text-slate-500">Only the clinic owner can change the logo.</p>
+              )}
+            </div>
           </CardBody>
         </Card>
         <Card id="phones">

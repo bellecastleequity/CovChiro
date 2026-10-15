@@ -1,4 +1,5 @@
 import { Inbox } from "lucide-react";
+import { ClinicLogo } from "@/components/clinic/clinic-logo";
 import { prisma } from "@cm/db";
 import { Checkbox } from "@/components/ui/form";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
@@ -28,7 +29,7 @@ export default async function Offers() {
               <Card key={o.id} className="p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <div className="font-semibold">{o.shift.location.clinicOrg.displayName}</div>
+                    <div className="flex items-center gap-2 font-semibold"><ClinicLogo logoUrl={o.shift.location.clinicOrg.logoUrl} name={o.shift.location.clinicOrg.displayName} size="sm" />{o.shift.location.clinicOrg.displayName}</div>
                     <div className="text-sm text-slate-500">
                       {dateLabel(o.shift.startsAt, tz)} · {timeRange(o.shift.startsAt, o.shift.endsAt, tz)}{o.shift.lunchMinutes ? ` (${lunchLabel(o.shift.lunchMinutes, o.shift.lunchStartsAt, tz).toLowerCase()})` : ""} · {o.shift.location.city}, {o.shift.state}
                     </div>
