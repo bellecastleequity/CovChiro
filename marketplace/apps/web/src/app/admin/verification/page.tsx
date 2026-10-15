@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { ExternalLink, FileText } from "lucide-react";
 import { credentialPlace, NATIONAL_CREDENTIAL } from "@cm/core";
-import { admin } from "@cm/services";
+import { admin, clinicVerify } from "@cm/services";
+import { Badge } from "@/components/ui/badge";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/form";
 import { Empty, PageHeader } from "@/components/ui/misc";
-import { dateLabel, money } from "@/lib/format";
+import { dateLabel, money, relative } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { resolveNpiAction, reviewCertAction, reviewLicenseAction, reviewMalpracticeAction } from "../actions";
 
@@ -40,13 +41,37 @@ function Decide({ action, hidden, withExpiry, expiry }: { action: typeof reviewL
 
 export default async function Verification() {
   const { actor } = await requireActor("admin");
-  const q = await admin.verificationQueue(actor);
-  const empty = !q.licenses.length && !q.policies.length && !q.certs.length && !q.npi.length;
+  const [q, cv] = await Promise.all([admin.verificationQueue(actor), clinicVerify.listClinicVerifications(actor, "open")]);
+  // Everything waiting on a person, providers and clinics, on one page; the Clinics link keeps the full history.
+  const clinicRows = cv.rows.filter((r) => r.status === "PENDING");
+  const empty = !q.licenses.length && !q.policies.length && !q.certs.length && !q.npi.length && !clinicRows.length;
   return (
     <>
-      <PageHeader actions={<div className="flex flex-wrap gap-4"><Link href="/admin/verification/clinics" className="text-sm font-medium text-brand-700">Clinics{q.clinics ? ` (${q.clinics})` : ""} →</Link><Link href="/admin/verification/state-check" className="text-sm font-medium text-brand-700">State license check →</Link><Link href="/admin/verification/exclusions" className="text-sm font-medium text-brand-700">Exclusion check →</Link></div>} title="Verification queue" description="Confirm name, number, status and expiration against the state board (profession + state) before verifying. Credentials for states that aren't open yet are listed last." />
+      <PageHeader actions={<div className="flex flex-wrap gap-4"><Link href="/admin/verification/clinics" className="text-sm font-medium text-brand-700">Clinics history →</Link><Link href="/admin/verification/state-check" className="text-sm font-medium text-brand-700">State license check →</Link><Link href="/admin/verification/exclusions" className="text-sm font-medium text-brand-700">Exclusion check →</Link></div>} title="Verification queue" description="Clinics and provider credentials waiting on a person. For credentials, confirm name, number, status and expiration against the state board (profession + state) before verifying. Credentials for states that aren't open yet are listed last." />
       {empty ? <Empty title="Queue is clear" /> : null}
       <div className="space-y-6">
+        {clinicRows.length ? (
+          <Card>
+            <CardHeader title={`Clinics (${clinicRows.length})`} description="Ownership details that need a person. Open one to see the checks and decide." />
+            <div className="divide-y divide-slate-100">
+              {clinicRows.map((r) => {
+                const open = r.checks.filter((c) => c.outcome === "FAIL" || c.outcome === "REVIEW").length;
+                return (
+                  <Link key={r.id} href={`/admin/verification/clinics/${r.id}`} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm hover:bg-slate-50">
+                    <div>
+                      <div className="font-medium">{r.clinicOrg.displayName}</div>
+                      <div className="text-xs text-slate-500">{r.entityName} · {r.entityState} #{r.entityNumber} · sent {relative(r.submittedAt)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={r.checks.some((c) => c.outcome === "FAIL") ? "red" : "amber"}>{open} to check</Badge>
+                      <span className="font-medium text-brand-700">Review →</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </Card>
+        ) : null}
         {q.licenses.length ? (
           <Card>
             <CardHeader title={`Licenses (${q.licenses.length})`} />
