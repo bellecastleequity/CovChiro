@@ -883,6 +883,14 @@ model Shift {
   lunchStartsAt               DateTime?         @db.Timestamptz(3)
   lodgingAllowed              Boolean           @default(false)
   lodgingCapCentsPerNight     Int?
+  /// Lodging money kept from a provider who dropped out, waiting for the replacement (core lodging.ts); refunded if nobody is placed.
+  lodgingHeldCents            Int               @default(0)
+  /// The clinic books the stay itself (hotel, rental or other): no lodging allowance is charged or paid.
+  lodgingByClinic             Boolean           @default(false)
+  /// HOTEL | RENTAL | OTHER (when lodgingByClinic).
+  lodgingStayKind             String?
+  /// Where the provider stays; shown to the booked provider only.
+  lodgingStayDetails          String?
   /// Fly-in coverage allowed (snapshot at posting; null = no): airfare per trip, lodging per night, and the last moment a fly-in provider can be added.
   flyInAirfareCents           Int?
   flyInNightlyCents           Int?
@@ -1139,6 +1147,8 @@ model Assignment {
   mileageCents         Int
   lodgingEstimateCents Int                       @default(0)
   lodgingApprovedCents Int                       @default(0)
+  /// Part of this booking's lodging paid from the shift's hold (an earlier provider's lodging the clinic already paid).
+  lodgingCreditCents   Int                       @default(0)
   /// Fly-in booking (provider flies in): airfare allowance on the first day they cover in the booking, 0 on the rest.
   flyIn                Boolean                   @default(false)
   airfareCents         Int                       @default(0)

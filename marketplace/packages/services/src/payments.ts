@@ -1,4 +1,4 @@
-import { DomainError, taxInfoStatus } from "@cm/core";
+import { balanceDueCents, DomainError, taxInfoStatus } from "@cm/core";
 import { prisma, type PaymentType } from "@cm/db";
 import { paymentsProvider, taxFactsOfAccount } from "@cm/integrations";
 import { audit, getSettings, SYSTEM, type Actor } from "./context";
@@ -57,6 +57,8 @@ export async function chargeDeposit(assignmentId: string) {
     const urgent = +a.startsAt - Date.now() < 48 * 3_600_000;
     const hours = urgent ? s["payments.paymentFixWindowUrgentHours"] : s["payments.paymentFixWindowHours"];
     await prisma.assignment.update({ where: { id: assignmentId }, data: { flags: { set: [...new Set([...a.flags, "PAYMENT_FAILED"])] } } });
+    // The provider's lodging advance waits until the clinic's payment goes through.
+    await (await import("./lodging")).holdLodgingForPayment(assignmentId, true);
     await notifyClinic(prisma, orgId, {
       template: "deposit_failed",
       title: "Action needed: your deposit didn't go through",
@@ -73,7 +75,8 @@ export async function chargeDeposit(assignmentId: string) {
 export async function chargeBalance(assignmentId: string) {
   const a = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId }, include: { shift: { include: { location: true } }, payments: true } });
   const collected = a.payments.filter((p) => p.status === "SUCCEEDED" && (p.type === "DEPOSIT" || p.type === "BALANCE")).reduce((x, p) => x + p.amountCents, 0);
-  const due = a.clinicTotalCents - collected;
+  // Lodging paid from a hold on the shift (an earlier provider's, already paid by the clinic) is never charged again.
+  const due = balanceDueCents({ clinicTotalCents: a.clinicTotalCents, collectedCents: collected, lodgingCreditCents: a.lodgingCreditCents });
   return charge(assignmentId, a.shift.location.clinicOrgId, "BALANCE", due, `balance-${assignmentId}`, `Coverage balance · ${a.startsAt.toISOString().slice(0, 10)}`);
 }
 
@@ -190,7 +193,9 @@ export async function handleStripeEvent(rawBody: string, signature: string | nul
       break;
     }
     case "transfer.reversed": {
-      const t = await prisma.payoutTransfer.findUnique({ where: { stripeTransferId: obj.id } });
+      // Our own lodging-advance reversals (lodging.ts) are already recorded in the ledger.
+      const ours = (obj.reversals?.data ?? []).length > 0 && (obj.reversals.data as { metadata?: Record<string, string> }[]).every((r) => r.metadata?.reason === "lodging_advance_returned");
+      const t = ours ? null : await prisma.payoutTransfer.findUnique({ where: { stripeTransferId: obj.id } });
       if (t) {
         await prisma.payoutTransfer.update({ where: { id: t.id }, data: { status: "REVERSED", failureReason: "Reversed in Stripe" } });
         await notifyAdmins(prisma, { template: "transfer_reversed", title: "A provider transfer was reversed", body: `Transfer ${obj.id} was reversed in Stripe. Review it in Admin → Provider pay.`, link: "/admin/payouts", email: true });

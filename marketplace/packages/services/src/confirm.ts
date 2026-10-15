@@ -1,8 +1,9 @@
-import { assertTransition, idDueAt, type IdStatus, clinicTotalCents, depositCents, depositPercentFor, DomainError, providerTotalCents, SELECTABLE_SHIFT_STATUSES, travelEstimate, travelBufferMinutes } from "@cm/core";
+import { assertTransition, idDueAt, type IdStatus, clinicTotalCents, depositPercentFor, depositWithTravel, DomainError, providerTotalCents, SELECTABLE_SHIFT_STATUSES, travelEstimate, travelBufferMinutes } from "@cm/core";
 import { Prisma, isInvariantViolation, type SelectionMethod } from "@cm/db";
 import { audit, clock, getSettings, lockShift, tx, type Actor, type Db } from "./context";
 import { Effects } from "./effects";
 import { assertProviderEligibleForShift } from "./eligibility";
+import { createLodgingAdvance, refundUnusedHold, sendDueLodgingAdvance, takeShiftHold, UPFRONT_FLAG } from "./lodging";
 import { notify, notifyClinic } from "./notify";
 import { chargeDeposit } from "./payments";
 import { idCheckRules } from "./idcheck";
@@ -77,9 +78,14 @@ export async function confirmInTx(
       : 0;
     airfareCents = carried ? 0 : (shift.flyInAirfareCents ?? 0);
   }
-  const travel = flyIn
-    ? { mileageCents: 0, lodgingEstimateCents: shift.flyInNightlyCents ?? 0 }
-    : travelEstimate(drive, { lodgingAllowed: shift.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s);
+  const travel = shift.lodgingByClinic
+    ? // The clinic books the stay itself: no lodging allowance either way.
+      { mileageCents: flyIn ? 0 : travelEstimate(drive, { lodgingAllowed: false, lodgingCapCentsPerNight: null }, s).mileageCents, lodgingEstimateCents: 0 }
+    : flyIn
+      ? { mileageCents: 0, lodgingEstimateCents: shift.flyInNightlyCents ?? 0 }
+      : travelEstimate(drive, { lodgingAllowed: shift.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s);
+  // Lodging held on this shift from a provider who dropped out pays this provider's lodging (core lodging.ts).
+  const hold = await takeShiftHold(db, shiftId, travel.lodgingEstimateCents);
 
   // Promo: redeem now (counts only confirmed shifts). If it ran out since posting, drop it.
   // promoDiscountCents carries promo + partner discount; only the promo part can run out.
@@ -141,7 +147,10 @@ export async function confirmInTx(
       providerTotalCents: providerTotal,
       // Fly-in: the airfare is collected in full with the deposit (flights are booked soon after).
       // Overdue payment rule: a pay-in-full clinic is charged the whole booking at confirmation.
-      depositCents: depositCents(clinicTotal - airfareCents, depositPercentFor(s["payments.depositPercent"], payInFull)) + airfareCents,
+      // Lodging is collected in full too, so the provider can have it before check-in (released when they reconfirm).
+      depositCents: depositWithTravel({ clinicTotalCents: clinicTotal, airfareCents, lodgingCents: travel.lodgingEstimateCents, lodgingCreditCents: hold.creditCents, depositPercent: depositPercentFor(s["payments.depositPercent"], payInFull) }),
+      lodgingCreditCents: hold.creditCents,
+      flags: [UPFRONT_FLAG],
       confirmedAt: now,
       graceEndsAt: opts.graceMinutes ? new Date(+now + opts.graceMinutes * 60_000) : null,
     },
@@ -172,10 +181,13 @@ export async function confirmInTx(
       assignmentId: assignment.id,
       kind: "SHIFT",
       description: `Coverage ${shift.startsAt.toISOString().slice(0, 10)} · ${shift.location.name}`,
-      amountCents: providerTotal,
+      amountCents: providerTotal - travel.lodgingEstimateCents,
       status: "PENDING",
     },
   });
+  // Lodging is its own payout: an advance sent when the provider reconfirms (from 48 h before the start).
+  await createLodgingAdvance(db, assignment, `${shift.startsAt.toISOString().slice(0, 10)} · ${shift.location.name}`, now);
+  if (hold.refundCents > 0) effects.add(() => refundUnusedHold(shiftId, assignment.id, hold.refundCents));
 
   await db.messageThread.upsert({
     where: { clinicOrgId_providerId: { clinicOrgId: shift.location.clinicOrgId, providerId } },
@@ -186,6 +198,8 @@ export async function confirmInTx(
   await audit(db, actor, "shift.confirmed", "Shift", shiftId, { status: shift.status }, { status: "CONFIRMED", providerId, method, assignmentId: assignment.id });
 
   effects.add(() => chargeDeposit(assignment.id));
+  // Booked inside the 48-hour window: the lodging advance goes out right after the deposit.
+  if (travel.lodgingEstimateCents) effects.add(() => sendDueLodgingAdvance(assignment.id));
   effects.add(async () => {
     const { prisma } = await import("@cm/db");
     const date = shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric" });
@@ -194,8 +208,14 @@ export async function confirmInTx(
       title: `You're confirmed: ${date} at ${shift.location.name}`,
       body: `You're booked for ${date} in ${shift.location.city}, ${shift.location.state}. Arrival notes and the on-site contact are on the shift page.${
         airfareCents
-          ? ` This is a fly-in booking: book your flights after ${new Date(+now + s["flyIn.airfareRefundHours"] * 3_600_000).toLocaleString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}, when the clinic's change window ends. Your $${(airfareCents / 100).toFixed(0)} airfare allowance and lodging are included in your pay.`
+          ? ` This is a fly-in booking: book your flights after ${new Date(+now + s["flyIn.airfareRefundHours"] * 3_600_000).toLocaleString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}, when the clinic's change window ends. Your $${(airfareCents / 100).toFixed(0)} airfare allowance is included in your pay.`
           : ""
+      }${
+        travel.lodgingEstimateCents
+          ? ` Your $${(travel.lodgingEstimateCents / 100).toFixed(0)} lodging is paid in advance: we send it to your bank when you reconfirm, from 48 hours before the shift. The earlier you reconfirm, the more likely it's in your account before the hotel puts a hold on your card.`
+          : shift.lodgingByClinic && shift.lodgingAllowed
+            ? " The clinic books your stay: the details are on the shift page."
+            : ""
       }${idDue ? ` One step left: verify your ID (about 2 minutes, on your phone) by ${idDue.toLocaleString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}, or this booking goes to another provider.` : ""}`,
       link: idDue ? "/provider/verify-id" : `/provider/assignments/${assignment.id}`,
       ctaLabel: "View shift details",

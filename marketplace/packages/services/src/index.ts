@@ -11,6 +11,7 @@ export * as announcements from "./announcements";
 export * as clinicVerify from "./clinicVerify";
 export * as boardcheck from "./boardcheck";
 export * as idcheck from "./idcheck";
+export * as lodging from "./lodging";
 export * as exclusions from "./exclusions";
 export * as google from "./google";
 export * as emaildns from "./emaildns";

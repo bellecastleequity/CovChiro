@@ -2,6 +2,7 @@ import { z } from "zod";
 import { clinicTotalCents, DomainError, looksLikePhi, lunchProblem, minPostingLeadOk, providerTotalCents, scanContactInfo, selectionDeadline, urgencyTier } from "@cm/core";
 import { isInvariantViolation, prisma, Prisma, type Shift, type ShiftChange } from "@cm/db";
 import { audit, clock, getSettings, lockShift, requireClinic, requireProvider, SYSTEM, tx, type Actor, type Db } from "./context";
+import { applyLodgingCancelInTx, finishLodgingCancel, lodgingCancelPlan, shiftPayoutCents } from "./lodging";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
 import { depositPaidCents, refundAssignment } from "./payments";
 import { quoteShift } from "./pricing";
@@ -342,7 +343,7 @@ async function acceptChange(actor: Actor, c: ShiftChange) {
           ...(timeMoved ? { reconfirmRequestedAt: null, reconfirmRemindedAt: null, reconfirmedAt: null, checkinPromptedAt: null } : {}),
         },
       });
-      await db.payout.updateMany({ where: { assignmentId: a.id, kind: "SHIFT", status: { in: ["PENDING", "SCHEDULED", "ON_HOLD"] } }, data: { amountCents: after.totals!.providerTotalCents } });
+      await db.payout.updateMany({ where: { assignmentId: a.id, kind: "SHIFT", status: { in: ["PENDING", "SCHEDULED", "ON_HOLD"] } }, data: { amountCents: shiftPayoutCents({ ...a, providerTotalCents: after.totals!.providerTotalCents }) } });
       await audit(db, actor, "shift.change_accepted", "Shift", c.shiftId, c.before, { ...after.shift, changeId: c.id });
     });
   } catch (e) {
@@ -398,15 +399,19 @@ async function releaseForChange(actor: Actor, c: ShiftChange, outcome: "DECLINED
   const { airfareOnCancel, airfarePayout } = await import("./shifts");
   const air = await airfareOnCancel(released, "CLINIC", now, paid);
   await airfarePayout(prisma, released, air, now);
-  const refund = paid - (air.kept ? air.paidPart : 0);
+  // Lodging paid up front stays held for whoever fills the reopened shift; any advance sent comes back.
+  const lodging = await lodgingCancelPlan(released, "PROVIDER", true, now, paid - air.paidPart);
+  await applyLodgingCancelInTx(prisma, lodging, now);
+  const refund = paid - (air.kept ? air.paidPart : 0) - (lodging?.depositPart ?? 0);
   if (refund > 0) await refundAssignment(SYSTEM, released.id, refund, air.kept ? "provider released after a clinic change — refund less the fly-in airfare" : "provider released after a clinic change — full refund");
+  await finishLodgingCancel(SYSTEM, lodging, "released after a clinic change; held for the replacement");
   const shift = await prisma.shift.findUniqueOrThrow({ where: { id: c.shiftId }, include: { location: true } });
   const provider = await prisma.provider.findUniqueOrThrow({ where: { id: c.providerId }, select: { userId: true, displayName: true } });
   const tz = shift.location.timeZone;
   await notifyClinic(prisma, shift.location.clinicOrgId, {
     template: "shift_change_declined",
     title: outcome === "DECLINED" ? `${provider.displayName} can't make the new time — we're finding someone` : `No answer from ${provider.displayName} — we're finding someone`,
-    body: `We've reopened your shift with your changes (${when(after.shift, tz)}) and are offering it to eligible providers now.${paid ? " Your deposit is being refunded; a new one is charged when the next provider is confirmed." : ""}`,
+    body: `We've reopened your shift with your changes (${when(after.shift, tz)}) and are offering it to eligible providers now.${paid ? " Your deposit is being refunded; a new one is charged when the next provider is confirmed." : ""}${lodging?.outcome.holdCents ? ` The lodging you paid is held for the next provider, so you won't pay it twice.` : ""}`,
     link: `/clinic/shifts/${c.shiftId}`,
     sms: true,
   });

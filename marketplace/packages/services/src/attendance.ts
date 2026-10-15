@@ -4,6 +4,7 @@ import { arrivalPlan, DomainError, type ArrivalSettings } from "@cm/core";
 import { geoProvider, haversineMiles } from "@cm/integrations";
 import { prisma, type Prisma } from "@cm/db";
 import { audit, clock, getSettings, SYSTEM, type Actor } from "./context";
+import { releaseLodgingOnReconfirm } from "./lodging";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
 
 /**
@@ -65,7 +66,9 @@ export async function reconfirmAttendance(actor: Actor | null, assignmentId: str
     await prisma.assignment.update({ where: { id: a.id }, data: { reconfirmedAt: clock.now() } });
     await audit(prisma, actor ?? SYSTEM, "assignment.reconfirmed", "Assignment", a.id, null, { via: actor ? "app" : "link" });
   }
-  return "Thanks — you're confirmed. See you there!";
+  // Lodging advance: released from 48 h before the start once they've reconfirmed.
+  const sent = await releaseLodgingOnReconfirm(a.id, clock.now());
+  return sent?.status === "PAID" ? "Thanks — you're confirmed, and your lodging money is on its way to your bank. See you there!" : "Thanks — you're confirmed. See you there!";
 }
 
 /** A phone position from the browser (used once for a drive time, never stored). */
@@ -154,6 +157,7 @@ export async function markOnMyWay(actor: Actor | null, assignmentId: string, pos
   if (a.onMyWayAt) return "Already marked — drive safe!";
   const now = clock.now();
   await prisma.assignment.update({ where: { id: a.id }, data: { onMyWayAt: now, reconfirmedAt: a.reconfirmedAt ?? now } });
+  if (!a.reconfirmedAt) await releaseLodgingOnReconfirm(a.id, now);
   await audit(prisma, actor ?? SYSTEM, "assignment.on_my_way", "Assignment", a.id, null, { via: actor ? "app" : "link", sharedLocation: validPosition(pos) });
   const eta = validPosition(pos) ? await reportPosition(actor, a.id, pos).catch((e) => (console.error("arrival time failed", e), null)) : null;
   const tz = a.shift.location.timeZone;

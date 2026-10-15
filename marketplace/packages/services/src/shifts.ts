@@ -32,6 +32,7 @@ import { audit, clock, getSettings, lockShift, SYSTEM, requireAdmin, requireClin
 import { confirmInTx, confirmProvider } from "./confirm";
 import { Effects } from "./effects";
 import { assertProviderEligibleForShift, eligibilityOptions, evaluateProviderForShifts, getEligibleProviders, loadProviders, loadShift, nationalCredentialStates } from "./eligibility";
+import { applyLodgingCancelInTx, finishLodgingCancel, lodgingCancelPlan, releaseShiftHold, type LodgingCancelPlan } from "./lodging";
 import { logMatchRun, rankEvaluated } from "./matching";
 import { notify, notifyAdmins, notifyClinic } from "./notify";
 import { depositPaidCents, refundAssignment } from "./payments";
@@ -57,6 +58,10 @@ export const ShiftInput = z.object({
   maxTravelBudgetCents: z.coerce.number().int().min(0).nullable().optional(),
   lodgingAllowed: z.boolean().default(false),
   lodgingCapCentsPerNight: z.coerce.number().int().min(0).nullable().optional(),
+  /** The clinic books the provider's stay itself (no lodging allowance charged or paid). */
+  lodgingByClinic: z.boolean().optional(),
+  lodgingStayKind: z.enum(["HOTEL", "RENTAL", "OTHER"]).nullable().optional(),
+  lodgingStayDetails: z.string().max(600).nullable().optional(),
   /** Fly-in coverage OK (whole booking; flyInFields checks days and notice). */
   flyIn: z.boolean().optional(),
   /** Multi-day: one provider for every day (core/sameProvider.ts); undefined = Settings default. */
@@ -315,7 +320,8 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
         lunchMinutes: input.lunchMinutes,
         lunchStartsAt: input.lunchMinutes ? (input.lunchStartsAt ?? null) : null,
         // Flat nightly allowance from Settings (no receipts), kept with the shift.
-        lodgingCapCentsPerNight: input.lodgingAllowed ? (await getSettings(db))["pricing.lodgingNightlyCents"] : null,
+        lodgingCapCentsPerNight: input.lodgingAllowed && !input.lodgingByClinic ? (await getSettings(db))["pricing.lodgingNightlyCents"] : null,
+        ...stayFields(input),
         rateCardId: q.rateCardId,
         durationTier: q.base.tier,
         clinicPriceCents: q.base.clinicPriceCents,
@@ -447,7 +453,8 @@ export async function updateDraftShift(actor: Actor, shiftId: string, raw: Shift
         lunchMinutes: input.lunchMinutes,
         lunchStartsAt: input.lunchMinutes ? (input.lunchStartsAt ?? null) : null,
         // Flat nightly allowance from Settings (no receipts), kept with the shift.
-        lodgingCapCentsPerNight: input.lodgingAllowed ? (await getSettings(db))["pricing.lodgingNightlyCents"] : null,
+        lodgingCapCentsPerNight: input.lodgingAllowed && !input.lodgingByClinic ? (await getSettings(db))["pricing.lodgingNightlyCents"] : null,
+        ...stayFields(input),
         // Fly-in is set for the whole booking at posting; unticking it on a draft clears it.
         ...(input.flyIn ? {} : { flyInAirfareCents: null, flyInNightlyCents: null, flyInUntil: null }),
         rateCardId: q.rateCardId,
@@ -792,6 +799,9 @@ export async function shiftCandidates(actor: Actor, shiftId: string) {
       score: r.score,
       components: r.components,
       driveMinutes: r.input.driveMinutes,
+      // What this provider would add to the clinic's total (charged at confirmation; lodging only when they'd stay over).
+      mileageCents: r.evaluated.pair.mileageCents ?? r.evaluated.pair.travelEstimateCents,
+      lodgingCents: Math.max(0, r.evaluated.pair.travelEstimateCents - (r.evaluated.pair.mileageCents ?? r.evaluated.pair.travelEstimateCents)),
       ratingAvg: r.ratingAvg,
       ratingCount: r.ratingCount,
       reliability: r.reliability,
@@ -1006,6 +1016,30 @@ export async function airfarePayout(db: Db, a: { id: string; providerId: string 
   });
 }
 
+/** Clinic-booked stay (hotel, rental or other): only meaningful with lodging allowed. */
+export function stayFields(input: { lodgingAllowed: boolean; lodgingByClinic?: boolean; lodgingStayKind?: string | null; lodgingStayDetails?: string | null }) {
+  const by = input.lodgingAllowed && !!input.lodgingByClinic;
+  return { lodgingByClinic: by, lodgingStayKind: by ? (input.lodgingStayKind ?? "HOTEL") : null, lodgingStayDetails: by ? input.lodgingStayDetails?.trim().slice(0, 600) || null : null };
+}
+
+/** The clinic adds or changes where its booked provider stays (clinic-booked lodging). */
+export async function updateStayDetails(actor: Actor, shiftId: string, input: { kind: "HOTEL" | "RENTAL" | "OTHER"; details: string }) {
+  const shift = await clinicShift(actor, shiftId);
+  if (!shift.lodgingByClinic) throw new DomainError("VALIDATION", "This shift doesn't use a stay booked by your clinic.");
+  const details = input.details.trim().slice(0, 600) || null;
+  await prisma.shift.update({ where: { id: shiftId }, data: { lodgingStayKind: input.kind, lodgingStayDetails: details } });
+  await audit(prisma, actor, "shift.stay_details", "Shift", shiftId, { kind: shift.lodgingStayKind, details: shift.lodgingStayDetails }, { kind: input.kind, details });
+  const live = await prisma.assignment.findFirst({ where: { shiftId, status: { in: ["CONFIRMED", "IN_PROGRESS"] } }, include: { provider: true } });
+  if (live && details) {
+    await notify(prisma, live.provider.userId, {
+      template: "stay_details",
+      title: "Your stay is booked",
+      body: `${shift.location.name} added where you're staying for your ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric" })} shift. The details are on the shift page.`,
+      link: `/provider/assignments/${live.id}`,
+    });
+  }
+}
+
 export async function cancelShiftByClinic(actor: Actor, shiftId: string, reason: string) {
   const shift = await clinicShift(actor, shiftId);
   if (!shiftIsCancellable(shift.status)) throw new DomainError("INVALID_TRANSITION", "This shift can no longer be cancelled.");
@@ -1014,12 +1048,15 @@ export async function cancelShiftByClinic(actor: Actor, shiftId: string, reason:
   const now = new Date();
   let outcome = null;
   let air = { kept: false, airfareCents: 0, paidPart: 0 };
+  let lodging: LodgingCancelPlan | null = null;
   if (assignment) {
     const deposit = await depositPaidCents(assignment.id);
     const by = actor.role === "PLATFORM_ADMIN" ? "PLATFORM" : "CLINIC";
     air = await airfareOnCancel(assignment, by, now, deposit);
-    // The matrix applies to the deposit without the airfare; the airfare is kept or refunded on its own.
-    outcome = cancellationOutcome({ by, now, startsAt: shift.startsAt, depositPaidCents: deposit - air.paidPart }, s);
+    // Lodging: refunded, except a night the provider keeps when the clinic cancels close to the start.
+    lodging = await lodgingCancelPlan(assignment, by, false, now, deposit - air.paidPart);
+    // The matrix applies to the deposit without the airfare and lodging; those are kept or refunded on their own.
+    outcome = cancellationOutcome({ by, now, startsAt: shift.startsAt, depositPaidCents: deposit - air.paidPart - (lodging?.depositPart ?? 0) }, s);
     if (!air.kept) outcome = { ...outcome, refundDepositCents: outcome.refundDepositCents + air.paidPart };
   }
   await tx(async (db) => {
@@ -1033,7 +1070,7 @@ export async function cancelShiftByClinic(actor: Actor, shiftId: string, reason:
         where: { id: assignment.id },
         data: { status: "CANCELLED", cancelledAt: now, cancelledBy: actor.role === "PLATFORM_ADMIN" ? "PLATFORM" : "CLINIC", cancelReason: reason.slice(0, 500) },
       });
-      await db.payout.updateMany({ where: { assignmentId: assignment.id, status: { in: ["PENDING", "SCHEDULED", "ON_HOLD"] }, kind: "SHIFT" }, data: { status: "CANCELLED" } });
+      await db.payout.updateMany({ where: { assignmentId: assignment.id, status: { in: ["PENDING", "SCHEDULED", "ON_HOLD", "FAILED"] }, kind: { in: ["SHIFT", "LODGING"] } }, data: { status: "CANCELLED" } });
       if (outcome && outcome.providerCompensationCents > 0) {
         await db.payout.create({
           data: {
@@ -1048,15 +1085,19 @@ export async function cancelShiftByClinic(actor: Actor, shiftId: string, reason:
         });
       }
       await airfarePayout(db, assignment, air, now);
+      await applyLodgingCancelInTx(db, lodging, now);
     }
     await audit(db, actor, "shift.cancelled", "Shift", shiftId, { status: shift.status }, { status: "CANCELLED", reason, outcome, airfare: air.airfareCents ? air : undefined });
   });
   if (assignment && outcome && outcome.refundDepositCents > 0) await refundAssignment(actor, assignment.id, outcome.refundDepositCents, "clinic cancellation ≥ free-cancel window");
+  await finishLodgingCancel(actor, lodging, "the clinic cancelled the shift");
+  // Lodging still held from an earlier provider: nobody will be placed now.
+  await releaseShiftHold(actor, shiftId, "the clinic cancelled the shift");
   if (assignment) {
     await notify(prisma, assignment.provider.userId, {
       template: "shift_cancelled_provider",
       title: "A confirmed shift was cancelled",
-      body: `The clinic cancelled your ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric" })} shift at ${shift.location.name}.${outcome?.providerCompensationCents ? " You'll receive late-cancellation compensation." : ""}${air.kept ? " You'll also receive the airfare allowance for your flights." : air.airfareCents ? " The clinic cancelled within its change window, so please don't book flights for this booking." : ""}`,
+      body: `The clinic cancelled your ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, month: "short", day: "numeric" })} shift at ${shift.location.name}.${outcome?.providerCompensationCents ? " You'll receive late-cancellation compensation." : ""}${lodging?.outcome.providerKeepsCents ? ` You keep $${(lodging.outcome.providerKeepsCents / 100).toFixed(2)} of the lodging for the hotel's late-cancellation charge; please cancel the rest of your stay.` : lodging ? " Please cancel your stay; the lodging advance is being returned to the clinic." : ""}${air.kept ? " You'll also receive the airfare allowance for your flights." : air.airfareCents ? " The clinic cancelled within its change window, so please don't book flights for this booking." : ""}`,
       link: "/provider/earnings",
       sms: true,
     });
@@ -1091,11 +1132,13 @@ export async function cancelAssignment(
   const now = clock.now();
   const deposit = await depositPaidCents(a.id);
   const air = await airfareOnCancel(a, opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", now, deposit);
-  const base = cancellationOutcome({ by: opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", noShow: opts.noShow, now, startsAt: a.startsAt, depositPaidCents: deposit - air.paidPart }, s);
+  const reopen = a.startsAt > now && !opts.noShow;
+  // Lodging paid up front: held on the shift for the replacement (or refunded when nobody is needed); the advance comes back.
+  const lodging = await lodgingCancelPlan(a, opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", reopen, now, deposit - air.paidPart);
+  const base = cancellationOutcome({ by: opts.by === "PROVIDER" ? "PROVIDER" : "PLATFORM", noShow: opts.noShow, now, startsAt: a.startsAt, depositPaidCents: deposit - air.paidPart - (lodging?.depositPart ?? 0) }, s);
   // Fly-in airfare: refunded unless the provider still flies for other days of the booking.
   const outcome = air.kept ? base : { ...base, refundDepositCents: base.refundDepositCents + air.paidPart };
   const newStatus = opts.lapse ? "LICENSE_LAPSED" : opts.noShow ? "NO_SHOW" : "CANCELLED";
-  const reopen = a.startsAt > now && !opts.noShow;
   await tx(async (db) => {
     assertTransition("Assignment", a.status, newStatus);
     await db.assignment.update({
@@ -1104,6 +1147,7 @@ export async function cancelAssignment(
     });
     await db.payout.updateMany({ where: { assignmentId: a.id, status: { in: ["PENDING", "SCHEDULED", "ON_HOLD"] } }, data: { status: "CANCELLED" } });
     await airfarePayout(db, a, air, now);
+    await applyLodgingCancelInTx(db, lodging, now);
     await db.promoRedemption.updateMany({ where: { shiftId: a.shiftId, voidedAt: null }, data: { voidedAt: now } });
     if (a.shift.promoCodeId && a.shift.promoDiscountCents - a.shift.partnerDiscountCents > 0) {
       await db.promoCode.update({ where: { id: a.shift.promoCodeId }, data: { usedCount: { decrement: 1 } } });
@@ -1123,12 +1167,13 @@ export async function cancelAssignment(
     await audit(db, actor, `assignment.${newStatus.toLowerCase()}`, "Assignment", a.id, { status: a.status }, { status: newStatus, reason, outcome, reopened: reopen });
   });
   if (outcome.refundDepositCents > 0) await refundAssignment(actor, a.id, outcome.refundDepositCents, `${newStatus.toLowerCase()} — full refund`);
+  await finishLodgingCancel(actor, lodging, opts.noShow ? "no-show" : reopen ? "provider no longer covering; held for the replacement" : "booking ended");
   const day = a.startsAt.toLocaleDateString("en-US", { timeZone: a.shift.location.timeZone, weekday: "short", month: "short", day: "numeric" });
   if (!opts.quiet) await notifyClinic(prisma, a.shift.location.clinicOrgId, {
     template: "backfill",
     title: reopen ? `We've had a cancellation for ${day} — we're already finding a replacement` : "Your covering provider didn't show",
     body: reopen
-      ? `${a.provider.displayName} ${opts.idCheck ? "didn't complete a required check in time" : opts.unconfirmed ? "didn't confirm they're still coming" : "can no longer make it"} on ${day}. No need to worry — we're finding a replacement urgently as we speak, and we'll email you the moment your new provider is confirmed. Your deposit for ${a.provider.displayName} is being refunded.`
+      ? `${a.provider.displayName} ${opts.idCheck ? "didn't complete a required check in time" : opts.unconfirmed ? "didn't confirm they're still coming" : "can no longer make it"} on ${day}. No need to worry — we're finding a replacement urgently as we speak, and we'll email you the moment your new provider is confirmed. Your deposit for ${a.provider.displayName} is being refunded.${lodging?.outcome.holdCents ? ` The $${(lodging.outcome.holdCents / 100).toFixed(2)} lodging you paid is held for your replacement, so you won't be charged for it again; if they don't need to stay over, or nobody can be placed, it's refunded.` : ""}`
       : "Your deposit is being refunded in full. Our team will follow up.",
     link: `/clinic/shifts/${a.shiftId}`,
     sms: true,

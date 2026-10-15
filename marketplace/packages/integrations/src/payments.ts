@@ -74,6 +74,8 @@ export interface PaymentsProvider {
    * the platform) and the transfer can run before the charge's funds become available.
    */
   transfer(input: { accountId: string; amountCents: number; idempotencyKey: string; description: string; metadata: Record<string, string>; sourcePaymentIntentId?: string | null }): Promise<{ id: string }>;
+  /** Take money back from a transfer (Stripe transfer reversal), e.g. a lodging advance for a shift the provider dropped. */
+  reverseTransfer(input: { transferId: string; amountCents: number; idempotencyKey: string; metadata?: Record<string, string> }): Promise<{ id: string }>;
   /** Card dispute (chargeback): send text evidence to Stripe; submit = final (Stripe sends it to the bank). */
   submitDisputeEvidence(disputeId: string, evidence: Record<string, string>, submit: boolean): Promise<{ status: string }>;
   /** Throws if the signature is invalid. */
@@ -192,6 +194,10 @@ class StripePayments implements PaymentsProvider {
     );
     return { id: t.id };
   }
+  async reverseTransfer(i: { transferId: string; amountCents: number; idempotencyKey: string; metadata?: Record<string, string> }) {
+    const r = await this.s.transfers.createReversal(i.transferId, { amount: i.amountCents, ...(i.metadata ? { metadata: i.metadata } : {}) }, { idempotencyKey: i.idempotencyKey });
+    return { id: r.id };
+  }
   /**
    * STRIPE_WEBHOOK_SECRET may hold several comma-separated signing secrets:
    * Stripe gives the "Your account" destination (payments, checkout,
@@ -275,6 +281,18 @@ export class FakePayments implements PaymentsProvider {
     if (!this.transfers.some((t) => t.idempotencyKey === i.idempotencyKey)) this.transfers.push({ amountCents: i.amountCents, sourcePaymentIntentId: i.sourcePaymentIntentId ?? null, idempotencyKey: i.idempotencyKey });
     return { id: this.id("tr", i.idempotencyKey) };
   }
+  /** Reversals made (tests read this). */
+  reversals: { transferId: string; amountCents: number; idempotencyKey: string }[] = [];
+  /** Tests: make the next N reversals fail. */
+  failNextReversals = 0;
+  async reverseTransfer(i: { transferId: string; amountCents: number; idempotencyKey: string }) {
+    if (this.failNextReversals > 0) {
+      this.failNextReversals--;
+      throw new Error("Reversal failed (test)");
+    }
+    if (!this.reversals.some((r) => r.idempotencyKey === i.idempotencyKey)) this.reversals.push({ transferId: i.transferId, amountCents: i.amountCents, idempotencyKey: i.idempotencyKey });
+    return { id: this.id("trr", i.idempotencyKey) };
+  }
   async submitDisputeEvidence(_disputeId: string, _evidence: Record<string, string>, submit: boolean) {
     return { status: submit ? "under_review" : "needs_response" };
   }
@@ -324,6 +342,9 @@ export class SandboxPayments implements PaymentsProvider {
     // A fake account is paid by the fake; a real test account from a fake charge goes unlinked.
     if (this.by(i.accountId) === this.fake) return this.fake.transfer(i);
     return this.real.transfer({ ...i, sourcePaymentIntentId: i.sourcePaymentIntentId?.includes("_fake_") ? null : i.sourcePaymentIntentId });
+  }
+  reverseTransfer(i: { transferId: string; amountCents: number; idempotencyKey: string; metadata?: Record<string, string> }) {
+    return this.by(i.transferId).reverseTransfer(i);
   }
   submitDisputeEvidence(disputeId: string, evidence: Record<string, string>, submit: boolean) {
     return this.by(disputeId).submitDisputeEvidence(disputeId, evidence, submit);

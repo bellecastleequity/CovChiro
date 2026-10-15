@@ -211,6 +211,8 @@ export async function preShiftChecks(now = new Date()) {
 /** Selectable shifts that reach their start time unfilled → UNFILLED. */
 export async function markUnfilled(now = new Date()) {
   const r = await prisma.shift.updateMany({ where: { status: { in: ["OPEN", "FAVORITES_ONLY", "SELECTING", "CASCADING"] }, startsAt: { lte: now } }, data: { status: "UNFILLED" } });
+  // Lodging held for a replacement who never came goes back to the clinic.
+  await (await import("./lodging")).unfilledHoldSweep(now);
   return r.count;
 }
 
@@ -223,6 +225,7 @@ export async function failedDepositSweep(now = new Date()) {
     const dep = a.payments.find((p) => p.type === "DEPOSIT");
     if (dep?.status === "SUCCEEDED") {
       await prisma.assignment.update({ where: { id: a.id }, data: { flags: { set: a.flags.filter((f) => f !== "PAYMENT_FAILED") } } });
+      await (await import("./lodging")).holdLodgingForPayment(a.id, false);
       continue;
     }
     const urgent = +a.startsAt - +a.confirmedAt < 48 * HOUR;
