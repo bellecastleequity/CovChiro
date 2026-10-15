@@ -19,7 +19,8 @@ describe("Taking a break", () => {
     };
     const keep = await book(14);
     const release = await book(21);
-    const { startsAt, endsAt } = futureWeekday(28);
+    // Two weeks after the last booking: a holiday can push a booking a week later onto the next Wednesday.
+    const { startsAt, endsAt } = futureWeekday(35);
     const { shiftId: open } = await createShift(clinic.actor, { locationId: clinic.location.id, professionCode: "DC", startsAt, endsAt }, { post: true });
     expect((await evaluateProviderForShift(prisma, provider.id, open)).result.eligible).toBe(true);
 
