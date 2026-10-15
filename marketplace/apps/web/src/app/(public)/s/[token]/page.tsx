@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BedDouble, CalendarDays, Clock, MapPin, Stethoscope, Users, Wallet } from "lucide-react";
 import { brand } from "@cm/config";
+import { stayLabel } from "@cm/core";
 import { shiftRecruit } from "@cm/services";
 import { claimRecruitAction } from "@/app/recruit-actions";
 import { RememberShift } from "@/components/recruit/remember-shift";
@@ -30,6 +31,7 @@ export default async function RecruitShift({ params }: { params: Promise<{ token
     [<Wallet key="i" className="size-5" />, "Pay", <>{money(d.payCents)}{d.mileageNote ? " + mileage" : ""}{d.otherDays.length ? " per day" : ""}</>],
     ...(d.tier ? [[<Users key="i" className="size-5" />, "The day", <>{d.tier}{d.expectedPatients ? `, about ${d.expectedPatients} patients for you` : ""}{d.extraVisitCents ? `. Each visit past ${d.extraVisitsAfter} pays ${money(d.extraVisitCents)} more.` : ""}</>] as [React.ReactNode, React.ReactNode, React.ReactNode]] : []),
     ...(d.lodgingNightCents ? [[<BedDouble key="i" className="size-5" />, "Lodging", `${money(d.lodgingNightCents)} a night if you live far enough away to stay over`] as [React.ReactNode, React.ReactNode, React.ReactNode]] : []),
+    ...(d.stayByClinic ? [[<BedDouble key="i" className="size-5" />, "Lodging", `If you live far enough away to stay over, the clinic books and pays for your stay (${stayLabel(d.stayByClinic)})`] as [React.ReactNode, React.ReactNode, React.ReactNode]] : []),
   ];
   return (
     <section className="mx-auto max-w-xl px-4 py-12">

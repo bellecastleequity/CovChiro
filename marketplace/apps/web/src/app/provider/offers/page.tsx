@@ -39,6 +39,7 @@ export default async function Offers() {
                   <div className="text-right">
                     <div className="text-lg font-semibold text-brand-700">{money(o.shift.providerPayCents)}</div>
                     <div className="text-xs text-slate-500">+ mileage</div>
+                    {o.shift.lodgingAllowed && o.shift.lodgingByClinic ? <div className="text-xs font-medium text-accent-700">Stay booked by the clinic</div> : null}
                   </div>
                 </div>
                 {o.status === "ACCEPTED_PENDING" ? null : <div className="mt-4 flex flex-wrap gap-2">

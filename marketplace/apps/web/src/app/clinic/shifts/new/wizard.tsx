@@ -539,7 +539,7 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                             <Field label="Stay">
                               <Select value={stayKind} onChange={(e) => setStayKind(e.target.value)}>
                                 <option value="HOTEL">Hotel</option>
-                                <option value="RENTAL">Airbnb / rental</option>
+                                <option value="RENTAL">Airbnb, apartment or rental</option>
                                 <option value="OTHER">Other</option>
                               </Select>
                             </Field>

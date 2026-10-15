@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
-import { Car, Clock, MapPin, Plane, Shirt, Star, Users } from "lucide-react";
+import { BedDouble, Car, Clock, MapPin, Plane, Shirt, Star, Users } from "lucide-react";
 import { prisma } from "@cm/db";
 import { evaluateProviderForShift, getSettings, ownside, partners, sameProvider } from "@cm/services";
-import { parseVolumeTerms, providerView } from "@cm/core";
+import { parseVolumeTerms, providerView, stayByClinicLine, stayLabel } from "@cm/core";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -26,7 +26,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
   const flyIn = !!ev.result.flyIn;
   const mileage = !flyIn && ev.drive ? Math.round((s["pricing.mileageRoundTrip"] ? 2 : 1) * ev.drive.miles * s["pricing.mileageRateCentsPerMile"]) : 0;
   // Fly-in: lodging every night (the night before each day); airfare once per trip, shown on its own.
-  const pay = providerView({ clinicPriceCents: 0, providerPayCents: shift.providerPayCents, promoDiscountCents: 0, mileageCents: mileage, lodgingCents: flyIn ? (shift.flyInNightlyCents ?? 0) : 0 });
+  const pay = providerView({ clinicPriceCents: 0, providerPayCents: shift.providerPayCents, promoDiscountCents: 0, mileageCents: mileage, lodgingCents: flyIn && !shift.lodgingByClinic ? (shift.flyInNightlyCents ?? 0) : 0 });
   const skills = await prisma.skill.findMany({ where: { id: { in: [...shift.requiredSkillIds, ...shift.preferredSkillIds] } } });
   const partner = (await partners.partnerClinicIds([shift.location.clinicOrgId])).has(shift.location.clinicOrgId);
   const clinicRating = await prisma.rating.aggregate({ where: { raterType: "PROVIDER", revealedAt: { not: null }, assignment: { shift: { location: { clinicOrgId: shift.location.clinicOrgId } } } }, _avg: { stars: true }, _count: true });
@@ -52,7 +52,7 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
       ) : null}
       {flyIn ? (
         <Alert tone="info" className="mb-5" title="You'd fly in for this booking">
-          You&apos;re licensed here but too far to drive, and the clinic allows fly-in coverage. You get {money(shift.flyInAirfareCents)} airfare per trip and {money(shift.flyInNightlyCents)} lodging every night (no receipts); travel days aren&apos;t paid.
+          You&apos;re licensed here but too far to drive, and the clinic allows fly-in coverage. You get {money(shift.flyInAirfareCents)} airfare per trip and {shift.lodgingByClinic ? <>your stay every night, booked and paid for by the clinic ({stayLabel(shift.lodgingStayKind)})</> : <>{money(shift.flyInNightlyCents)} lodging every night (no receipts)</>}; travel days aren&apos;t paid.
           {shift.shiftGroupId ? " You apply for all the open days together and the clinic picks." : ""} Book flights once you&apos;re confirmed and the clinic&apos;s {s["flyIn.airfareRefundHours"]}-hour change window has passed.
         </Alert>
       ) : null}
@@ -104,19 +104,25 @@ export default async function ShiftDetail({ params }: { params: Promise<{ id: st
               <div className="flex justify-between"><span>Shift pay</span><span className="tabular-nums">{money(pay.payCents)}</span></div>
               {flyIn ? (
                 <>
-                  <div className="flex justify-between"><span>Lodging (night before)</span><span className="tabular-nums">{money(pay.lodgingCents)}</span></div>
+                  {shift.lodgingByClinic ? <div className="flex justify-between"><span>Lodging (night before)</span><span className="text-right text-accent-700">Booked by the clinic</span></div> : <div className="flex justify-between"><span>Lodging (night before)</span><span className="tabular-nums">{money(pay.lodgingCents)}</span></div>}
                   <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold"><span>Total for this day</span><span className="tabular-nums text-brand-700">{money(pay.totalCents)}</span></div>
                   <div className="flex justify-between text-slate-600"><span>Airfare allowance, once per trip</span><span className="tabular-nums">+{money(shift.flyInAirfareCents)}</span></div>
                 </>
               ) : (
                 <>
                   <div className="flex justify-between"><span>Mileage</span><span className="tabular-nums">{money(pay.mileageCents)}</span></div>
-                  {shift.lodgingAllowed && shift.lodgingByClinic ? <div className="flex justify-between text-slate-500"><span>Lodging</span><span>The clinic books your stay{shift.lodgingStayKind === "RENTAL" ? " (rental)" : shift.lodgingStayKind === "HOTEL" ? " (hotel)" : ""}</span></div> : null}
+                  {shift.lodgingAllowed && shift.lodgingByClinic ? <div className="flex justify-between gap-3 text-slate-500"><span>Lodging</span><span className="text-right text-accent-700">Booked by the clinic</span></div> : null}
                   {shift.lodgingAllowed && !shift.lodgingByClinic ? <div className="flex justify-between text-slate-500"><span>Lodging</span><span>{money(shift.lodgingCapCentsPerNight)}/night if your drive is long</span></div> : null}
                   {shift.lodgingAllowed && !shift.lodgingByClinic ? <p className="text-xs text-slate-500">Lodging is paid in advance: it&apos;s sent to your bank when you reconfirm, from 48 hours before the shift.</p> : null}
                   <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold"><span>Total</span><span className="tabular-nums text-brand-700">{money(pay.totalCents)}</span></div>
                 </>
               )}
+              {shift.lodgingAllowed && shift.lodgingByClinic ? (
+                <p className="rounded-lg bg-accent-50 px-2 py-1.5 text-xs text-accent-800">
+                  <BedDouble className="mr-1 inline size-3.5" />
+                  {stayByClinicLine(shift.lodgingStayKind)} Where you&apos;ll stay is on your booking once you&apos;re confirmed.
+                </p>
+              ) : null}
             </CardBody>
           </Card>
           <Card>

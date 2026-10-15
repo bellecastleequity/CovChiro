@@ -76,6 +76,8 @@ export async function summary(token: string, countView = true) {
       extraVisitCents: terms && sh.declaredTier ? terms.overageProviderCents : null,
       extraVisitsAfter: terms ? terms.ceiling + terms.grace : null,
       lodgingNightCents: sh.lodgingAllowed ? sh.lodgingCapCentsPerNight : null,
+      /** The clinic books the stay (kind) instead of a nightly allowance. */
+      stayByClinic: sh.lodgingAllowed && sh.lodgingByClinic ? (sh.lodgingStayKind ?? "OTHER") : null,
       requiredSkills: skills.map((k) => k.name),
       minYearsExperience: sh.minYearsExperience ?? 0,
     },

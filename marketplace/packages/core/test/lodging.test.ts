@@ -74,3 +74,13 @@ describe("lodging up front", () => {
     expect(lodgingOnReplacement(0, 11_500)).toEqual({ creditCents: 0, refundCents: 0 });
   });
 });
+
+describe("clinic-booked stays", () => {
+  it("names the kind of stay in plain words", async () => {
+    const { stayLabel, stayByClinicLine } = await import("../src");
+    expect(stayLabel("HOTEL")).toBe("a hotel");
+    expect(stayLabel("RENTAL")).toBe("an Airbnb, apartment or rental");
+    expect(stayLabel(null)).toBe("a place to stay");
+    expect(stayByClinicLine("RENTAL")).toContain("an Airbnb, apartment or rental");
+  });
+});

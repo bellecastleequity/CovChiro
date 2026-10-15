@@ -622,9 +622,11 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
     if (!ev?.result.eligible) continue;
     const flyIn = !!ev.result.flyIn;
     const trip = flyIn
-      ? { mileageCents: 0, lodgingEstimateCents: sh.flyInNightlyCents ?? 0 }
+      ? { mileageCents: 0, lodgingEstimateCents: sh.lodgingByClinic ? 0 : (sh.flyInNightlyCents ?? 0) }
       : ev.drive ? travelEstimate(ev.drive, { lodgingAllowed: sh.lodgingAllowed, lodgingCapCentsPerNight: sh.lodgingCapCentsPerNight }, s) : { mileageCents: 0, lodgingEstimateCents: 0 };
     const mileage = trip.mileageCents;
+    // They'd stay over (fly-in, or a drive past the lodging trigger) and the clinic books the stay.
+    const staysOver = flyIn || (!!ev.drive && ev.drive.minutes > s["pricing.lodgingTriggerMinutes"]);
     out.push({
       id: sh.id,
       professionCode: sh.professionCode,
@@ -647,7 +649,9 @@ export async function shiftBoard(actor: Actor, filters: { professionCode?: strin
       expectedPatients: sh.expectedPatients,
       declaredTier: sh.declaredTier,
       /** The provider would fly in: whole trip, airfare per trip (shown separately), lodging every night. */
-      flyIn: flyIn ? { airfareCents: sh.flyInAirfareCents ?? 0, nightlyCents: sh.flyInNightlyCents ?? 0, shiftGroupId: sh.shiftGroupId } : null,
+      flyIn: flyIn ? { airfareCents: sh.flyInAirfareCents ?? 0, nightlyCents: sh.lodgingByClinic ? 0 : (sh.flyInNightlyCents ?? 0), shiftGroupId: sh.shiftGroupId } : null,
+      /** The clinic books the provider's stay (kind), shown when they'd stay over. */
+      stayByClinic: sh.lodgingAllowed && sh.lodgingByClinic && staysOver ? (sh.lodgingStayKind ?? "OTHER") : null,
       shiftGroupId: sh.shiftGroupId,
       /** Same provider for all days (locked): shown only when they can take every open day. */
       sameProviderDays: null as number | null,

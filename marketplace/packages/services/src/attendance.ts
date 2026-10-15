@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@cm/config";
-import { arrivalPlan, DomainError, type ArrivalSettings } from "@cm/core";
+import { arrivalPlan, DomainError, stayLabel, type ArrivalSettings } from "@cm/core";
 import { geoProvider, haversineMiles } from "@cm/integrations";
 import { prisma, type Prisma } from "@cm/db";
 import { audit, clock, getSettings, SYSTEM, type Actor } from "./context";
@@ -212,7 +212,7 @@ export async function attendanceSweep(now: Date = clock.now()) {
       await notify(prisma, a.provider.userId, {
         template: "reconfirm_ask",
         title: `Please confirm: ${dayOf(a)} at ${a.shift.location.clinicOrg.displayName}`,
-        body: `Tap to confirm you're still coming (${timeOf(a, a.startsAt)}, ${a.shift.location.city}). If we don't hear from you by ${dayOf({ ...a, startsAt: deadline })} ${timeOf(a, deadline)}, we'll give this shift to another provider.${a.flags.includes("LODGING_UPFRONT") && a.lodgingEstimateCents > 0 ? ` Your $${(a.lodgingEstimateCents / 100).toFixed(0)} lodging is sent to your bank as soon as you confirm.` : ""}`,
+        body: `Tap to confirm you're still coming (${timeOf(a, a.startsAt)}, ${a.shift.location.city}). If we don't hear from you by ${dayOf({ ...a, startsAt: deadline })} ${timeOf(a, deadline)}, we'll give this shift to another provider.${a.flags.includes("LODGING_UPFRONT") && a.lodgingEstimateCents > 0 ? ` Your $${(a.lodgingEstimateCents / 100).toFixed(0)} lodging is sent to your bank as soon as you confirm.` : a.shift.lodgingByClinic && (a.flyIn || a.driveMinutes > s["pricing.lodgingTriggerMinutes"]) ? ` Your stay (${stayLabel(a.shift.lodgingStayKind)}) is booked by the clinic: the details are on your shift page.` : ""}`,
         link: `/c/${attendanceToken(a.id)}`,
         ctaLabel: "I'm still coming",
         sms: true,

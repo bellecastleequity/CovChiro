@@ -591,14 +591,19 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
           ) : null}
           {shift.lodgingByClinic && !["CANCELLED", "COMPLETED", "UNFILLED"].includes(shift.status) ? (
             <Card>
-              <CardHeader title="Your provider's stay" description="You book the stay for this shift. Only the provider you confirm sees these details." />
+              <CardHeader title="Your provider's stay" description="You book and pay for the stay (hotel, Airbnb, apartment or other) if your provider lives far enough away to stay over. Only the provider you confirm sees these details." />
               <CardBody>
+                {live ? (
+                  live.flyIn || live.driveMinutes > s["pricing.lodgingTriggerMinutes"]
+                    ? <Alert tone={shift.lodgingStayDetails ? "info" : "warning"} className="mb-3">{live.provider.displayName} lives {live.flyIn ? "out of state and flies in" : `${live.driveMinutes} minutes away`}, so they need a place to stay the night before.{shift.lodgingStayDetails ? "" : " Add where they'll stay below."}</Alert>
+                    : <p className="mb-3 text-sm text-slate-600">{live.provider.displayName} lives nearby ({live.driveMinutes} minutes away), so no stay is needed for this shift.</p>
+                ) : null}
                 <ActionForm action={stayDetailsAction}>
                   <input type="hidden" name="shiftId" value={shift.id} />
                   <Field label="Stay">
                     <Select name="kind" defaultValue={shift.lodgingStayKind ?? "HOTEL"}>
                       <option value="HOTEL">Hotel</option>
-                      <option value="RENTAL">Airbnb / rental</option>
+                      <option value="RENTAL">Airbnb, apartment or rental</option>
                       <option value="OTHER">Other</option>
                     </Select>
                   </Field>

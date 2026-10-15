@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { Car, Clock, MapPin, Star } from "lucide-react";
+import { BedDouble, Car, Clock, MapPin, Star } from "lucide-react";
+import { stayLabel } from "@cm/core";
 import { brand } from "@cm/config";
 import { prisma } from "@cm/db";
 import { dispatch, getSettings } from "@cm/services";
@@ -41,6 +42,9 @@ export default async function OfferLink({ params }: { params: Promise<{ token: s
             <div className="flex items-center gap-2"><MapPin className="size-4 text-slate-400" />{sh.location.city}, {sh.state}</div>
             {rating._avg.stars ? <div className="flex items-center gap-2"><Star className="size-4 text-amber-500" />Clinic rated {rating._avg.stars.toFixed(1)}</div> : null}
             <div className="flex items-center gap-2"><Car className="size-4 text-slate-400" />Mileage paid at {money(s["pricing.mileageRateCentsPerMile"], { exact: true })}/mile</div>
+            {sh.lodgingAllowed ? (
+              <div className="flex items-start gap-2"><BedDouble className="mt-0.5 size-4 shrink-0 text-slate-400" />{sh.lodgingByClinic ? `If you'd stay over, the clinic books and pays for your stay (${stayLabel(sh.lodgingStayKind)})` : `Lodging ${money(sh.lodgingCapCentsPerNight)} a night if your drive is over ${Math.round(s["pricing.lodgingTriggerMinutes"] / 60)} hours, sent when you reconfirm`}</div>
+            ) : null}
           </div>
           <div className="mt-4 rounded-2xl bg-brand-50 p-4">
             <div className="text-sm text-brand-800">Your pay</div>

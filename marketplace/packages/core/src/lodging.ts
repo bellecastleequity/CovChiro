@@ -92,3 +92,17 @@ export function lodgingOnReplacement(heldCents: number, newLodgingCents: number)
   const creditCents = Math.min(held, Math.max(0, newLodgingCents));
   return { creditCents, refundCents: held - creditCents };
 }
+
+/** Clinic-booked stays (Shift.lodgingStayKind). */
+export const STAY_KINDS = ["HOTEL", "RENTAL", "OTHER"] as const;
+export type StayKind = (typeof STAY_KINDS)[number];
+
+/** Provider-facing words for a clinic-booked stay, e.g. "a hotel". */
+export function stayLabel(kind: string | null | undefined): string {
+  return kind === "HOTEL" ? "a hotel" : kind === "RENTAL" ? "an Airbnb, apartment or rental" : "a place to stay";
+}
+
+/** One line telling the provider the clinic books (and pays for) their stay. */
+export function stayByClinicLine(kind: string | null | undefined): string {
+  return `The clinic books and pays for your stay (${stayLabel(kind)}) if you'd need to stay over. No lodging allowance; you don't pay for it.`;
+}

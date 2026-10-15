@@ -96,7 +96,7 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
               <Field label="About me" className="sm:col-span-2" hint="Your approach, techniques, the kinds of practices you love covering."><Textarea name="bio" defaultValue={p.bio ?? ""} maxLength={1500} required /></Field>
               <Field label="Headshot" hint="A clear, friendly photo of your face.">{p.photoUrl ? <img src={`/api/files/${p.photoUrl}`} alt="" className="mb-2 size-16 rounded-full object-cover" /> : null}<Input name="photo" type="file" accept="image/*" /></Field>
               <div className="space-y-2 pt-6">
-                <Checkbox name="willingOvernight" defaultChecked={p.willingOvernight} label={<>Willing to stay overnight for distant shifts<InfoTip label="About overnight shifts">You&apos;ll also be offered shifts beyond your normal drive time when the clinic allows lodging. A flat nightly allowance is added to your pay; no receipts.</InfoTip></>} />
+                <Checkbox name="willingOvernight" defaultChecked={p.willingOvernight} label={<>Willing to stay overnight for distant shifts<InfoTip label="About overnight shifts">You&apos;ll also be offered shifts beyond your normal drive time when the clinic allows lodging. Either a flat nightly allowance is added to your pay (no receipts, sent when you reconfirm), or the clinic books and pays for your stay itself: a hotel, an Airbnb or apartment, or another place. Each shift shows which.</InfoTip></>} />
                 <Checkbox name="xrayComfort" defaultChecked={p.xrayComfort} label="Comfortable taking/reading X-rays" />
               </div>
               <div className="sm:col-span-2"><SubmitButton>Save profile</SubmitButton></div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Car, Clock, Plane, Search, Users, Zap } from "lucide-react";
+import { BedDouble, Car, Clock, Plane, Search, Users, Zap } from "lucide-react";
+import { stayLabel } from "@cm/core";
 import { prisma } from "@cm/db";
 import { enrollment, providerProfile, shiftBoard } from "@cm/services";
 import { MarketWaiting } from "@/components/provider/market-waiting";
@@ -61,12 +62,13 @@ export default async function Board({ searchParams }: { searchParams: Promise<{ 
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-semibold tabular-nums text-brand-700">{money(s.pay.totalCents)}</div>
-                    <div className="text-xs text-slate-500">{s.flyIn ? `incl. ${money(s.pay.lodgingCents)} lodging · + ${money(s.flyIn.airfareCents)} airfare per trip` : <>incl. {money(s.pay.mileageCents)} mileage{s.pay.lodgingCents ? ` + ${money(s.pay.lodgingCents)} lodging` : ""}</>}</div>
+                    <div className="text-xs text-slate-500">{s.flyIn ? `${s.pay.lodgingCents ? `incl. ${money(s.pay.lodgingCents)} lodging · ` : ""}+ ${money(s.flyIn.airfareCents)} airfare per trip` : <>incl. {money(s.pay.mileageCents)} mileage{s.pay.lodgingCents ? ` + ${money(s.pay.lodgingCents)} lodging` : ""}</>}</div>
                   </div>
                 </div>
                 <div className="mt-3 text-sm font-medium">{s.clinicName}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                   <span>{s.city}, {s.state}</span>
+                  {s.stayByClinic ? <span className="flex items-center gap-1 font-medium text-accent-700"><BedDouble className="size-3.5" />Stay booked by the clinic ({stayLabel(s.stayByClinic).replace(/^an? /, "")})</span> : null}
                   {s.flyIn ? <span className="flex items-center gap-1"><Plane className="size-3.5" />Fly-in</span> : s.driveMinutes !== null ? <span className="flex items-center gap-1"><Car className="size-3.5" />{s.driveMinutes} min</span> : null}
                   {s.expectedPatients ? <span className="flex items-center gap-1"><Users className="size-3.5" />{s.declaredTier ? `${s.declaredTier === "LIGHT" ? "Light" : "Busy"} day · ` : ""}~{s.expectedPatients} patients</span> : s.declaredTier ? <span className="flex items-center gap-1"><Users className="size-3.5" />{s.declaredTier === "LIGHT" ? "Light" : "Busy"} day</span> : null}
                 </div>

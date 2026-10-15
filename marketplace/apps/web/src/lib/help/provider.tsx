@@ -100,7 +100,7 @@ const A: HelpArticle[] = [
           "Weekly hours, extra open dates and blackout dates decide which shifts fit you.",
           "Enter the hours you can be at the clinic. Your drive doesn't have to fit inside them; we just keep travel time clear between your shifts and around blackouts.",
           "Your drive limit (on your profile) is the longest one-way drive you'll take.",
-          `Willing to stay overnight? When a clinic allows lodging you can be offered shifts up to ${Math.round(s["pricing.lodgingMaxDriveMinutes"] / 60)} hours away, with ${money(s["pricing.lodgingNightlyCents"])} a night added to your pay when the drive is over ${Math.round(s["pricing.lodgingTriggerMinutes"] / 60)} hours. No receipts.`,
+          `Willing to stay overnight? When a clinic allows lodging you can be offered shifts up to ${Math.round(s["pricing.lodgingMaxDriveMinutes"] / 60)} hours away, with ${money(s["pricing.lodgingNightlyCents"])} a night added to your pay when the drive is over ${Math.round(s["pricing.lodgingTriggerMinutes"] / 60)} hours (no receipts), or with a stay the clinic books and pays for: a hotel, an Airbnb or apartment, or another place. The shift says which before you apply.`,
         ]}
       />
     ),
@@ -267,7 +267,8 @@ const A: HelpArticle[] = [
         rows={[
           ["Shift pay", "From the rate card, including any weekend, holiday or short-notice premium"],
           ["Mileage", <>{money(s["pricing.mileageRateCentsPerMile"], { exact: true })}/mile {s["pricing.mileageRoundTrip"] ? "round trip" : "one way"}</>],
-          ["Lodging", `${money(s["pricing.lodgingNightlyCents"])} a night when the clinic allows it and your drive is over ${Math.round(s["pricing.lodgingTriggerMinutes"] / 60)} hours. Paid in advance: sent to your bank when you reconfirm, from ${Math.round(s["reconfirm.askBeforeHours"])} hours before the shift. Reconfirm early so it's there before the hotel puts a hold on your card. If you cancel or don't show, it's taken back. Some clinics book the stay for you instead.`],
+          ["Lodging", `${money(s["pricing.lodgingNightlyCents"])} a night when the clinic allows it and your drive is over ${Math.round(s["pricing.lodgingTriggerMinutes"] / 60)} hours. Paid in advance: sent to your bank when you reconfirm, from ${Math.round(s["reconfirm.askBeforeHours"])} hours before the shift. Reconfirm early so it's there before the hotel puts a hold on your card. If you cancel or don't show, it's taken back.`],
+          ["Stay booked by the clinic", "Some clinics book and pay for your stay instead: a hotel, an Airbnb or apartment, or another place. The shift shows \"Stay booked by the clinic\" before you apply, and where you're staying appears on your booking once you're confirmed (we let you know when the clinic adds it). No lodging allowance is added, and you don't pay for the stay."],
           ["Extra visits", `${money(s["pricing.volumeOverageProviderCents"])} each past the day's limit + ${s["pricing.volumeGraceVisits"]} grace`],
           ["Referral bonus", "When a colleague you invite completes their first shift"],
         ]}

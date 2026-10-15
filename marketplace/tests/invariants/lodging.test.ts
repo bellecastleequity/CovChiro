@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "@cm/db";
 import { FakePayments, paymentsProvider } from "@cm/integrations";
-import { adminAssign, attendance, cancelAssignment, cancelShiftByClinic, createShift, getSettings, lodging, markUnfilled, releaseDuePayouts } from "@cm/services";
+import { adminAssign, attendance, cancelAssignment, cancelShiftByClinic, createShift, getSettings, lodging, shiftBoard, markUnfilled, releaseDuePayouts } from "@cm/services";
 import { futureWeekday, makeClinic, makeProvider } from "../factories";
 
 const admin = { userId: null, role: "PLATFORM_ADMIN" as const };
@@ -140,11 +140,21 @@ describe("lodging paid up front", () => {
     const shift = await prisma.shift.findUniqueOrThrow({ where: { id: shiftId } });
     expect(shift).toMatchObject({ lodgingByClinic: true, lodgingStayKind: "HOTEL", lodgingCapCentsPerNight: null });
     const p = await far();
+    // The provider sees it before applying: Find shifts says the clinic books the stay.
+    const board = await shiftBoard(p.actor);
+    expect(board.find((b) => b.id === shiftId)?.stayByClinic).toBe("HOTEL");
+    // A provider who lives nearby isn't told about a stay they don't need.
+    const n = await near();
+    expect((await shiftBoard(n.actor)).find((b) => b.id === shiftId)?.stayByClinic).toBeNull();
     const { assignmentId } = await adminAssign(admin, shiftId, p.id);
     const a = await assignmentOf(assignmentId);
     expect(a.lodgingEstimateCents).toBe(0);
     expect(a.mileageCents).toBeGreaterThan(0);
     expect(await lodgingRow(assignmentId)).toBeNull();
+    // Confirmation tells them who books it and where it is.
+    const note = await prisma.notification.findFirstOrThrow({ where: { userId: p.user.id, template: "shift_confirmed_provider" }, orderBy: { createdAt: "desc" } });
+    expect(note.body).toContain("books and pays for your stay (a hotel)");
+    expect(note.body).toContain("on the shift page");
   });
 
   it("a failed deposit keeps the advance on hold until the clinic pays", async () => {

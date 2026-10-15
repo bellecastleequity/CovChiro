@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { MapPin, User } from "lucide-react";
+import { stayLabel } from "@cm/core";
 import { prisma } from "@cm/db";
 import { getSettings, timeclock, volume } from "@cm/services";
 import { visitsAction } from "@/app/timeclock-actions";
@@ -174,10 +175,10 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
               })()}
             </CardBody>
           </Card>
-          {a.shift.lodgingByClinic && ["CONFIRMED", "IN_PROGRESS"].includes(a.status) ? (
+          {a.shift.lodgingAllowed && a.shift.lodgingByClinic && (a.flyIn || a.driveMinutes > s["pricing.lodgingTriggerMinutes"]) && ["CONFIRMED", "IN_PROGRESS"].includes(a.status) ? (
             <Card>
-              <CardHeader title="Your stay" description={`The clinic books your ${a.shift.lodgingStayKind === "RENTAL" ? "rental" : a.shift.lodgingStayKind === "HOTEL" ? "hotel" : "stay"}.`} />
-              <CardBody className="whitespace-pre-line text-sm text-slate-700">{a.shift.lodgingStayDetails || "The clinic hasn't added the details yet. We'll let you know when they do."}</CardBody>
+              <CardHeader title="Your stay" description={`Booked and paid for by the clinic: ${stayLabel(a.shift.lodgingStayKind)}. You don't pay for it, and no lodging allowance is added.`} />
+              <CardBody className="whitespace-pre-line text-sm text-slate-700">{a.shift.lodgingStayDetails || "The clinic hasn't added where you're staying yet. We'll let you know as soon as they do; you can also message them."}</CardBody>
             </Card>
           ) : null}
           {a.status === "CONFIRMED" && a.graceEndsAt && a.graceEndsAt > new Date() ? (

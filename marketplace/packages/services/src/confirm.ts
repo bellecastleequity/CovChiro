@@ -1,4 +1,4 @@
-import { assertTransition, idDueAt, type IdStatus, clinicTotalCents, depositPercentFor, depositWithTravel, DomainError, providerTotalCents, SELECTABLE_SHIFT_STATUSES, travelEstimate, travelBufferMinutes } from "@cm/core";
+import { assertTransition, stayLabel, idDueAt, type IdStatus, clinicTotalCents, depositPercentFor, depositWithTravel, DomainError, providerTotalCents, SELECTABLE_SHIFT_STATUSES, travelEstimate, travelBufferMinutes } from "@cm/core";
 import { Prisma, isInvariantViolation, type SelectionMethod } from "@cm/db";
 import { audit, clock, getSettings, lockShift, tx, type Actor, type Db } from "./context";
 import { Effects } from "./effects";
@@ -84,6 +84,8 @@ export async function confirmInTx(
     : flyIn
       ? { mileageCents: 0, lodgingEstimateCents: shift.flyInNightlyCents ?? 0 }
       : travelEstimate(drive, { lodgingAllowed: shift.lodgingAllowed, lodgingCapCentsPerNight: shift.lodgingCapCentsPerNight }, s);
+  // The clinic books the stay and this provider will stay over (fly-in, or a drive past the lodging trigger).
+  const stayByClinic = shift.lodgingAllowed && shift.lodgingByClinic && (flyIn || drive.minutes > s["pricing.lodgingTriggerMinutes"]);
   // Lodging held on this shift from a provider who dropped out pays this provider's lodging (core lodging.ts).
   const hold = await takeShiftHold(db, shiftId, travel.lodgingEstimateCents);
 
@@ -198,6 +200,18 @@ export async function confirmInTx(
   await audit(db, actor, "shift.confirmed", "Shift", shiftId, { status: shift.status }, { status: "CONFIRMED", providerId, method, assignmentId: assignment.id });
 
   effects.add(() => chargeDeposit(assignment.id));
+  if (stayByClinic && !shift.lodgingStayDetails) {
+    effects.add(async () => {
+      const { prisma } = await import("@cm/db");
+      await notifyClinic(prisma, shift.location.clinicOrgId, {
+        template: "stay_details_needed",
+        title: "Your provider needs a place to stay",
+        body: `Your confirmed provider for ${shift.startsAt.toLocaleDateString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric" })} lives far enough away to stay over, and you chose to book the stay. Add where they'll stay (${stayLabel(shift.lodgingStayKind)}) on the shift page.`,
+        link: `/clinic/shifts/${shiftId}`,
+        ctaLabel: "Add stay details",
+      });
+    });
+  }
   // Booked inside the 48-hour window: the lodging advance goes out right after the deposit.
   if (travel.lodgingEstimateCents) effects.add(() => sendDueLodgingAdvance(assignment.id));
   effects.add(async () => {
@@ -213,8 +227,8 @@ export async function confirmInTx(
       }${
         travel.lodgingEstimateCents
           ? ` Your $${(travel.lodgingEstimateCents / 100).toFixed(0)} lodging is paid in advance: we send it to your bank when you reconfirm, from 48 hours before the shift. The earlier you reconfirm, the more likely it's in your account before the hotel puts a hold on your card.`
-          : shift.lodgingByClinic && shift.lodgingAllowed
-            ? " The clinic books your stay: the details are on the shift page."
+          : stayByClinic
+            ? ` The clinic books and pays for your stay (${stayLabel(shift.lodgingStayKind)}).${shift.lodgingStayDetails ? " Where you're staying is on the shift page." : " We'll let you know as soon as they add where you're staying."}`
             : ""
       }${idDue ? ` One step left: verify your ID (about 2 minutes, on your phone) by ${idDue.toLocaleString("en-US", { timeZone: shift.location.timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}, or this booking goes to another provider.` : ""}`,
       link: idDue ? "/provider/verify-id" : `/provider/assignments/${assignment.id}`,
