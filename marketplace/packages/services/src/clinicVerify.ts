@@ -236,7 +236,7 @@ export async function submitVerification(actor: Actor, raw: VerificationInput, m
   const input = cleanInput(raw);
   const org = await prisma.clinicOrg.findUniqueOrThrow({ where: { id: orgId }, include: { locations: { where: { active: true }, orderBy: { createdAt: "asc" }, take: 1 } } });
   if (org.verificationStatus === "REJECTED" && !byAdmin) throw new DomainError("FORBIDDEN", "Your clinic's verification was declined. Please contact us.");
-  if (!org.locations.length) throw new DomainError("VALIDATION", "Add your clinic location first (Locations), then verify.");
+  if (!org.locations.length) throw new DomainError("VALIDATION", "Add your clinic location first: open Locations in the side menu (on a phone, under More), add your address, then submit verification again.");
   const rule = ruleFor(s, org.locations[0].state);
   const problems = verificationInputProblems(input, rule);
   if (problems.length) throw new DomainError("VALIDATION", problems.join(" "), { problems });

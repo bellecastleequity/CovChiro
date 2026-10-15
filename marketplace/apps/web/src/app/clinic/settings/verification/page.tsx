@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { prisma } from "@cm/db";
 import { clinicVerify } from "@cm/services";
@@ -27,6 +28,8 @@ export default async function ClinicVerification() {
   const owner = actor.role === "CLINIC_OWNER";
   const professions = await prisma.profession.findMany({ where: { active: true }, select: { code: true, displayName: true }, orderBy: { displayName: "asc" } });
   const st = STATUS[v.status] ?? STATUS.NOT_STARTED;
+  // Verification needs the clinic's address (it sets the state rules): send them to Locations first.
+  const hasLocation = (await prisma.clinicLocation.count({ where: { clinicOrgId: actor.clinicOrgId!, active: true } })) > 0;
   return (
     <>
       <PageHeader
@@ -35,6 +38,12 @@ export default async function ClinicVerification() {
         description="We confirm who owns every clinic on the platform, to protect providers and patients from fraud. It takes a few minutes, and most clinics are verified right away."
       />
       <div className="space-y-6">
+        {!hasLocation ? (
+          <Alert tone="warning" title="Add your clinic location first">
+            Verification checks your clinic&apos;s address against your state&apos;s rules, so we need it before you submit.{" "}
+            <Link href="/clinic/locations" className="font-semibold underline">Go to Locations</Link> (in the side menu; on a phone, under More), add your address, then come back here.
+          </Alert>
+        ) : null}
         <Card>
           <CardBody className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
