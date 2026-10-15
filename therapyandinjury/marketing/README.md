@@ -13,7 +13,7 @@ python3 marketing/jingles/beds.py
 GEMINI_API_KEY=... node marketing/jingles/make-spots.mjs warm     # calm brand voice (recommended)
 GEMINI_API_KEY=... node marketing/jingles/make-spots.mjs action   # high-energy male, for comparison
 ```
-In this cloud environment, `GEMINI_API_KEY` comes from the environment settings. Never commit it or paste it in chat.
+In the Claude Code cloud environment, add a **network secret** for `generativelanguage.googleapis.com` that sends the header `x-goog-api-key: <key>`, then run the commands without `GEMINI_API_KEY=...`. Locally, `GEMINI_API_KEY` works too. Never commit the key or paste it in chat.
 
 Output goes in `marketing/jingles/out/` (git-ignored):
 - `spot-<bed>-warm-spoken.mp3`: the hook spoken on the beat

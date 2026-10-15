@@ -1,7 +1,7 @@
 // Voice presets shared with CoverageOnCall (owner, Oct 2026): Gemini TTS via the Google API.
 // Therapy & Injury uses `warm` for spots and jingles (calm brand); `action` is kept for parity.
 //   node tts.mjs <warm|action> "<line>" <out.wav>
-// Key: GEMINI_API_KEY in the environment (never committed; never pasted in chat).
+// Key: GEMINI_API_KEY in the environment, or a network secret that adds x-goog-api-key (never committed; never pasted in chat).
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -31,11 +31,12 @@ export async function tts(preset, text, out) {
   const v = VOICES[preset];
   if (!v) throw new Error(`Unknown voice "${preset}". Use warm or action.`);
   if (fs.existsSync(out)) return out;
+  // Key: GEMINI_API_KEY if set; otherwise the Claude Code cloud environment's network secret
+  // adds the x-goog-api-key header to requests for generativelanguage.googleapis.com.
   const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error('Set GEMINI_API_KEY');
   for (let a = 0; a < 6; a++) {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${v.model}:generateContent?key=${key}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${v.model}:generateContent`, {
+      method: 'POST', headers: { 'content-type': 'application/json', ...(key ? { 'x-goog-api-key': key } : {}) },
       body: JSON.stringify({ contents: [{ parts: [{ text: `${v.style}:\n${text}` }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: v.voiceName } } } } }),
     });
     const j = await r.json();
@@ -51,6 +52,7 @@ export async function tts(preset, text, out) {
       }
       return out;
     }
+    if (r.status === 401 || r.status === 403) throw new Error(`Gemini auth failed (${r.status}): set GEMINI_API_KEY or the environment's x-goog-api-key network secret for generativelanguage.googleapis.com`);
     if (r.status === 402 || (r.status === 429 && /PerDay/.test(JSON.stringify(j)))) throw new Error(`Gemini quota (${r.status}): ${JSON.stringify(j).slice(0, 200)}`);
     await new Promise((res) => setTimeout(res, (r.status === 429 ? 20000 : 3000) * (a + 1)));
   }
