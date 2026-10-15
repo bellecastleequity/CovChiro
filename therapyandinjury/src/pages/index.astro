@@ -1,0 +1,293 @@
+---
+import Base from '../layouts/Base.astro';
+import LocationPicker from '../components/LocationPicker.astro';
+import BranchCard from '../components/BranchCard.astro';
+import Icon from '../components/Icon.astro';
+import { site, branches, abs } from '../lib/site';
+import { services, steps } from '../lib/content';
+
+const schema = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    '@id': abs('/#org'),
+    name: site.brandName,
+    legalName: site.legalName,
+    url: site.domain,
+    logo: abs('/brand/favicon-512.png'),
+    slogan: site.tagline,
+    founder: { '@type': 'Person', name: site.founder.name, jobTitle: 'Chiropractic Physician' },
+  },
+  { '@context': 'https://schema.org', '@type': 'WebSite', name: site.brandName, url: site.domain },
+];
+---
+<Base
+  title="Therapy & Injury | Chiropractic Injury & Wellness Care in Florida"
+  description="Chiropractic care for auto accident injuries, neck and back pain, and whole-body recovery. Locations across Florida, starting in Ocala. Michael L. McPherson, D.C."
+  schema={schema}
+>
+  <section class="hero">
+    <div class="wrap hero__in">
+      <div class="hero__copy">
+        <span class="eyebrow">Chiropractic injury &amp; wellness care</span>
+        <h1>Hurt in a car accident? Get checked within <span class="hero__accent">14&nbsp;days.</span></h1>
+        <p class="lede">
+          Florida’s no-fault (PIP) insurance generally requires that you receive initial care within 14 days of an auto accident.
+          Our chiropractic physicians evaluate neck, back, and whole-body injuries and walk you through a clear plan for recovery.
+        </p>
+        <div class="btn-row">
+          <a class="btn btn--primary" href="#locations">Find a location</a>
+          <a class="btn btn--ghost" href="/auto-accident-injuries/">What to expect after an accident</a>
+        </div>
+        <p class="hero__note small muted">If you have a medical emergency, call 911 or go to the nearest emergency room.</p>
+      </div>
+      <div class="hero__art" aria-hidden="true">
+        <img src="/brand/mark.svg" alt="" width="420" height="420" />
+      </div>
+    </div>
+  </section>
+
+  <section id="locations" class="section section--gray">
+    <div class="wrap">
+      <div class="loc__head">
+        <div>
+          <span class="eyebrow">Locations</span>
+          <h2>Care close to home, across Florida</h2>
+          <p class="lede">Each location is its own clinic with its own team. Choose yours to see hours, directions, and request an appointment.</p>
+        </div>
+        <LocationPicker id="home-picker" />
+      </div>
+      <div class="grid grid--3 loc__grid">
+        {branches.map((b) => <BranchCard branch={b} />)}
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <span class="eyebrow">How care works</span>
+      <h2>Three simple steps</h2>
+      <ol class="steps">
+        {steps.map((s, i) => (
+          <li class="step">
+            <span class="step__n" aria-hidden="true">{i + 1}</span>
+            <h3>{s.title}</h3>
+            <p>{s.text}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="section section--gray">
+    <div class="wrap">
+      <span class="eyebrow">Services</span>
+      <h2>Chiropractic care for injury and everyday strain</h2>
+      <p class="lede">Care is built around you: your injury, your goals, and your comfort.</p>
+      <div class="grid grid--4 svc">
+        {services.map((s) => (
+          <a class="card svc__card" href={`/services/#${s.slug}`}>
+            <Icon name={s.icon} />
+            <h3>{s.name}</h3>
+            <p>{s.short}</p>
+          </a>
+        ))}
+      </div>
+      <p class="svc__more"><a href="/services/">More about our services</a></p>
+    </div>
+  </section>
+
+  <section class="section story">
+    <div class="wrap story__in">
+      <div class="story__art">
+        <img src="/brand/mark.svg" alt="The Therapy & Injury mark: a navy ring with a teal arrow sweeping up and around it" width="320" height="320" loading="lazy" />
+      </div>
+      <div>
+        <span class="eyebrow">Our mark</span>
+        <h2>The whole person, moving toward health</h2>
+        <p>The ring in our logo stands for the whole person. An injury rarely affects just one spot, so we look at how you move, how you feel, and what you need to get back to your routine.</p>
+        <p>The teal arrow sweeping up and around the ring stands for movement toward health and healing. Recovery is a direction, not a single appointment, and our job is to help you move forward one visit at a time.</p>
+        <a class="btn btn--ghost" href="/about/">About Therapy &amp; Injury</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--tight cta">
+    <div class="wrap cta__in">
+      <div>
+        <h2>Ready to get checked?</h2>
+        <p>Find your nearest location and send a quick appointment request.</p>
+      </div>
+      <a class="btn btn--primary" href="/locations/">Choose a location</a>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .hero {
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(1200px 500px at 85% 20%, var(--teal-soft), transparent 60%),
+      var(--white);
+  }
+  .hero__in {
+    display: grid;
+    gap: 32px;
+    align-items: center;
+    padding-block: clamp(48px, 8vw, 104px);
+  }
+  .hero h1 {
+    max-width: 16ch;
+  }
+  .hero__accent {
+    white-space: nowrap;
+    background: linear-gradient(transparent 68%, rgb(25 204 190 / 40%) 68%);
+  }
+  .hero .lede {
+    margin-bottom: 28px;
+  }
+  .hero__note {
+    margin-top: 18px;
+  }
+  .hero__art img {
+    width: min(100%, 420px);
+    height: auto;
+    margin-inline: auto;
+  }
+  @media (max-width: 899px) {
+    .hero__art {
+      order: -1;
+    }
+    .hero__art img {
+      width: 140px;
+      margin-inline: 0;
+    }
+  }
+  @media (min-width: 900px) {
+    .hero__in {
+      grid-template-columns: 1.25fr 1fr;
+    }
+  }
+
+  .loc__head {
+    display: grid;
+    gap: 24px;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: end;
+    margin-bottom: 32px;
+  }
+  @media (min-width: 900px) {
+    .loc__head {
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    }
+  }
+
+  .steps {
+    list-style: none;
+    padding: 0;
+    margin: 32px 0 0;
+    display: grid;
+    gap: 20px;
+    counter-reset: step;
+  }
+  @media (min-width: 820px) {
+    .steps {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  .step {
+    position: relative;
+    padding: 28px;
+    border-radius: var(--radius-lg);
+    background: var(--gray);
+  }
+  .step__n {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--navy);
+    color: var(--white);
+    font-weight: 800;
+    margin-bottom: 16px;
+    box-shadow: 0 0 0 5px var(--teal-soft);
+  }
+  .step p {
+    margin: 0;
+    color: var(--slate-text);
+  }
+
+  .svc {
+    margin-top: 32px;
+  }
+  .svc__card {
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .svc__card:hover {
+    transform: translateY(-2px);
+  }
+  .svc__card h3 {
+    margin: 6px 0 0;
+  }
+  .svc__card p {
+    margin: 0;
+    color: var(--slate-text);
+    font-size: 0.97rem;
+  }
+  .svc__more {
+    margin-top: 24px;
+    font-weight: 700;
+  }
+
+  .story__in {
+    display: grid;
+    gap: 40px;
+    align-items: center;
+  }
+  @media (min-width: 860px) {
+    .story__in {
+      grid-template-columns: 1fr 1.3fr;
+    }
+  }
+  .story__art {
+    display: grid;
+    place-items: center;
+    padding: clamp(24px, 5vw, 56px);
+    background: var(--gray);
+    border-radius: 50%;
+    aspect-ratio: 1;
+    max-width: 420px;
+    width: 100%;
+    margin-inline: auto;
+  }
+  .story__art img {
+    width: 100%;
+    height: auto;
+  }
+
+  .cta {
+    background: var(--navy);
+    color: var(--white);
+  }
+  .cta h2 {
+    color: var(--white);
+    margin-bottom: 0.2em;
+  }
+  .cta p {
+    margin: 0;
+    color: #c9d3de;
+  }
+  .cta__in {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: center;
+    justify-content: space-between;
+  }
+</style>

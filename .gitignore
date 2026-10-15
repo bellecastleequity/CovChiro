@@ -1,3 +1,7 @@
 php_backend/logs/
 php_backend/secrets.php
 php_backend/vendor/
+therapyandinjury/node_modules/
+therapyandinjury/dist/
+therapyandinjury/.astro/
+therapyandinjury/social/export/

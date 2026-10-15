@@ -1,0 +1,19 @@
+{
+  "domain": "https://therapyandinjury.com",
+  "brandName": "Therapy & Injury",
+  "tagline": "Chiropractic Injury & Wellness Care",
+  "legalName": "Florida Therapy & Injury, P.A.",
+  "founder": {
+    "name": "Michael L. McPherson, D.C.",
+    "title": "Florida Chiropractic Physician",
+    "licenseNumber": "[FL CHIROPRACTIC LICENSE # — e.g. CH 00000]"
+  },
+  "mainPhone": "[MAIN PHONE]",
+  "mainEmail": "[MAIN EMAIL]",
+  "formEndpoint": "/api/appointment.php",
+  "social": {
+    "instagram": "[INSTAGRAM URL]",
+    "facebook": "[FACEBOOK URL]"
+  },
+  "lastUpdatedLegal": "[DATE LEGAL PAGES REVIEWED]"
+}

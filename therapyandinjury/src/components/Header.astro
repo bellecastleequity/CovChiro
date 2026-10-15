@@ -1,0 +1,168 @@
+---
+import Wordmark from './Wordmark.astro';
+interface Props { city?: string; ctaHref?: string }
+const { city, ctaHref = '/locations/' } = Astro.props;
+const path = Astro.url.pathname;
+const links = [
+  { href: '/auto-accident-injuries/', label: 'Auto Accident Injuries' },
+  { href: '/services/', label: 'Services' },
+  { href: '/about/', label: 'About' },
+  { href: '/locations/', label: 'Locations' },
+];
+---
+<header class="hdr">
+  <div class="wrap hdr__in">
+    <a href={city ? Astro.url.pathname : '/'} class="hdr__brand" aria-label={city ? `${city} Therapy & Injury` : 'Therapy & Injury home'}>
+      <Wordmark city={city} size="md" />
+    </a>
+    <nav class="hdr__nav" aria-label="Main">
+      <ul>
+        {links.map((l) => (
+          <li><a href={l.href} aria-current={path.startsWith(l.href) ? 'page' : undefined}>{l.label}</a></li>
+        ))}
+      </ul>
+      <a class="btn btn--primary hdr__cta" href={ctaHref}>Request an appointment</a>
+    </nav>
+    <details class="hdr__menu">
+      <summary><span class="sr-only">Menu</span><span class="hdr__burger" aria-hidden="true"></span></summary>
+      <nav aria-label="Mobile">
+        <ul>
+          {city && <li><a href="/">Therapy &amp; Injury home</a></li>}
+          {links.map((l) => <li><a href={l.href} aria-current={path.startsWith(l.href) ? 'page' : undefined}>{l.label}</a></li>)}
+        </ul>
+        <a class="btn btn--primary btn--block" href={ctaHref}>Request an appointment</a>
+      </nav>
+    </details>
+  </div>
+</header>
+
+<style>
+  .hdr {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgb(255 255 255 / 96%);
+    backdrop-filter: saturate(1.4) blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .hdr__in {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 76px;
+  }
+  .hdr__brand {
+    text-decoration: none;
+    min-width: 0;
+  }
+  .hdr__nav {
+    display: none;
+    align-items: center;
+    gap: 22px;
+  }
+  .hdr__nav ul,
+  .hdr__menu ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .hdr__nav ul {
+    display: flex;
+    gap: 22px;
+  }
+  .hdr__nav a:not(.btn) {
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-decoration: none;
+    padding: 6px 0;
+    border-bottom: 2px solid transparent;
+  }
+  .hdr__nav a:not(.btn):hover,
+  .hdr__nav a[aria-current='page'] {
+    border-bottom-color: var(--teal);
+  }
+  .hdr__cta {
+    min-height: 44px;
+    padding: 10px 18px;
+    font-size: 0.95rem;
+  }
+  .hdr__menu summary {
+    list-style: none;
+    cursor: pointer;
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+  }
+  .hdr__menu summary::-webkit-details-marker {
+    display: none;
+  }
+  .hdr__burger,
+  .hdr__burger::before,
+  .hdr__burger::after {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: var(--navy);
+    border-radius: 2px;
+    position: relative;
+  }
+  .hdr__burger::before,
+  .hdr__burger::after {
+    content: '';
+    position: absolute;
+  }
+  .hdr__burger::before {
+    top: -6px;
+  }
+  .hdr__burger::after {
+    top: 6px;
+  }
+  .hdr__menu[open] .hdr__burger {
+    background: transparent;
+  }
+  .hdr__menu[open] .hdr__burger::before {
+    top: 0;
+    transform: rotate(45deg);
+  }
+  .hdr__menu[open] .hdr__burger::after {
+    top: 0;
+    transform: rotate(-45deg);
+  }
+  .hdr__menu nav {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    background: var(--white);
+    border-bottom: 1px solid var(--line);
+    padding: 8px var(--gutter) 20px;
+    box-shadow: var(--shadow);
+  }
+  .hdr__menu li a {
+    display: block;
+    padding: 14px 0;
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .hdr__menu .btn {
+    margin-top: 16px;
+  }
+  @media (min-width: 1080px) {
+    .hdr__nav {
+      display: flex;
+    }
+    .hdr__menu {
+      display: none;
+    }
+  }
+  @media (max-width: 420px) {
+    .hdr :global(.wm--md) {
+      font-size: 13.5px;
+    }
+  }
+</style>

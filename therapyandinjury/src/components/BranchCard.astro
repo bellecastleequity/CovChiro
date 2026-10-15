@@ -1,0 +1,68 @@
+---
+import Ph from './Ph.astro';
+import { type Branch, branchName, branchPath, isOpen, oneLineAddress, hoursSummary, telHref } from '../lib/site';
+interface Props { branch: Branch }
+const { branch: b } = Astro.props;
+const tel = telHref(b.phone);
+---
+<article class="bc card">
+  <div class="bc__top">
+    <img src="/brand/mark.svg" alt="" width="40" height="40" />
+    {isOpen(b) ? <span class="badge">Open</span> : <span class="badge badge--soon">Coming soon</span>}
+  </div>
+  <h3 class="bc__name"><a href={branchPath(b)}>{branchName(b)}</a></h3>
+  {isOpen(b) ? (
+    <dl class="bc__facts">
+      {b.address && (<div><dt class="sr-only">Address</dt><dd>{oneLineAddress(b)}</dd></div>)}
+      {b.hours.length > 0 && (<div><dt class="sr-only">Hours</dt><dd>{hoursSummary(b)}</dd></div>)}
+      <div><dt class="sr-only">Phone</dt><dd>{tel ? <a href={tel}>{b.phone}</a> : <Ph value={b.phone} />}</dd></div>
+    </dl>
+  ) : (
+    <p class="bc__facts">Opening <Ph value={b.openingNote} fallback="[OPENING DATE]" />. Serving {b.city} and nearby communities.</p>
+  )}
+  <a class="bc__more" href={branchPath(b)}>
+    {isOpen(b) ? 'Location details & appointments' : 'Get notified when we open'}<span class="sr-only">: {branchName(b)}</span> <span aria-hidden="true">→</span>
+  </a>
+</article>
+
+<style>
+  .bc {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: 100%;
+  }
+  .bc__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .bc__name {
+    margin: 4px 0 0;
+  }
+  .bc__name a {
+    text-decoration: none;
+  }
+  .bc__name a:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--teal);
+  }
+  .bc__facts {
+    margin: 0;
+    color: var(--slate-text);
+    font-size: 0.97rem;
+  }
+  .bc__facts dd {
+    margin: 0 0 4px;
+  }
+  .bc__more {
+    margin-top: auto;
+    padding-top: 8px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .bc__more:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--teal);
+  }
+</style>

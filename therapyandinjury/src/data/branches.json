@@ -1,0 +1,171 @@
+[
+  {
+    "slug": "ocala",
+    "city": "Ocala",
+    "county": "Marion",
+    "status": "open",
+    "openingNote": "",
+    "address": {
+      "street": "2649 W Silver Springs Blvd",
+      "city": "Ocala",
+      "state": "FL",
+      "zip": "34475"
+    },
+    "phone": "[OCALA PHONE]",
+    "email": "[OCALA EMAIL]",
+    "hours": [
+      {
+        "day": "Monday",
+        "opens": "13:00",
+        "closes": "18:00"
+      },
+      {
+        "day": "Wednesday",
+        "opens": "13:00",
+        "closes": "18:00"
+      },
+      {
+        "day": "Thursday",
+        "opens": "13:00",
+        "closes": "18:00"
+      }
+    ],
+    "doctors": [
+      {
+        "name": "Michael L. McPherson, D.C.",
+        "title": "Chiropractic Physician"
+      }
+    ],
+    "mapEmbed": "",
+    "gbpUrl": "[OCALA GOOGLE BUSINESS PROFILE URL]",
+    "domains": [
+      "ocalatherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "Silver Springs",
+      "Belleview",
+      "Dunnellon",
+      "Marion Oaks",
+      "Summerfield",
+      "Anthony",
+      "Reddick"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  },
+  {
+    "slug": "orlando",
+    "city": "Orlando",
+    "county": "Orange",
+    "status": "coming soon",
+    "openingNote": "[ORLANDO OPENING DATE]",
+    "address": null,
+    "phone": "[ORLANDO PHONE]",
+    "email": "[ORLANDO EMAIL]",
+    "hours": [],
+    "doctors": [],
+    "mapEmbed": "",
+    "gbpUrl": "",
+    "domains": [
+      "orlandotherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "Winter Park",
+      "Maitland",
+      "Kissimmee",
+      "Winter Garden",
+      "Pine Hills",
+      "Conway"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  },
+  {
+    "slug": "lake-mary",
+    "city": "Lake Mary",
+    "county": "Seminole",
+    "status": "coming soon",
+    "openingNote": "[LAKE MARY OPENING DATE]",
+    "address": null,
+    "phone": "[LAKE MARY PHONE]",
+    "email": "[LAKE MARY EMAIL]",
+    "hours": [],
+    "doctors": [],
+    "mapEmbed": "",
+    "gbpUrl": "",
+    "domains": [
+      "lakemarytherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "Sanford",
+      "Heathrow",
+      "Longwood",
+      "Winter Springs",
+      "Altamonte Springs"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  },
+  {
+    "slug": "deltona",
+    "city": "Deltona",
+    "county": "Volusia",
+    "status": "coming soon",
+    "openingNote": "[DELTONA OPENING DATE]",
+    "address": null,
+    "phone": "[DELTONA PHONE]",
+    "email": "[DELTONA EMAIL]",
+    "hours": [],
+    "doctors": [],
+    "mapEmbed": "",
+    "gbpUrl": "",
+    "domains": [
+      "deltonatherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "DeBary",
+      "Orange City",
+      "Enterprise",
+      "Osteen",
+      "DeLand"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  },
+  {
+    "slug": "deland",
+    "city": "DeLand",
+    "county": "Volusia",
+    "status": "coming soon",
+    "openingNote": "[DELAND OPENING DATE]",
+    "address": null,
+    "phone": "[DELAND PHONE]",
+    "email": "[DELAND EMAIL]",
+    "hours": [],
+    "doctors": [],
+    "mapEmbed": "",
+    "gbpUrl": "",
+    "domains": [
+      "delandtherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "Orange City",
+      "DeLeon Springs",
+      "Lake Helen",
+      "Glenwood",
+      "Pierson"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  }
+]

@@ -1,0 +1,11 @@
+---
+/**
+ * Renders text from the data files. Any unfilled "[PLACEHOLDER]" — the whole value
+ * or a bracketed part of a sentence — gets the highlight style so it is easy to find.
+ */
+interface Props { value: string; fallback?: string }
+const { value, fallback = '' } = Astro.props;
+const text = value?.trim() ? value : fallback;
+const parts = text.split(/(\[[^\]]+\])/g).filter(Boolean);
+---
+{parts.map((p) => (p.startsWith('[') ? <span class="ph">{p}</span> : <Fragment>{p}</Fragment>))}
