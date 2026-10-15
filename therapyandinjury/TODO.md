@@ -37,7 +37,7 @@ Most facts live in two data files. Edit those first:
 
 ### Coming-soon locations: Orlando, Lake Mary, Deltona, DeLand, Eustis
 - [ ] Confirm **DeLand** should be listed. It was in the brand pack but not the brief.
-- [ ] **Eustis** (Lake County) was added Oct 2026. Confirm `eustistherapyandinjury.com` is purchased, and confirm its nearby areas (Mount Dora, Tavares, Umatilla, Leesburg, Sorrento, Grand Island). The Eustis brand kit is in `brand-assets/Eustis Therapy & Injury/`. In its stacked lockups (`01`, `03`, `05`), "EUSTIS" sits noticeably left of center; ask the designer to fix that before print or signage. The `05` tagline lockup carries the same "Expert Injury Care" wording flagged below.
+- [ ] **Eustis** (Lake County) was added Oct 2026. Confirm `eustistherapyandinjury.com` is purchased, and confirm its nearby areas (Mount Dora, Tavares, Umatilla, Leesburg, Sorrento, Grand Island). The Eustis brand kit is in `brand-assets/Eustis Therapy & Injury/`. The stacked lockups were re-centered (Oct 2026 update). The `05` tagline lockup carries the same "Expert Injury Care" wording flagged below.
 - [ ] `openingNote`, `phone`, `email`
 - [ ] When a location opens: set `status` to `"open"` and add `address`, `hours`, `doctors`, `gbpUrl` and `legalEntity`. Rebuild, upload, then run `npm run indexnow`. The location's page and its car-accident page then become indexable and join the sitemap automatically.
 
