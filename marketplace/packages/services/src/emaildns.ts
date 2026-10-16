@@ -13,7 +13,7 @@ export function sendingDomain() {
 const txt = (name: string) => dns.resolveTxt(name).then((r) => r.map((parts) => parts.join("")), () => [] as string[]);
 const cname = (name: string) => dns.resolveCname(name).then((r) => r[0] ?? null, () => null);
 
-/** Admin → Settings → Email deliverability check: looks up the records from the server and says what's missing. */
+/** Admin → Settings → Checks & connections → Email deliverability check: looks up the records from the server and says what's missing. */
 export async function emailDnsCheck(actor: Actor) {
   requireAdmin(actor);
   const domain = sendingDomain();

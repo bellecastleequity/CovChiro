@@ -145,8 +145,8 @@ export function evaluateHealth(f: HealthFacts, r: HealthRules = DEFAULT_HEALTH_R
       severity: "warning",
       title: capHit(f.aiBudget.monthPct) ? "AI monthly budget used up" : "AI daily budget used up",
       detail: `The platform's own AI spending cap is reached (today ${Math.round(f.aiBudget.dayPct)}%, this month ${Math.round(f.aiBudget.monthPct)}%). AI drafting stops until it resets.`,
-      remedy: "Nothing is broken; this is your own safety cap. Raise it in Admin → Settings → Growth (AI daily / monthly budget) if you want more, or let it reset.",
-      link: "/admin/settings",
+      remedy: "Nothing is broken; this is your own safety cap. Raise it in Admin → Settings → Growth · AI, research & budgets (AI daily / monthly budget) if you want more, or let it reset.",
+      link: "/admin/settings#s-growth.aiDailyBudgetCents",
     });
   } else if (f.aiBudget.dayPct >= r.aiBudgetWarnPct || f.aiBudget.monthPct >= r.aiBudgetWarnPct) {
     out.push({
@@ -154,8 +154,8 @@ export function evaluateHealth(f: HealthFacts, r: HealthRules = DEFAULT_HEALTH_R
       severity: "warning",
       title: "AI budget almost used up",
       detail: `Today ${Math.round(f.aiBudget.dayPct)}%, this month ${Math.round(f.aiBudget.monthPct)}% of your AI spending caps.`,
-      remedy: "Raise the caps in Admin → Settings → Growth if needed; otherwise AI drafting pauses when they're reached.",
-      link: "/admin/settings",
+      remedy: "Raise the caps in Admin → Settings → Growth · AI, research & budgets if needed; otherwise AI drafting pauses when they're reached.",
+      link: "/admin/settings#s-growth.aiDailyBudgetCents",
     });
   }
   if (f.researchPause && (f.researchPause.reason === "quota" || f.researchPause.reason === "auth") && !out.some((i) => i.key.startsWith("ai:") && !i.key.startsWith("ai:budget"))) {

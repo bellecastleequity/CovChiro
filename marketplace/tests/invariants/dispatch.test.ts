@@ -316,7 +316,9 @@ describe("On Call (§15 16–18)", () => {
 
   it("17. grace cancel: no reliability penalty, dispatch resumes, too many → On Call paused", async () => {
     await setSetting("oncall.maxGraceCancels30d", 0);
-    const { shift, providers } = await scenario(4);
+    // Well inside 30 days: the grace-cancel count looks back 30 days from the (moved) test clock, while the
+    // audit row carries the real time, so a shift pushed past a holiday to 30+ days out would never count.
+    const { shift, providers } = await scenario(4, { daysAhead: 10 });
     const p = providers[0];
     await onCallProvider(p);
     await dispatch.startDispatch(shift.id, "URGENT_POST");

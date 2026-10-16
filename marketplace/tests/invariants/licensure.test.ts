@@ -83,7 +83,9 @@ describe("SPEC §20.1 licensure invariant suite", () => {
 
   it("6. multi-day group where the license expires before the last day", async () => {
     const day1 = await makeShift(fl.location.id, { days: 20 });
-    const day3 = await makeShift(fl.location.id, { days: 27 }); // next Wednesday (the helper snaps to Wednesdays)
+    // A week after day 1 (the helper snaps to Wednesdays and skips holidays, so fixed offsets can land on the same day).
+    const day3 = await makeShift(fl.location.id, { days: Math.round((+day1.startsAt - Date.now()) / 86_400_000) + 7 });
+    expect(+day3.startsAt).toBeGreaterThan(+day1.endsAt + 86_400_000);
     const p = await makeProvider({ licenses: [{ professionCode: "DC", state: "FL", expiresAt: new Date(+day1.endsAt + 86_400_000) }] });
     expect((await getEligibleProviders(prisma, day1.id)).eligible.map((e) => e.providerId)).toContain(p.id);
     await assertExcludedEverywhere(p, fl, day3.id);
