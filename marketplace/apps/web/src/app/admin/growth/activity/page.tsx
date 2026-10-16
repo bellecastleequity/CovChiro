@@ -18,7 +18,7 @@ export default async function Activity({ searchParams }: { searchParams: Promise
   const chip = (href: string, label: string, on: boolean) => <Link key={href} href={href} className={`rounded-full px-3 py-1 text-xs ring-1 ${on ? "bg-brand-600 text-white ring-brand-600" : "ring-slate-200"}`}>{label}</Link>;
   return (
     <>
-      <PageHeader title="Agent activity" description="Audit log of every agent action: what it acted on, the prompt version and model, the output, the send status, any human override, and errors. Context is stored by reference, never as raw personal data." />
+      <PageHeader title="Agent activity & communications" description="Every email and text the Growth agents sent, queued, blocked or are waiting to have approved (Communications, below), and the audit log of every agent action: what it acted on, the prompt version and model, the output, the send status, any human override, and errors. Context is stored by reference, never as raw personal data." />
       <GrowthTabs current="/admin/growth/activity" />
       <div className="mb-3 flex flex-wrap gap-2">
         {chip("/admin/growth/activity", "All", !f.agent && !f.errors)}

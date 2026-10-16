@@ -20,7 +20,7 @@ const TABS = [
 const MORE = [
   ["/admin/growth/approvals", "Approvals"],
   ["/admin/growth/sales", "Sales queue"],
-  ["/admin/growth/activity", "Activity"],
+  ["/admin/growth/activity", "Activity & emails"],
   ["/admin/growth/expansion", "Expansion"],
   ["/admin/growth/prompts", "Prompts"],
   ["/admin/growth/knowledge", "Knowledge base"],
