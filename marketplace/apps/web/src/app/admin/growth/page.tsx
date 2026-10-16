@@ -60,8 +60,28 @@ export default async function GrowthOverview() {
             <Stat label="Coverage-ready providers" value={`+${today.readyToday}`} tone="green" />
             <Stat label="New coverage requests" value={today.newRequests} />
             <Stat label="First shifts completed" value={today.firstShifts} tone="green" />
-            <Stat label="AI spend today" value={usd(Math.round(o.aiSpend.todayCents))} hint={`cap ${usd(o.settings.dailyBudgetCents)}`} />
+            <Stat label="AI spend today" value={usd(Math.round(today.spend.totalCents))} hint={`research ${usd(Math.round(today.spend.researchCents))} of ${usd(today.spend.researchCapCents)} · writing ${usd(Math.round(today.spend.writingCents))} of ${usd(today.spend.writingCapCents)}`} />
           </CardBody>
+          <div className="border-t border-slate-100 px-5 pb-5 pt-4">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-900">Emails</h3>
+              <Link href="/admin/growth/activity#communications" className="text-xs font-medium text-brand-700 hover:underline">Communications log →</Link>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {([
+                ["Sent today", today.email.sentToday, "SENT", "green"],
+                ["Queued now", today.email.queuedNow, "QUEUED", "brand"],
+                ["Waiting approval", today.email.pendingNow, "PENDING_APPROVAL", today.email.pendingNow ? "amber" : "default"],
+                ["Blocked today", today.email.blockedToday, "BLOCKED", "default"],
+                ["Failed today", today.email.failedToday, "FAILED", today.email.failedToday ? "red" : "default"],
+              ] as const).map(([label, n, status, tone]) => (
+                <Link key={status} href={status === "PENDING_APPROVAL" ? "/admin/growth/approvals" : `/admin/growth/activity?status=${status}#communications`} className="block rounded-2xl transition hover:ring-2 hover:ring-brand-200">
+                  <Stat label={label} value={n} tone={tone} />
+                </Link>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-slate-500">{outreachLine(today.outreach)}</p>
+          </div>
         </Card>
         <Card>
           <CardHeader title="Needs attention" description={anything ? undefined : "Nothing waiting on a person."} />
@@ -109,4 +129,13 @@ export default async function GrowthOverview() {
       </div>
     </>
   );
+}
+
+/** One line on why emails are (or aren't) going out: send window, pause, and each outreach agent's switch and mode. */
+function outreachLine(o: { windowOpen: boolean; window: string; paused: boolean; clinic: { on: boolean; mode: string; marketing: boolean }; provider: { on: boolean; mode: string; marketing: boolean } }) {
+  if (o.paused) return "Outbound automation is PAUSED: nothing is sent until you resume it.";
+  const side = (name: string, a: { on: boolean; mode: string; marketing: boolean }) =>
+    !a.on ? `${name} outreach is off` : !a.marketing ? `${name} marketing is off` : a.mode === "auto" ? `${name} outreach is on (auto: written and sent in one step, so it never sits in Queued)` : `${name} outreach is on (review: drafts wait on Approvals)`;
+  const when = o.windowOpen ? `The send window (${o.window} Eastern, Mon–Fri) is open now.` : `Outside the send window: the next batch goes out from ${o.window.split("–")[0]} Eastern on the next weekday.`;
+  return `${when} ${side("Clinic", o.clinic)}; ${side("provider", o.provider)}.`;
 }

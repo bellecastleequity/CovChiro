@@ -38,9 +38,37 @@ export async function todayNumbers() {
     prisma.shift.count({ where: { postedAt: { gte: since } } }),
     prisma.assignment.findMany({ where: { status: "COMPLETED", completedAt: { gte: since } }, select: { providerId: true, provider: { select: { stats: { select: { completedShifts: true } } } } } }),
   ]);
+  // Emails: what went out today and what's waiting now (the Communications log, in numbers).
+  const outToday = (status: string) => prisma.communication.count({ where: { direction: "OUT", status, createdAt: { gte: since } } });
+  const { aiSpendCents } = await import("./engine");
+  const { researchSpendCents } = await import("./prospecting");
+  const { inOutreachWindow } = await import("./priority");
+  const s = await getSettings();
+  const [sentToday, blockedToday, failedToday, queuedNow, pendingNow, writingCents, researchCents, windowOpen, clinicOutreachOn, providerOutreachOn] = await Promise.all([
+    outToday("SENT"),
+    outToday("BLOCKED"),
+    outToday("FAILED"),
+    prisma.communication.count({ where: { status: "QUEUED" } }),
+    prisma.communication.count({ where: { status: "PENDING_APPROVAL" } }),
+    aiSpendCents(since),
+    researchSpendCents(since),
+    inOutreachWindow(),
+    agentOn("clinicOutreach"),
+    agentOn("providerOutreach"),
+  ]);
   return {
     providerProspects, clinicProspects, providersContacted, clinicsContacted, providerReplies, clinicReplies, providerRegs, clinicRegs, readyToday, newRequests,
     firstShifts: completedToday.filter((a) => (a.provider.stats?.completedShifts ?? 0) === 1).length,
+    email: { sentToday, blockedToday, failedToday, queuedNow, pendingNow },
+    /** All AI spend today: writing (general caps) + web research (its own cap). */
+    spend: { totalCents: writingCents + researchCents, writingCents, researchCents, writingCapCents: s["growth.aiDailyBudgetCents"], researchCapCents: s["growth.researchDailyBudgetCents"] },
+    outreach: {
+      windowOpen,
+      window: `${s["growth.outreachSendFrom"]}–${s["growth.outreachSendUntil"]}`,
+      paused: s["growth.pausedOutbound"],
+      clinic: { on: clinicOutreachOn, mode: s["growth.outreachMode"], marketing: s["growth.clinicMarketing"] },
+      provider: { on: providerOutreachOn, mode: s["growth.providerOutreachMode"], marketing: s["growth.providerMarketing"] },
+    },
   };
 }
 
