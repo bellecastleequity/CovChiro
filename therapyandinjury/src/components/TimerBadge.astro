@@ -1,0 +1,69 @@
+---
+/**
+ * "14 days" stopwatch graphic used with the PIP reminder. Decorative: the same
+ * words are always in the adjacent text, so it's aria-hidden. The countdown arc
+ * sweeps in once on load (skipped for people who prefer reduced motion).
+ * Deliberately a stopwatch (crown, side button, ticks) so it never reads as the brand ring.
+ */
+interface Props { size?: number; variant?: 'on-teal' | 'on-navy' }
+const { size = 48, variant = 'on-teal' } = Astro.props;
+const c = 2 * Math.PI * 24; // arc circumference (r = 24)
+---
+<svg class:list={['tb', `tb--${variant}`]} width={size} height={size * 1.12} viewBox="0 0 64 72" aria-hidden="true" focusable="false">
+  <!-- crown and side button -->
+  <rect class="tb__metal" x="26" y="1" width="12" height="7" rx="2.5" />
+  <rect class="tb__metal" x="30" y="6" width="4" height="6" />
+  <rect class="tb__metal" x="51" y="14" width="9" height="5" rx="2" transform="rotate(45 55.5 16.5)" />
+  <!-- face -->
+  <circle class="tb__face" cx="32" cy="42" r="29" />
+  <!-- track + countdown arc -->
+  <circle class="tb__track" cx="32" cy="42" r="24" fill="none" stroke-width="4" />
+  <circle class="tb__arc" cx="32" cy="42" r="24" fill="none" stroke-width="4" stroke-linecap="round"
+    stroke-dasharray={`${c * 0.78} ${c}`} transform="rotate(-90 32 42)" style={`--c:${c}`} />
+  <!-- ticks at 12, 3, 6, 9 -->
+  <g class="tb__ticks" stroke-width="2.4" stroke-linecap="round">
+    <line x1="32" y1="21.5" x2="32" y2="24.5" /><line x1="52.5" y1="42" x2="49.5" y2="42" />
+    <line x1="32" y1="62.5" x2="32" y2="59.5" /><line x1="11.5" y1="42" x2="14.5" y2="42" />
+  </g>
+  <text class="tb__num" x="32" y="45.5" text-anchor="middle">14</text>
+  <text class="tb__unit" x="32" y="54.5" text-anchor="middle">DAYS</text>
+</svg>
+
+<style>
+  .tb {
+    flex: none;
+    display: block;
+    overflow: visible;
+  }
+  .tb__num {
+    font: 800 17px/1 var(--font);
+    letter-spacing: -0.5px;
+  }
+  .tb__unit {
+    font: 700 6.4px/1 var(--font);
+    letter-spacing: 1px;
+  }
+  /* On the teal banner: navy watch, white countdown */
+  .tb--on-teal .tb__metal { fill: var(--navy); }
+  .tb--on-teal .tb__face { fill: var(--navy); }
+  .tb--on-teal .tb__track { stroke: rgb(255 255 255 / 22%); }
+  .tb--on-teal .tb__arc { stroke: var(--teal); }
+  .tb--on-teal .tb__ticks { stroke: rgb(255 255 255 / 55%); }
+  .tb--on-teal .tb__num, .tb--on-teal .tb__unit { fill: var(--white); }
+  /* On navy: outlined watch, teal countdown */
+  .tb--on-navy .tb__metal { fill: var(--teal); }
+  .tb--on-navy .tb__face { fill: rgb(255 255 255 / 6%); stroke: var(--teal); stroke-width: 2; }
+  .tb--on-navy .tb__track { stroke: rgb(255 255 255 / 16%); }
+  .tb--on-navy .tb__arc { stroke: var(--teal); }
+  .tb--on-navy .tb__ticks { stroke: rgb(255 255 255 / 45%); }
+  .tb--on-navy .tb__num, .tb--on-navy .tb__unit { fill: var(--white); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .tb__arc {
+      animation: tb-sweep 1.4s ease-out both;
+    }
+    @keyframes tb-sweep {
+      from { stroke-dasharray: 0 var(--c); }
+    }
+  }
+</style>

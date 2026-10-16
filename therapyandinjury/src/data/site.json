@@ -1,0 +1,34 @@
+{
+  "domain": "https://therapyandinjury.com",
+  "brandName": "Therapy & Injury",
+  "alternateNames": [
+    "Florida Therapy & Injury",
+    "Therapy and Injury"
+  ],
+  "tagline": "Chiropractic Injury & Wellness Care",
+  "operatorLine": "Therapy & Injury is owner-operated.",
+  "mainPhone": "(844) 848-7328",
+  "mainPhoneVanity": "(844) 84-TREAT",
+  "mainEmail": "[MAIN EMAIL]",
+  "formEndpoint": "/api/appointment",
+  "patientLinks": {
+    "booking": "[CAREPATRON ONLINE BOOKING URL]",
+    "intake": "[CAREPATRON NEW PATIENT PAPERWORK URL]",
+    "portal": "[CAREPATRON PATIENT PORTAL URL]"
+  },
+  "social": {
+    "instagram": "[INSTAGRAM URL]",
+    "facebook": "[FACEBOOK URL]"
+  },
+  "ownership": {
+    "blackOwned": true
+  },
+  "directoryListings": [],
+  "seo": {
+    "gaMeasurementId": "",
+    "googleSiteVerification": "",
+    "bingSiteVerification": "",
+    "indexNowKey": "6bfd7274da5ff9899151e147f3ae7d27"
+  },
+  "lastUpdatedLegal": "[DATE LEGAL PAGES REVIEWED]"
+}

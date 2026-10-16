@@ -4,3 +4,7 @@ php_backend/vendor/
 therapyandinjury/marketing/jingles/out/
 therapyandinjury/marketing/video/out/
 therapyandinjury/marketing/video/cues.js
+therapyandinjury/node_modules/
+therapyandinjury/dist/
+therapyandinjury/.astro/
+therapyandinjury/deploy/out/

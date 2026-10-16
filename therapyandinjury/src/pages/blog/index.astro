@@ -1,0 +1,30 @@
+---
+import Base from '../../layouts/Base.astro';
+import PageHero from '../../components/PageHero.astro';
+import { posts, fmtDate } from '../../lib/blog';
+const list = await posts();
+---
+<Base
+  title="Injury, Posture & Car Safety Blog | Therapy & Injury"
+  description="Plain-language articles from Therapy & Injury on car safety, posture, back and neck care, and what to expect from chiropractic care in Florida."
+  breadcrumbs={[['Blog', '/blog/']]}
+>
+  <PageHero eyebrow="Blog" title="Tips for moving well and recovering well" lede="Short, practical reads on car safety, posture, and chiropractic care." crumbs={[['Blog', '/blog/']]} />
+  <section class="section">
+    <div class="wrap grid grid--2">
+      {list.map((p) => (
+        <a class="card post" href={`/blog/${p.id}/`}>
+          <time datetime={p.data.pubDate.toISOString()}>{fmtDate(p.data.pubDate)}</time>
+          <h2>{p.data.title}</h2>
+          <p>{p.data.description}</p>
+        </a>
+      ))}
+    </div>
+  </section>
+</Base>
+<style>
+  .post { text-decoration: none; display: flex; flex-direction: column; gap: 6px; }
+  .post time { font-size: 0.85rem; color: var(--slate-text); font-weight: 600; }
+  .post h2 { font-size: 1.3rem; margin: 0; }
+  .post p { margin: 0; color: var(--slate-text); }
+</style>

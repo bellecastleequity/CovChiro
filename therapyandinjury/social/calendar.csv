@@ -1,0 +1,20 @@
+week,date,day,time,platform,format,template,export_folder,topic,caption_ref,status,notes
+1,2026-10-19,Mon,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/01-brand-intro.html,brand,Brand intro,01,draft,
+1,2026-10-19,Mon,"[TIME — e.g., 11:30]",Instagram + Facebook,Story 1080x1920,stories/02-story-now-open.html,ocala,Now open in Ocala,S2,draft,Ocala-specific; post on the brand account using the Ocala export
+1,2026-10-21,Wed,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/09-now-open.html,ocala,Now open in Ocala,09,draft,Ocala-specific; post on the brand account using the Ocala export
+1,2026-10-21,Wed,"[TIME — e.g., 11:30]",Google Business Profile,Update post,export/ocala/ (any matching PNG),ocala,Ocala GBP post: now open,gbp/ocala.md,draft,"Post from the Ocala profile; copy the caption idea, add the website button"
+1,2026-10-23,Fri,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/02-brand-meaning.html,brand,Meaning of the mark,02,draft,
+2,2026-10-26,Mon,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/04-14-day-pip.html,brand,14-day PIP reminder,04,draft,
+2,2026-10-26,Mon,"[TIME — e.g., 11:30]",Instagram + Facebook,Story 1080x1920,stories/01-story-14-days.html,brand,14-day PIP reminder,S1,draft,
+2,2026-10-28,Wed,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/06-meet-the-doctor.html,brand,Meet the doctor,06,hold,Post only after the treating doctor is confirmed; otherwise swap in a wellness tip
+2,2026-10-28,Wed,"[TIME — e.g., 11:30]",Google Business Profile,Update post,export/ocala/ (any matching PNG),ocala,Ocala GBP post: 14-day PIP reminder,gbp/ocala.md,draft,"Post from the Ocala profile; copy the caption idea, add the website button"
+2,2026-10-30,Fri,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/07-headrest-tip.html,brand,Wellness tip: headrest,07,draft,
+3,2026-11-02,Mon,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/03-after-accident-checklist.html,brand,After-accident checklist,03,draft,
+3,2026-11-02,Mon,"[TIME — e.g., 11:30]",Instagram + Facebook,Story 1080x1920,stories/03-story-checklist.html,brand,After-accident checklist,S3,draft,
+3,2026-11-04,Wed,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/05-what-to-bring.html,brand,What to bring,05,draft,
+3,2026-11-04,Wed,"[TIME — e.g., 11:30]",Google Business Profile,Update post,export/ocala/ (any matching PNG),ocala,Ocala GBP post: what to bring,gbp/ocala.md,draft,"Post from the Ocala profile; copy the caption idea, add the website button"
+3,2026-11-06,Fri,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/08-desk-posture-tip.html,brand,Posture tip: desk,08,draft,
+4,2026-11-09,Mon,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/10-first-visit.html,brand,What to expect at first visit,10,draft,
+4,2026-11-11,Wed,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/11-lifting-tip.html,brand,Wellness tip: lifting,11,draft,
+4,2026-11-11,Wed,"[TIME — e.g., 11:30]",Google Business Profile,Update post,export/ocala/ (any matching PNG),ocala,Ocala GBP post: what to expect,gbp/ocala.md,draft,"Post from the Ocala profile; copy the caption idea, add the website button"
+4,2026-11-13,Fri,"[TIME — e.g., 11:30]",Instagram + Facebook,Post 1080x1080,posts/12-locations.html,brand,Locations roll-call,12,draft,

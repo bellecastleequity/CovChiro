@@ -1,0 +1,279 @@
+[
+  {
+    "slug": "ocala",
+    "city": "Ocala",
+    "county": "Marion",
+    "status": "open",
+    "legalEntity": "",
+    "openingNote": "",
+    "address": {
+      "street": "2649 W Silver Springs Blvd",
+      "city": "Ocala",
+      "state": "FL",
+      "zip": "34475"
+    },
+    "phone": "[OCALA PHONE]",
+    "email": "[OCALA EMAIL]",
+    "hours": [
+      {
+        "day": "Monday",
+        "opens": "13:00",
+        "closes": "18:00"
+      },
+      {
+        "day": "Wednesday",
+        "opens": "13:00",
+        "closes": "18:00"
+      },
+      {
+        "day": "Thursday",
+        "opens": "13:00",
+        "closes": "18:00"
+      }
+    ],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
+    "doctors": [],
+    "mapEmbed": "",
+    "gbpUrl": "[OCALA GOOGLE BUSINESS PROFILE URL]",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
+    "domains": [
+      "ocalatherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "Silver Springs",
+      "Belleview",
+      "Dunnellon",
+      "Marion Oaks",
+      "Summerfield",
+      "Anthony",
+      "Reddick"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  },
+  {
+    "slug": "orlando",
+    "city": "Orlando",
+    "county": "Orange",
+    "status": "coming soon",
+    "legalEntity": "",
+    "openingNote": "[ORLANDO OPENING DATE]",
+    "address": null,
+    "phone": "[ORLANDO PHONE]",
+    "email": "[ORLANDO EMAIL]",
+    "hours": [],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
+    "doctors": [],
+    "mapEmbed": "",
+    "gbpUrl": "",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
+    "domains": [
+      "orlandotherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "Winter Park",
+      "Maitland",
+      "Kissimmee",
+      "Winter Garden",
+      "Pine Hills",
+      "Conway"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  },
+  {
+    "slug": "lake-mary",
+    "city": "Lake Mary",
+    "county": "Seminole",
+    "status": "coming soon",
+    "legalEntity": "",
+    "openingNote": "[LAKE MARY OPENING DATE]",
+    "address": null,
+    "phone": "[LAKE MARY PHONE]",
+    "email": "[LAKE MARY EMAIL]",
+    "hours": [],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
+    "doctors": [],
+    "mapEmbed": "",
+    "gbpUrl": "",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
+    "domains": [
+      "lakemarytherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "Sanford",
+      "Heathrow",
+      "Longwood",
+      "Winter Springs",
+      "Altamonte Springs"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  },
+  {
+    "slug": "deltona",
+    "city": "Deltona",
+    "county": "Volusia",
+    "status": "coming soon",
+    "legalEntity": "",
+    "openingNote": "[DELTONA OPENING DATE]",
+    "address": null,
+    "phone": "[DELTONA PHONE]",
+    "email": "[DELTONA EMAIL]",
+    "hours": [],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
+    "doctors": [],
+    "mapEmbed": "",
+    "gbpUrl": "",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
+    "domains": [
+      "deltonatherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "DeBary",
+      "Orange City",
+      "Enterprise",
+      "Osteen",
+      "DeLand"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  },
+  {
+    "slug": "deland",
+    "city": "DeLand",
+    "county": "Volusia",
+    "status": "coming soon",
+    "legalEntity": "",
+    "openingNote": "[DELAND OPENING DATE]",
+    "address": null,
+    "phone": "[DELAND PHONE]",
+    "email": "[DELAND EMAIL]",
+    "hours": [],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
+    "doctors": [],
+    "mapEmbed": "",
+    "gbpUrl": "",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
+    "domains": [
+      "delandtherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "Orange City",
+      "DeLeon Springs",
+      "Lake Helen",
+      "Glenwood",
+      "Pierson"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  },
+  {
+    "slug": "eustis",
+    "city": "Eustis",
+    "county": "Lake",
+    "status": "coming soon",
+    "legalEntity": "",
+    "openingNote": "[EUSTIS OPENING DATE]",
+    "address": null,
+    "phone": "[EUSTIS PHONE]",
+    "email": "[EUSTIS EMAIL]",
+    "hours": [],
+    "features": {
+      "sameDayAppointments": false,
+      "walkInsWelcome": false,
+      "eveningHours": false,
+      "onSiteXray": false,
+      "languages": [
+        "English"
+      ]
+    },
+    "doctors": [],
+    "mapEmbed": "",
+    "gbpUrl": "",
+    "patientLinks": {
+      "booking": "",
+      "intake": ""
+    },
+    "domains": [
+      "eustistherapyandinjury.com"
+    ],
+    "nearbyAreas": [
+      "Mount Dora",
+      "Tavares",
+      "Umatilla",
+      "Leesburg",
+      "Sorrento",
+      "Grand Island"
+    ],
+    "geo": {
+      "lat": null,
+      "lng": null
+    }
+  }
+]

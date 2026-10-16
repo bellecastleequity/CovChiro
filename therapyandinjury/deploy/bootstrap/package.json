@@ -1,0 +1,17 @@
+{
+  "name": "therapyandinjury-site",
+  "private": true,
+  "description": "therapyandinjury.com on cPanel Node.js (Passenger). Zero dependencies: no npm install needed.",
+  "main": "app.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "install-release": "node updater.js install",
+    "update": "node updater.js update",
+    "check-update": "node updater.js check",
+    "rollback": "node updater.js rollback",
+    "status": "node updater.js status"
+  }
+}

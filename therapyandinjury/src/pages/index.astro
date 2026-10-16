@@ -1,0 +1,338 @@
+---
+import Base from '../layouts/Base.astro';
+import LocationPicker from '../components/LocationPicker.astro';
+import BranchCard from '../components/BranchCard.astro';
+import Icon from '../components/Icon.astro';
+import { branches, featureLabels } from '../lib/site';
+import { conditions } from '../lib/conditions';
+
+// Trust strip: only statements that are true for every location today. Conveniences like
+// same-day visits or Spanish appear only when a location turns them on in branches.json.
+const everywhere = (label: string) => branches.filter((b) => b.status === 'open').every((b) => featureLabels(b).includes(label));
+const trust = [
+  'Florida-licensed chiropractic physicians',
+  'No referral needed',
+  'Auto accident (PIP) patients welcome',
+  'Plain-language care plans',
+  'Referrals to independent medical providers when needed',
+  ...['Same-day appointments', 'Walk-ins welcome', 'Hablamos español'].filter(everywhere),
+];
+import { services, steps } from '../lib/content';
+
+---
+<Base
+  title="Therapy & Injury | Chiropractic Injury & Wellness Care in Florida"
+  description="Florida chiropractic care for auto accident injuries and neck and back pain. PIP generally requires care within 14 days of a crash. Now open in Ocala."
+>
+  <section class="hero">
+    <div class="wrap hero__in">
+      <div class="hero__copy">
+        <span class="eyebrow">Chiropractic injury &amp; wellness care</span>
+        <h1>Hurt in a car accident? Get checked within <span class="hero__accent">14&nbsp;days.</span></h1>
+        <p class="lede">
+          Florida’s no-fault (PIP) insurance generally requires that you receive initial care within 14 days of an auto accident.
+          Our chiropractic physicians evaluate neck, back, and whole-body injuries and walk you through a clear plan for recovery.
+        </p>
+        <div class="btn-row">
+          <a class="btn btn--primary" href="#locations">Find a location</a>
+          <a class="btn btn--ghost" href="/auto-accident-injuries/">What to expect after an accident</a>
+        </div>
+        <p class="hero__ref"><strong>We’ll see you with or without a referral.</strong></p>
+        <p class="hero__note small muted">If you have a medical emergency, call 911 or go to the nearest emergency room.</p>
+      </div>
+      <div class="hero__art" aria-hidden="true">
+        <img src="/brand/mark.svg" alt="" width="420" height="420" />
+      </div>
+    </div>
+  </section>
+
+  <section class="trust" aria-label="Why patients choose us">
+    <ul class="wrap trust__list">
+      {trust.map((t) => <li>{t}</li>)}
+    </ul>
+  </section>
+
+  <section id="locations" class="section section--gray">
+    <div class="wrap">
+      <div class="loc__head">
+        <div>
+          <span class="eyebrow">Locations</span>
+          <h2>Care close to home, across Florida</h2>
+          <p class="lede">Each location is its own clinic with its own team. Choose yours to see hours, directions, and request an appointment.</p>
+        </div>
+        <LocationPicker id="home-picker" />
+      </div>
+      <div class="grid grid--3 loc__grid">
+        {branches.map((b) => <BranchCard branch={b} />)}
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <span class="eyebrow">How care works</span>
+      <h2>Three simple steps</h2>
+      <ol class="steps">
+        {steps.map((s, i) => (
+          <li class="step">
+            <span class="step__n" aria-hidden="true">{i + 1}</span>
+            <h3>{s.title}</h3>
+            <p>{s.text}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="section section--gray">
+    <div class="wrap">
+      <span class="eyebrow">Services</span>
+      <h2>Chiropractic care for injury and everyday strain</h2>
+      <p class="lede">Care is built around you: your injury, your goals, and your comfort.</p>
+      <div class="grid grid--4 svc">
+        {services.map((s) => (
+          <a class="card svc__card" href={`/services/#${s.slug}`}>
+            <Icon name={s.icon} />
+            <h3>{s.name}</h3>
+            <p>{s.short}</p>
+          </a>
+        ))}
+      </div>
+      <p class="svc__more"><a href="/services/">More about our services</a></p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <span class="eyebrow">Guides</span>
+      <h2>Understand what you’re feeling</h2>
+      <p class="lede">Plain-language guides to common injuries, and what to do after a crash.</p>
+      <ul class="guides">
+        <li><a href="/what-to-do-after-a-car-accident/">What to do after a car accident in Florida</a></li>
+        <li><a href="/auto-accident-injuries/">Florida’s 14-day PIP rule</a></li>
+        {conditions.map((c) => <li><a href={`/conditions/${c.slug}/`}>{c.name}</a></li>)}
+        <li><a href="/faq/">Frequently asked questions</a></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section section--gray story">
+    <div class="wrap story__in">
+      <div class="story__art">
+        <img src="/brand/mark.svg" alt="The Therapy & Injury mark: a navy ring with a teal arrow sweeping up and around it" width="320" height="320" loading="lazy" />
+      </div>
+      <div>
+        <span class="eyebrow">Our mark</span>
+        <h2>The whole person, moving toward health</h2>
+        <p>The ring in our logo stands for the whole person. An injury rarely affects just one spot, so we look at how you move, how you feel, and what you need to get back to your routine.</p>
+        <p>The teal arrow sweeping up and around the ring stands for movement toward health and healing. Recovery is a direction, not a single appointment, and our job is to help you move forward one visit at a time.</p>
+        <a class="btn btn--ghost" href="/about/">About Therapy &amp; Injury</a>
+      </div>
+    </div>
+  </section>
+
+</Base>
+
+<style>
+  .hero {
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(1200px 500px at 85% 20%, var(--teal-soft), transparent 60%),
+      var(--white);
+  }
+  .hero__in {
+    display: grid;
+    gap: 32px;
+    align-items: center;
+    padding-block: clamp(48px, 8vw, 104px);
+  }
+  .hero h1 {
+    max-width: 16ch;
+  }
+  .hero__accent {
+    white-space: nowrap;
+    background: linear-gradient(transparent 68%, rgb(25 204 190 / 40%) 68%);
+  }
+  .hero .lede {
+    margin-bottom: 28px;
+  }
+  .hero__ref {
+    margin: 20px 0 0;
+  }
+  .hero__note {
+    margin-top: 18px;
+  }
+  .hero__art img {
+    width: min(100%, 420px);
+    height: auto;
+    margin-inline: auto;
+  }
+  @media (max-width: 899px) {
+    .hero__art {
+      order: -1;
+    }
+    .hero__art img {
+      width: 140px;
+      margin-inline: 0;
+    }
+  }
+  @media (min-width: 900px) {
+    .hero__in {
+      grid-template-columns: 1.25fr 1fr;
+    }
+  }
+
+  .trust {
+    background: var(--navy);
+    color: var(--white);
+    padding-block: 18px;
+  }
+  .trust__list {
+    list-style: none;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .trust__list li::before {
+    content: '✓';
+    color: var(--teal);
+    font-weight: 800;
+    margin-right: 8px;
+  }
+  .loc__head {
+    display: grid;
+    gap: 24px;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: end;
+    margin-bottom: 32px;
+  }
+  @media (min-width: 900px) {
+    .loc__head {
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    }
+  }
+
+  .steps {
+    list-style: none;
+    padding: 0;
+    margin: 32px 0 0;
+    display: grid;
+    gap: 20px;
+    counter-reset: step;
+  }
+  @media (min-width: 820px) {
+    .steps {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  .step {
+    position: relative;
+    padding: 28px;
+    border-radius: var(--radius-lg);
+    background: var(--gray);
+  }
+  .step__n {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--navy);
+    color: var(--white);
+    font-weight: 800;
+    margin-bottom: 16px;
+    box-shadow: 0 0 0 5px var(--teal-soft);
+  }
+  .step p {
+    margin: 0;
+    color: var(--slate-text);
+  }
+
+  .svc {
+    margin-top: 32px;
+  }
+  .svc__card {
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .svc__card:hover {
+    transform: translateY(-2px);
+  }
+  .svc__card h3 {
+    margin: 6px 0 0;
+  }
+  .svc__card p {
+    margin: 0;
+    color: var(--slate-text);
+    font-size: 0.97rem;
+  }
+  .svc__more {
+    margin-top: 24px;
+    font-weight: 700;
+  }
+
+  .guides {
+    list-style: none;
+    padding: 0;
+    margin: 28px 0 0;
+    display: grid;
+    gap: 12px;
+  }
+  @media (min-width: 720px) {
+    .guides {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (min-width: 1000px) {
+    .guides {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  .guides a {
+    display: block;
+    height: 100%;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font-weight: 600;
+    text-decoration: none;
+    background: var(--white);
+  }
+  .guides a:hover {
+    border-color: var(--teal);
+  }
+  .story__in {
+    display: grid;
+    gap: 40px;
+    align-items: center;
+  }
+  @media (min-width: 860px) {
+    .story__in {
+      grid-template-columns: 1fr 1.3fr;
+    }
+  }
+  .story__art {
+    display: grid;
+    place-items: center;
+    padding: clamp(24px, 5vw, 56px);
+    background: var(--gray);
+    border-radius: 50%;
+    aspect-ratio: 1;
+    max-width: 420px;
+    width: 100%;
+    margin-inline: auto;
+  }
+  .story__art img {
+    width: 100%;
+    height: auto;
+  }
+
+</style>

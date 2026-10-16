@@ -1,0 +1,141 @@
+---
+import Wordmark from './Wordmark.astro';
+import { site, branches, branchName, branchPath, isOpen, isPlaceholder } from '../lib/site';
+import PhoneLink from './PhoneLink.astro';
+import { conditions } from '../lib/conditions';
+interface Props { city?: string }
+const { city } = Astro.props;
+const here = city ? branches.find((b) => b.city === city) : undefined;
+const year = new Date().getFullYear();
+---
+<footer class="ftr">
+  <div class="wrap">
+    <div class="ftr__grid">
+      <div class="ftr__brand">
+        <Wordmark city={city} reverse size="md" />
+        <p class="ftr__phone">Main line: <PhoneLink /></p>
+        <p class="ftr__blurb">Calm, chiropractic-focused care for people recovering from auto accident injuries, neck and back pain, and everyday strain.</p>
+      </div>
+      <nav aria-label="Locations">
+        <h2 class="ftr__h">Locations</h2>
+        <ul>
+          {branches.map((b) => (
+            <li><a href={branchPath(b)}>{branchName(b)}</a>{!isOpen(b) && <span class="ftr__soon"> · Coming soon</span>}</li>
+          ))}
+        </ul>
+      </nav>
+      <nav aria-label="Conditions">
+        <h2 class="ftr__h">Conditions</h2>
+        <ul>
+          {conditions.map((c) => <li><a href={`/conditions/${c.slug}/`}>{c.name}</a></li>)}
+        </ul>
+      </nav>
+      <nav aria-label="Footer">
+        <h2 class="ftr__h">Learn</h2>
+        <ul>
+          <li><a href="/auto-accident-injuries/">Auto Accident Injuries</a></li>
+          <li><a href="/what-to-do-after-a-car-accident/">What to Do After a Car Accident</a></li>
+          <li><a href="/services/">Services</a></li>
+          <li><a href="/faq/">FAQ</a></li>
+          <li><a href="/blog/">Blog</a></li>
+          <li><a href="/about/">About</a></li>
+          <li><a href="/patients/">Patient center</a></li>
+          <li><a href="/contact/">Contact</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="ftr__legal">
+      <p><strong>{site.operatorLine}</strong> Chiropractic care is provided by Florida-licensed chiropractic physicians.</p>
+      {here && !isPlaceholder(here.legalEntity) && <p>{branchName(here)} is operated by {here.legalEntity}.</p>}
+      <p class="ftr__disclaimer">
+        The information on this website is for general educational purposes only and is not medical advice. Reading it does not create a doctor–patient relationship. Every injury is different; please consult a licensed provider about your situation. If you have a medical emergency, call 911.
+      </p>
+      <p class="ftr__links">
+        <a href="/privacy/">Privacy Policy</a>
+        <a href="/accessibility/">Accessibility Statement</a>
+        <span>© {year} {site.brandName}</span>
+      </p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .ftr {
+    background: var(--navy);
+    color: #e6ecf3;
+    padding-block: 64px 32px;
+    font-size: 0.95rem;
+  }
+  .ftr a {
+    color: var(--white);
+    text-decoration-color: var(--teal);
+  }
+  .ftr__grid {
+    display: grid;
+    gap: 36px;
+  }
+  @media (min-width: 820px) {
+    .ftr__grid {
+      grid-template-columns: 1.5fr 1fr 1fr 1fr;
+    }
+  }
+  .ftr__phone {
+    margin: 18px 0 0;
+    font-weight: 600;
+    color: var(--white);
+  }
+  .ftr__phone :global(a) {
+    color: var(--white);
+    text-decoration-color: var(--teal);
+  }
+  .ftr__blurb {
+    margin-top: 10px;
+    max-width: 42ch;
+    color: #c9d3de;
+  }
+  .ftr__h {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 12px;
+  }
+  .ftr ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .ftr li {
+    margin-bottom: 8px;
+  }
+  .ftr__soon {
+    color: #c9d3de;
+  }
+  .ftr__legal {
+    margin-top: 44px;
+    padding-top: 24px;
+    border-top: 1px solid rgb(255 255 255 / 15%);
+    color: #c9d3de;
+  }
+  .ftr__legal p {
+    margin-bottom: 6px;
+  }
+  .ftr__legal strong {
+    color: var(--white);
+    font-weight: 600;
+  }
+  .ftr__disclaimer {
+    margin-top: 14px;
+    font-size: 0.85rem;
+    max-width: 90ch;
+  }
+  .ftr__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+    margin-top: 16px;
+    font-size: 0.875rem;
+  }
+</style>

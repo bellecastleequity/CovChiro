@@ -1,0 +1,108 @@
+---
+/**
+ * High-intent local page per OPEN location: "car accident chiropractor in <City>".
+ * Only open locations get one (no thin pages for coming-soon cities).
+ */
+import Base from '../../layouts/Base.astro';
+import PageHero from '../../components/PageHero.astro';
+import FaqList from '../../components/FaqList.astro';
+import AppointmentForm from '../../components/AppointmentForm.astro';
+import Ph from '../../components/Ph.astro';
+import BranchFeatures from '../../components/BranchFeatures.astro';
+import PhoneLink from '../../components/PhoneLink.astro';
+import { conditions } from '../../lib/conditions';
+import { type Branch, indexableBranches, branchName, branchPath, oneLineAddress, callFor, hoursSummary, abs, faqSchema, bookingHref } from '../../lib/site';
+
+export function getStaticPaths() {
+  return indexableBranches.map((b) => ({ params: { city: b.slug }, props: { b } }));
+}
+const { b } = Astro.props as { b: Branch };
+const name = branchName(b);
+const path = `${branchPath(b)}car-accident-chiropractor/`;
+const call = callFor(b);
+const faqs = [
+  {
+    q: `How soon should I see a chiropractor after a car accident in ${b.city}?`,
+    a: `Florida PIP generally requires initial care within 14 days of the accident for benefits to apply, so it’s best to be seen as soon as you can. If you have warning signs like numbness, a severe headache, or trouble breathing, go to the emergency room first.`,
+  },
+  {
+    q: `Does ${name} bill auto insurance?`,
+    a: `For auto accident injuries, our team can bill your PIP carrier directly. [CONFIRM BILLING PROCESS] Your insurer decides what is covered.`,
+  },
+  {
+    q: `Where is ${name}?`,
+    a: `${name} is at ${oneLineAddress(b)}, serving ${b.city} and ${b.county} County, including ${b.nearbyAreas.slice(0, 4).join(', ')}.`,
+  },
+];
+const service = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  serviceType: 'Chiropractic care for auto accident injuries',
+  name: `Car accident chiropractic care in ${b.city}, FL`,
+  provider: { '@id': abs(`${branchPath(b)}#business`) },
+  areaServed: [b.city, ...b.nearbyAreas].map((n) => ({ '@type': 'City', name: n })),
+  url: abs(path),
+};
+---
+<Base
+  title={`Car Accident Chiropractor in ${b.city}, FL | ${name}`}
+  description={`Hurt in a car accident in ${b.city}? ${name} offers chiropractic evaluations and care for auto injuries. PIP generally requires care within 14 days.`}
+  city={b.city}
+  branch={b}
+  ctaHref={bookingHref(b)}
+  ogImage={`/og/${b.slug}.png`}
+  schema={[service, faqSchema(faqs)]}
+  breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)], ['Car accident chiropractor', path]]}
+>
+  <PageHero
+    eyebrow={`${b.city}, FL · Auto accident injuries`}
+    title={`Car accident chiropractor in ${b.city}`}
+    lede={`${name} provides chiropractic evaluations and care for people hurt in car accidents in ${b.city} and ${b.county} County. Florida PIP generally requires initial care within 14 days of the crash.`}
+    crumbs={[['Locations', '/locations/'], [b.city, branchPath(b)], ['Car accident chiropractor', path]]}
+  >
+    <BranchFeatures branch={b} />
+    <div class="btn-row" style="margin-top:24px">
+      <a class="btn btn--primary" href={bookingHref(b)}>{bookingHref(b).startsWith('http') ? 'Book an appointment' : 'Request an appointment'}</a>
+      {call.tel && <a class="btn btn--ghost" href={call.tel}>Call {call.label}</a>}
+    </div>
+  </PageHero>
+
+  <section class="section">
+    <div class="wrap lp">
+      <article class="prose">
+        <div class="notice" role="note"><strong>Emergency?</strong> If you have severe pain, a severe headache, trouble breathing, numbness or weakness, or lost consciousness, call 911 or go to the nearest emergency room.</div>
+
+        <h2>After a crash in {b.city}: what we do</h2>
+        <ol>
+          <li><strong>Listen.</strong> How the accident happened, where you feel symptoms, and how they affect sleep and work.</li>
+          <li><strong>Examine.</strong> A chiropractic exam of posture, movement, and the joints and muscles of the neck and back, with orthopedic and neurological screening tests.</li>
+          <li><strong>Explain.</strong> What we found, in plain language, and a care plan if chiropractic care is appropriate. If you need a medical evaluation or imaging, we refer you to an independent medical provider.</li>
+        </ol>
+
+        <h2>Injuries we commonly evaluate</h2>
+        <ul>
+          {conditions.map((c) => <li><a href={`/conditions/${c.slug}/`}>{c.name}</a></li>)}
+        </ul>
+
+        <h2>What to bring</h2>
+        <p>Photo ID, your auto insurer’s name and policy card, your claim number if you have one, the police or crash report if available, and a list of current medications. Missing something? Come anyway. <a href="/auto-accident-injuries/">More about the 14-day PIP rule</a>.</p>
+
+        <h2>Visiting {name}</h2>
+        <p>{oneLineAddress(b)}<br />{hoursSummary(b)}<br />Phone: <PhoneLink branch={b} /></p>
+        <p>We serve {b.city} and nearby communities including {b.nearbyAreas.join(', ')}. <a href={branchPath(b)}>Location details, map, and directions</a>.</p>
+
+        <h2>Questions</h2>
+        <FaqList items={faqs} />
+        <p class="small muted">Educational information only, not medical, legal, or insurance advice. Individual results vary.</p>
+      </article>
+      <div id="request" class="lp__form"><AppointmentForm branch={b} /></div>
+    </div>
+  </section>
+</Base>
+<style>
+  .lp { display: grid; gap: 40px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 980px) {
+    .lp { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); align-items: start; }
+    .lp__form { position: sticky; top: 100px; }
+  }
+</style>

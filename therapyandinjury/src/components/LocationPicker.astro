@@ -1,0 +1,64 @@
+---
+import { branches, branchName, branchPath, isOpen } from '../lib/site';
+interface Props { id?: string }
+const { id = 'picker' } = Astro.props;
+---
+<form class="picker" action="/locations/" method="get" data-picker>
+  <label for={id} class="picker__label">Find your location</label>
+  <div class="picker__row">
+    <select id={id} name="city" required>
+      <option value="" disabled selected>Choose a city…</option>
+      {branches.map((b) => (
+        <option value={branchPath(b)}>{branchName(b)}{isOpen(b) ? '' : ' (coming soon)'}</option>
+      ))}
+    </select>
+    <button type="submit" class="btn btn--navy">Go</button>
+  </div>
+</form>
+
+<script>
+  document.querySelectorAll<HTMLFormElement>('[data-picker]').forEach((form) => {
+    form.addEventListener('submit', (e) => {
+      const select = form.querySelector('select');
+      if (select?.value) {
+        e.preventDefault();
+        window.location.href = select.value;
+      }
+    });
+  });
+</script>
+
+<style>
+  .picker {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow);
+    max-width: 520px;
+    width: 100%;
+  }
+  .picker__label {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .picker__row {
+    display: flex;
+    gap: 10px;
+  }
+  select {
+    flex: 1;
+    min-width: 0;
+    min-height: 48px;
+    font: inherit;
+    color: var(--navy);
+    padding: 10px 40px 10px 14px;
+    border: 1.5px solid var(--slate);
+    border-radius: 12px;
+    background: var(--white)
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5 8l5 5 5-5' fill='none' stroke='%230B2D5B' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")
+      right 12px center/18px no-repeat;
+    appearance: none;
+  }
+</style>

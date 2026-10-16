@@ -1,0 +1,24 @@
+---
+/**
+ * A tap-to-call phone link. For the brand line it shows the vanity spelling with the
+ * digits beside it ("(844) 84-TREAT · 848-7328") so people with letterless keypads can dial.
+ */
+import { type Branch, callFor, mainLine } from '../lib/site';
+import Ph from './Ph.astro';
+interface Props { branch?: Branch; showDigits?: boolean; class?: string }
+const { branch, showDigits = true, class: cls } = Astro.props;
+const c = callFor(branch);
+const digitsOnly = c.digits.replace(/^\(\d{3}\)\s*/, '');
+---
+{c.tel ? (
+  <a href={c.tel} class={cls}>
+    {c.label}{c.isMain && mainLine.vanity && showDigits && <span class="pl-digits"> · {digitsOnly}</span>}
+  </a>
+) : (
+  <Ph value={c.digits} />
+)}
+<style>
+  .pl-digits {
+    white-space: nowrap;
+  }
+</style>

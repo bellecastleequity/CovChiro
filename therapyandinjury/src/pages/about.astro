@@ -1,0 +1,68 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import { site, branches, branchName, branchPath, isOpen } from '../lib/site';
+
+const listed = branches.filter((b) => b.doctors.length);
+---
+<Base
+  title="About Therapy & Injury | Florida Chiropractic Care"
+  description="Therapy & Injury is an owner-operated Florida chiropractic practice for auto accident injuries, neck and back pain, and wellness, with locations named for each city."
+  breadcrumbs={[['About', '/about/']]}
+>
+  <PageHero eyebrow="About" title="Calm, clear chiropractic care after an injury" lede="Therapy & Injury is a Florida chiropractic practice focused on helping people recover after auto accidents and everyday injuries." crumbs={[['About', '/about/']]} />
+
+  <section class="section">
+    <div class="wrap prose">
+      <h2>Who we are</h2>
+      <p>
+        An accident can leave you sore, stressed, and unsure what to do next. We built Therapy &amp; Injury to be the opposite of that feeling: a calm, modern clinic where you are listened to, examined carefully, and told plainly what we find.
+      </p>
+      <p>
+        Each location carries its city’s name, starting with Ocala Therapy &amp; Injury, because each clinic is part of its community. Every location shares the same standards for chiropractic care, clear communication, and respect for your time.
+      </p>
+      <p>
+        We provide chiropractic care on-site. When a patient needs a medical evaluation, we refer them to an independent medical provider.
+      </p>
+      <p class="muted small">{site.operatorLine}</p>
+    </div>
+  </section>
+
+  <section class="section section--gray" id="doctors">
+    <div class="wrap prose">
+      <span class="eyebrow">Our doctors</span>
+      <h2>Florida-licensed chiropractic physicians</h2>
+      <p>Care at every Therapy &amp; Injury location is provided by Florida-licensed chiropractic physicians (D.C.). Each location page lists its treating doctor.</p>
+      {listed.length > 0 && (
+        <ul>
+          {listed.flatMap((b) => b.doctors.map((d) => (
+            <li><strong>{d.name}</strong>, {d.title} · <a href={branchPath(b)}>{branchName(b)}</a></li>
+          )))}
+        </ul>
+      )}
+      <p class="muted small">
+        You can verify any Florida health care practitioner’s license at the{' '}
+        <a href="https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders" rel="noopener" target="_blank">Florida Department of Health license lookup<span class="sr-only"> (opens in a new tab)</span></a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap prose">
+      <h2>What you can expect from us</h2>
+      <ul class="check-list">
+        <li><strong>Plain language.</strong> We explain what we find and what we recommend, and answer your questions.</li>
+        <li><strong>Your comfort first.</strong> Techniques are explained before they happen and adjusted to you.</li>
+        <li><strong>Honest scope.</strong> We provide chiropractic care and refer you to an independent medical provider when you need a medical evaluation.</li>
+        <li><strong>Respect for your time.</strong> Clear scheduling and a team that calls you back.</li>
+      </ul>
+      <h2>Our locations</h2>
+      <ul>
+        {branches.map((b) => <li><a href={branchPath(b)}>{branchName(b)}</a>{isOpen(b) ? '' : ' (coming soon)'}</li>)}
+      </ul>
+      <div class="btn-row">
+        <a class="btn btn--primary" href="/locations/">Find a location</a>
+      </div>
+    </div>
+  </section>
+</Base>

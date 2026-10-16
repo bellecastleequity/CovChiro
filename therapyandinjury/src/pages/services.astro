@@ -1,0 +1,77 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import Ph from '../components/Ph.astro';
+import { services } from '../lib/content';
+---
+<Base
+  breadcrumbs={[['Services', '/services/']]}
+  title="Chiropractic Services for Injury & Wellness | Therapy & Injury"
+  description="Injury evaluation, chiropractic adjustments, rehab exercise, and soft-tissue therapy for auto accident injuries and neck and back pain in Florida."
+>
+  <section class="page-hero">
+    <div class="page-hero__ring" aria-hidden="true"></div>
+    <div class="wrap">
+      <span class="eyebrow">Services</span>
+      <h1>Chiropractic care, explained</h1>
+      <p class="lede">Every plan starts with an evaluation and is built around your injury, your goals, and your comfort. Here is what care can include.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap svc-list">
+      {services.map((s) => (
+        <article class="svc-item" id={s.slug}>
+          <Icon name={s.icon} size={56} />
+          <div>
+            <h2>{s.name}</h2>
+            {s.confirm && <p class="small"><span class="ph">[PLACEHOLDER — CONFIRM SERVICE DESCRIPTION]</span></p>}
+            {s.body.map((p) => <p><Ph value={p} /></p>)}
+          </div>
+        </article>
+      ))}
+
+      <div class="notice">
+        <p><strong>Medical evaluations.</strong> Therapy &amp; Injury provides chiropractic care. When a patient needs a medical evaluation, imaging, or care outside chiropractic scope, we refer them to an independent medical provider.</p>
+        <p class="small" style="margin:0">Individual results vary. Your chiropractic physician will discuss what to expect for your situation.</p>
+      </div>
+
+      <div class="btn-row">
+        <a class="btn btn--primary" href="/locations/">Request an appointment</a>
+        <a class="btn btn--ghost" href="/auto-accident-injuries/">After a car accident</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .svc-list {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    max-width: 880px;
+  }
+  .svc-item {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 20px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--line);
+  }
+  .svc-item h2 {
+    font-size: 1.5rem;
+    margin-top: 8px;
+  }
+  .svc-item p {
+    color: var(--slate-text);
+  }
+  .svc-item p:last-child {
+    margin-bottom: 0;
+  }
+  @media (max-width: 520px) {
+    .svc-item {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 8px;
+    }
+  }
+</style>

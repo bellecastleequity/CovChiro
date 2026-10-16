@@ -1,0 +1,108 @@
+---
+/**
+ * Site-wide top banner (owner request): the 14-day window, "with or without a referral",
+ * and a call button. Uses the location's phone on location pages, else the main number;
+ * until a number is set, "Call us" goes to the Contact page.
+ */
+import { type Branch, callFor } from '../lib/site';
+import TimerBadge from './TimerBadge.astro';
+interface Props { branch?: Branch }
+const { branch } = Astro.props;
+const call = callFor(branch);
+const tel = call.tel;
+---
+<aside class="pip" aria-label="Car accident reminder">
+  <div class="wrap pip__in">
+    <p class="pip__msg">
+      <span class="pip__days"><TimerBadge size={40} variant="on-teal" /></span>
+      <span class="pip__long">
+        <strong>Hurt in a car accident? Get checked within 14 days.</strong>
+        <span class="pip__sub">We’ll see you with or without a referral.</span>
+      </span>
+      <span class="pip__short">
+        <strong>Car accident? Get checked within 14 days.</strong>
+        <span class="pip__sub">No referral needed.</span>
+      </span>
+    </p>
+    <a class="pip__call" href={tel || '/contact/'}>
+      <span aria-hidden="true">📞</span> {tel ? <Fragment>Call<span class="pip__num"> {call.label}</span></Fragment> : 'Call us'}
+    </a>
+  </div>
+</aside>
+<style>
+  .pip {
+    background: var(--teal);
+    color: var(--navy);
+  }
+  .pip__in {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-block: 8px;
+  }
+  .pip__msg {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    line-height: 1.3;
+    font-size: 0.95rem;
+  }
+  .pip__days {
+    flex: none;
+    display: block;
+  }
+  .pip__sub {
+    display: block;
+    font-weight: 600;
+  }
+  .pip__call {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: var(--navy);
+    color: var(--white);
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .pip__call:hover {
+    background: var(--navy-900);
+  }
+  .pip__call:focus-visible {
+    outline-color: var(--white);
+  }
+  .pip__short {
+    display: none;
+  }
+  @media (max-width: 640px) {
+    .pip__long {
+      display: none;
+    }
+    .pip__short {
+      display: block;
+    }
+    .pip__msg {
+      font-size: 0.85rem;
+    }
+    .pip__msg {
+      gap: 8px;
+    }
+    .pip__days :global(svg) {
+      width: 30px;
+      height: auto;
+    }
+    .pip__num {
+      display: none;
+    }
+    .pip__call {
+      padding: 8px 12px;
+      font-size: 0.9rem;
+    }
+  }
+</style>

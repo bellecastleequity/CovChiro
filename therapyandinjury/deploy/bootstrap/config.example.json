@@ -1,0 +1,18 @@
+{
+  "adminPassword": "",
+  "mail": {
+    "from": "no-reply@therapyandinjury.com",
+    "sendmail": "/usr/sbin/sendmail",
+    "recipients": {
+      "ocala": "ocala@therapyandinjury.com"
+    }
+  },
+  "update": {
+    "github": { "repo": "", "token": "" },
+    "manifestUrl": ""
+  },
+  "redirects": {
+    "canonicalHost": true,
+    "forceHttps": true
+  }
+}

@@ -1,0 +1,178 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import Ph from '../components/Ph.astro';
+import FaqList from '../components/FaqList.astro';
+import TimerBadge from '../components/TimerBadge.astro';
+import { faqs } from '../lib/faq';
+import { abs, faqSchema } from '../lib/site';
+
+const pageFaqs = faqs.filter((f) => f.group !== 'practice');
+const article = {
+  '@context': 'https://schema.org',
+  '@type': 'MedicalWebPage',
+  name: 'After a car accident in Florida: the 14-day PIP rule and your first visit',
+  url: abs('/auto-accident-injuries/'),
+  about: { '@type': 'Thing', name: 'Florida Personal Injury Protection (PIP) 14-day initial care rule' },
+  publisher: { '@id': abs('/#org') },
+  inLanguage: 'en-US',
+};
+---
+<Base
+  title="Florida 14-Day PIP Rule & Your First Visit | Therapy & Injury"
+  description="Hurt in a car accident in Florida? PIP generally requires initial care within 14 days. Learn what to bring and what to expect at your first chiropractic visit."
+  schema={[article, faqSchema(pageFaqs)]}
+  breadcrumbs={[['Auto accident injuries', '/auto-accident-injuries/']]}
+>
+  <section class="page-hero">
+    <div class="page-hero__ring" aria-hidden="true"></div>
+    <div class="wrap">
+      <span class="eyebrow">Auto accident injuries</span>
+      <h1>After a car accident: what to know, what to bring</h1>
+      <p class="lede">A plain-language guide to Florida’s 14-day PIP window and your first chiropractic visit.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap aa__grid">
+      <article class="prose">
+        <div class="notice" role="note">
+          <strong>Emergency?</strong> If you have severe pain, a severe headache, trouble breathing, chest or abdominal pain, numbness or weakness, confusion, or lost consciousness, call 911 or go to the nearest emergency room.
+        </div>
+
+        <div class="pip-head">
+          <TimerBadge size={64} variant="on-teal" />
+          <h2 id="pip">The 14-day rule, in plain language</h2>
+        </div>
+        <p>
+          Florida is a “no-fault” state. Most drivers carry <strong>Personal Injury Protection (PIP)</strong> on their own auto policy, which generally helps pay for injury care after a crash, no matter who caused it.
+        </p>
+        <p>
+          Under Florida law, PIP benefits generally apply only if you receive <strong>initial care within 14 days of the accident</strong> (Florida Statutes §627.736). Initial care can come from a licensed provider such as a chiropractic physician.
+          If you wait longer than 14 days, your PIP benefits for that accident may not be available.
+        </p>
+        <p class="muted small">
+          Coverage amounts and requirements depend on your policy and current Florida law. Your insurer can explain your specific benefits. This page is general information, not legal or insurance advice.
+        </p>
+
+        <h2 id="bring">What to bring to your first visit</h2>
+        <ul class="check-list">
+          <li><strong>Photo ID</strong></li>
+          <li><strong>Your auto insurance company’s name</strong> and your policy card</li>
+          <li><strong>Your claim number</strong>, if you have opened a claim</li>
+          <li><strong>The police or crash report</strong>, or the report number, if available</li>
+          <li><strong>A list of current medications</strong></li>
+          <li>Comfortable clothing that lets you move easily</li>
+        </ul>
+        <p class="muted small">Don’t have everything yet? Come anyway. We can help you gather what’s missing.</p>
+
+        <h2 id="first-visit">What to expect at your first visit</h2>
+        <ol class="timeline">
+          <li>
+            <h3>Check-in and paperwork</h3>
+            <p>Intake forms about you, the accident, and your symptoms. <Ph value="[CONFIRM — online intake forms available before the visit?]" /></p>
+          </li>
+          <li>
+            <h3>History and conversation</h3>
+            <p>Your chiropractic physician asks how the accident happened, where you feel symptoms, and how they affect sleep, work, and daily life.</p>
+          </li>
+          <li>
+            <h3>Chiropractic examination</h3>
+            <p>A hands-on exam that may include posture, range of motion, and orthopedic and neurological screening tests.</p>
+          </li>
+          <li>
+            <h3>Findings and next steps</h3>
+            <p>We explain what we found in plain language and discuss a care plan. If you need a medical evaluation or imaging, we refer you to an independent medical provider.</p>
+          </li>
+        </ol>
+        <p class="muted small">First visits usually take about <Ph value="[FIRST VISIT LENGTH — e.g., 45–60 minutes]" />.</p>
+
+        <h2 id="faq">Common questions</h2>
+        <FaqList items={pageFaqs} />
+        <p><a href="/faq/">More questions and answers</a> · <a href="/what-to-do-after-a-car-accident/">What to do after a car accident</a></p>
+      </article>
+
+      <aside class="aa__aside" aria-label="Request a visit">
+        <div class="card aa__card">
+          <Icon name="calendar" />
+          <h2>Inside the 14-day window?</h2>
+          <p class="muted">Choose your location and send a quick request. Our team will call to confirm a time.</p>
+          <a class="btn btn--primary btn--block" href="/locations/">Find a location</a>
+        </div>
+      </aside>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .pip-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 1.6em;
+  }
+  .pip-head h2 {
+    margin: 0 !important;
+  }
+  .aa__grid {
+    display: grid;
+    gap: 40px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @media (min-width: 980px) {
+    .aa__grid {
+      grid-template-columns: minmax(0, 1fr) 320px;
+      align-items: start;
+    }
+    .aa__aside {
+      position: sticky;
+      top: 100px;
+    }
+  }
+  .prose > h2:first-of-type {
+    margin-top: 1.4em;
+  }
+  .aa__card h2 {
+    font-size: 1.3rem;
+    margin-top: 14px;
+  }
+  .timeline {
+    list-style: none;
+    padding: 0 !important;
+    margin: 0 0 1em;
+    counter-reset: t;
+  }
+  .timeline li {
+    position: relative;
+    padding: 0 0 8px 52px;
+    counter-increment: t;
+  }
+  .timeline li::before {
+    content: counter(t);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--navy);
+    color: var(--white);
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+    font-size: 0.95rem;
+  }
+  .timeline li:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 16px;
+    top: 38px;
+    bottom: 0;
+    width: 2px;
+    background: var(--teal);
+  }
+  .timeline h3 {
+    margin: 4px 0 4px !important;
+    font-size: 1.05rem;
+  }
+</style>

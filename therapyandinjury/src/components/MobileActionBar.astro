@@ -1,0 +1,68 @@
+---
+/**
+ * Phone-first action bar pinned to the bottom of small screens, the way every major
+ * Florida injury-clinic site does it: call, request, directions. Hidden on desktop.
+ */
+import { type Branch, directionsUrl, isOpen, bookingHref, callFor } from '../lib/site';
+interface Props { branch?: Branch }
+const { branch: b } = Astro.props;
+const tel = callFor(b).tel;
+const dir = b && isOpen(b) ? directionsUrl(b) : '';
+const requestHref = bookingHref(b);
+const external = requestHref.startsWith('http');
+---
+<nav class="mab" aria-label="Quick actions">
+  {tel && <a class="mab__btn" href={tel}><span aria-hidden="true">📞</span> Call</a>}
+  <a class="mab__btn mab__btn--primary" href={requestHref}>{b && !isOpen(b) ? 'Get notified' : external ? 'Book online' : b ? 'Request visit' : 'Find a location'}</a>
+  {dir && <a class="mab__btn" href={dir} rel="noopener" target="_blank"><span aria-hidden="true">📍</span> Directions<span class="sr-only"> (opens in a new tab)</span></a>}
+</nav>
+<style>
+  .mab {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    display: flex;
+    gap: 6px;
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+    background: rgb(255 255 255 / 97%);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -6px 20px rgb(11 45 91 / 8%);
+  }
+  .mab__btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 48px;
+    padding: 0 6px;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    border-radius: 999px;
+    border: 2px solid var(--navy);
+    font-weight: 700;
+    text-decoration: none;
+    color: var(--navy);
+    background: var(--white);
+  }
+  .mab__btn--primary {
+    background: var(--teal);
+    border-color: var(--teal);
+    flex: 1.3;
+  }
+  @media (min-width: 900px) {
+    .mab {
+      display: none;
+    }
+  }
+  :global(body) {
+    padding-bottom: 76px;
+  }
+  @media (min-width: 900px) {
+    :global(body) {
+      padding-bottom: 0;
+    }
+  }
+</style>

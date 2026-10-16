@@ -1,0 +1,79 @@
+---
+/**
+ * Brand wordmark built in code: the round mark, then "[City] Therapy & Injury"
+ * (Inter Bold, navy) with the tagline below (Inter SemiBold, uppercase, slate).
+ * The mark itself is the untouched brand SVG.
+ */
+import { site } from '../lib/site';
+interface Props {
+  city?: string;
+  size?: 'sm' | 'md' | 'lg';
+  reverse?: boolean;
+  tagline?: boolean;
+  tag?: 'span' | 'div';
+}
+const { city, size = 'md', reverse = false, tagline = true } = Astro.props;
+const name = city ? `${city} Therapy & Injury` : site.brandName;
+---
+<span class:list={['wm', `wm--${size}`, { 'wm--reverse': reverse }]}>
+  <img class="wm__mark" src={reverse ? '/brand/mark-white.svg' : '/brand/mark.svg'} alt="" width="48" height="48" />
+  <span class="wm__text">
+    <span class="wm__name">{name}</span>
+    {tagline && <span class="wm__tag">{site.tagline}</span>}
+  </span>
+</span>
+
+<style>
+  .wm {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65em;
+    color: var(--navy);
+    line-height: 1.1;
+    text-decoration: none;
+  }
+  .wm__mark {
+    width: 2.6em;
+    height: 2.6em;
+    flex: none;
+  }
+  .wm__text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.28em;
+  }
+  .wm__name {
+    font-weight: 700;
+    font-size: 1.18em;
+    letter-spacing: -0.015em;
+    white-space: nowrap;
+  }
+  .wm__tag {
+    font-weight: 600;
+    font-size: 0.56em;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--slate-text);
+    white-space: nowrap;
+  }
+  .wm--sm {
+    font-size: 14px;
+  }
+  .wm--md {
+    font-size: 16px;
+  }
+  .wm--lg {
+    font-size: clamp(16px, 3vw, 24px);
+  }
+  .wm--reverse {
+    color: var(--white);
+  }
+  .wm--reverse .wm__tag {
+    color: #c9d3de;
+  }
+  @media (max-width: 380px) {
+    .wm--md .wm__tag {
+      letter-spacing: 0.08em;
+    }
+  }
+</style>

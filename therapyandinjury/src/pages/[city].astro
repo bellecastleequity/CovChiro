@@ -1,0 +1,308 @@
+---
+/**
+ * One page per branch, generated from src/data/branches.json.
+ * Adding a city = adding a JSON entry. No code changes needed.
+ */
+import Base from '../layouts/Base.astro';
+import AppointmentForm from '../components/AppointmentForm.astro';
+import BranchCard from '../components/BranchCard.astro';
+import Icon from '../components/Icon.astro';
+import BranchFeatures from '../components/BranchFeatures.astro';
+import PhoneLink from '../components/PhoneLink.astro';
+import PatientLinks from '../components/PatientLinks.astro';
+import Ph from '../components/Ph.astro';
+import {
+  type Branch,
+  branches,
+  branchName,
+  branchPath,
+  isOpen,
+  oneLineAddress,
+  mapEmbedSrc,
+  directionsUrl,
+  callFor,
+  weekHours,
+  doctorsFor,
+  branchSchema,
+  isPlaceholder,
+  isIndexable,
+  bookingHref,
+} from '../lib/site';
+
+export function getStaticPaths() {
+  return branches.map((b) => ({ params: { city: b.slug }, props: { branch: b } }));
+}
+
+const { branch: b } = Astro.props as { branch: Branch };
+const name = branchName(b);
+const open = isOpen(b);
+const call = callFor(b);
+const map = mapEmbedSrc(b);
+const doctors = doctorsFor(b);
+const entity = isPlaceholder(b.legalEntity) ? '' : b.legalEntity;
+const nearby = b.nearbyAreas;
+const nearbyText =
+  nearby.length > 1 ? `${nearby.slice(0, -1).join(', ')}, and ${nearby.at(-1)}` : nearby.join('');
+const others = branches.filter((x) => x.slug !== b.slug);
+
+const title = open
+  ? `${name} | Chiropractor in ${b.city}, FL`
+  : `${name} | Coming Soon to ${b.city}, FL`;
+const description = open
+  ? `${name}: chiropractic care for auto accident (PIP) injuries and neck and back pain in ${b.city}, FL. See hours and request an appointment online.`
+  : `${name} is coming soon, bringing chiropractic injury and wellness care to ${b.city} and ${b.county} County, FL. Get notified when we open.`;
+
+---
+<Base title={title} description={description} city={b.city} ctaHref={bookingHref(b)} ogImage={`/og/${b.slug}.png`} schema={branchSchema(b)} breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)]]} noindex={!isIndexable(b)} branch={b}>
+  <section class="page-hero">
+    <div class="page-hero__ring" aria-hidden="true"></div>
+    <div class="wrap">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/">Home</a></li>
+          <li><a href="/locations/">Locations</a></li>
+          <li aria-current="page">{b.city}</li>
+        </ol>
+      </nav>
+      <span class="eyebrow">Chiropractic injury &amp; wellness care · {b.city}, FL</span>
+      <h1>{name}</h1>
+      {open ? (
+        <p class="lede">
+          Chiropractic care in {b.city} for people recovering from auto accidents, neck and back pain, and whole-body strain.
+          Florida PIP generally requires initial care within 14 days of a crash. We’ll see you with or without a referral: call us or request a visit and our team will call to confirm.
+        </p>
+      ) : (
+        <p class="lede">
+          <span class="badge badge--soon">Coming soon</span> We’re preparing to open in {b.city}. Expected opening: <Ph value={b.openingNote} fallback="[OPENING DATE]" />.
+        </p>
+      )}
+      <BranchFeatures branch={b} />
+      <div class="btn-row bh__ctas">
+        <a class="btn btn--primary" href={bookingHref(b)}>{!open ? 'Get notified' : bookingHref(b).startsWith('http') ? 'Book an appointment' : 'Request an appointment'}</a>
+        {call.tel && <a class="btn btn--ghost" href={call.tel}>Call {call.label}</a>}
+        {open && b.address && <a class="btn btn--ghost" href={directionsUrl(b)} rel="noopener" target="_blank">Get directions<span class="sr-only"> (opens Google Maps in a new tab)</span></a>}
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap bh__grid">
+      <div class="bh__info">
+        <div class="grid grid--2">
+          <div class="card fact">
+            <Icon name="pin" size={40} />
+            <h2 class="fact__h">Address</h2>
+            {b.address ? (
+              <address>
+                {b.address.street}<br />{b.address.city}, {b.address.state} {b.address.zip}
+              </address>
+            ) : <p><Ph value="[ADDRESS — COMING SOON]" /></p>}
+            {open && b.address && <a href={directionsUrl(b)} rel="noopener" target="_blank">Directions<span class="sr-only"> (opens in a new tab)</span></a>}
+          </div>
+          <div class="card fact">
+            <Icon name="phone" size={40} />
+            <h2 class="fact__h">Phone</h2>
+            <p><PhoneLink branch={b} /></p>
+            {call.isMain && open && <p class="small muted">Our main line. A local {b.city} number is coming soon.</p>}
+            {!isPlaceholder(b.gbpUrl) && <a href={b.gbpUrl} rel="noopener" target="_blank">Google Business Profile<span class="sr-only"> (opens in a new tab)</span></a>}
+            {isPlaceholder(b.gbpUrl) && open && <p class="small"><Ph value={b.gbpUrl} /></p>}
+          </div>
+        </div>
+
+        {open && (
+          <div class="card fact hours">
+            <Icon name="clock" size={40} />
+            <h2 class="fact__h">Hours</h2>
+            <table>
+              <caption class="sr-only">Office hours for {name}</caption>
+              <tbody>
+                {weekHours(b).map((d) => (
+                  <tr class:list={{ closed: !d.open }}>
+                    <th scope="row">{d.day}</th>
+                    <td>{d.text}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p class="small muted">Hours can change on holidays. Please call ahead.</p>
+          </div>
+        )}
+
+        <div class="card fact">
+          <Icon name="doc" size={40} />
+          <h2 class="fact__h">{doctors.length > 1 ? 'Your doctors' : 'Your care team'}</h2>
+          {doctors.length ? (
+            <ul class="docs">
+              {doctors.map((d) => (
+                <li>
+                  <strong>{d.name}</strong>
+                  <span class="muted">{d.title}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>Care at {name} is provided by a Florida-licensed chiropractic physician (D.C.).</p>
+          )}
+          {entity && <p class="small muted">{name} is operated by {entity}.</p>}
+          <a href="/about/">About Therapy &amp; Injury</a>
+        </div>
+
+        {open && (
+          <div class="card fact">
+            <Icon name="calendar" size={40} />
+            <h2 class="fact__h">Before your visit</h2>
+            <PatientLinks branch={b} compact />
+          </div>
+        )}
+
+        {map && (
+          <div class="map">
+            <iframe
+              src={map}
+              title={`Map showing ${name} at ${oneLineAddress(b)}`}
+              loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"
+              width="600"
+              height="380"></iframe>
+          </div>
+        )}
+      </div>
+
+      <div id="request" class="bh__form">
+        <AppointmentForm branch={b} />
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--gray">
+    <div class="wrap prose">
+      <span class="eyebrow">Serving {b.city} &amp; {b.county} County</span>
+      <h2>Chiropractic injury care in {b.city}, Florida</h2>
+      {open ? (
+        <Fragment>
+          <p>
+            {name} provides chiropractic injury and wellness care for people in {b.city} and nearby communities, including {nearbyText}.
+            Many of our patients come to us after an auto accident. Others are dealing with neck pain, back pain, or strain from work and everyday life.
+          </p>
+          <p>
+            If you were injured in a car accident anywhere in {b.county} County, Florida’s no-fault law generally requires that you receive initial care within 14 days for your Personal Injury Protection (PIP) benefits to apply.
+            We can see you for a chiropractic evaluation and help you understand the next steps. If you need a medical evaluation, we refer you to an independent medical provider.
+          </p>
+          <p>
+            See <a href={`${branchPath(b)}car-accident-chiropractor/`}>car accident chiropractic care in {b.city}</a>, learn <a href="/auto-accident-injuries/">what to bring to your first visit after an accident</a>, or read about our <a href="/services/">chiropractic services</a>.
+          </p>
+        </Fragment>
+      ) : (
+        <Fragment>
+          <p>
+            {name} will bring chiropractic injury and wellness care to {b.city} and nearby communities, including {nearbyText}.
+            Leave your name and number above and we will let you know as soon as we open.
+          </p>
+          <p>
+            If you were recently in an auto accident, don’t wait for us to open: Florida PIP generally requires initial care within 14 days.
+            See <a href="/locations/">our open locations</a> or read <a href="/auto-accident-injuries/">what to do after a car accident</a>.
+          </p>
+        </Fragment>
+      )}
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <span class="eyebrow">Other locations</span>
+      <h2>More Therapy &amp; Injury locations</h2>
+      <div class="grid grid--3 others">
+        {others.map((o) => <BranchCard branch={o} />)}
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .bh__ctas {
+    margin-top: 24px;
+  }
+  .page-hero .badge {
+    margin-right: 8px;
+    vertical-align: 2px;
+  }
+  .bh__grid {
+    display: grid;
+    gap: 28px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @media (min-width: 980px) {
+    .bh__grid {
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+      align-items: start;
+    }
+    .bh__form {
+      position: sticky;
+      top: 100px;
+    }
+  }
+  .bh__info {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .fact {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .fact__h {
+    font-size: 1.05rem;
+    margin: 8px 0 0;
+  }
+  .fact p,
+  .fact address {
+    margin: 0;
+    font-style: normal;
+  }
+  .fact a {
+    font-weight: 600;
+  }
+  .hours table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4px 0 6px;
+  }
+  .hours th,
+  .hours td {
+    text-align: left;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+    font-weight: 600;
+  }
+  .hours td {
+    text-align: right;
+  }
+  .hours tr.closed th,
+  .hours tr.closed td {
+    color: var(--slate-text);
+    font-weight: 400;
+  }
+  .docs {
+    list-style: none;
+    margin: 0 0 6px;
+    padding: 0;
+  }
+  .docs li {
+    display: flex;
+    flex-direction: column;
+  }
+  .map {
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .map iframe {
+    width: 100%;
+    height: 380px;
+    border: 0;
+  }
+  .others {
+    margin-top: 28px;
+  }
+</style>

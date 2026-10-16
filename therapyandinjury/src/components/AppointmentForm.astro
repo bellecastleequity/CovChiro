@@ -1,0 +1,207 @@
+---
+/**
+ * Appointment request (or "notify me" for coming-soon branches).
+ * Deliberately collects only name, phone, preferred time, and an optional accident date.
+ * Never add fields for medical details, insurance/claim numbers, or SSNs.
+ * Backend: site.formEndpoint, handled by the Node server (deploy/server/appointment.js); recipients are set in the server config.json.
+ */
+import { site, type Branch, branchName, isOpen, hoursSummary, telHref } from '../lib/site';
+import Ph from './Ph.astro';
+import PhoneLink from './PhoneLink.astro';
+interface Props { branch: Branch }
+const { branch: b } = Astro.props;
+const open = isOpen(b);
+const id = (s: string) => `${b.slug}-${s}`;
+const tel = telHref(b.phone);
+---
+<form class="af card" method="post" action={site.formEndpoint} data-appt novalidate>
+  <h2 class="af__title" id={id('form-title')}>{open ? 'Request an appointment' : `Get notified when ${b.city} opens`}</h2>
+  <p class="af__intro muted">
+    {open
+      ? <Fragment>Send a request and our {b.city} team will call to confirm a time.{hoursSummary(b) && <Fragment> Office hours: {hoursSummary(b)}.</Fragment>}</Fragment>
+      : <Fragment>Leave your name and number and we will call you when {branchName(b)} opens.</Fragment>}
+  </p>
+
+  <p class="af__privacy">
+    <strong>Please do not include</strong> medical details, insurance or claim numbers, or Social Security numbers. We’ll collect what’s needed privately at your visit.
+  </p>
+
+  <input type="hidden" name="branch" value={b.slug} />
+  <input type="hidden" name="type" value={open ? 'appointment' : 'notify'} />
+  <div class="af__hp" aria-hidden="true">
+    <label>Leave this field empty <input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
+  </div>
+
+  <div class="af__field">
+    <label for={id('name')}>Full name <span class="af__req" aria-hidden="true">*</span></label>
+    <input id={id('name')} name="name" type="text" autocomplete="name" required maxlength="100" />
+  </div>
+  <div class="af__field">
+    <label for={id('phone')}>Phone number <span class="af__req" aria-hidden="true">*</span></label>
+    <input id={id('phone')} name="phone" type="tel" autocomplete="tel" inputmode="tel" required minlength="10" maxlength="20" aria-describedby={id('phone-hint')} />
+    <span class="af__hint" id={id('phone-hint')}>We’ll call or text this number to confirm.</span>
+  </div>
+  {open && (
+    <Fragment>
+      <div class="af__field">
+        <label for={id('time')}>Preferred day and time</label>
+        <input id={id('time')} name="preferred_time" type="text" maxlength="120" placeholder="e.g., Monday after 3 pm" />
+      </div>
+      <div class="af__field">
+        <label for={id('accident')}>Accident date <span class="af__opt">(optional)</span></label>
+        <input id={id('accident')} name="accident_date" type="date" aria-describedby={id('accident-hint')} />
+        <span class="af__hint" id={id('accident-hint')}>Helps us prioritize visits inside the 14-day PIP window.</span>
+      </div>
+    </Fragment>
+  )}
+
+  <div class="af__field af__check">
+    <input id={id('consent')} name="consent" type="checkbox" value="yes" required />
+    <label for={id('consent')}>
+      I agree that {branchName(b)} may call or text me about this request. Message and data rates may apply. <Ph value="[CONSENT WORDING — CONFIRM WITH COUNSEL]" />
+    </label>
+  </div>
+
+  <button type="submit" class="btn btn--primary btn--block">{open ? 'Send request' : 'Notify me'}</button>
+  <p class="af__status" role="status" aria-live="polite" data-status></p>
+  <p class="af__alt small muted">
+    Prefer to call? <PhoneLink branch={b} />
+  </p>
+</form>
+
+<script>
+  // Progressive enhancement: submit with fetch and show the result inline.
+  document.querySelectorAll<HTMLFormElement>('[data-appt]').forEach((form) => {
+    const status = form.querySelector<HTMLElement>('[data-status]')!;
+    const accident = form.querySelector<HTMLInputElement>('input[name="accident_date"]');
+    if (accident) accident.max = new Date().toISOString().slice(0, 10);
+    if (new URLSearchParams(location.search).has('sent')) {
+      status.textContent = 'Thank you. Your request was sent and our team will call you soon.';
+      status.classList.add('is-ok');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      status.className = 'af__status';
+      if (!form.checkValidity()) {
+        const firstBad = form.querySelector<HTMLInputElement>(':invalid');
+        status.textContent = 'Please complete the required fields: name, phone number, and contact consent.';
+        status.classList.add('is-error');
+        firstBad?.focus();
+        return;
+      }
+      const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+      button.disabled = true;
+      status.textContent = 'Sending…';
+      try {
+        const res = await fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form) as any), headers: { Accept: 'application/json' } });
+        if (!res.ok) throw new Error(String(res.status));
+        form.reset();
+        status.textContent = 'Thank you. Your request was sent and our team will call you soon.';
+        status.classList.add('is-ok');
+      } catch {
+        status.textContent = 'Sorry, your request could not be sent. Please call the office instead.';
+        status.classList.add('is-error');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+</script>
+
+<style>
+  .af {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .af__title {
+    font-size: 1.5rem;
+    margin: 0;
+  }
+  .af__intro {
+    margin: 0;
+  }
+  .af__privacy {
+    margin: 0;
+    font-size: 0.92rem;
+    background: var(--gray);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .af__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .af__field label {
+    font-weight: 600;
+  }
+  .af__req {
+    color: var(--navy);
+  }
+  .af__opt,
+  .af__hint {
+    font-weight: 400;
+    color: var(--slate-text);
+    font-size: 0.9rem;
+  }
+  .af input[type='text'],
+  .af input[type='tel'],
+  .af input[type='date'] {
+    font: inherit;
+    color: var(--navy);
+    min-height: 48px;
+    padding: 10px 14px;
+    border: 1.5px solid var(--slate);
+    border-radius: 12px;
+    background: var(--white);
+    width: 100%;
+  }
+  .af input:focus-visible {
+    outline: 3px solid var(--teal);
+    outline-offset: 1px;
+    border-color: var(--navy);
+  }
+  .af__check {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .af__check input {
+    width: 22px;
+    height: 22px;
+    margin-top: 3px;
+    flex: none;
+    accent-color: var(--navy);
+  }
+  .af__check label {
+    font-weight: 400;
+    font-size: 0.92rem;
+    color: var(--slate-text);
+  }
+  .af__hp {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .af__status:empty {
+    display: none;
+  }
+  .af__status {
+    margin: 0;
+    font-weight: 600;
+  }
+  .af__status:global(.is-ok) {
+    color: #0b5d45;
+  }
+  .af__status:global(.is-error) {
+    color: #a1261b;
+  }
+  .af__alt {
+    margin: 0;
+    text-align: center;
+  }
+</style>

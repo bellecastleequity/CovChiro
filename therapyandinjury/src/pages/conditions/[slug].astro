@@ -1,0 +1,80 @@
+---
+import Base from '../../layouts/Base.astro';
+import PageHero from '../../components/PageHero.astro';
+import FaqList from '../../components/FaqList.astro';
+import { conditions, type Condition } from '../../lib/conditions';
+import { abs, faqSchema } from '../../lib/site';
+
+export function getStaticPaths() {
+  return conditions.map((c) => ({ params: { slug: c.slug }, props: { c } }));
+}
+const { c } = Astro.props as { c: Condition };
+const path = `/conditions/${c.slug}/`;
+const others = conditions.filter((x) => x.slug !== c.slug);
+const article = {
+  '@context': 'https://schema.org',
+  '@type': 'MedicalWebPage',
+  name: c.title,
+  description: c.description,
+  url: abs(path),
+  about: { '@type': 'MedicalCondition', name: c.name },
+  audience: { '@type': 'PeopleAudience', geographicArea: { '@type': 'State', name: 'Florida' } },
+  publisher: { '@id': abs('/#org') },
+  inLanguage: 'en-US',
+};
+---
+<Base title={c.title} description={c.description} schema={[article, faqSchema(c.faqs)]} breadcrumbs={[['Conditions', '/conditions/'], [c.name, path]]}>
+  <PageHero eyebrow="Conditions" title={c.name} lede={c.lede} crumbs={[['Conditions', '/conditions/'], [c.name, path]]} />
+  <section class="section">
+    <div class="wrap cg">
+      <article class="prose">
+        <div class="notice" role="note">
+          <strong>Get medical care first</strong> (call 911 or go to the emergency room) if you have:
+          <ul>{c.medicalFirst.map((x) => <li>{x}</li>)}</ul>
+        </div>
+
+        <h2>Common signs</h2>
+        <ul class="check-list">{c.signs.map((s) => <li>{s}</li>)}</ul>
+
+        {c.sections.map((s) => (
+          <Fragment>
+            <h2>{s.h}</h2>
+            {s.p?.map((p) => <p>{p}</p>)}
+            {s.list && <ul>{s.list.map((li) => <li>{li}</li>)}</ul>}
+          </Fragment>
+        ))}
+
+        <p>Related: <a href="/auto-accident-injuries/">Florida’s 14-day PIP rule</a> · <a href="/what-to-do-after-a-car-accident/">What to do after a car accident</a> · <a href="/services/">Our chiropractic services</a></p>
+
+        <h2>Questions</h2>
+        <FaqList items={c.faqs} />
+
+        <p class="small muted">Educational information only, not medical advice. Individual results vary. Care at Therapy &amp; Injury is chiropractic care provided by Florida-licensed chiropractic physicians.</p>
+      </article>
+
+      <aside class="cg__aside" aria-label="More conditions">
+        <div class="card">
+          <h2 class="cg__h">Request a visit</h2>
+          <p class="muted">Choose your location and our team will call to confirm a time.</p>
+          <a class="btn btn--primary btn--block" href="/locations/">Find a location</a>
+        </div>
+        <nav class="card" aria-label="Other conditions">
+          <h2 class="cg__h">Other guides</h2>
+          <ul>{others.map((o) => <li><a href={`/conditions/${o.slug}/`}>{o.name}</a></li>)}</ul>
+        </nav>
+      </aside>
+    </div>
+  </section>
+</Base>
+<style>
+  .cg { display: grid; gap: 40px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 980px) {
+    .cg { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
+    .cg__aside { position: sticky; top: 100px; }
+  }
+  .cg__aside { display: flex; flex-direction: column; gap: 20px; }
+  .cg__h { font-size: 1.2rem; }
+  .cg__aside ul { margin: 0; padding-left: 1.1em; }
+  .cg__aside li { margin-bottom: 6px; }
+  .notice ul { margin: 8px 0 0; }
+</style>

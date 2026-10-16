@@ -1,0 +1,74 @@
+---
+/**
+ * Closing call-to-action on every page (rendered by Base): the 14-day window,
+ * "with or without a referral", call + request buttons.
+ */
+import { type Branch, isOpen, bookingHref, callFor } from '../lib/site';
+import TimerBadge from './TimerBadge.astro';
+interface Props { branch?: Branch }
+const { branch } = Astro.props;
+const call = callFor(branch);
+const tel = call.tel;
+const requestHref = bookingHref(branch);
+const external = requestHref.startsWith('http');
+---
+<section class="section section--tight cta" aria-labelledby="cta-title">
+  <div class="wrap cta__in">
+    <div class="cta__copy">
+      <span class="cta__days"><TimerBadge size={84} variant="on-navy" /></span>
+      <div>
+        <h2 id="cta-title">Hurt in a car accident? Get checked within 14 days.</h2>
+        <p>Florida PIP generally requires initial care within 14 days of a crash. We’ll see you with or without a referral. Call us or request a visit online.</p>
+      </div>
+    </div>
+    <div class="btn-row">
+      <a class="btn btn--primary" href={tel || '/contact/'}>{tel ? `Call ${call.label}` : 'Call us'}</a>
+      <a class="btn btn--light" href={requestHref}>{branch && !isOpen(branch) ? 'Get notified' : external ? 'Book online' : 'Request a visit'}</a>
+    </div>
+  </div>
+</section>
+<style>
+  .cta {
+    background: var(--navy);
+    color: var(--white);
+  }
+  .cta h2 {
+    color: var(--white);
+    margin-bottom: 0.3em;
+    font-size: clamp(1.4rem, 2.6vw, 2rem);
+  }
+  .cta p {
+    margin: 0;
+    color: #c9d3de;
+    max-width: 60ch;
+  }
+  .cta__in {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .cta__copy {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex: 1 1 520px;
+  }
+  .cta__days {
+    flex: none;
+    display: block;
+  }
+  .btn--light {
+    background: var(--white);
+    color: var(--navy);
+  }
+  .btn--light:hover {
+    background: var(--gray);
+  }
+  @media (max-width: 520px) {
+    .cta__days {
+      display: none;
+    }
+  }
+</style>

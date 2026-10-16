@@ -1,0 +1,59 @@
+---
+import Base from '../layouts/Base.astro';
+import BranchCard from '../components/BranchCard.astro';
+import LocationPicker from '../components/LocationPicker.astro';
+import { branches, openBranches, branchName, branchPath, abs } from '../lib/site';
+
+const schema = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: 'Therapy & Injury locations',
+  itemListElement: branches.map((b, i) => ({ '@type': 'ListItem', position: i + 1, name: branchName(b), url: abs(branchPath(b)) })),
+};
+const soon = branches.filter((b) => b.status !== 'open');
+---
+<Base
+  breadcrumbs={[['Locations', '/locations/']]}
+  title="Locations | Therapy & Injury Chiropractic Clinics in Florida"
+  description={`Find a Therapy & Injury chiropractic location in Florida: ${branches.map((b) => b.city).join(', ')}. See hours, directions, and request an appointment.`}
+  schema={schema}
+>
+  <section class="page-hero">
+    <div class="page-hero__ring" aria-hidden="true"></div>
+    <div class="wrap">
+      <span class="eyebrow">Locations</span>
+      <h1>Find a Therapy &amp; Injury location</h1>
+      <p class="lede">Each location is its own clinic, named for the city it serves. Choose yours for hours, directions, and appointment requests.</p>
+      <div class="picker-wrap"><LocationPicker id="loc-picker" /></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>Open now</h2>
+      <div class="grid grid--3 list">
+        {openBranches.map((b) => <BranchCard branch={b} />)}
+      </div>
+      {soon.length > 0 && (
+        <Fragment>
+          <h2 class="soon-h">Coming soon</h2>
+          <div class="grid grid--3 list">
+            {soon.map((b) => <BranchCard branch={b} />)}
+          </div>
+        </Fragment>
+      )}
+    </div>
+  </section>
+</Base>
+
+<style>
+  .picker-wrap {
+    margin-top: 28px;
+  }
+  .list {
+    margin-top: 20px;
+  }
+  .soon-h {
+    margin-top: 56px;
+  }
+</style>

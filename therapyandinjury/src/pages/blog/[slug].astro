@@ -1,0 +1,40 @@
+---
+import { render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PageHero from '../../components/PageHero.astro';
+import { posts, fmtDate } from '../../lib/blog';
+import { abs } from '../../lib/site';
+
+export async function getStaticPaths() {
+  return (await posts()).map((p) => ({ params: { slug: p.id }, props: { p } }));
+}
+const { p } = Astro.props;
+const { Content } = await render(p);
+const path = `/blog/${p.id}/`;
+const article = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: p.data.title,
+  description: p.data.description,
+  datePublished: p.data.pubDate.toISOString(),
+  dateModified: (p.data.updated ?? p.data.pubDate).toISOString(),
+  url: abs(path),
+  mainEntityOfPage: abs(path),
+  image: abs('/og/default.png'),
+  author: { '@id': abs('/#org') },
+  publisher: { '@id': abs('/#org') },
+  keywords: p.data.tags.join(', '),
+  inLanguage: 'en-US',
+};
+---
+<Base title={`${p.data.title} | Therapy & Injury`.length <= 65 ? `${p.data.title} | Therapy & Injury` : p.data.title} description={p.data.description} ogType="article" schema={article} breadcrumbs={[['Blog', '/blog/'], [p.data.title, path]]}>
+  <PageHero eyebrow="Blog" title={p.data.title} crumbs={[['Blog', '/blog/'], [p.data.title, path]]}>
+    <p class="muted">
+      <time datetime={p.data.pubDate.toISOString()}>{fmtDate(p.data.pubDate)}</time>
+      {p.data.updated && <Fragment> · Updated <time datetime={p.data.updated.toISOString()}>{fmtDate(p.data.updated)}</time></Fragment>}
+    </p>
+  </PageHero>
+  <section class="section">
+    <article class="wrap prose"><Content /></article>
+  </section>
+</Base>
