@@ -622,8 +622,20 @@ export async function setClinicLogo(actor: Actor, key: string | null) {
 
 export const EXPERIENCE_LEVELS = [0, 2, 5, 10] as const;
 
-/** Clinic attire a location asks providers to wear (one per location). */
+/** Attire a location accepts from providers; a location may accept several (stored as "A or B" in dressCode). */
 export const ATTIRE_OPTIONS = ["Medical scrubs", "Business casual", "Business with clinical jacket"] as const;
+const ATTIRE_JOIN = " or ";
+
+/** The attire options saved on a location (anything that isn't one of the options is dropped). */
+export function attireList(dressCode: string | null | undefined): string[] {
+  const parts = (dressCode ?? "").split(ATTIRE_JOIN).map((x) => x.trim());
+  return ATTIRE_OPTIONS.filter((a) => parts.includes(a));
+}
+
+/** Several choices → one readable line in the option order, e.g. "Medical scrubs or Business casual". */
+export function attireText(choices: string[]): string {
+  return ATTIRE_OPTIONS.filter((a) => choices.includes(a)).join(ATTIRE_JOIN);
+}
 
 /** Clinic default: minimum years of experience for new shifts, and whether emergencies relax it. */
 export async function setExperiencePreference(actor: Actor, minYears: number, relaxInEmergency: boolean) {
@@ -643,7 +655,7 @@ export const LocationInput = z.object({
   patientsPerDay: z.coerce.number().int().min(0).max(1000).optional().nullable(),
   ehr: z.string().trim().max(80).optional().nullable(),
   equipment: z.array(z.string().trim().max(60)).max(20).default([]),
-  dressCode: z.string().trim().max(200).refine((v) => !v || (ATTIRE_OPTIONS as readonly string[]).includes(v), "Pick the attire: medical scrubs, business casual, or business with clinical jacket.").optional().nullable(),
+  dressCode: z.string().trim().max(200).refine((v) => !v || v.split(ATTIRE_JOIN).every((x) => (ATTIRE_OPTIONS as readonly string[]).includes(x.trim())), "Pick the attire: medical scrubs, business casual, or business with clinical jacket.").optional().nullable(),
   arrivalNotes: z.string().trim().max(2000).optional().nullable(),
   skillIds: z.array(z.string()).default([]),
 });

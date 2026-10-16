@@ -1,6 +1,6 @@
 import { env } from "@cm/config";
 import { prisma } from "@cm/db";
-import { ATTIRE_OPTIONS, clinicProfile, MAX_LOCATION_PHOTOS } from "@cm/services";
+import { ATTIRE_OPTIONS, attireList, clinicProfile, MAX_LOCATION_PHOTOS } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { AddressInput } from "@/components/ui/address-input";
 import { Badge } from "@/components/ui/badge";
@@ -34,12 +34,12 @@ async function LocationForm({ loc, saveKey }: { loc?: Loc; saveKey?: string }) {
       <Field label={<>Patients per day<InfoTip label="About patients per day">Your typical volume. Providers see it so they know the pace to expect.</InfoTip></>}><Input name="patientsPerDay" type="number" defaultValue={loc?.patientsPerDay ?? ""} /></Field>
       <Field label="EHR"><Input name="ehr" defaultValue={loc?.ehr ?? ""} /></Field>
       <Field label="Equipment (comma-separated)" className="sm:col-span-2"><Input name="equipment" defaultValue={loc?.equipment.join(", ")} placeholder="Drop tables, X-ray, e-stim" /></Field>
-      <Field label="Provider attire" htmlFor={`dressCode-${loc?.id ?? "new"}`} hint="What you'd like providers to wear here. Shown before they apply.">
-        <Select id={`dressCode-${loc?.id ?? "new"}`} name="dressCode" required defaultValue={loc?.dressCode && (ATTIRE_OPTIONS as readonly string[]).includes(loc.dressCode) ? loc.dressCode : ""}>
-          <option value="" disabled>Select one</option>
-          {ATTIRE_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
-        </Select>
-      </Field>
+      <fieldset>
+        <legend className="mb-1.5 text-sm font-medium text-slate-700">Provider attire<RequiredMark /><InfoTip label="About provider attire">What providers may wear here. Tick every option you&apos;re happy with; providers see them before they apply.</InfoTip></legend>
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          {ATTIRE_OPTIONS.map((a) => <Checkbox key={a} name="dressCode" value={a} defaultChecked={attireList(loc?.dressCode).includes(a)} label={a} />)}
+        </div>
+      </fieldset>
       <fieldset>
         <legend className="mb-1.5 text-sm font-medium text-slate-700">We post shifts for<RequiredMark /><InfoTip label="About professions">The professions you&apos;ll post shifts for at this location. Professions marked (soon) aren&apos;t open on the platform yet.</InfoTip></legend>
         <div className="flex flex-wrap gap-x-4 gap-y-2">

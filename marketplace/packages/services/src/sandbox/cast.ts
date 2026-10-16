@@ -132,7 +132,7 @@ export async function createClinic(c: DemoClinic, passwordHash: string, i: numbe
         ehr: l.ehr,
         onSiteContactName: `${c.owner.split(" ")[0]} (front desk)`,
         arrivalNotes: l.arrival,
-        dressCode: "Business casual or scrubs",
+        dressCode: "Medical scrubs or Business casual",
         equipment: ["Drop tables", "X-ray on site"],
         skills: { create: skills.filter((s) => ["Diversified", "Activator"].includes(s.name)).map((s) => ({ skillId: s.id })) },
       },

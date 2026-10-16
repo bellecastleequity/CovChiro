@@ -22,6 +22,7 @@ import {
   archiveLocation, auth, overdue, sameProvider, cancelShiftByClinic,
   stay, setClinicLogo, clinicPaymentSetupUrl, createShift, inviteProviders, inviteStaff, messaging, openDispute, postShift, quoteForClinic, updateDraftShift,
   addLocationPhotos, removeLocationPhoto, setExperiencePreference, requestAgreement, saveLocation, upcomingWith, selectApplicant, setBlock, setFavorite, submitRating, updateOrg,
+  attireText,
 } from "@cm/services";
 import { bool, formAction, optStr, str } from "@/lib/action";
 import { getSession, requireActor } from "@/lib/session";
@@ -373,6 +374,7 @@ export const sendMessageAction = formAction(async (fd) => {
 
 export const locationAction = formAction(async (fd) => {
   const { actor } = await me();
+  if (!attireText(fd.getAll("dressCode").map(String))) throw new DomainError("VALIDATION", "Tick at least one option for provider attire.");
   await saveLocation(
     actor,
     {
@@ -386,7 +388,7 @@ export const locationAction = formAction(async (fd) => {
       patientsPerDay: str(fd, "patientsPerDay") ? Number(str(fd, "patientsPerDay")) : null,
       ehr: optStr(fd, "ehr"),
       equipment: str(fd, "equipment").split(",").map((s) => s.trim()).filter(Boolean),
-      dressCode: optStr(fd, "dressCode"),
+      dressCode: attireText(fd.getAll("dressCode").map(String)) || null,
       arrivalNotes: optStr(fd, "arrivalNotes"),
       skillIds: fd.getAll("skills").map(String),
     },
