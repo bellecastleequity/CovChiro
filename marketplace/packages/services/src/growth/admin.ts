@@ -818,6 +818,13 @@ export async function communications(actor: Actor, f: { status?: string } = {}) 
   return prisma.communication.findMany({ where: f.status ? { status: f.status } : {}, orderBy: { createdAt: "desc" }, take: 200, select: { id: true, entityType: true, entityId: true, channel: true, direction: true, agent: true, purpose: true, promptKey: true, promptVersion: true, toAddress: true, subject: true, status: true, blockReason: true, error: true, createdById: true, createdAt: true } });
 }
 
+/** How many communications are in each status (the filter pills on Agent activity & communications). */
+export async function communicationCounts(actor: Actor): Promise<Record<string, number>> {
+  requireAdmin(actor);
+  const rows = await prisma.communication.groupBy({ by: ["status"], _count: { _all: true } });
+  return Object.fromEntries(rows.map((r) => [r.status, r._count._all]));
+}
+
 /** For the open-shift view: who is credential-eligible (getEligibleProviders, INV-1). */
 export async function eligibleFor(actor: Actor, shiftId: string) {
   requireAdmin(actor);
