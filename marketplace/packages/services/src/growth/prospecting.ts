@@ -1,6 +1,6 @@
-import { addressKey, applyResearch, countryOf, groupRegistryRecords, registryIndividuals, type ClinicCandidate, type ResearchFindings } from "@cm/core";
+import { addressKey, applyResearch, countryOf, groupRegistryRecords, pickClinicEmail, registryIndividuals, siteUrl, type ClinicCandidate, type ResearchFindings } from "@cm/core";
 import { prisma, type ClinicProspect, type Prisma } from "@cm/db";
-import { geoProvider, llmProvider, nppesProvider } from "@cm/integrations";
+import { geoProvider, llmProvider, nppesProvider, siteFinder } from "@cm/integrations";
 import { DateTime } from "luxon";
 import { clock, getSettings } from "../context";
 import { agentOn, aiRules, logAgent, newToken } from "./engine";
@@ -11,6 +11,7 @@ import { contactDiscoverySweep, upsertProviderProspects } from "./providers";
 import { apolloDiscoverySweep, apolloEnrichmentSweep, cleanupProspectSearches } from "./apollo";
 import { priorityContext } from "./priority";
 import { handleResearchFailure, researchBlocked, withRateLimitRetry, researchPause, researchRequestsToday, type AiFailure } from "./aihealth";
+import { findWebsite, placesLookupsThisMonth, placesPause, readSite } from "./sitefirst";
 
 /**
  * Automatic clinic prospecting (agent "clinicProspecting"):
@@ -249,13 +250,69 @@ function researchSystem(practiceNoun: string) {
   ].join("\n");
 }
 
-function researchUser(p: ClinicProspect, practiceNoun: string, person: string) {
+function researchUser(p: ClinicProspect, practiceNoun: string, person: string, siteRead = false) {
   const facts = {
     name: p.nameFromRegistry ? `${p.clinicName} (a doctor's name from the NPI registry; the practice name is unknown)` : p.clinicName,
     address: [p.address, p.city, `${p.state} ${p.zip ?? ""}`.trim()].filter(Boolean).join(", "),
     phone: p.phone, [`${person.replace(/\s+/g, "")}sAtAddress`]: p.doctors.length ? p.doctors : null, website: p.website,
   };
-  return `Research this ${practiceNoun} and report what you find.\n${JSON.stringify(facts, null, 1)}\nStart from the address and phone; keep searches focused (practice website first, then its contact page).`;
+  const focus = siteRead
+    ? `Its own website${p.website ? "" : " (if any)"} was already read and shows no email address. Look only for an email the practice published elsewhere (its official social profiles or business listings).`
+    : "Start from the address and phone; keep searches focused (practice website first, then its contact page).";
+  return `Research this ${practiceNoun} and report what you find.\n${JSON.stringify(facts, null, 1)}\n${focus}`;
+}
+
+/**
+ * Website first: the clinic's site (on file, else from its Google Maps listing) is read by the
+ * server; a business email shown there is kept by the same rules as AI research. Saves whatever
+ * it learned (website, phone, contact form, socials, a closed listing) and returns true when an
+ * email was kept (research DONE). The prospect must already be claimed (RUNNING).
+ * "scanned" = a site was read or Google Maps was asked; "nothing" = there was nothing to check.
+ */
+async function siteFirst(id: string): Promise<"email" | "scanned" | "nothing"> {
+  const p = await prisma.clinicProspect.findUniqueOrThrow({ where: { id } });
+  const profile = await registryProfile(p.professionCodes[0] ?? "DC");
+  let website = siteUrl(p.website);
+  let phone: string | null = null, closed = false, placeName: string | null = null, via = website ? "on file" : "none", asked = false;
+  if (!website) {
+    const w = await findWebsite({ name: p.clinicName, noun: profile.practiceNoun, nameIsPerson: p.nameFromRegistry, address: p.address, city: p.city, state: p.state, zip: p.zip, phone: p.phone }, "research");
+    phone = w.phone ?? null;
+    closed = w.closed ?? false;
+    asked = !!w.website || w.reason === "no_match" || w.reason === "no_website";
+    if (w.website) { website = w.website; via = "Google Maps"; } else via = `Google Maps: ${(w.reason ?? "").replace("_", " ")}`;
+    placeName = w.name ?? null;
+  }
+  const read = website ? await readSite(website, (found) => !!pickClinicEmail(found, website)) : null;
+  if (!asked && !read?.reachable) return "nothing";
+  const pick = read ? pickClinicEmail(read.emails, read.home ?? website) : null;
+  const findings: ResearchFindings = {
+    found: !!(website || phone || closed), closed, confidence: 0.9, practiceName: placeName, website, email: pick?.email ?? null, emailSourceUrl: pick?.url ?? null, phone,
+    hasContactForm: read?.reachable ? read.contactForm : null, practiceType: null, multidisciplinary: null, franchiseName: null, locationsCount: null, providerCount: null, doctors: [],
+    socialUrls: read?.socials ?? [], sources: read?.pages.slice(0, 6) ?? [],
+  };
+  const current = {
+    clinicName: p.clinicName, nameFromIndividual: p.nameFromRegistry, website: p.website, email: p.email, phone: p.phone, hasContactForm: p.hasContactForm, practiceType: p.practiceType,
+    multidisciplinary: p.multidisciplinary, ownership: p.ownership, locationsCount: p.locationsCount, providerCount: p.providerCount, doctors: p.doctors, socialUrls: p.socialUrls,
+  };
+  const { patch, rejected, pause, sources } = applyResearch(current, findings);
+  const fields = { ...patch };
+  delete fields.nameFromIndividual;
+  const gotEmail = !!fields.email;
+  const data: Prisma.ClinicProspectUpdateInput = { ...fields, sourceUrls: [...new Set([...p.sourceUrls, ...sources])].slice(0, 12) };
+  if (fields.clinicName) data.nameFromRegistry = false;
+  if (pause) Object.assign(data, { outreachPaused: true, notes: [p.notes, "Google Maps lists the practice as permanently closed."].filter(Boolean).join("\n") });
+  if (gotEmail) Object.assign(data, { researchStatus: "DONE", researchAttempts: { increment: 1 }, researchedAt: clock.now(), researchConfidence: 0.9 });
+  await prisma.clinicProspect.update({ where: { id }, data });
+  await logAgent("clinicProspecting", gotEmail ? "site_email_found" : "site_checked", {
+    entityType: "PROSPECT", entityId: id, contextRef: `website: ${via}${read ? ` · pages read: ${read.pages.length}${read.reachable ? "" : ` (unreachable: ${read.error ?? "?"})`}` : ""}`,
+    output: { filled: Object.keys(fields), rejected, emailsSeen: read?.emails.length ?? 0, contactForm: read?.contactForm ?? null, closed: pause },
+  });
+  if (gotEmail) {
+    if (p.segmentBasis !== "MANUAL") await prisma.clinicProspect.update({ where: { id }, data: { segmentBasis: "NONE" } });
+    if (p.segmentBasis !== "MANUAL") await classifyProspect(id);
+    await refreshProspect(id);
+  }
+  return gotEmail ? "email" : "scanned";
 }
 
 /** Spend on research today (tokens + searches), from AiUsage rows with task "research". */
@@ -272,7 +329,7 @@ async function claim(id: string) {
   const r = await prisma.clinicProspect.updateMany({
     where: {
       id, clinicOrgId: null,
-      OR: [{ researchStatus: "PENDING" }, { researchStatus: "FAILED", researchAttempts: { lt: 3 } }, { researchStatus: "RUNNING", researchedAt: { lt: new Date(+now - STALE_RUNNING_MS) } }],
+      OR: [{ researchStatus: { in: ["PENDING", "SITE_SCANNED"] } }, { researchStatus: "FAILED", researchAttempts: { lt: 3 } }, { researchStatus: "RUNNING", researchedAt: { lt: new Date(+now - STALE_RUNNING_MS) } }],
     },
     data: { researchStatus: "RUNNING", researchedAt: now },
   });
@@ -293,24 +350,55 @@ export function researchEngine(s: Awaited<ReturnType<typeof getSettings>>) {
  * Research one prospect on the web. Returns the outcome; budget/AI problems
  * leave the prospect PENDING (nothing is lost), real failures count an attempt.
  */
-export async function researchProspect(id: string, opts: { force?: boolean } = {}): Promise<"done" | "not_found" | "failed" | "ai_unavailable" | "budget" | "skipped" | "paused" | "request_cap" | AiFailure> {
+export async function researchProspect(id: string, opts: { force?: boolean } = {}): Promise<"done" | "not_found" | "failed" | "ai_unavailable" | "budget" | "skipped" | "paused" | "request_cap" | "site_only" | AiFailure> {
   const s = await getSettings();
-  const { provider, model } = researchEngine(s);
-  if (provider.name === "none" || !provider.research) return "ai_unavailable";
-  const blocked = await researchBlocked();
-  if (blocked) return blocked as "paused" | "request_cap";
-  const dayStart = DateTime.fromJSDate(clock.now(), { zone: "America/New_York" }).startOf("day").toJSDate();
-  if ((await researchSpendCents(dayStart)) >= s["growth.researchDailyBudgetCents"]) return "budget";
   if (opts.force) await prisma.clinicProspect.updateMany({ where: { id, researchStatus: { not: "RUNNING" } }, data: { researchStatus: "PENDING", researchAttempts: 0 } });
+  const { provider, model } = researchEngine(s);
+  const aiBlocked = async (): Promise<"ai_unavailable" | "budget" | "paused" | "request_cap" | null> => {
+    if (provider.name === "none" || !provider.research) return "ai_unavailable";
+    const blocked = await researchBlocked();
+    if (blocked) return blocked as "paused" | "request_cap";
+    const dayStart = DateTime.fromJSDate(clock.now(), { zone: "America/New_York" }).startOf("day").toJSDate();
+    return (await researchSpendCents(dayStart)) >= s["growth.researchDailyBudgetCents"] ? "budget" : null;
+  };
+
+  // 1. Website first: free (Google Maps lookups have their own monthly cap). Done once per clinic.
+  const before = await prisma.clinicProspect.findUnique({ where: { id }, select: { researchStatus: true } });
+  let scanned = before?.researchStatus === "SITE_SCANNED";
+  if (s["growth.researchSiteFirst"] && !scanned) {
+    if (!(await claim(id))) return "skipped";
+    const site = await siteFirst(id);
+    if (site === "email") return "done";
+    if (site === "nothing") {
+      // Nothing could be checked (no website on file, no Google Maps lookup, site down): research as before.
+      await prisma.clinicProspect.update({ where: { id }, data: { researchStatus: before?.researchStatus === "FAILED" ? "FAILED" : "PENDING" } });
+    } else {
+      scanned = true;
+      if (!s["growth.researchAiFallback"]) {
+        const after = await prisma.clinicProspect.findUniqueOrThrow({ where: { id }, select: { website: true } });
+        await prisma.clinicProspect.update({ where: { id }, data: { researchStatus: after.website ? "DONE" : "NOT_FOUND", researchAttempts: { increment: 1 }, researchedAt: clock.now() } });
+        await refreshProspect(id);
+        return "not_found";
+      }
+      await prisma.clinicProspect.update({ where: { id }, data: { researchStatus: "SITE_SCANNED" } });
+      if (await aiBlocked()) return "site_only";
+    }
+  }
+
+  // 2. AI web research (after a website check: fewer searches, the site was already read).
+  const blocked = await aiBlocked();
+  if (blocked) return blocked;
   if (!(await claim(id))) return "skipped";
   const p = await prisma.clinicProspect.findUniqueOrThrow({ where: { id } });
+  const requeueStatus = scanned ? "SITE_SCANNED" : "PENDING";
+  const searches = scanned ? s["growth.researchFallbackSearches"] : s["growth.researchMaxSearches"];
 
   const professionCode = p.professionCodes[0] ?? "DC";
   const [profile, profession] = await Promise.all([registryProfile(professionCode), prisma.profession.findUnique({ where: { code: professionCode } })]);
   const person = profession?.displayName.toLowerCase() ?? "provider";
   const r = await withRateLimitRetry(() => provider.research!({
-    model, system: researchSystem(profile.practiceNoun), user: researchUser(p, profile.practiceNoun, person), schema: researchSchema(person), maxTokens: 4000,
-    maxSearches: s["growth.researchMaxSearches"], maxFetches: s["growth.researchMaxSearches"] + 2, effort: s["growth.aiEffort"],
+    model, system: researchSystem(profile.practiceNoun), user: researchUser(p, profile.practiceNoun, person, scanned), schema: researchSchema(person), maxTokens: 4000,
+    maxSearches: searches, maxFetches: scanned ? searches : searches + 2, effort: s["growth.aiEffort"],
   }));
   const pricing = s["growth.aiPricing"];
   const rate = pricing[r.model] ?? KNOWN_PRICING[r.model] ?? (provider.name === "gemini" ? (pricing.gemini ?? [0, 0]) : (Object.values(pricing)[0] ?? [0, 0]));
@@ -327,7 +415,7 @@ export async function researchProspect(id: string, opts: { force?: boolean } = {
     const unavailable = r.error === "ai_unavailable";
     // Out of credits, rate limits, a bad key or a provider outage aren't this clinic's fault: back in the queue, research pauses.
     const f = unavailable ? { requeue: true, kind: "other" as AiFailure } : await handleResearchFailure(r.error);
-    await prisma.clinicProspect.update({ where: { id }, data: f.requeue ? { researchStatus: "PENDING", researchedAt: null } : { researchStatus: "FAILED", researchAttempts: { increment: 1 }, researchedAt: now } });
+    await prisma.clinicProspect.update({ where: { id }, data: f.requeue ? { researchStatus: requeueStatus, researchedAt: null } : { researchStatus: "FAILED", researchAttempts: { increment: 1 }, researchedAt: now } });
     await logAgent("clinicProspecting", "research_failed", { entityType: "PROSPECT", entityId: id, model: r.model, error: r.error, contextRef: `searches:${r.searches} fetches:${r.fetches}${f.requeue && !unavailable ? ` · requeued (${f.kind})` : ""}` });
     return unavailable ? "ai_unavailable" : f.requeue ? f.kind : "failed";
   }
@@ -361,7 +449,7 @@ export async function researchProspect(id: string, opts: { force?: boolean } = {
 
 /** One run: up to growth.researchPerRun prospects, a few at a time, inside a wall-clock budget (cron ticks stay short). */
 export async function researchSweep(opts: { wallMs?: number; concurrency?: number } = {}) {
-  const out = { researched: 0, notFound: 0, failed: 0, stopped: null as string | null };
+  const out = { researched: 0, notFound: 0, failed: 0, siteOnly: 0, stopped: null as string | null };
   if (!(await agentOn("clinicProspecting"))) return { ...out, stopped: "agent off" };
   const s = await getSettings();
   const now = clock.now();
@@ -378,10 +466,19 @@ export async function researchSweep(opts: { wallMs?: number; concurrency?: numbe
     select: { id: true, state: true, marketKey: true },
     take: s["growth.researchPerRun"] * 5,
   });
-  // Paid research goes to demand-first markets (clinics are their primary side) before the rest.
+  // Research goes to demand-first markets (clinics are their primary side) before the rest.
   const ctx = await priorityContext();
   due.sort((a, b) => ctx.rank("DEMAND", a.state, a.marketKey) - ctx.rank("DEMAND", b.state, b.marketKey));
   due.splice(s["growth.researchPerRun"]);
+  // Website checked, no email there: AI research after the new ones (only while the AI fallback is on).
+  if (due.length < s["growth.researchPerRun"] && s["growth.researchAiFallback"]) {
+    const scanned = await prisma.clinicProspect.findMany({
+      where: { clinicOrgId: null, doNotContact: false, researchStatus: "SITE_SCANNED" }, orderBy: [{ createdAt: "asc" }],
+      select: { id: true, state: true, marketKey: true }, take: s["growth.researchPerRun"] * 5,
+    });
+    scanned.sort((a, b) => ctx.rank("DEMAND", a.state, a.marketKey) - ctx.rank("DEMAND", b.state, b.marketKey));
+    due.push(...scanned.slice(0, s["growth.researchPerRun"] - due.length));
+  }
   const deadline = Date.now() + (opts.wallMs ?? 120_000);
   const queue = due.map((d) => d.id);
   const worker = async () => {
@@ -391,10 +488,12 @@ export async function researchSweep(opts: { wallMs?: number; concurrency?: numbe
       else if (res === "not_found") out.notFound++;
       else if (res === "failed") out.failed++;
       else if (res === "transient") out.failed++;
+      else if (res === "site_only") out.siteOnly++; // website checked; AI fallback waits for budget
       else if (res !== "skipped") out.stopped = res; // budget, request cap, paused, out of credits, rate limited, bad key
     }
   };
-  if (await researchPause()) return { ...out, stopped: "paused" };
+  // A paused AI still lets the free website check run.
+  if (!s["growth.researchSiteFirst"] && (await researchPause())) return { ...out, stopped: "paused" };
   await Promise.all(Array.from({ length: Math.max(1, opts.concurrency ?? s["growth.researchConcurrency"]) }, worker));
   if (due.length) await saveState({ lastResearch: { at: now.toISOString(), out } });
   return out;
@@ -448,6 +547,12 @@ export async function prospectingStatus() {
     researchSpendTodayCents: await researchSpendCents(dayStart), researchBudgetCents: s["growth.researchDailyBudgetCents"],
     model: researchEngine(s).model, researchProvider: researchEngine(s).provider.name, aiReady: researchEngine(s).provider.name !== "none",
     pause: await researchPause(), requestsToday: await researchRequestsToday(), requestCap: s["growth.researchDailyRequestCap"],
+    site: {
+      on: s["growth.researchSiteFirst"], aiFallback: s["growth.researchAiFallback"], fallbackSearches: s["growth.researchFallbackSearches"],
+      placesOn: s["growth.researchFindWebsite"] && s["growth.researchPlacesMonthlyCap"] > 0, placesKey: !!siteFinder().findPlaces,
+      placesThisMonth: await placesLookupsThisMonth(), placesCap: s["growth.researchPlacesMonthlyCap"], placesPause: await placesPause(),
+      ...Object.fromEntries((await prisma.agentActivity.groupBy({ by: ["action"], where: { action: { in: ["site_email_found", "site_checked"] }, createdAt: { gte: new Date(+clock.now() - 7 * DAY) } }, _count: { _all: true } })).map((g) => [g.action === "site_email_found" ? "found7d" : "checked7d", g._count._all])) as { found7d?: number; checked7d?: number },
+    },
     recentErrors: (await prisma.aiUsage.groupBy({ by: ["error"], where: { task: "research", ok: false, createdAt: { gte: new Date(+clock.now() - DAY) } }, _count: { _all: true }, orderBy: { _count: { error: "desc" } }, take: 4 })).map((e) => ({ error: e.error ?? "?", n: e._count._all })),
   };
 }

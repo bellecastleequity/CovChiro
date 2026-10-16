@@ -16,3 +16,4 @@ export * from "./indexnow";
 export * from "./apollo";
 export * from "./identity";
 export * from "./exclusionlist";
+export * from "./sitefinder";

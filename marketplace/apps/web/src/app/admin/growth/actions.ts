@@ -207,7 +207,7 @@ export const researchProspectAction = formAction(async (fd) => {
     ai_unavailable: "Web research needs an AI key (OPENAI_API_KEY for the default research model).", budget: "Today's research budget is used up.", skipped: "Research is already running for this clinic.",
     paused: "Web research is paused (see the notice on Prospecting).", request_cap: "Today's research request cap is reached (Settings → Growth).",
     quota: "The AI account is out of credits; research is paused. Add a balance with the provider, then resume.", rate_limited: "The AI provider is rate-limiting; research paused for a few minutes and this clinic is back in the queue.",
-    auth: "The AI provider refused the API key; research is paused.", transient: "The AI provider had a temporary problem; this clinic is back in the queue.",
+    site_only: "Its website was checked and shows no email; AI research will try once the research budget or pause allows.", auth: "The AI provider refused the API key; research is paused.", transient: "The AI provider had a temporary problem; this clinic is back in the queue.",
   };
   return msg[res] ?? `Research: ${res}`;
 });

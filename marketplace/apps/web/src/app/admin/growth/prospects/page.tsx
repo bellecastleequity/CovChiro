@@ -52,13 +52,29 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
           {!st.aiReady ? <p className="text-sm text-amber-700">Web research is waiting for an AI key (OPENAI_API_KEY for the default gpt-6-luna; or set Settings → Growth → research provider). Discovery from the registry still runs.</p> : null}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
             <Stat label="From the registry" value={st.fromRegistry} hint={`${st.citiesSearched} of ${st.citiesTotal} cities searched`} />
-            <Stat label="Waiting for research" value={(r.PENDING ?? 0) + (r.RUNNING ?? 0)} />
+            <Stat label="Waiting for research" value={(r.PENDING ?? 0) + (r.RUNNING ?? 0)} hint={r.SITE_SCANNED ? `+ ${r.SITE_SCANNED} website checked, waiting for AI` : undefined} />
             <Stat label="Researched" value={r.DONE ?? 0} tone="green" />
             <Stat label="Not found online" value={r.NOT_FOUND ?? 0} />
             <Stat label="Research failed" value={r.FAILED ?? 0} tone={r.FAILED ? "amber" : "default"} />
             <Stat label="With business email" value={st.withEmail} tone="brand" hint={`${st.withWebsite} with a website`} />
             <Stat label="Research spend today" value={`$${(st.researchSpendTodayCents / 100).toFixed(2)}`} hint={`cap $${(st.researchBudgetCents / 100).toFixed(2)}`} />
           </div>
+          {st.site.on ? (
+            <p className="text-sm text-slate-600">
+              <span className="font-medium text-slate-800">Website first:</span> emails found on clinics&apos; own websites (last 7 days): {st.site.found7d ?? 0} of {(st.site.found7d ?? 0) + (st.site.checked7d ?? 0)} checked.{" "}
+              {st.site.placesOn
+                ? st.site.placesKey
+                  ? `Google Maps website lookups this month: ${st.site.placesThisMonth} of ${st.site.placesCap}.`
+                  : "Google Maps website lookups need GOOGLE_MAPS_API_KEY."
+                : "Google Maps website lookups are off."}{" "}
+              {st.site.aiFallback ? `When a site shows no email, AI research tries with up to ${st.site.fallbackSearches} searches.` : "AI research is off for clinics whose site shows no email."}
+            </p>
+          ) : null}
+          {st.site.placesPause ? (
+            <p className="text-sm text-amber-700">
+              Google Maps website lookups are paused until {dateTimeLabel(st.site.placesPause.until)}: {st.site.placesPause.error}. {st.site.placesPause.help}
+            </p>
+          ) : null}
           <p className="text-xs text-slate-500">
             Last discovery: {st.lastDiscovery ? dateTimeLabel(st.lastDiscovery.at) : "never"} · Last research: {st.lastResearch ? dateTimeLabel(st.lastResearch.at) : "never"} · Cities, per-run limits, budget and model are in Settings → Growth.
           </p>
@@ -70,7 +86,7 @@ export default async function Prospects({ searchParams }: { searchParams: Promis
         <Select name="intent" defaultValue={f.intent ?? ""} className="w-40"><option value="">All intent</option>{INTENTS.map((s) => <option key={s} value={s}>{humanize(s)}</option>)}</Select>
         <Select name="segment" defaultValue={f.segment ?? ""} className="w-40"><option value="">All segments</option>{SEGMENTS.map((s) => <option key={s} value={s}>{humanize(s)}</option>)}</Select>
         <Select name="focus" defaultValue={f.focus ?? ""} className="w-48"><option value="">All practice types</option><option value="pi">Personal injury</option></Select>
-        <Select name="research" defaultValue={f.research ?? ""} className="w-44"><option value="">Any research</option><option value="with_email">Has business email</option>{["PENDING", "DONE", "NOT_FOUND", "FAILED"].map((s) => <option key={s} value={s}>Research: {humanize(s)}</option>)}</Select>
+        <Select name="research" defaultValue={f.research ?? ""} className="w-44"><option value="">Any research</option><option value="with_email">Has business email</option>{["PENDING", "SITE_SCANNED", "DONE", "NOT_FOUND", "FAILED"].map((s) => <option key={s} value={s}>Research: {s === "SITE_SCANNED" ? "Website checked, no email" : humanize(s)}</option>)}</Select>
         <button className={buttonClass("outline")}>Filter</button>
       </form>
       <Card>
