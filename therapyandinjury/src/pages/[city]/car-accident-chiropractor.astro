@@ -11,7 +11,7 @@ import Ph from '../../components/Ph.astro';
 import BranchFeatures from '../../components/BranchFeatures.astro';
 import PhoneLink from '../../components/PhoneLink.astro';
 import { conditions } from '../../lib/conditions';
-import { type Branch, indexableBranches, branchName, branchPath, oneLineAddress, callFor, hoursSummary, abs, faqSchema, bookingHref } from '../../lib/site';
+import { sentence, type Branch, indexableBranches, branchName, branchPath, oneLineAddress, callFor, hoursSummary, abs, faqSchema, bookingHref } from '../../lib/site';
 
 // Only open (indexable) locations have this page; looked up per request from the live data.
 const found = indexableBranches.find((x) => x.slug === Astro.params.city);
@@ -27,7 +27,7 @@ const faqs = [
   },
   {
     q: `Does ${name} bill auto insurance?`,
-    a: `For auto accident injuries, our team can bill your PIP carrier directly. [CONFIRM BILLING PROCESS] Your insurer decides what is covered.`,
+    a: `For auto accident injuries, our team can bill your PIP carrier directly. ${sentence('billing')}Your insurer decides what is covered.`,
   },
   {
     q: `Where is ${name}?`,

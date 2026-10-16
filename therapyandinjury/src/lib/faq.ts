@@ -2,7 +2,7 @@
 // Answers containing a [PLACEHOLDER] still show on the page (highlighted) but are left out
 // of FAQPage structured data and llms.txt until filled in.
 
-import { branches, branchName, isOpen } from './site';
+import { branches, branchName, isOpen, copyText, sentence } from './site';
 
 const listJoin = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')}, and ${xs.at(-1)}` : xs.join(''));
 
@@ -21,7 +21,7 @@ export const getFaqs = (): Faq[] => {
   {
     group: 'accident',
     q: 'Will my visit be billed to my auto insurance?',
-    a: 'For auto accident injuries, our team can bill your PIP carrier directly. [CONFIRM BILLING PROCESS] Your insurer decides what is covered under your policy.',
+    a: `For auto accident injuries, our team can bill your PIP carrier directly. ${sentence('billing')}Your insurer decides what is covered under your policy.`,
   },
   {
     group: 'accident',
@@ -31,7 +31,7 @@ export const getFaqs = (): Faq[] => {
   {
     group: 'accident',
     q: 'What if it has been more than 14 days since my accident?',
-    a: 'You can still request a chiropractic visit, but PIP benefits may not apply. Call us and we can talk through your options. [CONFIRM — self-pay / health insurance options]',
+    a: `You can still request a chiropractic visit, but PIP benefits may not apply. Call us and we can talk through your options. ${copyText('after14Days')}`.trim(),
   },
   {
     group: 'accident',
@@ -56,7 +56,7 @@ export const getFaqs = (): Faq[] => {
   {
     group: 'visit',
     q: 'How long does the first visit take?',
-    a: 'First visits usually take about [FIRST VISIT LENGTH — e.g., 45–60 minutes].',
+    a: copyText('firstVisitLength') ? `First visits usually take about ${copyText('firstVisitLength')}.` : '',
   },
   {
     group: 'practice',
@@ -71,14 +71,14 @@ export const getFaqs = (): Faq[] => {
   {
     group: 'practice',
     q: 'Do you take health insurance?',
-    a: '[CONFIRM — health insurance plans accepted, or self-pay options]',
+    a: copyText('healthInsurance'),
   },
   {
     group: 'practice',
     q: 'Where are your locations?',
     a: `${listJoin(openNames)} ${openNames.length > 1 ? 'are' : 'is'} open now.${soonCities.length ? ` ${listJoin(soonCities)} ${soonCities.length > 1 ? 'are' : 'is'} coming soon.` : ''} See the Locations page for addresses and hours.`,
   },
-  ];
+  ].filter((f) => f.a.trim()); // a question whose answer was cleared in the editor is left out
 };
 
 export const faqGroups: { key: Faq['group']; title: string }[] = [

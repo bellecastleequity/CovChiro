@@ -40,5 +40,19 @@
     "title": "Don’t Walk It Off",
     "caption": "60 sec · captioned",
     "transcript": "You walked away from the crash. Said, “I’m good.” Even called home: “I’m fine. For real.” Next morning? Stiff neck. Tight back. Headaches.\n\nAfter a crash, symptoms can show up hours, even days later. And Florida PIP generally requires care within fourteen days. So don’t walk it off. Call (844) 84-TREAT.\n\nAt Therapy & Injury, your first visit is simple: a conversation about how you got hurt, a chiropractic exam, and a clear plan, in plain language. Bring your photo ID, insurance card, and crash report, if you have one. Chiropractic care, with or without a referral.\n\nDon’t wait out the clock. Get checked. Visit therapyandinjury.com, or call now: (844) 84-TREAT."
+  },
+  "copy": {
+    "formConsent": "I agree that {location} may call or text me about this request. Message and data rates may apply. [CONSENT WORDING — CONFIRM WITH COUNSEL]",
+    "billing": "[CONFIRM BILLING PROCESS]",
+    "after14Days": "[CONFIRM — self-pay / health insurance options]",
+    "healthInsurance": "[CONFIRM — health insurance plans accepted, or self-pay options]",
+    "firstVisitLength": "[FIRST VISIT LENGTH — e.g., 45–60 minutes]",
+    "onlineIntake": "[CONFIRM — online intake forms available before the visit?]",
+    "rehabEquipment": "[CONFIRM EQUIPMENT / APPROACH USED IN-CLINIC]",
+    "servicesApproved": false,
+    "privacyDraftNotice": "[DRAFT — HAVE YOUR ATTORNEY OR COMPLIANCE ADVISOR REVIEW BEFORE LAUNCH]",
+    "privacyProviders": "[LIST PROVIDERS — e.g., Namecheap hosting, form/email service]",
+    "privacyNoticeUrl": "[LINK TO NOTICE OF PRIVACY PRACTICES]",
+    "privacyRetention": "[CONFIRM RETENTION PERIOD]"
   }
 }

@@ -5,7 +5,7 @@ import Ph from '../components/Ph.astro';
 import FaqList from '../components/FaqList.astro';
 import TimerBadge from '../components/TimerBadge.astro';
 import { getFaqs } from '../lib/faq';
-import { abs, faqSchema } from '../lib/site';
+import { abs, faqSchema, copyText } from '../lib/site';
 
 const pageFaqs = getFaqs().filter((f) => f.group !== 'practice');
 const article = {
@@ -70,7 +70,7 @@ const article = {
         <ol class="timeline">
           <li>
             <h3>Check-in and paperwork</h3>
-            <p>Intake forms about you, the accident, and your symptoms. <Ph value="[CONFIRM — online intake forms available before the visit?]" /></p>
+            <p>Intake forms about you, the accident, and your symptoms. <Ph value={copyText('onlineIntake')} /></p>
           </li>
           <li>
             <h3>History and conversation</h3>
@@ -85,7 +85,7 @@ const article = {
             <p>We explain what we found in plain language and discuss a care plan. If you need a medical evaluation or imaging, we refer you to an independent medical provider.</p>
           </li>
         </ol>
-        <p class="muted small">First visits usually take about <Ph value="[FIRST VISIT LENGTH — e.g., 45–60 minutes]" />.</p>
+        {copyText('firstVisitLength') && <p class="muted small">First visits usually take about <Ph value={copyText('firstVisitLength')} />.</p>}
 
         <h2 id="faq">Common questions</h2>
         <FaqList items={pageFaqs} />

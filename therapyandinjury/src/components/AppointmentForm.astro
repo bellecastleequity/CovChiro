@@ -5,7 +5,7 @@
  * Never add fields for medical details, insurance/claim numbers, or SSNs.
  * Backend: site.formEndpoint, handled by the Node server (deploy/server/appointment.js); recipients are set in the server config.json.
  */
-import { site, type Branch, branchName, isOpen, hoursSummary, telHref } from '../lib/site';
+import { site, type Branch, branchName, isOpen, hoursSummary, telHref, copyText } from '../lib/site';
 import Ph from './Ph.astro';
 import PhoneLink from './PhoneLink.astro';
 interface Props { branch: Branch }
@@ -58,7 +58,7 @@ const tel = telHref(b.phone);
   <div class="af__field af__check">
     <input id={id('consent')} name="consent" type="checkbox" value="yes" required />
     <label for={id('consent')}>
-      I agree that {branchName(b)} may call or text me about this request. Message and data rates may apply. <Ph value="[CONSENT WORDING — CONFIRM WITH COUNSEL]" />
+      <Ph value={copyText('formConsent').replaceAll('{location}', branchName(b)) || `I agree that ${branchName(b)} may call or text me about this request.`} />
     </label>
   </div>
 

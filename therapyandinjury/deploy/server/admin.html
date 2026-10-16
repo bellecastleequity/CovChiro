@@ -87,8 +87,22 @@ const SITE_FIELDS = [
   ['Contact', [['mainPhone', 'Main phone (digits)', 'tel'], ['mainPhoneVanity', 'Main phone (vanity, e.g. (844) 84-TREAT)'], ['mainEmail', 'Main email', 'email']]],
   ['Social profiles', [['social.youtube', 'YouTube channel URL', 'url'], ['social.instagram', 'Instagram profile URL', 'url'], ['social.instagramHandle', 'Handle shown in the footer (e.g. @therapyandinjury)'], ['social.facebook', 'Facebook page URL', 'url']]],
   ['Patient links (Carepatron)', [['patientLinks.booking', 'Online booking URL', 'url'], ['patientLinks.intake', 'New patient paperwork URL', 'url'], ['patientLinks.portal', 'Patient portal URL', 'url']]],
-  ['Brand text', [['tagline', 'Tagline'], ['operatorLine', 'Operator line (footer)'], ['lastUpdatedLegal', 'Date the legal pages were reviewed']]],
+  ['Brand text', [['tagline', 'Tagline'], ['operatorLine', 'Operator line (footer)'], ['lastUpdatedLegal', 'Date the legal pages were reviewed (shown on Privacy & Accessibility)']]],
   ['Search engines & analytics', [['seo.gaMeasurementId', 'Google Analytics 4 ID (G-…)'], ['seo.googleSiteVerification', 'Google Search Console verification code'], ['seo.bingSiteVerification', 'Bing verification code']]],
+];
+// Page text: [key, label, where it shows, multiline?]
+const COPY_FIELDS = [
+  ['formConsent', 'Call/text consent (appointment form checkbox)', 'Every appointment form. {location} becomes the location name, e.g. "Ocala Therapy & Injury". Have counsel confirm the wording (TCPA).', true],
+  ['billing', 'How auto-insurance billing works', 'FAQ and each location\'s car-accident page, after "our team can bill your PIP carrier directly."', true],
+  ['after14Days', 'Options after the 14-day window', 'FAQ: "What if it has been more than 14 days since my accident?"', true],
+  ['healthInsurance', 'Health insurance / self-pay answer', 'FAQ: "Do you take health insurance?" (empty hides the question)', true],
+  ['firstVisitLength', 'First visit length (e.g. 45–60 minutes)', 'FAQ and the Auto Accident Injuries page: "First visits usually take about …"'],
+  ['onlineIntake', 'Online intake forms note', 'Auto Accident Injuries page, first-visit check-in step', true],
+  ['rehabEquipment', 'Rehab equipment / approach sentence', 'Services page, rehabilitation description', true],
+  ['privacyDraftNotice', 'Draft notice at the top of the Privacy Policy', 'Empty it once your attorney has reviewed the policy.'],
+  ['privacyProviders', 'Service providers named in the Privacy Policy', 'e.g. "Namecheap (web hosting) and our email provider"'],
+  ['privacyNoticeUrl', 'Link to your Notice of Privacy Practices (URL)', 'Privacy Policy: "…and our Notice of Privacy Practices"'],
+  ['privacyRetention', 'How long appointment requests are kept', 'Privacy Policy, "Security and retention"', true],
 ];
 const VIDEO_FIELDS = [['youtube', 'YouTube link (leave empty to use the video file below)', 'url'], ['title', 'Title'], ['caption', 'Line under the video (e.g. 60 sec · captioned)'], ['file', 'Video file path (self-hosted MP4)'], ['poster', 'Poster image path (still shown before play)']];
 
@@ -99,10 +113,10 @@ function field(path, label, type = 'text', value, extra = '') {
 }
 
 function renderSections() {
-  const tabs = [['site', 'Site'], ['video', 'Videos'], ...data.branches.map((b) => ['b:' + b.slug, b.city + (b.status === 'open' ? '' : ' (soon)')]), ['history', 'Saved versions']];
+  const tabs = [['site', 'Site'], ['copy', 'Page text'], ['video', 'Videos'], ...data.branches.map((b) => ['b:' + b.slug, b.city + (b.status === 'open' ? '' : ' (soon)')]), ['history', 'Saved versions']];
   $('#sections').innerHTML = tabs.map(([k, l]) => `<button type="button" data-sec="${esc(k)}" aria-pressed="${k === current}">${esc(l)}</button>`).join('');
   document.querySelectorAll('[data-sec]').forEach((b) => b.onclick = () => { collect(); current = b.dataset.sec; renderSections(); renderEditor(); });
-  const n = JSON.stringify({ site: data.site, branches: data.branches }).match(/"\[[^"\]]+\]/g)?.length || 0;
+  const n = JSON.stringify({ site: data.site, branches: data.branches }).match(/\[[A-Z][^"\]]*\]/g)?.length || 0;
   $('#phcount').textContent = n ? `${n} placeholder${n > 1 ? 's' : ''} left` : 'No placeholders left';
 }
 
@@ -111,6 +125,15 @@ function renderEditor() {
   if (current === 'site') {
     ed.innerHTML = SITE_FIELDS.map(([h, fs]) => `<section><h2>${esc(h)}</h2><div class="grid" style="margin-top:10px">${fs.map(([p, l, t]) => field('site.' + p, l, t, getPath(data.site, p))).join('')}</div></section>`).join('');
     $('#viewlink').href = '/';
+  } else if (current === 'copy') {
+    const c = data.site.copy || {};
+    ed.innerHTML = `<section><h2>Page text</h2><p>Wording that sits inside pages: the form's consent line, FAQ answers, and parts of the Privacy Policy. Yellow means it's still a placeholder; replace the bracketed text. An empty box leaves that sentence out.</p></section>
+      <section>${COPY_FIELDS.map(([k, l, where, multi]) => {
+        const v = c[k] ?? '', ph = /\[[^\]]+\]/.test(v);
+        return `<label style="margin-bottom:14px">${esc(l)}${ph ? ' <span class="phnote">placeholder: replace it</span>' : ''}<span class="hint" style="font-weight:400">${esc(where)}</span>${multi ? `<textarea data-path="site.copy.${k}" class="${ph ? 'ph' : ''}" style="min-height:76px">${esc(v)}</textarea>` : `<input type="text" data-path="site.copy.${k}" value="${esc(v)}" class="${ph ? 'ph' : ''}">`}</label>`;
+      }).join('')}
+      <label class="inline" style="margin-top:6px"><input type="checkbox" data-bool="site.copy.servicesApproved"${c.servicesApproved ? ' checked' : ''}> The service descriptions on the Services page are approved (hides the "confirm service description" notes)</label></section>`;
+    $('#viewlink').href = '/faq/';
   } else if (current === 'video') {
     const v = data.site.heroVideo || {};
     ed.innerHTML = `<section><h2>Hero video</h2><p>Shown beside the headline on the home page and every location page. Paste a YouTube link to show that video instead of the file. Each location can also have its own (see its tab).</p>

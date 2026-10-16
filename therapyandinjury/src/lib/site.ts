@@ -18,7 +18,17 @@ export type Video = {
   /** Plain-text transcript paragraphs (blank lines separate paragraphs). Shown in a "Transcript" disclosure. */
   transcript: string;
 };
+/**
+ * Editable page text (content editor → Page text). Values may contain "[PLACEHOLDER]" parts, which
+ * are highlighted on the site until replaced; an empty value drops that sentence.
+ */
+export type SiteCopy = {
+  formConsent: string; billing: string; after14Days: string; healthInsurance: string; firstVisitLength: string;
+  onlineIntake: string; rehabEquipment: string; servicesApproved: boolean; privacyDraftNotice: string;
+  privacyProviders: string; privacyNoticeUrl: string; privacyRetention: string;
+};
 export type SiteData = typeof defaultSite & {
+  copy: SiteCopy;
   social: { instagram: string; facebook: string; youtube: string; instagramHandle?: string };
   heroVideo: Video;
 };
@@ -213,6 +223,11 @@ export function applyContent(content: { site?: unknown; branches?: unknown } | n
   derive();
 }
 derive();
+
+/** A page-text value with no leading/trailing space ('' when it was cleared in the editor). */
+export const copyText = (k: Exclude<keyof SiteCopy, 'servicesApproved'>) => String(site.copy?.[k] ?? '').trim();
+/** A sentence for inside running text: the value plus a following space, or nothing when cleared. */
+export const sentence = (k: Exclude<keyof SiteCopy, 'servicesApproved'>) => (copyText(k) ? `${copyText(k)} ` : '');
 
 /** The hero video for a page: the location's own fields first, then the site-wide video. */
 export const heroVideoFor = (b?: Branch): Video => {

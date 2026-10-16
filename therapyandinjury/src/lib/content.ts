@@ -31,7 +31,7 @@ export const services = [
     short: 'Guided movement to rebuild mobility, strength, and stability, plus a simple plan for home.',
     body: [
       'Guided exercises help you move with more confidence as you recover. Programs are chosen for your injury and stage of recovery, and progress gradually.',
-      'You will also get a short home program to do between visits. [CONFIRM EQUIPMENT / APPROACH USED IN-CLINIC].',
+      'You will also get a short home program to do between visits. {rehabEquipment}',
     ],
     confirm: true,
   },
