@@ -14,10 +14,15 @@ const ROOT = __dirname;
 
 function fail(message, err) {
   // Keep the site answering (503) with a plain explanation instead of a Passenger error page.
+  // The reason is shown too (it names files and versions only, never settings), so setup problems are easy to fix.
   console.error(`[app] ${message}`, err ? err.stack || err.message : '');
+  const major = Number(process.versions.node.split('.')[0]);
+  const reason = major < 18
+    ? `Node.js ${process.version} is too old. In cPanel → Setup Node.js App, choose version 18 or newer, then restart.`
+    : `${message}${err ? ` (${String(err.message).split('\n')[0]})` : ''}`;
   const server = http.createServer((req, res) => {
     res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8', 'retry-after': '120', 'cache-control': 'no-store' });
-    res.end('Therapy & Injury: the site is being set up. Please call (844) 84-TREAT.\n');
+    res.end(`Therapy & Injury: the site is being set up. Please call (844) 84-TREAT.\n\nSetup status: ${reason}\n`);
   });
   server.listen(process.env.PORT || 3000);
 }
