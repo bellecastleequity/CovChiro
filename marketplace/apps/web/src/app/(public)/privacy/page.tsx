@@ -55,7 +55,7 @@ export default async function Privacy() {
       p: [
         `If you give us your mobile number and opt in, ${b.name} sends texts such as verification codes, shift offers you can answer by reply, booking confirmations and changes, reminders and arrival updates. Message frequency varies. Message and data rates may apply.`,
         "Reply STOP to any text to stop texts, START to turn them back on, and HELP for help. Opting in to texts is not required to use the service.",
-        "We do not sell, rent or share your mobile number or text-messaging opt-in with third parties or affiliates for their marketing purposes. Mobile numbers are shared only with the service providers that deliver our texts (such as Twilio), and only to send them.",
+        "We do not sell, rent or share your mobile number or text-messaging opt-in with third parties or affiliates for their marketing purposes. Mobile numbers are shared only with the service providers that deliver our texts (Amazon Web Services), and only to send them.",
       ],
     },
     {
@@ -63,7 +63,7 @@ export default async function Privacy() {
       p: [
         [
           "Between clinics and providers, as needed for a booking: clinics see a provider's professional profile, verified credentials (never license numbers or home address), ratings and reliability; booked providers see the clinic's address, arrival notes and on-site contact name. Phone numbers are never shared between them: a provider's number is never shown to a clinic or its staff, and a clinic's numbers are never shown to providers. Only our team uses them.",
-          "Service providers who work for us under contract: hosting and database (Namecheap, Neon), payments and tax forms (Stripe), email (SendGrid), texting (Twilio), maps and sign-in (Google), spam protection (Cloudflare), analytics on public pages (Google Analytics), and AI providers (such as OpenAI, Anthropic or Google) for the tasks described above.",
+          "Service providers who work for us under contract: hosting and database (Namecheap, Neon), payments and tax forms (Stripe), email (SendGrid), texting (Amazon Web Services), maps and sign-in (Google), spam protection (Cloudflare), analytics on public pages (Google Analytics), and AI providers (such as OpenAI, Anthropic or Google) for the tasks described above.",
           "When required by law, to protect people's safety, or to enforce our agreements, and to a buyer if the business is sold (under this policy).",
         ],
         "We do not sell personal information.",

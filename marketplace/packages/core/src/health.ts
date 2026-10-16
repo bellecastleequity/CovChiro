@@ -116,7 +116,7 @@ export function evaluateHealth(f: HealthFacts, r: HealthRules = DEFAULT_HEALTH_R
       severity: "warning",
       title: `Text messages are failing (${f.sms.failStreak} in a row)`,
       detail: `Last error: ${(f.sms.lastError ?? "unknown").slice(0, 400)}. Texts fall back to email where they can.`,
-      remedy: "Log in to Twilio: check the balance (add funds or turn on auto-recharge), that the sending number or messaging service is active, and that A2P 10DLC registration is approved.",
+      remedy: "Open your text service (AWS End User Messaging SMS, or Twilio): check the spending limit or balance, that the sending number is active, and that its registration (toll-free verification or 10DLC) is approved. Admin → Settings → Checks & connections → Text message check shows the exact error.",
     });
   }
 

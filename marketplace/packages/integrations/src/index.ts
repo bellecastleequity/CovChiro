@@ -1,6 +1,7 @@
 export * from "./geo";
 export * from "./payments";
 export * from "./messaging";
+export * from "./awssms";
 export * from "./esign";
 export * from "./storage";
 export * from "./npi";

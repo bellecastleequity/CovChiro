@@ -1,7 +1,7 @@
 import { brand, env, validateSetting, SETTINGS } from "@cm/config";
 import { closedListAfterToggle, DomainError, NATIONAL_CREDENTIAL, nextReverifyAt, US_STATES } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
-import { checkGoogleServerKey, mailProvider, onAllowList, smsProvider, TWILIO_ERROR_HELP } from "@cm/integrations";
+import { AWS_SMS_ERROR_HELP, awsSmsConfigured, checkGoogleServerKey, mailProvider, onAllowList, smsErrorHelp, smsProvider, TWILIO_ERROR_HELP } from "@cm/integrations";
 import { audit, getSettings, invalidateSettings, requireAdmin, type Actor } from "./context";
 import { notify, sendEmail } from "./notify";
 import { recomputeProviderStatus } from "./onboarding";
@@ -213,31 +213,72 @@ export async function updateStateConfig(
   return { updated, confirmedAssignmentsToReview: affected.map((a) => a.id) };
 }
 
+/** Delivery results AWS reports back through SNS (api/webhooks/aws-sms), newest first; the test text reads them. */
+export const SMS_EVENTS_KEY = "sms.recentEvents";
+export type SmsEventRow = { messageId: string; eventType: string; delivered: boolean; failed: boolean; description: string | null; at: string };
+
+export async function recordSmsEvent(ev: Omit<SmsEventRow, "at">) {
+  const row = await prisma.setting.findUnique({ where: { key: SMS_EVENTS_KEY } });
+  const list = ((row?.value as SmsEventRow[] | null) ?? []).filter((x) => !(x.messageId === ev.messageId && x.eventType === ev.eventType));
+  const next = [{ ...ev, at: new Date().toISOString() }, ...list].slice(0, 50);
+  await prisma.setting.upsert({ where: { key: SMS_EVENTS_KEY }, create: { key: SMS_EVENTS_KEY, value: next as never }, update: { value: next as never } });
+}
+
+async function awsDelivery(messageId: string): Promise<SmsEventRow | null> {
+  const row = await prisma.setting.findUnique({ where: { key: SMS_EVENTS_KEY } });
+  const mine = ((row?.value as SmsEventRow[] | null) ?? []).filter((x) => x.messageId === messageId);
+  return mine.find((x) => x.delivered || x.failed) ?? mine[0] ?? null;
+}
+
+const toUsMobile = (raw: string) => {
+  const digits = raw.replace(/\D/g, "");
+  return digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : null;
+};
+
 /**
- * Sends a test text and reports exactly what happened: missing settings,
- * Twilio's rejection, or — since Twilio accepts first and delivers later —
- * the delivery result a few seconds on (where registration problems show up).
+ * Sends a test text and reports exactly what happened: missing settings, the text service's rejection,
+ * or (since both services accept first and deliver later) the delivery result a few seconds on, which
+ * is where registration problems show up. AWS is used when its keys are set (owner, Oct 2026).
  */
 export async function sendTestText(actor: Actor, toRaw: string) {
   requireAdmin(actor);
   const e = env();
-  const missing: string[] = (["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"] as const).filter((k) => !e[k]);
-  if (!e.TWILIO_MESSAGING_SERVICE_SID && !e.TWILIO_FROM_NUMBER) missing.push("TWILIO_FROM_NUMBER (or TWILIO_MESSAGING_SERVICE_SID)");
-  if (missing.length) throw new DomainError("VALIDATION", `Texting is off — the site is in email-only mode (text alerts go by email). To turn texting on, set ${missing.join(", ")} in cPanel → Setup Node.js App → Environment variables, then restart the app.`);
-  const shape: string[] = [];
-  if (!e.TWILIO_ACCOUNT_SID!.startsWith("AC")) shape.push("TWILIO_ACCOUNT_SID should start with AC");
-  if (e.TWILIO_MESSAGING_SERVICE_SID && !e.TWILIO_MESSAGING_SERVICE_SID.startsWith("MG")) shape.push("TWILIO_MESSAGING_SERVICE_SID should start with MG (a Messaging Service SID, not a phone number) — or remove it and use TWILIO_FROM_NUMBER");
-  if (!e.TWILIO_MESSAGING_SERVICE_SID && !/^\+1\d{10}$/.test(e.TWILIO_FROM_NUMBER!.replace(/[\s()-]/g, ""))) shape.push("TWILIO_FROM_NUMBER should be your Twilio number like +14075550123");
-  if (shape.length) throw new DomainError("VALIDATION", `Check your Twilio settings: ${shape.join("; ")}.`);
-  const digits = toRaw.replace(/\D/g, "");
-  const to = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : null;
+  const useAws = e.SMS_PROVIDER !== "twilio" && (awsSmsConfigured() || !e.TWILIO_ACCOUNT_SID);
+  if (useAws) {
+    const missing = (["AWS_SMS_ACCESS_KEY_ID", "AWS_SMS_SECRET_ACCESS_KEY", "AWS_SMS_ORIGINATION"] as const).filter((k) => !e[k]);
+    if (missing.length) throw new DomainError("VALIDATION", `Texting is off — the site is in email-only mode (text alerts go by email). To turn texting on with AWS, set ${missing.join(", ")} (and AWS_SMS_REGION if your number isn't in us-east-1) in cPanel → Setup Node.js App → Environment variables, then restart the app.`);
+    if (!/^AKIA|^ASIA/.test(e.AWS_SMS_ACCESS_KEY_ID!)) throw new DomainError("VALIDATION", "AWS_SMS_ACCESS_KEY_ID should start with AKIA (an IAM user's access key ID).");
+  } else {
+    const missing: string[] = (["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"] as const).filter((k) => !e[k]);
+    if (!e.TWILIO_MESSAGING_SERVICE_SID && !e.TWILIO_FROM_NUMBER) missing.push("TWILIO_FROM_NUMBER (or TWILIO_MESSAGING_SERVICE_SID)");
+    if (missing.length) throw new DomainError("VALIDATION", `Texting is off — set ${missing.join(", ")} in cPanel → Setup Node.js App → Environment variables, then restart the app.`);
+    const shape: string[] = [];
+    if (!e.TWILIO_ACCOUNT_SID!.startsWith("AC")) shape.push("TWILIO_ACCOUNT_SID should start with AC");
+    if (e.TWILIO_MESSAGING_SERVICE_SID && !e.TWILIO_MESSAGING_SERVICE_SID.startsWith("MG")) shape.push("TWILIO_MESSAGING_SERVICE_SID should start with MG (a Messaging Service SID, not a phone number) — or remove it and use TWILIO_FROM_NUMBER");
+    if (!e.TWILIO_MESSAGING_SERVICE_SID && !/^\+1\d{10}$/.test(e.TWILIO_FROM_NUMBER!.replace(/[\s()-]/g, ""))) shape.push("TWILIO_FROM_NUMBER should be your Twilio number like +14075550123");
+    if (shape.length) throw new DomainError("VALIDATION", `Check your Twilio settings: ${shape.join("; ")}.`);
+  }
+  const to = toUsMobile(toRaw);
   if (!to) throw new DomainError("VALIDATION", "Enter a 10-digit US mobile number.");
   const sms = smsProvider();
+  const service = sms.name === "aws" || (sms.name === "sandbox" && useAws) ? "AWS" : "Twilio";
   if (!(await sms.send(to, `${brand().name} test text — texting works.`))) {
-    const help = sms.lastErrorCode ? TWILIO_ERROR_HELP[sms.lastErrorCode] : null;
-    throw new DomainError("VALIDATION", `${sms.lastError ?? "Twilio rejected the text."}${help ? ` — ${help}` : ""}`);
+    const help = smsErrorHelp(sms);
+    throw new DomainError("VALIDATION", `${sms.lastError ?? `${service} rejected the text.`}${help ? ` — ${help}` : ""}`);
   }
-  // Accepted; now watch delivery for up to ~12 seconds.
+  if (service === "AWS") {
+    if (!e.AWS_SMS_CONFIGURATION_SET || !sms.lastId) return `AWS accepted the text (message ${sms.lastId ?? "?"}). Delivery results aren't connected yet (AWS_SMS_CONFIGURATION_SET with an SNS event destination), so check your phone; if it doesn't arrive, the number's registration is usually still pending.`;
+    let ev: SmsEventRow | null = null;
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      ev = await awsDelivery(sms.lastId);
+      if (ev && (ev.delivered || ev.failed)) break;
+    }
+    if (ev?.delivered) return `Delivered to ${to}. Texting works.`;
+    if (ev?.failed) throw new DomainError("VALIDATION", `AWS accepted the text but it wasn't delivered (${ev.eventType}). ${AWS_SMS_ERROR_HELP[ev.eventType] ?? ev.description ?? ""}`.trim());
+    return `AWS accepted the text${ev ? ` (status: ${ev.eventType})` : ""}. No delivery result yet; if it doesn't arrive within a minute, check AWS End User Messaging SMS → the configuration set's event destination, or run this check again.`;
+  }
+  // Twilio: watch delivery for up to ~12 seconds.
   let last: Awaited<ReturnType<NonNullable<typeof sms.status>>> = null;
   for (let i = 0; i < 6 && sms.lastId && sms.status; i++) {
     await new Promise((r) => setTimeout(r, 2000));

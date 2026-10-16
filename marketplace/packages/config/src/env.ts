@@ -48,6 +48,18 @@ const EnvSchema = z.object({
   TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
   /** Alternative to a Messaging Service: send from this Twilio number (+1…), e.g. a trial account's number. */
   TWILIO_FROM_NUMBER: z.string().optional(),
+  /** Texts through AWS End User Messaging SMS (owner, Oct 2026: replaces Twilio). All four of KEY_ID, SECRET, ORIGINATION and a region turn it on. */
+  AWS_SMS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SMS_SECRET_ACCESS_KEY: z.string().optional(),
+  AWS_SMS_REGION: z.string().default("us-east-1"),
+  /** The number texts come from (+18885550123), or its phone number ID / ARN, or a pool ID. */
+  AWS_SMS_ORIGINATION: z.string().optional(),
+  /** Configuration set with an SNS event destination, so delivery results come back. Optional. */
+  AWS_SMS_CONFIGURATION_SET: z.string().optional(),
+  /** SNS topic ARN(s), comma-separated, allowed to post replies and delivery results to /api/webhooks/aws-sms. */
+  AWS_SMS_SNS_TOPIC_ARNS: z.string().optional(),
+  /** "aws" or "twilio" when both are configured; otherwise whichever has keys (AWS first). */
+  SMS_PROVIDER: z.enum(["aws", "twilio"]).optional(),
   ESIGN_API_KEY: z.string().optional(),
   /** "true" = allow the built-in click-to-sign test page in production while
    *  Dropbox Sign isn't connected yet (build & test phase). Ignored once

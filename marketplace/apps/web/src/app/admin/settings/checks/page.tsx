@@ -86,7 +86,7 @@ export default async function SettingsChecks({ searchParams }: { searchParams: P
           );
         })()}
         <Card>
-          <CardHeader title="Text message check" description="Sends a test text through Twilio, waits for the delivery result, and explains any Twilio error in plain words (missing keys, trial account, A2P 10DLC / toll-free registration, wrong sender…)." />
+          <CardHeader title="Text message check" description="Sends a test text through the text service in use (AWS End User Messaging SMS, or Twilio if that's the one configured), waits for the delivery result, and explains any error in plain words (missing keys, sandbox account, spending limit, number not registered yet…)." />
           <ActionForm action={testTextAction} className="flex flex-wrap items-center gap-2 px-5 pb-5">
             <Input name="to" type="tel" required defaultValue={user.phone ?? ""} placeholder="Your mobile number" className="w-72" />
             <SubmitButton size="sm" variant="outline" pendingText="Sending… (up to 15 seconds)">Send test text</SubmitButton>

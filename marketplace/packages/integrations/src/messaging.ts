@@ -1,6 +1,7 @@
 import { mkdir, appendFile } from "node:fs/promises";
 import path from "node:path";
 import { brand, env, isSandbox } from "@cm/config";
+import { AWS_SMS_ERROR_HELP, AwsTexter } from "./awssms";
 
 export interface EmailMessage {
   to: string;
@@ -28,7 +29,9 @@ export interface Texter {
   /** Why the last send failed, in the SMS service's own words (with its error code). */
   lastError?: string | null;
   lastErrorCode?: number | null;
-  /** Twilio message SID of the last accepted send. */
+  /** AWS error type or reason of the last failure (see AWS_SMS_ERROR_HELP). */
+  lastErrorKey?: string | null;
+  /** Message id of the last accepted send (Twilio SID or AWS MessageId). */
   lastId?: string | null;
   /** Delivery status of a sent message (Twilio accepts first, then delivers or fails). */
   status?(id: string): Promise<{ status: string; errorCode: number | null; errorMessage: string | null } | null>;
@@ -208,6 +211,9 @@ class SandboxTexter implements Texter {
   get lastErrorCode() {
     return this.real?.lastErrorCode ?? null;
   }
+  get lastErrorKey() {
+    return this.real?.lastErrorKey ?? null;
+  }
   get lastId() {
     return this.real?.lastId ?? null;
   }
@@ -241,14 +247,14 @@ export const TWILIO_ERROR_HELP: Record<number, string> = {
 };
 
 /**
- * Is real texting set up? When it isn't (no Twilio keys), the site runs in
+ * Is real texting set up? When it isn't (no AWS or Twilio keys), the site runs in
  * email-only mode: text alerts go by email, phone numbers save without a code,
  * and nothing requires a verified mobile.
  */
 export function textingEnabled() {
   // Tests run with the fake texter standing in for Twilio, so text paths stay covered.
   // The test site "texts" into its outbox (codes included), so text paths can be walked through there too.
-  return smsProvider().name === "twilio" || isSandbox() || env().NODE_ENV === "test";
+  return ["twilio", "aws"].includes(smsProvider().name) || isSandbox() || env().NODE_ENV === "test";
 }
 
 let mailer: Mailer | null = null;
@@ -260,12 +266,34 @@ export function mailProvider(): Mailer {
   }
   return mailer;
 }
+/** AWS texting has everything it needs to send. */
+export function awsSmsConfigured() {
+  const e = env();
+  return !!(e.AWS_SMS_ACCESS_KEY_ID && e.AWS_SMS_SECRET_ACCESS_KEY && e.AWS_SMS_ORIGINATION && e.AWS_SMS_REGION);
+}
+
+/** Plain-words help for the last failed text, whichever service sent it. */
+export function smsErrorHelp(t: Pick<Texter, "lastErrorCode" | "lastErrorKey">): string | null {
+  if (t.lastErrorKey && AWS_SMS_ERROR_HELP[t.lastErrorKey]) return AWS_SMS_ERROR_HELP[t.lastErrorKey];
+  if (t.lastErrorCode && TWILIO_ERROR_HELP[t.lastErrorCode]) return TWILIO_ERROR_HELP[t.lastErrorCode];
+  return null;
+}
+
+/** Tests only: drop the cached texter so a changed environment is picked up. */
+export function resetSmsProviderForTests() {
+  texter = null;
+}
+
 export function smsProvider(): Texter {
   if (!texter) {
     const e = env();
-    const real = e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && (e.TWILIO_MESSAGING_SERVICE_SID || e.TWILIO_FROM_NUMBER)
+    const twilio = e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && (e.TWILIO_MESSAGING_SERVICE_SID || e.TWILIO_FROM_NUMBER)
       ? new TwilioTexter(e.TWILIO_ACCOUNT_SID, e.TWILIO_AUTH_TOKEN, { service: e.TWILIO_MESSAGING_SERVICE_SID, from: e.TWILIO_FROM_NUMBER })
       : null;
+    const aws = awsSmsConfigured()
+      ? new AwsTexter({ accessKeyId: e.AWS_SMS_ACCESS_KEY_ID!, secretAccessKey: e.AWS_SMS_SECRET_ACCESS_KEY!, region: e.AWS_SMS_REGION, origination: e.AWS_SMS_ORIGINATION!, configurationSet: e.AWS_SMS_CONFIGURATION_SET })
+      : null;
+    const real = e.SMS_PROVIDER === "twilio" ? (twilio ?? aws) : (aws ?? twilio);
     texter = isSandbox() ? new SandboxTexter(real) : (real ?? new DevTexter());
   }
   return texter;
