@@ -42,7 +42,8 @@ const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'x-frame-options': 'SAMEORIGIN',
-  'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+  // Location is allowed for this site only ("Use my location"); embeds like the map can't ask for it.
+  'permissions-policy': 'camera=(), microphone=(), geolocation=(self)',
 };
 
 function readJson(file, fallback) {

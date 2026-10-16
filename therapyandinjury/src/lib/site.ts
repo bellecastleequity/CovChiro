@@ -71,6 +71,8 @@ export type Branch = {
   domains: string[];
   nearbyAreas: string[];
   geo: { lat: number | null; lng: number | null };
+  /** City-center fallback for "nearest location" until the exact geo point is set. */
+  cityCenter?: { lat: number; lng: number };
 };
 
 export const branches = structuredClone(defaultBranches) as Branch[];
@@ -228,6 +230,17 @@ derive();
 export const copyText = (k: Exclude<keyof SiteCopy, 'servicesApproved'>) => String(site.copy?.[k] ?? '').trim();
 /** A sentence for inside running text: the value plus a following space, or nothing when cleared. */
 export const sentence = (k: Exclude<keyof SiteCopy, 'servicesApproved'>) => (copyText(k) ? `${copyText(k)} ` : '');
+
+/** Where a location is, for "nearest location": its exact map point if set, else its city center. */
+export const branchPoint = (b: Branch): { lat: number; lng: number } | null =>
+  b.geo?.lat != null && b.geo?.lng != null ? { lat: b.geo.lat, lng: b.geo.lng } : b.cityCenter ?? null;
+
+/** Compact location list for the browser-side "nearest location" feature. */
+export const nearestData = () =>
+  branches.flatMap((b) => {
+    const p = branchPoint(b);
+    return p ? [{ s: b.slug, n: branchName(b), c: b.city, u: branchPath(b), o: isOpen(b), lat: p.lat, lng: p.lng }] : [];
+  });
 
 /** The hero video for a page: the location's own fields first, then the site-wide video. */
 export const heroVideoFor = (b?: Branch): Video => {

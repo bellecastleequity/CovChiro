@@ -62,6 +62,10 @@
     "geo": {
       "lat": null,
       "lng": null
+    },
+    "cityCenter": {
+      "lat": 29.1872,
+      "lng": -82.1401
     }
   },
   {
@@ -105,6 +109,10 @@
     "geo": {
       "lat": null,
       "lng": null
+    },
+    "cityCenter": {
+      "lat": 28.5384,
+      "lng": -81.3789
     }
   },
   {
@@ -147,6 +155,10 @@
     "geo": {
       "lat": null,
       "lng": null
+    },
+    "cityCenter": {
+      "lat": 28.7589,
+      "lng": -81.3178
     }
   },
   {
@@ -189,6 +201,10 @@
     "geo": {
       "lat": null,
       "lng": null
+    },
+    "cityCenter": {
+      "lat": 28.9005,
+      "lng": -81.2637
     }
   },
   {
@@ -231,6 +247,10 @@
     "geo": {
       "lat": null,
       "lng": null
+    },
+    "cityCenter": {
+      "lat": 29.0283,
+      "lng": -81.3031
     }
   },
   {
@@ -274,6 +294,10 @@
     "geo": {
       "lat": null,
       "lng": null
+    },
+    "cityCenter": {
+      "lat": 28.8528,
+      "lng": -81.6854
     }
   }
 ]

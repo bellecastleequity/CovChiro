@@ -50,7 +50,7 @@ Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains
 Header always set X-Content-Type-Options "nosniff"
 Header always set Referrer-Policy "strict-origin-when-cross-origin"
 Header always set X-Frame-Options "SAMEORIGIN"
-Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(self)"
 <FilesMatch "\\.(svg|png|jpg|webp|ico)$">
 Header set Cache-Control "public, max-age=86400"
 </FilesMatch>
