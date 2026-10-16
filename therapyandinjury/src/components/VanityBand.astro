@@ -1,0 +1,238 @@
+---
+/**
+ * "Call (844) 84-TREAT" band: the vanity number builds on screen in the jingle's cadence, the same
+ * reveal as the commercials' end card ("eight-four-four … eight-four … TREAT", 92 bpm). Shown under
+ * the hero on the home page and every location page.
+ *
+ * - Plays once when the band scrolls into view (visual only; browsers never autoplay sound).
+ * - "Hear it" plays the audio logo (public/media/844-84-treat-jingle.mp3) and replays the reveal in
+ *   sync with the voice. Step times match the hook words in that file (marketing/jingles cues).
+ * - The number is a tap-to-call link. With "reduce motion" on, it simply shows, complete.
+ * - Built from the main vanity number in the content editor (Site → Main phone vanity): each digit is
+ *   one beat and the letters are the last, held beat ("TREAT").
+ */
+import { site, mainLine, isPlaceholder } from '../lib/site';
+
+const vanity = isPlaceholder(site.mainPhoneVanity) ? '' : site.mainPhoneVanity.trim();
+const tel = mainLine.tel;
+
+// Split "(844) 84-TREAT" into beats: one per digit, the letter word last; punctuation rides along
+// with its neighbor ("(" with the first digit, ")" with the third, "-" with TREAT).
+type Beat = { text: string; word: boolean };
+const beats: Beat[] = [];
+let pending = '';
+for (const tok of vanity.match(/[A-Za-z]+|\d|[^A-Za-z\d]+/g) ?? []) {
+  if (/^\d$/.test(tok) || /^[A-Za-z]+$/.test(tok)) {
+    beats.push({ text: pending + tok, word: /[A-Za-z]/.test(tok) });
+    pending = '';
+  } else if (/^[\s(-]+$/.test(tok) || !beats.length) {
+    pending += tok;
+  } else {
+    // closing punctuation (")" etc.) sticks to the previous beat; anything after it starts the next
+    const close = tok.match(/^[)\].,]+/)?.[0] ?? '';
+    if (close) beats[beats.length - 1].text += close;
+    pending += tok.slice(close.length);
+  }
+}
+// The hook's word times (seconds after the first word), from the audio logo. Extra beats follow at
+// half-beat steps so a different number still reads in rhythm.
+const HOOK = [0, 0.326, 0.652, 1.304, 1.63, 1.957];
+const HALF = 0.326;
+const at = (i: number) => (i < HOOK.length ? HOOK[i] : HOOK[HOOK.length - 1] + (i - HOOK.length + 1) * HALF);
+const AUDIO_LEAD = 0.2; // the first hook word starts 0.2 s into the audio file
+---
+{vanity && (
+  <section class="vb" aria-label={`Call ${vanity}`} data-vb data-lead={AUDIO_LEAD}>
+    <div class="vb__rings" aria-hidden="true"><span></span><span></span></div>
+    <div class="wrap vb__in">
+      <span class="vb__eyebrow">Call or text</span>
+      <a class="vb__num" href={tel || undefined} aria-label={`Call ${vanity}${mainLine.digits ? ` (${mainLine.digits})` : ''}`}>
+        {beats.map((b, i) => (
+          <span class:list={['vb__beat', { 'vb__beat--word': b.word }]} style={`--t:${at(i).toFixed(3)}s`} aria-hidden="true">{b.text}</span>
+        ))}
+      </a>
+      <div class="vb__row">
+        {mainLine.digits && <span class="vb__digits">{mainLine.digits}</span>}
+        <button type="button" class="vb__play" data-vb-play aria-label={`Hear the ${vanity} jingle`}>
+          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M6 4.5v11l9-5.5z" fill="currentColor" /></svg>
+          <span>Hear it</span>
+        </button>
+      </div>
+    </div>
+    <audio preload="none" src="/media/844-84-treat-jingle.mp3" data-vb-audio></audio>
+  </section>
+)}
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-vb]').forEach((band) => {
+    const audio = band.querySelector<HTMLAudioElement>('[data-vb-audio]')!;
+    const play = band.querySelector<HTMLButtonElement>('[data-vb-play]')!;
+    const lead = Number(band.dataset.lead || 0);
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Restart the CSS reveal: drop the class, force a reflow, add it back (optionally after a delay).
+    const reveal = (delay = 0) => {
+      band.classList.remove('is-on');
+      band.style.setProperty('--lead', `${delay}s`);
+      void band.offsetWidth;
+      band.classList.add('is-on');
+    };
+    if (reduce) band.classList.add('is-static');
+    else if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) { reveal(); io.disconnect(); }
+      }, { threshold: 0.5 });
+      io.observe(band);
+    } else band.classList.add('is-static');
+
+    play.addEventListener('click', async () => {
+      audio.currentTime = 0;
+      try {
+        await audio.play();
+        if (!reduce) reveal(lead); // the voice says "eight" 0.2 s in
+        play.classList.add('is-playing');
+      } catch { /* blocked or offline: the number is still there */ }
+    });
+    audio.addEventListener('ended', () => play.classList.remove('is-playing'));
+  });
+</script>
+
+<style>
+  .vb {
+    position: relative;
+    overflow: hidden;
+    background: var(--navy);
+    color: var(--white);
+    padding-block: clamp(28px, 5vw, 48px);
+    text-align: center;
+    --lead: 0s;
+  }
+  .vb__in {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .vb__eyebrow {
+    font-weight: 800;
+    font-size: clamp(0.8rem, 2.2vw, 1rem);
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--teal);
+  }
+  .vb__num {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: 0;
+    font-weight: 900;
+    font-size: clamp(2.4rem, 11.8vw, 6.2rem); /* fills a phone width without wrapping */
+    line-height: 1;
+    letter-spacing: -0.045em;
+    color: var(--white);
+    text-decoration: none;
+    white-space: nowrap;
+    border-radius: 12px;
+    padding: 2px 8px;
+  }
+  .vb__num:hover,
+  .vb__num:focus-visible {
+    background: rgb(255 255 255 / 6%);
+  }
+  .vb__num:focus-visible {
+    outline: 3px solid var(--teal);
+    outline-offset: 4px;
+  }
+  .vb__beat {
+    display: inline-block;
+    white-space: pre;
+    opacity: 0;
+    transform: translateY(0.35em) scale(0.8);
+  }
+  .vb__beat--word {
+    color: var(--teal);
+  }
+  /* The reveal: each beat pops on its note (--t), after an optional lead-in for the audio (--lead). */
+  .vb.is-on .vb__beat {
+    animation: vb-pop 0.32s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+    animation-delay: calc(var(--lead) + var(--t));
+  }
+  .vb.is-on .vb__beat--word {
+    animation: vb-land 0.5s cubic-bezier(0.2, 1.5, 0.35, 1) both;
+    animation-delay: calc(var(--lead) + var(--t));
+  }
+  .vb.is-static .vb__beat {
+    opacity: 1;
+    transform: none;
+  }
+  @keyframes vb-pop {
+    from { opacity: 0; transform: translateY(0.35em) scale(0.8); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes vb-land {
+    0% { opacity: 0; transform: translateY(0.3em) scale(0.6); }
+    70% { opacity: 1; transform: scale(1.08); }
+    100% { opacity: 1; transform: none; }
+  }
+  /* Rings pulse on the beat while the number builds, and swell when TREAT lands (2.0 s). */
+  .vb__rings span {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    border-radius: 50%;
+    border: 60px solid rgb(255 255 255 / 4%);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .vb__rings span:first-child { width: 900px; height: 900px; }
+  .vb__rings span:last-child { width: 520px; height: 520px; border-width: 40px; }
+  .vb.is-on .vb__rings span {
+    animation: vb-pulse 0.652s ease-out 4 both, vb-swell 0.9s ease-out both;
+    animation-delay: var(--lead), calc(var(--lead) + 1.957s);
+  }
+  @keyframes vb-pulse {
+    0% { transform: translate(-50%, -50%) scale(1.04); }
+    100% { transform: translate(-50%, -50%) scale(1); }
+  }
+  @keyframes vb-swell {
+    0% { transform: translate(-50%, -50%) scale(1.09); border-color: rgb(25 204 190 / 10%); }
+    100% { transform: translate(-50%, -50%) scale(1); }
+  }
+  .vb__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px 18px;
+  }
+  .vb__digits {
+    color: #c9d3de;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .vb__play {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--navy);
+    background: var(--teal);
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 16px;
+    cursor: pointer;
+  }
+  .vb__play.is-playing {
+    background: var(--white);
+  }
+  .vb__play:focus-visible {
+    outline: 3px solid var(--white);
+    outline-offset: 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vb .vb__beat { opacity: 1; transform: none; animation: none !important; }
+    .vb__rings span { animation: none !important; }
+  }
+</style>
