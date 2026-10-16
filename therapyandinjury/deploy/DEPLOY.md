@@ -11,6 +11,8 @@ The site runs as a Node.js app through cPanel's **Setup Node.js App** (Phusion P
 | `config.example.json` | Settings template. Copy it to `config.json`. |
 | `incoming/therapyandinjury-<version>.tar.gz` | The website release. It's installed automatically on the first start. |
 
+Created as you go: `releases/` (installed versions), `current.json` (the active one), `content.json` (your content edits) and `content-backups/`.
+
 ## First install (about 10 minutes)
 1. **Create the app.** In cPanel, open **Setup Node.js App** and click **Create Application**.
    - **Node.js version:** the newest offered (18 or later; 20 or 22 is ideal)
@@ -20,10 +22,7 @@ The site runs as a Node.js app through cPanel's **Setup Node.js App** (Phusion P
    - **Application startup file:** `app.js`
    - Click **Create**. You don't need to run "NPM Install", because there are no packages to install.
 2. **Upload the files.** In **File Manager**, open the `therapyandinjury` folder (the application root), upload this zip, choose **Extract**, then delete the zip. If cPanel created a sample `app.js` when you made the app, let the extract overwrite it.
-3. **Settings.** In the same folder, copy `config.example.json` to `config.json`, then edit it:
-   - `mail.recipients`: the inbox that receives each location's appointment requests, e.g. `"ocala": "ocala@therapyandinjury.com"`. A location without an inbox shows "please call" on its form.
-   - `mail.from`: a sending address on therapyandinjury.com. Create it in cPanel → Email Accounts, or use a forwarder.
-   - Leave `adminPassword` empty. Set the password in step 4 instead.
+3. **Settings (optional).** In the same folder, you can copy `config.example.json` to `config.json`, to change the sending address (`mail.from`, default `no-reply@therapyandinjury.com`) or to force a location's form inbox (`mail.recipients`). Normally, each location's **email in the content editor** receives its requests, and a location without one shows "please call". Leave `adminPassword` empty and set the password in step 4.
 4. **Admin password.** Back in **Setup Node.js App**, edit the app. Under **Environment variables**, add `ADMIN_PASSWORD` with a strong password of **at least 12 characters**. Save.
 5. **Start.** Click **Restart**. The first start installs the package from `incoming/` automatically. Alternatively, run **Run JS script → install-release** and then restart.
 6. **HTTPS.** In cPanel → **Domains**, turn on **Force HTTPS Redirect** for therapyandinjury.com, and check that **SSL/TLS Status** shows a valid AutoSSL certificate.
@@ -34,6 +33,16 @@ Add each one in cPanel → **Domains** as a domain that **shares the document ro
 
 ### Email deliverability
 In cPanel → **Email Deliverability**, repair or enable **SPF** and **DKIM** for therapyandinjury.com, and add a DMARC record. Then send a test request from the Ocala page. The form sends through the server's mail system (sendmail/Exim), the same way PHP's `mail()` did.
+
+## Editing the website (no upload needed)
+Open `https://therapyandinjury.com/_admin` and sign in. The **Content** tab edits everything that changes day to day:
+- **Site:** main phone and email, YouTube, Instagram and Facebook links, the Carepatron booking, paperwork and portal links, the tagline, and the Google and Bing IDs
+- **Videos:** the hero commercial on the home page and every location page. Paste a YouTube link to show that video, or keep the built-in 60-second spot.
+- **Each location:** open or coming soon, phone, **email** (appointment requests go there), address, **hours**, doctors, visit features, nearby areas, the Google Business Profile link, **map zoom**, city domains, and an optional video of its own
+
+Click **Save** and the change is live on the next page view. Yellow fields are placeholders still to fill in, and the counter shows how many are left. Every save keeps the previous version under **Saved versions**, with one-click restore.
+
+Edits are stored in `content.json` in the app folder. Updates never touch it.
 
 ## Updating the site later
 Each release is a `therapyandinjury-<version>.tar.gz` file. To build one on your computer: `npm run release -- 1.0.1` (it lands in `deploy/out/`).
@@ -52,5 +61,6 @@ Every package is checked (its checksum when a `.sha256` is present, its structur
 - **"The site is being set up. Please call…"** means nothing is installed yet. Run **install-release**, or check that `incoming/` holds a package.
 - **`/_admin` shows "Not found"** means `ADMIN_PASSWORD` is missing or shorter than 12 characters. Restart after setting it.
 - **Error messages** are in the app's log. CloudLinux puts it in the application root as `stderr.log`. Otherwise, check cPanel → **Errors**.
-- **The form says "please call"** means that location has no `mail.recipients` entry, or the sending failed (check the log for `[appointment] send failed`).
+- **The form says "please call"** means that location has no email in the content editor, or the sending failed (check the log for `[appointment] send failed`).
+- **The content editor says the page renderer isn't running** means the site is serving its safety snapshot. Check the log, then re-install or roll back the release.
 - **Old files still show:** keep the domain's document root (e.g. `public_html`) empty apart from the `.htaccess` that cPanel writes for the Node.js app. Apache serves any static file sitting there before the app sees the request.

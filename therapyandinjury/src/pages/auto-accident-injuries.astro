@@ -4,10 +4,10 @@ import Icon from '../components/Icon.astro';
 import Ph from '../components/Ph.astro';
 import FaqList from '../components/FaqList.astro';
 import TimerBadge from '../components/TimerBadge.astro';
-import { faqs } from '../lib/faq';
+import { getFaqs } from '../lib/faq';
 import { abs, faqSchema } from '../lib/site';
 
-const pageFaqs = faqs.filter((f) => f.group !== 'practice');
+const pageFaqs = getFaqs().filter((f) => f.group !== 'practice');
 const article = {
   '@context': 'https://schema.org',
   '@type': 'MedicalWebPage',

@@ -1,7 +1,7 @@
 # Therapy & Injury: launch TODO
 
 On the site, every unfilled fact shows as a yellow `[PLACEHOLDER]` highlight. When you fill one in, the highlight disappears.
-Most facts live in two data files. Edit those first:
+**Easiest:** fill them in on the live site at `/_admin` → **Content**. The yellow fields there are the same placeholders, and changes are live on Save, no rebuild needed. The data files below are the defaults that ship with each release:
 
 - `src/data/site.json`: brand-wide facts and SEO settings
 - `src/data/branches.json`: one entry per location

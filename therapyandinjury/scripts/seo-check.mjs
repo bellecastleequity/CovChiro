@@ -6,7 +6,8 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-const dist = new URL('../dist/', import.meta.url).pathname;
+// Checks the pages rendered by scripts/render-pages.mjs (dist/check/).
+const dist = new URL('../dist/check/', import.meta.url).pathname;
 const site = JSON.parse(readFileSync(new URL('../src/data/site.json', import.meta.url), 'utf8')).domain;
 const errors = [];
 const warnings = [];

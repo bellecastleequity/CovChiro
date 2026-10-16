@@ -13,10 +13,10 @@ import PhoneLink from '../../components/PhoneLink.astro';
 import { conditions } from '../../lib/conditions';
 import { type Branch, indexableBranches, branchName, branchPath, oneLineAddress, callFor, hoursSummary, abs, faqSchema, bookingHref } from '../../lib/site';
 
-export function getStaticPaths() {
-  return indexableBranches.map((b) => ({ params: { city: b.slug }, props: { b } }));
-}
-const { b } = Astro.props as { b: Branch };
+// Only open (indexable) locations have this page; looked up per request from the live data.
+const found = indexableBranches.find((x) => x.slug === Astro.params.city);
+if (!found) return new Response(null, { status: 404, statusText: 'Not found' });
+const b: Branch = found;
 const name = branchName(b);
 const path = `${branchPath(b)}car-accident-chiropractor/`;
 const call = callFor(b);

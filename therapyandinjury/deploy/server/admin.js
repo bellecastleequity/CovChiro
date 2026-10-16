@@ -1,6 +1,10 @@
 'use strict';
 /**
- * /_admin: password-protected updater page.
+ * /_admin: password-protected content editor + updater (page: admin.html).
+ *
+ * Content: edits the site facts, locations (hours, phones, emails, doctors…), and videos. Saved to
+ * <app root>/content.json (with the last 15 versions in content-backups/); pages show changes on the
+ * next request. Updates: upload a release, install from the update source, roll back, restart.
  *
  * Password: ADMIN_PASSWORD environment variable (cPanel → Setup Node.js App → Environment variables)
  * or "adminPassword" in config.json. At least 12 characters; with no password set, /_admin is off (404).
@@ -8,8 +12,67 @@
  *
  * Changes need the custom header X-Admin-Action, which other sites can't send (CSRF protection).
  */
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+
+const PAGE = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8');
+const KEEP_BACKUPS = 15;
+const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+/** Checks an edited { site, branches } document; returns a list of problems (empty = OK). */
+function validateContent(doc) {
+  const errs = [];
+  const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+  if (!isObj(doc) || !isObj(doc.site) || !Array.isArray(doc.branches)) return ['Expected { site: {…}, branches: […] }'];
+  const walk = (v, where) => {
+    if (typeof v === 'string') { if (v.length > 20000) errs.push(`${where}: text is too long`); return; }
+    if (v === null || typeof v === 'number' || typeof v === 'boolean') return;
+    if (Array.isArray(v)) return v.forEach((x, i) => walk(x, `${where}[${i}]`));
+    if (isObj(v)) return Object.entries(v).forEach(([k, x]) => walk(x, where ? `${where}.${k}` : k));
+    errs.push(`${where}: unsupported value`);
+  };
+  walk(doc, '');
+  const slugs = new Set();
+  doc.branches.forEach((b, i) => {
+    const at = `Location ${b?.city || i + 1}`;
+    if (!isObj(b) || !/^[a-z0-9-]{2,40}$/.test(b.slug || '')) return errs.push(`${at}: missing or bad slug`);
+    if (slugs.has(b.slug)) errs.push(`${at}: duplicate slug ${b.slug}`);
+    slugs.add(b.slug);
+    if (b.status && !['open', 'coming soon'].includes(b.status)) errs.push(`${at}: status must be "open" or "coming soon"`);
+    if (b.hours != null) {
+      if (!Array.isArray(b.hours)) errs.push(`${at}: hours must be a list`);
+      else b.hours.forEach((h) => {
+        if (!WEEK.includes(h?.day)) errs.push(`${at}: bad day "${h?.day}"`);
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(h?.opens || '') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(h?.closes || '')) errs.push(`${at}: ${h?.day} needs opening and closing times`);
+        else if (h.opens >= h.closes) errs.push(`${at}: ${h.day} closes before it opens`);
+      });
+    }
+    if (b.address != null && (!isObj(b.address) || ['street', 'city', 'state', 'zip'].some((k) => typeof b.address[k] !== 'string'))) errs.push(`${at}: address needs street, city, state and zip`);
+    if (b.geo && ['lat', 'lng'].some((k) => b.geo[k] != null && typeof b.geo[k] !== 'number')) errs.push(`${at}: map coordinates must be numbers`);
+    if (b.mapZoom != null && !(Number.isInteger(b.mapZoom) && b.mapZoom >= 3 && b.mapZoom <= 21)) errs.push(`${at}: map zoom must be a whole number from 3 to 21`);
+    for (const k of ['domains', 'nearbyAreas', 'doctors']) if (b[k] != null && !Array.isArray(b[k])) errs.push(`${at}: ${k} must be a list`);
+    if (b.email && !/^\[/.test(b.email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email)) errs.push(`${at}: email "${b.email}" doesn't look like an email address`);
+  });
+  if (JSON.stringify(doc).length > 1024 * 1024) errs.push('Content is larger than 1 MB');
+  return errs;
+}
+
+function backups(root) {
+  const dir = path.join(root, 'content-backups');
+  try { return fs.readdirSync(dir).filter((f) => /^content-[\dTZ-]+\.json$/.test(f)).sort().reverse(); } catch { return []; }
+}
+
+function saveContent(ctx, doc) {
+  const file = ctx.contentFile;
+  const dir = path.join(ctx.root, 'content-backups');
+  fs.mkdirSync(dir, { recursive: true });
+  if (fs.existsSync(file)) fs.copyFileSync(file, path.join(dir, `content-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
+  for (const old of backups(ctx.root).slice(KEEP_BACKUPS)) fs.rmSync(path.join(dir, old), { force: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ ...doc, updatedAt: new Date().toISOString() }, null, 2) + '\n');
+  fs.renameSync(tmp, file);
+}
 
 const MAX_UPLOAD = 150 * 1024 * 1024;
 const fails = new Map(); // ip → [timestamps]
@@ -69,7 +132,13 @@ async function handle(req, res, url, ctx, send) {
   const updater = require(path.join(ctx.root, 'updater.js'));
   const route = url.pathname.replace(/\/+$/, '') || '/_admin';
 
-  if (req.method === 'GET' && route === '/_admin') return send(res, 200, { ...base, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src data:" }, PAGE);
+  if (req.method === 'GET' && route === '/_admin') return send(res, 200, { ...base, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https://i.ytimg.com; frame-ancestors 'none'" }, PAGE);
+  if (req.method === 'GET' && route === '/_admin/api/content') {
+    const l = ctx.live();
+    if (!l) return json(503, { ok: false, error: 'The page renderer is not running, so content can’t be edited right now. Check the log.' });
+    const saved = fs.existsSync(ctx.contentFile) ? fs.statSync(ctx.contentFile).mtime.toISOString() : null;
+    return json(200, { ok: true, site: l.site, branches: l.branches, savedAt: saved, backups: backups(ctx.root) });
+  }
   if (req.method === 'GET' && route === '/_admin/api/status') {
     const st = updater.status();
     const mail = ctx.getConfig().mail || {};
@@ -79,7 +148,7 @@ async function handle(req, res, url, ctx, send) {
       degraded: ctx.degraded,
       node: process.version,
       uptimeSec: Math.round(process.uptime()),
-      branches: ctx.site.branches || [],
+      pages: ctx.renderStatus(),
       mailRecipients: Object.keys(mail.recipients || {}),
       updateSource: ctx.getConfig().update?.manifestUrl ? 'manifest URL' : ctx.getConfig().update?.github?.repo ? `GitHub ${ctx.getConfig().update.github.repo}` : null,
     });
@@ -92,6 +161,23 @@ async function handle(req, res, url, ctx, send) {
       const buf = await readRaw(req, MAX_UPLOAD);
       const r = updater.installBuffer(buf, { source: 'admin upload', force: url.searchParams.get('force') === '1' });
       return json(200, { ok: true, ...r, note: 'Installed. The site switches over on the next request.' });
+    }
+    if (route === '/_admin/api/content' && req.method === 'PUT') {
+      const doc = JSON.parse((await readRaw(req, 2 * 1024 * 1024)).toString('utf8') || '{}');
+      const problems = validateContent(doc);
+      if (problems.length) return json(422, { ok: false, error: problems.slice(0, 8).join(' · ') });
+      saveContent(ctx, { site: doc.site, branches: doc.branches });
+      ctx.live();
+      return json(200, { ok: true, note: 'Saved. The site shows the changes now.' });
+    }
+    if (route === '/_admin/api/content/restore') {
+      const body = JSON.parse((await readRaw(req, 4096)).toString('utf8') || '{}');
+      const name = String(body.name || '');
+      if (!backups(ctx.root).includes(name)) return json(404, { ok: false, error: 'No such saved version' });
+      const doc = JSON.parse(fs.readFileSync(path.join(ctx.root, 'content-backups', name), 'utf8'));
+      saveContent(ctx, { site: doc.site, branches: doc.branches });
+      ctx.live();
+      return json(200, { ok: true, note: `Restored the version saved ${name.slice(8, 18)}.` });
     }
     const body = JSON.parse((await readRaw(req, 4096)).toString('utf8') || '{}');
     if (route === '/_admin/api/activate') return json(200, { ok: true, ...updater.activate(String(body.version || '')) });
@@ -106,56 +192,6 @@ async function handle(req, res, url, ctx, send) {
   }
 }
 
-const PAGE = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow"><title>Site admin · Therapy &amp; Injury</title>
-<style>
-:root{--navy:#0b2d5b;--teal:#19ccbe;--slate:#57667a;--gray:#f4f6f8;--line:#dfe4ea;--red:#b42318;--green:#067647}
-*{box-sizing:border-box}body{margin:0;font:16px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--navy);background:var(--gray)}
-header{background:var(--navy);color:#fff;padding:18px 24px;display:flex;align-items:center;gap:12px}
-header b{font-size:18px}header span{color:#c9d3de;font-size:14px}
-main{max-width:880px;margin:24px auto;padding:0 16px;display:grid;gap:16px}
-section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
-h2{font-size:17px;margin:0 0 12px}p{margin:6px 0;color:var(--slate)}
-.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px}.kv dt{color:var(--slate)}.kv dd{margin:0;font-weight:600}
-table{width:100%;border-collapse:collapse;font-size:15px}td,th{text-align:left;padding:8px 6px;border-top:1px solid var(--line)}th{color:var(--slate);font-weight:500;border-top:0}
-button,.file{font:inherit;font-weight:700;border:0;border-radius:999px;padding:9px 18px;cursor:pointer;background:var(--teal);color:var(--navy)}
-button.ghost{background:var(--gray);color:var(--navy)}button:disabled{opacity:.5;cursor:wait}
-.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.tag{font-size:12px;font-weight:700;background:var(--teal);color:var(--navy);border-radius:999px;padding:2px 9px;margin-left:6px}
-#msg{min-height:24px;font-weight:600}#msg.err{color:var(--red)}#msg.ok{color:var(--green)}
-input[type=file]{font:inherit}code{background:var(--gray);padding:1px 6px;border-radius:6px}
-</style></head><body>
-<header><b>Therapy &amp; Injury</b><span>Website admin · updates</span></header>
-<main>
-<section><h2>Status</h2><dl class="kv" id="status"><dt>Loading…</dt><dd></dd></dl></section>
-<section><h2>Install an update</h2>
-<p>Upload a release package (<code>therapyandinjury-&lt;version&gt;.tar.gz</code>, built with <code>npm run release</code>). It is checked, installed beside the current version, and switched on. The previous version stays installed for one-click rollback.</p>
-<div class="row" style="margin-top:12px"><input type="file" id="pkg" accept=".gz,.tgz,application/gzip"><button id="upload">Upload &amp; install</button></div>
-<div class="row" style="margin-top:14px" id="remoteRow"><button class="ghost" id="check">Check for updates</button><button class="ghost" id="update">Install latest</button></div>
-</section>
-<section><h2>Installed versions</h2><table><thead><tr><th>Version</th><th>Built</th><th>Installed</th><th></th></tr></thead><tbody id="releases"></tbody></table>
-<div class="row" style="margin-top:14px"><button class="ghost" id="rollback">Roll back to previous</button><button class="ghost" id="restart">Restart app</button></div></section>
-<p id="msg" role="status"></p>
-</main>
-<script>
-const $=(s)=>document.querySelector(s);const msg=(t,ok)=>{const m=$('#msg');m.textContent=t;m.className=ok===undefined?'':ok?'ok':'err'};
-const fmt=(d)=>d?new Date(d).toLocaleString():'—';
-async function api(path,opts={}){const r=await fetch('/_admin/api/'+path,{...opts,headers:{'x-admin-action':'1',...(opts.headers||{})}});const j=await r.json().catch(()=>({ok:false,error:'HTTP '+r.status}));if(!r.ok||j.ok===false)throw new Error(j.error||('HTTP '+r.status));return j}
-async function load(){const s=await fetch('/_admin/api/status').then(r=>r.json());
-const pending=s.current&&s.current.version!==s.running&&!s.degraded;
-const kv=[['Running version',s.running+(s.degraded?' (fallback: '+s.degraded+' failed to start; check the log)':'')+(pending?' (switching to '+s.current.version+' on the next request)':'')],['Active (current.json)',s.current?s.current.version:'—'],['Previous',s.current&&s.current.previous||'—'],['Node.js',s.node],['Up for',Math.round(s.uptimeSec/60)+' min'],['Form email set for',s.mailRecipients.length?s.mailRecipients.join(', '):'none yet (form asks visitors to call)'],['Remote update source',s.updateSource||'not set (upload packages here instead)']];
-$('#status').innerHTML=kv.map(([k,v])=>'<dt>'+k+'</dt><dd>'+String(v).replace(/</g,'&lt;')+'</dd>').join('');
-$('#remoteRow').style.display=s.updateSource?'flex':'none';
-$('#releases').innerHTML=s.installed.map(r=>'<tr><td><b>'+r.version+'</b>'+(s.current&&r.version===s.current.version?'<span class="tag">active</span>':'')+'</td><td>'+fmt(r.builtAt)+'</td><td>'+fmt(r.installedAt)+'</td><td>'+(s.current&&r.version===s.current.version?'':'<button class="ghost" data-v="'+r.version+'">Activate</button>')+'</td></tr>').join('');
-document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>act(()=>api('activate',{method:'POST',body:JSON.stringify({version:b.dataset.v})}),'Activated '+b.dataset.v))}
-async function act(fn,done){document.querySelectorAll('button').forEach(b=>b.disabled=true);msg('Working…');try{const r=await fn();msg((done||'Done')+(r&&r.version?' · version '+r.version:'')+(r&&r.upToDate?' (already up to date)':'')+(r&&r.latest?' · latest '+r.latest+(r.newer?' (newer than current)':' (no update)'):''),true);
-await new Promise(r=>setTimeout(r,1500));await load()}catch(e){msg(e.message,false)}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
-$('#upload').onclick=()=>{const f=$('#pkg').files[0];if(!f)return msg('Choose a package file first.',false);act(()=>api('upload',{method:'PUT',body:f,headers:{'content-type':'application/octet-stream'}}),'Installed')};
-$('#check').onclick=()=>act(()=>api('check',{method:'POST'}),'Checked');
-$('#update').onclick=()=>act(()=>api('update',{method:'POST'}),'Update finished');
-$('#rollback').onclick=()=>{if(confirm('Switch back to the previous version?'))act(()=>api('rollback',{method:'POST'}),'Rolled back')};
-$('#restart').onclick=()=>act(()=>api('restart',{method:'POST'}),'Restart requested');
-load().catch(e=>msg(e.message,false));
-</script></body></html>`;
+
 
 module.exports = { handle };

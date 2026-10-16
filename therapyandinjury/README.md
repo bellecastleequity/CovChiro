@@ -12,7 +12,8 @@ See **[TODO.md](TODO.md)** for every placeholder and decision still open.
 cd therapyandinjury
 npm install
 npm run dev       # http://localhost:4321
-npm run build     # outputs dist/ and runs the SEO check
+npm run build     # dist/client (static) + dist/server (pages), renders every page into dist/check and runs the SEO check
+npm run preview   # serve the production build locally (http://localhost:4321)
 npm run indexnow  # after uploading: ping Bing/IndexNow with every URL
 ```
 Requires Node 22+.
@@ -37,6 +38,7 @@ npm run release -- 1.0.1     # bump the version and package it
 ```
 - **First install:** extract `deploy/out/therapyandinjury-node-<version>.zip` into the Node.js app root, copy `config.example.json` to `config.json`, set `ADMIN_PASSWORD`, then restart the app. It installs itself on first start.
 - **Updates:** upload `therapyandinjury-<version>.tar.gz` at `https://therapyandinjury.com/_admin`. Each version installs side by side, with one-click rollback. You can also use the `install-release`, `update` and `rollback` scripts from cPanel's Run JS script.
+- **Content editor:** day-to-day facts (phones, emails, hours, doctors, social links, Carepatron links, videos, map zoom) are edited at `/_admin` → Content, and saved to `content.json` in the app root. Pages render on the server (Astro `output: 'server'`, bundled with no node_modules), so edits show up on the next page view. `src/data/*.json` are the defaults each release ships with: edited values win, and new fields added in a release keep their defaults.
 - The Node server does what `.htaccess` did: city domains redirect to their location page, www and http redirect to `https://therapyandinjury.com`, plus security headers and caching. It also handles the appointment form (`/api/appointment`), which emails each request to the inbox set for that location in `config.json` → `mail.recipients`.
 
 | Path | What |

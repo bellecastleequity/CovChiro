@@ -5,12 +5,14 @@
 import { branches, branchName, isOpen } from './site';
 
 const listJoin = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')}, and ${xs.at(-1)}` : xs.join(''));
-const openNames = branches.filter(isOpen).map(branchName);
-const soonCities = branches.filter((b) => !isOpen(b)).map((b) => b.city);
 
 export type Faq = { q: string; a: string; group: 'accident' | 'visit' | 'practice' };
 
-export const faqs: Faq[] = [
+/** Built per render, so location names follow the live data. */
+export const getFaqs = (): Faq[] => {
+  const openNames = branches.filter(isOpen).map(branchName);
+  const soonCities = branches.filter((b) => !isOpen(b)).map((b) => b.city);
+  return [
   {
     group: 'accident',
     q: 'What is Florida’s 14-day PIP rule?',
@@ -76,7 +78,8 @@ export const faqs: Faq[] = [
     q: 'Where are your locations?',
     a: `${listJoin(openNames)} ${openNames.length > 1 ? 'are' : 'is'} open now.${soonCities.length ? ` ${listJoin(soonCities)} ${soonCities.length > 1 ? 'are' : 'is'} coming soon.` : ''} See the Locations page for addresses and hours.`,
   },
-];
+  ];
+};
 
 export const faqGroups: { key: Faq['group']; title: string }[] = [
   { key: 'accident', title: 'Car accidents & Florida PIP' },

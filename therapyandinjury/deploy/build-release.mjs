@@ -31,7 +31,9 @@ if (!/^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Bad 
 
 if (!args.includes('--skip-build')) execFileSync('npm', ['run', 'build'], { cwd: project, stdio: 'inherit' });
 const dist = path.join(project, 'dist');
-if (!fs.existsSync(path.join(dist, 'index.html'))) throw new Error('dist/ has no index.html; run the build first');
+for (const need of ['client', 'server/entry.mjs', 'check/index.html']) {
+  if (!fs.existsSync(path.join(dist, need))) throw new Error(`dist/${need} is missing; run the build first (npm run build)`);
+}
 
 let commit = '';
 try { commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: project }).toString().trim(); } catch {}
@@ -137,8 +139,16 @@ const serverSite = {
 const manifest = { name: 'therapyandinjury.com', version, builtAt: new Date().toISOString(), commit, node: '>=18' };
 
 entries.push({ name: 'release', dir: true, mtime: now });
+// site/: static files (the Node server does .htaccess's job, so it's left out). index.html is the
+// build-time home page: older updaters require it, and it's never served (pages come from site-server/).
 entries.push({ name: 'release/site', dir: true, mtime: now });
-addTree(dist, 'release/site', (n) => n.startsWith('.')); // .htaccess is Apache-only; the Node server does its job
+addTree(path.join(dist, 'client'), 'release/site', (n) => n.startsWith('.'));
+entries.push({ name: 'release/site/index.html', data: fs.readFileSync(path.join(dist, 'check/index.html')), mtime: now });
+// site-server/: the page renderer. site-static/: every page as rendered at build time (fallback only).
+entries.push({ name: 'release/site-server', dir: true, mtime: now });
+addTree(path.join(dist, 'server'), 'release/site-server');
+entries.push({ name: 'release/site-static', dir: true, mtime: now });
+addTree(path.join(dist, 'check'), 'release/site-static', (n, src) => n.startsWith('.') || (!fs.statSync(src).isDirectory() && !/\.(html|xml|txt)$/.test(n)));
 entries.push({ name: 'release/server', dir: true, mtime: now });
 addTree(path.join(here, 'server'), 'release/server');
 entries.push({ name: 'release/server/site.json', data: Buffer.from(JSON.stringify(serverSite, null, 2) + '\n'), mtime: now });

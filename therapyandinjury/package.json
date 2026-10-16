@@ -1,12 +1,12 @@
 {
   "name": "therapyandinjury",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build && node scripts/seo-check.mjs",
-    "preview": "astro preview",
+    "build": "astro build && node scripts/render-pages.mjs && node scripts/seo-check.mjs",
+    "preview": "node scripts/preview.mjs",
     "seo:check": "node scripts/seo-check.mjs",
     "indexnow": "node scripts/indexnow.mjs",
     "social:export": "node social/export.mjs",
@@ -14,6 +14,7 @@
     "release": "node deploy/build-release.mjs"
   },
   "dependencies": {
+    "@astrojs/node": "^11.1.8",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/inter": "^5.3.0",
     "@resvg/resvg-js": "^2.6.2",

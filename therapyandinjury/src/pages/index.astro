@@ -3,6 +3,7 @@ import Base from '../layouts/Base.astro';
 import LocationPicker from '../components/LocationPicker.astro';
 import BranchCard from '../components/BranchCard.astro';
 import Icon from '../components/Icon.astro';
+import CommercialVideo from '../components/CommercialVideo.astro';
 import { branches, featureLabels } from '../lib/site';
 import { conditions } from '../lib/conditions';
 
@@ -42,6 +43,9 @@ import { services, steps } from '../lib/content';
       </div>
       <div class="hero__art" aria-hidden="true">
         <img src="/brand/mark.svg" alt="" width="420" height="420" />
+      </div>
+      <div class="hero__video">
+        <CommercialVideo />
       </div>
     </div>
   </section>
@@ -163,23 +167,35 @@ import { services, steps } from '../lib/content';
   .hero__note {
     margin-top: 18px;
   }
-  .hero__art img {
-    width: min(100%, 420px);
-    height: auto;
-    margin-inline: auto;
+  /* Phones: logo, headline and copy, then the commercial. Desktop: copy on the left; logo with the
+     commercial below it on the right. */
+  .hero__in {
+    grid-template-areas: 'art' 'copy' 'video';
   }
-  @media (max-width: 899px) {
-    .hero__art {
-      order: -1;
-    }
-    .hero__art img {
-      width: 140px;
-      margin-inline: 0;
-    }
+  .hero__copy { grid-area: copy; }
+  .hero__art { grid-area: art; }
+  .hero__video { grid-area: video; }
+  .hero__art img {
+    width: 140px;
+    height: auto;
   }
   @media (min-width: 900px) {
     .hero__in {
-      grid-template-columns: 1.25fr 1fr;
+      grid-template-columns: 1.1fr 1fr;
+      grid-template-areas: 'copy art' 'copy video';
+      grid-template-rows: auto 1fr;
+      column-gap: 56px;
+      row-gap: 22px;
+    }
+    .hero__art {
+      align-self: end;
+      justify-self: center;
+    }
+    .hero__art img {
+      width: 150px;
+    }
+    .hero__video {
+      align-self: start;
     }
   }
 

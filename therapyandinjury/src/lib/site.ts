@@ -1,12 +1,35 @@
-import site from '../data/site.json';
-import branchData from '../data/branches.json';
+import defaultSite from '../data/site.json';
+import defaultBranches from '../data/branches.json';
 
-export { site };
+/**
+ * Live site data. Starts from src/data/*.json (the defaults shipped with each release) and is
+ * refreshed in place from the content editor's content.json (see applyContent / content-store.ts),
+ * so edits made at /_admin show up on the next page view with no rebuild.
+ */
+export type Video = {
+  /** YouTube link or video ID. When set, it's shown instead of the self-hosted file. */
+  youtube: string;
+  /** Self-hosted MP4 (in public/media/) and its poster image. */
+  file: string;
+  poster: string;
+  title: string;
+  /** Short line under the player, e.g. "60 sec · captioned". */
+  caption: string;
+  /** Plain-text transcript paragraphs (blank lines separate paragraphs). Shown in a "Transcript" disclosure. */
+  transcript: string;
+};
+export type SiteData = typeof defaultSite & {
+  social: { instagram: string; facebook: string; youtube: string; instagramHandle?: string };
+  heroVideo: Video;
+};
+export const site = structuredClone(defaultSite) as SiteData;
 
 export type Hours = { day: string; opens: string; closes: string };
 export type Doctor = { name: string; title: string; bio?: string };
 export type Branch = {
   slug: string;
+  /** Optional: this location's own hero video (blank fields fall back to the site-wide heroVideo). */
+  heroVideo?: Partial<Video>;
   city: string;
   county: string;
   status: 'open' | 'coming soon';
@@ -30,6 +53,8 @@ export type Branch = {
   };
   doctors: Doctor[];
   mapEmbed: string;
+  /** Google Maps zoom for the location map (1 = world … 21 = building). Default 17: street-intersection scale. */
+  mapZoom?: number;
   gbpUrl: string;
   /** Optional per-location Carepatron links; blank = use the brand-wide link in site.json. */
   patientLinks: { booking: string; intake: string };
@@ -38,8 +63,9 @@ export type Branch = {
   geo: { lat: number | null; lng: number | null };
 };
 
-export const branches = branchData as Branch[];
-export const openBranches = branches.filter((b) => b.status === 'open');
+export const branches = structuredClone(defaultBranches) as Branch[];
+export const openBranches: Branch[] = [];
+export const indexableBranches: Branch[] = [];
 
 /** A value in the data files that hasn't been filled in yet, e.g. "[OCALA PHONE]". */
 export const isPlaceholder = (v: unknown) => typeof v !== 'string' || v.trim() === '' || v.trim().startsWith('[');
@@ -54,7 +80,8 @@ export const oneLineAddress = (b: Branch) =>
 export const mapEmbedSrc = (b: Branch) => {
   if (!isPlaceholder(b.mapEmbed)) return b.mapEmbed;
   if (!b.address) return '';
-  return `https://www.google.com/maps?q=${encodeURIComponent(`${branchName(b)}, ${oneLineAddress(b)}`)}&output=embed`;
+  const z = Number.isFinite(b.mapZoom) ? Math.min(21, Math.max(3, Math.round(b.mapZoom!))) : 17;
+  return `https://www.google.com/maps?q=${encodeURIComponent(`${branchName(b)}, ${oneLineAddress(b)}`)}&z=${z}&output=embed`;
 };
 
 export const directionsUrl = (b: Branch) =>
@@ -67,11 +94,7 @@ export const telHref = (phone: string) => {
 };
 
 /** The brand's main line, e.g. (844) 84-TREAT · 848-7328. */
-export const mainLine = {
-  digits: site.mainPhone,
-  vanity: isPlaceholder(site.mainPhoneVanity) ? '' : site.mainPhoneVanity,
-  tel: telHref(site.mainPhone),
-};
+export const mainLine = { digits: '', vanity: '', tel: '' };
 
 /**
  * Which number to call: a location's own local number once it's set, otherwise the brand's
@@ -150,7 +173,59 @@ export const doctorsFor = (b: Branch): Doctor[] => b.doctors;
  * see thin pages without an address.
  */
 export const isIndexable = (b: Branch) => isOpen(b);
-export const indexableBranches = branches.filter(isIndexable);
+
+/** Recomputes everything derived from the data (called after every content change). */
+function derive() {
+  openBranches.splice(0, openBranches.length, ...branches.filter(isOpen));
+  indexableBranches.splice(0, indexableBranches.length, ...branches.filter(isIndexable));
+  mainLine.digits = site.mainPhone;
+  mainLine.vanity = isPlaceholder(site.mainPhoneVanity) ? '' : site.mainPhoneVanity;
+  mainLine.tel = telHref(site.mainPhone);
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+/** Edited values win; keys the editor never saw (e.g. added in a newer release) keep their defaults. */
+function merge<T>(base: T, over: unknown): T {
+  if (!isObj(base) || !isObj(over)) return (over === undefined ? base : over) as T;
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(over)) out[k] = merge((base as Record<string, unknown>)[k], v);
+  return out as T;
+}
+
+/**
+ * Replaces the live data with defaults + `content` ({ site, branches }) in place, so every module
+ * holding a reference sees the new values. Locations merge by slug; a location only present in
+ * the content file is added as-is.
+ */
+export function applyContent(content: { site?: unknown; branches?: unknown } | null) {
+  const nextSite = merge(structuredClone(defaultSite), content?.site) as SiteData;
+  for (const k of Object.keys(site)) delete (site as Record<string, unknown>)[k];
+  Object.assign(site, nextSite);
+  const edited = Array.isArray(content?.branches) ? (content!.branches as Partial<Branch>[]) : [];
+  const defaults = structuredClone(defaultBranches) as Branch[];
+  const next = defaults.map((b) => merge(b, edited.find((e) => e?.slug === b.slug)));
+  for (const e of edited) if (e?.slug && !defaults.some((b) => b.slug === e.slug)) next.push(e as Branch);
+  branches.splice(0, branches.length, ...next);
+  derive();
+}
+derive();
+
+/** The hero video for a page: the location's own fields first, then the site-wide video. */
+export const heroVideoFor = (b?: Branch): Video => {
+  const base = site.heroVideo;
+  const own = b?.heroVideo ?? {};
+  const pick = (k: keyof Video) => (typeof own[k] === 'string' && own[k]!.trim() ? own[k]! : base[k]);
+  return { youtube: pick('youtube'), file: pick('file'), poster: pick('poster'), title: pick('title'), caption: pick('caption'), transcript: pick('transcript') };
+};
+
+/** "https://youtu.be/ID", "…watch?v=ID", "…/shorts/ID", "…/embed/ID" or a bare ID → ID (else ''). */
+export const youtubeId = (v: string): string => {
+  if (isPlaceholder(v)) return '';
+  const s = v.trim();
+  if (/^[\w-]{11}$/.test(s)) return s;
+  const m = /(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/.exec(s);
+  return m ? m[1] : '';
+};
 
 export const abs = (path: string) => new URL(path, site.domain).toString();
 
@@ -158,7 +233,7 @@ export const abs = (path: string) => new URL(path, site.domain).toString();
 export const orgSchema = () => {
   // sameAs also carries profile URLs from business directories (e.g. Black-owned business
   // directories) so search engines connect those listings to this site without any visible text.
-  const sameAs = [site.social.instagram, site.social.facebook, ...branches.map((b) => b.gbpUrl), ...site.directoryListings].filter((u) => !isPlaceholder(u));
+  const sameAs = [site.social.instagram, site.social.facebook, site.social.youtube, ...branches.map((b) => b.gbpUrl), ...site.directoryListings].filter((u) => !isPlaceholder(u));
   return [
     {
       '@context': 'https://schema.org',

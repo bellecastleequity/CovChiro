@@ -2,8 +2,8 @@ import type { APIRoute } from 'astro';
 import { site } from '../lib/site';
 
 /** IndexNow key file at /<key>.txt (proves this site owns its IndexNow submissions). */
-export function getStaticPaths() {
+export const GET: APIRoute = ({ params }) => {
   const key = site.seo.indexNowKey;
-  return key ? [{ params: { indexnow: key } }] : [];
-}
-export const GET: APIRoute = () => new Response(site.seo.indexNowKey, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  if (!key || params.indexnow !== key) return new Response(null, { status: 404 });
+  return new Response(key, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+};

@@ -10,6 +10,7 @@ import Icon from '../components/Icon.astro';
 import BranchFeatures from '../components/BranchFeatures.astro';
 import PhoneLink from '../components/PhoneLink.astro';
 import PatientLinks from '../components/PatientLinks.astro';
+import CommercialVideo from '../components/CommercialVideo.astro';
 import Ph from '../components/Ph.astro';
 import {
   type Branch,
@@ -29,11 +30,10 @@ import {
   bookingHref,
 } from '../lib/site';
 
-export function getStaticPaths() {
-  return branches.map((b) => ({ params: { city: b.slug }, props: { branch: b } }));
-}
-
-const { branch: b } = Astro.props as { branch: Branch };
+// Rendered per request from the live data (content editor), so a location is looked up by its slug.
+const found = branches.find((x) => x.slug === Astro.params.city);
+if (!found) return new Response(null, { status: 404, statusText: 'Not found' });
+const b: Branch = found;
 const name = branchName(b);
 const open = isOpen(b);
 const call = callFor(b);
@@ -56,7 +56,8 @@ const description = open
 <Base title={title} description={description} city={b.city} ctaHref={bookingHref(b)} ogImage={`/og/${b.slug}.png`} schema={branchSchema(b)} breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)]]} noindex={!isIndexable(b)} branch={b}>
   <section class="page-hero">
     <div class="page-hero__ring" aria-hidden="true"></div>
-    <div class="wrap">
+    <div class="wrap bh__hero">
+      <div class="bh__hero-copy">
       <nav class="breadcrumbs" aria-label="Breadcrumb">
         <ol>
           <li><a href="/">Home</a></li>
@@ -81,6 +82,11 @@ const description = open
         <a class="btn btn--primary" href={bookingHref(b)}>{!open ? 'Get notified' : bookingHref(b).startsWith('http') ? 'Book an appointment' : 'Request an appointment'}</a>
         {call.tel && <a class="btn btn--ghost" href={call.tel}>Call {call.label}</a>}
         {open && b.address && <a class="btn btn--ghost" href={directionsUrl(b)} rel="noopener" target="_blank">Get directions<span class="sr-only"> (opens Google Maps in a new tab)</span></a>}
+      </div>
+      </div>
+      <div class="bh__hero-media">
+        <img class="bh__mark" src="/brand/mark.svg" alt="" width="120" height="120" aria-hidden="true" />
+        <CommercialVideo branch={b} />
       </div>
     </div>
   </section>
@@ -219,6 +225,34 @@ const description = open
 </Base>
 
 <style>
+  /* Hero: copy, then logo + commercial (beside the copy on wide screens). */
+  .bh__hero {
+    display: grid;
+    gap: 28px;
+    position: relative;
+  }
+  .bh__hero-media {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .bh__mark {
+    width: 72px;
+    height: auto;
+  }
+  @media (min-width: 980px) {
+    .bh__hero {
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+      align-items: center;
+      column-gap: 48px;
+    }
+    .bh__hero-media {
+      align-items: center;
+    }
+    .bh__mark {
+      width: 110px;
+    }
+  }
   .bh__ctas {
     margin-top: 24px;
   }

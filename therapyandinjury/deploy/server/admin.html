@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Site admin · Therapy &amp; Injury</title>
+<style>
+:root{--navy:#0b2d5b;--teal:#19ccbe;--teal-soft:#e3f8f6;--slate:#57667a;--gray:#f4f6f8;--line:#dfe4ea;--red:#b42318;--green:#067647;--ph:#fff3c4}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--navy);background:var(--gray)}
+header{background:var(--navy);color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:5}
+header b{font-size:18px}header .sub{color:#c9d3de;font-size:14px}
+nav.tabs{display:flex;gap:6px;margin-left:auto}nav.tabs button{background:transparent;color:#c9d3de;border:0;font:inherit;font-weight:700;padding:8px 14px;border-radius:999px;cursor:pointer}
+nav.tabs button[aria-selected=true]{background:var(--teal);color:var(--navy)}
+main{max-width:980px;margin:22px auto 120px;padding:0 16px;display:grid;gap:16px}
+section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
+h2{font-size:17px;margin:0 0 4px}h3{font-size:15px;margin:18px 0 8px;color:var(--slate);text-transform:uppercase;letter-spacing:.08em}
+p{margin:6px 0;color:var(--slate)}.hint{font-size:13px;color:var(--slate)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 18px}
+label{display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:600}
+label.inline{flex-direction:row;align-items:center;gap:8px;font-weight:500}
+input[type=text],input[type=url],input[type=email],input[type=tel],input[type=number],input[type=time],select,textarea{font:inherit;font-weight:400;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--navy);background:#fff;width:100%}
+textarea{min-height:140px;resize:vertical}
+input.ph,textarea.ph{background:var(--ph);border-color:#e9cf6b}
+.phnote{font-size:12px;font-weight:600;color:#7a5c00}
+button,.btn{font:inherit;font-weight:700;border:0;border-radius:999px;padding:9px 18px;cursor:pointer;background:var(--teal);color:var(--navy);text-decoration:none;display:inline-block}
+button.ghost,.btn.ghost{background:var(--gray);color:var(--navy)}button.small{padding:5px 12px;font-size:14px}button:disabled{opacity:.5;cursor:wait}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pills{display:flex;gap:8px;flex-wrap:wrap}.pills button{background:var(--gray);font-weight:600}.pills button[aria-pressed=true]{background:var(--navy);color:#fff}
+table{width:100%;border-collapse:collapse;font-size:15px}td,th{text-align:left;padding:7px 6px;border-top:1px solid var(--line)}th{color:var(--slate);font-weight:500;border-top:0}
+.hours td input[type=time]{max-width:140px}
+.doc{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px}.kv dt{color:var(--slate)}.kv dd{margin:0;font-weight:600}
+.tag{font-size:12px;font-weight:700;background:var(--teal);color:var(--navy);border-radius:999px;padding:2px 9px;margin-left:6px}
+.savebar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 24px;display:flex;gap:14px;align-items:center;z-index:5;box-shadow:0 -6px 20px rgb(11 45 91/8%)}
+#msg{font-weight:600}#msg.err{color:var(--red)}#msg.ok{color:var(--green)}
+.count{font-size:13px;font-weight:700;background:var(--ph);color:#7a5c00;border-radius:999px;padding:3px 10px}
+code{background:var(--gray);padding:1px 6px;border-radius:6px}[hidden]{display:none!important}
+</style></head><body>
+<header><b>Therapy &amp; Injury</b><span class="sub">Website admin</span>
+<nav class="tabs" role="tablist"><button role="tab" data-tab="content" aria-selected="true">Content</button><button role="tab" data-tab="updates" aria-selected="false">Updates</button></nav></header>
+
+<main id="tab-content">
+  <section>
+    <div class="row" style="justify-content:space-between"><div><h2>Edit the website</h2><p>Changes go live as soon as you click <b>Save</b>. No upload or rebuild needed. Yellow fields are still placeholders.</p></div><span class="count" id="phcount"></span></div>
+    <div class="pills" id="sections" style="margin-top:12px"></div>
+  </section>
+  <div id="editor"></div>
+</main>
+
+<main id="tab-updates" hidden>
+<section><h2>Status</h2><dl class="kv" id="status"><dt>Loading…</dt><dd></dd></dl></section>
+<section><h2>Install an update</h2>
+<p>Upload a release package (<code>therapyandinjury-&lt;version&gt;.tar.gz</code>, built with <code>npm run release</code>). It's checked, installed next to the current version, and switched on. The previous version stays installed for one-click rollback. Your content edits are kept.</p>
+<div class="row" style="margin-top:12px"><input type="file" id="pkg" accept=".gz,.tgz,application/gzip"><button id="upload">Upload &amp; install</button></div>
+<div class="row" style="margin-top:14px" id="remoteRow"><button class="ghost" id="check">Check for updates</button><button class="ghost" id="update">Install latest</button></div>
+</section>
+<section><h2>Installed versions</h2><table><thead><tr><th>Version</th><th>Built</th><th>Installed</th><th></th></tr></thead><tbody id="releases"></tbody></table>
+<div class="row" style="margin-top:14px"><button class="ghost" id="rollback">Roll back to previous</button><button class="ghost" id="restart">Restart app</button></div></section>
+</main>
+
+<div class="savebar" id="savebar"><button id="save">Save changes</button><a class="btn ghost" id="viewlink" href="/" target="_blank" rel="noopener">View page ↗</a><span id="msg" role="status"></span></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const msg = (t, ok) => { const m = $('#msg'); m.textContent = t; m.className = ok === undefined ? '' : ok ? 'ok' : 'err'; };
+const isPh = (v) => typeof v === 'string' && v.trim().startsWith('[');
+async function api(path, opts = {}) {
+  const r = await fetch('/_admin/api/' + path, { ...opts, headers: { 'x-admin-action': '1', ...(opts.headers || {}) } });
+  const j = await r.json().catch(() => ({ ok: false, error: 'HTTP ' + r.status }));
+  if (!r.ok || j.ok === false) throw new Error(j.error || 'HTTP ' + r.status);
+  return j;
+}
+const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+const setPath = (o, p, v) => { const ks = p.split('.'); let a = o; ks.slice(0, -1).forEach((k) => { if (a[k] == null || typeof a[k] !== 'object') a[k] = {}; a = a[k]; }); a[ks.at(-1)] = v; };
+
+// ---------- tabs ----------
+document.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', x === b));
+  $('#tab-content').hidden = b.dataset.tab !== 'content';
+  $('#tab-updates').hidden = b.dataset.tab !== 'updates';
+  $('#savebar').hidden = b.dataset.tab !== 'content';
+  if (b.dataset.tab === 'updates') loadStatus().catch((e) => msg(e.message, false));
+});
+
+// ---------- content editor ----------
+let data = null, dirty = false, current = 'site';
+const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const SITE_FIELDS = [
+  ['Contact', [['mainPhone', 'Main phone (digits)', 'tel'], ['mainPhoneVanity', 'Main phone (vanity, e.g. (844) 84-TREAT)'], ['mainEmail', 'Main email', 'email']]],
+  ['Social profiles', [['social.youtube', 'YouTube channel URL', 'url'], ['social.instagram', 'Instagram profile URL', 'url'], ['social.instagramHandle', 'Handle shown in the footer (e.g. @therapyandinjury)'], ['social.facebook', 'Facebook page URL', 'url']]],
+  ['Patient links (Carepatron)', [['patientLinks.booking', 'Online booking URL', 'url'], ['patientLinks.intake', 'New patient paperwork URL', 'url'], ['patientLinks.portal', 'Patient portal URL', 'url']]],
+  ['Brand text', [['tagline', 'Tagline'], ['operatorLine', 'Operator line (footer)'], ['lastUpdatedLegal', 'Date the legal pages were reviewed']]],
+  ['Search engines & analytics', [['seo.gaMeasurementId', 'Google Analytics 4 ID (G-…)'], ['seo.googleSiteVerification', 'Google Search Console verification code'], ['seo.bingSiteVerification', 'Bing verification code']]],
+];
+const VIDEO_FIELDS = [['youtube', 'YouTube link (leave empty to use the video file below)', 'url'], ['title', 'Title'], ['caption', 'Line under the video (e.g. 60 sec · captioned)'], ['file', 'Video file path (self-hosted MP4)'], ['poster', 'Poster image path (still shown before play)']];
+
+function field(path, label, type = 'text', value, extra = '') {
+  const v = value ?? '';
+  const ph = isPh(v);
+  return `<label>${esc(label)}${ph ? ' <span class="phnote">placeholder: replace it</span>' : ''}<input type="${type === 'tel' ? 'tel' : type === 'email' ? 'text' : type === 'url' ? 'text' : type}" data-path="${esc(path)}" value="${esc(v)}" class="${ph ? 'ph' : ''}" ${extra}></label>`;
+}
+
+function renderSections() {
+  const tabs = [['site', 'Site'], ['video', 'Videos'], ...data.branches.map((b) => ['b:' + b.slug, b.city + (b.status === 'open' ? '' : ' (soon)')]), ['history', 'Saved versions']];
+  $('#sections').innerHTML = tabs.map(([k, l]) => `<button type="button" data-sec="${esc(k)}" aria-pressed="${k === current}">${esc(l)}</button>`).join('');
+  document.querySelectorAll('[data-sec]').forEach((b) => b.onclick = () => { collect(); current = b.dataset.sec; renderSections(); renderEditor(); });
+  const n = JSON.stringify({ site: data.site, branches: data.branches }).match(/"\[[^"\]]+\]/g)?.length || 0;
+  $('#phcount').textContent = n ? `${n} placeholder${n > 1 ? 's' : ''} left` : 'No placeholders left';
+}
+
+function renderEditor() {
+  const ed = $('#editor');
+  if (current === 'site') {
+    ed.innerHTML = SITE_FIELDS.map(([h, fs]) => `<section><h2>${esc(h)}</h2><div class="grid" style="margin-top:10px">${fs.map(([p, l, t]) => field('site.' + p, l, t, getPath(data.site, p))).join('')}</div></section>`).join('');
+    $('#viewlink').href = '/';
+  } else if (current === 'video') {
+    const v = data.site.heroVideo || {};
+    ed.innerHTML = `<section><h2>Hero video</h2><p>Shown beside the headline on the home page and every location page. Paste a YouTube link to show that video instead of the file. Each location can also have its own (see its tab).</p>
+      <div class="grid" style="margin-top:10px">${VIDEO_FIELDS.map(([p, l, t]) => field('site.heroVideo.' + p, l, t, v[p])).join('')}</div>
+      <label style="margin-top:12px">Transcript (blank line between paragraphs)<textarea data-path="site.heroVideo.transcript">${esc(v.transcript)}</textarea></label></section>`;
+    $('#viewlink').href = '/';
+  } else if (current === 'history') {
+    ed.innerHTML = `<section><h2>Saved versions</h2><p>Every save keeps the previous version. Restoring one puts it live right away (your current version is kept too).</p><table><tbody>${(data.backups || []).map((n) => `<tr><td>${esc(n.slice(8, 18))} ${esc(n.slice(19, 27).replace(/-/g, ':'))} UTC</td><td><button class="small ghost" data-restore="${esc(n)}">Restore</button></td></tr>`).join('') || '<tr><td>No earlier versions yet.</td></tr>'}</tbody></table></section>`;
+    document.querySelectorAll('[data-restore]').forEach((b) => b.onclick = async () => {
+      if (dirty && !confirm('You have unsaved changes. Restore anyway?')) return;
+      try { const r = await api('content/restore', { method: 'POST', body: JSON.stringify({ name: b.dataset.restore }) }); await loadContent(); msg(r.note, true); } catch (e) { msg(e.message, false); }
+    });
+  } else {
+    const i = data.branches.findIndex((b) => 'b:' + b.slug === current);
+    const b = data.branches[i];
+    const P = (p) => `branches.${i}.${p}`;
+    const a = b.address || { street: '', city: '', state: 'FL', zip: '' };
+    const f = b.features || {};
+    $('#viewlink').href = '/' + b.slug + '/';
+    ed.innerHTML = `
+      <section><h2>${esc(b.city)} Therapy &amp; Injury</h2><p>Page: <a href="/${esc(b.slug)}/" target="_blank" rel="noopener">/${esc(b.slug)}/</a></p>
+        <div class="grid" style="margin-top:10px">
+          <label>Status<select data-path="${P('status')}"><option value="open"${b.status === 'open' ? ' selected' : ''}>Open</option><option value="coming soon"${b.status !== 'open' ? ' selected' : ''}>Coming soon</option></select></label>
+          ${field(P('openingNote'), 'Opening note (coming soon, e.g. "Spring 2027")', 'text', b.openingNote)}
+          ${field(P('phone'), 'Local phone', 'tel', b.phone)}
+          ${field(P('email'), 'Email (appointment requests go here)', 'email', b.email)}
+        </div></section>
+      <section><h2>Address</h2><p class="hint">Leave all four empty while there's no address yet.</p><div class="grid" style="margin-top:10px">
+          ${field(P('address.street'), 'Street', 'text', a.street)}${field(P('address.city'), 'City', 'text', a.city)}${field(P('address.state'), 'State', 'text', a.state)}${field(P('address.zip'), 'ZIP', 'text', a.zip)}
+          ${field(P('geo.lat'), 'Map latitude (optional)', 'number', b.geo?.lat, 'step="any"')}${field(P('geo.lng'), 'Map longitude (optional)', 'number', b.geo?.lng, 'step="any"')}
+        </div></section>
+      <section><h2>Hours</h2><table class="hours"><thead><tr><th>Day</th><th>Open</th><th>Opens</th><th>Closes</th></tr></thead><tbody>
+        ${WEEK.map((d) => { const h = (b.hours || []).find((x) => x.day === d); return `<tr data-day="${d}"><td>${d}</td><td><input type="checkbox" class="h-on"${h ? ' checked' : ''} aria-label="Open on ${d}"></td><td><input type="time" class="h-open" value="${h ? esc(h.opens) : '09:00'}"${h ? '' : ' disabled'}></td><td><input type="time" class="h-close" value="${h ? esc(h.closes) : '17:00'}"${h ? '' : ' disabled'}></td></tr>`; }).join('')}
+      </tbody></table></section>
+      <section><h2>Doctors</h2><p class="hint">Treating chiropractic physicians at this location (shown on the page and in Google's data).</p><div id="docs" style="margin-top:10px">
+        ${(b.doctors || []).map((d, j) => `<div class="doc"><label>Name<input type="text" class="d-name" value="${esc(d.name)}"></label><label>Title<input type="text" class="d-title" value="${esc(d.title || 'D.C.')}"></label><button class="small ghost d-del" data-j="${j}">Remove</button></div>`).join('')}
+      </div><button class="small ghost" id="adddoc">+ Add doctor</button></section>
+      <section><h2>Visit features</h2><p class="hint">Only turn on what's true; each shows as a badge on the page.</p><div class="grid" style="margin-top:10px">
+        ${[['sameDayAppointments', 'Same-day appointments'], ['walkInsWelcome', 'Walk-ins welcome'], ['eveningHours', 'Evening hours'], ['onSiteXray', 'X-rays on-site']].map(([k, l]) => `<label class="inline"><input type="checkbox" data-bool="${P('features.' + k)}"${f[k] ? ' checked' : ''}> ${l}</label>`).join('')}
+        ${field(P('features.languages'), 'Languages spoken (comma-separated, e.g. English, Español)', 'text', (f.languages || []).join(', '), 'data-list="1"')}
+      </div></section>
+      <section><h2>Local details</h2><div class="grid" style="margin-top:10px">
+        ${field(P('nearbyAreas'), 'Nearby areas served (comma-separated)', 'text', (b.nearbyAreas || []).join(', '), 'data-list="1"')}
+        ${field(P('gbpUrl'), 'Google Business Profile link', 'url', b.gbpUrl)}
+        ${field(P('mapZoom'), 'Map zoom (17 = street intersections, 15 = neighborhood, 13 = city)', 'number', b.mapZoom ?? 17, 'min="3" max="21" step="1"')}
+        ${field(P('mapEmbed'), 'Google Maps embed URL (optional; otherwise built from the address)', 'url', b.mapEmbed)}
+        ${field(P('legalEntity'), 'Legal entity (e.g. the location\'s PLLC)', 'text', b.legalEntity)}
+        ${field(P('patientLinks.booking'), 'Own Carepatron booking link (optional)', 'url', b.patientLinks?.booking)}
+        ${field(P('patientLinks.intake'), 'Own Carepatron paperwork link (optional)', 'url', b.patientLinks?.intake)}
+        ${field(P('domains'), 'City domains that redirect here (comma-separated)', 'text', (b.domains || []).join(', '), 'data-list="1"')}
+      </div></section>
+      <section><h2>This location's video (optional)</h2><p class="hint">Leave empty to show the site-wide hero video.</p><div class="grid" style="margin-top:10px">
+        ${field(P('heroVideo.youtube'), 'YouTube link', 'url', b.heroVideo?.youtube)}${field(P('heroVideo.title'), 'Title', 'text', b.heroVideo?.title)}
+      </div></section>`;
+    // hours toggles
+    ed.querySelectorAll('.hours tr[data-day]').forEach((tr) => { const on = $('.h-on', tr); on.onchange = () => { $('.h-open', tr).disabled = $('.h-close', tr).disabled = !on.checked; markDirty(); }; });
+    $('#adddoc').onclick = () => { collect(); (b.doctors = b.doctors || []).push({ name: '', title: 'D.C.' }); renderEditor(); markDirty(); };
+    ed.querySelectorAll('.d-del').forEach((x) => x.onclick = () => { collect(); b.doctors.splice(Number(x.dataset.j), 1); renderEditor(); markDirty(); });
+  }
+  ed.querySelectorAll('input,select,textarea').forEach((el) => el.addEventListener('input', markDirty));
+}
+
+/** Copies the form on screen back into `data`. */
+function collect() {
+  const ed = $('#editor');
+  ed.querySelectorAll('[data-path]').forEach((el) => {
+    const p = el.dataset.path;
+    let v = el.value;
+    if (el.dataset.list) v = v.split(',').map((s) => s.trim()).filter(Boolean);
+    else if (el.type === 'number') v = v === '' ? null : Number(v);
+    setPath(data, p, v);
+  });
+  ed.querySelectorAll('[data-bool]').forEach((el) => setPath(data, el.dataset.bool, el.checked));
+  const m = /^b:(.+)$/.exec(current);
+  if (m) {
+    const b = data.branches.find((x) => x.slug === m[1]);
+    const a = b.address || {};
+    if (!['street', 'city', 'zip'].some((k) => String(a[k] || '').trim())) b.address = null;
+    b.hours = [...ed.querySelectorAll('.hours tr[data-day]')].filter((tr) => $('.h-on', tr).checked).map((tr) => ({ day: tr.dataset.day, opens: $('.h-open', tr).value, closes: $('.h-close', tr).value }));
+    b.doctors = [...ed.querySelectorAll('.doc')].map((d) => ({ name: $('.d-name', d).value.trim(), title: $('.d-title', d).value.trim() || 'D.C.' })).filter((d) => d.name);
+  }
+}
+function markDirty() { dirty = true; msg('Unsaved changes'); }
+window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+async function loadContent() {
+  const r = await api('content', { method: 'GET', headers: {} });
+  data = { site: r.site, branches: r.branches, backups: r.backups };
+  dirty = false;
+  renderSections(); renderEditor();
+}
+$('#save').onclick = async () => {
+  collect();
+  $('#save').disabled = true; msg('Saving…');
+  try {
+    const r = await api('content', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ site: data.site, branches: data.branches }) });
+    dirty = false; await loadContent(); msg(r.note, true);
+  } catch (e) { msg(e.message, false); } finally { $('#save').disabled = false; }
+};
+
+// ---------- updates ----------
+const fmt = (d) => (d ? new Date(d).toLocaleString() : '—');
+async function loadStatus() {
+  const s = await fetch('/_admin/api/status').then((r) => r.json());
+  const pending = s.current && s.current.version !== s.running && !s.degraded;
+  const kv = [['Running version', s.running + (s.degraded ? ' (fallback: ' + s.degraded + ' failed to start; check the log)' : '') + (pending ? ' (switching to ' + s.current.version + ' on the next request)' : '')], ['Pages', s.pages], ['Active (current.json)', s.current ? s.current.version : '—'], ['Previous', (s.current && s.current.previous) || '—'], ['Node.js', s.node], ['Up for', Math.round(s.uptimeSec / 60) + ' min'], ['Form email overrides (config.json)', s.mailRecipients.length ? s.mailRecipients.join(', ') : 'none (each location\'s email from Content is used)'], ['Remote update source', s.updateSource || 'not set (upload packages here instead)']];
+  $('#status').innerHTML = kv.map(([k, v]) => '<dt>' + k + '</dt><dd>' + esc(v) + '</dd>').join('');
+  $('#remoteRow').style.display = s.updateSource ? 'flex' : 'none';
+  $('#releases').innerHTML = s.installed.map((r) => '<tr><td><b>' + esc(r.version) + '</b>' + (s.current && r.version === s.current.version ? '<span class="tag">active</span>' : '') + '</td><td>' + fmt(r.builtAt) + '</td><td>' + fmt(r.installedAt) + '</td><td>' + (s.current && r.version === s.current.version ? '' : '<button class="ghost small" data-v="' + esc(r.version) + '">Activate</button>') + '</td></tr>').join('');
+  document.querySelectorAll('[data-v]').forEach((b) => b.onclick = () => act(() => api('activate', { method: 'POST', body: JSON.stringify({ version: b.dataset.v }) }), 'Activated ' + b.dataset.v));
+}
+async function act(fn, done) {
+  document.querySelectorAll('#tab-updates button').forEach((b) => b.disabled = true); msg('Working…');
+  try {
+    const r = await fn();
+    msg((done || 'Done') + (r && r.version ? ' · version ' + r.version : '') + (r && r.upToDate ? ' (already up to date)' : '') + (r && r.skipped ? ' (' + r.skipped + ')' : '') + (r && r.latest ? ' · latest ' + r.latest + (r.newer ? ' (newer than current)' : ' (no update)') : ''), true);
+    await new Promise((res) => setTimeout(res, 1500)); await loadStatus();
+  } catch (e) { msg(e.message, false); } finally { document.querySelectorAll('#tab-updates button').forEach((b) => b.disabled = false); }
+}
+$('#upload').onclick = () => { const f = $('#pkg').files[0]; if (!f) return msg('Choose a package file first.', false); act(() => api('upload', { method: 'PUT', body: f, headers: { 'content-type': 'application/octet-stream' } }), 'Installed'); };
+$('#check').onclick = () => act(() => api('check', { method: 'POST' }), 'Checked');
+$('#update').onclick = () => act(() => api('update', { method: 'POST' }), 'Update finished');
+$('#rollback').onclick = () => { if (confirm('Switch back to the previous version?')) act(() => api('rollback', { method: 'POST' }), 'Rolled back'); };
+$('#restart').onclick = () => act(() => api('restart', { method: 'POST' }), 'Restart requested');
+
+loadContent().catch((e) => { msg(e.message, false); $('#editor').innerHTML = '<section><p>' + esc(e.message) + '</p></section>'; });
+</script></body></html>

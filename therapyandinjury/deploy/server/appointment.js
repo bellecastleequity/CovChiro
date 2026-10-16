@@ -6,8 +6,9 @@
  * honeypot). Never extend it to medical details, insurance numbers, or SSNs. Nothing is stored or logged:
  * each request is emailed to the location's inbox and forgotten.
  *
- * Settings (config.json in the app root, never overwritten by updates):
- *   "mail": { "from": "no-reply@therapyandinjury.com", "recipients": { "ocala": "ocala@…" }, "sendmail": "/usr/sbin/sendmail" }
+ * Where requests go: the location's email from the content editor (/_admin → Locations), unless
+ * config.json overrides it ("mail": { "recipients": { "ocala": "…" } }). Other mail settings in config.json:
+ *   "mail": { "from": "no-reply@therapyandinjury.com", "sendmail": "/usr/sbin/sendmail" }
  * Until a location has a recipient, its requests get 503 and the page tells the visitor to call.
  * Sending uses the server's sendmail (Exim on cPanel), the same path PHP's mail() used.
  */
@@ -111,8 +112,10 @@ async function handle(req, res, ctx, send) {
   if (accident && !/^\d{4}-\d{2}-\d{2}$/.test(accident)) accident = '';
 
   const mail = ctx.getConfig().mail || {};
-  const to = mail.recipients?.[branch];
-  if (!to || !/^[^\s@<>,;]+@[^\s@<>,;]+$/.test(to)) return json(503, { ok: false, error: 'not_configured' });
+  const isEmail = (v) => typeof v === 'string' && /^[^\s@<>,;\[\]]+@[^\s@<>,;\[\]]+\.[^\s@<>,;\[\]]+$/.test(v.trim());
+  const location = ctx.live?.()?.branches.find((b) => b.slug === branch);
+  const to = [mail.recipients?.[branch], location?.email].find(isEmail)?.trim();
+  if (!to) return json(503, { ok: false, error: 'not_configured' });
   const from = mail.from || 'no-reply@therapyandinjury.com';
 
   const subject = type === 'notify' ? `Opening notification request — ${branch}` : `Appointment request — ${branch}`;

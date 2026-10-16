@@ -5,10 +5,8 @@ import PageHero from '../../components/PageHero.astro';
 import { posts, fmtDate } from '../../lib/blog';
 import { abs } from '../../lib/site';
 
-export async function getStaticPaths() {
-  return (await posts()).map((p) => ({ params: { slug: p.id }, props: { p } }));
-}
-const { p } = Astro.props;
+const p = (await posts()).find((x) => x.id === Astro.params.slug);
+if (!p) return new Response(null, { status: 404, statusText: 'Not found' });
 const { Content } = await render(p);
 const path = `/blog/${p.id}/`;
 const article = {

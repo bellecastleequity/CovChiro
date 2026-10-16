@@ -2,6 +2,9 @@ import type { APIRoute, GetStaticPaths } from 'astro';
 import { branches, branchName, oneLineAddress, isOpen } from '../../lib/site';
 import { ogPng } from '../../lib/og';
 
+// Open Graph images are drawn at build time (satori + resvg) from the default data.
+export const prerender = true;
+
 export const getStaticPaths: GetStaticPaths = () => [
   { params: { slug: 'default' }, props: { name: 'Therapy & Injury', line: 'Chiropractic care for auto accident injuries, neck and back pain across Florida.' } },
   ...branches.map((b) => ({

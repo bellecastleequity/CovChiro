@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import node from '@astrojs/node';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -68,9 +69,14 @@ Header set Cache-Control "public, max-age=31536000, immutable"
   };
 }
 
+// Pages render on the server (deploy/server mounts the Astro handler), so content edited at /_admin
+// shows up without a rebuild. Everything is bundled into dist/server: the release needs no node_modules.
 export default defineConfig({
   site: site.domain,
   trailingSlash: 'always',
+  output: 'server',
+  adapter: node({ mode: 'middleware' }),
   build: { format: 'directory' },
+  vite: { ssr: { noExternal: true } },
   integrations: [htaccess()],
 });

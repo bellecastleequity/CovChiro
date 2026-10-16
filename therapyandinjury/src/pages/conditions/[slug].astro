@@ -5,10 +5,9 @@ import FaqList from '../../components/FaqList.astro';
 import { conditions, type Condition } from '../../lib/conditions';
 import { abs, faqSchema } from '../../lib/site';
 
-export function getStaticPaths() {
-  return conditions.map((c) => ({ params: { slug: c.slug }, props: { c } }));
-}
-const { c } = Astro.props as { c: Condition };
+const found = conditions.find((x) => x.slug === Astro.params.slug);
+if (!found) return new Response(null, { status: 404, statusText: 'Not found' });
+const c: Condition = found;
 const path = `/conditions/${c.slug}/`;
 const others = conditions.filter((x) => x.slug !== c.slug);
 const article = {

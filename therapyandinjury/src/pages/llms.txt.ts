@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { site, abs, indexableBranches, branches, branchName, branchPath, oneLineAddress, hoursSummary, isOpen, isPlaceholder } from '../lib/site';
 import { conditions } from '../lib/conditions';
-import { faqs, hasPlaceholder } from '../lib/faq';
+import { getFaqs, hasPlaceholder } from '../lib/faq';
 import { services } from '../lib/content';
 import { posts } from '../lib/blog';
 
@@ -48,7 +48,7 @@ export const GET: APIRoute = async () => {
     ...conditions.map((c) => `- ${c.name}: ${abs(`/conditions/${c.slug}/`)}`),
     '',
     '## Frequently asked questions',
-    ...faqs.filter((f) => !hasPlaceholder(f.a)).map((f) => `- ${f.q} ${f.a}`),
+    ...getFaqs().filter((f) => !hasPlaceholder(f.a)).map((f) => `- ${f.q} ${f.a}`),
     '',
     '## Pages',
     `- Auto accident injuries and the 14-day PIP rule: ${abs('/auto-accident-injuries/')}`,
