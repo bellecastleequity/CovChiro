@@ -29,8 +29,23 @@ export interface EmailContent {
   essential?: boolean;
 }
 
-export function renderEmail(c: EmailContent): { html: string; text: string } {
+/** Instagram / YouTube links shown as icons at the foot of every email (Settings site.instagramUrl / site.youtubeUrl; blank hides). */
+export interface EmailSocial {
+  instagram?: string;
+  youtube?: string;
+}
+
+export function renderEmail(c: EmailContent, social: EmailSocial = {}): { html: string; text: string } {
   const b = brand();
+  const icons = [
+    { url: social.instagram, label: "Instagram", img: "/brand/email-instagram.png" },
+    { url: social.youtube, label: "YouTube", img: "/brand/email-youtube.png" },
+  ].filter((i): i is { url: string; label: string; img: string } => !!i.url);
+  const socialRow = icons.length
+    ? `<tr><td style="padding-top:14px">${icons
+        .map((i) => `<a href="${esc(i.url)}" title="${esc(b.name)} on ${i.label}" style="display:inline-block;margin-right:12px;text-decoration:none"><img src="${esc(absoluteUrl(i.img))}" width="24" height="24" alt="${i.label}" style="display:block;border:0"></a>`)
+        .join("")}</td></tr>`
+    : "";
   const cta = c.cta
     ? `<tr><td style="padding:8px 0 24px"><a href="${esc(absoluteUrl(c.cta.url))}" style="display:inline-block;background:#282472;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px">${esc(c.cta.label)}</a></td></tr>`
     : "";
@@ -55,9 +70,10 @@ ${cta}
 <tr><td style="font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px">${esc(c.footerNote ?? `${b.name} · ${b.domain} · Questions? ${b.supportEmail}`)}${
     c.unsubscribeUrl ? ` · <a href="${esc(c.unsubscribeUrl)}" style="color:#94a3b8">Unsubscribe</a>` : ""
   }</td></tr>
+${socialRow}
 </table></td></tr></table></body></html>`;
   const items = (c.items ?? []).flatMap((it) => ["", it.title, ...it.lines, ...it.links.map((l) => `${l.label}: ${absoluteUrl(l.url)}`)]);
-  const text = [c.heading, "", ...c.paragraphs, ...items, ...(c.cta ? ["", `${c.cta.label}: ${absoluteUrl(c.cta.url)}`] : []), "", `${b.name} · ${b.domain}`, ...(c.unsubscribeUrl ? [`Unsubscribe: ${c.unsubscribeUrl}`] : [])].join("\n");
+  const text = [c.heading, "", ...c.paragraphs, ...items, ...(c.cta ? ["", `${c.cta.label}: ${absoluteUrl(c.cta.url)}`] : []), "", `${b.name} · ${b.domain}`, ...icons.map((i) => `${i.label}: ${i.url}`), ...(c.unsubscribeUrl ? [`Unsubscribe: ${c.unsubscribeUrl}`] : [])].join("\n");
   return { html, text };
 }
 
@@ -65,11 +81,12 @@ ${cta}
 export let lastEmailError: string | null = null;
 
 export async function sendEmail(to: string, c: EmailContent): Promise<boolean> {
-  const { html, text } = renderEmail(c);
+  const st = await getSettings().catch(() => null);
+  const { html, text } = renderEmail(c, { instagram: st?.["site.instagramUrl"] || undefined, youtube: st?.["site.youtubeUrl"] || undefined });
   const mailer = mailProvider();
   lastEmailError = null;
   try {
-    const replyTo = (await getSettings().catch(() => null))?.["email.replyTo"] || undefined;
+    const replyTo = st?.["email.replyTo"] || undefined;
     const ok = await mailer.send({ to, subject: c.subject, html, text, unsubscribeUrl: c.unsubscribeUrl, ...(c.essential ? { essential: true } : {}), ...(replyTo && replyTo.toLowerCase() !== to.toLowerCase() ? { replyTo } : {}) });
     if (!ok) lastEmailError = (mailer as { lastError?: string | null }).lastError ?? "the email provider refused the message";
     await recordChannel("email", ok, ok ? null : lastEmailError);
