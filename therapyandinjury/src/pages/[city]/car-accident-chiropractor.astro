@@ -10,6 +10,7 @@ import AppointmentForm from '../../components/AppointmentForm.astro';
 import Ph from '../../components/Ph.astro';
 import BranchFeatures from '../../components/BranchFeatures.astro';
 import PhoneLink from '../../components/PhoneLink.astro';
+import AttorneyBand from '../../components/AttorneyBand.astro';
 import { conditions } from '../../lib/conditions';
 import { sentence, type Branch, indexableBranches, branchName, branchPath, oneLineAddress, callFor, hoursSummary, abs, faqSchema, bookingHref } from '../../lib/site';
 
@@ -53,6 +54,7 @@ const service = {
   ogImage={`/og/${b.slug}.png`}
   schema={[service, faqSchema(faqs)]}
   breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)], ['Car accident chiropractor', path]]}
+  attorneyInline
 >
   <PageHero
     eyebrow={`${b.city}, FL · Auto accident injuries`}
@@ -66,6 +68,8 @@ const service = {
       {call.tel && <a class="btn btn--ghost" href={call.tel}>Call {call.label}</a>}
     </div>
   </PageHero>
+
+  <AttorneyBand />
 
   <section class="section">
     <div class="wrap lp">

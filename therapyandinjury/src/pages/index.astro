@@ -5,6 +5,7 @@ import BranchCard from '../components/BranchCard.astro';
 import Icon from '../components/Icon.astro';
 import CommercialVideo from '../components/CommercialVideo.astro';
 import VanityBand from '../components/VanityBand.astro';
+import AttorneyBand from '../components/AttorneyBand.astro';
 import { branches, featureLabels } from '../lib/site';
 import { conditions } from '../lib/conditions';
 
@@ -25,6 +26,7 @@ import { services, steps } from '../lib/content';
 <Base
   title="Therapy & Injury | Chiropractic Injury & Wellness Care in Florida"
   description="Florida chiropractic care for auto accident injuries and neck and back pain. PIP generally requires care within 14 days of a crash. Now open in Ocala."
+  attorneyInline
 >
   <section class="hero">
     <div class="wrap hero__in">
@@ -74,6 +76,8 @@ import { services, steps } from '../lib/content';
       </div>
     </div>
   </section>
+
+  <AttorneyBand />
 
   <section class="section">
     <div class="wrap">

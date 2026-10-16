@@ -26,6 +26,7 @@ export type SiteCopy = {
   formConsent: string; billing: string; after14Days: string; healthInsurance: string; firstVisitLength: string;
   onlineIntake: string; rehabEquipment: string; servicesApproved: boolean; privacyDraftNotice: string;
   privacyProviders: string; privacyNoticeUrl: string; privacyRetention: string;
+  attorneyHeadline: string; attorneyNote: string;
 };
 export type SiteData = typeof defaultSite & {
   copy: SiteCopy;

@@ -53,6 +53,8 @@
     "privacyDraftNotice": "[DRAFT — HAVE YOUR ATTORNEY OR COMPLIANCE ADVISOR REVIEW BEFORE LAUNCH]",
     "privacyProviders": "[LIST PROVIDERS — e.g., Namecheap hosting, form/email service]",
     "privacyNoticeUrl": "[LINK TO NOTICE OF PRIVACY PRACTICES]",
-    "privacyRetention": "[CONFIRM RETENTION PERIOD]"
+    "privacyRetention": "[CONFIRM RETENTION PERIOD]",
+    "attorneyHeadline": "Yes, we work with your attorney and your auto insurance.",
+    "attorneyNote": "We bill your auto insurance (Florida PIP) directly and, with your permission, send your records to your attorney. Coverage depends on your policy."
   }
 }

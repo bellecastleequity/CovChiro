@@ -1,0 +1,84 @@
+---
+/**
+ * "Yes, we work with your attorney and your auto insurance." in a bold white marker hand, with a
+ * teal hand-drawn underline. Mid-page on the home, location and car-accident pages; other pages get
+ * it above the closing call-to-action (Base). Wording: content editor → Page text (empty hides it).
+ */
+import '@fontsource/permanent-marker/400.css';
+import { copyText } from '../lib/site';
+
+const headline = copyText('attorneyHeadline');
+const note = copyText('attorneyNote');
+// Highlight a leading "Yes," (or "Yes!" / "Yes.") in teal; the rest stays white.
+const m = headline.match(/^(yes[,.!]?)\s+(.*)$/i);
+---
+{headline && (
+  <section class="ab" aria-label="Attorneys and auto insurance">
+    <div class="wrap ab__in">
+      <p class="ab__head">
+        {m ? <><span class="ab__yes">{m[1]}</span> {m[2]}</> : headline}
+        <svg class="ab__swoosh" viewBox="0 0 600 24" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M4 16 C 120 6, 260 4, 380 10 S 560 18, 596 8" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" />
+        </svg>
+      </p>
+      {note && <p class="ab__note">{note} <a href="/auto-accident-injuries/">How it works&nbsp;→</a></p>}
+    </div>
+  </section>
+)}
+
+<style>
+  .ab {
+    background:
+      repeating-linear-gradient(-45deg, rgb(255 255 255 / 2.5%) 0 14px, transparent 14px 28px),
+      var(--navy-900);
+    color: var(--white);
+    padding-block: clamp(32px, 6vw, 56px);
+    text-align: center;
+    overflow: hidden;
+    border-bottom: 4px solid var(--teal);
+  }
+  .ab__in {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .ab__head {
+    position: relative;
+    margin: 0;
+    max-width: 25ch;
+    text-wrap: balance;
+    font-family: 'Permanent Marker', 'Marker Felt', 'Comic Sans MS', cursive;
+    font-weight: 400;
+    font-size: clamp(1.9rem, 6.4vw, 3.6rem);
+    line-height: 1.12;
+    letter-spacing: 0.01em;
+    color: var(--white);
+    transform: rotate(-2deg);
+    text-shadow: 0 3px 0 rgb(0 0 0 / 25%);
+    padding-bottom: 0.35em;
+  }
+  .ab__yes {
+    color: var(--teal);
+  }
+  .ab__swoosh {
+    position: absolute;
+    left: 6%;
+    right: 6%;
+    bottom: 0;
+    width: 88%;
+    height: 0.4em;
+    color: var(--teal);
+  }
+  .ab__note {
+    margin: 6px 0 0;
+    max-width: 62ch;
+    color: #c9d3de;
+    font-size: 0.98rem;
+  }
+  .ab__note a {
+    color: var(--teal);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+</style>

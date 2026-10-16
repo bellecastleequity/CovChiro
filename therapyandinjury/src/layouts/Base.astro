@@ -8,6 +8,7 @@ import MobileActionBar from '../components/MobileActionBar.astro';
 import PipBanner from '../components/PipBanner.astro';
 import CtaBand from '../components/CtaBand.astro';
 import NearestBanner from '../components/NearestBanner.astro';
+import AttorneyBand from '../components/AttorneyBand.astro';
 import { site, abs, orgSchema, breadcrumbSchema, type Branch } from '../lib/site';
 
 interface Props {
@@ -23,8 +24,10 @@ interface Props {
   noindex?: boolean;
   /** Location for the mobile Call / Request / Directions bar (brand pages get a generic bar). */
   branch?: Branch;
+  /** The page shows the attorney/auto-insurance banner itself (mid-page), so skip the one above the CTA. */
+  attorneyInline?: boolean;
 }
-const { title, description, ogImage = '/og/default.png', ogType = 'website', city, ctaHref, schema, breadcrumbs, noindex = false, branch } = Astro.props;
+const { title, description, ogImage = '/og/default.png', ogType = 'website', city, ctaHref, schema, breadcrumbs, noindex = false, branch, attorneyInline = false } = Astro.props;
 const canonical = abs(Astro.url.pathname);
 const pageSchemas = (Array.isArray(schema) ? schema : [schema]).filter(Boolean) as Record<string, unknown>[];
 const schemas = [...orgSchema(), ...pageSchemas, ...(breadcrumbs ? [breadcrumbSchema(breadcrumbs)] : [])];
@@ -73,6 +76,7 @@ const { googleSiteVerification, bingSiteVerification } = site.seo;
     {!branch && !city && <NearestBanner />}
     <main id="main">
       <slot />
+      {!attorneyInline && <AttorneyBand />}
       <CtaBand branch={branch} />
     </main>
     <Footer city={city} />
