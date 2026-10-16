@@ -77,6 +77,6 @@ export default defineConfig({
   output: 'server',
   adapter: node({ mode: 'middleware' }),
   build: { format: 'directory' },
-  vite: { ssr: { noExternal: true } },
+  vite: { ssr: { noExternal: true }, define: { __BUILD_DATE__: JSON.stringify(new Date().toISOString()) } },
   integrations: [htaccess()],
 });

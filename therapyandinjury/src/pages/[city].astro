@@ -29,7 +29,7 @@ import {
   branchSchema,
   isPlaceholder,
   isIndexable,
-  bookingHref,
+  bookingHref, videoSchema
 } from '../lib/site';
 
 // Rendered per request from the live data (content editor), so a location is looked up by its slug.
@@ -55,7 +55,7 @@ const description = open
   : `${name} is coming soon, bringing chiropractic injury and wellness care to ${b.city} and ${b.county} County, FL. Get notified when we open.`;
 
 ---
-<Base title={title} description={description} city={b.city} ctaHref={bookingHref(b)} ogImage={`/og/${b.slug}.png`} schema={branchSchema(b)} breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)]]} noindex={!isIndexable(b)} branch={b} attorneyInline>
+<Base title={title} description={description} city={b.city} ctaHref={bookingHref(b)} ogImage={`/og/${b.slug}.png`} schema={[branchSchema(b), videoSchema(b)]} breadcrumbs={[['Locations', '/locations/'], [b.city, branchPath(b)]]} noindex={!isIndexable(b)} branch={b} attorneyInline>
   <section class="page-hero">
     <div class="page-hero__ring" aria-hidden="true"></div>
     <div class="wrap bh__hero">

@@ -17,6 +17,9 @@ export type Video = {
   caption: string;
   /** Plain-text transcript paragraphs (blank lines separate paragraphs). Shown in a "Transcript" disclosure. */
   transcript: string;
+  /** For search engines (video rich results): publish date YYYY-MM-DD and length in seconds. */
+  uploadDate?: string;
+  duration?: string;
 };
 /**
  * Editable page text (content editor → Page text). Values may contain "[PLACEHOLDER]" parts, which
@@ -202,6 +205,12 @@ function derive() {
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 /** Edited values win; keys the editor never saw (e.g. added in a newer release) keep their defaults. */
+declare const __BUILD_DATE__: string;
+const builtAt = new Date(typeof __BUILD_DATE__ === 'string' ? __BUILD_DATE__ : Date.now());
+let contentSavedAt: Date | null = null;
+/** When the site's content last changed: the later of this release's build and the last editor save (sitemap lastmod). */
+export const siteUpdatedAt = (): Date => (contentSavedAt && contentSavedAt > builtAt ? contentSavedAt : builtAt);
+
 function merge<T>(base: T, over: unknown): T {
   if (!isObj(base) || !isObj(over)) return (over === undefined ? base : over) as T;
   const out: Record<string, unknown> = { ...base };
@@ -214,7 +223,9 @@ function merge<T>(base: T, over: unknown): T {
  * holding a reference sees the new values. Locations merge by slug; a location only present in
  * the content file is added as-is.
  */
-export function applyContent(content: { site?: unknown; branches?: unknown } | null) {
+export function applyContent(content: { site?: unknown; branches?: unknown; updatedAt?: unknown } | null) {
+  const saved = typeof content?.updatedAt === 'string' ? new Date(content.updatedAt) : null;
+  contentSavedAt = saved && !Number.isNaN(saved.getTime()) ? saved : null;
   const nextSite = merge(structuredClone(defaultSite), content?.site) as SiteData;
   for (const k of Object.keys(site)) delete (site as Record<string, unknown>)[k];
   Object.assign(site, nextSite);
@@ -248,7 +259,7 @@ export const heroVideoFor = (b?: Branch): Video => {
   const base = site.heroVideo;
   const own = b?.heroVideo ?? {};
   const pick = (k: keyof Video) => (typeof own[k] === 'string' && own[k]!.trim() ? own[k]! : base[k]);
-  return { youtube: pick('youtube'), file: pick('file'), poster: pick('poster'), title: pick('title'), caption: pick('caption'), transcript: pick('transcript') };
+  return { youtube: pick('youtube'), file: pick('file'), poster: pick('poster'), title: pick('title'), caption: pick('caption'), transcript: pick('transcript'), uploadDate: pick('uploadDate'), duration: pick('duration') };
 };
 
 /** "https://youtu.be/ID", "…watch?v=ID", "…/shorts/ID", "…/embed/ID" or a bare ID → ID (else ''). */
@@ -261,6 +272,50 @@ export const youtubeId = (v: string): string => {
 };
 
 export const abs = (path: string) => new URL(path, site.domain).toString();
+
+/**
+ * The hero commercial as search engines see it (VideoObject JSON-LD and sitemap video entries), or
+ * null when there's no video or it lacks a poster or date. Self-hosted files give a contentUrl,
+ * YouTube links an embedUrl.
+ */
+export const videoFacts = (b?: Branch) => {
+  const v = heroVideoFor(b);
+  const yt = youtubeId(v.youtube);
+  const file = yt || isPlaceholder(v.file) ? '' : v.file;
+  const poster = !isPlaceholder(v.poster) && v.poster ? abs(v.poster) : yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : '';
+  const date = /^\d{4}-\d{2}-\d{2}/.test(v.uploadDate ?? '') ? v.uploadDate!.slice(0, 10) : '';
+  if ((!yt && !file) || !poster || !date) return null;
+  const title = isPlaceholder(v.title) ? 'Therapy & Injury commercial' : v.title;
+  const transcript = isPlaceholder(v.transcript) ? '' : v.transcript.replace(/\s*\n\s*/g, ' ').trim();
+  const where = b ? branchName(b) : site.brandName;
+  const description = `${title}, a commercial from ${where} about getting checked after a car accident. Florida PIP generally requires care within 14 days.`;
+  const seconds = Number(v.duration);
+  return {
+    title, description, transcript, poster, date,
+    contentUrl: file ? abs(file) : '',
+    embedUrl: yt ? `https://www.youtube.com/embed/${yt}` : '',
+    seconds: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : 0,
+  };
+};
+
+export const videoSchema = (b?: Branch) => {
+  const f = videoFacts(b);
+  if (!f) return null;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'VideoObject',
+    name: f.title,
+    description: f.description,
+    thumbnailUrl: [f.poster],
+    uploadDate: f.date,
+    ...(f.seconds ? { duration: `PT${f.seconds}S` } : {}),
+    ...(f.contentUrl ? { contentUrl: f.contentUrl } : {}),
+    ...(f.embedUrl ? { embedUrl: f.embedUrl } : {}),
+    ...(f.transcript ? { transcript: f.transcript } : {}),
+    inLanguage: 'en-US',
+    publisher: { '@id': abs('/#org') },
+  };
+};
 
 /** Organization + WebSite JSON-LD, emitted on every page (same @id everywhere). */
 export const orgSchema = () => {
@@ -336,7 +391,7 @@ const SCHEMA_DAY: Record<string, string> = Object.fromEntries(WEEK.map((d) => [d
 export const branchSchema = (b: Branch) => {
   const schema: Record<string, unknown> = {
     '@context': 'https://schema.org',
-    '@type': 'MedicalBusiness',
+    '@type': 'Chiropractor',
     '@id': abs(`${branchPath(b)}#business`),
     name: branchName(b),
     description: `Chiropractic injury and wellness care in ${b.city}, Florida, including care for auto accident injuries.`,

@@ -1,18 +1,19 @@
 // Every indexable public URL, in one place. Feeds sitemap.xml, llms.txt and the
 // IndexNow submission script, so a page is never in one list but missing from another.
 // Coming-soon locations are deliberately excluded (they're noindex).
-import { indexableBranches, branchPath } from './site';
+import { indexableBranches, branchPath, siteUpdatedAt, videoFacts } from './site';
 import { conditions } from './conditions';
 import { posts } from './blog';
 
-export type PublicPath = { path: string; priority: number; changefreq: 'daily' | 'weekly' | 'monthly' | 'yearly'; lastmod?: Date };
+export type PublicPath = { path: string; priority: number; changefreq: 'daily' | 'weekly' | 'monthly' | 'yearly'; lastmod?: Date; video?: ReturnType<typeof videoFacts> };
 
 export async function publicPaths(): Promise<PublicPath[]> {
   const blog = await posts();
-  return [
-    { path: '/', priority: 1.0, changefreq: 'weekly' },
+  const updated = siteUpdatedAt();
+  const list: PublicPath[] = [
+    { path: '/', priority: 1.0, changefreq: 'weekly', video: videoFacts() },
     ...indexableBranches.flatMap((b): PublicPath[] => [
-      { path: branchPath(b), priority: 0.9, changefreq: 'monthly' },
+      { path: branchPath(b), priority: 0.9, changefreq: 'monthly', video: videoFacts(b) },
       { path: `${branchPath(b)}car-accident-chiropractor/`, priority: 0.9, changefreq: 'monthly' },
     ]),
     { path: '/auto-accident-injuries/', priority: 0.9, changefreq: 'monthly' },
@@ -30,4 +31,6 @@ export async function publicPaths(): Promise<PublicPath[]> {
     { path: '/privacy/', priority: 0.2, changefreq: 'yearly' },
     { path: '/accessibility/', priority: 0.2, changefreq: 'yearly' },
   ];
+  // Pages built from the site data change when a release ships or the editor saves; blog posts keep their own dates.
+  return list.map((p) => ({ ...p, lastmod: p.lastmod ?? updated }));
 }
