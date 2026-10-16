@@ -1,5 +1,5 @@
 ---
-import { branches, branchName, branchPath, isOpen } from '../lib/site';
+import { branches, branchName, branchPath, isOpen, nearestData } from '../lib/site';
 interface Props { id?: string }
 const { id = 'picker' } = Astro.props;
 ---
@@ -14,9 +14,73 @@ const { id = 'picker' } = Astro.props;
     </select>
     <button type="submit" class="btn btn--navy">Go</button>
   </div>
+  <button type="button" class="picker__near" data-near hidden>
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 21s7-6.4 7-11.5A7 7 0 0 0 5 9.5C5 14.6 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.5" fill="currentColor"/></svg>
+    Use my location
+  </button>
+  <p class="picker__near-status" role="status" aria-live="polite" data-near-status></p>
+  <script type="application/json" data-near-data set:html={JSON.stringify(nearestData())} />
 </form>
 
 <script>
+  // "Use my location": asks the browser for the visitor's position only when tapped, finds the
+  // nearest location (straight-line distance), and goes there. The position never leaves the browser;
+  // only the nearest location's name and distance are remembered on this device (for the
+  // "Closest to you" banner). If the nearest location isn't open yet, both options are shown.
+  type Loc = { s: string; n: string; c: string; u: string; o: boolean; lat: number; lng: number };
+  const miles = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+    const r = (d: number) => (d * Math.PI) / 180;
+    const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2;
+    return 3958.8 * 2 * Math.asin(Math.sqrt(h));
+  };
+  const fmt = (m: number) => (m < 1 ? "under 1" : m < 10 ? m.toFixed(1) : Math.round(m).toString());
+  document.querySelectorAll<HTMLFormElement>('[data-picker]').forEach((form) => {
+    const btn = form.querySelector<HTMLButtonElement>('[data-near]');
+    const status = form.querySelector<HTMLElement>('[data-near-status]');
+    const locs: Loc[] = JSON.parse(form.querySelector('[data-near-data]')?.textContent || '[]');
+    if (!btn || !status || !locs.length || !('geolocation' in navigator) || !window.isSecureContext) return;
+    btn.hidden = false;
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      status.textContent = 'Finding the closest location…';
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          const ranked = locs.map((l) => ({ ...l, mi: miles(me, l) })).sort((a, b) => a.mi - b.mi);
+          const open = ranked.find((l) => l.o);
+          const first = ranked[0];
+          try { localStorage.setItem('ti-nearest', JSON.stringify({ s: (open || first).s, mi: Math.round((open || first).mi), at: Date.now() })); } catch {}
+          btn.disabled = false;
+          if (open && open.s === first.s) {
+            status.textContent = `Closest to you: ${open.n}, about ${fmt(open.mi)} mi. Opening…`;
+            window.location.href = open.u;
+            return;
+          }
+          // The nearest location isn't open yet: offer it (coming soon) and the nearest open one.
+          status.innerHTML = '';
+          const line = (text: string, l: { u: string; n: string }) => {
+            const p = document.createElement('span');
+            p.className = 'picker__near-opt';
+            p.append(text + ' ');
+            const a = document.createElement('a');
+            a.href = l.u; a.textContent = l.n;
+            p.append(a);
+            return p;
+          };
+          status.append(line(`Closest: ${first.c}, ${fmt(first.mi) === "under 1" ? "under 1" : `about ${fmt(first.mi)}`} mi (coming soon):`, first));
+          if (open) status.append(line(`Open now, about ${fmt(open.mi)} mi:`, open));
+        },
+        (err) => {
+          btn.disabled = false;
+          status.textContent = err.code === err.PERMISSION_DENIED
+            ? 'Location is turned off for this site. Choose a city from the list instead.'
+            : 'We couldn’t get your location. Choose a city from the list instead.';
+        },
+        { enableHighAccuracy: false, timeout: 12000, maximumAge: 10 * 60 * 1000 },
+      );
+    });
+  });
+
   document.querySelectorAll<HTMLFormElement>('[data-picker]').forEach((form) => {
     form.addEventListener('submit', (e) => {
       const select = form.querySelector('select');
@@ -46,6 +110,45 @@ const { id = 'picker' } = Astro.props;
   .picker__row {
     display: flex;
     gap: 10px;
+  }
+  .picker__near {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font: inherit;
+    font-weight: 700;
+    color: var(--navy);
+    background: var(--teal-soft);
+    border: 1.5px solid var(--teal);
+    border-radius: 999px;
+    padding: 8px 16px;
+    cursor: pointer;
+    min-height: 44px;
+  }
+  .picker__near:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+  .picker__near:focus-visible {
+    outline: 3px solid var(--navy);
+    outline-offset: 2px;
+  }
+  .picker__near-status {
+    margin: 8px 0 0;
+    font-size: 0.95rem;
+    color: var(--slate-text);
+  }
+  .picker__near-status:empty {
+    display: none;
+  }
+  /* Added by the script, so these can't use scoped styles. */
+  :global(.picker__near-opt) {
+    display: block;
+    margin-top: 4px;
+  }
+  :global(.picker__near-opt a) {
+    font-weight: 700;
   }
   select {
     flex: 1;
