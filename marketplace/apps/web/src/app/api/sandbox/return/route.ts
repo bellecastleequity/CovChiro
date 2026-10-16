@@ -13,6 +13,15 @@ export async function GET() {
   const back = jar.get(ADMIN_RETURN_COOKIE)?.value;
   const demo = jar.get(SESSION_COOKIE)?.value;
   const admin = back ? await auth.sessionFromToken(back) : null;
+  // Already signed in as an admin (no "Act as" in progress): just open the test site page. Before Oct 2026
+  // this fell through to the sign-out below, so tapping "Back to admin" from an admin page signed you out.
+  if (!admin && demo) {
+    const current = await auth.sessionFromToken(demo);
+    if (current?.user.role === "PLATFORM_ADMIN") {
+      jar.delete(ADMIN_RETURN_COOKIE);
+      return new NextResponse(null, { status: 303, headers: { Location: "/admin/sandbox" } });
+    }
+  }
   if (!admin || admin.user.role !== "PLATFORM_ADMIN") {
     // Nothing to return to (the 12-hour return cookie ran out or that admin session ended). Sign the demo
     // account out first: sent to /admin while still signed in as a demo provider, the admin area would just
