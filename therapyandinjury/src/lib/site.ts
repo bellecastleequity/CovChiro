@@ -81,7 +81,11 @@ export const mapEmbedSrc = (b: Branch) => {
   if (!isPlaceholder(b.mapEmbed)) return b.mapEmbed;
   if (!b.address) return '';
   const z = Number.isFinite(b.mapZoom) ? Math.min(21, Math.max(3, Math.round(b.mapZoom!))) : 17;
-  return `https://www.google.com/maps?q=${encodeURIComponent(`${branchName(b)}, ${oneLineAddress(b)}`)}&z=${z}&output=embed`;
+  // Search by the exact coordinates when they're set, otherwise by the street address alone. Leaving
+  // the business name out matters: Google doesn't know it yet, so with the name it guesses a different
+  // place (and shows no pin). A plain address or "lat,lng" always drops a pin and centers on it.
+  const where = b.geo?.lat != null && b.geo?.lng != null ? `${b.geo.lat},${b.geo.lng}` : oneLineAddress(b);
+  return `https://www.google.com/maps?q=${encodeURIComponent(where)}&z=${z}&output=embed`;
 };
 
 export const directionsUrl = (b: Branch) =>

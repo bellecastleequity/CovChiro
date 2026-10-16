@@ -138,9 +138,9 @@ function renderEditor() {
           ${field(P('phone'), 'Local phone', 'tel', b.phone)}
           ${field(P('email'), 'Email (appointment requests go here)', 'email', b.email)}
         </div></section>
-      <section><h2>Address</h2><p class="hint">Leave all four empty while there's no address yet.</p><div class="grid" style="margin-top:10px">
+      <section><h2>Address</h2><p class="hint">Leave all four empty while there's no address yet. The map pins this address. For an exact pin, right-click the spot in Google Maps, click the coordinates to copy them, and paste the two numbers into latitude and longitude.</p><div class="grid" style="margin-top:10px">
           ${field(P('address.street'), 'Street', 'text', a.street)}${field(P('address.city'), 'City', 'text', a.city)}${field(P('address.state'), 'State', 'text', a.state)}${field(P('address.zip'), 'ZIP', 'text', a.zip)}
-          ${field(P('geo.lat'), 'Map latitude (optional)', 'number', b.geo?.lat, 'step="any"')}${field(P('geo.lng'), 'Map longitude (optional)', 'number', b.geo?.lng, 'step="any"')}
+          ${field(P('geo.lat'), 'Map latitude (optional, pins the map exactly)', 'number', b.geo?.lat, 'step="any"')}${field(P('geo.lng'), 'Map longitude (optional)', 'number', b.geo?.lng, 'step="any"')}
         </div></section>
       <section><h2>Hours</h2><table class="hours"><thead><tr><th>Day</th><th>Open</th><th>Opens</th><th>Closes</th></tr></thead><tbody>
         ${WEEK.map((d) => { const h = (b.hours || []).find((x) => x.day === d); return `<tr data-day="${d}"><td>${d}</td><td><input type="checkbox" class="h-on"${h ? ' checked' : ''} aria-label="Open on ${d}"></td><td><input type="time" class="h-open" value="${h ? esc(h.opens) : '09:00'}"${h ? '' : ' disabled'}></td><td><input type="time" class="h-close" value="${h ? esc(h.closes) : '17:00'}"${h ? '' : ' disabled'}></td></tr>`; }).join('')}
