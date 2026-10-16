@@ -61,6 +61,30 @@
      (charts, long headings, nowrap rows), and form controls never poke out of their card. */
   .app-main .grid > * { min-width: 0; }
   .app-main :is(select, input, textarea) { max-width: 100%; }
+  /* Tap feedback (owner, Oct 2026: "not sure what's clickable"): our own pressed states replace the
+     browser's grey flash; links dim while pressed. Buttons shrink a touch (components/ui/button). */
+  html { -webkit-tap-highlight-color: transparent; }
+  a[href]:active { opacity: 0.7; }
+  /* Table rows that link somewhere: the first link in the first cell covers the whole row, so a tap
+     anywhere on the row opens it; the row shades on hover and while pressed. Other links, buttons and
+     form controls in the row sit above the cover and keep working. Opt out with data-no-row-link. */
+  table:not([data-no-row-link]) tbody tr:has(> td:first-child a[href]) {
+    position: relative;
+    cursor: pointer;
+    transition: background-color 120ms;
+  }
+  table:not([data-no-row-link]) tbody tr:has(> td:first-child a[href]):hover { @apply bg-slate-50; }
+  table:not([data-no-row-link]) tbody tr:has(> td:first-child a[href]):active { @apply bg-brand-50; }
+  table:not([data-no-row-link]) tbody tr > td:first-child a[href]:first-of-type::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  table:not([data-no-row-link]) tbody tr > td:not(:first-child) :is(a, button, input, select, textarea, label, summary) {
+    position: relative;
+    z-index: 1;
+  }
+  table:not([data-no-row-link]) tbody tr:has(> td:first-child a[href]) a[href]:active { opacity: 1; }
   /* Brand display face for page-level headings; small card titles stay in Inter. */
   h1, h2 { font-family: var(--font-display); }
 }

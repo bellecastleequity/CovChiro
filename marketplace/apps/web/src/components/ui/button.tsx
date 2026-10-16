@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline";
 type Size = "sm" | "md" | "lg";
 
-const base = "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap";
+const base = "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition motion-safe:active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap";
 const variants: Record<Variant, string> = {
   primary: "bg-brand-600 text-white hover:bg-brand-700 shadow-sm",
   secondary: "bg-slate-900 text-white hover:bg-slate-800",

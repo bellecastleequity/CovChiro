@@ -5,6 +5,7 @@ import { Analytics } from "@/components/site/analytics";
 import { SandboxBar } from "@/components/site/sandbox-bar";
 import { ChunkReload } from "@/components/site/chunk-reload";
 import { FormDrafts } from "@/components/site/form-drafts";
+import { TapFeedback } from "@/components/site/tap-feedback";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <Analytics />
         <ChunkReload />
+        <TapFeedback />
         <FormDrafts signedIn={false} />
       </body>
     </html>
