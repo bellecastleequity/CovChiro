@@ -146,4 +146,31 @@ describe("website-first email finding (no AI)", () => {
     expect(["found", "verified", "mx"]).toContain(r);
     expect(await prisma.providerProspect.findUniqueOrThrow({ where: { id: pp.id } })).toMatchObject({ email: "dwhitfield@groupchiro.test", emailOrigin: "website" });
   });
+
+  it("providers with no known website: one Google Maps lookup per practice address, shared with everyone there", async () => {
+    const f = newFake();
+    const key = `addr-${uid()}`;
+    const make = (first: string, last: string) => prisma.providerProspect.create({
+      data: { professionCode: "DC", displayName: `${first} ${last}, DC`, firstName: first, lastName: last, state: "FL", publicToken: `pp${uid()}`, address: "77 Palm Ave", city: "Tampa", zip: "33606", addressKey: key, providersAtPractice: 2, practiceRole: "ASSOCIATE" },
+    });
+    const a = await make("Lena", "Ortiz");
+    const b = await make("Sam", "Kerr");
+    f.places.set("Lena Ortiz", [{ name: "Palm Ave Chiropractic", address: "77 Palm Ave, Tampa, FL 33606, USA", website: "https://palmavechiro.test", phone: null, status: "OPERATIONAL" }]);
+    f.pages.set("https://palmavechiro.test", `<a href="/team">Our team</a>`);
+    f.pages.set("https://palmavechiro.test/team", `Dr. Lena Ortiz: lortiz@palmavechiro.test · Dr. Sam Kerr: skerr@palmavechiro.test`);
+    await growth.discoverContact(a.id);
+    expect(await prisma.providerProspect.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ website: "https://palmavechiro.test" });
+    await growth.discoverContact(b.id);
+    expect(f.calls.filter((c) => c.startsWith("places:"))).toHaveLength(1);
+    expect((await prisma.providerProspect.findUniqueOrThrow({ where: { id: a.id } })).email).toBe("lortiz@palmavechiro.test");
+    expect((await prisma.providerProspect.findUniqueOrThrow({ where: { id: b.id } })).email).toBe("skerr@palmavechiro.test");
+
+    // An address Google Maps has no website for: the others there skip straight to the short AI fallback.
+    const key2 = `addr-${uid()}`;
+    const c = await prisma.providerProspect.create({ data: { professionCode: "DC", displayName: "Ira Blum, DC", firstName: "Ira", lastName: "Blum", state: "FL", publicToken: `pp${uid()}`, address: "5 Oak St", city: "Tampa", zip: "33607", addressKey: key2 } });
+    const d = await prisma.providerProspect.create({ data: { professionCode: "DC", displayName: "Joy Park, DC", firstName: "Joy", lastName: "Park", state: "FL", publicToken: `pp${uid()}`, address: "5 Oak St", city: "Tampa", zip: "33607", addressKey: key2 } });
+    f.places.set("Ira Blum", [{ name: "Oak St Wellness", address: "5 Oak St, Tampa, FL 33607, USA", website: null, phone: null, status: "OPERATIONAL" }]);
+    await growth.discoverContact(c.id);
+    expect((await prisma.providerProspect.findUniqueOrThrow({ where: { id: d.id } })).researchStatus).toBe("SITE_SCANNED");
+  });
 });

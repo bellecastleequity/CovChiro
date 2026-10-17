@@ -10,7 +10,7 @@ import { agentOn, ai, aiRules, composeAndSend, Deferred, escalate, isSuppressed,
 import { activeTargets, registryProfile } from "./expansion";
 import { KNOWN_PRICING, researchEngine, researchSpendCents } from "./prospecting";
 import { handleResearchFailure, researchBlocked, withRateLimitRetry } from "./aihealth";
-import { readSite } from "./sitefirst";
+import { findWebsite, readSite } from "./sitefirst";
 import { inOutreachWindow, outreachSideAllowance, priorityContext } from "./priority";
 
 /**
@@ -146,6 +146,24 @@ async function found(p: ProviderProspect, data: { email: string; emailSourceUrl:
 }
 
 /**
+ * A Google Maps lookup for a practice address is paid once: a website found is saved on every provider
+ * prospect at that address and on the practice (where empty); no website means the others at that
+ * address (and a practice not yet researched) skip straight to the short AI fallback.
+ */
+async function shareWebsiteLookup(p: ProviderProspect, practice: { id: string; website: string | null; researchStatus: string } | null, website: string | null) {
+  const sameAddress: Prisma.ProviderProspectWhereInput = p.addressKey ? { addressKey: p.addressKey, state: p.state } : { id: p.id };
+  if (website) {
+    await prisma.providerProspect.updateMany({ where: { ...sameAddress, website: null }, data: { website } });
+    if (practice && !practice.website) await prisma.clinicProspect.update({ where: { id: practice.id }, data: { website } });
+    return;
+  }
+  // With the AI fallback off there is nothing left to try for them.
+  const next = (await getSettings())["growth.researchAiFallback"] ? "SITE_SCANNED" : "NOT_FOUND";
+  await prisma.providerProspect.updateMany({ where: { ...sameAddress, id: { not: p.id }, researchStatus: "PENDING", website: null }, data: { researchStatus: next } });
+  if (practice && practice.researchStatus === "PENDING" && !practice.website) await prisma.clinicProspect.update({ where: { id: practice.id }, data: { researchStatus: next } });
+}
+
+/**
  * One prospect: reuse a researched solo practice's email (free), else research on the web
  * (shares the prospecting research budget). Returns the outcome.
  */
@@ -167,8 +185,28 @@ export async function discoverContact(id: string, opts: { force?: boolean } = {}
     if (ok.ok) return found(p, { email: practice.email, emailSourceUrl: practice.sourceUrls[0] ?? null, website: practice.website, origin: "practice", role, providers });
   }
 
-  // 2. The practice's own website, read by the server (free): an address in their name, or a solo owner's mailbox.
-  const site = siteUrl(practice?.website ?? p.website);
+  // 2. No website known: one Google Maps lookup per practice address, shared with everyone there
+  //    (unless clinic research already settled this practice's website).
+  let site = siteUrl(practice?.website ?? p.website);
+  const practiceSettled = !!practice && !["PENDING", "RUNNING", "FAILED"].includes(practice.researchStatus);
+  if (s["growth.researchSiteFirst"] && !scanned && !site && !practiceSettled && p.address) {
+    const profile = await registryProfile(p.professionCode);
+    const w = await findWebsite({
+      name: practice && !practice.nameFromRegistry ? practice.clinicName : p.displayName, noun: profile.practiceNoun, nameIsPerson: !practice || practice.nameFromRegistry,
+      address: p.address, city: p.city, state: p.state, zip: p.zip, phone: practice?.phone ?? null,
+    }, "contactDiscovery");
+    if (w.website || w.reason === "no_match" || w.reason === "no_website") {
+      await shareWebsiteLookup(p, practice, w.website);
+      site = w.website;
+      if (!site) scanned = true; // Google Maps has no website for this address: AI with the smaller search limit
+      if (!site && !s["growth.researchAiFallback"]) {
+        await prisma.providerProspect.update({ where: { id }, data: { researchStatus: "NOT_FOUND", researchAttempts: { increment: 1 }, researchedAt: clock.now() } });
+        return "not_found";
+      }
+    }
+  }
+
+  // 3. The practice's own website, read by the server (free): an address in their name, or a solo owner's mailbox.
   if (s["growth.researchSiteFirst"] && !scanned && site) {
     const providers = Math.max(practice?.providerCount ?? 1, p.providersAtPractice);
     const role = providers <= 1 ? "OWNER" : (p.practiceRole as "OWNER" | "ASSOCIATE" | "UNKNOWN");
@@ -186,7 +224,7 @@ export async function discoverContact(id: string, opts: { force?: boolean } = {}
   }
   const backTo = scanned ? "SITE_SCANNED" : pending;
 
-  // 3. Web research (after a website check: fewer searches, the site was already read).
+  // 4. Web research (after a website check: fewer searches, the site was already read).
   const { provider, model } = researchEngine(s);
   if (provider.name === "none" || !provider.research) {
     await prisma.providerProspect.update({ where: { id }, data: { researchStatus: backTo, researchedAt: null } });
