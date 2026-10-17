@@ -18,6 +18,7 @@ export * as google from "./google";
 export * as emaildns from "./emaildns";
 export * as concentration from "./concentration";
 export * as activity from "./activity";
+export * as texts from "./textinbox";
 export * from "./matching";
 export * from "./pricing";
 export * from "./notify";

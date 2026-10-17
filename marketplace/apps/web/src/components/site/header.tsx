@@ -1,3 +1,4 @@
+import { BusinessPhone } from "@/components/site/business-phone";
 import Link from "next/link";
 import { brand } from "@cm/config";
 import { LinkButton } from "@/components/ui/button";
@@ -80,6 +81,7 @@ export async function SiteFooter() {
         <div>
           <Logo name={b.name} />
           <p className="mt-3 text-sm text-slate-500">{b.tagline}</p>
+          <BusinessPhone variant="footer" className="mt-4" />
           {socials.length ? (
             <div className="mt-4 flex items-center gap-2">
               {socials.map((x) => (

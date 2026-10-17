@@ -15,8 +15,8 @@ import { shortCached } from "@/lib/short-cache";
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user } = await requireActor("admin");
   // Menu badges + banners, all in parallel and cached for a few seconds (lib/short-cache).
-  const { pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, healthState, sandboxBadge, urgent } = await shortCached("admin-layout", async () => {
-    const [pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, health, sandboxBadge, urgent] = await Promise.all([
+  const { pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, textsUnread, healthState, sandboxBadge, urgent } = await shortCached("admin-layout", async () => {
+    const [pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, textsUnread, health, sandboxBadge, urgent] = await Promise.all([
       // Same items the Verification page lists (admin.verificationQueue + pending clinics).
       Promise.all([
         prisma.license.count({ where: { status: "PENDING_VERIFICATION" } }),
@@ -33,12 +33,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       Promise.all([prisma.communication.count({ where: { status: "PENDING_APPROVAL" } }), prisma.escalation.count({ where: { status: { not: "RESOLVED" } } })]).then(([a, b]) => a + b).catch(() => 0),
       prisma.blogPost.count({ where: { status: "DRAFT", aiGenerated: true, createdById: null } }).catch(() => 0),
       prisma.supportRequest.count({ where: { status: "OPEN" } }).catch(() => 0),
+      prisma.textMessage.count({ where: { direction: "IN", readAt: null } }).catch(() => 0),
       // Open system-health problems (from the monitor's last run; cheap single row).
       prisma.setting.findUnique({ where: { key: "health.alertState" } }).catch(() => null),
       isSandbox() ? Promise.all([prisma.sandboxReport.count({ where: { status: "OPEN" } }), prisma.sandboxError.count({ where: { resolvedAt: null } })]).then(([a, b]) => a + b).catch(() => 0) : Promise.resolve(0),
       support.urgentWaiting().catch(() => []),
     ]);
-    return { pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, healthState: ((health?.value as AlertState | null) ?? {}) as AlertState, sandboxBadge, urgent };
+    return { pending, tasks, disputes, missing, emergencies, hires, growthBadge, blogDrafts, supportOpen, textsUnread, healthState: ((health?.value as AlertState | null) ?? {}) as AlertState, sandboxBadge, urgent };
   });
   const healthOpen = Object.values(healthState);
   const healthCritical = healthOpen.filter((h) => h.severity === "critical");
@@ -75,6 +76,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/messages", label: "Blocked messages", icon: "messages" },
     { href: "/admin/tasks", label: "Tasks", icon: "tasks", badge: tasks },
     { href: "/admin/support", label: "Support", icon: "help", badge: supportOpen },
+    { href: "/admin/texts", label: "Texts", icon: "messages", badge: textsUnread, mobile: textsUnread > 0 },
     { href: "/admin/audit", label: "Audit log", icon: "audit" },
     // Test site only: demo data, act as a demo account, the captured outbox.
     ...(isSandbox()

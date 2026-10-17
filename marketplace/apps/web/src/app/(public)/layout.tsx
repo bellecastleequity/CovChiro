@@ -30,7 +30,7 @@ export default async function PublicLayout({ children }: { children: React.React
   const alternateName = spaced !== b.name ? [spaced] : [];
   return (
     <div className="flex min-h-dvh flex-col bg-white">
-      <JsonLd data={[organizationLd({ name: b.name, url: base, logo: `${base}/brand/logo.png`, email: b.supportEmail, sameAs, alternateName }), websiteLd({ name: b.name, url: base, alternateName })]} />
+      <JsonLd data={[organizationLd({ name: b.name, url: base, logo: `${base}/brand/logo.png`, email: b.supportEmail, telephone: s?.["site.phone"] || undefined, sameAs, alternateName }), websiteLd({ name: b.name, url: base, alternateName })]} />
       {s?.["seo.gaMeasurementId"] && !isSandbox() ? <GoogleAnalytics id={s["seo.gaMeasurementId"]} /> : null}
       <SiteHeader />
       <main className="flex-1">{children}</main>

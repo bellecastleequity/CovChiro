@@ -40,6 +40,7 @@ const ADMIN: SearchPage[] = [
   { label: "Audit log", href: "/admin/audit", section: "Admin", keywords: "history changes who did" },
   { label: "Notifications", href: "/admin/notifications", section: "Admin", keywords: "alerts inbox" },
   { label: "Settings", href: "/admin/settings", section: "Admin", keywords: "configuration owner decisions switches on off" },
+  { label: "Texts (business number inbox)", href: "/admin/texts", section: "Admin", keywords: "sms text messages inbox reply 855 cover phone number call" },
   { label: "Checks & connections", href: "/admin/settings/checks", section: "Admin", keywords: "email check dns spf dkim dmarc google check text message check sms aws twilio sendgrid test" },
   { label: "Analytics", href: "/admin/analytics", section: "Reports", keywords: "traffic visitors conversions revenue" },
   { label: "Provider funnel", href: "/admin/funnel", section: "Reports", keywords: "registered coverage ready" },

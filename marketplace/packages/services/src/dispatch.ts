@@ -707,15 +707,22 @@ export async function handleInboundSms(fromPhone: string, text: string): Promise
     if (user?.provider) await prisma.provider.update({ where: { id: user.provider.id }, data: { smsConsentAt: clock.now() } });
     return `${b.name}: Texts are back on. Reply STOP to opt out.`;
   }
-  if (r.kind === "HELP") return `${b.name}: Reply YES <code> or NO <code> to answer a shift offer. Help: ${b.supportEmail}. Reply STOP to opt out.`;
-  if (!user?.provider) return `${b.name}: We couldn't match this number to a provider account.`;
+  if (r.kind === "HELP") {
+    const st = await getSettings();
+    const line = st["site.phone"] ? `call or text ${st["site.phoneLabel"] || st["site.phone"]} or email ${b.supportEmail}` : b.supportEmail;
+    return `${b.name}: Reply YES <code> or NO <code> to answer a shift offer. Help: ${line}. Reply STOP to opt out.`;
+  }
+  // Anything that isn't a shift-offer answer goes to the team's Texts inbox (Admin → Texts).
+  const inbox = async () => (await import("./textinbox")).receiveText(fromPhone, text);
+  if (!user?.provider) return inbox();
   const open = await prisma.offer.findMany({
     where: { providerId: user.provider.id, dispatchId: { not: null }, status: { in: ["PENDING", "EXPIRED", "ACCEPTED_PENDING"] }, dispatch: { status: "ACTIVE" } },
     include: { shift: { include: { location: true } } },
   });
-  if (r.kind === "UNKNOWN") return `${b.name}: Sorry, we didn't understand. Reply YES <code> or NO <code>.`;
+  if (r.kind === "UNKNOWN") return inbox();
   if (!r.code) {
     const pending = open.filter((o) => o.status === "PENDING");
+    if (!pending.length) return inbox();
     if (pending.length === 1) {
       const o = pending[0];
       return `${b.name}: Reply ${r.kind} ${o.replyCode} to ${r.kind === "YES" ? "accept" : "decline"} the ${o.shift.startsAt.toLocaleTimeString("en-US", { timeZone: user.provider.homeTimeZone, hour: "numeric", minute: "2-digit" })} ${o.shift.location.city} shift.`;

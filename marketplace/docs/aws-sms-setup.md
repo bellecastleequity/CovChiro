@@ -46,7 +46,7 @@ New accounts can only text numbers you've verified, and only up to $1 a month.
 1. Open **Amazon SNS → Topics → Create topic**. Type **Standard**, name `coverageoncall-sms`. Copy its **ARN**: `arn:aws:sns:us-east-1:…:coverageoncall-sms`.
 2. Go back to **End User Messaging SMS → Phone numbers → your number → Two-way SMS**. Turn it on and set destination **Amazon SNS**, the topic above.
 3. **Configuration sets → Create**, named `coverageoncall`. Add an **event destination**: Amazon SNS, the same topic, with all **text** events.
-4. **Keywords** on the number: set the HELP reply to "CoverageOnCall: shift alerts and account texts. Help: support@coverageoncall.com. Reply STOP to opt out." STOP is handled by AWS automatically.
+4. **Keywords** on the number: set the HELP reply to "CoverageOnCall: shift alerts and account texts. Help: call or text (855) 55-COVER or email support@coverageoncall.com. Reply STOP to opt out." STOP is handled by AWS automatically.
 
 ## 6. A key that can only send texts
 
@@ -71,7 +71,7 @@ Go to cPanel → **Setup Node.js App** → coverageoncall.com → **Environment 
 | `AWS_SMS_ACCESS_KEY_ID` | the AKIA… key |
 | `AWS_SMS_SECRET_ACCESS_KEY` | the secret |
 | `AWS_SMS_REGION` | `us-east-1` |
-| `AWS_SMS_ORIGINATION` | your toll-free number, like `+18885550123` |
+| `AWS_SMS_ORIGINATION` | the business number: `+18555526837` ((855) 55-COVER) |
 | `AWS_SMS_CONFIGURATION_SET` | `coverageoncall` |
 | `AWS_SMS_SNS_TOPIC_ARNS` | the topic ARN from step 5 |
 
@@ -90,3 +90,9 @@ Leave the AWS keys off on dev. Its texts are already captured in **Admin → Tes
 ## Twilio
 
 Twilio is still supported. If both services are configured, AWS is used unless `SMS_PROVIDER=twilio` is set.
+
+## The business number: (855) 55-COVER
+
+- **Website and emails.** The number shows with Call and Text buttons in the site footer, on Contact, on the help pages and "Need help now?", and at the bottom of every email. It's set in Admin → Settings → Help & support (`site.phone`, `site.phoneLabel`, `site.phoneText`). Leave `site.phone` blank to hide it everywhere.
+- **Texts.** When this number is `AWS_SMS_ORIGINATION` and its two-way SMS points at the SNS topic (step 5), texts to it reach the site. Shift-offer answers (YES/NO + code) and STOP/HELP/START are handled automatically. Everything else lands in **Admin → Texts**: you get an alert, the sender gets one automatic reply (`sms.inboxAutoReply`), and you reply from the business number on that page.
+- **Calls.** The site only shows the number and a Call button; it doesn't answer calls. Calls go wherever the number's voice service sends them (for example, forwarded to your cell). An AWS End User Messaging number on its own is for texts. To answer calls on an AWS number, it has to be set up in Amazon Connect.

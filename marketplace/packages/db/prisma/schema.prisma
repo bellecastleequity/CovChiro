@@ -53,6 +53,7 @@ model User {
   pushSubscriptions PushSubscription[]
   supportRequests   SupportRequest[]
   referredBy        Referral?          @relation("ReferredBy")
+  textMessages      TextMessage[]
 }
 
 /// One per invited account: who invited them, and the two-sided reward once their first shift is done.
@@ -3007,4 +3008,27 @@ model ExclusionRecord {
   @@index([npi])
   @@index([nameKey])
   @@index([source])
+}
+
+/// Admin → Texts: texts people send to the business number that aren't shift-offer replies, and the team's replies from that number.
+model TextMessage {
+  id           String    @id @default(cuid())
+  /// The other person's number (+1 E.164).
+  phone        String
+  /// IN (they texted us) | OUT (we replied)
+  direction    String
+  body         String
+  /// Their login, when the number matches one (provider/clinic phone on file).
+  userId       String?
+  user         User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// The admin who wrote an OUT message (null = the automatic reply).
+  authorUserId String?
+  /// OUT: SENT | FAILED (with the provider's error)
+  status       String?
+  error        String?
+  readAt       DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([phone, createdAt])
+  @@index([direction, readAt])
 }

@@ -45,7 +45,7 @@ export function jsonLd(data: Ld | Ld[]): string {
   return JSON.stringify(data).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 }
 
-export function organizationLd(o: { name: string; url: string; logo: string; email?: string; sameAs?: string[]; legalName?: string; alternateName?: string[] }): Ld {
+export function organizationLd(o: { name: string; url: string; logo: string; email?: string; telephone?: string; sameAs?: string[]; legalName?: string; alternateName?: string[] }): Ld {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -55,7 +55,10 @@ export function organizationLd(o: { name: string; url: string; logo: string; ema
     logo: o.logo,
     ...(o.alternateName?.length ? { alternateName: o.alternateName } : {}),
     ...(o.legalName ? { legalName: o.legalName } : {}),
-    ...(o.email ? { email: o.email, contactPoint: [{ "@type": "ContactPoint", contactType: "customer support", email: o.email, availableLanguage: "English" }] } : {}),
+    ...(o.telephone ? { telephone: o.telephone } : {}),
+    ...(o.email || o.telephone
+      ? { ...(o.email ? { email: o.email } : {}), contactPoint: [{ "@type": "ContactPoint", contactType: "customer support", ...(o.email ? { email: o.email } : {}), ...(o.telephone ? { telephone: o.telephone } : {}), areaServed: "US", availableLanguage: "English" }] }
+      : {}),
     ...(o.sameAs?.length ? { sameAs: o.sameAs } : {}),
   };
 }
