@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- Channel/page cover art. ?f=yt → YouTube banner 2560×1440 (text inside the 1546×423 safe area that
+     every device shows); ?f=fb → Facebook cover 1640×624 (text inside the center that phones keep,
+     clear of the profile picture at bottom left). Rendered by banners.mjs. -->
+<style>
+@font-face { font-family: Inter; src: url(../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2) format('woff2'); font-weight: 100 900; }
+@font-face { font-family: Marker; src: url(../../node_modules/@fontsource/permanent-marker/files/permanent-marker-latin-400-normal.woff2) format('woff2'); }
+* { box-sizing: border-box; margin: 0; }
+body { background: #071f40; overflow: hidden; font-family: Inter, sans-serif; color: #fff; }
+.c { position: relative; overflow: hidden; }
+.bg { position: absolute; inset: 0; background: url(../video/scenes/wide/clinic-hero.jpg) no-repeat; }
+.shade { position: absolute; inset: 0; }
+.rings { position: absolute; border-radius: 50%; border: 70px solid rgb(25 204 190 / 7%); pointer-events: none; }
+.safe { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+.wm { display: flex; align-items: center; gap: .5em; font-weight: 800; letter-spacing: -.01em; }
+.wm img { height: 1.35em; width: 1.35em; }
+.tag { font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: #19ccbe; }
+.num { font-weight: 900; letter-spacing: -.035em; line-height: 1; }
+.num span { color: #19ccbe; }
+.marker { font-family: Marker; transform: rotate(-2deg); transform-origin: left; line-height: 1.1; }
+.marker b { color: #19ccbe; font-weight: 400; }
+.url { font-weight: 700; color: #c9d3de; }
+.url b { color: #fff; }
+.bar { position: absolute; left: 0; right: 0; bottom: 0; background: #19ccbe; }
+
+/* YouTube 2560×1440; safe area x 507–2053, y 508–931 */
+.yt { width: 2560px; height: 1440px; }
+.yt .bg { background-size: auto 1700px; background-position: -60px -110px; }
+.yt .shade { background: linear-gradient(90deg, #071f40 0%, #071f40 30%, rgb(7 31 64 / 92%) 48%, rgb(7 31 64 / 40%) 58%, rgb(7 31 64 / 0%) 66%); }
+.yt .rings { width: 1500px; height: 1500px; left: -420px; top: -30px; }
+.yt .safe { left: 540px; top: 508px; width: 1060px; height: 423px; gap: 12px; white-space: nowrap; }
+.yt .wm { font-size: 46px; }
+.yt .tag { font-size: 22px; margin-top: -4px; }
+.yt .num { font-size: 124px; margin-top: 4px; }
+.yt .marker { font-size: 40px; margin-top: 4px; }
+.yt .url { font-size: 30px; margin-top: 4px; }
+.yt .bar { height: 16px; }
+
+/* Facebook 1640×624; phones keep the middle ~1110px (x 265–1375); profile photo covers the bottom left */
+.fb { width: 1640px; height: 624px; }
+.fb .bg { background-size: auto 760px; background-position: 300px -70px; }
+.fb .shade { background: linear-gradient(90deg, #071f40 0%, #071f40 34%, rgb(7 31 64 / 92%) 52%, rgb(7 31 64 / 35%) 62%, rgb(7 31 64 / 0%) 70%); }
+.fb .rings { width: 900px; height: 900px; left: -260px; top: -150px; border-width: 50px; }
+.fb .safe { left: 320px; top: 10px; width: 800px; height: 380px; gap: 8px; white-space: nowrap; }
+.fb .wm { font-size: 34px; }
+.fb .tag { font-size: 16px; margin-top: -2px; }
+.fb .num { font-size: 84px; margin-top: 2px; }
+.fb .marker { font-size: 27px; margin-top: 4px; }
+.fb .url { font-size: 24px; margin-top: 2px; }
+.fb .bar { height: 12px; }
+</style></head>
+<body>
+<div class="c" id="c">
+  <div class="bg"></div><div class="shade"></div><div class="rings"></div>
+  <div class="safe">
+    <div class="wm"><img src="../../public/brand/mark-white.svg" alt="">Therapy &amp; Injury</div>
+    <div class="tag">Chiropractic Injury &amp; Wellness Care · Florida</div>
+    <div class="num">(844) 84-<span>TREAT</span></div>
+    <div class="marker"><b>Yes,</b> we work with your attorney &amp; your auto insurance.</div>
+    <div class="url"><b>therapyandinjury.com</b> · Now open in Ocala</div>
+  </div>
+  <div class="bar"></div>
+</div>
+<script>document.getElementById('c').classList.add(new URLSearchParams(location.search).get('f') || 'yt');</script>
+</body></html>
