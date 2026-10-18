@@ -25,7 +25,7 @@ Owner decisions: AI answers **24/7**; **never a live transfer**. Anything that n
 Recommendation: **build it inside the same Node app** as a staff area (e.g. `/staff`) with its own role (`SUPPORT_AGENT`, least privilege: support inbox, Texts, Calls, chat replies, read-only accounts, no payments/settings), required 2-step sign-in, an audit trail of every action, and optionally a `support.coverageoncall.com` hostname pointed at the same app that only serves `/staff`. Same database and services, so nothing is duplicated, and the extra pages don't slow the public site (pages load separately). A separate app makes sense later, when moving to AWS or at larger team size.
 
 ### C. Welcome Discount: BUILT (Oct 18 2026, update-061)
-Shipped per `docs/specs/welcome-discount.md` (see CLAUDE.md). Two prospecting email versions that mention it are waiting as drafts on Growth → Prompts (CLINIC_FIRST_CONTACT and CLINIC_VACATION_EDUCATION, "Welcome Discount version"): approve, then activate, to use them. The explainer ad set reminder is in section 3.
+Shipped per `docs/specs/welcome-discount.md` (see CLAUDE.md). Two prospecting email versions that mention it are waiting as drafts on Growth → Prompts (CLINIC_FIRST_CONTACT and CLINIC_VACATION_EDUCATION, "Welcome Discount version"): approve, then activate, to use them. The explainer ad set is made (section 3).
 
 ### D. Prospecting emails visible before the send window: BUILT (Oct 18 2026)
 Growth → Activity & emails → **Ready to go out**: prospects whose next email is due, in the order the agents take them, with when they go out and whether today's limit reaches them.
@@ -35,4 +35,4 @@ Owner: when someone submits an appointment request online, an AI onboarding assi
 Scope before building: which site (this marketplace has no patient appointments and stores no patient health information, so this belongs to a doctor/clinic site, not coverageoncall.com); patient-information rules (HIPAA) for texts/emails; the bots must say they're AI assistants (several states require bot disclosure); opt-in and STOP for texting.
 
 ## 3. Reminders
-- Make the **clinic Welcome Discount explainer ad set**: videos, social posts and stills (code-built graphics per docs/brand/thumbnails.md; `warm` or `action` voiceover only).
+- DONE (Oct 18 2026): clinic Welcome Discount explainer ad set made (marketing/ads/welcome.cjs: carousel, stories, square post, 32 s reel with the `warm` voice). Not posted: waiting for the owner's approval.
