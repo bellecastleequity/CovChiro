@@ -1,6 +1,5 @@
 ---
 import Wordmark from './Wordmark.astro';
-import LangToggle from './LangToggle.astro';
 import { bookingHref } from '../lib/site';
 import { ui, langInfo, type Lang } from '../lib/i18n';
 interface Props { city?: string; ctaHref?: string; lang?: Lang }
@@ -23,7 +22,6 @@ const links = lang !== 'en' ? [] : [
     <a href={city ? Astro.url.pathname : langInfo(lang).path} class="hdr__brand" aria-label={city ? `${city} Therapy & Injury` : 'Therapy & Injury home'}>
       <Wordmark city={city} size="md" tagline={lang === 'en'} />
     </a>
-    <LangToggle lang={lang} />
     <nav class="hdr__nav" aria-label="Main">
       <ul>
         {links.map((l) => (
@@ -65,15 +63,6 @@ const links = lang !== 'en' ? [] : [
     text-decoration: none;
     min-width: 0;
     margin-right: auto;
-  }
-  /* The tagline under the name needs room the language button now uses; wide screens keep it. */
-  .hdr__brand :global(.wm__tag) {
-    display: none;
-  }
-  @media (min-width: 1360px) {
-    .hdr__brand :global(.wm__tag) {
-      display: block;
-    }
   }
   .hdr__nav {
     display: none;

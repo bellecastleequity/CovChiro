@@ -7,6 +7,7 @@
 import { type Branch, callFor } from '../lib/site';
 import { ui, type Lang } from '../lib/i18n';
 import TimerBadge from './TimerBadge.astro';
+import LangToggle from './LangToggle.astro';
 interface Props { branch?: Branch; lang?: Lang }
 const { branch, lang = 'en' } = Astro.props;
 const t = ui(lang);
@@ -26,9 +27,12 @@ const tel = call.tel;
         <span class="pip__sub">{t.pipShortSub}</span>
       </span>
     </p>
+    <div class="pip__actions">
+    <LangToggle lang={lang} />
     <a class="pip__call" href={tel || '/contact/'}>
       <span aria-hidden="true">📞</span> {tel ? <Fragment>{t.call}<span class="pip__num"> {call.label}</span></Fragment> : t.callUs}
     </a>
+    </div>
   </div>
 </aside>
 <style>
@@ -58,6 +62,17 @@ const tel = call.tel;
   .pip__sub {
     display: block;
     font-weight: 600;
+  }
+  /* Language button (flag menu) sits beside the call button. */
+  .pip__actions {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .pip__actions :global(.lt__btn) {
+    border-color: transparent;
+    box-shadow: 0 1px 2px rgb(11 45 91 / 15%);
   }
   .pip__call {
     flex: none;
@@ -105,6 +120,16 @@ const tel = call.tel;
     .pip__call {
       padding: 8px 12px;
       font-size: 0.9rem;
+    }
+    .pip__actions {
+      gap: 6px;
+    }
+    .pip__actions :global(.lt__code) {
+      display: none;
+    }
+    .pip__actions :global(.lt__btn) {
+      padding: 0 8px;
+      gap: 4px;
     }
   }
 </style>

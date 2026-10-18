@@ -1,6 +1,6 @@
 ---
 /**
- * Language switcher in the header: a small flag button (the current language) that opens the three
+ * Language switcher in the top (teal) banner beside the call button: a small flag button (the current language) that opens the three
  * choices, English (default), Español and Kreyòl ayisyen, each a flag linking to that language's page
  * (/, /es/, /ht/). One button keeps the header uncluttered on phones. Which flag stands for a language
  * is set in src/lib/i18n.ts.
@@ -91,6 +91,7 @@ const cur = langInfo(lang);
     color: var(--navy);
     font-weight: 700;
     text-decoration: none;
+    white-space: nowrap;
   }
   .lt__menu a:hover,
   .lt__menu a:focus-visible {
