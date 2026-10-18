@@ -26,8 +26,8 @@ import { services } from '../lib/content';
           <Icon name={s.icon} size={56} />
           <div>
             <h2>{s.name}</h2>
-            {s.confirm && !site.copy.servicesApproved && <p class="small"><span class="ph">[PLACEHOLDER — CONFIRM SERVICE DESCRIPTION]</span></p>}
-            {s.body.map((p) => p.replaceAll('{rehabEquipment}', copyText('rehabEquipment')).trim()).filter(Boolean).map((p) => <p><Ph value={p} /></p>)}
+            {!site.copy.servicesApproved && <p class="small"><span class="ph">[PLACEHOLDER — CONFIRM SERVICE DESCRIPTION]</span></p>}
+            {String(s.body || '').replaceAll('{rehabEquipment}', copyText('rehabEquipment')).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).map((p) => <p><Ph value={p} /></p>)}
           </div>
         </article>
       ))}

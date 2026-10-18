@@ -1,0 +1,333 @@
+---
+/**
+ * Spanish (/es/) and Haitian Creole (/ht/) landing pages (owner, Oct 2026): one page per language with the
+ * commercial voiced in that language, the 844-84-TREAT band and jingle, the attorney / auto-insurance
+ * banner, how a visit works, the 14-day PIP rule, the open location(s), the request form and FAQs.
+ * Location facts (address, hours, phone, email) come from the content editor, like every other page.
+ * "Se habla español" / "Nou pale kreyòl" only show once a location lists that language in the editor.
+ */
+import Base from '../layouts/Base.astro';
+import CommercialVideo from './CommercialVideo.astro';
+import VanityBand from './VanityBand.astro';
+import AttorneyBand from './AttorneyBand.astro';
+import AppointmentForm from './AppointmentForm.astro';
+import PhoneLink from './PhoneLink.astro';
+import TimerBadge from './TimerBadge.astro';
+import { site, abs, openBranches, branches, branchName, oneLineAddress, mapEmbedSrc, directionsUrl, faqSchema, type Video } from '../lib/site';
+import { hoursIn, speaks, langInfo, ui, type Lang } from '../lib/i18n';
+
+interface Props { lang: Exclude<Lang, 'en'> }
+const { lang } = Astro.props;
+const t = ui(lang);
+const L = langInfo(lang);
+const open = openBranches.length ? openBranches : branches.slice(0, 1);
+const main = open[0];
+const local = open.some((b) => speaks(b, lang));
+
+const P = {
+  es: {
+    title: 'Quiropráctico para accidentes de auto en Ocala, FL | Therapy & Injury',
+    description: '¿Se lesionó en un accidente de auto? Atención quiropráctica en Ocala, con o sin referido. El PIP de Florida generalmente requiere atención dentro de los 14 días.',
+    eyebrow: `${main.city}, Florida · Lesiones por accidentes de auto`,
+    h1a: '¿Se lesionó en un accidente de auto? Hágase un chequeo dentro de los', h1b: '14 días.',
+    lede: 'Therapy & Injury ofrece atención quiropráctica para lesiones por accidentes de auto, dolor de cuello y de espalda. Lo atendemos con o sin referido.',
+    speaks: 'Se habla español', request: 'Solicite una cita', how: 'Cómo funciona', howId: 'como-funciona',
+    steps: [
+      ['Solicite una cita', 'Llame o envíe una solicitud corta. Díganos qué día y hora le conviene y le confirmamos.'],
+      ['Su primera visita', 'Una conversación sobre cómo se lesionó, un examen quiropráctico y una explicación clara de lo que encontramos. Si necesita una evaluación médica, lo referimos a un proveedor médico independiente.'],
+      ['Su plan de atención', 'Juntos fijamos metas y un horario, y ajustamos el plan en cada visita.'],
+    ],
+    bring: 'Qué traer', bringList: ['Identificación con foto', 'Tarjeta del seguro', 'Informe del accidente, si lo tiene'],
+    pipH: 'La regla de los 14 días del PIP de Florida',
+    pip: 'Después de un accidente de auto en Florida, el seguro PIP (protección contra lesiones personales) generalmente requiere que reciba la atención inicial dentro de los 14 días. Síntomas como el dolor de cuello o de espalda pueden aparecer horas o días después, así que no espere.',
+    pipNote: 'Esta información es educativa. Su póliza y su aseguradora determinan la cobertura.',
+    where: 'Nuestra ubicación', address: 'Dirección', hours: 'Horario', phone: 'Teléfono', map: (n: string) => `Mapa de ${n}`,
+    faqH: 'Preguntas frecuentes',
+    faqs: [
+      ['¿Necesito un referido médico?', 'No. Lo atendemos con o sin referido.'],
+      ['¿Trabajan con mi abogado?', 'Sí. Con su permiso, le enviamos su expediente a su abogado.'],
+      ['¿Cómo se paga la atención después de un accidente?', 'A la mayoría de los pacientes de accidentes de auto se les factura a su seguro de auto (PIP de Florida). La cobertura depende de su póliza.'],
+      ['¿Cuánto tiempo tengo para recibir atención?', 'El PIP de Florida generalmente requiere la atención inicial dentro de los 14 días después del accidente (Estatutos de Florida §627.736).'],
+      ['¿Me pueden atender en español?', local ? 'Sí, se habla español en nuestra oficina.' : 'Llámenos y díganos que prefiere español. Cuando envíe una solicitud desde esta página, el equipo sabrá que prefiere español.'],
+    ],
+    emergency: '<strong>¿Es una emergencia?</strong> Si tiene dolor intenso, un dolor de cabeza fuerte, dificultad para respirar, entumecimiento o debilidad, o perdió el conocimiento, llame al 911 o vaya a la sala de emergencias más cercana.',
+    video: {
+      youtube: '', file: '/media/no-se-haga-el-fuerte-30.mp4', poster: '/media/no-se-haga-el-fuerte-30-poster.jpg',
+      title: 'No se haga el fuerte', caption: '30 seg · subtitulado', uploadDate: '2026-10-18', duration: '30',
+      transcript: 'Salió caminando del choque. Dijo: “Estoy bien”. ¿Al día siguiente? Cuello rígido. Espalda tensa. Dolores de cabeza.\n\nLos síntomas pueden aparecer días después. El PIP de Florida generalmente requiere atención dentro de los 14 días. No se haga el fuerte. Hágase un chequeo.\n\nAtención quiropráctica, con o sin referido. Visite therapyandinjury.com, o llame al (844) 84-TREAT.',
+    },
+  },
+  ht: {
+    title: 'Kiwopratisyen pou aksidan machin nan Ocala, FL | Therapy & Injury',
+    description: 'Ou blese nan yon aksidan machin? Swen kiwopratik nan Ocala, avèk oswa san referans doktè. Lwa PIP Florid la jeneralman mande swen anndan 14 jou.',
+    eyebrow: `${main.city}, Florid · Blesi aksidan machin`,
+    h1a: 'Ou blese nan yon aksidan machin? Fè tcheke kò w anndan', h1b: '14 jou.',
+    lede: 'Therapy & Injury bay swen kiwopratik pou blesi aksidan machin, doulè nan kou ak nan do. N ap resevwa w avèk oswa san referans doktè.',
+    speaks: 'Nou pale kreyòl', request: 'Pran yon randevou', how: 'Kijan sa mache', howId: 'kijan-sa-mache',
+    steps: [
+      ['Pran yon randevou', 'Rele nou oswa voye yon ti demann. Di nou ki jou ak ki lè ki bon pou ou, n ap konfime.'],
+      ['Premye vizit ou', 'Nou pale sou kijan ou blese, nou fè yon egzamen kiwopratik, epi nou eksplike w sa nou jwenn an mo ki senp. Si w bezwen yon evalyasyon medikal, n ap voye w kay yon doktè endepandan.'],
+      ['Plan swen ou', 'Ansanm nou fikse objektif ak yon orè, epi nou ajiste plan an nan chak vizit.'],
+    ],
+    bring: 'Sa pou w pote', bringList: ['Pyès idantite ak foto', 'Kat asirans ou', 'Rapò aksidan an, si w genyen l'],
+    pipH: 'Règ 14 jou PIP Florid la',
+    pip: 'Apre yon aksidan machin nan Florid, asirans PIP (pwoteksyon kont blesi pèsonèl) jeneralman mande pou w resevwa premye swen anndan 14 jou. Sentòm tankou doulè nan kou oswa nan do ka parèt kèk èdtan oswa kèk jou apre, kidonk pa tann.',
+    pipNote: 'Enfòmasyon sa a se pou edikasyon. Polis ak konpayi asirans ou detèmine kouvèti a.',
+    where: 'Kote nou ye', address: 'Adrès', hours: 'Lè', phone: 'Telefòn', map: (n: string) => `Kat ${n}`,
+    faqH: 'Kesyon moun poze souvan',
+    faqs: [
+      ['Èske m bezwen yon referans doktè?', 'Non. N ap resevwa w avèk oswa san referans.'],
+      ['Èske nou travay ak avoka m?', 'Wi. Avèk pèmisyon w, nou voye dosye w bay avoka w.'],
+      ['Kijan swen an peye apre yon aksidan?', 'Pou pifò pasyan aksidan machin, nou voye bòdwo a bay asirans machin yo (PIP Florid). Kouvèti a depann de polis ou.'],
+      ['Konbyen tan mwen genyen pou m resevwa swen?', 'Lwa PIP Florid la jeneralman mande premye swen anndan 14 jou apre aksidan an (Lwa Florid §627.736).'],
+      ['Èske nou ka resevwa m an kreyòl?', local ? 'Wi, nou pale kreyòl nan biwo a.' : 'Rele nou epi di nou ou pito kreyòl. Lè w voye yon demann sou paj sa a, ekip la ap konnen ou pito kreyòl.'],
+    ],
+    emergency: '<strong>Se yon ijans?</strong> Si w gen gwo doulè, yon gwo tèt fè mal, difikilte pou respire, pèt sansasyon oswa feblès, oswa ou te pèdi konesans, rele 911 oswa ale nan sal ijans ki pi pre a.',
+    video: {
+      youtube: '', file: '/media/pa-neglije-ko-w-30.mp4', poster: '/media/pa-neglije-ko-w-30-poster.jpg',
+      title: 'Pa neglije kò w', caption: '30 seg · ak soustit', uploadDate: '2026-10-18', duration: '30',
+      transcript: 'Ou soti nan aksidan an sou de pye w. Ou di: “Mwen anfòm.” Nan demen maten? Kou fè w mal. Do fè w mal. Tèt fè w mal.\n\nSentòm yo ka parèt kèk jou apre. Lwa PIP Florid la jeneralman mande swen anndan 14 jou. Pa neglije kò w. Al fè tcheke kò w.\n\nSwen kiwopratik, avèk oswa san referans doktè. Vizite therapyandinjury.com, oswa rele (844) 84-TREAT.',
+    },
+  },
+}[lang];
+
+const video = P.video as Video;
+const faqs = P.faqs.map(([q, a]) => ({ q, a }));
+const schema = [
+  { '@context': 'https://schema.org', '@type': 'WebPage', name: P.title, description: P.description, url: abs(L.path), inLanguage: L.locale, about: open.map((b) => ({ '@id': abs(`/${b.slug}/#business`) })) },
+  {
+    '@context': 'https://schema.org', '@type': 'VideoObject', name: video.title, description: `${video.title}: ${P.description}`,
+    thumbnailUrl: [abs(video.poster)], uploadDate: video.uploadDate, duration: `PT${video.duration}S`, contentUrl: abs(video.file),
+    transcript: video.transcript.replace(/\s*\n\s*/g, ' '), inLanguage: L.locale, publisher: { '@id': abs('/#org') },
+  },
+  faqSchema(faqs),
+];
+const requestHref = '#cita';
+---
+<Base title={P.title} description={P.description} lang={lang} alternates schema={schema} branch={main} ctaHref={requestHref} attorneyInline>
+  <section class="ll-hero">
+    <div class="wrap ll-hero__in">
+      <div class="ll-hero__copy">
+        <span class="eyebrow">{P.eyebrow}</span>
+        <h1>{P.h1a} <span class="ll-accent">{P.h1b}</span></h1>
+        <p class="lede">{P.lede}</p>
+        {local && <p class="ll-speaks"><span aria-hidden="true">💬</span> {P.speaks}</p>}
+        <div class="btn-row">
+          <a class="btn btn--primary" href="#cita">{P.request}</a>
+          <PhoneLink class="btn btn--ghost" />
+        </div>
+        <p class="small muted ll-hero__note" set:html={P.emergency} />
+      </div>
+      <div class="ll-hero__video">
+        <CommercialVideo video={video} lang={lang} />
+      </div>
+    </div>
+  </section>
+
+  <VanityBand lang={lang} />
+
+  <section class="section" id={P.howId} aria-labelledby="ll-how">
+    <div class="wrap">
+      <span class="eyebrow">Therapy &amp; Injury</span>
+      <h2 id="ll-how">{P.how}</h2>
+      <ol class="ll-steps">
+        {P.steps.map(([h, p], i) => (
+          <li class="card"><span class="ll-steps__n" aria-hidden="true">{i + 1}</span><h3>{h}</h3><p>{p}</p></li>
+        ))}
+      </ol>
+      <div class="ll-bring">
+        <h3>{P.bring}</h3>
+        <ul class="check-list">{P.bringList.map((x) => <li>{x}</li>)}</ul>
+      </div>
+    </div>
+  </section>
+
+  <AttorneyBand lang={lang} />
+
+  <section class="section section--gray" aria-labelledby="ll-pip">
+    <div class="wrap ll-pip">
+      <TimerBadge size={96} variant="on-teal" lang={lang} />
+      <div>
+        <h2 id="ll-pip">{P.pipH}</h2>
+        <p>{P.pip}</p>
+        <p class="small muted">{P.pipNote}</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="cita" aria-labelledby="ll-where">
+    <div class="wrap ll-loc">
+      <div>
+        <h2 id="ll-where">{P.where}</h2>
+        {open.map((b) => (
+          <div class="card ll-card">
+            <h3>{branchName(b)}{speaks(b, lang) && <span class="ll-badge">{P.speaks}</span>}</h3>
+            <dl>
+              {b.address && <><dt>{P.address}</dt><dd>{oneLineAddress(b)}{directionsUrl(b) && <> · <a href={directionsUrl(b)} rel="noopener" target="_blank">{t.directions}<span class="sr-only"> {t.newTab}</span></a></>}</dd></>}
+              {hoursIn(b, lang) && <><dt>{P.hours}</dt><dd>{hoursIn(b, lang)}</dd></>}
+              <dt>{P.phone}</dt><dd><PhoneLink branch={b} /></dd>
+            </dl>
+            {mapEmbedSrc(b) && <iframe class="ll-map" title={P.map(branchName(b))} src={mapEmbedSrc(b)} loading="lazy" referrerpolicy="no-referrer-when-downgrade" width="600" height="300"></iframe>}
+          </div>
+        ))}
+      </div>
+      <div class="ll-form">
+        <AppointmentForm branch={main} lang={lang} />
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--gray" aria-labelledby="ll-faq">
+    <div class="wrap prose">
+      <h2 id="ll-faq">{P.faqH}</h2>
+      {faqs.map((f) => (
+        <details class="ll-faq">
+          <summary>{f.q}</summary>
+          <p>{f.a}</p>
+        </details>
+      ))}
+    </div>
+  </section>
+</Base>
+
+<style>
+  .ll-hero {
+    background:
+      radial-gradient(1200px 500px at 85% 20%, var(--teal-soft), transparent 60%),
+      var(--white);
+  }
+  .ll-hero__in {
+    display: grid;
+    gap: 32px;
+    align-items: center;
+    padding-block: clamp(40px, 7vw, 88px);
+  }
+  @media (min-width: 900px) {
+    .ll-hero__in {
+      grid-template-columns: 1.05fr 1fr;
+      column-gap: 56px;
+    }
+  }
+  .ll-hero h1 {
+    max-width: 18ch;
+  }
+  .ll-accent {
+    white-space: nowrap;
+    background: linear-gradient(transparent 68%, rgb(25 204 190 / 40%) 68%);
+  }
+  .ll-speaks {
+    display: inline-flex;
+    gap: 8px;
+    margin: 0 0 18px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--teal-soft);
+    font-weight: 700;
+    color: var(--navy);
+  }
+  .ll-hero__note {
+    margin-top: 18px;
+  }
+  .ll-steps {
+    list-style: none;
+    padding: 0;
+    margin: 24px 0 0;
+    display: grid;
+    gap: 18px;
+  }
+  @media (min-width: 800px) {
+    .ll-steps {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  .ll-steps li {
+    position: relative;
+  }
+  .ll-steps h3 {
+    margin: 10px 0 6px;
+  }
+  .ll-steps p {
+    margin: 0;
+  }
+  .ll-steps__n {
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--teal);
+    color: var(--navy);
+    font-weight: 900;
+  }
+  .ll-bring {
+    margin-top: 28px;
+  }
+  .ll-pip {
+    display: flex;
+    gap: 28px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .ll-pip > div {
+    flex: 1 1 420px;
+  }
+  .ll-pip h2 {
+    margin-top: 0;
+  }
+  .ll-loc {
+    display: grid;
+    gap: 32px;
+  }
+  @media (min-width: 900px) {
+    .ll-loc {
+      grid-template-columns: 1fr 1fr;
+      align-items: start;
+    }
+  }
+  .ll-card {
+    margin-top: 16px;
+  }
+  .ll-card h3 {
+    margin: 0 0 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .ll-badge {
+    font-size: 0.8rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--teal-soft);
+    color: var(--navy);
+  }
+  .ll-card dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 14px;
+    margin: 0 0 14px;
+  }
+  .ll-card dt {
+    font-weight: 700;
+  }
+  .ll-card dd {
+    margin: 0;
+  }
+  .ll-map {
+    width: 100%;
+    height: 280px;
+    border: 0;
+    border-radius: 12px;
+  }
+  .ll-faq {
+    border-bottom: 1px solid var(--line);
+    padding: 14px 0;
+  }
+  .ll-faq summary {
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .ll-faq p {
+    margin: 10px 0 0;
+  }
+</style>

@@ -195,7 +195,13 @@ export const doctorsFor = (b: Branch): Doctor[] => b.doctors;
 export const isIndexable = (b: Branch) => isOpen(b);
 
 /** Recomputes everything derived from the data (called after every content change). */
+/** A Services-page entry (content editor → Services). `body` paragraphs are separated by blank lines. */
+export type Service = { slug: string; name: string; icon: string; short: string; body: string };
+/** Live list of services, rebuilt from site.services on every content change. */
+export const services: Service[] = [];
+
 function derive() {
+  services.splice(0, services.length, ...((Array.isArray(site.services) ? site.services : []) as Service[]).filter((s) => s && s.name));
   openBranches.splice(0, openBranches.length, ...branches.filter(isOpen));
   indexableBranches.splice(0, indexableBranches.length, ...branches.filter(isIndexable));
   mainLine.digits = site.mainPhone;

@@ -115,7 +115,7 @@ function field(path, label, type = 'text', value, extra = '') {
 }
 
 function renderSections() {
-  const tabs = [['site', 'Site'], ['copy', 'Page text'], ['video', 'Videos'], ...data.branches.map((b) => ['b:' + b.slug, b.city + (b.status === 'open' ? '' : ' (soon)')]), ['history', 'Saved versions']];
+  const tabs = [['site', 'Site'], ['copy', 'Page text'], ['services', 'Services'], ['video', 'Videos'], ...data.branches.map((b) => ['b:' + b.slug, b.city + (b.status === 'open' ? '' : ' (soon)')]), ['history', 'Saved versions']];
   $('#sections').innerHTML = tabs.map(([k, l]) => `<button type="button" data-sec="${esc(k)}" aria-pressed="${k === current}">${esc(l)}</button>`).join('');
   document.querySelectorAll('[data-sec]').forEach((b) => b.onclick = () => { collect(); current = b.dataset.sec; renderSections(); renderEditor(); });
   const n = JSON.stringify({ site: data.site, branches: data.branches }).match(/\[[A-Z][^"\]]*\]/g)?.length || 0;
@@ -134,8 +134,21 @@ function renderEditor() {
         const v = c[k] ?? '', ph = /\[[^\]]+\]/.test(v);
         return `<label style="margin-bottom:14px">${esc(l)}${ph ? ' <span class="phnote">placeholder: replace it</span>' : ''}<span class="hint" style="font-weight:400">${esc(where)}</span>${multi ? `<textarea data-path="site.copy.${k}" class="${ph ? 'ph' : ''}" style="min-height:76px">${esc(v)}</textarea>` : `<input type="text" data-path="site.copy.${k}" value="${esc(v)}" class="${ph ? 'ph' : ''}">`}</label>`;
       }).join('')}
-      <label class="inline" style="margin-top:6px"><input type="checkbox" data-bool="site.copy.servicesApproved"${c.servicesApproved ? ' checked' : ''}> The service descriptions on the Services page are approved (hides the "confirm service description" notes)</label></section>`;
+      </section>`;
     $('#viewlink').href = '/faq/';
+  } else if (current === 'services') {
+    const list = data.site.services || [];
+    const c = data.site.copy || {};
+    ed.innerHTML = `<section><h2>Services</h2><p>The Services page (and the service cards on the home page). Replace the yellow bracketed parts, e.g. the techniques your doctors use. Put a blank line between paragraphs. <code>{rehabEquipment}</code> inserts the "Rehab equipment" sentence from Page text.</p>
+      <label class="inline" style="margin-top:10px"><input type="checkbox" data-bool="site.copy.servicesApproved"${c.servicesApproved ? ' checked' : ''}> These descriptions are approved (hides the "confirm service description" notes on the Services page)</label></section>
+      ${list.map((s, i) => {
+        const ph = (v) => (/\[[^\]]+\]/.test(v || '') ? ' class="ph"' : '');
+        return `<section><h2>${esc(s.name || 'Service ' + (i + 1))}</h2><div class="grid" style="margin-top:10px">
+          <label>Name<input type="text" data-path="site.services.${i}.name" value="${esc(s.name)}"${ph(s.name)}></label>
+          <label>Short line (home page card)<input type="text" data-path="site.services.${i}.short" value="${esc(s.short)}"${ph(s.short)}></label></div>
+          <label style="margin-top:10px">Description (Services page)<textarea data-path="site.services.${i}.body" style="min-height:120px"${ph(s.body)}>${esc(s.body)}</textarea></label></section>`;
+      }).join('')}`;
+    $('#viewlink').href = '/services/';
   } else if (current === 'video') {
     const v = data.site.heroVideo || {};
     ed.innerHTML = `<section><h2>Hero video</h2><p>Shown beside the headline on the home page and every location page. Paste a YouTube link to show that video instead of the file. Each location can also have its own (see its tab).</p>

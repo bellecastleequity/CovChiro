@@ -1,0 +1,107 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- Still image ads. still.html?lang=en|es|ht&ad=walk|attorney&f=square|story|link, rendered by stills.mjs.
+     Square 1080×1080 (feeds), story 1080×1920 (Stories/Reels; text kept out of the top and bottom 250 px
+     that the apps cover), link 1200×628 (Facebook/Instagram link ads, landscape). -->
+<style>
+@font-face { font-family: Inter; src: url(../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2) format('woff2'); font-weight: 100 900; }
+@font-face { font-family: Inter; src: url(../../node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2) format('woff2'); font-weight: 100 900; unicode-range: U+0100-024F; }
+@font-face { font-family: Marker; src: url(../../node_modules/@fontsource/permanent-marker/files/permanent-marker-latin-400-normal.woff2) format('woff2'); }
+* { box-sizing: border-box; margin: 0; }
+body { background: #071f40; overflow: hidden; font-family: Inter, sans-serif; color: #fff; }
+.c { position: relative; overflow: hidden; }
+.bg { position: absolute; inset: 0; background-repeat: no-repeat; background-size: cover; }
+.shade { position: absolute; inset: 0; }
+.chip { position: absolute; display: flex; align-items: center; gap: .45em; font-weight: 800; letter-spacing: -.01em; text-shadow: 0 2px 12px rgb(0 0 0 / 50%); }
+.chip img { width: 1.4em; height: 1.4em; }
+.copy { position: absolute; display: flex; flex-direction: column; }
+.quote { font-family: Marker; color: #fff; transform: rotate(-4deg); transform-origin: left; display: inline-block; position: relative; align-self: flex-start; text-shadow: 0 4px 0 rgb(0 0 0 / 35%); }
+.quote::after { content: ''; position: absolute; left: -8px; right: -12px; top: 58%; height: .12em; background: #ff4d5e; border-radius: 6px; transform: rotate(-3deg); }
+h1 { font-weight: 900; letter-spacing: -.035em; line-height: .95; text-shadow: 0 6px 22px rgb(0 0 0 / 40%); }
+h1 b { color: #19ccbe; font-weight: 900; }
+.marker { font-family: Marker; line-height: 1.08; transform: rotate(-2deg); transform-origin: left; text-shadow: 0 4px 0 rgb(0 0 0 / 30%); text-wrap: balance; }
+.marker b { color: #19ccbe; font-weight: 400; }
+.sub { font-weight: 700; color: #e6ecf3; line-height: 1.25; text-shadow: 0 2px 12px rgb(0 0 0 / 50%); }
+.num { align-self: flex-start; display: inline-flex; flex-direction: column; background: #19ccbe; color: #071f40; border-radius: 22px; padding: .18em .55em .22em; box-shadow: 0 10px 30px rgb(0 0 0 / 35%); }
+.num strong { font-weight: 900; letter-spacing: -.02em; line-height: 1.05; white-space: nowrap; }
+.num small { font-weight: 800; letter-spacing: .02em; opacity: .8; }
+.url { font-weight: 800; color: #fff; text-shadow: 0 2px 12px rgb(0 0 0 / 60%); }
+.legal { position: absolute; left: 0; right: 0; text-align: center; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: rgb(255 255 255 / 75%); }
+.bar { position: absolute; left: 0; right: 0; bottom: 0; background: #19ccbe; }
+
+.square { width: 1080px; height: 1080px; }
+.square .chip { left: 64px; top: 56px; font-size: 32px; }
+.square .copy { left: 64px; width: 640px; top: 130px; bottom: 90px; justify-content: center; gap: 20px; }
+.square .quote { font-size: 58px; }
+.square h1 { font-size: 100px; }
+.square .marker { font-size: 66px; }
+.square .sub { font-size: 34px; }
+.square .num strong { font-size: 66px; } .square .num small { font-size: 24px; }
+.square .url { font-size: 32px; }
+.square .legal { bottom: 34px; font-size: 18px; text-align: left; left: 64px; }
+.square .bar { height: 12px; }
+
+.story { width: 1080px; height: 1920px; }
+.story .chip { left: 72px; top: 270px; font-size: 36px; }
+.story .copy { left: 72px; right: 72px; bottom: 330px; gap: 26px; }
+.story .quote { font-size: 72px; }
+.story h1 { font-size: 124px; }
+.story .marker { font-size: 92px; }
+.story .sub { font-size: 42px; }
+.story .num strong { font-size: 80px; } .story .num small { font-size: 28px; }
+.story .url { font-size: 38px; }
+.story .legal { bottom: 270px; font-size: 22px; }
+.story .bar { height: 14px; }
+
+.link { width: 1200px; height: 628px; }
+.link .chip { left: 56px; top: 40px; font-size: 26px; }
+.link .copy { left: 56px; width: 640px; top: 100px; bottom: 70px; justify-content: center; gap: 14px; }
+.link .quote { font-size: 40px; }
+.link h1 { font-size: 78px; }
+.link .marker { font-size: 50px; }
+.link .sub { font-size: 26px; }
+.link .num strong { font-size: 44px; } .link .num small { font-size: 17px; }
+.link .url { font-size: 22px; }
+.link .legal { bottom: 22px; font-size: 14px; text-align: left; left: 56px; }
+.link .bar { height: 8px; }
+</style></head>
+<body>
+<div class="c" id="c">
+  <div class="bg" id="bg"></div><div class="shade" id="shade"></div>
+  <div class="chip"><img src="../video/mark-white.svg" alt="">Therapy &amp; Injury</div>
+  <div class="copy" id="copy"></div>
+  <div class="legal" id="legal"></div>
+  <div class="bar"></div>
+</div>
+<script>
+const q = new URLSearchParams(location.search);
+const LANG = q.get('lang') || 'en', AD = q.get('ad') || 'walk', F = q.get('f') || 'square';
+const T = {
+  en: { quote: '“I’m fine.”', h1: 'Don’t walk it <b>off.</b>', sub: 'Hurt in a car accident? Get checked within 14 days.',
+        att: '<b>Yes,</b> we work with your attorney and your auto insurance.', attSub: 'Hurt in a crash? We’ll see you with or without a referral.',
+        url: 'therapyandinjury.com', legal: 'Chiropractic care · Florida-licensed D.C. · Coverage depends on your policy' },
+  es: { quote: '“Estoy bien.”', h1: 'No se haga el <b>fuerte.</b>', sub: '¿Se lesionó en un accidente de auto? Hágase un chequeo dentro de los 14 días.',
+        att: '<b>Sí,</b> trabajamos con su abogado y su seguro de auto.', attSub: '¿Se lesionó en un choque? Lo atendemos con o sin referido.',
+        url: 'therapyandinjury.com/es', legal: 'Atención quiropráctica · D.C. con licencia en Florida · La cobertura depende de su póliza' },
+  ht: { quote: '“Mwen anfòm.”', h1: 'Pa neglije <b>kò&nbsp;w.</b>', sub: 'Ou blese nan yon aksidan machin? Fè tcheke kò w anndan 14 jou.',
+        att: '<b>Wi,</b> nou travay ak avoka w ak asirans machin ou.', attSub: 'Ou blese nan yon aksidan? N ap resevwa w avèk oswa san referans doktè.',
+        url: 'therapyandinjury.com/ht', legal: 'Swen kiwopratik · Kiwopratisyen ki gen lisans nan Florid · Kouvèti a depann de polis ou' },
+}[LANG];
+document.getElementById('c').classList.add(F);
+document.documentElement.lang = LANG;
+const img = AD === 'walk' ? 'morning-neck' : 'clinic-hero';
+const bg = document.getElementById('bg');
+// Square and link use the landscape photo (text left, person right); story uses the tall one.
+const wide = F !== 'story';
+bg.style.backgroundImage = `url(../video/scenes/${wide ? 'wide/' : ''}${img}.jpg)`;
+bg.style.backgroundPosition = F === 'link' ? (AD === 'walk' ? '85% 40%' : '75% 30%') : F === 'story' ? '60% 30%' : (AD === 'walk' ? '70% 50%' : '68% 40%');
+document.getElementById('shade').style.background = F !== 'story'
+  ? 'linear-gradient(90deg, rgb(7 31 64 / 96%) 0%, rgb(7 31 64 / 88%) 45%, rgb(7 31 64 / 15%) 72%, rgb(7 31 64 / 0%) 100%)'
+  : 'linear-gradient(180deg, rgb(7 31 64 / 55%) 0%, rgb(7 31 64 / 0%) 22%, rgb(7 31 64 / 15%) 42%, rgb(7 31 64 / 90%) 70%, rgb(7 31 64 / 97%) 100%)';
+const num = `<div class="num"><strong>(844) 84-TREAT</strong>${LANG === 'en' ? '' : '<small>(844) 848-7328</small>'}</div>`;
+document.getElementById('copy').innerHTML = AD === 'walk'
+  ? `<div class="quote">${T.quote}</div><h1>${T.h1}</h1><div class="sub">${T.sub}</div>${num}<div class="url">${T.url}</div>`
+  : `<div class="marker">${T.att}</div><div class="sub">${T.attSub}</div>${num}<div class="url">${T.url}</div>`;
+document.getElementById('legal').textContent = T.legal;
+</script>
+</body></html>

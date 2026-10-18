@@ -3,8 +3,12 @@ import Wordmark from './Wordmark.astro';
 import { site, branches, branchName, branchPath, isOpen, isPlaceholder } from '../lib/site';
 import PhoneLink from './PhoneLink.astro';
 import { conditions } from '../lib/conditions';
-interface Props { city?: string }
-const { city } = Astro.props;
+import { ui, type Lang } from '../lib/i18n';
+interface Props { city?: string; lang?: Lang }
+const { city, lang = 'en' } = Astro.props;
+const t = ui(lang);
+// Spanish / Creole pages: the English page lists collapse to one "full site in English" link.
+const en = lang === 'en';
 const here = city ? branches.find((b) => b.city === city) : undefined;
 const year = new Date().getFullYear();
 // Social profiles from the content editor (Site → Social). A link only shows once its URL is set.
@@ -20,10 +24,10 @@ const social = [
     <div class="ftr__grid">
       <div class="ftr__brand">
         <Wordmark city={city} reverse size="md" />
-        <p class="ftr__phone">Main line: <PhoneLink /></p>
-        <p class="ftr__blurb">Calm, chiropractic-focused care for people recovering from auto accident injuries, neck and back pain, and everyday strain.</p>
+        <p class="ftr__phone">{t.mainLine} <PhoneLink /></p>
+        <p class="ftr__blurb">{t.footBlurb}</p>
         {social.length > 0 && (
-          <ul class="ftr__social" aria-label="Follow us">
+          <ul class="ftr__social" aria-label={t.followUs}>
             {social.map((x) => (
               <li>
                 <a href={x.url} rel="noopener me" target="_blank">
@@ -41,14 +45,15 @@ const social = [
         )}
       </div>
       <nav aria-label="Locations">
-        <h2 class="ftr__h">Locations</h2>
+        <h2 class="ftr__h">{t.locations}</h2>
         <ul>
           {branches.map((b) => (
-            <li><a href={branchPath(b)}>{branchName(b)}</a>{!isOpen(b) && <span class="ftr__soon"> · Coming soon</span>}</li>
+            <li><a href={branchPath(b)}>{branchName(b)}</a>{!isOpen(b) && <span class="ftr__soon"> · {t.comingSoon}</span>}</li>
           ))}
         </ul>
+        {!en && <p class="ftr__en"><a href="/" hreflang="en-US">{t.moreEnglish} →</a></p>}
       </nav>
-      <nav aria-label="Conditions">
+      {en && <><nav aria-label="Conditions">
         <h2 class="ftr__h">Conditions</h2>
         <ul>
           {conditions.map((c) => <li><a href={`/conditions/${c.slug}/`}>{c.name}</a></li>)}
@@ -66,18 +71,18 @@ const social = [
           <li><a href="/patients/">Patient center</a></li>
           <li><a href="/contact/">Contact</a></li>
         </ul>
-      </nav>
+      </nav></>}
     </div>
 
     <div class="ftr__legal">
-      <p><strong>{site.operatorLine}</strong> Chiropractic care is provided by Florida-licensed chiropractic physicians.</p>
+      <p><strong>{site.operatorLine}</strong> {t.licensed}</p>
       {here && !isPlaceholder(here.legalEntity) && <p>{branchName(here)} is operated by {here.legalEntity}.</p>}
       <p class="ftr__disclaimer">
-        The information on this website is for general educational purposes only and is not medical advice. Reading it does not create a doctor–patient relationship. Every injury is different; please consult a licensed provider about your situation. If you have a medical emergency, call 911.
+        {t.disclaimer}
       </p>
       <p class="ftr__links">
-        <a href="/privacy/">Privacy Policy</a>
-        <a href="/accessibility/">Accessibility Statement</a>
+        <a href="/privacy/">{t.privacy}</a>
+        <a href="/accessibility/">{t.accessibility}</a>
         <span>© {year} {site.brandName}</span>
       </p>
     </div>

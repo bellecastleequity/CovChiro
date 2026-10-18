@@ -54,6 +54,11 @@
   .square .cap .note { font-size: 22px; margin-top: 18px; }
   .urlcap { font-size: 92px !important; letter-spacing: -0.045em; margin-top: 10px; white-space: nowrap; }
   .square .urlcap { font-size: 80px !important; }
+  .urlcap.long { font-size: 74px !important; }
+  .square .urlcap.long { font-size: 64px !important; }
+  .wide .urlcap.long { font-size: 80px !important; }
+  .end .url.digits { margin-top: 14px; font-size: 34px; color: var(--teal); font-weight: 800; letter-spacing: .02em; }
+  .square .end .url.digits { margin-top: 10px; font-size: 28px; }
   .orcall { font-size: 52px; font-weight: 800; margin-top: 26px; color: #dfe6ee; }
   .square .orcall { font-size: 42px; margin-top: 16px; }
   .checks { display: flex; flex-direction: column; gap: 30px; }
@@ -117,12 +122,45 @@
     <div class="call" id="call">Call</div>
     <div class="num" id="num"><span>(</span><span>8</span><span>4</span><span>4</span><span>)</span><span>&nbsp;</span><span>8</span><span>4</span><span class="treat">-TREAT</span></div>
     <div class="url" id="url">therapyandinjury.com</div>
+    <div class="url digits" id="digits" hidden>(844) 848-7328</div>
   </div>
   <div class="legal">Chiropractic care · Florida-licensed D.C.</div>
 </div>
 <script>
 const q = new URLSearchParams(location.search);
 const SPOT = q.get('spot') || '3-ad-15s';
+// Spanish / Haitian Creole spots are named es-… / ht-… and reuse the English plan with their own words.
+const LANG = (SPOT.match(/^(es|ht)-/) || [])[1] || 'en';
+const BASE = SPOT.replace(/^(es|ht)-/, '');
+const T = {
+  en: {},
+  es: {
+    call: 'Llame', visit: 'Visite', orcall: 'o llame ahora', url: 'therapyandinjury.com/es', day: 'DÍA',
+    legal: 'Atención quiropráctica · D.C. con licencia en Florida',
+    note: 'Solo con fines educativos. Su póliza y su aseguradora determinan la cobertura.',
+    tag1: '¿Se lesionó en un <hl>choque?</hl>', tag2: 'Hágase un chequeo dentro de los <hl>14&nbsp;días.</hl>', pip: 'PIP de Florida',
+    a1: 'Después de un accidente de <hl>auto,</hl>', a2: 'El PIP de Florida generalmente requiere atención dentro de los <hl>14&nbsp;días.</hl>', timeline: 'Conozca su plazo',
+    a4: 'Atención <hl>quiropráctica,</hl>', a5: 'Con o sin <hl>referido.</hl>',
+    w1: 'Salió caminando del <hl>choque.</hl>', w2: 'Dijo:', w3: '<hl>“Estoy&nbsp;bien.”</hl>', w4: '¿Al día <hl>siguiente?</hl>',
+    w5: '<hl>Cuello&nbsp;rígido.</hl>', w6: '<hl>Espalda&nbsp;tensa.</hl>', w7: 'Dolores de <hl>cabeza.</hl>',
+    w8: 'Los síntomas pueden aparecer <hl>días&nbsp;después.</hl>', after: 'Después de un choque',
+    w10: 'No se haga el <hl>fuerte.</hl>', w11: 'Hágase un <hl>chequeo.</hl>', w12: 'Atención <hl>quiropráctica,</hl> con o sin referido.',
+  },
+  ht: {
+    call: 'Rele', visit: 'Vizite', orcall: 'oswa rele kounye a', url: 'therapyandinjury.com/ht', day: 'JOU',
+    legal: 'Swen kiwopratik · Kiwopratisyen ki gen lisans nan Florid',
+    note: 'Pou enfòmasyon sèlman. Polis ak konpayi asirans ou detèmine kouvèti a.',
+    tag1: 'Ou blese nan yon aksidan <hl>machin?</hl>', tag2: 'Fè tcheke kò w anndan <hl>14&nbsp;jou.</hl>', pip: 'PIP Florid',
+    a1: 'Apre yon aksidan <hl>machin,</hl>', a2: 'Lwa PIP Florid la jeneralman mande swen anndan <hl>14&nbsp;jou.</hl>', timeline: 'Konnen delè ou',
+    a4: 'Swen <hl>kiwopratik,</hl>', a5: 'Avèk oswa san referans <hl>doktè.</hl>',
+    w1: 'Ou soti nan aksidan an <hl>sou de pye&nbsp;w.</hl>', w2: 'Ou di:', w3: '<hl>“Mwen&nbsp;anfòm.”</hl>', w4: 'Nan demen <hl>maten?</hl>',
+    w5: '<hl>Kou fè w&nbsp;mal.</hl>', w6: '<hl>Do fè w&nbsp;mal.</hl>', w7: '<hl>Tèt fè w&nbsp;mal.</hl>',
+    w8: 'Sentòm yo ka parèt kèk <hl>jou&nbsp;apre.</hl>', after: 'Apre yon aksidan',
+    w10: 'Pa neglije <hl>kò&nbsp;w.</hl>', w11: 'Al fè tcheke <hl>kò&nbsp;w.</hl>', w12: 'Swen <hl>kiwopratik,</hl> avèk oswa san referans doktè.',
+  },
+};
+/** The caption text for this spot's language (English is the text written in the plan). */
+const X = (k, en) => T[LANG][k] ?? en;
 const FORMAT = ['square', 'wide'].includes(q.get('format')) ? q.get('format') : 'story';
 document.documentElement.className = FORMAT;
 // Wide (16:9, YouTube) uses its own photo set, recreated from the vertical scenes.
@@ -143,8 +181,8 @@ const PLANS = {
       { img: 'driver-neck', from: p[1], to: p[2], zoom: [1.12, 1.04], pan: [20, 0] },
     ],
     caps: [
-      { from: p[0], to: p[1], html: 'Hurt in a car <hl>crash?</hl>' },
-      { from: p[1], to: p[2], html: 'Get checked within <hl>14&nbsp;days.</hl>', eyebrow: 'Florida PIP' },
+      { from: p[0], to: p[1], html: X('tag1', 'Hurt in a car <hl>crash?</hl>') },
+      { from: p[1], to: p[2], html: X('tag2', 'Get checked within <hl>14&nbsp;days.</hl>'), eyebrow: X('pip', 'Florida PIP') },
     ],
     end: p[2], endImg: 'clinic-consult',
   }),
@@ -156,11 +194,11 @@ const PLANS = {
       { img: 'phone-call', from: p[4], to: p[5], zoom: [1.12, 1.05], pan: [-16, 0] },
     ],
     caps: [
-      { from: p[0], to: p[1], html: 'After a car <hl>accident,</hl>' },
-      { from: p[1], to: p[2], html: 'Florida PIP generally requires care within <hl>14&nbsp;days.</hl>', cls: 'md', eyebrow: 'Know your timeline', note: 'Educational only. Your policy and insurer determine coverage.' },
+      { from: p[0], to: p[1], html: X('a1', 'After a car <hl>accident,</hl>') },
+      { from: p[1], to: p[2], html: X('a2', 'Florida PIP generally requires care within <hl>14&nbsp;days.</hl>'), cls: 'md', eyebrow: X('timeline', 'Know your timeline'), note: X('note', 'Educational only. Your policy and insurer determine coverage.') },
       { from: p[2], to: p[3], brand: true },
-      { from: p[3], to: p[4], html: '<hl>Chiropractic</hl> care,' },
-      { from: p[4], to: p[5], html: 'With or without a <hl>referral.</hl>' },
+      { from: p[3], to: p[4], html: X('a4', '<hl>Chiropractic</hl> care,') },
+      { from: p[4], to: p[5], html: X('a5', 'With or without a <hl>referral.</hl>') },
     ],
     end: p[5], endImg: 'clinic-consult',
   }),
@@ -179,18 +217,18 @@ const PLANS = {
       { img: 'clinic-hero', from: p[11], to: p[13], zoom: [1.14, 1.04], pan: [0, 16] },
     ],
     caps: [
-      { from: p[0], to: p[1], html: 'You walked away from the <hl>crash.</hl>' },
-      { from: p[1], to: p[2], html: 'Said,' },
-      { from: p[2], to: p[3], html: '<hl>“I’m&nbsp;good.”</hl>' },
-      { from: p[3], to: p[4], html: 'Next <hl>morning?</hl>' },
-      { from: p[4], to: p[5], html: '<hl>Stiff&nbsp;neck.</hl>' },
-      { from: p[5], to: p[6], html: '<hl>Tight&nbsp;back.</hl>' },
-      { from: p[6], to: p[7], html: '<hl>Headaches.</hl>' },
-      { from: p[7], to: p[8], html: 'Symptoms can show up hours, even <hl>days&nbsp;later.</hl>', cls: 'md', eyebrow: 'After a crash' },
-      { from: p[8], to: p[9], html: 'Florida PIP generally requires care within <hl>14&nbsp;days.</hl>', cls: 'md', note: 'Educational only. Your policy and insurer determine coverage.' },
-      { from: p[9], to: p[10], html: 'Don’t walk it <hl>off.</hl>' },
-      { from: p[10], to: p[11], html: 'Get <hl>checked.</hl>' },
-      { from: p[11], to: p[12], html: '<hl>Chiropractic</hl> care, with or without a referral.', cls: 'md' },
+      { from: p[0], to: p[1], html: X('w1', 'You walked away from the <hl>crash.</hl>') },
+      { from: p[1], to: p[2], html: X('w2', 'Said,') },
+      { from: p[2], to: p[3], html: X('w3', '<hl>“I’m&nbsp;good.”</hl>') },
+      { from: p[3], to: p[4], html: X('w4', 'Next <hl>morning?</hl>') },
+      { from: p[4], to: p[5], html: X('w5', '<hl>Stiff&nbsp;neck.</hl>') },
+      { from: p[5], to: p[6], html: X('w6', '<hl>Tight&nbsp;back.</hl>') },
+      { from: p[6], to: p[7], html: X('w7', '<hl>Headaches.</hl>') },
+      { from: p[7], to: p[8], html: X('w8', 'Symptoms can show up hours, even <hl>days&nbsp;later.</hl>'), cls: 'md', eyebrow: X('after', 'After a crash') },
+      { from: p[8], to: p[9], html: X('a2', 'Florida PIP generally requires care within <hl>14&nbsp;days.</hl>'), cls: 'md', note: X('note', 'Educational only. Your policy and insurer determine coverage.') },
+      { from: p[9], to: p[10], html: X('w10', 'Don’t walk it <hl>off.</hl>') },
+      { from: p[10], to: p[11], html: X('w11', 'Get <hl>checked.</hl>') },
+      { from: p[11], to: p[12], html: X('w12', '<hl>Chiropractic</hl> care, with or without a referral.'), cls: 'md' },
       { from: p[12], to: C.hook[0].t - 0.75, url: true },
     ],
     end: C.hook[0].t - 0.75, endImg: 'clinic-hero',
@@ -252,17 +290,25 @@ const PLANS = {
 
 let C, plan, capEls = [], sceneEls = [];
 const numSpans = [...document.querySelectorAll('#num span')];
+// Language: end card "Call", URL and legal line; the digits under the URL for keypads without letters.
+if (LANG !== 'en') {
+  document.getElementById('call').textContent = X('call');
+  document.getElementById('url').textContent = X('url');
+  document.querySelector('.legal').textContent = X('legal');
+  document.getElementById('digits').hidden = false;
+  document.documentElement.lang = LANG;
+}
 
 function setCues(all) {
   C = all[SPOT];
-  plan = PLANS[SPOT](C.phrases.map((x) => x.t).concat(C.length));
+  plan = PLANS[BASE](C.phrases.map((x) => x.t).concat(C.length));
   const scenes = document.getElementById('scenes');
   sceneEls = plan.scenes.map((s) => {
     const d = document.createElement('div');
     d.className = 'scene';
     if (s.clock) {
       d.classList.add('clock');
-      d.innerHTML = `<div class="dial"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="rgb(255 255 255 / 10%)" stroke-width="7"/><circle class="arc" cx="50" cy="50" r="44" fill="none" stroke="#19ccbe" stroke-width="7" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg><div class="ctr"><div class="day">DAY</div><div class="n">1</div></div></div>`;
+      d.innerHTML = `<div class="dial"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="rgb(255 255 255 / 10%)" stroke-width="7"/><circle class="arc" cx="50" cy="50" r="44" fill="none" stroke="#19ccbe" stroke-width="7" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg><div class="ctr"><div class="day">${X('day', 'DAY')}</div><div class="n">1</div></div></div>`;
     } else d.style.backgroundImage = `url(${sceneUrl(s.img)})`;
     scenes.appendChild(d);
     return d;
@@ -273,7 +319,7 @@ function setCues(all) {
     const d = document.createElement('div');
     d.className = 'cap';
     if (c.url) {
-      d.innerHTML = `<div class="brandup sm"><img class="w" src="mark-white.svg" alt=""><div class="eyebrow w">Visit</div></div><h2 class="urlcap"><span class="w hl">therapyandinjury.com</span></h2><div class="orcall w">or call now</div>`;
+      d.innerHTML = `<div class="brandup sm"><img class="w" src="mark-white.svg" alt=""><div class="eyebrow w">${X('visit', 'Visit')}</div></div><h2 class="urlcap${LANG === 'en' ? '' : ' long'}"><span class="w hl">${X('url', 'therapyandinjury.com')}</span></h2><div class="orcall w">${X('orcall', 'or call now')}</div>`;
     } else if (c.list) {
       d.innerHTML = `<div class="eyebrow w">${c.eyebrow}</div><div class="checks">${c.list.map((x) => `<div class="w">${x}</div>`).join('')}</div>`;
     } else if (c.brand) {
@@ -358,6 +404,8 @@ function setTime(t) {
   // The URL comes in once "(844)" is complete, so it stays up long enough to read.
   const url = document.getElementById('url'), up = easeOut(prog(t, H[2] + 0.3, H[2] + 0.7));
   url.style.opacity = up; url.style.transform = `translateY(${(1 - up) * 16}px)`;
+  const dg = document.getElementById('digits'), dp = easeOut(prog(t, H[5] + 0.2, H[5] + 0.6));
+  dg.style.opacity = dp; dg.style.transform = `translateY(${(1 - dp) * 12}px)`;
   // Rings pulse on every beat from the first hook word, and swell on TREAT.
   const sinceBeat = t >= H[0] ? ((t - H[0]) % beat) / beat : 1;
   const pulse = Math.exp(-sinceBeat * 5) * (t >= H[0] ? 1 : 0) + 0.6 * Math.exp(-Math.max(0, t - H[5]) * 3) * (t >= H[5] ? 1 : 0);

@@ -1,6 +1,7 @@
 // Voices the 844-84-TREAT jingles and builds the music around the voice.
 //
 //   node marketing/jingles/make-spots.mjs [urban|warm|action]     (default: urban)
+//   node marketing/jingles/make-spots.mjs urban --lang es|ht       Spanish / Haitian Creole ad set (spots es-*, ht-*)
 //
 // 1. Voices each spot's body line, then picks how many bars of groove sit under it so the body
 //    finishes just before the hook (no squeezing the read to fit a fixed bed).
@@ -21,20 +22,37 @@ const out = path.join(here, 'out');
 const voiceDir = path.join(out, 'voice');
 fs.mkdirSync(voiceDir, { recursive: true });
 const FF = process.env.FFMPEG || 'ffmpeg';
-const preset = process.argv[2] || 'urban';
+const args = process.argv.slice(2);
+const li = args.indexOf('--lang');
+const LANG = li >= 0 ? args.splice(li, 2)[1] : 'en';
+if (!['en', 'es', 'ht'].includes(LANG)) throw new Error(`Unknown --lang "${LANG}" (en, es, ht)`);
+const base = args[0] || 'urban';
+// Non-English sets use the same voice with style notes written in that language (native accent).
+const preset = LANG === 'en' ? base : `${base}${LANG === 'es' ? 'Es' : 'Ht'}`;
 if (!VOICES[preset]) throw new Error(`Unknown voice "${preset}"`);
+const LANG_NAME = { en: 'English', es: 'US Latino Spanish', ht: 'Haitian Creole' }[LANG];
 
 // Must match beds.py.
 const BEAT = 60 / 92;
 const BAR = 4 * BEAT;
 
 // The hook as six words, so the take cuts cleanly into one clip per melody note.
-const HOOK_WORDS = ['Eight', 'four', 'four', 'eight', 'four', 'TREAT'];
-const HOOK = 'Eight. Four. Four. Eight. Four. TREAT!';
-VOICES[`${preset}Hook`] = {
-  ...VOICES[preset],
-  style: `${VOICES[preset].style}. Say each word on its own like a rhythmic radio jingle chant: short and punchy, a clear pause after every word, and land the last word with confidence`,
+// "TREAT" stays in English in every language: it's the letters on the keypad.
+const HOOKS = {
+  en: { words: ['Eight', 'four', 'four', 'eight', 'four', 'TREAT'], say: 'Eight. Four. Four. Eight. Four. TREAT!',
+    style: 'Say each word on its own like a rhythmic radio jingle chant: short and punchy, a clear pause after every word, and land the last word with confidence' },
+  // Spanish "cuatro" has two syllables, so it can't sit on one short note: the hook is read as three phrases
+  // ("ocho cuatro cuatro · ocho cuatro · TREAT") and each phrase starts on the first note of its group.
+  es: { words: ['Ocho', 'cuatro', 'cuatro', 'ocho', 'cuatro', 'TREAT'], groups: [3, 2, 1], say: 'Ocho cuatro cuatro. Ocho cuatro. TREAT!',
+    style: 'Voz masculina de locutor latino, acento puertorriqueño. Dilo como el coro de un jingle de radio, con ritmo: "ocho cuatro cuatro" seguido, pausa, "ocho cuatro" seguido, pausa, y la última palabra, TREAT, en inglés y con seguridad. Di solo esas palabras, nada más' },
+  // "Wit" is how Haitians say "uit" (8); spelled "uit" the voice says it the French way ("huit").
+  ht: { words: ['Uit', 'kat', 'kat', 'uit', 'kat', 'TREAT'], say: 'Wit. Kat. Kat. Wit. Kat. TREAT!',
+    style: 'Vwa yon animatè radyo ayisyen, ak enèji. Di chak mo rapid epi kout, tankou kè yon jingle radyo: chak mo pa dire plis pase yon ti segonn, yon ti poz kout apre chak mo; dènye mo a, TREAT, di l an anglè ak konfyans. Di mo sa yo sèlman, pa ajoute anyen' },
 };
+const HOOK_WORDS = HOOKS[LANG].words;
+const HOOK = HOOKS[LANG].say;
+// The hook gets its own style notes (in the same language); the body's notes can leak extra words into a chant.
+VOICES[`${preset}Hook`] = { ...VOICES[preset], style: LANG === 'en' ? `${VOICES[preset].style}. ${HOOKS[LANG].style}` : HOOKS[LANG].style };
 
 // Body lines are compliance-checked: general education, names the profession, no promises.
 const SPOTS = [
@@ -135,6 +153,58 @@ const SPOTS = [
   },
 ];
 
+// Spanish and Haitian Creole sets (owner, Oct 2026): the jingle, radio tag, 15 s and 30 s in each language.
+// Wording reviewed for native phrasing; have a native speaker on staff sign off before buying media.
+const LANG_SPOTS = {
+  es: [
+    { name: 'es-1-audio-logo', body: null },
+    { name: 'es-2-radio-tag', body: '¿Se lesionó en un choque? Hágase un chequeo dentro de los catorce días. Llame al...',
+      phrases: ['¿Se lesionó en un choque?', 'Hágase un chequeo dentro de los 14 días.', 'Llame al'] },
+    { name: 'es-3-ad-15s', body: 'Después de un accidente de auto, el PIP de Florida generalmente requiere atención dentro de los catorce días. Therapy and Injury: atención quiropráctica, con o sin referido. Llame al...',
+      phrases: ['Después de un accidente de auto,', 'El PIP de Florida generalmente requiere atención dentro de los 14 días.', 'Therapy & Injury:', 'atención quiropráctica,', 'con o sin referido.', 'Llame al'] },
+    // "No se haga el fuerte" (30 s): the Spanish "Don't Walk It Off".
+    { name: 'es-4-walk-it-off-30', length: 30, lines: [
+      { say: 'Salió caminando del choque.', cap: 'Salió caminando del choque.' },
+      { say: 'Dijo...', cap: 'Dijo:' },
+      { say: 'Estoy bien.', cap: '“Estoy bien.”' },
+      { say: '¿Al día siguiente?', cap: '¿Al día siguiente?' },
+      { say: 'Cuello rígido.', cap: 'Cuello rígido.' },
+      { say: 'Espalda tensa.', cap: 'Espalda tensa.' },
+      { say: 'Dolores de cabeza.', cap: 'Dolores de cabeza.' },
+      { say: 'Los síntomas pueden aparecer días después.', cap: 'Los síntomas pueden aparecer días después.' },
+      { say: 'El PIP de Florida generalmente requiere atención dentro de los catorce días.', cap: 'El PIP de Florida generalmente requiere atención dentro de los 14 días.' },
+      { say: 'No se haga el fuerte.', cap: 'No se haga el fuerte.' },
+      { say: 'Hágase un chequeo.', cap: 'Hágase un chequeo.' },
+      { say: 'Atención quiropráctica, con o sin referido.', cap: 'Atención quiropráctica, con o sin referido.' },
+      { say: 'Visite Therapy and Injury punto com, o llame al...', cap: 'therapyandinjury.com/es' },
+    ] },
+  ],
+  ht: [
+    { name: 'ht-1-audio-logo', body: null },
+    { name: 'ht-2-radio-tag', body: 'Ou blese nan yon aksidan machin? Fè tcheke kò w anndan katòz jou. Rele...',
+      phrases: ['Ou blese nan yon aksidan machin?', 'Fè tcheke kò w anndan 14 jou.', 'Rele'] },
+    { name: 'ht-3-ad-15s', body: 'Apre yon aksidan machin, lwa PIP Florid la jeneralman mande swen anndan katòz jou. Therapy and Injury: swen kiwopratik, avèk oswa san referans doktè. Rele...',
+      phrases: ['Apre yon aksidan machin,', 'Lwa PIP Florid la jeneralman mande swen anndan 14 jou.', 'Therapy & Injury:', 'swen kiwopratik,', 'avèk oswa san referans doktè.', 'Rele'] },
+    // "Pa neglije kò w" (30 s): the Haitian Creole "Don't Walk It Off".
+    { name: 'ht-4-walk-it-off-30', length: 30, lines: [
+      { say: 'Ou soti nan aksidan an sou de pye w.', cap: 'Ou soti nan aksidan an sou de pye w.' },
+      { say: 'Ou di...', cap: 'Ou di:' },
+      { say: 'Mwen anfòm.', cap: '“Mwen anfòm.”' },
+      { say: 'Nan demen maten?', cap: 'Nan demen maten?' },
+      { say: 'Kou fè w mal.', cap: 'Kou fè w mal.' },
+      { say: 'Do fè w mal.', cap: 'Do fè w mal.' },
+      { say: 'Tèt fè w mal.', cap: 'Tèt fè w mal.' },
+      { say: 'Sentòm yo ka parèt kèk jou apre.', cap: 'Sentòm yo ka parèt kèk jou apre.' },
+      { say: 'Lwa PIP Florid la jeneralman mande swen anndan katòz jou.', cap: 'Lwa PIP Florid la jeneralman mande swen anndan 14 jou.' },
+      { say: 'Pa neglije kò w.', cap: 'Pa neglije kò w.' },
+      { say: 'Al fè tcheke kò w.', cap: 'Al fè tcheke kò w.' },
+      { say: 'Swen kiwopratik, avèk oswa san referans doktè.', cap: 'Swen kiwopratik, avèk oswa san referans doktè.' },
+      { say: 'Vizite Therapy and Injury dot com, oswa rele...', cap: 'therapyandinjury.com/ht' },
+    ] },
+  ],
+};
+const ACTIVE = LANG === 'en' ? SPOTS : LANG_SPOTS[LANG];
+
 const dur = (f) => +execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString().trim();
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 const ff = (...args) => execFileSync(FF, ['-y', '-loglevel', 'error', ...args]);
@@ -144,8 +214,38 @@ const key = (text) => `${slug(text)}-${crypto.createHash('sha1').update(text).di
 
 async function line(p, text) {
   const f = path.join(voiceDir, `${p}-${key(text)}.wav`);
-  await tts(p, text, f);
+  if (LANG === 'en' || fs.existsSync(f)) { await tts(p, text, f); return f; }
+  // Spanish / Creole takes vary: score each with Gemini as a native listener and re-voice weak ones.
+  let best = null;
+  for (let a = 0; a < 4; a++) {
+    const cand = `${f}.try${a}.wav`;
+    fs.rmSync(cand, { force: true });
+    await tts(p, text, cand);
+    const sc = await nativeScore(cand, text);
+    console.log(`  take ${a + 1} "${text.slice(0, 40)}…": accent ${sc.accent} natural ${sc.natural}${sc.why ? ` (${sc.why})` : ''}`);
+    if (!best || sc.accent + sc.natural > best.sc.accent + best.sc.natural) best = { cand, sc };
+    const long = dur(cand) > 1.2 + text.length * 0.11; // an added phrase ("Therapy and Injury…") runs long
+    if (long) { console.log('    (longer than the script: re-voicing)'); sc.accent = Math.min(sc.accent, 3); }
+    if (sc.accent >= 8 && sc.natural >= 7 && sc.words !== false) break;
+  }
+  fs.renameSync(best.cand, f);
+  for (let a = 0; a < 4; a++) fs.rmSync(`${f}.try${a}.wav`, { force: true });
   return f;
+}
+
+/** A native-listener check (Gemini): accent and delivery 1-10, and whether the words match the script. */
+async function nativeScore(file, text) {
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+      body: JSON.stringify({ contents: [{ parts: [
+        { inlineData: { mimeType: 'audio/wav', data: fs.readFileSync(file).toString('base64') } },
+        { text: `You are a strict native ${LANG_NAME} listener in Florida reviewing a radio ad read. Script: "${text}" (the brand "Therapy and Injury" and the word "TREAT" are meant to be English). Rate how native the accent sounds (1-10) and how natural the delivery is (1-10); words = true if every word of the script is spoken correctly. One short reason.` },
+      ] }], generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { accent: { type: 'NUMBER' }, natural: { type: 'NUMBER' }, words: { type: 'BOOLEAN' }, why: { type: 'STRING' } } } } }),
+    });
+    const j = await r.json();
+    return JSON.parse(j.candidates?.[0]?.content?.parts?.at(-1)?.text ?? '{}');
+  } catch { return { accent: 0, natural: 0 }; }
 }
 
 function readWav(file) {
@@ -225,12 +325,52 @@ function wordAudio(s, rate, pieces) {
   return all;
 }
 
+/**
+ * Phrase hooks (Spanish): the phrases before TREAT share one gentle speed-up so they fit between the first
+ * note and TREAT together, each starting on its note when there's room (else right after the one before).
+ */
+function phraseHookClips(file, notes, spotLength, groups) {
+  const first = groups.map((_, g) => groups.slice(0, g).reduce((a, b) => a + b, 0));
+  const { rate, s, segs } = words(file, groups.length);
+  const clips = segs.map((pieces, g) => {
+    const f = path.join(voiceDir, `${path.basename(file, '.wav')}.p${g}.wav`);
+    writeWav(f, wordAudio(s, rate, [{ start: pieces[0].start, end: pieces.at(-1).end }]), rate);
+    return { f, len: dur(f) };
+  });
+  const lastAt = notes[first.at(-1)].t - 0.035, body = clips.slice(0, -1);
+  const avail = lastAt - 0.05 - (notes[0].t - 0.035) - 0.06 * (body.length - 1);
+  const k = Math.max(1, body.reduce((a, c) => a + c.len, 0) / avail);
+  if (k > 1.25) console.warn(`  note: hook phrases sped up ${((k - 1) * 100).toFixed(0)}% to fit before TREAT`);
+  let end = 0;
+  const out = body.map((c, g) => {
+    let f = c.f;
+    if (k > 1.005) { f = c.f.replace(/\.wav$/, '.fit.wav'); ff('-i', c.f, '-af', `atempo=${k.toFixed(3)}`, f); }
+    const len = c.len / k, rest = body.slice(g + 1).reduce((a, x) => a + x.len / k + 0.06, 0);
+    // On its note if it fits before what follows; else as early as the previous phrase allows.
+    const at = g === 0 ? notes[0].t - 0.035 : Math.max(end + 0.06, Math.min(notes[first[g]].t - 0.035, lastAt - 0.05 - rest - len));
+    end = at + len;
+    return { file: f, at, word: HOOK_WORDS[first[g]], len };
+  });
+  const tail = clips.at(-1), slot = spotLength - notes[first.at(-1)].t - 0.3;
+  out.push({ file: tail.f, at: lastAt, word: HOOK_WORDS[first.at(-1)], len: Math.min(tail.len, slot) });
+  return out;
+}
+
 /** One clip per hook word, each fitted to the time until the next note. */
 function hookClips(file, notes, spotLength) {
-  const { rate, s, segs } = words(file, notes.length);
-  return segs.map((pieces, i) => {
-    const slot = i + 1 < notes.length ? notes[i + 1].t - notes[i].t - 0.03 : spotLength - notes[i].t - 0.3;
-    let f = path.join(voiceDir, `${path.basename(file, '.wav')}.w${i}.wav`);
+  if (HOOKS[LANG].groups) return phraseHookClips(file, notes, spotLength, HOOKS[LANG].groups);
+  // `groups`: how many notes each spoken phrase covers (default: one word per note).
+  const groups = HOOKS[LANG].groups ?? notes.map(() => 1);
+  const first = groups.map((_, g) => groups.slice(0, g).reduce((a, b) => a + b, 0));
+  const { rate, s, segs } = words(file, groups.length);
+  let freeFrom = 0; // where the previous phrase ends: a long phrase may start early (a pickup) into that gap
+  return segs.map((pieces, g) => {
+    const i = first[g], next = first[g + 1];
+    const natural = (pieces.at(-1).end - pieces[0].start) / rate;
+    const room = next != null ? notes[next].t - notes[i].t - 0.03 : spotLength - notes[i].t - 0.3;
+    const lead = groups.length < notes.length ? Math.max(0, Math.min(natural - room, notes[i].t - 0.035 - freeFrom - 0.06, 0.3)) : 0;
+    const slot = room + lead;
+    let f = path.join(voiceDir, `${path.basename(file, '.wav')}.w${g}.wav`);
     // Keep the word's natural span when it fits; otherwise cut the pause inside it (eigh..t) first.
     const whole = [{ start: pieces[0].start, end: pieces.at(-1).end }];
     const seg = (whole[0].end - whole[0].start) / rate <= slot ? wordAudio(s, rate, whole) : wordAudio(s, rate, pieces);
@@ -238,12 +378,15 @@ function hookClips(file, notes, spotLength) {
     const len = seg.length / rate;
     if (len > slot) {
       const g2 = f.replace(/\.wav$/, '.fit.wav');
+      if (len / slot > 1.25) console.warn(`  note: hook word ${g} is ${len.toFixed(2)}s for a ${slot.toFixed(2)}s note; sped up ${((len / slot - 1) * 100).toFixed(0)}%`);
       const factor = Math.min(1.45, len / slot);
       ff('-i', f, '-af', `atempo=${factor.toFixed(3)},afade=t=out:st=${Math.max(0, slot - 0.03).toFixed(3)}:d=0.03,atrim=0:${slot.toFixed(3)}`, g2);
       f = g2;
     }
     // Words hit the beat on their vowel, a few ms after the clip starts.
-    return { file: f, at: Math.max(0, notes[i].t - 0.035), word: HOOK_WORDS[i], len: Math.min(len, slot) };
+    const at = Math.max(0, notes[i].t - 0.035 - lead);
+    freeFrom = at + Math.min(len, slot);
+    return { file: f, at, word: HOOK_WORDS[i], len: Math.min(len, slot) };
   });
 }
 
@@ -398,7 +541,7 @@ async function twoActs(spot, file, starts, m) {
 
 // 1. Bodies first: size each bed to its read.
 const plan = {}, bodies = {};
-for (const spot of SPOTS) {
+for (const spot of ACTIVE) {
   if (!spot.body && !spot.lines) { plan[spot.name] = { bars: 0 }; continue; }
   let file, starts;
   if (spot.lines) {
@@ -435,7 +578,7 @@ const timing = JSON.parse(fs.readFileSync(path.join(out, 'timing.json'), 'utf8')
 // 3 + 4. Hook words on the notes, then mix.
 const hookTake = await line(`${preset}Hook`, HOOK);
 const cues = {};
-for (const spot of SPOTS) {
+for (const spot of ACTIVE) {
   const t = timing[spot.name];
   const b = bodies[spot.name];
   const clips = hookClips(hookTake, t.hookNotes, t.length);
@@ -460,4 +603,4 @@ for (const spot of SPOTS) {
   };
 }
 // Caption and beat timings for the video ads.
-fs.writeFileSync(path.join(out, `cues-${preset}.json`), JSON.stringify(cues, null, 2));
+fs.writeFileSync(path.join(out, `cues-${base}${LANG === 'en' ? '' : `-${LANG}`}.json`), JSON.stringify(cues, null, 2));

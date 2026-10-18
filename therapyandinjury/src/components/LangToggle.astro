@@ -1,0 +1,102 @@
+---
+/**
+ * Language switcher in the header: a small flag button (the current language) that opens the three
+ * choices, English (default), Español and Kreyòl ayisyen, each a flag linking to that language's page
+ * (/, /es/, /ht/). One button keeps the header uncluttered on phones. Which flag stands for a language
+ * is set in src/lib/i18n.ts.
+ */
+import { LANGS, langInfo, ui, type Lang } from '../lib/i18n';
+import Flag from './Flag.astro';
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const cur = langInfo(lang);
+---
+<details class="lt" data-lt>
+  <summary class="lt__btn" aria-label={`${ui(lang).language}: ${cur.label}`}>
+    <Flag flag={cur.flag} />
+    <span class="lt__code" aria-hidden="true">{cur.short}</span>
+    <svg class="lt__caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+  </summary>
+  <ul class="lt__menu">
+    {LANGS.map((l) => (
+      <li><a href={l.path} hreflang={l.locale} lang={l.locale} aria-current={l.code === lang ? 'true' : undefined}><Flag flag={l.flag} /><span>{l.label}</span></a></li>
+    ))}
+  </ul>
+</details>
+
+<script>
+  // Close the menu on an outside click or Escape.
+  document.querySelectorAll<HTMLDetailsElement>('[data-lt]').forEach((d) => {
+    document.addEventListener('click', (e) => { if (d.open && !d.contains(e.target as Node)) d.open = false; });
+    d.addEventListener('keydown', (e) => { if (e.key === 'Escape') { d.open = false; d.querySelector('summary')?.focus(); } });
+  });
+</script>
+
+<style>
+  .lt {
+    position: relative;
+    flex: none;
+  }
+  .lt__btn {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--navy);
+    background: var(--white);
+  }
+  .lt__btn::-webkit-details-marker {
+    display: none;
+  }
+  .lt__btn:hover,
+  .lt[open] .lt__btn {
+    border-color: var(--teal);
+  }
+  .lt__btn:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+  }
+  .lt[open] .lt__caret {
+    transform: rotate(180deg);
+  }
+  .lt__menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 70;
+    min-width: 190px;
+    margin: 0;
+    padding: 6px;
+    list-style: none;
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .lt__menu a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 8px;
+    color: var(--navy);
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .lt__menu a:hover,
+  .lt__menu a:focus-visible {
+    background: var(--gray);
+  }
+  .lt__menu a[aria-current] {
+    background: var(--teal-soft);
+  }
+</style>

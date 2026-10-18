@@ -12,6 +12,11 @@
  *   one beat and the letters are the last, held beat ("TREAT").
  */
 import { site, mainLine, isPlaceholder } from '../lib/site';
+import { ui, type Lang } from '../lib/i18n';
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+// Spanish / Creole pages play the jingle sung in that language (same beat, so the reveal lines up).
+const t = ui(lang);
 
 const vanity = isPlaceholder(site.mainPhoneVanity) ? '' : site.mainPhoneVanity.trim();
 const tel = mainLine.tel;
@@ -45,7 +50,7 @@ const AUDIO_LEAD = 0.2; // the first hook word starts 0.2 s into the audio file
   <section class="vb" aria-label={`Call ${vanity}`} data-vb data-lead={AUDIO_LEAD}>
     <div class="vb__rings" aria-hidden="true"><span></span><span></span></div>
     <div class="wrap vb__in">
-      <span class="vb__eyebrow">Call or text</span>
+      <span class="vb__eyebrow">{t.callOrText}</span>
       <a class="vb__num" href={tel || undefined} aria-label={`Call ${vanity}${mainLine.digits ? ` (${mainLine.digits})` : ''}`}>
         {beats.map((b, i) => (
           <span class:list={['vb__beat', { 'vb__beat--word': b.word }]} style={`--t:${at(i).toFixed(3)}s`} aria-hidden="true">{b.text}</span>
@@ -53,13 +58,13 @@ const AUDIO_LEAD = 0.2; // the first hook word starts 0.2 s into the audio file
       </a>
       <div class="vb__row">
         {mainLine.digits && <span class="vb__digits">{mainLine.digits}</span>}
-        <button type="button" class="vb__play" data-vb-play aria-label={`Hear the ${vanity} jingle`}>
+        <button type="button" class="vb__play" data-vb-play aria-label={t.hearAria(vanity)}>
           <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M6 4.5v11l9-5.5z" fill="currentColor" /></svg>
-          <span>Hear it</span>
+          <span>{t.hearIt}</span>
         </button>
       </div>
     </div>
-    <audio preload="none" src="/media/844-84-treat-jingle.mp3" data-vb-audio></audio>
+    <audio preload="none" src={t.jingle} data-vb-audio></audio>
   </section>
 )}
 

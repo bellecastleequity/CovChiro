@@ -38,7 +38,14 @@ In cPanel → **Email Deliverability**, repair or enable **SPF** and **DKIM** fo
 Open `https://therapyandinjury.com/_admin` and sign in. The **Content** tab edits everything that changes day to day:
 - **Site:** main phone and email, YouTube, Instagram and Facebook links, the Carepatron booking, paperwork and portal links, the tagline, and the Google and Bing IDs
 - **Videos:** the hero commercial on the home page and every location page. Paste a YouTube link to show that video, or keep the built-in 60-second spot.
-- **Each location:** open or coming soon, phone, **email** (appointment requests go there), address, **hours**, doctors, visit features, nearby areas, the Google Business Profile link, **map zoom**, city domains, and an optional video of its own
+- **Page text:** the form's consent line, FAQ answers, Privacy Policy details, and the "Yes, we work with your attorney" banner
+- **Services:** each service's name, its short line on the home page, and its description on the Services page (replace the yellow "[LIST TECHNIQUES …]" parts), plus the "descriptions are approved" checkbox that hides the confirm notes
+- **Each location:** open or coming soon, phone, **email** (appointment requests go there), address, **hours**, doctors, visit features, **languages spoken**, nearby areas, the Google Business Profile link, **map zoom**, city domains, and an optional video of its own
+
+### Spanish and Haitian Creole pages
+`/es/` (Español) and `/ht/` (Kreyòl ayisyen) are full landing pages with their own commercial and jingle. The flag button in the header switches between English, Español and Kreyòl. They use the same location facts as the English pages (address, hours, phone, email), so editor changes show in all three. Requests sent from them arrive by email marked with the language ("— Spanish" in the subject).
+- To show **"Se habla español"** or **"Nou pale kreyòl"**, add `Español` or `Kreyòl` under that location's **Languages spoken**. Leave them off until someone on staff speaks the language.
+- The Spanish and Creole wording is built into the release (ask for changes in the next update). Have a native speaker on staff read both pages before you advertise them.
 
 Click **Save** and the change is live on the next page view. Yellow fields are placeholders still to fill in, and the counter shows how many are left. Every save keeps the previous version under **Saved versions**, with one-click restore.
 

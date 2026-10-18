@@ -108,6 +108,7 @@ async function handle(req, res, ctx, send) {
   const time = clean(f.preferred_time, 120);
   let accident = clean(f.accident_date, 10);
   const consent = f.consent === 'yes';
+  const lang = { es: 'Spanish (Español)', ht: 'Haitian Creole (Kreyòl)' }[clean(f.lang, 4)] || '';
   if (!name || phone.replace(/\D/g, '').length < 10 || !consent) return json(422, { ok: false, error: 'validation' });
   if (accident && !/^\d{4}-\d{2}-\d{2}$/.test(accident)) accident = '';
 
@@ -118,7 +119,7 @@ async function handle(req, res, ctx, send) {
   if (!to) return json(503, { ok: false, error: 'not_configured' });
   const from = mail.from || 'no-reply@therapyandinjury.com';
 
-  const subject = type === 'notify' ? `Opening notification request — ${branch}` : `Appointment request — ${branch}`;
+  const subject = `${type === 'notify' ? `Opening notification request — ${branch}` : `Appointment request — ${branch}`}${lang ? ` — ${lang.split(' ')[0]}` : ''}`;
   const body = [
     `Type: ${type}`,
     `Location: ${branch}`,
@@ -126,6 +127,7 @@ async function handle(req, res, ctx, send) {
     `Phone: ${phone}`,
     `Preferred time: ${time || '—'}`,
     `Accident date: ${accident || '—'}`,
+    ...(lang ? [`Language: ${lang} (sent from the ${lang.split(' ')[0]} page; the visitor may prefer that language)`] : []),
     'Consent to call/text: yes',
     `Submitted: ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`,
   ].join('\n');

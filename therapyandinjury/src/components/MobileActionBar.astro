@@ -4,17 +4,19 @@
  * Florida injury-clinic site does it: call, request, directions. Hidden on desktop.
  */
 import { type Branch, directionsUrl, isOpen, bookingHref, callFor } from '../lib/site';
-interface Props { branch?: Branch }
-const { branch: b } = Astro.props;
+import { ui, type Lang } from '../lib/i18n';
+interface Props { branch?: Branch; lang?: Lang; ctaHref?: string }
+const { branch: b, lang = 'en', ctaHref } = Astro.props;
+const t = ui(lang);
 const tel = callFor(b).tel;
 const dir = b && isOpen(b) ? directionsUrl(b) : '';
-const requestHref = bookingHref(b);
+const requestHref = ctaHref ?? bookingHref(b);
 const external = requestHref.startsWith('http');
 ---
-<nav class="mab" aria-label="Quick actions">
-  {tel && <a class="mab__btn" href={tel}><span aria-hidden="true">📞</span> Call</a>}
-  <a class="mab__btn mab__btn--primary" href={requestHref}>{b && !isOpen(b) ? 'Get notified' : external ? 'Book online' : b ? 'Request visit' : 'Find a location'}</a>
-  {dir && <a class="mab__btn" href={dir} rel="noopener" target="_blank"><span aria-hidden="true">📍</span> Directions<span class="sr-only"> (opens in a new tab)</span></a>}
+<nav class="mab" aria-label={t.quickActions}>
+  {tel && <a class="mab__btn" href={tel}><span aria-hidden="true">📞</span> {t.call}</a>}
+  <a class="mab__btn mab__btn--primary" href={requestHref}>{b && !isOpen(b) ? t.getNotified : external ? t.bookOnline : b || ctaHref ? t.requestShort : t.findLocation}</a>
+  {dir && <a class="mab__btn" href={dir} rel="noopener" target="_blank"><span aria-hidden="true">📍</span> {t.directions}<span class="sr-only"> {t.newTab}</span></a>}
 </nav>
 <style>
   .mab {

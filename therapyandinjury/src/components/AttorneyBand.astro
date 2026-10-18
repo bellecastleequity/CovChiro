@@ -6,22 +6,24 @@
  */
 import '@fontsource/permanent-marker/400.css';
 import { copyText } from '../lib/site';
-
-const headline = copyText('attorneyHeadline');
-const note = copyText('attorneyNote');
-// Highlight a leading "Yes," (or "Yes!" / "Yes.") in teal; the rest stays white.
-const m = headline.match(/^(yes[,.!]?)\s+(.*)$/i);
+import { attorneyText, ui, type Lang } from '../lib/i18n';
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const { headline, note } = attorneyText(lang, { headline: copyText('attorneyHeadline'), note: copyText('attorneyNote') });
+const t = ui(lang);
+// Highlight a leading "Yes," (or "Sí," / "Wi,") in teal; the rest stays white.
+const m = headline.match(/^(yes|sí|si|wi)([,.!]?)\s+(.*)$/i);
 ---
 {headline && (
-  <section class="ab" aria-label="Attorneys and auto insurance">
+  <section class="ab" aria-label={lang === 'en' ? 'Attorneys and auto insurance' : headline}>
     <div class="wrap ab__in">
       <p class="ab__head">
-        {m ? <><span class="ab__yes">{m[1]}</span> {m[2]}</> : headline}
+        {m ? <><span class="ab__yes">{m[1] + m[2]}</span> {m[3]}</> : headline}
         <svg class="ab__swoosh" viewBox="0 0 600 24" preserveAspectRatio="none" aria-hidden="true">
           <path d="M4 16 C 120 6, 260 4, 380 10 S 560 18, 596 8" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" />
         </svg>
       </p>
-      {note && <p class="ab__note">{note} <a href="/auto-accident-injuries/">How it works&nbsp;→</a></p>}
+      {note && <p class="ab__note">{note} <a href={t.howHref}>{t.howItWorks}&nbsp;→</a></p>}
     </div>
   </section>
 )}

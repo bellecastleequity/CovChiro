@@ -59,6 +59,8 @@ export const GET: APIRoute = async () => {
     `- About: ${abs('/about/')}`,
     `- Contact: ${abs('/contact/')}`,
     `- Patient center (online booking, new patient paperwork, patient portal): ${abs('/patients/')}`,
+    `- En español (Spanish page): ${abs('/es/')}`,
+    `- An kreyòl ayisyen (Haitian Creole page): ${abs('/ht/')}`,
     `- Blog: ${abs('/blog/')}`,
     ...blog.map((p) => `  - ${p.data.title}: ${abs(`/blog/${p.id}/`)}`),
     '',

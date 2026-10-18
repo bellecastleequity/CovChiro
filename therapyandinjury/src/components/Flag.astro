@@ -1,0 +1,49 @@
+---
+/** Small inline-SVG flag (emoji flags don't show on Windows): us, pr, mx, es, ht. Decorative. */
+interface Props { flag: string }
+const { flag } = Astro.props;
+---
+<svg class="flag" viewBox="0 0 30 20" width="24" height="16" aria-hidden="true">
+        {flag === 'us' && (
+          <>
+            <rect width="30" height="20" fill="#fff" />
+            {[0, 2, 4, 6, 8, 10, 12].map((i) => <rect y={(i * 20) / 13} width="30" height={20 / 13} fill="#b22234" />)}
+            <rect width="12" height={(20 / 13) * 7} fill="#3c3b6e" />
+            {[[2, 2], [5, 2], [8, 2], [3.5, 4.5], [6.5, 4.5], [2, 7], [5, 7], [8, 7], [3.5, 9.5], [6.5, 9.5]].map(([x, y]) => <circle cx={x + 0.5} cy={y} r="0.7" fill="#fff" />)}
+          </>
+        )}
+        {flag === 'pr' && (
+          <>
+            {[0, 1, 2, 3, 4].map((i) => <rect y={i * 4} width="30" height="4" fill={i % 2 ? '#fff' : '#ed0000'} />)}
+            <path d="M0 0 L15 10 L0 20 Z" fill="#0050f0" />
+            <path d="M5 7.6 l.7 2 2.1 0 -1.7 1.3 .6 2 -1.7-1.2 -1.7 1.2 .6-2 -1.7-1.3 2.1 0 z" fill="#fff" />
+          </>
+        )}
+        {flag === 'mx' && (
+          <>
+            <rect width="10" height="20" fill="#006847" /><rect x="10" width="10" height="20" fill="#fff" /><rect x="20" width="10" height="20" fill="#ce1126" />
+            <circle cx="15" cy="10" r="2.6" fill="#8c6a2f" />
+          </>
+        )}
+        {flag === 'es' && (
+          <>
+            <rect width="30" height="20" fill="#aa151b" /><rect y="5" width="30" height="10" fill="#f1bf00" />
+          </>
+        )}
+        {flag === 'ht' && (
+          <>
+            <rect width="30" height="10" fill="#00209f" /><rect y="10" width="30" height="10" fill="#d21034" />
+            <rect x="11" y="7" width="8" height="6" fill="#fff" />
+            <path d="M13 12 h4 v-1.4 l-2-2 -2 2 z" fill="#016a16" />
+          </>
+        )}
+      </svg>
+
+<style>
+  .flag {
+    display: block;
+    flex: none;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgb(11 45 91 / 18%);
+  }
+</style>

@@ -10,6 +10,7 @@ import CtaBand from '../components/CtaBand.astro';
 import NearestBanner from '../components/NearestBanner.astro';
 import AttorneyBand from '../components/AttorneyBand.astro';
 import { site, abs, orgSchema, breadcrumbSchema, type Branch } from '../lib/site';
+import { LANGS, langInfo, ui, type Lang } from '../lib/i18n';
 
 interface Props {
   title: string;
@@ -26,21 +27,28 @@ interface Props {
   branch?: Branch;
   /** The page shows the attorney/auto-insurance banner itself (mid-page), so skip the one above the CTA. */
   attorneyInline?: boolean;
+  /** Page language (en default; es and ht for the Spanish and Creole pages). */
+  lang?: Lang;
+  /** This page exists in all three languages (home, /es/, /ht/): adds hreflang links between them. */
+  alternates?: boolean;
 }
-const { title, description, ogImage = '/og/default.png', ogType = 'website', city, ctaHref, schema, breadcrumbs, noindex = false, branch, attorneyInline = false } = Astro.props;
+const { title, description, ogImage = '/og/default.png', ogType = 'website', city, ctaHref, schema, breadcrumbs, noindex = false, branch, attorneyInline = false, lang = 'en', alternates = false } = Astro.props;
+const L = langInfo(lang);
 const canonical = abs(Astro.url.pathname);
 const pageSchemas = (Array.isArray(schema) ? schema : [schema]).filter(Boolean) as Record<string, unknown>[];
 const schemas = [...orgSchema(), ...pageSchemas, ...(breadcrumbs ? [breadcrumbSchema(breadcrumbs)] : [])];
 const { googleSiteVerification, bingSiteVerification } = site.seo;
 ---
 <!doctype html>
-<html lang="en-US">
+<html lang={L.locale}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
+    {alternates && LANGS.map((x) => <link rel="alternate" hreflang={x.locale} href={abs(x.path)} />)}
+    {alternates && <link rel="alternate" hreflang="x-default" href={abs('/')} />}
     <meta name="robots" content={noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large, max-snippet:-1'} />
     {googleSiteVerification && <meta name="google-site-verification" content={googleSiteVerification} />}
     {bingSiteVerification && <meta name="msvalidate.01" content={bingSiteVerification} />}
@@ -60,7 +68,7 @@ const { googleSiteVerification, bingSiteVerification } = site.seo;
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content={city ? `${city} Therapy & Injury logo and tagline` : 'Therapy & Injury logo and tagline'} />
-    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale" content={L.og} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
@@ -70,16 +78,16 @@ const { googleSiteVerification, bingSiteVerification } = site.seo;
     <Analytics />
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
-    <PipBanner branch={branch} />
-    <Header city={city} ctaHref={ctaHref} />
-    {!branch && !city && <NearestBanner />}
+    <a class="skip-link" href="#main">{ui(lang).skip}</a>
+    <PipBanner branch={branch} lang={lang} />
+    <Header city={city} ctaHref={ctaHref} lang={lang} />
+    {!branch && !city && lang === 'en' && <NearestBanner />}
     <main id="main">
       <slot />
-      {!attorneyInline && <AttorneyBand />}
-      <CtaBand branch={branch} />
+      {!attorneyInline && <AttorneyBand lang={lang} />}
+      <CtaBand branch={branch} lang={lang} ctaHref={ctaHref} />
     </main>
-    <Footer city={city} />
-    <MobileActionBar branch={branch} />
+    <Footer city={city} lang={lang} />
+    <MobileActionBar branch={branch} lang={lang} ctaHref={ctaHref} />
   </body>
 </html>

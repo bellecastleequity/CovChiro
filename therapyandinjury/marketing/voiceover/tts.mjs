@@ -32,6 +32,24 @@ export const VOICES = {
     trim: true,
     tempo: 1.0,
   },
+  // Spanish and Haitian Creole reads of the same urban voice (owner, Oct 2026) for the ES/HT ad sets.
+  urbanEs: {
+    model: 'gemini-3.1-flash-tts-preview',
+    voiceName: 'Fenrir',
+    style:
+      // Written in Spanish: style notes in English pull the read toward an American accent.
+      'Lee esto en español latino natural, con acento nativo puertorriqueño y caribeño, como un locutor urbano de una emisora de reguetón en Orlando: voz suave, segura, cálida y con flow, dicción clara, sin gritar. Lee solo el texto, sin agregar nada',
+    trim: true,
+    tempo: 1.0,
+  },
+  urbanHt: {
+    model: 'gemini-3.1-flash-tts-preview',
+    voiceName: 'Fenrir',
+    style:
+      'Li sa a an kreyòl ayisyen ak bon aksan natif natal Ayiti (Pòtoprens), tankou yon animatè radyo kominote ayisyen nan Miyami: vwa dous, konfyans, cho, pwononsyasyon klè, pa rele fò. Li tèks la sèlman, pa ajoute anyen',
+    trim: true,
+    tempo: 1.0,
+  },
 };
 
 const FALLBACK_MODEL = 'gemini-3.1-flash-tts-preview';

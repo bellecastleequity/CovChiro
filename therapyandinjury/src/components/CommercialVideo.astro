@@ -9,9 +9,13 @@
  * no YouTube cookies for visitors who don't watch). Captions are burned into our spots; the transcript
  * is for screen readers, search engines, and anyone who can't play sound.
  */
-import { type Branch, heroVideoFor, youtubeId, isPlaceholder } from '../lib/site';
-interface Props { branch?: Branch }
-const v = heroVideoFor(Astro.props.branch);
+import { type Branch, type Video, heroVideoFor, youtubeId, isPlaceholder } from '../lib/site';
+import { ui, type Lang } from '../lib/i18n';
+interface Props { branch?: Branch; lang?: Lang; video?: Video }
+const { lang = 'en' } = Astro.props;
+const t = ui(lang);
+// The Spanish / Creole pages pass their own commercial; everything else uses the editor's hero video.
+const v = Astro.props.video ?? heroVideoFor(Astro.props.branch);
 const yt = youtubeId(v.youtube);
 const file = isPlaceholder(v.file) ? '' : v.file;
 const poster = !isPlaceholder(v.poster) ? v.poster : yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : '';
@@ -40,9 +44,9 @@ const show = !!(yt || file);
       <span><strong>{title}</strong>{!isPlaceholder(v.caption) && <> · {v.caption}</>}</span>
       {paragraphs.length > 0 && (
         <details class="cv__tx">
-          <summary>Transcript</summary>
+          <summary>{t.transcript}</summary>
           {paragraphs.map((p) => <p>{p}</p>)}
-          <p class="cv__fine">Educational only; your policy and insurer determine coverage. Chiropractic care by Florida-licensed chiropractic physicians (D.C.). People shown are illustrative, not patients.</p>
+          <p class="cv__fine">{t.videoFine}</p>
         </details>
       )}
     </figcaption>

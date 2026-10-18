@@ -4,26 +4,28 @@
  * "with or without a referral", call + request buttons.
  */
 import { type Branch, isOpen, bookingHref, callFor } from '../lib/site';
+import { ui, type Lang } from '../lib/i18n';
 import TimerBadge from './TimerBadge.astro';
-interface Props { branch?: Branch }
-const { branch } = Astro.props;
+interface Props { branch?: Branch; lang?: Lang; ctaHref?: string }
+const { branch, lang = 'en', ctaHref } = Astro.props;
+const t = ui(lang);
 const call = callFor(branch);
 const tel = call.tel;
-const requestHref = bookingHref(branch);
+const requestHref = ctaHref ?? bookingHref(branch);
 const external = requestHref.startsWith('http');
 ---
 <section class="section section--tight cta" aria-labelledby="cta-title">
   <div class="wrap cta__in">
     <div class="cta__copy">
-      <span class="cta__days"><TimerBadge size={84} variant="on-navy" /></span>
+      <span class="cta__days"><TimerBadge size={84} variant="on-navy" lang={lang} /></span>
       <div>
-        <h2 id="cta-title">Hurt in a car accident? Get checked within 14 days.</h2>
-        <p>Florida PIP generally requires initial care within 14 days of a crash. We’ll see you with or without a referral. Call us or request a visit online.</p>
+        <h2 id="cta-title">{t.ctaTitle}</h2>
+        <p>{t.ctaBody}</p>
       </div>
     </div>
     <div class="btn-row">
-      <a class="btn btn--primary" href={tel || '/contact/'}>{tel ? `Call ${call.label}` : 'Call us'}</a>
-      <a class="btn btn--light" href={requestHref}>{branch && !isOpen(branch) ? 'Get notified' : external ? 'Book online' : 'Request a visit'}</a>
+      <a class="btn btn--primary" href={tel || '/contact/'}>{tel ? `${t.call} ${call.label}` : t.callUs}</a>
+      <a class="btn btn--light" href={requestHref}>{branch && !isOpen(branch) ? t.getNotified : external ? t.bookOnline : t.requestVisit}</a>
     </div>
   </div>
 </section>

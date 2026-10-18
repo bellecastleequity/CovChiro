@@ -6,51 +6,55 @@
  * Backend: site.formEndpoint, handled by the Node server (deploy/server/appointment.js); recipients are set in the server config.json.
  */
 import { site, type Branch, branchName, isOpen, hoursSummary, telHref, copyText } from '../lib/site';
+import { ui, hoursIn, consentIn, type Lang } from '../lib/i18n';
 import Ph from './Ph.astro';
 import PhoneLink from './PhoneLink.astro';
-interface Props { branch: Branch }
-const { branch: b } = Astro.props;
+interface Props { branch: Branch; lang?: Lang }
+const { branch: b, lang = 'en' } = Astro.props;
+const t = ui(lang);
+const hours = lang === 'en' ? hoursSummary(b) : hoursIn(b, lang);
+// Messages the browser shows after submitting, in the page's language.
+const msgs = { ok: t.fOk, missing: t.fMissing, sending: t.fSending, fail: t.fFail };
 const open = isOpen(b);
 const id = (s: string) => `${b.slug}-${s}`;
 const tel = telHref(b.phone);
 ---
-<form class="af card" method="post" action={site.formEndpoint} data-appt novalidate>
-  <h2 class="af__title" id={id('form-title')}>{open ? 'Request an appointment' : `Get notified when ${b.city} opens`}</h2>
+<form class="af card" method="post" action={site.formEndpoint} data-appt data-msgs={JSON.stringify(msgs)} novalidate>
+  <h2 class="af__title" id={id('form-title')}>{open ? t.fTitle : t.fNotifyTitle(b.city)}</h2>
   <p class="af__intro muted">
     {open
-      ? <Fragment>Send a request and our {b.city} team will call to confirm a time.{hoursSummary(b) && <Fragment> Office hours: {hoursSummary(b)}.</Fragment>}</Fragment>
-      : <Fragment>Leave your name and number and we will call you when {branchName(b)} opens.</Fragment>}
+      ? <Fragment>{t.fIntro(b.city)}{hours && ` ${t.fHours} ${hours}${hours.endsWith('.') ? '' : '.'}`}</Fragment>
+      : <Fragment>{t.fNotifyIntro(branchName(b))}</Fragment>}
   </p>
 
-  <p class="af__privacy">
-    <strong>Please do not include</strong> medical details, insurance or claim numbers, or Social Security numbers. We’ll collect what’s needed privately at your visit.
-  </p>
+  <p class="af__privacy" set:html={t.fPrivacy} />
 
   <input type="hidden" name="branch" value={b.slug} />
   <input type="hidden" name="type" value={open ? 'appointment' : 'notify'} />
+  <input type="hidden" name="lang" value={lang} />
   <div class="af__hp" aria-hidden="true">
-    <label>Leave this field empty <input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
+    <label>{t.fHoneypot} <input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
   </div>
 
   <div class="af__field">
-    <label for={id('name')}>Full name <span class="af__req" aria-hidden="true">*</span></label>
+    <label for={id('name')}>{t.fName} <span class="af__req" aria-hidden="true">*</span></label>
     <input id={id('name')} name="name" type="text" autocomplete="name" required maxlength="100" />
   </div>
   <div class="af__field">
-    <label for={id('phone')}>Phone number <span class="af__req" aria-hidden="true">*</span></label>
+    <label for={id('phone')}>{t.fPhone} <span class="af__req" aria-hidden="true">*</span></label>
     <input id={id('phone')} name="phone" type="tel" autocomplete="tel" inputmode="tel" required minlength="10" maxlength="20" aria-describedby={id('phone-hint')} />
-    <span class="af__hint" id={id('phone-hint')}>We’ll call or text this number to confirm.</span>
+    <span class="af__hint" id={id('phone-hint')}>{t.fPhoneHint}</span>
   </div>
   {open && (
     <Fragment>
       <div class="af__field">
-        <label for={id('time')}>Preferred day and time</label>
-        <input id={id('time')} name="preferred_time" type="text" maxlength="120" placeholder="e.g., Monday after 3 pm" />
+        <label for={id('time')}>{t.fTime}</label>
+        <input id={id('time')} name="preferred_time" type="text" maxlength="120" placeholder={t.fTimePh} />
       </div>
       <div class="af__field">
-        <label for={id('accident')}>Accident date <span class="af__opt">(optional)</span></label>
+        <label for={id('accident')}>{t.fAccident} <span class="af__opt">{t.fOptional}</span></label>
         <input id={id('accident')} name="accident_date" type="date" aria-describedby={id('accident-hint')} />
-        <span class="af__hint" id={id('accident-hint')}>Helps us prioritize visits inside the 14-day PIP window.</span>
+        <span class="af__hint" id={id('accident-hint')}>{t.fAccidentHint}</span>
       </div>
     </Fragment>
   )}
@@ -58,14 +62,14 @@ const tel = telHref(b.phone);
   <div class="af__field af__check">
     <input id={id('consent')} name="consent" type="checkbox" value="yes" required />
     <label for={id('consent')}>
-      <Ph value={copyText('formConsent').replaceAll('{location}', branchName(b)) || `I agree that ${branchName(b)} may call or text me about this request.`} />
+      <Ph value={consentIn(lang, copyText('formConsent'), branchName(b))} />
     </label>
   </div>
 
-  <button type="submit" class="btn btn--primary btn--block">{open ? 'Send request' : 'Notify me'}</button>
+  <button type="submit" class="btn btn--primary btn--block">{open ? t.fSend : t.fNotify}</button>
   <p class="af__status" role="status" aria-live="polite" data-status></p>
   <p class="af__alt small muted">
-    Prefer to call? <PhoneLink branch={b} />
+    {t.fPrefer} <PhoneLink branch={b} />
   </p>
 </form>
 
@@ -73,10 +77,11 @@ const tel = telHref(b.phone);
   // Progressive enhancement: submit with fetch and show the result inline.
   document.querySelectorAll<HTMLFormElement>('[data-appt]').forEach((form) => {
     const status = form.querySelector<HTMLElement>('[data-status]')!;
+    const M = JSON.parse(form.dataset.msgs || '{}');
     const accident = form.querySelector<HTMLInputElement>('input[name="accident_date"]');
     if (accident) accident.max = new Date().toISOString().slice(0, 10);
     if (new URLSearchParams(location.search).has('sent')) {
-      status.textContent = 'Thank you. Your request was sent and our team will call you soon.';
+      status.textContent = M.ok;
       status.classList.add('is-ok');
     }
 
@@ -85,22 +90,22 @@ const tel = telHref(b.phone);
       status.className = 'af__status';
       if (!form.checkValidity()) {
         const firstBad = form.querySelector<HTMLInputElement>(':invalid');
-        status.textContent = 'Please complete the required fields: name, phone number, and contact consent.';
+        status.textContent = M.missing;
         status.classList.add('is-error');
         firstBad?.focus();
         return;
       }
       const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
       button.disabled = true;
-      status.textContent = 'Sending…';
+      status.textContent = M.sending;
       try {
         const res = await fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form) as any), headers: { Accept: 'application/json' } });
         if (!res.ok) throw new Error(String(res.status));
         form.reset();
-        status.textContent = 'Thank you. Your request was sent and our team will call you soon.';
+        status.textContent = M.ok;
         status.classList.add('is-ok');
       } catch {
-        status.textContent = 'Sorry, your request could not be sent. Please call the office instead.';
+        status.textContent = M.fail;
         status.classList.add('is-error');
       } finally {
         button.disabled = false;

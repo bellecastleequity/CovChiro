@@ -5,27 +5,29 @@
  * until a number is set, "Call us" goes to the Contact page.
  */
 import { type Branch, callFor } from '../lib/site';
+import { ui, type Lang } from '../lib/i18n';
 import TimerBadge from './TimerBadge.astro';
-interface Props { branch?: Branch }
-const { branch } = Astro.props;
+interface Props { branch?: Branch; lang?: Lang }
+const { branch, lang = 'en' } = Astro.props;
+const t = ui(lang);
 const call = callFor(branch);
 const tel = call.tel;
 ---
-<aside class="pip" aria-label="Car accident reminder">
+<aside class="pip" aria-label={t.pipAria}>
   <div class="wrap pip__in">
     <p class="pip__msg">
-      <span class="pip__days"><TimerBadge size={40} variant="on-teal" /></span>
+      <span class="pip__days"><TimerBadge size={40} variant="on-teal" lang={lang} /></span>
       <span class="pip__long">
-        <strong>Hurt in a car accident? Get checked within 14 days.</strong>
-        <span class="pip__sub">We’ll see you with or without a referral.</span>
+        <strong>{t.pipLong}</strong>
+        <span class="pip__sub">{t.pipLongSub}</span>
       </span>
       <span class="pip__short">
-        <strong>Car accident? Get checked within 14 days.</strong>
-        <span class="pip__sub">No referral needed.</span>
+        <strong>{t.pipShort}</strong>
+        <span class="pip__sub">{t.pipShortSub}</span>
       </span>
     </p>
     <a class="pip__call" href={tel || '/contact/'}>
-      <span aria-hidden="true">📞</span> {tel ? <Fragment>Call<span class="pip__num"> {call.label}</span></Fragment> : 'Call us'}
+      <span aria-hidden="true">📞</span> {tel ? <Fragment>{t.call}<span class="pip__num"> {call.label}</span></Fragment> : t.callUs}
     </a>
   </div>
 </aside>
