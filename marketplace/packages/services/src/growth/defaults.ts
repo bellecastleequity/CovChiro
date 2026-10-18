@@ -161,12 +161,40 @@ const KB = [
   { topic: "marketing", audience: "CLINIC", question: "Is the cost-of-closing calculator a guarantee?", answer: "No. It's an educational comparison between what a typical day has brought in and what coverage would cost. Past or typical collections don't guarantee future collections.", keywords: ["calculator", "roi", "revenue", "collections", "guarantee"] },
 ];
 
+/**
+ * New versions of existing prompts, installed once as drafts (an admin approves them on Growth → Prompts;
+ * nothing changes until then). Matched by their notes so an install never adds the same one twice.
+ */
+export const PROMPT_REVISIONS: (Seed & { notes: string })[] = [
+  {
+    key: "CLINIC_FIRST_CONTACT", agent: "clinicOutreach", purpose: "First educational email to a chiropractic office, with the Welcome Discount.", notes: "Welcome Discount version: review and approve to use it",
+    subject: "Keeping {{clinic_name}} open when you're away",
+    body: "Hi {{greeting_name}},\n\nWhen the doctor is out for a vacation, a CE weekend or a sick day, many offices simply close and reschedule. It doesn't have to work that way.\n\n{{brand}} books licensed, insured, verified chiropractors to see your scheduled patients while you're away, so visits stay on the books and your team keeps working.\n\n{{welcome_offer}}\n\nIf it's useful, this short calculator compares what a typical day normally brings in with what coverage would cost: {{calculator_url}}\n\nThanks for reading,\nThe {{brand}} team",
+    instructions: "Personalize lightly using only the facts given (clinic type, city). Keep the core message: the office doesn't have to close when the doctor is away. Keep the welcome_offer sentence as given (never add a deadline, an expiration or urgency). No revenue figures, ROI or guarantees. Don't imply you've looked at their website or schedule. 130-180 words.",
+    vars: ["greeting_name", "clinic_name", "city", "segment", "calculator_url", "welcome_offer", "brand"],
+  },
+  {
+    key: "CLINIC_VACATION_EDUCATION", agent: "clinicOutreach", purpose: "Second touch: planned absences, with the Welcome Discount.", notes: "Welcome Discount version: review and approve to use it",
+    subject: "Planning time off this year?",
+    body: "Hi {{greeting_name}},\n\nA quick follow-up. Owners usually book coverage for planned time away: vacations, CE seminars and conferences, family events, maternity or paternity leave, or a recurring day off each week.\n\nPosting a few weeks ahead gives the most choice of providers, and you can set techniques, dress code and day-of contacts so the day runs your way.\n\n{{welcome_offer}}\n\nSee how it works: {{site_url}}\n\nThe {{brand}} team",
+    instructions: "Personalize the opening line to the clinic type if known. Keep the welcome_offer sentence as given (no deadline, expiration or urgency). Educational, no pressure, no financial promises. 100-150 words.",
+    vars: ["greeting_name", "clinic_name", "city", "segment", "site_url", "welcome_offer", "brand"],
+  },
+];
+
 export async function ensureGrowthDefaults() {
   const existing = new Set((await prisma.promptTemplate.findMany({ select: { key: true }, distinct: ["key"] })).map((r) => r.key));
   for (const p of DEFAULT_PROMPTS) {
     if (existing.has(p.key)) continue;
     await prisma.promptTemplate.create({
       data: { key: p.key, professionCode: GENERIC_PROMPT_KEYS.includes(p.key) ? null : "DC", version: 1, agent: p.agent, channel: p.channel ?? "EMAIL", purpose: p.purpose, subjectTemplate: p.subject, body: p.body, instructions: p.instructions, allowedVars: p.vars, ...(p.draft ? { status: "DRAFT", active: false, notes: "Starter version: review and approve to use it" } : { status: "APPROVED", active: true, approvedAt: new Date(), notes: "Starter version" }) },
+    }).catch(() => undefined);
+  }
+  for (const p of PROMPT_REVISIONS) {
+    if (await prisma.promptTemplate.findFirst({ where: { key: p.key, notes: p.notes }, select: { id: true } })) continue;
+    const last = await prisma.promptTemplate.findFirst({ where: { key: p.key }, orderBy: { version: "desc" }, select: { version: true } });
+    await prisma.promptTemplate.create({
+      data: { key: p.key, professionCode: "DC", version: (last?.version ?? 0) + 1, agent: p.agent, channel: p.channel ?? "EMAIL", purpose: p.purpose, subjectTemplate: p.subject, body: p.body, instructions: p.instructions, allowedVars: p.vars, status: "DRAFT", active: false, notes: p.notes },
     }).catch(() => undefined);
   }
   if ((await prisma.growthMarket.count()) === 0) {

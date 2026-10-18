@@ -299,8 +299,14 @@ export function outreachKey(step: number, practiceType: string | null, piReady: 
   return isPersonalInjuryPractice(practiceType) && pi && piReady.has(pi) ? pi : OUTREACH_SEQUENCE[step];
 }
 
-export function prospectVars(c: { publicToken: string; clinicName: string; city: string | null; segment: string }, greeting: string) {
+/** The Welcome Discount sentence for clinic prospecting emails (empty while new enrollment is off). */
+export function welcomeOfferLine(s: { "welcome.enabled": boolean; "welcome.percent": number; "welcome.bookings": number }) {
+  return s["welcome.enabled"] ? `New clinics save ${s["welcome.percent"]}% on their first ${s["welcome.bookings"]} coverage bookings. It's applied automatically: no promo code, and it never expires.` : "";
+}
+
+export function prospectVars(c: { publicToken: string; clinicName: string; city: string | null; segment: string }, greeting: string, welcomeOffer = "") {
   return {
+    welcome_offer: welcomeOffer,
     greeting_name: greeting, clinic_name: c.clinicName, city: c.city, segment: c.segment !== "unknown" ? c.segment.replace(/_/g, " ") : null, brand: brand().name,
     calculator_url: absoluteUrl(`/tools/cost-of-closing?c=${c.publicToken}`),
     site_url: absoluteUrl(`/for-clinics?c=${c.publicToken}`),
@@ -348,7 +354,7 @@ export async function outreachSweep() {
     const r = await recipient("PROSPECT", c.id);
     if (!r) continue;
     out.queued++;
-    const res = await outcome(() => composeAndSend("clinicOutreach", r, outreachKey(c.outreachStep, c.practiceType, piReady), prospectVars(c, r.firstName), {
+    const res = await outcome(() => composeAndSend("clinicOutreach", r, outreachKey(c.outreachStep, c.practiceType, piReady), prospectVars(c, r.firstName, welcomeOfferLine(s)), {
       purpose: "COMMERCIAL", professionCode, dedupeKey: `outreach:${c.id}:${c.outreachStep}`, review: s["growth.outreachMode"] !== "auto",
       facts: { city: c.city, segment: c.segment !== "unknown" ? c.segment : null, clinic_name: c.clinicName },
     }));

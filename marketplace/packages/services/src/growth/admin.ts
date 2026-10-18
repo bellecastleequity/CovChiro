@@ -10,7 +10,7 @@ import { getEligibleProviders } from "../eligibility";
 import { AGENT_AUDIENCE, AGENTS, Deferred, agentOn, ai, aiRules, aiSpendCents, compose, isSuppressed, logAgent, marketingOn, newToken, normEmail, pickPrompt, recipient, sendGrowthEmail, suppress, type AgentKey, type Audience, type GrowthEntityType } from "./engine";
 import { outreachProfessionFor } from "./expansion";
 import { ensureGrowthDefaults } from "./defaults";
-import { advanceOutreach, approvedPiKeys, outreachKey, prospectVars, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
+import { advanceOutreach, approvedPiKeys, outreachKey, prospectVars, welcomeOfferLine, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
 import { discoverySweep, prospectingStatus, researchProspect, researchSweep } from "./prospecting";
 import { marketSupplySweep } from "./supply";
 import { resumeResearch } from "./aihealth";
@@ -363,7 +363,7 @@ export async function sendFirstOutreachNow(actor: Actor, id: string) {
   // Personal injury practices get the PI first email when it's approved.
   const prompt = (await pickPrompt(outreachKey(0, p.practiceType, await approvedPiKeys()), ready.professionCode)) ?? (await pickPrompt(OUTREACH_SEQUENCE[0], ready.professionCode));
   if (!prompt) throw new DomainError("VALIDATION", "There's no approved first-contact email yet (Growth → Content).");
-  const msg = await compose("clinicOutreach", prompt, prospectVars(p, r.firstName), { city: p.city, clinic_name: p.clinicName }, true);
+  const msg = await compose("clinicOutreach", prompt, prospectVars(p, r.firstName, welcomeOfferLine(await getSettings())), { city: p.city, clinic_name: p.clinicName }, true);
   const res = await sendGrowthEmail(r, msg, { agent: "clinicOutreach", purpose: "COMMERCIAL", prompt: { key: prompt.key, version: prompt.version }, dedupeKey: `outreach:${id}:0`, createdById: actor.userId });
   if (!res.ok) throw new DomainError("VALIDATION", res.reason === "already_sent" ? "The first email has already gone out to this clinic." : `Not sent: ${res.reason}.`);
   await advanceOutreach(id);
