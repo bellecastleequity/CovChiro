@@ -38,18 +38,22 @@ export async function ensureEntitlement(db: Db, clinicOrgId: string): Promise<We
 async function sameBusinessUsedIt(db: Db, clinicOrgId: string): Promise<string | null> {
   const org = await db.clinicOrg.findUnique({ where: { id: clinicOrgId }, select: { phone: true, backupPhone: true, locations: { select: { addressLine1: true, zip: true } } } });
   if (!org) return null;
+  if (!org.locations.length && !org.phone && !org.backupPhone) return null;
   const phones = [org.phone, org.backupPhone].map((p) => normalizeUsPhone(p)).filter((p): p is string => !!p);
   const keys = new Set(org.locations.map((l) => addressKey(l.addressLine1, l.zip)));
+  // Same street address: compare every location in the same ZIP codes by normalized address.
+  const nearby = org.locations.length ? await db.clinicLocation.findMany({ where: { zip: { in: org.locations.map((l) => l.zip) }, clinicOrgId: { not: clinicOrgId } }, select: { clinicOrgId: true, addressLine1: true, zip: true } }) : [];
+  const sameAddressIds = [...new Set(nearby.filter((l) => keys.has(addressKey(l.addressLine1, l.zip))).map((l) => l.clinicOrgId))];
   const others = await db.clinicOrg.findMany({
     where: {
       id: { not: clinicOrgId },
       OR: [
         ...(phones.length ? [{ phone: { in: phones } }, { backupPhone: { in: phones } }] : []),
-        ...(org.locations.length ? [{ locations: { some: { zip: { in: org.locations.map((l) => l.zip) } } } }] : []),
+        ...(sameAddressIds.length ? [{ id: { in: sameAddressIds } }] : []),
       ],
     },
     select: { id: true, displayName: true, phone: true, backupPhone: true, locations: { select: { addressLine1: true, zip: true } }, welcomeEntitlement: { select: { priorCompleted: true, _count: { select: { redemptions: { where: { status: { in: ["RESERVED", "REDEEMED"] } } } } } } } },
-    take: 50,
+    take: 200,
   });
   for (const o of others) {
     const samePhone = [o.phone, o.backupPhone].some((p) => p && phones.includes(normalizeUsPhone(p) ?? ""));
