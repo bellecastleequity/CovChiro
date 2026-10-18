@@ -8,8 +8,8 @@ export type Lang = 'en' | 'es' | 'ht';
 /** Header switcher entries. `flag` picks the flag drawn in LangToggle.astro (us, pr, mx, es, ht). */
 export const LANGS: { code: Lang; path: string; label: string; short: string; flag: string; locale: string; og: string }[] = [
   { code: 'en', path: '/', label: 'English', short: 'EN', flag: 'us', locale: 'en-US', og: 'en_US' },
-  // Puerto Rico's flag for Spanish: Central Florida's largest Spanish-speaking community. Swap to 'mx' or 'es' here.
-  { code: 'es', path: '/es/', label: 'Español', short: 'ES', flag: 'pr', locale: 'es-US', og: 'es_US' },
+  // Spain's flag for Spanish (owner, Oct 2026). Other flags available: 'pr' (Puerto Rico), 'mx' (Mexico).
+  { code: 'es', path: '/es/', label: 'Español', short: 'ES', flag: 'es', locale: 'es-US', og: 'es_US' },
   { code: 'ht', path: '/ht/', label: 'Kreyòl ayisyen', short: 'KR', flag: 'ht', locale: 'ht', og: 'ht_HT' },
 ];
 export const langInfo = (l: Lang) => LANGS.find((x) => x.code === l)!;
