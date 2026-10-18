@@ -5,7 +5,7 @@ import {
   activationDue, escalationTopic, leadScore, nurtureDue, outreachStepDue, providerGrowthState, prospectStageFromAccount, ruleSegment, US_STATES, wantsOptOut,
   type GrowthCadence, type ProspectStage,
 } from "@cm/core";
-import { prisma } from "@cm/db";
+import { prisma, type Prisma } from "@cm/db";
 import { DateTime } from "luxon";
 import { clock, getSettings } from "../context";
 import { getEligibleProviders } from "../eligibility";
@@ -314,6 +314,11 @@ export async function advanceOutreach(prospectId: string) {
   await prisma.clinicProspect.updateMany({ where: { id: prospectId, stage: { in: ["PROSPECT", "CONTACTABLE"] } }, data: { stage: "OUTREACH_STARTED" } });
 }
 
+/** Clinic prospects the outreach sweep works through (also Growth → "Ready to go out"). */
+export const clinicOutreachWhere = (steps: number) =>
+  ({ clinicOrgId: null, outreachPaused: false, doNotContact: false, email: { not: null }, emailStatus: { notIn: ["BOUNCED", "COMPLAINED", "UNSUBSCRIBED"] }, stage: { in: ["PROSPECT", "CONTACTABLE", "OUTREACH_STARTED"] }, outreachStep: { lt: steps } }) satisfies Prisma.ClinicProspectWhereInput;
+export const CLINIC_OUTREACH_ORDER = [{ outreachStep: "desc" }, { intentScore: "desc" }, { createdAt: "asc" }] satisfies Prisma.ClinicProspectOrderByWithRelationInput[];
+
 export async function outreachSweep() {
   const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0, outsideWindow: false };
   if (!(await agentOn("clinicOutreach")) || !(await marketingOn("clinic"))) return out;
@@ -322,8 +327,8 @@ export async function outreachSweep() {
   const gaps = s["growth.outreachGapDays"];
   const now = clock.now();
   const rows = await prisma.clinicProspect.findMany({
-    where: { clinicOrgId: null, outreachPaused: false, doNotContact: false, email: { not: null }, emailStatus: { notIn: ["BOUNCED", "COMPLAINED", "UNSUBSCRIBED"] }, stage: { in: ["PROSPECT", "CONTACTABLE", "OUTREACH_STARTED"] }, outreachStep: { lt: gaps.length } },
-    orderBy: [{ outreachStep: "desc" }, { intentScore: "desc" }, { createdAt: "asc" }],
+    where: clinicOutreachWhere(gaps.length),
+    orderBy: CLINIC_OUTREACH_ORDER,
     take: s["growth.dailyOutreachCap"] * 4,
   });
   // Demand-first markets (Florida by default) are worked first, then the rest in the usual order.

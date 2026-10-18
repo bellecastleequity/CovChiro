@@ -31,14 +31,14 @@ export const UNMATCHED_RECRUIT_KEY = "PROVIDER_RECRUIT_UNMATCHED_FIRST_CONTACT";
 const RANK: Record<string, number> = { CRITICAL: 0, LOW: 1, BUILDING: 2, HEALTHY: 3, LIQUID: 4 };
 
 /** Market supply status by market key (Supply Gap agent), for "neediest markets first". */
-async function marketRank() {
+export async function marketRank() {
   const markets = await prisma.growthMarket.findMany({ select: { key: true, supplyStatus: true } });
   const m = new Map(markets.map((x) => [x.key, RANK[x.supplyStatus ?? "BUILDING"] ?? 2]));
   return (key: string | null) => (key ? (m.get(key) ?? 3) : 3);
 }
 
 /** (profession, state) pairs in PRELAUNCH or LIVE growth markets. */
-async function activePairs() {
+export async function activePairs() {
   return (await activeTargets()).map((t) => ({ professionCode: t.professionCode, state: t.state }));
 }
 
@@ -358,6 +358,15 @@ export async function advanceProviderOutreach(id: string) {
 }
 
 /** Recruitment sequence to verified contacts in PRELAUNCH/LIVE markets, neediest markets first. */
+/** Provider prospects the recruitment sweep works through (also Growth → "Ready to go out"). */
+export const providerOutreachWhere = (steps: number, pairs: { professionCode: string; state: string }[]) =>
+  ({ providerId: null, outreachPaused: false, doNotContact: false, contactStatus: "VERIFIED", emailStatus: "VALID", stage: { in: ["CONTACT_VERIFIED", "CONTACTED"] }, outreachStep: { lt: steps }, OR: pairs }) satisfies Prisma.ProviderProspectWhereInput;
+
+/** The prompt key a provider prospect's next email uses. */
+export function providerOutreachKey(p: { state: string; npi: string | null; outreachStep: number }) {
+  return countryOf(p.state) === "CA" ? CANADA_RECRUIT_KEY : !p.npi && p.outreachStep === 0 ? UNMATCHED_RECRUIT_KEY : PROVIDER_OUTREACH_SEQUENCE[Math.min(p.outreachStep, PROVIDER_OUTREACH_SEQUENCE.length - 1)];
+}
+
 export async function providerOutreachSweep() {
   const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0, skippedNoPrompt: 0, outsideWindow: false };
   if (!(await agentOn("providerOutreach")) || !(await marketingOn("provider"))) return out;
@@ -368,10 +377,7 @@ export async function providerOutreachSweep() {
   const gaps = s["growth.providerOutreachGapDays"];
   const now = clock.now();
   const rows = await prisma.providerProspect.findMany({
-    where: {
-      providerId: null, outreachPaused: false, doNotContact: false, contactStatus: "VERIFIED", emailStatus: "VALID",
-      stage: { in: ["CONTACT_VERIFIED", "CONTACTED"] }, outreachStep: { lt: gaps.length }, OR: pairs,
-    },
+    where: providerOutreachWhere(gaps.length, pairs),
     orderBy: [{ outreachStep: "desc" }, { createdAt: "asc" }],
     take: s["growth.dailyOutreachCap"] * 4,
   });
@@ -389,7 +395,7 @@ export async function providerOutreachSweep() {
     // Canada isn't open for shifts: Canadian providers get the waitlist / pre-enrollment wording (its own prompt, approved by an admin), and CASL is checked at send time.
     if (countryOf(p.state) === "CA" && p.outreachStep > 0) continue;
     // Not matched to the NPI registry (found through Apollo): first email makes no claim about a license.
-    const key = countryOf(p.state) === "CA" ? CANADA_RECRUIT_KEY : !p.npi && p.outreachStep === 0 ? UNMATCHED_RECRUIT_KEY : PROVIDER_OUTREACH_SEQUENCE[Math.min(p.outreachStep, PROVIDER_OUTREACH_SEQUENCE.length - 1)];
+    const key = providerOutreachKey(p);
     const rk = `${p.professionCode}:${key}`;
     if (!ready.has(rk)) ready.set(rk, (await livePrompts(key, p.professionCode)).length > 0);
     if (!ready.get(rk)) { out.skippedNoPrompt++; continue; }

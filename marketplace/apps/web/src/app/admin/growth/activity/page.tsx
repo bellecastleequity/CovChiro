@@ -14,10 +14,10 @@ export const dynamic = "force-dynamic";
 export default async function Activity({ searchParams }: { searchParams: Promise<{ agent?: string; errors?: string; status?: string; feed?: string }> }) {
   const { actor } = await requireActor("admin");
   const f = await searchParams;
-  const [act, comms, counts] = await Promise.all([growth.activity(actor, { agent: f.agent, errors: f.errors === "1" }), growth.communications(actor, { status: f.status }), growth.communicationCounts(actor)]);
+  const [act, comms, counts, up] = await Promise.all([growth.activity(actor, { agent: f.agent, errors: f.errors === "1" }), growth.communications(actor, { status: f.status }), growth.communicationCounts(actor), growth.upNext(actor)]);
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   const STATUS_HELP: Record<string, string> = {
-    QUEUED: "Nothing queued. Emails land here after you approve them on Approvals, and go out within minutes inside the send window (Mon–Fri 8:15 AM–5 PM Eastern).",
+    QUEUED: "Nothing queued. Only drafts you approved on Approvals wait here. In auto mode the agents write and send in one step inside the send window, so see Ready to go out above for what the next window will send.",
     PENDING_APPROVAL: "Nothing waiting for approval. Drafts appear here (and on Approvals) when an outreach agent is in review mode and switched on.",
     BLOCKED: "Nothing blocked.",
     FAILED: "No failed sends.",
@@ -29,6 +29,35 @@ export default async function Activity({ searchParams }: { searchParams: Promise
     <>
       <PageHeader title="Agent activity & communications" description="Every email and text the Growth agents sent, queued, blocked or are waiting to have approved (Communications, first), and the audit log of every agent action: what it acted on, the prompt version and model, the output, the send status, any human override, and errors. Context is stored by reference, never as raw personal data." />
       <GrowthTabs current="/admin/growth/activity" />
+      <Card id="ready" className="mb-6 scroll-mt-20">
+        <CardHeader
+          title={`Ready to go out (${up.clinic.rows.length + up.provider.rows.length})`}
+          description={`Researched prospects whose next email is due, in the order the agents will take them. ${up.windowOpen ? "The send window is open: these go out at the next agent run (every 15 minutes), up to today's limit." : up.sendAt ? `Next send window: ${dateTimeLabel(up.sendAt)} Eastern.` : "No send days are set."} Each email is written when it's sent, and the usual checks (unsubscribes, bounces, opt-outs) run again then.`}
+        />
+        {([["Clinic outreach", up.clinic, up.mode.clinic], ["Provider recruitment", up.provider, up.mode.provider]] as const).map(([label, side, mode]) => (
+          <div key={label} className="border-t border-slate-100">
+            <p className="px-4 pt-3 text-sm font-medium">
+              {label} · {!side.on ? <span className="text-amber-700">agent or marketing is off</span> : <>{side.slots} slot{side.slots === 1 ? "" : "s"} in the next window · {mode === "auto" ? "sent automatically" : "becomes a draft for Approvals"}</>}
+            </p>
+            {side.rows.length ? (
+              <Table>
+                <thead><tr><Th>#</Th><Th>Prospect</Th><Th>Email</Th><Th>Next email</Th><Th>Goes out</Th></tr></thead>
+                <tbody>
+                  {side.rows.map((r, i) => (
+                    <tr key={r.id}>
+                      <Td className="text-xs tabular-nums">{i + 1}</Td>
+                      <Td className="text-xs"><Link className="text-brand-700" href={r.kind === "CLINIC" ? `/admin/growth/prospects/${r.id}` : `/admin/growth/prospects/providers/${r.id}`}>{r.name}</Link><div className="text-slate-400">{r.where}</div></Td>
+                      <Td className="text-xs">{r.email}</Td>
+                      <Td className="text-xs">{r.step === 0 ? "First contact" : `Follow-up ${r.step}`}<div className="text-slate-400">{r.emailKey}</div></Td>
+                      <Td className="text-xs">{r.nextWindow ? (up.windowOpen ? "Next run" : up.sendAt ? dateTimeLabel(up.sendAt) : "—") : <span className="text-slate-500">A later day (daily limit)</span>}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : <p className="px-4 pb-3 pt-1 text-sm text-slate-500">{side.on ? "Nobody is due yet. Prospects appear here once research finds a valid email and their next step's wait is over." : "Switch the agent on (Growth → Agents) and marketing for this side (Growth → Settings) to send."}</p>}
+          </div>
+        ))}
+      </Card>
       <Card id="communications" className="mb-6 scroll-mt-20">
         <CardHeader title="Communications" description="Every growth email and text: queued to send, waiting for approval, sent, blocked, failed, and replies. Newest first, last 200." action={<div className="flex flex-wrap gap-1">{["", "QUEUED", "PENDING_APPROVAL", "SENT", "BLOCKED", "FAILED", "RECEIVED"].map((s) => chip(`/admin/growth/activity${s ? `?status=${s}` : ""}#communications`, `${s ? humanize(s) : "All"} (${s ? counts[s] ?? 0 : total})`, (f.status ?? "") === s))}</div>} />
         <Table>

@@ -403,6 +403,33 @@ describe("student path × Growth: no overlaps", () => {
 });
 
 describe("prospecting send window", () => {
+  it("Ready to go out lists researched prospects due at the next window, without sending", async () => {
+    await setting("growth.outreachSendDays", [1, 2, 3, 4, 5]);
+    await setting("growth.outreachSendFrom", "08:15");
+    await setting("growth.outreachSendUntil", "17:00");
+    await setting("growth.outreachMode", "auto");
+    await setting("growth.agents", { ...(await import("@cm/config")).defaultSettings()["growth.agents"], clinicOutreach: true });
+    const email = `ready-${uid()}@clinic.test`;
+    const p = await prisma.clinicProspect.create({ data: { clinicName: `Ready ${uid()}`, city: "Orlando", state: "FL", email, emailStatus: "VALID", stage: "CONTACTABLE", intentScore: 99, publicToken: uid(), researchStatus: "DONE" } });
+    try {
+      setClock(() => new Date("2026-10-17T13:30:00Z")); // Saturday 9:30 ET
+      const up = await growth.upNext(admin);
+      expect(up.windowOpen).toBe(false);
+      expect(up.sendAt?.toISOString()).toBe("2026-10-19T12:15:00.000Z"); // Monday 8:15 ET
+      const row = up.clinic.rows.find((r) => r.id === p.id);
+      expect(row).toMatchObject({ email, step: 0, emailKey: "CLINIC_FIRST_CONTACT" });
+      expect(await prisma.communication.count({ where: { entityId: p.id } })).toBe(0);
+      // Unsubscribed addresses never show.
+      await prisma.clinicProspect.update({ where: { id: p.id }, data: { doNotContact: true } });
+      expect((await growth.upNext(admin)).clinic.rows.some((r) => r.id === p.id)).toBe(false);
+    } finally {
+      await prisma.clinicProspect.delete({ where: { id: p.id } });
+      await setting("growth.outreachSendDays", [0, 1, 2, 3, 4, 5, 6]);
+      await setting("growth.outreachSendFrom", "00:00");
+      await setting("growth.outreachSendUntil", "23:59");
+    }
+  });
+
   it("clinic and provider outreach only run on the set days and hours (Eastern)", async () => {
     await setting("growth.outreachSendDays", [1, 2, 3, 4, 5]);
     await setting("growth.outreachSendFrom", "08:15");
