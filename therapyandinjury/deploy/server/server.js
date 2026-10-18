@@ -24,6 +24,18 @@ const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 
 const appointment = require('./appointment.js');
+const leads = require('./leads.js');
+
+// Anonymous call-button taps for the lead reports (POST /api/event): no IP or phone is stored; this
+// per-IP counter (memory only) just keeps one visitor from inflating the numbers.
+const eventHits = new Map();
+function eventAllowed(ip) {
+  const now = Date.now(), list = (eventHits.get(ip) || []).filter((t) => now - t < 600000);
+  if (list.length >= 30) return false;
+  list.push(now); eventHits.set(ip, list);
+  if (eventHits.size > 5000) eventHits.clear();
+  return true;
+}
 const admin = require('./admin.js');
 
 const TYPES = {
@@ -272,6 +284,16 @@ function start({ root, releaseDir, version, degraded = null }) {
       if (!local && cfg.redirects?.forceHttps !== false && proto === 'http') return redirect(res, `${canonical.origin}${url.pathname}${url.search}`);
 
       if (url.pathname === '/api/appointment' || url.pathname === '/api/appointment.php') return await appointment.handle(req, res, ctx, send);
+      if (url.pathname === '/api/event') {
+        if (req.method !== 'POST') return send(res, 405, { allow: 'POST' }, '');
+        let raw = '';
+        for await (const c of req) { raw += c; if (raw.length > 2048) break; }
+        const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
+        if (raw.length <= 2048 && eventAllowed(ip)) {
+          try { leads.addEvent(root, JSON.parse(raw || '{}')); } catch (e) { console.error('[event]', e.message); }
+        }
+        return send(res, 204, { 'cache-control': 'no-store' }, '');
+      }
       if (url.pathname === '/_admin' || url.pathname.startsWith('/_admin/')) return await admin.handle(req, res, url, ctx, send);
 
       const asset = serveAsset(req, res, url);

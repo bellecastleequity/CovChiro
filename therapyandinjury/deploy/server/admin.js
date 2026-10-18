@@ -11,12 +11,17 @@
  * Sign in with any username and that password (browser login prompt, HTTP Basic over HTTPS).
  *
  * Changes need the custom header X-Admin-Action, which other sites can't send (CSRF protection).
+ *
+ * Roles: the owner signs in with ADMIN_PASSWORD (any username) and can do everything. Front-desk
+ * logins (made by the owner under Team) sign in with their own username and password and only see
+ * the Leads tab.
  */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
 const PAGE = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8');
+const leads = require('./leads.js');
 const KEEP_BACKUPS = 15;
 const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -86,12 +91,17 @@ function passwordOf(ctx) {
   return p.length >= 12 ? p : null;
 }
 
-function authorized(req, password) {
+/** Who is signing in: { role: 'owner' | 'desk', user } or null. */
+function authorized(req, password, root) {
   const m = /^Basic\s+(.+)$/i.exec(String(req.headers.authorization || ''));
-  if (!m) return false;
+  if (!m) return null;
   const decoded = Buffer.from(m[1], 'base64').toString('utf8');
+  const user = decoded.slice(0, Math.max(0, decoded.indexOf(':'))).trim();
   const given = decoded.slice(decoded.indexOf(':') + 1);
-  return crypto.timingSafeEqual(digest(given), digest(password));
+  const desk = user ? leads.checkUser(root, user, given) : null;
+  if (desk) return { role: 'desk', user: desk.username, name: desk.name };
+  if (crypto.timingSafeEqual(digest(given), digest(password))) return { role: 'owner', user: user || 'owner', name: 'Owner' };
+  return null;
 }
 
 function readRaw(req, max) {
@@ -123,7 +133,8 @@ async function handle(req, res, url, ctx, send) {
   const now = Date.now();
   const recent = (fails.get(ip) || []).filter((t) => now - t < LOCK.windowMs);
   if (recent.length >= LOCK.max) return send(res, 429, { ...base, 'content-type': 'text/plain', 'retry-after': '900' }, 'Too many sign-in attempts. Try again in 15 minutes.\n');
-  if (!authorized(req, password)) {
+  const who = authorized(req, password, ctx.root);
+  if (!who) {
     if (req.headers.authorization) { recent.push(now); fails.set(ip, recent); }
     return send(res, 401, { ...base, 'www-authenticate': 'Basic realm="Therapy & Injury site admin", charset="UTF-8"', 'content-type': 'text/plain' }, 'Sign in required\n');
   }
@@ -131,6 +142,37 @@ async function handle(req, res, url, ctx, send) {
 
   const updater = require(path.join(ctx.root, 'updater.js'));
   const route = url.pathname.replace(/\/+$/, '') || '/_admin';
+  const by = who.role === 'owner' ? 'Owner' : who.name || who.user;
+
+  // Leads (owner and front desk).
+  if (route === '/_admin/api/me') return json(200, { ok: true, role: who.role, user: who.user, name: who.name, statuses: leads.STATUSES, howHeard: leads.HOW_HEARD, branches: (ctx.live()?.branches || []).map((b) => ({ slug: b.slug, city: b.city, open: b.status === 'open' })) });
+  if (route.startsWith('/_admin/api/leads')) {
+    const from = url.searchParams.get('from') || '', to = url.searchParams.get('to') || '';
+    if (req.method === 'GET' && route === '/_admin/api/leads') return json(200, { ok: true, leads: leads.listLeads(ctx.root, from, to) });
+    if (req.method === 'GET' && route === '/_admin/api/leads.csv') {
+      return send(res, 200, { ...base, 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"` }, '\uFEFF' + leads.exportCsv(ctx.root, from, to));
+    }
+    if (!['POST', 'PUT'].includes(req.method) || req.headers['x-admin-action'] !== '1') return json(400, { ok: false, error: 'Bad request' });
+    try {
+      if (route === '/_admin/api/leads/match') return json(200, { ok: true, ...leads.matchPatients(ctx.root, (await readRaw(req, 20 * 1024 * 1024)).toString('utf8'), by) });
+      const body = JSON.parse((await readRaw(req, 64 * 1024)).toString('utf8') || '{}');
+      if (route === '/_admin/api/leads/add') return json(200, { ok: true, lead: leads.addPhoneLead(ctx.root, body, by) });
+      if (route === '/_admin/api/leads/update') {
+        if (body.remove && who.role !== 'owner') return json(403, { ok: false, error: 'Only the owner can delete a lead' });
+        return json(200, { ok: true, lead: leads.changeLead(ctx.root, body, by) });
+      }
+      return json(404, { ok: false, error: 'Unknown action' });
+    } catch (e) {
+      console.error('[leads]', e.message);
+      return json(e.status || 400, { ok: false, error: e.message });
+    }
+  }
+  if (req.method === 'GET' && route === '/_admin' && who.role !== 'owner') return send(res, 200, { ...base, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'" }, PAGE);
+  // Everything else is the owner's.
+  if (who.role !== 'owner') return json(403, { ok: false, error: 'This login can only use the Leads tab.' });
+
+  if (req.method === 'GET' && route === '/_admin/api/report') return json(200, { ok: true, ...leads.report(ctx.root, url.searchParams.get('from') || '', url.searchParams.get('to') || '') });
+  if (req.method === 'GET' && route === '/_admin/api/users') return json(200, { ok: true, users: leads.listUsers(ctx.root) });
 
   if (req.method === 'GET' && route === '/_admin') return send(res, 200, { ...base, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https://i.ytimg.com; frame-ancestors 'none'" }, PAGE);
   if (req.method === 'GET' && route === '/_admin/api/content') {
@@ -207,6 +249,12 @@ async function handle(req, res, url, ctx, send) {
       return json(200, { ok: true, note: `Restored the version saved ${name.slice(8, 18)}.` });
     }
     const body = JSON.parse((await readRaw(req, 4096)).toString('utf8') || '{}');
+    if (route === '/_admin/api/spend') return json(200, { ok: true, spend: leads.setSpend(ctx.root, body) });
+    if (route === '/_admin/api/users') {
+      if (body.remove) { leads.removeUser(ctx.root, body.username); return json(200, { ok: true, users: leads.listUsers(ctx.root) }); }
+      leads.saveUser(ctx.root, body);
+      return json(200, { ok: true, users: leads.listUsers(ctx.root) });
+    }
     if (route === '/_admin/api/activate') return json(200, { ok: true, ...updater.activate(String(body.version || '')) });
     if (route === '/_admin/api/rollback') return json(200, { ok: true, ...updater.rollback() });
     if (route === '/_admin/api/check') return json(200, { ok: true, ...(await updater.check()) });

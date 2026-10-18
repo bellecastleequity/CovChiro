@@ -42,6 +42,16 @@ Open `https://therapyandinjury.com/_admin` and sign in. The **Content** tab edit
 - **Services:** each service's name, its short line on the home page, and its description on the Services page (replace the yellow "[LIST TECHNIQUES …]" parts), plus the "descriptions are approved" checkbox that hides the confirm notes
 - **Each location:** open or coming soon, phone, **email** (appointment requests go there), address, **hours**, doctors, visit features, **languages spoken**, nearby areas, the Google Business Profile link, **map zoom**, city domains, and an optional video of its own
 
+### Leads (front desk)
+`/_admin` → **Leads** lists every website request (also emailed, as before) and every phone lead, newest first: name, phone, location, language, where they came from (ad campaign, Google, Facebook, direct…), and the 14-day window when an accident date was given. Red **call now** means a new lead has waited more than an hour.
+- **Status** (change it from the list): New → Contacted → Booked → Showed → Became a patient, or Not a fit / No answer. Every change records who made it and when. **Details** shows the source, history and notes.
+- **+ Phone lead**: log callers and walk-ins, and always ask "How did you hear about us?"
+- **Match Carepatron export**: export patients from Carepatron as CSV and choose the file here. Leads whose phone number matches are marked "Became a patient". The file is only read, never stored.
+- **Export CSV** downloads the list (it contains patients' contact details: keep it private).
+- **Front desk logins**: the owner adds them under **Team**. A front desk login sees only the Leads tab. The owner (ADMIN_PASSWORD) sees everything.
+- **Reports** (owner): leads, booked, showed and new patients by channel, campaign, language and location, call-button taps, and cost per lead / per new patient from the monthly ad spend you enter. Tag every ad link as in `marketing/utm-links.md`.
+- **Privacy**: leads are stored encrypted in `leads/leads.enc` in the app folder (key in `leads/key`; daily encrypted backups, 14 kept). Nothing goes to ad platforms. Don't download or share the `leads` folder; include it in your own cPanel backups. For a key kept outside the app folder, set the environment variable `LEADS_KEY` (64 hex characters) before the first lead arrives.
+
 ### Spanish and Haitian Creole pages
 `/es/` (Español) and `/ht/` (Kreyòl ayisyen) are full landing pages with their own commercial and jingle. The flag button in the header switches between English, Español and Kreyòl. They use the same location facts as the English pages (address, hours, phone, email), so editor changes show in all three. Requests sent from them arrive by email marked with the language ("— Spanish" in the subject).
 - To show **"Se habla español"** or **"Nou pale kreyòl"**, add `Español` or `Kreyòl` under that location's **Languages spoken**. Leave them off until someone on staff speaks the language.

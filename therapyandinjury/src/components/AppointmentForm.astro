@@ -32,6 +32,7 @@ const tel = telHref(b.phone);
   <input type="hidden" name="branch" value={b.slug} />
   <input type="hidden" name="type" value={open ? 'appointment' : 'notify'} />
   <input type="hidden" name="lang" value={lang} />
+  <input type="hidden" name="attr" value="" />
   <div class="af__hp" aria-hidden="true">
     <label>{t.fHoneypot} <input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
   </div>
@@ -95,6 +96,10 @@ const tel = telHref(b.phone);
         firstBad?.focus();
         return;
       }
+      // Where the visitor came from (components/Attribution.astro), for the Leads inbox.
+      const attr = form.querySelector<HTMLInputElement>('input[name="attr"]');
+      const w = window as unknown as { tiSource?: () => Record<string, string>; gtag?: (...a: unknown[]) => void };
+      if (attr && w.tiSource) attr.value = JSON.stringify(w.tiSource());
       const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
       button.disabled = true;
       status.textContent = M.sending;
@@ -103,6 +108,9 @@ const tel = telHref(b.phone);
         if (!res.ok) throw new Error(String(res.status));
         form.reset();
         status.textContent = M.ok;
+        // Google Analytics (when on): a lead happened, with its campaign and page; never the form's contents.
+        const src = w.tiSource?.() || {};
+        w.gtag?.('event', 'generate_lead', { page_path: location.pathname, campaign: src.c || '(none)', source: src.s || src.ads || src.r || 'direct', language: (document.documentElement.lang || 'en').slice(0, 2) });
         status.classList.add('is-ok');
       } catch {
         status.textContent = M.fail;

@@ -83,6 +83,8 @@ function sendmail({ bin, from, to, subject, body }) {
   });
 }
 
+const leads = require('./leads.js');
+
 async function handle(req, res, ctx, send) {
   const json = (status, body) => send(res, status, { 'content-type': 'application/json', 'cache-control': 'no-store' }, JSON.stringify(body));
   if (req.method !== 'POST') return json(405, { ok: false, error: 'method' });
@@ -112,11 +114,18 @@ async function handle(req, res, ctx, send) {
   if (!name || phone.replace(/\D/g, '').length < 10 || !consent) return json(422, { ok: false, error: 'validation' });
   if (accident && !/^\d{4}-\d{2}-\d{2}$/.test(accident)) accident = '';
 
+  // Every request is saved to the Leads inbox (/_admin → Leads) before the email goes out, so a mail
+  // problem never loses a lead.
+  let lead = null;
+  try { lead = leads.addWebLead(ctx.root, { ...f, branch, type, name, phone, preferred_time: time, accident_date: accident }); }
+  catch (e) { console.error('[appointment] could not save lead:', e.message); }
+  const where = lead ? leads.channel(lead) + (lead.attr?.c ? ` · ${lead.attr.c}` : '') : '';
+
   const mail = ctx.getConfig().mail || {};
   const isEmail = (v) => typeof v === 'string' && /^[^\s@<>,;\[\]]+@[^\s@<>,;\[\]]+\.[^\s@<>,;\[\]]+$/.test(v.trim());
   const location = ctx.live?.()?.branches.find((b) => b.slug === branch);
   const to = [mail.recipients?.[branch], location?.email].find(isEmail)?.trim();
-  if (!to) return json(503, { ok: false, error: 'not_configured' });
+  if (!to) return lead ? done() : json(503, { ok: false, error: 'not_configured' });
   const from = mail.from || 'no-reply@therapyandinjury.com';
 
   const subject = `${type === 'notify' ? `Opening notification request — ${branch}` : `Appointment request — ${branch}`}${lang ? ` — ${lang.split(' ')[0]}` : ''}`;
@@ -128,23 +137,29 @@ async function handle(req, res, ctx, send) {
     `Preferred time: ${time || '—'}`,
     `Accident date: ${accident || '—'}`,
     ...(lang ? [`Language: ${lang} (sent from the ${lang.split(' ')[0]} page; the visitor may prefer that language)`] : []),
+    ...(where ? [`Source: ${where}`] : []),
     'Consent to call/text: yes',
     `Submitted: ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`,
+    ...(lead ? ['', 'Update this lead’s status in the Leads inbox: /_admin (Leads tab)'] : []),
   ].join('\n');
 
   try {
     await sendmail({ bin: mail.sendmail || '/usr/sbin/sendmail', from, to, subject, body });
   } catch (e) {
     console.error('[appointment] send failed:', e.message); // no form data in logs
-    return json(500, { ok: false, error: 'send' });
+    if (!lead) return json(500, { ok: false, error: 'send' });
   }
+  return done();
 
+  function done() {
   // Non-JS form posts get redirected back with a flag.
   if (!String(req.headers.accept || '').includes('application/json')) {
-    send(res, 303, { location: `/${branch}/?sent=1#request`, 'cache-control': 'no-store' });
+    const back = f.lang === 'es' || f.lang === 'ht' ? `/${f.lang}/?sent=1#cita` : `/${branch}/?sent=1#request`;
+    send(res, 303, { location: back, 'cache-control': 'no-store' });
     return;
   }
   return json(200, { ok: true });
+  }
 }
 
 module.exports = { handle };

@@ -1,0 +1,40 @@
+---
+/**
+ * Lead source tracking (first-party only; no ad pixels, no cookies, nothing sent to other sites).
+ * Remembers, on this device, how the visitor arrived: the ad link's utm_* tags (or a Google/Meta click,
+ * without keeping the click ID), the referring site's name, the first page, and when. Kept 90 days; a
+ * new ad click replaces it. The appointment form sends it with the request (deploy/server/leads.js),
+ * and taps on call buttons are counted anonymously for the Reports (/api/event). If Google Analytics is
+ * on, the same two moments are sent as events with no names or numbers.
+ */
+---
+<script is:inline>
+  (function () {
+    var KEY = 'ti-src', DAY = 864e5, now = Date.now(), saved = null;
+    try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+    var q = new URLSearchParams(location.search), touch = {};
+    [['s', 'utm_source'], ['m', 'utm_medium'], ['c', 'utm_campaign'], ['t', 'utm_content'], ['k', 'utm_term']].forEach(function (p) { var v = q.get(p[1]); if (v) touch[p[0]] = v.slice(0, 100); });
+    if (q.get('gclid') || q.get('gbraid') || q.get('wbraid')) touch.ads = 'google';
+    else if (q.get('fbclid')) touch.ads = 'meta';
+    var ref = '';
+    try { var h = document.referrer && new URL(document.referrer).hostname; if (h && h !== location.hostname && !/(^|\.)therapyandinjury\.com$/.test(h)) ref = h.replace(/^www\./, ''); } catch (e) {}
+    // Keep the latest real source: an ad click always wins; a referring site replaces "direct";
+    // a direct visit only starts a record when there's none (or it's over 90 days old).
+    var expired = !saved || now - Date.parse(saved.at || 0) > 90 * DAY;
+    var wasDirect = saved && !saved.s && !saved.ads && !saved.r;
+    if (Object.keys(touch).length || expired || (ref && wasDirect)) {
+      touch.l = location.pathname; if (ref) touch.r = ref; touch.at = new Date(now).toISOString();
+      saved = touch;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+    }
+    var lang = (document.documentElement.lang || 'en').slice(0, 2);
+    window.tiSource = function () { var a = {}; for (var k in saved || {}) a[k] = saved[k]; a.p = location.pathname; return a; };
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a[href^="tel:"]');
+      if (!a) return;
+      var body = JSON.stringify({ type: 'call', attr: window.tiSource(), page: location.pathname, lang: lang });
+      try { navigator.sendBeacon('/api/event', new Blob([body], { type: 'application/json' })); } catch (err) {}
+      if (window.gtag) window.gtag('event', 'call_tap', { page_path: location.pathname, campaign: (saved && saved.c) || '(none)', source: (saved && (saved.s || saved.ads || saved.r)) || 'direct', language: lang });
+    }, true);
+  })();
+</script>

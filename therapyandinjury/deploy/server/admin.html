@@ -32,9 +32,63 @@ table{width:100%;border-collapse:collapse;font-size:15px}td,th{text-align:left;p
 #msg{font-weight:600}#msg.err{color:var(--red)}#msg.ok{color:var(--green)}
 .count{font-size:13px;font-weight:700;background:var(--ph);color:#7a5c00;border-radius:999px;padding:3px 10px}
 code{background:var(--gray);padding:1px 6px;border-radius:6px}[hidden]{display:none!important}
+main.wide{max-width:1240px}
+.lt-table td{vertical-align:top}.lt-table .sm{font-size:13px;color:var(--slate)}
+.badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px;background:var(--gray);color:var(--navy);white-space:nowrap}
+.badge.red{background:#fde8e6;color:var(--red)}.badge.amber{background:var(--ph);color:#7a5c00}.badge.green{background:#e3f6ec;color:var(--green)}.badge.teal{background:var(--teal-soft)}
+.st{font-weight:700;border-radius:8px;padding:5px 8px}
+tr.detail td{background:#fafbfc}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.card{background:var(--gray);border-radius:10px;padding:12px 14px}.card b{display:block;font-size:26px}.card span{font-size:13px;color:var(--slate)}
+nav.tabs .n{background:#ff4d5e;color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:5px}
+.num{text-align:right;font-variant-numeric:tabular-nums}
 </style></head><body>
 <header><b>Therapy &amp; Injury</b><span class="sub">Website admin</span>
-<nav class="tabs" role="tablist"><button role="tab" data-tab="content" aria-selected="true">Content</button><button role="tab" data-tab="updates" aria-selected="false">Updates</button></nav></header>
+<nav class="tabs" role="tablist"><button role="tab" data-tab="leads" aria-selected="false">Leads<span class="n" id="newcount" hidden></span></button><button role="tab" data-tab="reports" aria-selected="false" data-owner>Reports</button><button role="tab" data-tab="content" aria-selected="true" data-owner>Content</button><button role="tab" data-tab="updates" aria-selected="false" data-owner>Updates</button><button role="tab" data-tab="team" aria-selected="false" data-owner>Team</button></nav><span class="sub" id="who"></span></header>
+
+<main id="tab-leads" class="wide" hidden>
+  <section>
+    <div class="row" style="justify-content:space-between"><div><h2>Leads</h2><p>Every website request and phone lead. Call new leads within the hour (red = waiting longer). Change the status as you go: it feeds the Reports.</p></div>
+      <div class="row"><button id="addlead">+ Phone lead</button><a class="btn ghost" id="csv" href="#">Export CSV</a><label class="btn ghost" style="flex-direction:row;cursor:pointer">Match Carepatron export<input type="file" id="cpfile" accept=".csv,text/csv" hidden></label></div></div>
+    <div class="row" style="margin-top:12px">
+      <select id="lrange" style="width:auto"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option><option value="">All time</option></select>
+      <select id="lstatus" style="width:auto"><option value="open">Open (new, contacted, booked, no answer)</option><option value="">All statuses</option></select>
+      <input type="text" id="lsearch" placeholder="Search name or phone" style="max-width:260px">
+    </div>
+  </section>
+  <section id="phoneform" hidden><h2>Add a phone lead</h2><p class="hint">For callers and walk-ins. "How did you hear about us?" is what makes the reports work: ask every new caller.</p>
+    <div class="grid" style="margin-top:10px">
+      <label>Name<input type="text" id="pf-name"></label><label>Phone<input type="tel" id="pf-phone"></label>
+      <label>Location<select id="pf-branch"></select></label><label>Language<select id="pf-lang"><option value="en">English</option><option value="es">Español</option><option value="ht">Kreyòl</option></select></label>
+      <label>How did you hear about us?<select id="pf-heard"></select></label><label>Campaign (optional, e.g. the ad they mention)<input type="text" id="pf-campaign"></label>
+      <label>Accident date (optional)<input type="date" id="pf-acc"></label><label>Status<select id="pf-status"></select></label>
+    </div>
+    <label style="margin-top:10px">Note (optional)<textarea id="pf-note" style="min-height:60px"></textarea></label>
+    <div class="row" style="margin-top:10px"><button id="pf-save">Save lead</button><button class="ghost" id="pf-cancel">Cancel</button></div>
+  </section>
+  <section style="padding:0;overflow:auto"><table class="lt-table"><thead><tr><th style="padding-left:16px">Received</th><th>Name · phone</th><th>Location</th><th>Came from</th><th>14-day window</th><th>Status</th><th></th></tr></thead><tbody id="leadrows"><tr><td style="padding:16px">Loading…</td></tr></tbody></table></section>
+</main>
+
+<main id="tab-reports" class="wide" hidden>
+  <section><div class="row" style="justify-content:space-between"><div><h2>Reports</h2><p>Leads and new patients by where they came from. Call taps are anonymous counts of taps on the website's call buttons. Spend comes from what you enter below.</p></div>
+    <div class="row"><label>From<input type="date" id="rfrom"></label><label>To<input type="date" id="rto"></label><button class="ghost" id="rgo" style="align-self:end">Show</button></div></div>
+    <div class="cards" id="rcards" style="margin-top:14px"></div></section>
+  <section><h2>By channel</h2><div id="r-channel"></div></section>
+  <section><h2>By campaign</h2><p class="hint">Campaign = the <code>utm_campaign</code> in the ad's link (see marketing/utm-links.md). Cost per lead and per new patient use the spend you enter for that campaign.</p><div id="r-campaign"></div></section>
+  <section><h2>By language</h2><div id="r-lang"></div></section>
+  <section><h2>By location</h2><div id="r-branch"></div></section>
+  <section><h2>Ad spend</h2><p class="hint">Monthly spend per campaign (from Meta Ads Manager, Google Ads, etc.). Enter 0 to remove an entry.</p>
+    <div class="row" style="margin-top:10px"><label>Month<input type="month" id="sp-month"></label><label>Campaign<input type="text" id="sp-campaign" list="sp-list"></label><datalist id="sp-list"></datalist><label>Amount ($)<input type="number" id="sp-amount" min="0" step="0.01"></label><button id="sp-save" style="align-self:end">Save spend</button></div>
+    <div id="sp-table" style="margin-top:12px"></div></section>
+</main>
+
+<main id="tab-team" hidden>
+  <section><h2>Front desk logins</h2><p>Each person gets their own login. They see the <b>Leads</b> tab only (no content or updates), and every status change shows who made it. Sign-in: their username and password at <code>/_admin</code>.</p>
+    <div id="users" style="margin-top:12px"></div>
+    <h3>Add or reset a login</h3>
+    <div class="grid"><label>Username<input type="text" id="u-name" placeholder="e.g. maria"></label><label>Display name<input type="text" id="u-display" placeholder="e.g. Maria (front desk)"></label><label>Password (10+ characters)<input type="text" id="u-pass" autocomplete="new-password"></label></div>
+    <div class="row" style="margin-top:10px"><button id="u-save">Save login</button></div></section>
+</main>
 
 <main id="tab-content">
   <section>
@@ -72,13 +126,18 @@ const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), 
 const setPath = (o, p, v) => { const ks = p.split('.'); let a = o; ks.slice(0, -1).forEach((k) => { if (a[k] == null || typeof a[k] !== 'object') a[k] = {}; a = a[k]; }); a[ks.at(-1)] = v; };
 
 // ---------- tabs ----------
-document.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => {
-  document.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', x === b));
-  $('#tab-content').hidden = b.dataset.tab !== 'content';
-  $('#tab-updates').hidden = b.dataset.tab !== 'updates';
-  $('#savebar').hidden = b.dataset.tab !== 'content';
-  if (b.dataset.tab === 'updates') loadStatus().catch((e) => msg(e.message, false));
-});
+const TABS = ['leads', 'reports', 'content', 'updates', 'team'];
+function showTab(t) {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', x.dataset.tab === t));
+  TABS.forEach((x) => { $('#tab-' + x).hidden = x !== t; });
+  // The bottom bar carries status messages on every tab; Save and View only apply to Content.
+  $('#save').hidden = $('#viewlink').hidden = t !== 'content';
+  if (t === 'updates') loadStatus().catch((e) => msg(e.message, false));
+  if (t === 'leads') loadLeads().catch((e) => msg(e.message, false));
+  if (t === 'reports') loadReport().catch((e) => msg(e.message, false));
+  if (t === 'team') loadUsers().catch((e) => msg(e.message, false));
+}
+document.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => showTab(b.dataset.tab));
 
 // ---------- content editor ----------
 let data = null, dirty = false, current = 'site';
@@ -286,5 +345,131 @@ $('#update').onclick = () => act(() => api('update', { method: 'POST' }), 'Updat
 $('#rollback').onclick = () => { if (confirm('Switch back to the previous version?')) act(() => api('rollback', { method: 'POST' }), 'Rolled back'); };
 $('#restart').onclick = () => act(() => api('restart', { method: 'POST' }), 'Restart requested');
 
-loadContent().catch((e) => { msg(e.message, false); $('#editor').innerHTML = '<section><p>' + esc(e.message) + '</p></section>'; });
+// ---------- leads ----------
+let ME = null, LEADS = [], openId = null;
+const STATUS_LABEL = { new: 'New', contacted: 'Contacted', booked: 'Booked', showed: 'Showed', patient: 'Became a patient', notfit: 'Not a fit', noanswer: 'No answer' };
+const LANG_LABEL = { en: 'English', es: 'Español', ht: 'Kreyòl' };
+const OPEN = ['new', 'contacted', 'booked', 'noanswer'];
+const ago = (iso) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
+const dayStr = (d) => d.toISOString().slice(0, 10);
+const cityOf = (slug) => (ME.branches.find((b) => b.slug === slug) || {}).city || slug || '—';
+function window14(l) {
+  if (!l.accidentDate) return '<span class="sm">—</span>';
+  const day = Math.floor((Date.now() - Date.parse(l.accidentDate + 'T12:00:00')) / 86400000) + 1;
+  if (day > 14) return '<span class="badge">past 14 days</span>';
+  return '<span class="badge ' + (day >= 10 ? 'red' : 'amber') + '">day ' + Math.max(1, day) + ' of 14</span>';
+}
+async function loadLeads() {
+  const days = $('#lrange').value;
+  const q = days ? '?from=' + dayStr(new Date(Date.now() - days * 86400000)) : '';
+  $('#csv').href = '/_admin/api/leads.csv' + q;
+  LEADS = (await api('leads' + q, { method: 'GET', headers: {} })).leads;
+  renderLeads();
+}
+function renderLeads() {
+  const st = $('#lstatus').value, term = $('#lsearch').value.trim().toLowerCase(), td = term.replace(/\D/g, '');
+  const rows = LEADS.filter((l) => (st === 'open' ? OPEN.includes(l.status) : !st || l.status === st))
+    .filter((l) => !term || (l.name || '').toLowerCase().includes(term) || (td && (l.phone || '').replace(/\D/g, '').includes(td)));
+  const fresh = LEADS.filter((l) => l.status === 'new').length;
+  $('#newcount').hidden = !fresh; $('#newcount').textContent = fresh;
+  $('#leadrows').innerHTML = rows.map((l) => {
+    const late = l.status === 'new' && Date.now() - Date.parse(l.createdAt) > 3600000;
+    const src = esc(l.channel) + (l.kind === 'phone' ? ' <span class="sm">(phone)</span>' : '') + ((l.kind === 'phone' ? l.campaign : l.attr && l.attr.c) ? '<div class="sm">' + esc(l.kind === 'phone' ? l.campaign : l.attr.c) + '</div>' : '');
+    const sel = '<select class="st" data-st="' + l.id + '">' + ME.statuses.map((s) => '<option value="' + s + '"' + (s === l.status ? ' selected' : '') + '>' + STATUS_LABEL[s] + '</option>').join('') + '</select>';
+    const main = '<tr><td style="padding-left:16px">' + new Date(l.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + '<div class="sm">' + ago(l.createdAt) + '</div>' + (late ? '<span class="badge red">call now</span>' : '') + (l.type === 'notify' ? '<span class="badge">opening notice</span>' : '') + '</td>'
+      + '<td><b>' + esc(l.name || '—') + '</b><div><a href="tel:' + esc((l.phone || '').replace(/[^\d+]/g, '')) + '">' + esc(l.phone) + '</a></div></td>'
+      + '<td>' + esc(cityOf(l.branch)) + '<div class="sm">' + (LANG_LABEL[l.lang] || 'English') + '</div></td>'
+      + '<td>' + src + '</td><td>' + window14(l) + '</td><td>' + sel + '</td>'
+      + '<td><button class="ghost small" data-open="' + l.id + '">' + (openId === l.id ? 'Close' : 'Details') + (l.notes && l.notes.length ? ' · ' + l.notes.length : '') + '</button></td></tr>';
+    if (openId !== l.id) return main;
+    const a = l.attr || {};
+    const facts = [['Preferred time', l.preferredTime], ['Accident date', l.accidentDate], ['How they heard', l.howHeard], ['Landing page', a.l], ['Page with the form', a.p], ['Came from site', a.r], ['Ad / content', a.t], ['Search term', a.k], ['Source · medium', [a.s, a.m].filter(Boolean).join(' · ')], ['First seen', a.at && new Date(a.at).toLocaleString()]].filter(([, v]) => v);
+    return main + '<tr class="detail"><td colspan="7" style="padding:14px 16px"><div class="grid"><div><dl class="kv">' + facts.map(([k, v]) => '<dt>' + k + '</dt><dd>' + esc(v) + '</dd>').join('') + '</dl>'
+      + '<h3>History</h3>' + l.history.map((h) => '<div class="sm">' + new Date(h.at).toLocaleString() + ' · ' + esc(STATUS_LABEL[h.status] || h.status) + ' · ' + esc(h.by) + '</div>').join('') + '</div>'
+      + '<div><h3 style="margin-top:0">Notes</h3>' + (l.notes || []).map((n) => '<p style="color:var(--navy)">' + esc(n.text) + '<br><span class="sm">' + esc(n.by) + ' · ' + new Date(n.at).toLocaleString() + '</span></p>').join('')
+      + '<textarea id="note-' + l.id + '" style="min-height:60px" placeholder="e.g. Left voicemail; booked Tue 2 pm"></textarea><div class="row" style="margin-top:8px"><button class="small" data-note="' + l.id + '">Add note</button>' + (ME.role === 'owner' ? '<button class="ghost small" data-del="' + l.id + '">Delete lead</button>' : '') + '</div></div></div></td></tr>';
+  }).join('') || '<tr><td colspan="7" style="padding:16px">No leads here yet.</td></tr>';
+  document.querySelectorAll('[data-st]').forEach((s) => s.onchange = () => changeLead({ id: s.dataset.st, status: s.value }, 'Status saved'));
+  document.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => { openId = openId === b.dataset.open ? null : b.dataset.open; renderLeads(); });
+  document.querySelectorAll('[data-note]').forEach((b) => b.onclick = () => { const t = $('#note-' + b.dataset.note).value.trim(); if (t) changeLead({ id: b.dataset.note, note: t }, 'Note added'); });
+  document.querySelectorAll('[data-del]').forEach((b) => b.onclick = () => { if (confirm('Delete this lead for good?')) changeLead({ id: b.dataset.del, remove: true }, 'Lead deleted'); });
+}
+async function changeLead(body, done) {
+  try { await api('leads/update', { method: 'POST', body: JSON.stringify(body) }); msg(done, true); await loadLeads(); } catch (e) { msg(e.message, false); }
+}
+['lrange', 'lstatus'].forEach((id) => $('#' + id).onchange = () => (id === 'lrange' ? loadLeads() : renderLeads()));
+$('#lsearch').oninput = () => renderLeads();
+$('#addlead').onclick = () => { $('#phoneform').hidden = false; $('#pf-name').focus(); };
+$('#pf-cancel').onclick = () => { $('#phoneform').hidden = true; };
+$('#pf-save').onclick = async () => {
+  const body = { name: $('#pf-name').value, phone: $('#pf-phone').value, branch: $('#pf-branch').value, lang: $('#pf-lang').value, howHeard: $('#pf-heard').value, campaign: $('#pf-campaign').value, accidentDate: $('#pf-acc').value, status: $('#pf-status').value, note: $('#pf-note').value };
+  try {
+    await api('leads/add', { method: 'POST', body: JSON.stringify(body) });
+    ['pf-name', 'pf-phone', 'pf-campaign', 'pf-acc', 'pf-note'].forEach((id) => { $('#' + id).value = ''; });
+    $('#phoneform').hidden = true; msg('Phone lead saved', true); await loadLeads();
+  } catch (e) { msg(e.message, false); }
+};
+$('#cpfile').onchange = async () => {
+  const f = $('#cpfile').files[0]; if (!f) return;
+  msg('Matching…');
+  try {
+    const r = await api('leads/match', { method: 'POST', body: await f.text(), headers: { 'content-type': 'text/csv' } });
+    msg(r.rows + ' patients read (phone column: ' + r.phoneColumns.join(', ') + '). ' + r.matched + ' lead(s) marked “Became a patient”' + (r.already ? ', ' + r.already + ' already were' : '') + '. The file was not stored.', true);
+    await loadLeads();
+  } catch (e) { msg(e.message, false); } finally { $('#cpfile').value = ''; }
+};
+
+// ---------- reports ----------
+const money = (n) => (n ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
+function rtable(group, withSpend) {
+  const rows = Object.entries(group).sort((a, b) => b[1].leads - a[1].leads || b[1].calls - a[1].calls);
+  if (!rows.length) return '<p>No data in this range.</p>';
+  const head = '<tr><th></th><th class="num">Leads</th><th class="num">Web</th><th class="num">Phone</th><th class="num">Contacted</th><th class="num">Booked</th><th class="num">Showed</th><th class="num">New patients</th><th class="num">Call taps</th>' + (withSpend ? '<th class="num">Spend</th><th class="num">Per lead</th><th class="num">Per patient</th>' : '') + '</tr>';
+  return '<div style="overflow:auto"><table>' + head + rows.map(([k, r]) => '<tr><td>' + esc(k) + '</td>' + ['leads', 'web', 'phone', 'contacted', 'booked', 'showed', 'patients', 'calls'].map((c) => '<td class="num">' + (r[c] || 0) + '</td>').join('') + (withSpend ? '<td class="num">' + money(r.spend) + '</td><td class="num">' + (r.spend && r.leads ? money(r.spend / r.leads) : '—') + '</td><td class="num">' + (r.spend && r.patients ? money(r.spend / r.patients) : '—') + '</td>' : '') + '</tr>').join('') + '</table></div>';
+}
+async function loadReport() {
+  if (!$('#rfrom').value) { const d = new Date(); $('#rfrom').value = dayStr(new Date(d.getFullYear(), d.getMonth(), 1)); $('#rto').value = dayStr(d); }
+  const r = await api('report?from=' + $('#rfrom').value + '&to=' + $('#rto').value, { method: 'GET', headers: {} });
+  const t = r.totals;
+  $('#rcards').innerHTML = [['Leads', t.leads], ['Contacted', t.contacted], ['Booked', t.booked], ['Showed', t.showed], ['New patients', t.patients], ['Call taps', t.calls], ['Ad spend', money(t.spend)], ['Cost per patient', t.spend && t.patients ? money(t.spend / t.patients) : '—']].map(([k, v]) => '<div class="card"><b>' + v + '</b><span>' + k + '</span></div>').join('');
+  $('#r-channel').innerHTML = rtable(r.groups.channel);
+  $('#r-campaign').innerHTML = rtable(r.groups.campaign, true);
+  $('#r-lang').innerHTML = rtable(Object.fromEntries(Object.entries(r.groups.lang).map(([k, v]) => [LANG_LABEL[k] || k, v])));
+  $('#r-branch').innerHTML = rtable(Object.fromEntries(Object.entries(r.groups.branch).map(([k, v]) => [cityOf(k), v])));
+  $('#sp-list').innerHTML = Object.keys(r.groups.campaign).filter((c) => !c.startsWith('(')).map((c) => '<option value="' + esc(c) + '">').join('');
+  const sp = Object.entries(r.spend).sort();
+  $('#sp-table').innerHTML = sp.length ? '<table><tr><th>Month</th><th>Campaign</th><th class="num">Amount</th></tr>' + sp.map(([k, v]) => { const [m, c] = k.split('|'); return '<tr><td>' + m + '</td><td>' + esc(c) + '</td><td class="num">' + money(v) + '</td></tr>'; }).join('') + '</table>' : '<p>No spend entered yet.</p>';
+}
+$('#rgo').onclick = () => loadReport().catch((e) => msg(e.message, false));
+$('#sp-save').onclick = async () => {
+  try { await api('spend', { method: 'POST', body: JSON.stringify({ month: $('#sp-month').value, campaign: $('#sp-campaign').value, amount: $('#sp-amount').value }) }); msg('Spend saved', true); await loadReport(); } catch (e) { msg(e.message, false); }
+};
+
+// ---------- team ----------
+async function loadUsers() {
+  const r = await api('users', { method: 'GET', headers: {} });
+  $('#users').innerHTML = r.users.length ? '<table><tr><th>Username</th><th>Name</th><th>Added</th><th></th></tr>' + r.users.map((u) => '<tr><td><b>' + esc(u.username) + '</b></td><td>' + esc(u.name) + '</td><td>' + fmt(u.createdAt) + '</td><td><button class="ghost small" data-rm="' + esc(u.username) + '">Remove</button></td></tr>').join('') + '</table>' : '<p>No front desk logins yet.</p>';
+  document.querySelectorAll('[data-rm]').forEach((b) => b.onclick = async () => { if (!confirm('Remove ' + b.dataset.rm + '?')) return; try { await api('users', { method: 'POST', body: JSON.stringify({ username: b.dataset.rm, remove: true }) }); msg('Removed', true); loadUsers(); } catch (e) { msg(e.message, false); } });
+}
+$('#u-save').onclick = async () => {
+  try { await api('users', { method: 'POST', body: JSON.stringify({ username: $('#u-name').value, name: $('#u-display').value, password: $('#u-pass').value }) }); $('#u-pass').value = ''; msg('Login saved', true); loadUsers(); } catch (e) { msg(e.message, false); }
+};
+
+// ---------- start ----------
+(async () => {
+  ME = await api('me', { method: 'GET', headers: {} });
+  $('#who').textContent = ME.role === 'owner' ? 'Owner' : 'Signed in: ' + (ME.name || ME.user);
+  $('#pf-branch').innerHTML = ME.branches.map((b) => '<option value="' + esc(b.slug) + '"' + (b.open ? '' : ' disabled') + '>' + esc(b.city) + (b.open ? '' : ' (soon)') + '</option>').join('');
+  $('#pf-heard').innerHTML = ME.howHeard.map((h) => '<option>' + esc(h) + '</option>').join('');
+  $('#pf-status').innerHTML = ME.statuses.map((s) => '<option value="' + s + '"' + (s === 'contacted' ? ' selected' : '') + '>' + STATUS_LABEL[s] + '</option>').join('');
+  if (ME.role !== 'owner') {
+    document.querySelectorAll('[data-owner]').forEach((b) => b.remove());
+    showTab('leads');
+    return;
+  }
+  // Owner: content opens as before; the Leads tab shows a count of new leads.
+  loadLeads().catch(() => {});
+  showTab('content');
+  loadContent().catch((e) => { msg(e.message, false); $('#editor').innerHTML = '<section><p>' + esc(e.message) + '</p></section>'; });
+})().catch((e) => msg(e.message, false));
 </script></body></html>
