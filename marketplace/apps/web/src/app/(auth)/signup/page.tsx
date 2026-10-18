@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { WelcomeOffer } from "@/components/site/welcome-offer";
 import { prisma } from "@cm/db";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
 import { FormGuard } from "@/components/site/form-guard";
@@ -57,6 +58,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
           </Link>
         </div>
       ) : null}
+      {role === "clinic" ? <WelcomeOffer variant="inline" className="mt-4" /> : null}
       {googleNote ? <Alert tone={problem === "cancelled" ? "info" : "error"} className="mt-4">{googleNote}</Alert> : null}
       {google.googleEnabled() && !student ? (
         <div className="mt-6">

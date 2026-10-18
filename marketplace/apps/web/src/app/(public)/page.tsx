@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { WelcomeOffer } from "@/components/site/welcome-offer";
 import { ArrowRight, BadgeCheck, CalendarClock, CreditCard, MapPin, ShieldCheck, Stethoscope, Users } from "lucide-react";
 import type { Metadata } from "next";
 import { brand } from "@cm/config";
@@ -101,6 +102,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
           </div>
         </div>
       </section>
+      <WelcomeOffer />
 
       <section className="container-page py-16">
         <h2 className="text-center text-3xl font-semibold">Built for the way coverage actually works</h2>

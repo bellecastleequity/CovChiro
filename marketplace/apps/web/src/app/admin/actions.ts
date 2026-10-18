@@ -743,6 +743,19 @@ export const endPartnershipAction = formAction(async (fd) => {
   return { ok: when === "now" ? "Partnership ended. New shifts are at regular prices." : `Partnership ends ${endedAt.toLocaleDateString("en-US", { timeZone: "America/New_York", dateStyle: "medium" })}.` };
 });
 
+// ---------- Welcome Discount ----------
+
+export const welcomeAdjustAction = formAction(async (fd) => {
+  const { actor } = await requireActor("admin");
+  const { welcome } = await import("@cm/services");
+  const id = str(fd, "clinicOrgId");
+  const op = str(fd, "op") as "approve" | "add" | "restore" | "note";
+  await welcome.adminAdjust(actor, id, { op, note: str(fd, "note"), redemptionId: str(fd, "redemptionId") || undefined });
+  revalidatePath(`/admin/clinics/${id}`);
+  revalidatePath("/admin/welcome");
+  return { ok: { approve: "Approved: the clinic can use its Welcome Discount.", add: "Added one Welcome booking.", restore: "Restored: that discount is available again.", note: "Note saved." }[op] ?? "Saved." };
+});
+
 // ---------------- ID check + exclusion lists ----------------
 
 export const idDecisionAction = formAction(async (fd) => {

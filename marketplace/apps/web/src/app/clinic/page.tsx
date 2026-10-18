@@ -13,6 +13,7 @@ import { requireActor } from "@/lib/session";
 import { VerificationBanner } from "@/components/clinic/verification-banner";
 import { PhoneBanner } from "@/components/shell/phone-banner";
 import { PartnerCard } from "@/components/clinic/partner-card";
+import { WelcomeCard } from "@/components/clinic/welcome-card";
 
 export default async function ClinicHome({ searchParams }: { searchParams: Promise<{ code?: string; welcome?: string }> }) {
   const { actor, user } = await requireActor("clinic");
@@ -40,6 +41,7 @@ export default async function ClinicHome({ searchParams }: { searchParams: Promi
       <PhoneBanner actor={actor} />
       <VerificationBanner clinicOrgId={org.id} />
       {!needsSetup ? <PartnerCard actor={actor} /> : null}
+      <WelcomeCard actor={actor} />
       {sheets.length ? (
         <Alert tone="warning" className="mb-6" title={`${sheets.length} timesheet${sheets.length === 1 ? "" : "s"} to sign off`}>
           Check your provider&apos;s punches and sign off, or tell us if something&apos;s not right. <Link href="/clinic/timesheets" className="font-medium underline">Review timesheets →</Link>

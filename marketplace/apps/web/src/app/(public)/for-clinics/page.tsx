@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { WelcomeOffer } from "@/components/site/welcome-offer";
 import { Check, MapPin } from "lucide-react";
 import { marketWords } from "@/lib/seo";
 import { prisma } from "@cm/db";
@@ -32,6 +33,7 @@ export default async function ForClinics() {
         <div className="text-sm font-semibold uppercase tracking-wider text-brand-700">For clinics</div>
         <h1 className="mt-2 text-4xl font-semibold">Simple per-shift pricing</h1>
         {s["features.comparisonClaim"] ? <p className="mt-3 text-xl font-semibold text-accent-700">We charge our clinics less and get our doctors paid more.</p> : null}
+        <WelcomeOffer variant="inline" className="mt-5" />
         <p className="mt-4 text-lg text-slate-600">
           Prices are set by region, shift length and how busy the day is: a Light day costs less, a Busy day covers more visits. No negotiating, no surprises. Mileage passes straight through to your provider at cost, and if you allow lodging, providers who stay over get a flat {money(s["pricing.lodgingNightlyCents"])} a night.
         </p>

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { WelcomeOffer } from "@/components/site/welcome-offer";
 import { US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
 import { LinkButton } from "@/components/ui/button";
@@ -51,6 +52,7 @@ export default async function ProfessionPage({ params }: { params: Promise<{ slu
                 {(st!.areas.length > 1 ? st!.areas : []).map((a, i) => <span key={a.slug}>{i ? " · " : ""}<Link href={`/${p.slug}/${st!.slug}/${a.slug}`} className="text-brand-700 hover:underline">{a.name}</Link></span>)}
               </p>
             ))}
+            <WelcomeOffer variant="inline" className="mt-6" />
             <div className="mt-8 flex flex-wrap gap-3">
               <LinkButton href="/signup?role=clinic" size="lg">
                 Post a shift

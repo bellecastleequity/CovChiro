@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { WelcomeOffer } from "@/components/site/welcome-offer";
 import Link from "next/link";
 import {
   AlarmClock,
@@ -127,6 +128,7 @@ export default async function PersonalInjuryClinics() {
           <HeroArt />
         </div>
       </section>
+      <WelcomeOffer />
 
       {/* Why PI feels it most */}
       <section className="container-page py-16 lg:py-20">

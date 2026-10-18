@@ -64,6 +64,7 @@ const SWITCHES: { title: string; items: ({ setting: string; label?: string; onMe
       { setting: "flyIn.enabled", label: "Fly-in coverage" },
       { setting: "clinicRate.enabled", label: "Clinic-set rate (beta)" },
       { setting: "features.partnerProgram", label: "Partner clinic program" },
+      { setting: "welcome.enabled", label: "Welcome Discount for new clinics" },
       { setting: "features.onCallEnabled", label: "On Call auto-accept" },
       { setting: "payments.payInFullEnabled", label: "Charge in full when a clinic is overdue" },
     ],

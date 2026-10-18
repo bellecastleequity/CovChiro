@@ -558,11 +558,13 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
             <CardBody className="space-y-2 text-sm">
               <div className="flex justify-between"><span>Coverage</span><span className="tabular-nums">{money(view.coverageCents)}</span></div>
               {(() => {
-                // The discount carries promo + partner; show each part.
+                // The discount carries promo + partner + Welcome Discount; show each part.
                 const partner = Math.min(view.discountCents, live?.partnerDiscountCents ?? shift.partnerDiscountCents);
-                const promo = view.discountCents - partner;
+                const welcome = Math.min(view.discountCents - partner, live?.welcomeDiscountCents ?? shift.welcomeDiscountCents);
+                const promo = view.discountCents - partner - welcome;
                 return (
                   <>
+                    {welcome ? <div className="flex justify-between text-emerald-700"><span>Welcome Discount</span><span>−{money(welcome)}</span></div> : null}
                     {promo ? <div className="flex justify-between text-emerald-700"><span>Promo {shift.promoCode?.code}</span><span>−{money(promo)}</span></div> : null}
                     {partner ? <div className="flex justify-between text-emerald-700"><span>Partner discount</span><span>−{money(partner)}</span></div> : null}
                   </>

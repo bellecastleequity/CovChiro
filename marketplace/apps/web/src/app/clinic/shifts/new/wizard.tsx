@@ -59,6 +59,8 @@ interface Quote {
   partnerDiscountCents?: number;
   partnerPercent?: number | null;
   partnerLockedFromCents?: number | null;
+  welcome?: { percent: number; discountCents: number; baseCents: number; available: number } | null;
+  promoSetAside?: string | null;
   premiums: { kind: string; percent: number }[];
   tier: string;
   hours: number;
@@ -730,6 +732,9 @@ export function PostShiftWizard({ locations, canPost, defaultCode, defaultMinYea
                 {quote.discountCents ? <div className="flex justify-between text-emerald-700"><span>Promo {quote.promoCode}</span><span className="tabular-nums">−{money(quote.discountCents)}</span></div> : null}
                 {quote.partnerLockedFromCents ? <div className="flex justify-between text-xs text-slate-500"><span>Partner rate lock (today&apos;s rate {money(quote.partnerLockedFromCents)})</span><span>locked</span></div> : null}
                 {quote.partnerDiscountCents ? <div className="flex justify-between text-emerald-700"><span>Partner discount ({quote.partnerPercent}%)</span><span className="tabular-nums">−{money(quote.partnerDiscountCents)}</span></div> : null}
+                {quote.welcome ? <div className="flex justify-between text-emerald-700"><span>Welcome Discount ({quote.welcome.percent}%)</span><span className="tabular-nums">−{money(quote.welcome.discountCents)}</span></div> : null}
+                {quote.welcome ? <p className="text-xs text-emerald-700">Applied automatically: no code, never expires. Counts as used when the shift is completed.</p> : null}
+                {quote.promoSetAside ? <p className="rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600">Your Welcome Discount is larger than code {quote.promoSetAside}, so we applied it instead. Discounts don&apos;t combine.</p> : null}
                 {quote.days && quote.days.length > 1 ? (
                   <>
                     {quote.days.map((d) => <div key={d.date} className="flex justify-between text-xs text-slate-600"><span>{d.date}{d.premiums.length ? ` (${d.premiums.map((p) => `${p.kind.toLowerCase()} +${p.percent}%`).join(", ")})` : ""}</span><span className="tabular-nums">{money(d.subtotalCents)}</span></div>)}

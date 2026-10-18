@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { WelcomeOffer } from "@/components/site/welcome-offer";
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, CalendarCheck, Check, Clock, Phone, Receipt, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { brand } from "@cm/config";
@@ -147,6 +148,7 @@ export default async function TemporaryChiropractorCoverage() {
           </div>
         </div>
       </section>
+      <WelcomeOffer />
 
       {/* What it is */}
       <section className="container-page py-16 lg:py-20">

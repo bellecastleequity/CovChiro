@@ -82,6 +82,7 @@ export function CoverageLanding({ p, st, area, groups, s, path, facts = null }: 
         <p className="mt-4 text-lg text-slate-600">
           Temporary and locum {noun}s for {where} practices: vacations, holidays, sick days, leave, conferences, or an open associate seat. Every {p.credentialSuffix} holds a verified {st.name} license and malpractice coverage before they can take a shift.{area ? ` ${area.blurb}` : ""}
         </p>
+        {s["welcome.enabled"] ? <p className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"><b>Save {s["welcome.percent"]}% on your first {s["welcome.bookings"]} coverage bookings.</b> No code. No expiration. Applied automatically when you book.</p> : null}
         <div className="mt-6 flex flex-wrap gap-3">
           <LinkButton href={clinicSignup} size="lg">Request coverage</LinkButton>
           <LinkButton href={`/signup?role=provider&profession=${p.code}`} size="lg" variant="outline">I&apos;m a {noun}: join</LinkButton>

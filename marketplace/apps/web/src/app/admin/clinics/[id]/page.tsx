@@ -12,6 +12,7 @@ import { dateLabel, money } from "@/lib/format";
 import { requireActor } from "@/lib/session";
 import { AccountModeration } from "@/components/admin/account-moderation";
 import { AdminPartnerCard } from "@/components/admin/partner-card";
+import { AdminWelcomeCard } from "@/components/admin/welcome-card";
 import { adminClinicPhonesAction, approveClinicAction, clinicStatusAction, clinicVerificationAdminAction, excludeChargeAction, includeChargeAction, payInFullAction, retryChargeAction } from "../../actions";
 import { Textarea } from "@/components/ui/form";
 
@@ -60,6 +61,7 @@ export default async function AdminClinic({ params }: { params: Promise<{ id: st
             </CardBody>
           </Card>
           <AdminPartnerCard clinicOrgId={c.id} />
+          <AdminWelcomeCard clinicOrgId={c.id} />
           <Card>
             <CardHeader title="Onboarding" description={c.adminApprovedAt ? `Approved by admin ${dateLabel(c.adminApprovedAt)}` : "Approve to skip the remaining setup steps."} />
             <CardBody className="space-y-3 text-sm">
