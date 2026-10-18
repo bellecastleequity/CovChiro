@@ -271,6 +271,35 @@ describe("clinic outreach: review mode, compliance, unsubscribe", () => {
     expect(await prisma.communication.findUniqueOrThrow({ where: { id: rejected.id } })).toMatchObject({ status: "REJECTED", dedupeKey: `outreach:${other.id}:0` });
   });
 
+  it("prospects sharing one inbox get each email once, never three copies or a repeat", async () => {
+    await setting("growth.outreachMode", "auto");
+    await setting("growth.agents", { ...(await import("@cm/config")).defaultSettings()["growth.agents"], clinicOutreach: true });
+    const email = `records-${uid()}@complete-care.test`;
+    const loc = (n: string) => prisma.clinicProspect.create({ data: { clinicName: `Complete Care ${n}`, city: "Orlando", state: "FL", email: n === "B" ? email.toUpperCase() : email, emailStatus: "VALID", stage: "CONTACTABLE", publicToken: uid(), researchStatus: "DONE" } });
+    const [a, b, c] = [await loc("A"), await loc("B"), await loc("C")];
+    const sentTo = () => prisma.communication.findMany({ where: { toAddress: email, status: "SENT" }, orderBy: { createdAt: "asc" } });
+    await growth.growthTick();
+    expect((await sentTo()).map((x) => x.promptKey)).toEqual(["CLINIC_FIRST_CONTACT"]);
+    // Next run: the other two locations are caught up to what the inbox already got (no email).
+    await growth.growthTick();
+    expect(await sentTo()).toHaveLength(1);
+    const steps = await prisma.clinicProspect.findMany({ where: { id: { in: [a.id, b.id, c.id] } }, select: { outreachStep: true } });
+    expect(steps.map((x) => x.outreachStep)).toEqual([1, 1, 1]);
+    // "Send the first email now" refuses a location whose inbox already got it.
+    const ready = await growth.outreachReadiness(c.id);
+    expect(ready.firstNow).toBe(false);
+    // The follow-up goes once, to the inbox, when it's due.
+    setClock(() => new Date(Date.now() + 8 * DAY));
+    await growth.growthTick();
+    await growth.growthTick();
+    expect((await sentTo()).map((x) => x.promptKey)).toEqual(["CLINIC_FIRST_CONTACT", "CLINIC_VACATION_EDUCATION"]);
+    // A reply from any location stops the inbox for all of them.
+    await prisma.clinicProspect.update({ where: { id: b.id }, data: { stage: "ENGAGED" } });
+    setClock(() => new Date(Date.now() + 30 * DAY));
+    await growth.growthTick();
+    expect(await sentTo()).toHaveLength(2);
+  });
+
   it("marketing email is blocked without a postal address (and waits rather than being dropped)", async () => {
     await setting("growth.postalAddress", "");
     await setting("growth.outreachMode", "auto");

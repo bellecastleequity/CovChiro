@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  activationDue, contactDecision, emailFailureCounts, escalationTopic, leadScore, nurtureDue, outreachStepDue, providerGrowthState, prospectStageFromAccount,
+  activationDue, addressDecision, contactDecision, emailFailureCounts, escalationTopic, leadScore, nurtureDue, outreachStepDue, providerGrowthState, prospectStageFromAccount,
   renderTemplate, ruleSegment, validateAiCopy, wantsOptOut, type ContactContext, type GrowthCadence,
 } from "../src";
 import { config, d, FAR } from "./fixtures";
@@ -233,5 +233,24 @@ describe("emailFailureCounts", () => {
       "",
       null,
     ]) expect(emailFailureCounts(e), String(e)).toBe(false);
+  });
+});
+
+describe("one inbox, one sequence (prospects sharing an email address)", () => {
+  const none = { sent: 0, lastSentAt: null, pending: false, stopped: false };
+  const d = (iso: string) => new Date(iso);
+  it("sends once per address per run", () => {
+    expect(addressDecision(0, null, none, false)).toEqual({ action: "SEND", lastContactedAt: null });
+    expect(addressDecision(0, null, none, true)).toEqual({ action: "SKIP", reason: "same_address_this_run" });
+  });
+  it("never resends a step the address already got; catches the prospect up instead", () => {
+    // Location B (step 0) shares records@ with location A, which already got the first email.
+    expect(addressDecision(0, null, { ...none, sent: 1, lastSentAt: d("2026-10-10T12:15:00Z") }, false)).toEqual({ action: "SYNC", step: 1, lastContactedAt: d("2026-10-10T12:15:00Z") });
+    // Same step as the address: due timing uses the address's latest email.
+    expect(addressDecision(1, d("2026-10-01T12:00:00Z"), { ...none, sent: 1, lastSentAt: d("2026-10-10T12:15:00Z") }, false)).toEqual({ action: "SEND", lastContactedAt: d("2026-10-10T12:15:00Z") });
+  });
+  it("waits while an email to the address is pending, and stops when any sharer replied or opted out", () => {
+    expect(addressDecision(0, null, { ...none, pending: true }, false)).toMatchObject({ action: "SKIP", reason: "address_pending" });
+    expect(addressDecision(0, null, { ...none, stopped: true }, false)).toMatchObject({ action: "SKIP", reason: "address_stopped" });
   });
 });

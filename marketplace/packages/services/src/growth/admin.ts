@@ -10,6 +10,7 @@ import { getEligibleProviders } from "../eligibility";
 import { AGENT_AUDIENCE, AGENTS, Deferred, agentOn, ai, aiRules, aiSpendCents, compose, isSuppressed, logAgent, marketingOn, newToken, normEmail, pickPrompt, recipient, sendGrowthEmail, suppress, type AgentKey, type Audience, type GrowthEntityType } from "./engine";
 import { outreachProfessionFor } from "./expansion";
 import { ensureGrowthDefaults } from "./defaults";
+import { addressHistories } from "./addresses";
 import { advanceOutreach, approvedPiKeys, outreachKey, prospectVars, welcomeOfferLine, clinicChecklist, classifyProspect, growthTick, handleProspectReply, OUTREACH_SEQUENCE, providerSnapshot, refreshProspect, supplyGapSweep } from "./agents";
 import { discoverySweep, prospectingStatus, researchProspect, researchSweep } from "./prospecting";
 import { marketSupplySweep } from "./supply";
@@ -336,6 +337,13 @@ export async function outreachReadiness(id: string) {
   if (p.email && (await isSuppressed("EMAIL", p.email))) blockers.push("This address is on the do-not-email list (unsubscribed or suppressed).");
   const professionCode = await outreachProfessionFor(p);
   if (!professionCode) blockers.push(`Clinic outreach isn't open in ${p.state}: the Growth → Expansion target must be LIVE and the marketplace open there.`);
+  // One inbox, one sequence: another clinic on file may share this address.
+  if (p.email && !blockers.length) {
+    const h = (await addressHistories("PROSPECT", [p.email])).get(normEmail(p.email))!;
+    if (h.stopped) blockers.push("Another clinic on file with this email address has replied, signed up or opted out, so this one isn't emailed.");
+    else if (h.pending) blockers.push("An email to this address is already waiting to go out (for another clinic that shares it).");
+    else if (h.sent > p.outreachStep) blockers.push(`This address already got ${h.sent === 1 ? "the first email" : `${h.sent} emails`} (it's shared with another clinic on file). It gets each email once; the next one follows the usual schedule.`);
+  }
   if (p.outreachStep > 0) waits.push(`Outreach already started (email ${p.outreachStep} of ${OUTREACH_SEQUENCE.length} sent).`);
   if (p.outreachPaused) waits.push("Outreach is paused for this clinic.");
   if (!(await marketingOn("clinic"))) waits.push("Clinic marketing is switched off (Growth → Overview), so the automatic follow-ups won't go out.");

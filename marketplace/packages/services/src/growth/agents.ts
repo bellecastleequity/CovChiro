@@ -2,7 +2,7 @@ import { brand } from "@cm/config";
 import {
   phonesOnFile,
   isPersonalInjuryPractice,
-  activationDue, escalationTopic, leadScore, nurtureDue, outreachStepDue, providerGrowthState, prospectStageFromAccount, ruleSegment, US_STATES, wantsOptOut,
+  activationDue, addressDecision, escalationTopic, leadScore, nurtureDue, outreachStepDue, providerGrowthState, prospectStageFromAccount, ruleSegment, US_STATES, wantsOptOut,
   type GrowthCadence, type ProspectStage,
 } from "@cm/core";
 import { prisma, type Prisma } from "@cm/db";
@@ -20,6 +20,7 @@ import { growthFunnels, marketForPoint } from "./analytics";
 import { linkProviderProspects, providerOutreachSweep } from "./providers";
 import { activeTargets, outreachProfessionFor, primaryTarget, promptReadiness, providerTargetFrom } from "./expansion";
 import { inOutreachWindow, outreachSideAllowance, priorityContext } from "./priority";
+import { addressHistories, syncToAddress } from "./addresses";
 
 /**
  * Growth agents as idempotent sweeps (same model as jobs.ts): each finds
@@ -326,7 +327,7 @@ export const clinicOutreachWhere = (steps: number) =>
 export const CLINIC_OUTREACH_ORDER = [{ outreachStep: "desc" }, { intentScore: "desc" }, { createdAt: "asc" }] satisfies Prisma.ClinicProspectOrderByWithRelationInput[];
 
 export async function outreachSweep() {
-  const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0, outsideWindow: false };
+  const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0, sharedInbox: 0, outsideWindow: false };
   if (!(await agentOn("clinicOutreach")) || !(await marketingOn("clinic"))) return out;
   if (!(await inOutreachWindow())) return { ...out, outsideWindow: true };
   const s = await getSettings();
@@ -344,15 +345,23 @@ export async function outreachSweep() {
   let allowance = (await outreachSideAllowance("DEMAND")).remaining;
   const allowed = new Map<string, boolean>();
   const piReady = await approvedPiKeys();
+  // One inbox, one sequence: prospects sharing an email address get each step once, one per run.
+  const history = await addressHistories("PROSPECT", rows.map((r) => r.email));
+  const usedThisRun = new Set<string>();
   for (const c of rows) {
     if (allowance <= 0) { out.deferred++; break; }
     // Safety: only where the growth target is LIVE and the marketplace takes shifts for that profession there.
     const professionCode = await outreachProfessionFor(c, allowed);
     if (!professionCode) continue;
-    if (!outreachStepDue(c.outreachStep, c.lastContactedAt, gaps, now)) continue;
+    const addr = normEmail(c.email);
+    const d = addressDecision(c.outreachStep, c.lastContactedAt, history.get(addr)!, usedThisRun.has(addr));
+    if (d.action === "SYNC") { await syncToAddress("PROSPECT", c.id, d.step, d.lastContactedAt); out.sharedInbox++; continue; }
+    if (d.action === "SKIP") { out.sharedInbox++; continue; }
+    if (!outreachStepDue(c.outreachStep, d.lastContactedAt, gaps, now)) continue;
     if (await prisma.communication.count({ where: { entityType: "PROSPECT", entityId: c.id, status: { in: ["PENDING_APPROVAL", "QUEUED"] } } })) continue;
     const r = await recipient("PROSPECT", c.id);
     if (!r) continue;
+    usedThisRun.add(addr);
     out.queued++;
     const res = await outcome(() => composeAndSend("clinicOutreach", r, outreachKey(c.outreachStep, c.practiceType, piReady), prospectVars(c, r.firstName, welcomeOfferLine(s)), {
       purpose: "COMMERCIAL", professionCode, dedupeKey: `outreach:${c.id}:${c.outreachStep}`, review: s["growth.outreachMode"] !== "auto",

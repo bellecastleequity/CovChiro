@@ -1,9 +1,10 @@
-import { countryOf, outreachStepDue } from "@cm/core";
+import { addressDecision, countryOf, outreachStepDue } from "@cm/core";
 import { prisma } from "@cm/db";
 import { DateTime } from "luxon";
 import { clock, getSettings, requireAdmin, type Actor } from "../context";
 import { CLINIC_OUTREACH_ORDER, approvedPiKeys, clinicOutreachWhere, outreachKey } from "./agents";
-import { agentOn, isSuppressed, livePrompts, marketingOn } from "./engine";
+import { agentOn, isSuppressed, livePrompts, marketingOn, normEmail } from "./engine";
+import { addressHistories } from "./addresses";
 import { outreachProfessionFor } from "./expansion";
 import { activePairs, marketRank, providerOutreachKey, providerOutreachWhere } from "./providers";
 import { inOutreachWindow, outreachSideAllowance, priorityContext } from "./priority";
@@ -66,12 +67,19 @@ export async function upNext(actor: Actor, opts: { limit?: number } = {}) {
     const held = await pending("PROSPECT", rows.map((r) => r.id));
     const allowed = new Map<string, boolean>();
     const piReady = await approvedPiKeys();
+    const history = await addressHistories("PROSPECT", rows.map((r) => r.email));
+    const used = new Set<string>();
     for (const c of rows) {
       if (clinic.length >= limit) break;
       if (held.has(c.id) || !c.email) continue;
-      if (!outreachStepDue(c.outreachStep, c.lastContactedAt, gaps, sendAt)) continue;
+      // Same rule as the sweep: a shared inbox gets each email once, one per window.
+      const addr = normEmail(c.email);
+      const d = addressDecision(c.outreachStep, c.lastContactedAt, history.get(addr)!, used.has(addr));
+      if (d.action !== "SEND") continue;
+      if (!outreachStepDue(c.outreachStep, d.lastContactedAt, gaps, sendAt)) continue;
       if (!(await outreachProfessionFor(c, allowed))) continue;
       if (await isSuppressed("EMAIL", c.email)) continue;
+      used.add(addr);
       clinic.push({ id: c.id, kind: "CLINIC", name: c.clinicName, email: c.email, where: [c.city, c.state].filter(Boolean).join(", "), step: c.outreachStep, emailKey: outreachKey(c.outreachStep, c.practiceType, piReady), nextWindow: clinic.length < clinicSlots });
     }
   }
@@ -90,16 +98,22 @@ export async function upNext(actor: Actor, opts: { limit?: number } = {}) {
     rows.sort((a, b) => ctx.rank("SUPPLY", a.state, a.marketKey) - ctx.rank("SUPPLY", b.state, b.marketKey) || rank(a.marketKey) - rank(b.marketKey));
     const held = await pending("PROVIDER_PROSPECT", rows.map((r) => r.id));
     const ready = new Map<string, boolean>();
+    const history = await addressHistories("PROVIDER_PROSPECT", rows.map((r) => r.email));
+    const used = new Set<string>();
     for (const p of rows) {
       if (provider.length >= limit) break;
       if (held.has(p.id) || !p.email) continue;
-      if (!outreachStepDue(p.outreachStep, p.lastContactedAt, gaps, sendAt)) continue;
+      const addr = normEmail(p.email);
+      const d = addressDecision(p.outreachStep, p.lastContactedAt, history.get(addr)!, used.has(addr));
+      if (d.action !== "SEND") continue;
+      if (!outreachStepDue(p.outreachStep, d.lastContactedAt, gaps, sendAt)) continue;
       if (countryOf(p.state) === "CA" && p.outreachStep > 0) continue;
       const key = providerOutreachKey(p);
       const rk = `${p.professionCode}:${key}`;
       if (!ready.has(rk)) ready.set(rk, (await livePrompts(key, p.professionCode)).length > 0);
       if (!ready.get(rk)) continue;
       if (await isSuppressed("EMAIL", p.email)) continue;
+      used.add(addr);
       provider.push({ id: p.id, kind: "PROVIDER", name: p.displayName, email: p.email, where: [p.city, p.state].filter(Boolean).join(", "), step: p.outreachStep, emailKey: key, nextWindow: provider.length < providerSlots });
     }
   }

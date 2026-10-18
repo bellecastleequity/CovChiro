@@ -1,17 +1,18 @@
 import { brand } from "@cm/config";
-import { acceptProviderEmail, countryOf, pickProviderEmail, siteUrl, escalationTopic, outreachStepDue, regionName, wantsOptOut, type ProviderCandidate } from "@cm/core";
+import { acceptProviderEmail, addressDecision, countryOf, pickProviderEmail, siteUrl, escalationTopic, outreachStepDue, regionName, wantsOptOut, type ProviderCandidate } from "@cm/core";
 import { prisma, type Prisma, type ProviderProspect } from "@cm/db";
 import { emailVerifier, geoProvider } from "@cm/integrations";
 import { DateTime } from "luxon";
 import { clock, getSettings } from "../context";
 import { absoluteUrl } from "../notify";
 import { marketForPoint } from "./analytics";
-import { agentOn, ai, aiRules, composeAndSend, Deferred, escalate, isSuppressed, livePrompts, logAgent, marketingOn, newToken, recipient, suppress } from "./engine";
+import { agentOn, ai, aiRules, composeAndSend, Deferred, escalate, isSuppressed, livePrompts, logAgent, marketingOn, newToken, normEmail, recipient, suppress } from "./engine";
 import { activeTargets, registryProfile } from "./expansion";
 import { KNOWN_PRICING, researchEngine, researchSpendCents } from "./prospecting";
 import { handleResearchFailure, researchBlocked, withRateLimitRetry } from "./aihealth";
 import { findWebsite, readSite } from "./sitefirst";
 import { inOutreachWindow, outreachSideAllowance, priorityContext } from "./priority";
+import { addressHistories, syncToAddress } from "./addresses";
 
 /**
  * Provider acquisition (the provider side of Growth):
@@ -368,7 +369,7 @@ export function providerOutreachKey(p: { state: string; npi: string | null; outr
 }
 
 export async function providerOutreachSweep() {
-  const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0, skippedNoPrompt: 0, outsideWindow: false };
+  const out = { queued: 0, sent: 0, drafts: 0, blocked: 0, deferred: 0, skippedNoPrompt: 0, sharedInbox: 0, outsideWindow: false };
   if (!(await agentOn("providerOutreach")) || !(await marketingOn("provider"))) return out;
   if (!(await inOutreachWindow())) return { ...out, outsideWindow: true };
   const pairs = await activePairs();
@@ -389,9 +390,16 @@ export async function providerOutreachSweep() {
   const ready = new Map<string, boolean>();
   const names = new Map((await prisma.profession.findMany({ select: { code: true, displayName: true } })).map((x) => [x.code, x.displayName.toLowerCase()]));
   const markets = new Map((await prisma.growthMarket.findMany({ select: { key: true, name: true } })).map((m) => [m.key, m.name]));
+  // One inbox, one sequence (addresses.ts): a shared address gets each step once, one per run.
+  const history = await addressHistories("PROVIDER_PROSPECT", rows.map((r) => r.email));
+  const usedThisRun = new Set<string>();
   for (const p of rows) {
     if (allowance <= 0) { out.deferred++; break; }
-    if (!outreachStepDue(p.outreachStep, p.lastContactedAt, gaps, now)) continue;
+    const addr = normEmail(p.email);
+    const d = addressDecision(p.outreachStep, p.lastContactedAt, history.get(addr)!, usedThisRun.has(addr));
+    if (d.action === "SYNC") { await syncToAddress("PROVIDER_PROSPECT", p.id, d.step, d.lastContactedAt); out.sharedInbox++; continue; }
+    if (d.action === "SKIP") { out.sharedInbox++; continue; }
+    if (!outreachStepDue(p.outreachStep, d.lastContactedAt, gaps, now)) continue;
     // Canada isn't open for shifts: Canadian providers get the waitlist / pre-enrollment wording (its own prompt, approved by an admin), and CASL is checked at send time.
     if (countryOf(p.state) === "CA" && p.outreachStep > 0) continue;
     // Not matched to the NPI registry (found through Apollo): first email makes no claim about a license.
@@ -402,6 +410,7 @@ export async function providerOutreachSweep() {
     if (await prisma.communication.count({ where: { entityType: "PROVIDER_PROSPECT", entityId: p.id, status: { in: ["PENDING_APPROVAL", "QUEUED"] } } })) continue;
     const r = await recipient("PROVIDER_PROSPECT", p.id);
     if (!r) continue;
+    usedThisRun.add(addr);
     out.queued++;
     let res: string;
     try {

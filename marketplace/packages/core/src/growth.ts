@@ -310,3 +310,36 @@ export function emailFailureCounts(error: string | null | undefined): boolean {
   if (/\b(401|403|408|429|5\d\d)\b/.test(e)) return false;
   return !/credit|quota|rate.?limit|too many requests|unauthori[sz]ed|forbidden|permission|api key|suspend|timed? ?out|timeout|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|socket|network|unavailable/i.test(e);
 }
+
+// ---------------- one inbox, one sequence ----------------
+
+/** What the outreach sweeps know about an email address across every prospect that shares it. */
+export interface AddressHistory {
+  /** Sequence emails already sent to this address (any prospect). */
+  sent: number;
+  lastSentAt: Date | null;
+  /** A draft or approved email to this address is waiting to go out. */
+  pending: boolean;
+  /** Another prospect with this address replied, signed up, opted out, bounced or was marked do-not-contact. */
+  stopped: boolean;
+}
+
+export type AddressDecision =
+  | { action: "SEND"; lastContactedAt: Date | null }
+  | { action: "SYNC"; step: number; lastContactedAt: Date | null }
+  | { action: "SKIP"; reason: "same_address_this_run" | "address_pending" | "address_stopped" };
+
+/**
+ * Several prospects can share one inbox (a group's records@ address on every location). The address
+ * gets the sequence once: never two emails in one send window, never a step it already received.
+ * SYNC = this prospect is behind what the address already got: catch it up (step + last contact) and skip.
+ * SEND returns the last contact to use for the wait between steps (the address's, when later).
+ */
+export function addressDecision(step: number, lastContactedAt: Date | null, h: AddressHistory, usedThisRun: boolean): AddressDecision {
+  if (usedThisRun) return { action: "SKIP", reason: "same_address_this_run" };
+  if (h.stopped) return { action: "SKIP", reason: "address_stopped" };
+  if (h.pending) return { action: "SKIP", reason: "address_pending" };
+  const last = [lastContactedAt, h.lastSentAt].filter((d): d is Date => !!d).sort((a, b) => +b - +a)[0] ?? null;
+  if (h.sent > step) return { action: "SYNC", step: h.sent, lastContactedAt: last };
+  return { action: "SEND", lastContactedAt: last };
+}
