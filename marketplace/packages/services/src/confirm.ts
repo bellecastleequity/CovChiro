@@ -90,23 +90,33 @@ export async function confirmInTx(
   const hold = await takeShiftHold(db, shiftId, travel.lodgingEstimateCents);
 
   // Promo: redeem now (counts only confirmed shifts). If it ran out since posting, drop it.
-  // promoDiscountCents carries promo + partner discount; only the promo part can run out.
+  // promoDiscountCents carries promo + partner + Welcome Discount; the promo and welcome parts can run out.
   const partnerDiscount = Math.min(shift.partnerDiscountCents, shift.promoDiscountCents);
+  const welcomeAsked = Math.min(shift.welcomeDiscountCents, shift.promoDiscountCents - partnerDiscount);
   let discount = shift.promoDiscountCents;
-  if (shift.promoCodeId && discount - partnerDiscount > 0) {
+  const promoPart = discount - partnerDiscount - welcomeAsked;
+  if (shift.promoCodeId && promoPart > 0) {
     const updated = await db.$executeRaw(
       Prisma.sql`UPDATE "PromoCode" SET "usedCount" = "usedCount" + 1 WHERE id = ${shift.promoCodeId} AND ("maxUses" IS NULL OR "usedCount" < "maxUses")`,
     );
     if (updated === 1) {
       await db.promoRedemption.upsert({
         where: { shiftId },
-        create: { promoCodeId: shift.promoCodeId, clinicOrgId: shift.location.clinicOrgId, shiftId, discountCents: discount - partnerDiscount },
-        update: { voidedAt: null, discountCents: discount - partnerDiscount },
+        create: { promoCodeId: shift.promoCodeId, clinicOrgId: shift.location.clinicOrgId, shiftId, discountCents: promoPart },
+        update: { voidedAt: null, discountCents: promoPart },
       });
     } else {
-      discount = partnerDiscount;
-      await db.shift.update({ where: { id: shiftId }, data: { promoDiscountCents: partnerDiscount } });
+      discount -= promoPart;
+      await db.shift.update({ where: { id: shiftId }, data: { promoDiscountCents: discount } });
     }
+  }
+  // Welcome Discount: reserve one of the clinic's (row lock, so the total is never exceeded); if the last
+  // one went to another booking since this shift was priced, the standard price applies.
+  const { reserveInTx } = await import("./welcome");
+  const welcomeKept = await reserveInTx(db, { id: shiftId, welcomeDiscountCents: welcomeAsked, clinicPriceCents: shift.clinicPriceCents, clinicOrgId: shift.location.clinicOrgId }, null, now);
+  if (welcomeKept < welcomeAsked) {
+    discount -= welcomeAsked;
+    await db.shift.update({ where: { id: shiftId }, data: { promoDiscountCents: discount, welcomeDiscountCents: 0 } });
   }
 
   const breakdown = {
@@ -141,6 +151,7 @@ export async function confirmInTx(
       providerPayCents: shift.providerPayCents,
       promoDiscountCents: discount,
       partnerDiscountCents: partnerDiscount,
+      welcomeDiscountCents: welcomeKept,
       mileageCents: travel.mileageCents,
       lodgingEstimateCents: travel.lodgingEstimateCents,
       flyIn,
@@ -157,6 +168,7 @@ export async function confirmInTx(
       graceEndsAt: opts.graceMinutes ? new Date(+now + opts.graceMinutes * 60_000) : null,
     },
   });
+  if (welcomeKept) await db.welcomeRedemption.updateMany({ where: { shiftId, status: "RESERVED" }, data: { assignmentId: assignment.id } });
 
   assertTransition("Shift", shift.status, "CONFIRMED");
   await db.shift.update({ where: { id: shiftId }, data: { status: "CONFIRMED" } });
@@ -249,6 +261,7 @@ export async function confirmInTx(
           template: "shift_confirmed_clinic",
           title: `Coverage confirmed for ${date}`,
           body: `${who} is confirmed for ${shift.location.name}.`,
+          details: await (await import("./welcome")).confirmationLines(shift.location.clinicOrgId, { clinicPriceCents: shift.clinicPriceCents, welcomeDiscountCents: assignment.welcomeDiscountCents }),
           link: `/clinic/shifts/${shiftId}`,
           ctaLabel: "View shift",
           // Days of a multi-day booking: in-app only; one "fully covered" email summarizes them.

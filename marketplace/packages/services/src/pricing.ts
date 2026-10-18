@@ -13,6 +13,8 @@ import {
   tierForVisits,
   volumeCeilings,
   volumeTermsFor,
+  welcomeBaseCents,
+  welcomeDiscount,
   type BaseQuote,
   type PricingModel,
   type PromoFacts,
@@ -105,6 +107,10 @@ export interface ShiftQuote {
   promo: { id: string; code: string; discountCents: number } | null;
   /** Partner clinic program: the partnership in force when priced, its discount (from margin) and whether the rate lock lowered the price. */
   partner: { id: string; percent: number; discountCents: number; lockedFromCents: number | null } | null;
+  /** Welcome Discount on this booking (welcome.ts): percent of baseCents, from margin; null when none applies. */
+  welcome: { percent: number; baseCents: number; discountCents: number; available: number } | null;
+  /** A typed promo code not used because the Welcome Discount is larger (they never combine). */
+  promoSetAside: string | null;
   /** Volume-priced (Addendum 03): the tier booked, its terms, and both tier prices for the clinic. */
   volume: {
     tier: VolumeTier;
@@ -126,6 +132,12 @@ export async function quoteShift(
     lunchMinutes?: number | null;
     boosted?: boolean;
     promoCode?: string | null;
+    /** A referral credit code to apply automatically when nothing else discounts the booking. */
+    autoPromoCode?: string | null;
+    /** Offer the clinic's Welcome Discount on this booking (new postings and drafts; never clinic-set rates). */
+    welcome?: boolean;
+    /** Re-pricing this shift: it doesn't count against its own Welcome Discount. */
+    excludeShiftId?: string;
     pricedAt?: Date;
     /** Clinic's expected visits: picks the volume tier (none = Busy). */
     expectedPatients?: number | null;
@@ -190,10 +202,32 @@ export async function quoteShift(
     { pricedAt, timeZone: location.timeZone, boosted: !!input.boosted, professionCode: input.professionCode },
     s,
   );
+  // Welcome Discount: a clinic's first bookings, automatically. Never stacked: partner clinics keep their
+  // partner pricing, a typed promo code gives the larger of the two, and a referral credit waits.
+  let welcome: ShiftQuote["welcome"] = null;
+  if (input.welcome && !partnership) {
+    const st = await (await import("./welcome")).welcomeState(db, location.clinicOrgId, { excludeShiftId: input.excludeShiftId });
+    if (st?.canUse) {
+      const baseCents = welcomeBaseCents({ pricingModel: profession.pricingModel, cardClinicCents: clinicCardCents, billableHours: base.billableHours, clinicPriceCents: base.clinicPriceCents });
+      const discountCents = welcomeDiscount({ baseCents, percent: st.entitlement.percent, clinicPriceCents: base.clinicPriceCents, providerPayCents: base.providerPayCents, maxShareOfMarginPercent: s["promo.maxShareOfMarginPercent"], minContributionCents: s["welcome.minContributionCents"] });
+      if (discountCents > 0) welcome = { percent: st.entitlement.percent, baseCents, discountCents, available: st.counts.available };
+    }
+  }
   let promo: ShiftQuote["promo"] = null;
-  if (input.promoCode && input.promoCode.trim()) {
-    const p = await validatePromoForClinic(db, input.promoCode, location.clinicOrgId, pricedAt);
+  let promoSetAside: string | null = null;
+  const code = input.promoCode?.trim() || (welcome ? null : input.autoPromoCode?.trim() || null);
+  if (code) {
+    const p = await validatePromoForClinic(db, code, location.clinicOrgId, pricedAt);
     promo = { id: p.id, code: p.code, discountCents: promoDiscountCents(p, base, s["promo.maxShareOfMarginPercent"]) };
+    // A typed code and the Welcome Discount never combine: the larger one applies. When the code wins,
+    // the Welcome Discount stays unused for a later booking.
+    if (welcome) {
+      if (promo.discountCents >= welcome.discountCents) welcome = null;
+      else {
+        promoSetAside = promo.code;
+        promo = null;
+      }
+    }
   }
   const partner: ShiftQuote["partner"] = partnership
     ? {
@@ -203,12 +237,13 @@ export async function quoteShift(
         lockedFromCents: clinicCardCents < card.clinicPriceCents ? card.clinicPriceCents : null,
       }
     : null;
-  return { base, pricingModel: profession.pricingModel, rateCardId: card.id, rateRegionId, promo, partner, volume };
+  return { base, pricingModel: profession.pricingModel, rateCardId: card.id, rateRegionId, promo, partner, welcome, promoSetAside, volume };
 }
 
-/** The discount fields a shift stores from its quote: promoDiscountCents carries promo + partner (everything totals use). */
-export function discountFields(q: Pick<ShiftQuote, "promo" | "partner">) {
+/** The discount fields a shift stores from its quote: promoDiscountCents carries promo + partner + welcome (everything totals use). */
+export function discountFields(q: Pick<ShiftQuote, "promo" | "partner" | "welcome">) {
   const promo = q.promo?.discountCents ?? 0;
   const partner = q.partner?.discountCents ?? 0;
-  return { promoCodeId: q.promo?.id ?? null, promoDiscountCents: promo + partner, partnerDiscountCents: partner, partnershipId: q.partner?.id ?? null };
+  const welcome = q.welcome?.discountCents ?? 0;
+  return { promoCodeId: q.promo?.id ?? null, promoDiscountCents: promo + partner + welcome, partnerDiscountCents: partner, welcomeDiscountCents: welcome, partnershipId: q.partner?.id ?? null };
 }

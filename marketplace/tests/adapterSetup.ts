@@ -30,7 +30,7 @@ if (mode === "pg") {
 /**
  * Open states: posting needs an available doctor (market.requireAvailableProvider). Older test files
  * post shifts to test other things before any provider exists, so the check is off unless a test
- * (open-states.test.ts) turns it on.
+ * (open-states.test.ts) turns it on. The Welcome Discount is off the same way (welcome.test.ts).
  */
 beforeAll(async () => {
   // The test-site suite builds its own database in its own beforeAll (and runs with the check on, like the test site).
@@ -38,5 +38,7 @@ beforeAll(async () => {
   const { prisma } = await import("@cm/db");
   const key = "market.requireAvailableProvider";
   await prisma.setting.upsert({ where: { key }, create: { key, value: false }, update: { value: false } });
+  // Welcome Discount: off for older files (their prices assume no discount); welcome.test.ts turns it on.
+  await prisma.setting.upsert({ where: { key: "welcome.enabled" }, create: { key: "welcome.enabled", value: false }, update: { value: false } });
   (await import("@cm/services")).invalidateSettings();
 });

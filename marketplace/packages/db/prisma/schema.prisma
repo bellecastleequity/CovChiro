@@ -592,6 +592,7 @@ model ClinicOrg {
   verificationNote       String?
   verifications          ClinicVerification[]
   partnerships           ClinicPartnership[]
+  welcomeEntitlement     WelcomeEntitlement?
 }
 
 /// One submission of the clinic verification form, with the automatic check results and the decision.
@@ -934,6 +935,8 @@ model Shift {
   promoDiscountCents          Int               @default(0)
   /// Partner clinic program: the part of promoDiscountCents from the clinic's partnership.
   partnerDiscountCents        Int               @default(0)
+  /// Welcome Discount part of promoDiscountCents (15% of the base rate on a clinic's first 3 completed bookings).
+  welcomeDiscountCents        Int               @default(0)
   partnershipId               String?
   /// Clinic-set rate (beta): "MARKET" (rate engine) or "CLINIC" (clinic's own lower price, not auto-filled).
   rateMode                    String            @default("MARKET")
@@ -1158,6 +1161,8 @@ model Assignment {
   promoDiscountCents   Int                       @default(0)
   /// Partner clinic program share of promoDiscountCents (for the partner report).
   partnerDiscountCents Int                       @default(0)
+  /// Welcome Discount part of promoDiscountCents (15% of the base rate on a clinic's first 3 completed bookings).
+  welcomeDiscountCents Int                       @default(0)
   mileageCents         Int
   lodgingEstimateCents Int                       @default(0)
   lodgingApprovedCents Int                       @default(0)
@@ -3031,4 +3036,48 @@ model TextMessage {
 
   @@index([phone, createdAt])
   @@index([direction, readAt])
+}
+
+/// Welcome Discount (owner spec Oct 2026): a clinic's permanent entitlement to a discount on its first
+/// completed bookings. Never expires; settings changes never alter an existing row.
+model WelcomeEntitlement {
+  id             String              @id @default(cuid())
+  clinicOrgId    String              @unique
+  clinicOrg      ClinicOrg           @relation(fields: [clinicOrgId], references: [id], onDelete: Cascade)
+  promotion      String              @default("WELCOME")
+  percent        Int
+  totalBookings  Int
+  /// Completed bookings before the offer existed (count toward the total; set once at install).
+  priorCompleted Int                 @default(0)
+  /// ACTIVE | REVIEW (looks like a business that already used its offer; an admin decides)
+  status         String              @default("ACTIVE")
+  reviewReason   String?
+  note           String?
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+  redemptions    WelcomeRedemption[]
+}
+
+/// One booking's use of the Welcome Discount: RESERVED at confirmation, REDEEMED once completed,
+/// RELEASED when the booking is cancelled or not delivered (the discount is available again).
+model WelcomeRedemption {
+  id            String             @id @default(cuid())
+  entitlementId String
+  entitlement   WelcomeEntitlement @relation(fields: [entitlementId], references: [id], onDelete: Cascade)
+  clinicOrgId   String
+  shiftId       String             @unique
+  assignmentId  String?
+  status        String
+  /// The base rate the percentage was taken from, and the discount.
+  standardCents Int
+  discountCents Int
+  reservedAt    DateTime           @db.Timestamptz(3)
+  redeemedAt    DateTime?          @db.Timestamptz(3)
+  releasedAt    DateTime?          @db.Timestamptz(3)
+  releaseReason String?
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@index([entitlementId, status])
+  @@index([clinicOrgId, status])
 }

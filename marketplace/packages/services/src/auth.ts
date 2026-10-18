@@ -150,6 +150,8 @@ export async function createAccount(input: AccountInput, passwordHash: string | 
       });
     }
     if (clinicOrgId) await growthPublic.onClinicSignup(clinicOrgId, input.prospectToken);
+    // Welcome Discount: the clinic's permanent entitlement and its welcome email.
+    if (clinicOrgId) await (await import("./welcome")).sendWelcomeEmail(clinicOrgId).catch((e) => console.error("welcome discount email failed", e));
   } catch (e) {
     console.error("growth signup attribution failed", e);
   }
@@ -435,6 +437,7 @@ export async function addClinicSide(actor: Actor, input: { organization: string 
   const c = await prisma.clinicOrg.create({ data: { legalName: name, displayName: name, billingEmail: user.email, members: { create: { userId: user.id, role: "CLINIC_OWNER" } } } });
   await audit(prisma, actor, "user.clinic_side_added", "ClinicOrg", c.id, null, { name });
   await growthPublic.onClinicSignup(c.id, null).catch((e) => console.error("growth attribution failed", e));
+  await (await import("./welcome")).sendWelcomeEmail(c.id).catch((e) => console.error("welcome discount email failed", e));
   await notifyAdmins(prisma, {
     template: "admin_new_signup",
     title: `Provider added a clinic they own: ${name}`,

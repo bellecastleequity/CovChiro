@@ -176,6 +176,10 @@ export const SETTINGS = {
   "partner.noticeDays": def({ group: "Partner clinics", label: "Notice to end before renewal (days)", schema: z.number().int().min(0).max(180), default: 30, flag: "ATTORNEY_REVIEW" }),
 
   // ---------- promo codes ----------
+  "welcome.enabled": def({ group: "Welcome Discount", label: "Welcome Discount for new clinics", help: "On: every new clinic gets the discount on its first bookings, shown on the website, the clinic dashboard, posting and emails. Off: no NEW clinic gets it and the public messaging is hidden; clinics that already have it keep it.", schema: z.boolean(), default: true, flag: "OWNER_DECISION" }),
+  "welcome.percent": def({ group: "Welcome Discount", label: "Welcome Discount percentage (new clinics)", help: "Of the base coverage rate (never overtime, premiums or travel). Changing it only affects clinics that join afterwards.", schema: z.number().int().min(1).max(50), default: 15, flag: "OWNER_DECISION" }),
+  "welcome.bookings": def({ group: "Welcome Discount", label: "Discounted completed bookings (new clinics)", help: "Each day of a multi-day booking counts as one booking. Changing it only affects clinics that join afterwards.", schema: z.number().int().min(1).max(10), default: 3, flag: "OWNER_DECISION" }),
+  "welcome.minContributionCents": def({ group: "Welcome Discount", label: "Smallest platform margin left after the discount (per booking)", help: "Margin safeguard: the discount is reduced (never provider pay) so at least this much margin remains. 0 = the discount may use the margin up to the promo-code share limit.", schema: cents, default: 0, flag: "OWNER_DECISION" }),
   "promo.maxShareOfMarginPercent": def({
     group: "Promo codes",
     label: "Max discount as % of platform margin",

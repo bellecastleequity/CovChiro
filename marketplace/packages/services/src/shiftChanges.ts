@@ -384,6 +384,7 @@ async function releaseForChange(actor: Actor, c: ShiftChange, outcome: "DECLINED
     await db.payout.updateMany({ where: { assignmentId: a.id, status: { in: ["PENDING", "SCHEDULED", "ON_HOLD"] } }, data: { status: "CANCELLED" } });
     // The promo goes back with the booking and is redeemed again by whoever fills the shift.
     await db.promoRedemption.updateMany({ where: { shiftId: c.shiftId, voidedAt: null }, data: { voidedAt: now } });
+    await (await import("./welcome")).releaseInTx(db, c.shiftId, "Provider declined the change", now);
     if (a.shift.promoCodeId && a.promoDiscountCents > 0) await db.promoCode.update({ where: { id: a.shift.promoCodeId }, data: { usedCount: { decrement: 1 } } });
     const startsAt = new Date(after.shift.startsAt);
     await db.shift.update({

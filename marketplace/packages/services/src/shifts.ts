@@ -178,7 +178,7 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT, opts: { nee
   const orgId = requireClinic(actor);
   const input = ShiftInput.parse(raw);
   const { loc: location } = await validateShiftInput(prisma, orgId, input, false);
-  const q = await quoteShift(prisma, { ...input, promoCode: input.promoCode?.trim() || (await autoCredit(prisma, orgId)) });
+  const q = await quoteShift(prisma, { ...input, promoCode: input.promoCode?.trim() || null, autoPromoCode: input.clinicRate ? null : await autoCredit(prisma, orgId), welcome: !input.clinicRate });
   // Estimated travel range from currently eligible providers (clinic never sees provider pay).
   let travel: { minCents: number; maxCents: number; candidates: number } | null = null;
   const { clinicRatePreview } = await import("./clinicRate");
@@ -198,6 +198,9 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT, opts: { nee
     partnerDiscountCents: q.partner?.discountCents ?? 0,
     partnerPercent: q.partner?.percent ?? null,
     partnerLockedFromCents: q.partner?.lockedFromCents ?? null,
+    /** Welcome Discount on this booking (null when none applies) and how many the clinic can still use. */
+    welcome: q.welcome ? { percent: q.welcome.percent, discountCents: q.welcome.discountCents, baseCents: q.welcome.baseCents, available: q.welcome.available } : null,
+    promoSetAside: q.promoSetAside,
     premiums: q.base.premiums,
     tier: q.base.tier,
     hours: q.base.hours,
@@ -205,7 +208,7 @@ export async function quoteForClinic(actor: Actor, raw: ShiftInputT, opts: { nee
     lunchMinutes: q.base.lunchMinutes,
     overtimeHours: q.base.overtimeHours,
     billableHours: q.base.billableHours,
-    subtotalCents: q.base.clinicPriceCents - (q.promo?.discountCents ?? 0) - (q.partner?.discountCents ?? 0),
+    subtotalCents: q.base.clinicPriceCents - (q.promo?.discountCents ?? 0) - (q.partner?.discountCents ?? 0) - (q.welcome?.discountCents ?? 0),
     travel,
     volume: q.volume ? await clinicVolumeView(q.volume, input.locationId, input.expectedPatients ?? null) : null,
     // Other live bookings at this location overlapping this time (fine when more providers are needed).
@@ -298,7 +301,7 @@ export async function createShift(actor: Actor, raw: ShiftInputT, opts: { post: 
     if (opts.post) await assertClinicPhones(orgId, db);
     const { supervisionRequired, loc } = await validateShiftInput(db, orgId, input, opts.post);
     if (input.clinicRate && !opts.post) throw new DomainError("VALIDATION", "A clinic-set rate is applied when you post. Post the shift now, or switch back to the market price to save a draft.");
-    const q = await quoteShift(db, { ...input, promoCode: input.clinicRate ? null : input.promoCode?.trim() || (await autoCredit(db, orgId)) });
+    const q = await quoteShift(db, { ...input, promoCode: input.clinicRate ? null : input.promoCode?.trim() || null, autoPromoCode: input.clinicRate ? null : await autoCredit(db, orgId), welcome: !input.clinicRate });
     const rate = input.clinicRate
       ? await (await import("./clinicRate")).prepareClinicRate(db, actor, input.clinicRate, { startsAt: input.startsAt, timeZone: loc.timeZone, promoCode: input.promoCode }, q.base)
       : null;
@@ -434,7 +437,7 @@ export async function updateDraftShift(actor: Actor, shiftId: string, raw: Shift
       throw new DomainError("VALIDATION", "This day is part of a multi-day booking; its location can't be changed.");
     }
     const { supervisionRequired } = await validateShiftInput(db, orgId, input, false);
-    const q = await quoteShift(db, { ...input, promoCode: input.promoCode?.trim() || (await autoCredit(db, orgId)) });
+    const q = await quoteShift(db, { ...input, promoCode: input.promoCode?.trim() || null, autoPromoCode: await autoCredit(db, orgId), welcome: true, excludeShiftId: shiftId });
     await db.shift.update({
       where: { id: shiftId },
       data: {
@@ -1051,6 +1054,7 @@ export async function cancelShiftByClinic(actor: Actor, shiftId: string, reason:
     await db.application.updateMany({ where: { shiftId, status: "ACTIVE" }, data: { status: "NOT_SELECTED" } });
     await db.offer.updateMany({ where: { shiftId, status: "PENDING" }, data: { status: "WITHDRAWN", respondedAt: now } });
     await db.promoRedemption.updateMany({ where: { shiftId, voidedAt: null }, data: { voidedAt: now } });
+    await (await import("./welcome")).releaseInTx(db, shiftId, "Booking cancelled by the clinic", now);
     if (assignment) {
       assertTransition("Assignment", assignment.status, "CANCELLED");
       await db.assignment.update({
@@ -1136,6 +1140,8 @@ export async function cancelAssignment(
     await airfarePayout(db, a, air, now);
     await applyLodgingCancelInTx(db, lodging, now);
     await db.promoRedemption.updateMany({ where: { shiftId: a.shiftId, voidedAt: null }, data: { voidedAt: now } });
+    // The discount waits for whoever covers instead (a replacement reserves it again).
+    await (await import("./welcome")).releaseInTx(db, a.shiftId, opts.noShow ? "Provider no-show" : opts.lapse ? "Provider's license lapsed" : "Booking cancelled", now);
     if (a.shift.promoCodeId && a.shift.promoDiscountCents - a.shift.partnerDiscountCents > 0) {
       await db.promoCode.update({ where: { id: a.shift.promoCodeId }, data: { usedCount: { decrement: 1 } } });
     }
