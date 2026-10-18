@@ -157,6 +157,33 @@ async function handle(req, res, url, ctx, send) {
   // Everything below changes the site: require the custom header (CSRF) and a write method.
   if (!['POST', 'PUT'].includes(req.method) || req.headers['x-admin-action'] !== '1') return json(400, { ok: false, error: 'Bad request' });
   try {
+    if (route === '/_admin/api/upload' && url.searchParams.has('id')) {
+      // One piece of a package (the admin page sends 2 MB pieces in order); the last piece installs it.
+      const id = String(url.searchParams.get('id'));
+      const part = Number(url.searchParams.get('part')), of = Number(url.searchParams.get('of'));
+      if (!/^[a-f0-9]{8,32}$/.test(id) || !Number.isInteger(part) || !Number.isInteger(of) || of < 1 || of > 100 || part < 0 || part >= of) return json(400, { ok: false, error: 'Bad upload piece' });
+      const tmp = path.join(ctx.root, 'tmp');
+      fs.mkdirSync(tmp, { recursive: true });
+      // Leftovers from abandoned uploads (over an hour old) are removed.
+      for (const d of fs.readdirSync(tmp).filter((x) => x.startsWith('upload-'))) {
+        try { if (Date.now() - fs.statSync(path.join(tmp, d)).mtimeMs > 3600e3) fs.rmSync(path.join(tmp, d), { recursive: true, force: true }); } catch {}
+      }
+      const dir = path.join(tmp, `upload-${id}`);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, String(part)), await readRaw(req, 8 * 1024 * 1024));
+      if (part < of - 1) return json(200, { ok: true, received: part + 1, of });
+      const pieces = [];
+      for (let i = 0; i < of; i++) {
+        const f = path.join(dir, String(i));
+        if (!fs.existsSync(f)) { fs.rmSync(dir, { recursive: true, force: true }); return json(400, { ok: false, error: `Upload incomplete (piece ${i + 1} of ${of} missing). Try again.` }); }
+        pieces.push(fs.readFileSync(f));
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+      const buf = Buffer.concat(pieces);
+      if (buf.length > MAX_UPLOAD) return json(413, { ok: false, error: 'Upload is too large' });
+      const r = updater.installBuffer(buf, { source: 'admin upload', force: url.searchParams.get('force') === '1' });
+      return json(200, { ok: true, ...r, note: 'Installed. The site switches over on the next request.' });
+    }
     if (route === '/_admin/api/upload') {
       const buf = await readRaw(req, MAX_UPLOAD);
       const r = updater.installBuffer(buf, { source: 'admin upload', force: url.searchParams.get('force') === '1' });
