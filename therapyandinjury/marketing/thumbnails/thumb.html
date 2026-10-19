@@ -17,6 +17,8 @@ h1 span { color: #19ccbe; }
 .num { margin-top: 34px; display: inline-flex; align-items: center; gap: 14px; background: #19ccbe; color: #071f40; font-weight: 900; font-size: 50px; letter-spacing: -.02em; padding: 10px 26px 12px; border-radius: 999px; box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }
 .badge { position: absolute; right: 64px; top: 128px; width: 168px; height: 168px; border-radius: 50%; background: #071f40; border: 7px solid #19ccbe; display: flex; flex-direction: column; align-items: center; justify-content: center; transform: rotate(8deg); box-shadow: 0 10px 30px rgb(0 0 0 / 45%); }
 .badge b { font-size: 76px; font-weight: 900; line-height: .9; }
+.digits { margin-top: 12px; font-weight: 800; font-size: 30px; color: #fff; text-shadow: 0 2px 10px rgb(0 0 0 / 70%); }
+.es h1, .ht h1 { font-size: 112px; }
 .badge small { font-size: 21px; font-weight: 800; letter-spacing: .14em; color: #19ccbe; }
 .brand { position: absolute; right: 54px; top: 40px; display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 28px; text-shadow: 0 2px 10px rgb(0 0 0 / 70%); }
 .brand img { width: 46px; height: 46px; }
@@ -24,11 +26,23 @@ h1 span { color: #19ccbe; }
 <body><!-- Bottom-right stays clear: YouTube covers it with the video length. --><div class="t">
   <div class="bg"></div><div class="shade"></div>
   <div class="copy">
-    <div class="quote">“I’m fine.”</div>
-    <h1>Don’t<br>walk it<br><span>off.</span></h1>
+    <div class="quote" id="q">“I’m fine.”</div>
+    <h1 id="h">Don’t<br>walk it<br><span>off.</span></h1>
     <div class="num">(844) 84-TREAT</div>
+    <div class="digits" id="dg" hidden>(844) 848-7328</div>
   </div>
-  <div class="badge"><b>14</b><small>DAYS</small></div>
+  <div class="badge"><b>14</b><small id="days">DAYS</small></div>
   <div class="brand"><img src="../../public/brand/mark-white.svg" alt="">Therapy &amp; Injury</div>
   <div class="bar"></div>
-</div></body></html>
+</div>
+<script>
+// thumb.html?lang=es|ht: the Spanish ("No se haga el fuerte") and Creole ("Pa neglije kò w") versions.
+const L = { es: { q: '“Estoy bien.”', h: 'No se<br>haga el<br><span>fuerte.</span>', d: 'DÍAS' }, ht: { q: '“Mwen anfòm.”', h: 'Pa<br>neglije<br><span>kò w.</span>', d: 'JOU' } }[new URLSearchParams(location.search).get('lang')];
+if (L) {
+  document.querySelector('.t').classList.add(new URLSearchParams(location.search).get('lang'));
+  document.getElementById('q').textContent = L.q;
+  document.getElementById('h').innerHTML = L.h;
+  document.getElementById('days').textContent = L.d;
+  document.getElementById('dg').hidden = false;
+}
+</script></body></html>
