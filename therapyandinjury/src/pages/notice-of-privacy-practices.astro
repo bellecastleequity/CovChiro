@@ -1,0 +1,125 @@
+---
+/**
+ * HIPAA Notice of Privacy Practices (45 CFR §164.520), written for a Florida chiropractic practice that
+ * treats auto-accident patients. Practice-specific facts (effective date, privacy officer, contact, mailing
+ * address, legal names) come from the content editor → Page text; until filled they show as placeholders.
+ * DRAFT: have a HIPAA compliance advisor or health-care attorney review it before relying on it, and give
+ * patients a paper copy at their first visit (with a signed acknowledgment) as HIPAA requires.
+ */
+import Base from '../layouts/Base.astro';
+import Ph from '../components/Ph.astro';
+import PhoneLink from '../components/PhoneLink.astro';
+import { site, copyText, branches, branchName, isPlaceholder } from '../lib/site';
+
+const entities = branches.filter((b) => !isPlaceholder(b.legalEntity)).map((b) => `${b.legalEntity} (${branchName(b)})`);
+const draft = copyText('nppDraftNotice');
+---
+<Base
+  breadcrumbs={[['Notice of Privacy Practices', '/notice-of-privacy-practices/']]}
+  title="Notice of Privacy Practices | Therapy & Injury"
+  description="How Therapy & Injury may use and share your health information, your rights over it, and how to reach our privacy officer or file a complaint."
+>
+  <section class="page-hero">
+    <div class="wrap">
+      <span class="eyebrow">Patient privacy</span>
+      <h1>Notice of Privacy Practices</h1>
+      <p class="lede">Effective date: <Ph value={copyText('nppEffectiveDate')} /></p>
+    </div>
+  </section>
+  <section class="section">
+    <div class="wrap prose">
+      {draft && <p class="notice"><Ph value={draft} /></p>}
+
+      <p class="npp-head"><strong>This notice describes how medical information about you may be used and disclosed and how you can get access to this information. Please review it carefully.</strong></p>
+
+      <h2>Who this notice covers</h2>
+      <p>This notice applies to Therapy &amp; Injury and each of its locations{entities.length ? <Fragment> ({entities.join('; ')})</Fragment> : ''}, and to the chiropractic physicians, staff, students and volunteers who work there. Our locations share health information with each other as needed to treat you, get paid and run the practice, as described below.</p>
+      <p>"Health information" means information that identifies you and relates to your health, your care or payment for your care, in any form: paper, electronic or spoken.</p>
+
+      <h2>Our duties</h2>
+      <ul>
+        <li>We are required by law to keep your health information private and to give you this notice of our legal duties and privacy practices.</li>
+        <li>We must follow the terms of the notice currently in effect.</li>
+        <li>We will tell you promptly if a breach occurs that may have compromised the privacy or security of your information.</li>
+        <li>We will not use or share your information other than as described here unless you tell us we can in writing. If you tell us we can, you may change your mind at any time by letting us know in writing.</li>
+      </ul>
+
+      <h2>How we use and share your health information</h2>
+      <h3>To treat you</h3>
+      <p>We use your information to examine you, plan your care and treat you, and we share it with other providers involved in your care. <em>Example: if your chiropractic physician believes you need imaging or a medical evaluation, we may share your history and exam findings with the independent medical provider or imaging center we refer you to.</em></p>
+      <h3>To get paid</h3>
+      <p>We use and share your information to bill and get payment from your auto insurer (Florida Personal Injury Protection, or PIP), health plan, or other payers. <em>Example: after a car accident, we send your PIP insurer the records it requires to process the claim, such as dates of service, diagnoses and treatment notes.</em></p>
+      <h3>To run our practice</h3>
+      <p>We use and share your information to operate the practice, improve care, train staff and contact you when needed. <em>Example: reviewing records to check the quality of our care, or using your information to schedule appointments.</em></p>
+      <h3>Appointment reminders and follow-up</h3>
+      <p>We may call, text or email you about appointments, missed visits or your care, using the contact details you give us. Tell us if you prefer a different number, a different way of contacting you, or no messages at all.</p>
+      <h3>Business associates</h3>
+      <p>We use outside companies that help us run the practice, such as our electronic health record and scheduling system, billing services and our website host. They may receive your information only to do that work, and they must sign a contract agreeing to protect it.</p>
+      <h3>Family, friends and people involved in your care</h3>
+      <p>We may share information with a family member, friend or other person you identify who is involved in your care or helps pay for it, limited to what is relevant to their involvement. If you are present, we will give you the chance to object first. If you can't respond (for example, in an emergency), we will use our professional judgment about what is in your best interest.</p>
+
+      <h2>Other uses and disclosures we may make without your written permission</h2>
+      <p>The law allows or requires us to share information in the following situations. We share only what the law permits and, where Florida law is more protective, we follow Florida law.</p>
+      <ul>
+        <li><strong>When required by law</strong>, including to the U.S. Department of Health and Human Services if it wants to see that we are complying with federal privacy law.</li>
+        <li><strong>Public health and safety</strong>: to report suspected abuse, neglect or domestic violence, to help with product recalls or adverse-event reporting, or to prevent a serious threat to someone's health or safety.</li>
+        <li><strong>Health oversight</strong>: to agencies such as the Florida Department of Health and the Florida Board of Chiropractic Medicine for audits, investigations, inspections and licensing.</li>
+        <li><strong>Lawsuits and legal proceedings</strong>: in response to a court or administrative order, or a subpoena or other lawful process as permitted by Florida law (which generally requires notice to you).</li>
+        <li><strong>Law enforcement</strong>: for limited purposes allowed by law, such as responding to a court order or warrant.</li>
+        <li><strong>Workers' compensation</strong>: as authorized by workers' compensation laws, if your injury is work-related.</li>
+        <li><strong>Government functions</strong>: for military, national security or protective services as the law requires.</li>
+        <li><strong>Coroners, medical examiners and funeral directors</strong>, and for organ or tissue donation, as the law allows.</li>
+        <li><strong>Research</strong>: only under strict legal safeguards; we do not currently take part in research.</li>
+      </ul>
+
+      <h2>Uses that need your written permission</h2>
+      <ul>
+        <li><strong>Your attorney.</strong> We send records to an attorney representing you, for example after a car accident, only with your signed authorization (or as the law otherwise allows, such as a valid subpoena).</li>
+        <li><strong>Marketing.</strong> We will not use your information for marketing, or accept payment to do so, without your written permission. Talking with you face to face about your care, or giving you a small promotional item, is not marketing.</li>
+        <li><strong>Sale of information.</strong> We never sell your health information.</li>
+        <li><strong>Psychotherapy notes</strong>, if any were ever kept, need your written permission for most uses.</li>
+        <li><strong>Any other use</strong> not described in this notice.</li>
+      </ul>
+      <p>You may cancel a permission you've given at any time by writing to our privacy officer. Cancelling doesn't undo what we already shared while it was in effect.</p>
+
+      <h2>Your rights</h2>
+      <ul>
+        <li><strong>See and get a copy of your records.</strong> You may ask to see or get a copy (paper or electronic) of your health and billing records. Ask in writing. We will usually respond within 30 days and may charge a reasonable, cost-based fee as federal and Florida law allow.</li>
+        <li><strong>Ask us to correct your records.</strong> If you think information is wrong or incomplete, you may ask us in writing to correct it. We may say no, but we'll tell you why in writing within 60 days.</li>
+        <li><strong>Ask for confidential communications.</strong> You may ask us to contact you a certain way (for example, only on your cell phone) or at a different address. We will say yes to all reasonable requests.</li>
+        <li><strong>Ask us to limit what we use or share.</strong> You may ask us not to use or share certain information for treatment, payment or operations. We aren't required to agree, and we may say no if it would affect your care. If you pay for a service in full out of pocket, you may ask us not to share information about that service with your health plan, and we will say yes unless the law requires us to share it.</li>
+        <li><strong>Get a list of those we've shared information with.</strong> You may ask for a list (an "accounting") of the times we've shared your information in the six years before your request, who we shared it with and why. It excludes sharing for treatment, payment and operations and certain other disclosures (such as ones you asked us to make). One list a year is free; we may charge a reasonable, cost-based fee for more.</li>
+        <li><strong>Get a copy of this notice.</strong> You may ask for a paper copy at any time, even if you agreed to get it electronically. Copies are available at our front desk.</li>
+        <li><strong>Choose someone to act for you.</strong> If you have given someone medical power of attorney, or someone is your legal guardian, that person can exercise your rights. We will check that the person has this authority first.</li>
+      </ul>
+      <p>To use any of these rights, contact our privacy officer (below).</p>
+
+      <h2>Complaints</h2>
+      <p>If you believe your privacy rights have been violated, you may file a complaint with us by contacting our privacy officer, or with the U.S. Department of Health and Human Services Office for Civil Rights: 200 Independence Avenue SW, Washington, D.C. 20201; 1-877-696-6775; or <a href="https://www.hhs.gov/ocr/complaints/" rel="noopener" target="_blank">hhs.gov/ocr/complaints<span class="sr-only"> (opens in a new tab)</span></a>. We will not retaliate against you for filing a complaint.</p>
+
+      <h2>Changes to this notice</h2>
+      <p>We may change this notice, and the changes will apply to all information we have about you. The new notice will be available at our front desk and on this page, with its effective date at the top.</p>
+
+      <h2>Contact our privacy officer</h2>
+      <p>
+        <strong><Ph value={copyText('nppOfficer')} /></strong><br />
+        <Ph value={copyText('nppContact')} /><br />
+        Mail: <Ph value={copyText('nppAddress')} /><br />
+        Main line: <PhoneLink />
+      </p>
+      <p class="small muted">This notice covers your health information as a patient. How we handle information sent through this website is described in our <a href="/privacy/">Privacy Policy</a>.</p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .npp-head {
+    border-left: 4px solid var(--teal);
+    padding: 10px 14px;
+    background: var(--teal-soft);
+    border-radius: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 0.95rem;
+  }
+</style>

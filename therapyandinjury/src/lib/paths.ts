@@ -40,6 +40,7 @@ export async function publicPaths(): Promise<PublicPath[]> {
     { path: '/blog/', priority: 0.6, changefreq: 'weekly', lastmod: blog[0]?.data.updated ?? blog[0]?.data.pubDate },
     ...blog.map((p): PublicPath => ({ path: `/blog/${p.id}/`, priority: 0.5, changefreq: 'yearly', lastmod: p.data.updated ?? p.data.pubDate })),
     { path: '/privacy/', priority: 0.2, changefreq: 'yearly' },
+    { path: '/notice-of-privacy-practices/', priority: 0.2, changefreq: 'yearly' },
     { path: '/accessibility/', priority: 0.2, changefreq: 'yearly' },
   ];
   // Pages built from the site data change when a release ships or the editor saves; blog posts keep their own dates.

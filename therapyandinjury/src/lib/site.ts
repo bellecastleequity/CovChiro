@@ -30,6 +30,7 @@ export type SiteCopy = {
   onlineIntake: string; rehabEquipment: string; servicesApproved: boolean; privacyDraftNotice: string;
   privacyProviders: string; privacyNoticeUrl: string; privacyRetention: string;
   attorneyHeadline: string; attorneyNote: string;
+  nppEffectiveDate: string; nppOfficer: string; nppContact: string; nppAddress: string; nppDraftNotice: string;
 };
 export type SiteData = typeof defaultSite & {
   copy: SiteCopy;

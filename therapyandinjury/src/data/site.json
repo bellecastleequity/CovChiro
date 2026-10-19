@@ -54,10 +54,15 @@
     "servicesApproved": false,
     "privacyDraftNotice": "[DRAFT — HAVE YOUR ATTORNEY OR COMPLIANCE ADVISOR REVIEW BEFORE LAUNCH]",
     "privacyProviders": "[LIST PROVIDERS — e.g., Namecheap hosting, form/email service]",
-    "privacyNoticeUrl": "[LINK TO NOTICE OF PRIVACY PRACTICES]",
+    "privacyNoticeUrl": "/notice-of-privacy-practices/",
     "privacyRetention": "[CONFIRM RETENTION PERIOD]",
     "attorneyHeadline": "Yes, we work with your attorney and your auto insurance.",
-    "attorneyNote": "We bill your auto insurance (Florida PIP) directly and, with your permission, send your records to your attorney. Coverage depends on your policy."
+    "attorneyNote": "We bill your auto insurance (Florida PIP) directly and, with your permission, send your records to your attorney. Coverage depends on your policy.",
+    "nppEffectiveDate": "[EFFECTIVE DATE — e.g., November 1, 2026]",
+    "nppOfficer": "[PRIVACY OFFICER NAME AND TITLE]",
+    "nppContact": "[PRIVACY OFFICER PHONE AND EMAIL]",
+    "nppAddress": "[MAILING ADDRESS FOR PRIVACY REQUESTS]",
+    "nppDraftNotice": "[DRAFT — HAVE YOUR HIPAA COMPLIANCE ADVISOR OR ATTORNEY REVIEW BEFORE RELYING ON THIS NOTICE]"
   },
   "services": [
     {
