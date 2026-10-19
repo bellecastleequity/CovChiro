@@ -65,7 +65,8 @@ describe("shift reconfirmation", () => {
   it("two missed reconfirmations pause the provider", async () => {
     const clinic = await makeClinic();
     const p = await makeProvider();
-    for (const days of [17, 24]) {
+    // Two weeks apart: a holiday skip (futureWeekday moves a federal holiday a week later) can never put both on one day.
+    for (const days of [17, 31]) {
       const shift = await makeShift(clinic.location.id, { days });
       await adminAssign({ ...admin }, shift.id, p.id);
       const at = (h: number) => new Date(+shift.startsAt - h * H);
