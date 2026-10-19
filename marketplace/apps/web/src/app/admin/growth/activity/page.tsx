@@ -11,10 +11,10 @@ import { ActivityFeed } from "../panels";
 export const metadata = { title: "Agent activity" };
 export const dynamic = "force-dynamic";
 
-export default async function Activity({ searchParams }: { searchParams: Promise<{ agent?: string; errors?: string; status?: string; feed?: string }> }) {
+export default async function Activity({ searchParams }: { searchParams: Promise<{ agent?: string; errors?: string; status?: string; feed?: string; ready?: string }> }) {
   const { actor } = await requireActor("admin");
   const f = await searchParams;
-  const [act, comms, counts, up] = await Promise.all([growth.activity(actor, { agent: f.agent, errors: f.errors === "1" }), growth.communications(actor, { status: f.status }), growth.communicationCounts(actor), growth.upNext(actor)]);
+  const [act, comms, counts, up] = await Promise.all([growth.activity(actor, { agent: f.agent, errors: f.errors === "1" }), growth.communications(actor, { status: f.status }), growth.communicationCounts(actor), growth.upNext(actor, { limit: f.ready === "all" ? 0 : 100 })]);
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   const STATUS_HELP: Record<string, string> = {
     QUEUED: "Nothing queued. Only drafts you approved on Approvals wait here. In auto mode the agents write and send in one step inside the send window, so see Ready to go out above for what the next window will send.",
@@ -31,14 +31,17 @@ export default async function Activity({ searchParams }: { searchParams: Promise
       <GrowthTabs current="/admin/growth/activity" />
       <Card id="ready" className="mb-6 scroll-mt-20">
         <CardHeader
-          title={`Ready to go out (${up.clinic.rows.length + up.provider.rows.length})`}
+          title={`Ready to go out (${(up.clinic.total + up.provider.total + up.approved).toLocaleString()})`}
           description={`Researched prospects whose next email is due, in the order the agents will take them. ${up.windowOpen ? "The send window is open: these go out at the next agent run (every 15 minutes), up to today's limit." : up.sendAt ? `Next send window: ${dateTimeLabel(up.sendAt)} Eastern.` : "No send days are set."} Each email is written when it's sent, and the usual checks (unsubscribes, bounces, opt-outs) run again then.`}
         />
+        {up.approved ? <p className="border-t border-slate-100 px-4 py-3 text-sm"><b>{up.approved.toLocaleString()} approved email{up.approved === 1 ? "" : "s"}</b> waiting to send (approved on Approvals; they go out in the send window). <Link className="text-brand-700" href="/admin/growth/activity?status=QUEUED#communications">See them</Link></p> : null}
+        <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Daily limit for automatic marketing emails: {up.cap.toLocaleString()} (Settings → Growth → &quot;Max new marketing emails per day&quot;), split between clinic and provider outreach. More prospects become due during the day as research finishes and follow-up waits end, so a day can send more than this list showed in the morning, up to that limit.</p>
         {([["Clinic outreach", up.clinic, up.mode.clinic], ["Provider recruitment", up.provider, up.mode.provider]] as const).map(([label, side, mode]) => (
           <div key={label} className="border-t border-slate-100">
             <p className="px-4 pt-3 text-sm font-medium">
-              {label} · {!side.on ? <span className="text-amber-700">agent or marketing is off</span> : <>{side.slots} slot{side.slots === 1 ? "" : "s"} in the next window · {mode === "auto" ? "sent automatically" : "becomes a draft for Approvals"}</>}
+              {label} · {!side.on ? <span className="text-amber-700">agent or marketing is off</span> : <>{side.total.toLocaleString()} due · {side.nextWindow.toLocaleString()} fit {up.windowOpen ? "today's" : "the next window's"} limit ({side.slots.toLocaleString()} slots){side.total > side.nextWindow ? ` · ${(side.total - side.nextWindow).toLocaleString()} on later days` : ""} · {mode === "auto" ? "sent automatically" : "become drafts for Approvals"}</>}
             </p>
+            {side.total > side.rows.length ? <p className="px-4 text-xs text-slate-500">Showing the first {side.rows.length} of {side.total.toLocaleString()}. <Link className="text-brand-700" href="/admin/growth/activity?ready=all#ready">Show all</Link></p> : null}
             {side.rows.length ? (
               <Table>
                 <thead><tr><Th>#</Th><Th>Prospect</Th><Th>Email</Th><Th>Next email</Th><Th>Goes out</Th></tr></thead>

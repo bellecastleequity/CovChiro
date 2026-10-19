@@ -447,6 +447,11 @@ describe("prospecting send window", () => {
       expect(up.sendAt?.toISOString()).toBe("2026-10-19T12:15:00.000Z"); // Monday 8:15 ET
       const row = up.clinic.rows.find((r) => r.id === p.id);
       expect(row).toMatchObject({ email, step: 0, emailKey: "CLINIC_FIRST_CONTACT" });
+      expect(up.clinic.total).toBeGreaterThanOrEqual(up.clinic.rows.length);
+      // limit only trims the rows shown; the count is every due prospect.
+      const one = await growth.upNext(admin, { limit: 1 });
+      expect(one.clinic.rows.length).toBeLessThanOrEqual(1);
+      expect(one.clinic.total).toBe(up.clinic.total);
       expect(await prisma.communication.count({ where: { entityId: p.id } })).toBe(0);
       // Unsubscribed addresses never show.
       await prisma.clinicProspect.update({ where: { id: p.id }, data: { doNotContact: true } });

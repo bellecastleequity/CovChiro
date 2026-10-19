@@ -3,7 +3,7 @@ import { prisma } from "@cm/db";
 import { DateTime } from "luxon";
 import { clock, getSettings, requireAdmin, type Actor } from "../context";
 import { CLINIC_OUTREACH_ORDER, approvedPiKeys, clinicOutreachWhere, outreachKey } from "./agents";
-import { agentOn, isSuppressed, livePrompts, marketingOn, normEmail } from "./engine";
+import { agentOn, livePrompts, marketingOn, normEmail } from "./engine";
 import { addressHistories } from "./addresses";
 import { outreachProfessionFor } from "./expansion";
 import { activePairs, marketRank, providerOutreachKey, providerOutreachWhere } from "./providers";
@@ -43,6 +43,7 @@ export interface UpNextRow {
   nextWindow: boolean;
 }
 
+/** Every due prospect is counted; `limit` only caps the rows returned per side for display (0 = all). */
 export async function upNext(actor: Actor, opts: { limit?: number } = {}) {
   requireAdmin(actor);
   const s = await getSettings();
@@ -51,6 +52,13 @@ export async function upNext(actor: Actor, opts: { limit?: number } = {}) {
   const sendAt = send.at ?? now;
   const sameDay = send.open || DateTime.fromJSDate(sendAt, { zone: "America/New_York" }).hasSame(DateTime.fromJSDate(now, { zone: "America/New_York" }), "day");
   const limit = opts.limit ?? 100;
+  const SCAN = 5000;
+  // Suppressed addresses (unsubscribed, bounced, complained) in one query instead of one per row.
+  const suppressedOf = async (emails: (string | null)[]) => {
+    const list = [...new Set(emails.map(normEmail).filter(Boolean))];
+    if (!list.length) return new Set<string>();
+    return new Set((await prisma.commSuppression.findMany({ where: { address: { in: list }, channel: { in: ["EMAIL", "ALL"] } }, select: { address: true } })).map((r) => r.address));
+  };
   const pending = async (type: string, ids: string[]) =>
     new Set((await prisma.communication.findMany({ where: { entityType: type, entityId: { in: ids }, status: { in: ["PENDING_APPROVAL", "QUEUED"] } }, select: { entityId: true } })).map((c) => c.entityId));
 
@@ -61,16 +69,16 @@ export async function upNext(actor: Actor, opts: { limit?: number } = {}) {
   const clinicSlots = sameDay ? clinicAllow.remaining : clinicAllow.cap;
   if (clinicOn) {
     const gaps = s["growth.outreachGapDays"];
-    const rows = await prisma.clinicProspect.findMany({ where: clinicOutreachWhere(gaps.length), orderBy: CLINIC_OUTREACH_ORDER, take: Math.max(limit, s["growth.dailyOutreachCap"]) * 4 });
+    const rows = await prisma.clinicProspect.findMany({ where: clinicOutreachWhere(gaps.length), orderBy: CLINIC_OUTREACH_ORDER, take: SCAN });
     const ctx = await priorityContext();
     rows.sort((a, b) => ctx.rank("DEMAND", a.state, a.marketKey) - ctx.rank("DEMAND", b.state, b.marketKey));
+    const suppressed = await suppressedOf(rows.map((r) => r.email));
     const held = await pending("PROSPECT", rows.map((r) => r.id));
     const allowed = new Map<string, boolean>();
     const piReady = await approvedPiKeys();
     const history = await addressHistories("PROSPECT", rows.map((r) => r.email));
     const used = new Set<string>();
     for (const c of rows) {
-      if (clinic.length >= limit) break;
       if (held.has(c.id) || !c.email) continue;
       // Same rule as the sweep: a shared inbox gets each email once, one per window.
       const addr = normEmail(c.email);
@@ -78,7 +86,7 @@ export async function upNext(actor: Actor, opts: { limit?: number } = {}) {
       if (d.action !== "SEND") continue;
       if (!outreachStepDue(c.outreachStep, d.lastContactedAt, gaps, sendAt)) continue;
       if (!(await outreachProfessionFor(c, allowed))) continue;
-      if (await isSuppressed("EMAIL", c.email)) continue;
+      if (suppressed.has(addr)) continue;
       used.add(addr);
       clinic.push({ id: c.id, kind: "CLINIC", name: c.clinicName, email: c.email, where: [c.city, c.state].filter(Boolean).join(", "), step: c.outreachStep, emailKey: outreachKey(c.outreachStep, c.practiceType, piReady), nextWindow: clinic.length < clinicSlots });
     }
@@ -92,16 +100,16 @@ export async function upNext(actor: Actor, opts: { limit?: number } = {}) {
   const pairs = providerOn ? await activePairs() : [];
   if (pairs.length) {
     const gaps = s["growth.providerOutreachGapDays"];
-    const rows = await prisma.providerProspect.findMany({ where: providerOutreachWhere(gaps.length, pairs), orderBy: [{ outreachStep: "desc" }, { createdAt: "asc" }], take: Math.max(limit, s["growth.dailyOutreachCap"]) * 4 });
+    const rows = await prisma.providerProspect.findMany({ where: providerOutreachWhere(gaps.length, pairs), orderBy: [{ outreachStep: "desc" }, { createdAt: "asc" }], take: SCAN });
     const rank = await marketRank();
     const ctx = await priorityContext();
     rows.sort((a, b) => ctx.rank("SUPPLY", a.state, a.marketKey) - ctx.rank("SUPPLY", b.state, b.marketKey) || rank(a.marketKey) - rank(b.marketKey));
     const held = await pending("PROVIDER_PROSPECT", rows.map((r) => r.id));
+    const suppressed = await suppressedOf(rows.map((r) => r.email));
     const ready = new Map<string, boolean>();
     const history = await addressHistories("PROVIDER_PROSPECT", rows.map((r) => r.email));
     const used = new Set<string>();
     for (const p of rows) {
-      if (provider.length >= limit) break;
       if (held.has(p.id) || !p.email) continue;
       const addr = normEmail(p.email);
       const d = addressDecision(p.outreachStep, p.lastContactedAt, history.get(addr)!, used.has(addr));
@@ -112,16 +120,21 @@ export async function upNext(actor: Actor, opts: { limit?: number } = {}) {
       const rk = `${p.professionCode}:${key}`;
       if (!ready.has(rk)) ready.set(rk, (await livePrompts(key, p.professionCode)).length > 0);
       if (!ready.get(rk)) continue;
-      if (await isSuppressed("EMAIL", p.email)) continue;
+      if (suppressed.has(addr)) continue;
       used.add(addr);
       provider.push({ id: p.id, kind: "PROVIDER", name: p.displayName, email: p.email, where: [p.city, p.state].filter(Boolean).join(", "), step: p.outreachStep, emailKey: key, nextWindow: provider.length < providerSlots });
     }
   }
 
+  // Drafts a person already approved: they go out at the next window ahead of the agents' own emails.
+  const approved = await prisma.communication.count({ where: { status: "QUEUED", channel: "EMAIL" } });
+  const side = (on: boolean, slots: number, all: UpNextRow[]) => ({
+    on, slots, total: all.length, nextWindow: all.filter((r) => r.nextWindow).length, rows: limit > 0 ? all.slice(0, limit) : all,
+  });
   return {
-    sendAt: send.at, windowOpen: send.open,
+    sendAt: send.at, windowOpen: send.open, approved, cap: s["growth.dailyOutreachCap"],
     mode: { clinic: s["growth.outreachMode"] === "auto" ? "auto" : "review", provider: s["growth.providerOutreachMode"] === "auto" ? "auto" : "review" },
-    clinic: { on: clinicOn, slots: clinicSlots, rows: clinic },
-    provider: { on: providerOn, slots: providerSlots, rows: provider },
+    clinic: side(clinicOn, clinicSlots, clinic),
+    provider: side(providerOn, providerSlots, provider),
   };
 }
