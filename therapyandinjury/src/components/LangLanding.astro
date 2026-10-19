@@ -13,7 +13,7 @@ import AttorneyBand from './AttorneyBand.astro';
 import AppointmentForm from './AppointmentForm.astro';
 import PhoneLink from './PhoneLink.astro';
 import TimerBadge from './TimerBadge.astro';
-import { site, abs, openBranches, branches, branchName, oneLineAddress, mapEmbedSrc, directionsUrl, faqSchema, type Video } from '../lib/site';
+import { site, abs, isoDateTime, openBranches, branches, branchName, oneLineAddress, mapEmbedSrc, directionsUrl, faqSchema, type Video } from '../lib/site';
 import { hoursIn, speaks, langInfo, ui, type Lang } from '../lib/i18n';
 
 interface Props { lang: Exclude<Lang, 'en'> }
@@ -97,7 +97,7 @@ const schema = [
   { '@context': 'https://schema.org', '@type': 'WebPage', name: P.title, description: P.description, url: abs(L.path), inLanguage: L.locale, about: open.map((b) => ({ '@id': abs(`/${b.slug}/#business`) })) },
   {
     '@context': 'https://schema.org', '@type': 'VideoObject', name: video.title, description: `${video.title}: ${P.description}`,
-    thumbnailUrl: [abs(video.poster)], uploadDate: video.uploadDate, duration: `PT${video.duration}S`, contentUrl: abs(video.file),
+    thumbnailUrl: [abs(video.poster)], uploadDate: isoDateTime(video.uploadDate), duration: `PT${video.duration}S`, contentUrl: abs(video.file),
     transcript: video.transcript.replace(/\s*\n\s*/g, ' '), inLanguage: L.locale, publisher: { '@id': abs('/#org') },
   },
   faqSchema(faqs),

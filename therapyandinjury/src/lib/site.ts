@@ -285,12 +285,23 @@ export const abs = (path: string) => new URL(path, site.domain).toString();
  * null when there's no video or it lacks a poster or date. Self-hosted files give a contentUrl,
  * YouTube links an embedUrl.
  */
+/**
+ * A date as Google wants it for videos: full date-time with a time zone. "2026-10-16" becomes
+ * "2026-10-16T12:00:00-04:00" (noon, Florida time); a value that already has a time is kept.
+ */
+export const isoDateTime = (v?: string) => {
+  const s = String(v ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})$/.test(s)) return s;
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(s);
+  return m ? `${m[1]}T12:00:00-04:00` : '';
+};
+
 export const videoFacts = (b?: Branch) => {
   const v = heroVideoFor(b);
   const yt = youtubeId(v.youtube);
   const file = yt || isPlaceholder(v.file) ? '' : v.file;
   const poster = !isPlaceholder(v.poster) && v.poster ? abs(v.poster) : yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : '';
-  const date = /^\d{4}-\d{2}-\d{2}/.test(v.uploadDate ?? '') ? v.uploadDate!.slice(0, 10) : '';
+  const date = isoDateTime(v.uploadDate);
   if ((!yt && !file) || !poster || !date) return null;
   const title = isPlaceholder(v.title) ? 'Therapy & Injury commercial' : v.title;
   const transcript = isPlaceholder(v.transcript) ? '' : v.transcript.replace(/\s*\n\s*/g, ' ').trim();

@@ -8,7 +8,7 @@ const langVideo = (l: 'es' | 'ht'): ReturnType<typeof videoFacts> => {
   const v = l === 'es'
     ? { slug: 'no-se-haga-el-fuerte-30', title: 'No se haga el fuerte', description: 'Comercial de Therapy & Injury: después de un choque, hágase un chequeo. El PIP de Florida generalmente requiere atención dentro de los 14 días.' }
     : { slug: 'pa-neglije-ko-w-30', title: 'Pa neglije kò w', description: 'Piblisite Therapy & Injury: apre yon aksidan, fè tcheke kò w. Lwa PIP Florid la jeneralman mande swen anndan 14 jou.' };
-  return { title: v.title, description: v.description, transcript: '', poster: abs(`/media/${v.slug}-poster.jpg`), date: '2026-10-18', contentUrl: abs(`/media/${v.slug}.mp4`), embedUrl: '', seconds: 30 };
+  return { title: v.title, description: v.description, transcript: '', poster: abs(`/media/${v.slug}-poster.jpg`), date: '2026-10-18T12:00:00-04:00', contentUrl: abs(`/media/${v.slug}.mp4`), embedUrl: '', seconds: 30 };
 };
 import { conditions } from './conditions';
 import { posts } from './blog';

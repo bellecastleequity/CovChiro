@@ -59,6 +59,8 @@ for (const p of pages) {
     try {
       const data = JSON.parse(m[1]);
       if (/\[[A-Z][^\]"]*\]/.test(JSON.stringify(data))) warnings.push(`${p.path}: JSON-LD contains placeholder text`);
+      // Google (Search Console "Videos"): uploadDate must be a full date-time with a time zone.
+      if (data['@type'] === 'VideoObject' && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})$/.test(data.uploadDate || '')) errors.push(`${p.path}: VideoObject uploadDate "${data.uploadDate}" needs a time and time zone`);
     } catch {
       errors.push(`${p.path}: invalid JSON-LD`);
     }
