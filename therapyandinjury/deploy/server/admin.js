@@ -104,6 +104,18 @@ function authorized(req, password, root) {
   return null;
 }
 
+/** The file inside a multipart/form-data body (the admin page's upload pieces); a raw body is returned as is. */
+function filePart(req, buf) {
+  const m = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(String(req.headers['content-type'] || ''));
+  if (!/multipart\/form-data/i.test(String(req.headers['content-type'] || '')) || !m) return buf;
+  const boundary = Buffer.from(`--${m[1] || m[2]}`);
+  const start = buf.indexOf(boundary);
+  const headEnd = buf.indexOf('\r\n\r\n', start);
+  const end = buf.indexOf(Buffer.concat([Buffer.from('\r\n'), boundary]), headEnd);
+  if (start < 0 || headEnd < 0 || end < 0) throw Object.assign(new Error('Upload piece arrived incomplete; try again.'), { status: 400 });
+  return buf.subarray(headEnd + 4, end);
+}
+
 function readRaw(req, max) {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -212,7 +224,8 @@ async function handle(req, res, url, ctx, send) {
       }
       const dir = path.join(tmp, `upload-${id}`);
       fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, String(part)), await readRaw(req, 8 * 1024 * 1024));
+      const raw = await readRaw(req, 8 * 1024 * 1024);
+      fs.writeFileSync(path.join(dir, String(part)), filePart(req, raw));
       if (part < of - 1) return json(200, { ok: true, received: part + 1, of });
       const pieces = [];
       for (let i = 0; i < of; i++) {

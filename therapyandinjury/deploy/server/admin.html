@@ -332,14 +332,21 @@ async function act(fn, done) {
     await new Promise((res) => setTimeout(res, 1500)); await loadStatus();
   } catch (e) { msg(e.message, false); } finally { document.querySelectorAll('#tab-updates button').forEach((b) => b.disabled = false); }
 }
-// Packages go up in 2 MB pieces: hosts often reject one large request (an "HTTP 400" before the app sees it).
+// Packages go up in 1 MB pieces, each sent as a normal browser file upload (multipart/form-data). Hosts'
+// security filters (ModSecurity) reject large or raw binary request bodies with an "HTTP 400" before the
+// app sees them; small file-upload pieces pass. A refused piece is retried a few times.
 async function uploadPkg(f) {
-  const CH = 2 * 1024 * 1024, n = Math.max(1, Math.ceil(f.size / CH));
+  const CH = 1024 * 1024, n = Math.max(1, Math.ceil(f.size / CH));
   const id = Array.from(crypto.getRandomValues(new Uint8Array(8)), (x) => x.toString(16).padStart(2, '0')).join('');
   let r;
   for (let i = 0; i < n; i++) {
     msg(`Uploading… ${Math.round((i / n) * 100)}%`);
-    r = await api(`upload?id=${id}&part=${i}&of=${n}`, { method: 'PUT', body: f.slice(i * CH, (i + 1) * CH), headers: { 'content-type': 'application/octet-stream' } });
+    const fd = new FormData();
+    fd.append('piece', new File([f.slice(i * CH, (i + 1) * CH)], `piece-${i}.bin`, { type: 'application/octet-stream' }));
+    for (let a = 0; ; a++) {
+      try { r = await api(`upload?id=${id}&part=${i}&of=${n}`, { method: 'POST', body: fd }); break; }
+      catch (e) { if (a >= 2) throw new Error(`${e.message} (piece ${i + 1} of ${n}). If this keeps happening, install this version with File Manager: see DEPLOY.md, "Uploading at /_admin shows HTTP 400".`); await new Promise((res) => setTimeout(res, 1500)); }
+    }
   }
   msg('Installing…');
   return r;
