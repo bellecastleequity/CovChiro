@@ -24,10 +24,11 @@ def mark(bg='#0B2340', glyph='#FFFFFF', arrow='#1FA866', with_c=True, gap=True):
     if bg: out.append('<rect width="64" height="64" rx="15" fill="%s"/>' % bg)
     out.append('<circle cx="15.5" cy="14.5" r="5.3" fill="%s"/>' % glyph)
     out.append('<rect x="10.4" y="23" width="10.2" height="28" rx="3.4" fill="%s"/>' % glyph)
-    B = (48.0, 27.2); d = (0.52, -0.854); L = 15.0; hw = 9.0
+    B = (48.6, 26.5); d = (0.52, -0.854); L = 13.5; hw = 7.4
     T = (B[0] + d[0]*L, B[1] + d[1]*L); nrm = (-d[1], d[0])
     p0, p1, p2, p3 = (9.5, 51.5), (27, 55), (B[0] - d[0]*13, B[1] - d[1]*13), (B[0] + d[0]*1.2, B[1] + d[1]*1.2)
-    sw, lower = swoosh_poly(p0, p1, p2, p3, 5.6, 8.6)
+    W0, W1 = 2.2, 7.4  # tapered: thin tail, full width at the arrowhead
+    sw, lower = swoosh_poly(p0, p1, p2, p3, W0, W1)
     if with_c:
         # The C is clipped to the area above the swoosh's lower edge, so it
         # always ends cleanly at the arrow.
@@ -42,9 +43,9 @@ def mark(bg='#0B2340', glyph='#FFFFFF', arrow='#1FA866', with_c=True, gap=True):
     if gap and bg:  # knock-out outline separating the swoosh from the white letters
         out.append('<path d="%s %s" fill="%s" stroke="%s" stroke-width="3.4" stroke-linejoin="round"/>' % (sw, head, bg, bg))
     # round the swoosh's tail
-    tail = '<circle cx="%.2f" cy="%.2f" r="%.2f" fill="%%s"/>' % (p0[0], p0[1], 2.8)
+    tail = '<circle cx="%.2f" cy="%.2f" r="%.2f" fill="%%s"/>' % (p0[0], p0[1], W0 / 2)
     if gap and bg:
-        out.append('<circle cx="%.2f" cy="%.2f" r="4.5" fill="%s"/>' % (p0[0], p0[1], bg))
+        out.append('<circle cx="%.2f" cy="%.2f" r="%.2f" fill="%s"/>' % (p0[0], p0[1], W0 / 2 + 1.7, bg))
     out.append('<path d="%s" fill="%s"/>' % (sw, arrow))
     out.append(tail % arrow)
     out.append('<path d="%s" fill="%s" stroke="%s" stroke-width="1.4" stroke-linejoin="round"/>' % (head, arrow, arrow))
