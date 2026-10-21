@@ -1,11 +1,11 @@
-// PI Case Portal — single-page front end.
+// Casewell — single-page front end.
 // No inline handlers or styles anywhere (the CSP forbids them): every
 // button carries data-act="..." and one delegated listener dispatches it.
 // Every dynamic value goes through esc() before it touches innerHTML.
 'use strict';
 (() => {
 
-const S = { csrf: '', user: null, lookups: null, practice: '', contacts: [], caseData: null, caseTab: 'overview', idleTimeout: 900, lastActivity: Date.now() };
+const S = { csrf: '', user: null, lookups: null, brand: { name: 'Casewell' }, practice: null, contacts: [], caseData: null, caseTab: 'overview', idleTimeout: 900, lastActivity: Date.now() };
 const $app = document.getElementById('app');
 const $modalHost = document.getElementById('modal-host');
 
@@ -125,9 +125,9 @@ function readFields(root, defs) {
 const entries = (obj) => Object.entries(obj || {});
 
 // ---------- auth screens ----------
-function authCard(inner) {
-  $app.innerHTML = `<div class="auth-wrap"><div class="auth-card">
-    <div class="brand"><img src="assets/logo.png" alt=""><div><h2>${esc(S.practice || 'PI Case Portal')}</h2><div class="small muted">Personal injury case portal</div></div></div>
+function authCard(inner, wide) {
+  $app.innerHTML = `<div class="auth-wrap"><div class="auth-card${wide ? ' wide' : ''}">
+    <a class="brand" href="./"><img src="assets/logo.svg" alt=""><div><h2>${esc(S.brand.name)}</h2><div class="small muted">${esc(S.brand.tagline || '')}</div></div></a>
     ${inner}</div></div>`;
 }
 
@@ -138,8 +138,31 @@ function showLogin(message) {
     <div class="err" data-role="err">${esc(message || '')}</div>
     <button class="btn" type="submit">Sign in</button>
     <p class="small">Authorized personnel only. All access to patient records is logged.</p>
+    <p class="auth-switch">New practice? <a href="#signup" data-act="show-signup">Start a free trial</a></p>
   </form>`);
   document.getElementById('li-email').focus();
+}
+
+async function showSignup() {
+  let plans = {}, trialDays = 14;
+  try { const r = await api('auth.php?action=plans'); plans = r.plans; trialDays = r.trialDays; } catch { /* plans list is optional */ }
+  const wanted = new URLSearchParams(location.hash.split('?')[1] || '').get('plan');
+  authCard(`<form data-form="signup">
+    <h3>Start your ${trialDays}-day free trial</h3>
+    <p>No card needed. Set up your practice, then invite your team.</p>
+    <div class="form-grid">
+      <div class="full"><label for="su-practice">Practice name</label><input id="su-practice" required autocomplete="organization"></div>
+      <div><label for="su-name">Your name</label><input id="su-name" required autocomplete="name"></div>
+      <div><label for="su-email">Work email</label><input id="su-email" type="email" required autocomplete="email"></div>
+      <div><label for="su-pw">Password (12+ characters)</label><input id="su-pw" type="password" required autocomplete="new-password"></div>
+      <div><label for="su-plan">Plan after trial</label><select id="su-plan">${entries(plans).map(([k, p]) => opt(k, `${p.name} — $${p.price}/mo`, wanted || 'solo')).join('')}</select></div>
+    </div>
+    <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice.</label>
+    <div class="err" data-role="err"></div>
+    <button class="btn" type="submit">Create practice account</button>
+    <p class="auth-switch">Already have an account? <a href="#" data-act="show-login">Sign in</a></p>
+  </form>`, true);
+  document.getElementById('su-practice').focus();
 }
 
 function showPasswordChange() {
@@ -196,14 +219,17 @@ function drawQr(canvas, text) {
 }
 
 function applySession(s) {
-  S.practice = s.practice;
+  if (s.brand) S.brand = s.brand;
+  document.title = S.brand.name;
+  S.practice = s.practice || null;
   S.idleTimeout = s.idleTimeoutSeconds;
   if (s.step === 'signed_in') {
     S.user = s.user; S.lookups = s.lookups;
     startShell();
   } else {
     S.user = null; S.caseData = null;
-    ({ signed_out: showLogin, password_change: showPasswordChange, mfa_setup: showMfaSetup, mfa: showMfa })[s.step]?.();
+    if (s.step === 'signed_out' && location.hash.startsWith('#signup')) showSignup();
+    else ({ signed_out: showLogin, password_change: showPasswordChange, mfa_setup: showMfaSetup, mfa: showMfa })[s.step]?.();
   }
 }
 
@@ -233,6 +259,15 @@ document.addEventListener('submit', async (e) => {
       const n1 = form.querySelector('#pc-new').value;
       if (n1 !== form.querySelector('#pc-new2').value) throw new Error("The new passwords don't match.");
       s = await api('auth.php?action=change_password', { current: form.querySelector('#pc-cur').value, new: n1 });
+    }
+    else if (kind === 'signup') {
+      if (!form.querySelector('#su-accept').checked) throw new Error('Please accept the Terms and Business Associate Agreement.');
+      s = await api('auth.php?action=signup', {
+        practice_name: form.querySelector('#su-practice').value, name: form.querySelector('#su-name').value,
+        email: form.querySelector('#su-email').value, password: form.querySelector('#su-pw').value,
+        plan: form.querySelector('#su-plan').value, accept: true,
+      });
+      history.replaceState(null, '', location.pathname);
     } else if (kind === 'mfasetup') s = await api('auth.php?action=mfa_setup_confirm', { code: form.querySelector('#mf-code').value });
     else if (kind === 'mfa') s = await api('auth.php?action=mfa_verify', { code: form.querySelector('#mf-code').value });
     applySession(s);
@@ -275,22 +310,43 @@ async function signOut() {
 
 // ---------- shell & routing ----------
 const NAV = [
-  ['dashboard', 'Dashboard', null], ['cases', 'Cases', null], ['tasks', 'Tasks', null],
-  ['ar', 'A/R & settlements', 'finance.read'], ['contacts', 'Contacts', null],
-  ['admin', 'Users', 'users.manage'], ['audit', 'Audit log', 'audit.read'],
+  ['dashboard', 'Dashboard', 'case.read'], ['cases', 'Cases', 'case.read'], ['tasks', 'Tasks', 'case.read'],
+  ['ar', 'A/R & settlements', 'finance.read'], ['contacts', 'Contacts', 'case.read'],
+  ['admin', 'Users', 'users.manage'], ['settings', 'Practice settings', 'users.manage'], ['billing', 'Plan & billing', 'users.manage'],
+  ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'],
 ];
 
+// Trial / subscription / BAA notices shown above every page.
+function bannerHtml() {
+  const p = S.practice;
+  if (!p) return '';
+  const admin = can('users.manage');
+  const cta = admin ? ' <a href="#/billing">Choose a plan</a>' : ' Ask your practice admin.';
+  if (p.access === 'read_only') return `<div class="banner danger">Your ${p.status === 'trialing' ? 'free trial has ended' : 'subscription has ended'}. Records are read-only.${cta}</div>`;
+  if (p.status === 'past_due') return `<div class="banner warn">Your last payment didn't go through.${admin ? ' <a href="#/billing">Update billing</a>' : ''}</div>`;
+  if (admin && !p.baaCurrent) return `<div class="banner warn">Please review and accept the current Business Associate Agreement. <a href="#/settings">Practice settings</a></div>`;
+  if (p.status === 'trialing') return `<div class="banner info">${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? '' : 's'} left in your free trial.${admin ? ' <a href="#/billing">Choose a plan</a>' : ''}</div>`;
+  return '';
+}
+
+async function refreshSession() {
+  const s = await attempt(() => api('auth.php?action=session'));
+  if (s && s.step === 'signed_in') { S.practice = s.practice; S.lookups = s.lookups; const b = document.getElementById('banner'); if (b) b.innerHTML = bannerHtml(); }
+}
+
 async function startShell() {
+  const operator = S.user.operator;
   $app.innerHTML = `<div class="shell">
     <nav class="sidebar" aria-label="Main">
-      <div class="brand"><img src="assets/logo.png" alt=""><div>${esc(S.practice)}<small>PI case portal</small></div></div>
-      ${NAV.filter(([, , p]) => !p || can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}</a>`).join('')}
+      <div class="brand"><img src="assets/logo.svg" alt=""><div>${esc(S.brand.name)}<small>${esc(operator ? 'Operator console' : S.practice.name)}</small></div></div>
+      ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}</a>`).join('')}
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>
         <button class="btn ghost sm" data-act="sign-out">Sign out</button></div>
     </nav>
-    <main class="main" id="main"></main>
+    <div class="main-col"><div id="banner">${bannerHtml()}</div><main class="main" id="main"></main></div>
   </div>`;
+  if (operator) { if (!location.hash.startsWith('#/platform')) location.hash = '#/platform'; route(); return; }
   await loadContacts();
   route();
 }
@@ -303,15 +359,16 @@ async function loadContacts() {
 window.addEventListener('hashchange', () => { if (S.user) route(); });
 
 function route() {
-  const parts = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('/');
+  const parts = (location.hash.replace(/^#\/?/, '').split('?')[0] || (S.user.operator ? 'platform' : 'dashboard')).split('/');
   const page = parts[0];
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === page || (page === 'case' && a.dataset.nav === 'cases')));
   const main = document.getElementById('main');
   if (!main) return;
   main.innerHTML = '<div class="empty">Loading…</div>';
   window.scrollTo(0, 0);
-  const pages = { dashboard: pageDashboard, cases: pageCases, case: pageCase, tasks: pageTasks, ar: pageAR, contacts: pageContacts, admin: pageAdmin, audit: pageAudit };
-  (pages[page] || pageDashboard)(main, parts.slice(1));
+  const pages = { dashboard: pageDashboard, cases: pageCases, case: pageCase, tasks: pageTasks, ar: pageAR, contacts: pageContacts, admin: pageAdmin, audit: pageAudit,
+    settings: pageSettings, billing: pageBilling, platform: pagePlatform };
+  (pages[page] || (S.user.operator ? pagePlatform : pageDashboard))(main, parts.slice(1));
 }
 
 const phiBanner = '<div class="phi-banner">Contains protected health information · access is logged</div>';
@@ -332,6 +389,14 @@ async function pageDashboard(main) {
       ${d.ar ? `<div class="tile warn"><div class="k">Total outstanding A/R</div><div class="v">${money(d.ar.total)}</div></div>
       <div class="tile"><div class="k">A/R in demand/litigation</div><div class="v">${money(d.ar.legal)}</div></div>` : ''}
     </div>
+    ${d.openCases === 0 && can('case.write') ? `<div class="card onboard"><h2>Welcome to ${esc(S.brand.name)} — let's get your practice set up</h2>
+      <ol class="mt">
+        <li><strong>Add your letterhead.</strong> <a href="#/settings">Practice settings</a> — it goes on every attorney letter.</li>
+        <li><strong>Add the attorneys and imaging centers you work with.</strong> <a href="#/contacts">Contacts</a></li>
+        <li><strong>Open your first case.</strong> <button class="btn sm" data-act="new-case">+ New case</button></li>
+        ${can('users.manage') ? '<li><strong>Invite your team</strong> — each person gets their own login. <a href="#/admin">Users</a></li>' : ''}
+        <li><strong>Moving from spreadsheets?</strong> Email your tracking and A/R sheets to <a href="mailto:${esc(S.brand.support)}">${esc(S.brand.support)}</a> and we'll import them.</li>
+      </ol></div>` : ''}
     <div class="card"><div class="card-head"><h2>Case pipeline</h2></div>
       <div class="pipeline">${entries(S.lookups.stages).map(([k, t]) => `<button class="pipe" data-act="goto-stage" data-stage="${esc(k)}"><div class="n">${d.byStage[k] || 0}</div><div class="l">${esc(t)}</div></button>`).join('')}</div>
     </div>
@@ -489,7 +554,10 @@ function renderCase() {
   const tabs = CASE_TABS.filter(([, , perm]) => !perm || can(perm));
   if (!tabs.find(([k]) => k === S.caseTab)) S.caseTab = 'overview';
   const atty = d.contacts.attorney_contact_id;
-  const overdueCount = d.checklist.filter((i) => i.status === 'overdue').length;
+  // Same phase rule as the server's alerts: intake items matter while in
+  // care, discharge items once care has ended.
+  const inCare = ['intake', 'treating'].includes(c.stage);
+  const overdueCount = d.checklist.filter((i) => i.status === 'overdue' && (i.group === 'At discharge') !== inCare).length;
   main.innerHTML = `${phiBanner}
     <div class="case-head"><div>
       <div class="small"><a href="#/cases">← All cases</a></div>
@@ -1028,6 +1096,76 @@ async function pageAudit(main) {
     <div class="card">${auditTable(r.entries)}</div>`;
 }
 
+// ---------- practice settings ----------
+const PRACTICE_DEFS = [{ n: 'name', l: 'Practice name', req: true, full: true }, { n: 'address', l: 'Address (letterhead)', t: 'textarea', rows: 2 },
+  { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' }, { n: 'state', l: 'State', ph: 'FL' }];
+async function pageSettings(main) {
+  const r = await attempt(() => api('admin.php?action=practice'));
+  if (!r) return;
+  const p = r.practice, baaOk = p.baaVersion === p.currentBaaVersion;
+  main.innerHTML = `<div class="page-head"><div><h1>Practice settings</h1><div class="sub">Your letterhead appears on every letter generated for attorneys.</div></div></div>
+    <div class="grid-2"><div class="card"><h2>Practice details</h2><div id="practice-form">${fieldsHtml(PRACTICE_DEFS, p)}</div>
+      <div class="err" id="practice-err"></div><button class="btn mt" data-act="save-practice">Save</button></div>
+    <div class="card"><h2>Business Associate Agreement</h2>
+      <p class="small mt">Because ${esc(S.brand.name)} stores your patients' health information, HIPAA requires a Business Associate Agreement between your practice and us.</p>
+      ${baaOk ? `<div class="notice ok mt">Accepted ${esc(fmtDate(p.baaAcceptedAt))} (version ${esc(p.baaVersion)}).</div>`
+        : `<div class="notice mt">${p.baaVersion ? 'The agreement has been updated since you accepted it.' : 'Not yet accepted.'}</div>
+           <label class="check mt"><input type="checkbox" id="baa-accept"> I accept the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> (version ${esc(p.currentBaaVersion)}) on behalf of ${esc(p.name)}.</label>
+           <button class="btn mt" data-act="accept-baa">Accept agreement</button>`}
+      <p class="small muted mt"><a href="legal.html#baa" target="_blank" rel="noopener">Read the agreement</a></p></div></div>`;
+}
+
+// ---------- plan & billing ----------
+async function pageBilling(main) {
+  const r = await attempt(() => api('billing.php?action=status'));
+  if (!r) return;
+  const p = r.practice;
+  if (location.hash.includes('done=1')) { toast('Thanks! Your subscription is being activated.'); history.replaceState(null, '', '#/billing'); setTimeout(refreshSession, 2500); }
+  const statusText = { trialing: p.access === 'full' ? `Free trial — ${p.trialDaysLeft} days left` : 'Free trial ended', active: 'Active', past_due: 'Payment past due', canceled: 'Canceled', comped: 'Complimentary' }[p.status];
+  const usage = (n, max) => `${n}${max ? ' of ' + max : ''}`;
+  const pct = (n, max) => max ? Math.min(100, Math.round(n / max * 100)) : 0;
+  main.innerHTML = `<div class="page-head"><div><h1>Plan &amp; billing</h1><div class="sub">${esc(p.planName)} plan · ${esc(statusText)}${p.currentPeriodEnd && p.status === 'active' ? ' · renews ' + esc(fmtDate(p.currentPeriodEnd)) : ''}</div></div><span class="spacer"></span>
+      ${r.hasCustomer ? '<button class="btn ghost" data-act="billing-portal">Manage billing &amp; invoices</button>' : ''}</div>
+    <div class="tiles">
+      <div class="tile"><div class="k">Open cases</div><div class="v">${usage(p.activeCases, p.limits.activeCases)}</div>${p.limits.activeCases ? `<div class="bar ${pct(p.activeCases, p.limits.activeCases) >= 90 ? 'warn' : ''}"><i data-w="${pct(p.activeCases, p.limits.activeCases)}"></i></div>` : ''}</div>
+      <div class="tile"><div class="k">Users</div><div class="v">${usage(p.activeUsers, p.limits.users)}</div>${p.limits.users ? `<div class="bar"><i data-w="${pct(p.activeUsers, p.limits.users)}"></i></div>` : ''}</div>
+    </div>
+    ${!r.billingReady ? '<div class="notice">Online billing isn\'t switched on yet for this installation.</div>' : ''}
+    <div class="plans">${entries(r.plans).map(([k, pl]) => {
+      const current = k === p.plan && ['active', 'past_due', 'comped'].includes(p.status);
+      return `<div class="plan-card${current ? ' current' : ''}"><h3>${esc(pl.name)}</h3><div class="price">$${pl.price}<span>/month</span></div>
+        <p class="small muted">${esc(pl.blurb)}</p>
+        <ul class="small"><li>${pl.active_cases ? pl.active_cases + ' open cases' : 'Unlimited open cases'}</li><li>${pl.users ? pl.users + ' users' : 'Unlimited users'}</li><li>All features, unlimited closed cases</li></ul>
+        ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : `<button class="btn${k === p.plan ? '' : ' ghost'}" data-act="checkout" data-plan="${k}"${pl.available ? '' : ' disabled'}>${r.hasCustomer && p.status === 'active' ? 'Switch' : 'Subscribe'}</button>`}</div>`;
+    }).join('')}</div>
+    <p class="small muted mt">Payments are processed by Stripe; ${esc(S.brand.name)} never sees your card. Closed and dropped cases don't count toward your limit. If you cancel, your records stay readable and exportable.</p>`;
+  main.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
+}
+
+// ---------- operator console ----------
+async function pagePlatform(main) {
+  const r = await attempt(() => api('platform.php?action=practices'));
+  if (!r) return;
+  const list = r.practices;
+  const count = (st) => list.filter((p) => p.status === st).length;
+  main.innerHTML = `<div class="page-head"><div><h1>Practices</h1><div class="sub">Subscriptions and usage. Operator accounts can't open patient records.</div></div></div>
+    <div class="tiles"><div class="tile accent"><div class="k">MRR</div><div class="v">${money(r.mrr)}</div></div>
+      <div class="tile"><div class="k">Active</div><div class="v">${count('active')}</div></div><div class="tile"><div class="k">Trialing</div><div class="v">${count('trialing')}</div></div>
+      <div class="tile"><div class="k">Past due</div><div class="v">${count('past_due')}</div></div><div class="tile"><div class="k">Canceled</div><div class="v">${count('canceled')}</div></div></div>
+    <div class="card"><div class="table-wrap"><table><thead><tr><th>Practice</th><th>Owner</th><th>Plan</th><th>Status</th><th class="num">Users</th><th class="num">Open cases</th><th>Last sign-in</th><th>BAA</th><th>Signed up</th><th></th></tr></thead><tbody>
+    ${list.map((p) => `<tr><td><strong>${esc(p.name)}</strong></td><td class="small">${esc(p.ownerEmail || '—')}</td>
+      <td><select data-act-change="plan" data-id="${p.id}" aria-label="Plan">${entries(r.plans).map(([k, pl]) => opt(k, pl.name, p.plan)).join('')}</select></td>
+      <td><span class="chip ${p.access === 'read_only' ? 'red' : p.status === 'active' || p.status === 'comped' ? 'teal' : 'ochre'}">${esc(p.status)}${p.status === 'trialing' && p.access === 'full' ? ' · ' + p.trialDaysLeft + 'd' : ''}</span></td>
+      <td class="num">${p.users}${p.limits.users ? '/' + p.limits.users : ''}</td><td class="num">${p.openCases}${p.limits.activeCases ? '/' + p.limits.activeCases : ''}</td>
+      <td class="small">${esc(p.lastLogin || 'never')}</td><td class="small">${p.baaCurrent ? '✓' : '<span class="trend-up">needed</span>'}</td><td class="small">${esc(fmtDate(p.createdAt))}</td>
+      <td class="nowrap">${['trialing', 'canceled'].includes(p.status) ? `<button class="btn ghost sm" data-act="op-extend" data-id="${p.id}">+14 days trial</button>` : ''}
+        <button class="btn ghost sm" data-act="op-comp" data-id="${p.id}" data-on="${p.status === 'comped' ? 0 : 1}">${p.status === 'comped' ? 'Remove comp' : 'Comp'}</button></td></tr>`).join('')}
+    </tbody></table></div></div>`;
+  main.querySelectorAll('[data-act-change=plan]').forEach((sel) => sel.addEventListener('change', async () => {
+    if (await attempt(() => api('platform.php?action=practice_update', { id: +sel.dataset.id, plan: sel.value }))) { toast('Plan changed'); pagePlatform(main); }
+  }));
+}
+
 // ---------- letters ----------
 function openLetter(type) {
   window.open('api/cases.php?action=letter&type=' + encodeURIComponent(type) + '&id=' + S.caseData.case.id, '_blank', 'noopener');
@@ -1047,6 +1185,27 @@ function changePasswordModal() {
 // ---------- delegated actions ----------
 const ACTIONS = {
   'sign-out': signOut,
+  'show-signup': () => { history.replaceState(null, '', '#signup'); showSignup(); },
+  'show-login': () => { history.replaceState(null, '', location.pathname); showLogin(); },
+  'save-practice': async () => {
+    const box = document.getElementById('practice-form');
+    try { await api('admin.php?action=practice_save', readFields(box, PRACTICE_DEFS)); toast('Saved'); refreshSession(); }
+    catch (e) { document.getElementById('practice-err').textContent = e.message; }
+  },
+  'accept-baa': async () => {
+    if (!document.getElementById('baa-accept').checked) { toast('Tick the box to accept.', true); return; }
+    if (await attempt(() => api('admin.php?action=accept_baa', { accept: true }))) { toast('Agreement accepted'); await refreshSession(); route(); }
+  },
+  'checkout': async (el) => {
+    const r = await attempt(() => api('billing.php?action=checkout', { plan: el.dataset.plan }));
+    if (r?.url) location.href = r.url;
+  },
+  'billing-portal': async () => {
+    const r = await attempt(() => api('billing.php?action=portal', {}));
+    if (r?.url) location.href = r.url;
+  },
+  'op-extend': async (el) => { if (await attempt(() => api('platform.php?action=practice_update', { id: +el.dataset.id, extend_trial_days: 14 }))) { toast('Trial extended'); route(); } },
+  'op-comp': async (el) => { if (await attempt(() => api('platform.php?action=practice_update', { id: +el.dataset.id, comped: el.dataset.on === '1' }))) route(); },
   'change-password': changePasswordModal,
   'new-case': newCaseModal,
   'goto-stage': (el) => { casesState.stage = el.dataset.stage; location.hash = '#/cases'; },

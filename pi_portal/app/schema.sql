@@ -1,4 +1,9 @@
--- PI Case Portal — database schema (MySQL 8 / MariaDB 10.6+)
+-- Casewell — database schema (MySQL 8 / MariaDB 10.6+)
+--
+-- Multi-tenant: every subscribing practice is a row in `practices`, and
+-- every table holding a practice's data carries practice_id (directly, or
+-- through the case it belongs to). The API scopes every query to the
+-- signed-in user's practice.
 -- Import once into an EMPTY database dedicated to this portal. Do not put
 -- these tables in the marketing sites' database: PHI belongs on its own
 -- HIPAA-eligible host, with its own credentials and backups.
@@ -10,8 +15,34 @@
 
 SET NAMES utf8mb4;
 
+-- One row per subscribing practice (the tenant). Letterhead details live
+-- here so letters go out under each practice's own name.
+CREATE TABLE practices (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(160) NOT NULL,
+  address VARCHAR(255) NULL,
+  phone VARCHAR(40) NULL,
+  fax VARCHAR(40) NULL,
+  state CHAR(2) NOT NULL DEFAULT 'FL',
+  plan VARCHAR(20) NOT NULL DEFAULT 'starter',
+  subscription_status ENUM('trialing','active','past_due','canceled','comped') NOT NULL DEFAULT 'trialing',
+  trial_ends_at DATETIME NULL,
+  current_period_end DATETIME NULL,
+  stripe_customer_id VARCHAR(64) NULL,
+  stripe_subscription_id VARCHAR(64) NULL,
+  -- Who accepted the Business Associate Agreement and Terms, which version, when.
+  baa_version VARCHAR(20) NULL,
+  baa_accepted_at DATETIME NULL,
+  baa_accepted_by INT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_practices_stripe (stripe_customer_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- practice_id NULL = a platform operator (you, running the service):
+-- operators manage subscriptions but can never open patient records.
 CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NULL,
   email VARCHAR(190) NOT NULL UNIQUE,
   name VARCHAR(120) NOT NULL,
   role ENUM('admin','provider','staff','billing') NOT NULL DEFAULT 'staff',
@@ -24,7 +55,8 @@ CREATE TABLE users (
   locked_until DATETIME NULL,
   last_login_at DATETIME NULL,
   active TINYINT(1) NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL
+  created_at DATETIME NOT NULL,
+  FOREIGN KEY (practice_id) REFERENCES practices(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE login_throttle (
@@ -38,6 +70,7 @@ CREATE TABLE login_throttle (
 -- management, ortho/neuro, hospitals. Business contacts — not PHI.
 CREATE TABLE contacts (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NOT NULL,
   type ENUM('attorney','insurer','imaging','pain_mgmt','ortho','neuro','md','hospital','pt','other') NOT NULL,
   organization VARCHAR(160) NULL,
   name VARCHAR(160) NULL,
@@ -48,7 +81,8 @@ CREATE TABLE contacts (
   notes TEXT NULL,
   archived_at DATETIME NULL,
   created_at DATETIME NOT NULL,
-  INDEX idx_contacts_type (type)
+  FOREIGN KEY (practice_id) REFERENCES practices(id),
+  INDEX idx_contacts_type (practice_id, type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Names stay plaintext so staff can search by them (the database volume
@@ -56,6 +90,7 @@ CREATE TABLE contacts (
 -- identifies or locates the patient is encrypted in the application.
 CREATE TABLE patients (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NOT NULL,
   first_name VARCHAR(80) NOT NULL,
   last_name VARCHAR(80) NOT NULL DEFAULT '',
   dob_enc TEXT NULL,
@@ -64,12 +99,14 @@ CREATE TABLE patients (
   address_enc TEXT NULL,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
-  INDEX idx_patients_name (last_name, first_name)
+  FOREIGN KEY (practice_id) REFERENCES practices(id),
+  INDEX idx_patients_name (practice_id, last_name, first_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE cases (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  case_number VARCHAR(20) NOT NULL UNIQUE,
+  practice_id INT NOT NULL,
+  case_number VARCHAR(20) NOT NULL,
   patient_id INT NOT NULL,
   stage ENUM('intake','treating','tx_complete','demand','litigation','mediation','negotiating','settled','closed','dropped') NOT NULL DEFAULT 'intake',
   injury_type ENUM('auto','slip_fall','work','other') NOT NULL DEFAULT 'auto',
@@ -97,12 +134,14 @@ CREATE TABLE cases (
   archived_at DATETIME NULL,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
+  FOREIGN KEY (practice_id) REFERENCES practices(id),
   FOREIGN KEY (patient_id) REFERENCES patients(id),
   FOREIGN KEY (attorney_contact_id) REFERENCES contacts(id),
   FOREIGN KEY (insurer_contact_id) REFERENCES contacts(id),
   FOREIGN KEY (referred_by_contact_id) REFERENCES contacts(id),
   FOREIGN KEY (provider_user_id) REFERENCES users(id),
-  INDEX idx_cases_stage (stage),
+  UNIQUE KEY uq_case_number (practice_id, case_number),
+  INDEX idx_cases_stage (practice_id, stage),
   INDEX idx_cases_attorney (attorney_contact_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -217,6 +256,7 @@ CREATE TABLE ledger (
 
 CREATE TABLE tasks (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NOT NULL,
   case_id INT NULL,
   title VARCHAR(200) NOT NULL,
   due_on DATE NULL,
@@ -224,8 +264,9 @@ CREATE TABLE tasks (
   done_at DATETIME NULL,
   created_by INT NULL,
   created_at DATETIME NOT NULL,
+  FOREIGN KEY (practice_id) REFERENCES practices(id),
   FOREIGN KEY (case_id) REFERENCES cases(id),
-  INDEX idx_tasks_open (done_at, due_on)
+  INDEX idx_tasks_open (practice_id, done_at, due_on)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Files are encrypted on disk under storage/documents/ (outside the web
@@ -252,6 +293,7 @@ CREATE TABLE documents (
 CREATE TABLE audit_log (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   occurred_at DATETIME NOT NULL,
+  practice_id INT NULL,
   user_id INT NULL,
   user_email VARCHAR(190) NULL,
   action VARCHAR(40) NOT NULL,
@@ -261,7 +303,7 @@ CREATE TABLE audit_log (
   ip_address VARCHAR(45) NULL,
   user_agent VARCHAR(255) NULL,
   detail VARCHAR(500) NULL,
-  INDEX idx_audit_time (occurred_at),
+  INDEX idx_audit_time (practice_id, occurred_at),
   INDEX idx_audit_case (case_id),
   INDEX idx_audit_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

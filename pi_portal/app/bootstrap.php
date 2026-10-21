@@ -1,6 +1,6 @@
 <?php
-// PI Case Portal — bootstrap: secrets, DB, hardened session, CSRF, auth,
-// roles, audit logging. Every API endpoint requires this file first.
+// Casewell — bootstrap: secrets, DB, hardened session, CSRF, auth,
+// tenant scoping, roles, audit logging. Every API endpoint requires this file first.
 //
 // This portal holds PHI, so it deliberately differs from the marketing
 // sites' php_backend/config.php in a few ways: errors never echo detail
@@ -12,6 +12,7 @@ require_once __DIR__ . '/secrets.php';
 require_once __DIR__ . '/crypto.php';
 require_once __DIR__ . '/totp.php';
 require_once __DIR__ . '/pi_rules.php';
+require_once __DIR__ . '/saas.php';
 
 define('PI_TIMEZONE', 'America/New_York');
 define('PI_IDLE_TIMEOUT_SECONDS', 15 * 60);
@@ -184,8 +185,27 @@ const ROLE_PERMS = [
     'billing'  => ['case.read', 'finance.read', 'finance.write', 'contacts.write', 'export'],
 ];
 
+// Platform operators (users with no practice) run the service: they see
+// practices and subscriptions, never patient data.
+function is_operator(array $user): bool { return $user['practice_id'] === null; }
+
 function can(array $user, string $perm): bool {
+    if (is_operator($user)) return $perm === 'platform.manage';
     return in_array($perm, ROLE_PERMS[$user['role']] ?? [], true);
+}
+
+// ---------- tenant context ----------
+// Set by require_user(); every query on practice data filters by pid().
+function current_practice(?array $set = null): ?array {
+    static $practice = null;
+    if ($set !== null) $practice = $set;
+    return $practice;
+}
+
+function pid(): int {
+    $p = current_practice();
+    if (!$p) throw new LogicException('No practice in context');
+    return (int)$p['id'];
 }
 
 // A user is only "signed in" once both password AND 2FA have passed.
@@ -194,7 +214,7 @@ function can(array $user, string $perm): bool {
 function require_user(?string $perm = null, bool $allowPending = false): array {
     if (empty($_SESSION['uid'])) json_response(['error' => 'Not signed in', 'code' => 'auth'], 401);
     if (!$allowPending && empty($_SESSION['mfa_ok'])) json_response(['error' => 'Two-factor verification required', 'code' => 'mfa'], 401);
-    $stmt = pi_db()->prepare('SELECT id, email, name, role, active, must_change_password, totp_enabled FROM users WHERE id = ?');
+    $stmt = pi_db()->prepare('SELECT id, practice_id, email, name, role, active, must_change_password, totp_enabled FROM users WHERE id = ?');
     $stmt->execute([$_SESSION['uid']]);
     $user = $stmt->fetch();
     if (!$user || !$user['active']) {
@@ -203,6 +223,19 @@ function require_user(?string $perm = null, bool $allowPending = false): array {
     }
     if (!$allowPending && $user['must_change_password']) json_response(['error' => 'Password change required', 'code' => 'pw_change'], 401);
     check_csrf();
+    if ($user['practice_id'] !== null) {
+        $s = pi_db()->prepare('SELECT * FROM practices WHERE id = ?');
+        $s->execute([$user['practice_id']]);
+        current_practice($s->fetch());
+        // Lapsed trial / canceled subscription: records stay readable, but
+        // nothing can be changed. Endpoints that must keep working (sign-in,
+        // billing, user admin) define PI_ALLOW_WHEN_LAPSED.
+        if ($_SERVER['REQUEST_METHOD'] !== 'GET' && !defined('PI_ALLOW_WHEN_LAPSED') && practice_access(current_practice()) === 'read_only') {
+            json_response(['error' => 'Your trial or subscription has ended. Your records are read-only until you subscribe under Billing.', 'code' => 'read_only'], 402);
+        }
+    } elseif ($perm !== null && $perm !== 'platform.manage') {
+        json_response(['error' => 'Operator accounts cannot open practice records.'], 403);
+    }
     if ($perm && !can($user, $perm)) {
         audit('access_denied', 'permission', $perm, null, $user);
         json_response(['error' => 'Your role does not allow this.'], 403);
@@ -217,9 +250,10 @@ function audit(string $action, ?string $entity = null, $entityId = null, $caseId
     $uid = $user['id'] ?? ($_SESSION['uid'] ?? null);
     $email = $user['email'] ?? ($_SESSION['email'] ?? null);
     if (is_array($detail)) $detail = json_encode($detail);
-    pi_db()->prepare('INSERT INTO audit_log (occurred_at, user_id, user_email, action, entity, entity_id, case_id, ip_address, user_agent, detail) VALUES (?,?,?,?,?,?,?,?,?,?)')
+    $practiceId = current_practice()['id'] ?? ($user['practice_id'] ?? null);
+    pi_db()->prepare('INSERT INTO audit_log (occurred_at, practice_id, user_id, user_email, action, entity, entity_id, case_id, ip_address, user_agent, detail) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
         ->execute([
-            now_str(), $uid, $email, $action, $entity,
+            now_str(), $practiceId, $uid, $email, $action, $entity,
             $entityId === null ? null : (string)$entityId,
             $caseId, $_SERVER['REMOTE_ADDR'] ?? 'cli',
             mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
@@ -228,28 +262,36 @@ function audit(string $action, ?string $entity = null, $entityId = null, $caseId
 }
 
 // ========== SHARED LOOKUPS ==========
+// A case id from another practice is simply "not found".
 function case_or_404(int $id): array {
-    $stmt = pi_db()->prepare('SELECT * FROM cases WHERE id = ?');
-    $stmt->execute([$id]);
+    $stmt = pi_db()->prepare('SELECT * FROM cases WHERE id = ? AND practice_id = ?');
+    $stmt->execute([$id, pid()]);
     $row = $stmt->fetch();
     if (!$row) json_response(['error' => 'Case not found'], 404);
     return $row;
 }
 
 // Child rows (visits, referrals, ...) are always looked up together with
-// the case they belong to, so an id from one case can never be used to
-// edit a row on another.
+// the case they belong to, and through it the practice, so an id from one
+// case — or one practice — can never be used to read or edit another's.
 function child_or_404(string $table, int $id, ?int $caseId = null): array {
     static $tables = ['referrals', 'visits', 'outcomes', 'correspondence', 'ledger', 'tasks', 'documents'];
     if (!in_array($table, $tables, true)) throw new InvalidArgumentException('bad table');
-    $sql = "SELECT * FROM $table WHERE id = ?" . ($caseId !== null ? ' AND case_id = ?' : '');
+    if ($table === 'tasks') {
+        $sql = 'SELECT * FROM tasks WHERE id = ? AND practice_id = ?';
+        $args = [$id, pid()];
+    } else {
+        $sql = "SELECT t.* FROM $table t JOIN cases c ON c.id = t.case_id WHERE t.id = ? AND c.practice_id = ?";
+        $args = [$id, pid()];
+    }
+    if ($caseId !== null) { $sql .= ' AND t.case_id = ?'; $args[] = $caseId; }
     $stmt = pi_db()->prepare($sql);
-    $stmt->execute($caseId !== null ? [$id, $caseId] : [$id]);
+    $stmt->execute($args);
     $row = $stmt->fetch();
     if (!$row) json_response(['error' => 'Not found'], 404);
     return $row;
 }
 
 function touch_case(int $caseId) {
-    pi_db()->prepare('UPDATE cases SET updated_at = ? WHERE id = ?')->execute([now_str(), $caseId]);
+    pi_db()->prepare('UPDATE cases SET updated_at = ? WHERE id = ? AND practice_id = ?')->execute([now_str(), $caseId, pid()]);
 }

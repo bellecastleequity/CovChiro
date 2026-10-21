@@ -16,10 +16,12 @@ switch ($action) {
 
 function handle_list() {
     require_user('case.read');
-    $rows = pi_db()->query('SELECT k.*,
+    $stmt = pi_db()->prepare('SELECT k.*,
             (SELECT COUNT(*) FROM cases c WHERE c.archived_at IS NULL AND (c.attorney_contact_id = k.id OR c.insurer_contact_id = k.id)) case_count,
             (SELECT COUNT(*) FROM referrals r WHERE r.archived_at IS NULL AND r.contact_id = k.id) referral_count
-        FROM contacts k WHERE k.archived_at IS NULL ORDER BY k.type, k.organization, k.name')->fetchAll();
+        FROM contacts k WHERE k.practice_id = ? AND k.archived_at IS NULL ORDER BY k.type, k.organization, k.name');
+    $stmt->execute([pid()]);
+    $rows = $stmt->fetchAll();
     json_response(['contacts' => $rows]);
 }
 
@@ -44,17 +46,17 @@ function handle_save() {
     $pdo = pi_db();
     $id = (int)($b['id'] ?? 0);
     if ($id) {
-        $pdo->prepare('UPDATE contacts SET type=?, organization=?, name=?, email=?, phone=?, fax=?, address=?, notes=? WHERE id = ?')
-            ->execute([...array_values($cols), $id]);
+        $pdo->prepare('UPDATE contacts SET type=?, organization=?, name=?, email=?, phone=?, fax=?, address=?, notes=? WHERE id = ? AND practice_id = ?')
+            ->execute([...array_values($cols), $id, pid()]);
         audit('update', 'contact', $id, null, $user);
     } else {
-        $pdo->prepare('INSERT INTO contacts (type, organization, name, email, phone, fax, address, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-            ->execute([...array_values($cols), now_str()]);
+        $pdo->prepare('INSERT INTO contacts (type, organization, name, email, phone, fax, address, notes, practice_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+            ->execute([...array_values($cols), pid(), now_str()]);
         $id = (int)$pdo->lastInsertId();
         audit('create', 'contact', $id, null, $user);
     }
-    $stmt = $pdo->prepare('SELECT * FROM contacts WHERE id = ?');
-    $stmt->execute([$id]);
+    $stmt = $pdo->prepare('SELECT * FROM contacts WHERE id = ? AND practice_id = ?');
+    $stmt->execute([$id, pid()]);
     json_response(['contact' => $stmt->fetch()]);
 }
 
@@ -62,7 +64,7 @@ function handle_archive() {
     require_method('POST');
     $user = require_user('contacts.write');
     $id = (int)(json_body()['id'] ?? 0);
-    pi_db()->prepare('UPDATE contacts SET archived_at = ? WHERE id = ?')->execute([now_str(), $id]);
+    pi_db()->prepare('UPDATE contacts SET archived_at = ? WHERE id = ? AND practice_id = ?')->execute([now_str(), $id, pid()]);
     audit('archive', 'contact', $id, null, $user);
     json_response(['ok' => true]);
 }

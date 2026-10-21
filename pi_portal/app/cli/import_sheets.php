@@ -1,7 +1,7 @@
 <?php
 // One-time import of the practice's existing Google Sheets (exported as CSV):
 //
-//   php pi_portal/app/cli/import_sheets.php --ar=ar.csv --tracking=tracking.csv [--dry-run]
+//   php pi_portal/app/cli/import_sheets.php --practice=ID --ar=ar.csv --tracking=tracking.csv [--dry-run]
 //
 //   --ar        "CASE STATUS UPDATES - PERSONAL INJURY A/R - PIP" export
 //   --tracking  "Auto Injury Case Information - Injury Tracking Sheet" export
@@ -14,10 +14,15 @@
 if (PHP_SAPI !== 'cli') exit("CLI only\n");
 require_once __DIR__ . '/../bootstrap.php';
 
-$opts = getopt('', ['ar:', 'tracking:', 'dry-run']);
-if (empty($opts['ar']) && empty($opts['tracking'])) exit("Usage: php import_sheets.php --ar=file.csv --tracking=file.csv [--dry-run]\n");
+$opts = getopt('', ['practice:', 'ar:', 'tracking:', 'dry-run']);
+if (empty($opts['practice']) || (empty($opts['ar']) && empty($opts['tracking']))) exit("Usage: php import_sheets.php --practice=ID --ar=file.csv --tracking=file.csv [--dry-run]\n");
 $dry = isset($opts['dry-run']);
 $pdo = pi_db();
+$ps = $pdo->prepare('SELECT * FROM practices WHERE id = ?');
+$ps->execute([(int)$opts['practice']]);
+if (!($practiceRow = $ps->fetch())) exit("No practice with id {$opts['practice']}.\n");
+current_practice($practiceRow);
+echo "Importing into: {$practiceRow['name']} (id {$practiceRow['id']})\n";
 $importUser = ['id' => null, 'email' => 'import'];
 $stats = ['cases' => 0, 'contacts' => 0, 'referrals' => 0, 'ledger' => 0, 'milestones' => 0, 'skipped' => 0];
 
@@ -62,12 +67,12 @@ function find_or_create_contact(PDO $pdo, string $type, ?string $org, ?string $n
     if (!$org && !$name) return null;
     $key = $type . '|' . ($email ?: strtolower($org . '|' . $name));
     if (isset($cache[$key])) return $cache[$key];
-    if ($email) { $s = $pdo->prepare('SELECT id FROM contacts WHERE email = ?'); $s->execute([$email]); }
-    else { $s = $pdo->prepare('SELECT id FROM contacts WHERE type = ? AND COALESCE(organization, "") = ? AND COALESCE(name, "") = ?'); $s->execute([$type, $org ?? '', $name ?? '']); }
+    if ($email) { $s = $pdo->prepare('SELECT id FROM contacts WHERE practice_id = ? AND email = ?'); $s->execute([pid(), $email]); }
+    else { $s = $pdo->prepare('SELECT id FROM contacts WHERE practice_id = ? AND type = ? AND COALESCE(organization, "") = ? AND COALESCE(name, "") = ?'); $s->execute([pid(), $type, $org ?? '', $name ?? '']); }
     if ($id = $s->fetchColumn()) return $cache[$key] = (int)$id;
     $stats['contacts']++;
     if ($dry) return $cache[$key] = -count($cache) - 1;
-    $pdo->prepare('INSERT INTO contacts (type, organization, name, email, created_at) VALUES (?,?,?,?,?)')->execute([$type, $org, $name, $email, now_str()]);
+    $pdo->prepare('INSERT INTO contacts (practice_id, type, organization, name, email, created_at) VALUES (?,?,?,?,?,?)')->execute([pid(), $type, $org, $name, $email, now_str()]);
     return $cache[$key] = (int)$pdo->lastInsertId();
 }
 
@@ -84,14 +89,14 @@ function create_case(PDO $pdo, array $patient, array $case, bool $dry, array &$s
     $stats['cases']++;
     if ($dry) return null;
     $now = now_str();
-    $pdo->prepare('INSERT INTO patients (first_name, last_name, created_at, updated_at) VALUES (?,?,?,?)')->execute([$patient['first'], $patient['last'], $now, $now]);
+    $pdo->prepare('INSERT INTO patients (practice_id, first_name, last_name, created_at, updated_at) VALUES (?,?,?,?,?)')->execute([pid(), $patient['first'], $patient['last'], $now, $now]);
     $pid = (int)$pdo->lastInsertId();
     $prefix = 'PI-' . date('y') . '-';
-    $s = $pdo->prepare('SELECT case_number FROM cases WHERE case_number LIKE ? ORDER BY case_number DESC LIMIT 1');
-    $s->execute([$prefix . '%']);
+    $s = $pdo->prepare('SELECT case_number FROM cases WHERE practice_id = ? AND case_number LIKE ? ORDER BY case_number DESC LIMIT 1');
+    $s->execute([pid(), $prefix . '%']);
     $last = $s->fetchColumn();
     $case += ['case_number' => $prefix . str_pad((string)(($last ? (int)substr($last, strlen($prefix)) : 0) + 1), 4, '0', STR_PAD_LEFT),
-              'patient_id' => $pid, 'created_at' => $now, 'updated_at' => $now];
+              'practice_id' => pid(), 'patient_id' => $pid, 'created_at' => $now, 'updated_at' => $now];
     if (isset($case['notes'])) { $case['notes_enc'] = enc($case['notes']); unset($case['notes']); }
     $cols = array_keys($case);
     $pdo->prepare('INSERT INTO cases (' . implode(',', $cols) . ') VALUES (' . implode(',', array_fill(0, count($cols), '?')) . ')')->execute(array_values($case));

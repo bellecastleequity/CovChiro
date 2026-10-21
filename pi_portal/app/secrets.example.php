@@ -17,8 +17,15 @@ define('PI_DB_PASSWORD', 'change-me');
 // If it leaks, rotate it (see README) — treat that as a security incident.
 define('PI_ENCRYPTION_KEY', 'paste-base64-key-here');
 
-// Practice name shown in the portal header, on 2FA apps and on letters.
-define('PI_PRACTICE_NAME', 'Your Chiropractic Practice');
-define('PI_PRACTICE_ADDRESS', "123 Main St\nSt. Petersburg, FL 33701");
-define('PI_PRACTICE_PHONE', '(727) 555-0100');
-define('PI_PRACTICE_FAX', '(727) 555-0101');
+// ========== STRIPE (membership billing) ==========
+// Stripe only ever sees the practice's name and the owner's email — never
+// patient data — so it doesn't need a BAA. Leave these out and the Billing
+// page just says billing isn't set up (handy for development).
+define('STRIPE_SECRET_KEY', 'sk_test_...');
+define('STRIPE_WEBHOOK_SECRET', 'whsec_...');
+// One recurring Price per plan in app/saas.php.
+define('STRIPE_PRICES', ['solo' => 'price_...', 'practice' => 'price_...', 'group' => 'price_...']);
+
+// Public URL of the app (no trailing slash), used for Stripe return links.
+define('APP_URL', 'https://app.example.com');
+define('SUPPORT_EMAIL', 'support@example.com');

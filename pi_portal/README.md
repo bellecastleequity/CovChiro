@@ -1,8 +1,43 @@
-# PI Case Portal
+# Casewell
 
-A provider-side personal injury case management system. It replaces the
-"Injury Tracking Sheet" and the "PI A/R – PIP" Google Sheets with one
-application that tracks each case from intake through settlement:
+**Personal injury case management for chiropractors**, sold as a monthly
+membership. Each subscribing practice manages its own patient load in its own
+isolated workspace. It grew out of the "Injury Tracking Sheet" and
+"PI A/R – PIP" spreadsheets and tracks each case from intake through settlement.
+
+"Casewell" is a working name. To rename the product, change `BRAND_NAME` in
+`app/saas.php` plus the text in `public/index.html` and `public/legal.html`.
+Check trademark and domain availability before launch.
+
+## Product structure
+| URL | What |
+|---|---|
+| `/` (`public/index.html`) | Marketing site: features, security, pricing (rendered live from `app/saas.php`), FAQ |
+| `/app.html#signup` | Self-service signup: practice name, owner, password, plan, Terms + BAA acceptance, then 2FA |
+| `/app.html` | The application |
+| `/legal.html` | Terms, Privacy, BAA (**drafts for attorney review**) |
+
+## Membership model
+- **Tenancy.** Every practice is a row in `practices`. All practice data carries
+  `practice_id`, and every query is scoped to the signed-in user's practice.
+  An id belonging to another practice simply returns "not found".
+- **Plans** (`PLANS` in `app/saas.php`; prices are placeholders): Solo $99
+  (75 open cases, 3 users), Practice $199 (300 open, 10 users), Group $399
+  (unlimited). Limits count *open* cases only. Closed cases are free.
+- **Trial.** 14 days, no card required. When the trial ends or a subscription
+  is canceled, the practice goes **read-only**: it can still view and export
+  everything (they're its medical records, and the BAA requires returning
+  them) but can't change anything until it subscribes.
+- **Billing.** Uses Stripe Checkout and the Stripe Customer Portal. A webhook
+  keeps plan and status in sync. Stripe only sees the practice name and owner
+  email, never PHI.
+- **Operator console.** Platform operators (you) see practices, plans, status,
+  usage counts and MRR. They can extend trials, comp accounts or change plans.
+  Operator accounts are **technically blocked from every patient record**
+  (minimum necessary).
+- **Roles inside a practice:** admin, provider, staff, billing.
+
+## Features
 
 | Area | What it does |
 |---|---|
@@ -31,6 +66,15 @@ All of these thresholds are constants at the top of `app/pi_rules.php`.
 
 ## HIPAA: what the code does vs. what you must do
 
+Running this as a service makes you a **Business Associate** of every
+subscribing practice. You must:
+- sign a BAA with each practice (captured at signup and versioned by `BAA_VERSION`),
+- have a BAA with your own host (your subcontractor), and
+- meet the Security Rule yourself: risk assessment, policies, breach-notification
+  procedure, workforce training, and a designated security officer.
+
+The sections below apply to both you and each practice.
+
 The software implements the HIPAA Security Rule's **technical** safeguards.
 HIPAA compliance as a whole also requires administrative and physical
 safeguards and signed agreements that no code can provide.
@@ -49,6 +93,7 @@ safeguards and signed agreements that no code can provide.
 | Web hardening | Strict CSP (no inline script, no third-party requests: no CDNs, fonts or analytics), no caching of any response, and errors never reveal details to the browser. |
 
 ### Your responsibilities (the real obstacles)
+0. **Get the legal documents reviewed.** Have a healthcare attorney finalize `legal.html`.
 1. **Hosting with a signed BAA.** Do **not** run this on the Namecheap shared
    hosting used for the marketing sites. Namecheap does not sign Business
    Associate Agreements. Use a HIPAA-eligible host that will sign a BAA, for example:
@@ -77,45 +122,60 @@ safeguards and signed agreements that no code can provide.
 
 ## Install
 
-Requirements: PHP 8.1+ with `pdo_mysql`, `sodium` and `fileinfo`, MySQL 8 or MariaDB 10.6+, Apache with `mod_rewrite`/`mod_headers` (or the nginx equivalent), and HTTPS.
+Requirements: PHP 8.1+ with `pdo_mysql`, `sodium`, `fileinfo` and `curl`; MySQL 8 or MariaDB 10.6+; Apache with `mod_rewrite`/`mod_headers` (or the nginx equivalent); and HTTPS.
 
 ```
-/home/<user>/
-├── pi_portal/
-│   ├── app/          ← NOT web-reachable (secrets, code, CLI tools)
-│   ├── storage/      ← NOT web-reachable (encrypted documents, logs)
-│   └── public/       ← the ONLY folder the web server serves (document root)
+pi_portal/
+├── app/          ← NOT web-reachable (secrets, code, CLI tools)
+├── storage/      ← NOT web-reachable (encrypted documents, logs)
+└── public/       ← the ONLY folder the web server serves (document root)
 ```
 
-1. Create an empty database and a user for it. Import `app/schema.sql`.
-   For production, grant the app user only `INSERT, SELECT` on `audit_log`
-   so the log can't be altered.
-2. `cp app/secrets.example.php app/secrets.php`, fill it in, and `chmod 600` it.
+1. Create an empty database and import `app/schema.sql`. In production, grant
+   the app user only `INSERT, SELECT` on `audit_log`.
+2. `cp app/secrets.example.php app/secrets.php`, fill it in, and `chmod 600`.
    Generate the key with `php -r "echo base64_encode(random_bytes(32)), PHP_EOL;"`.
-3. Point the domain's document root at `pi_portal/public`. Make `storage/`
-   writable by PHP (`chmod 700`).
-4. Create yourself an admin: `php app/cli/create_admin.php you@practice.com "Dr. Name"`.
-5. Sign in. You'll set a password and scan a 2FA QR code.
-6. Add staff under **Users**. Each one gets a one-time password; hand it over in person.
+3. Point the domain at `public/` and make `storage/` writable by PHP (`chmod 700`).
+4. Create your operator login: `php app/cli/create_operator.php you@company.com "Your Name"`.
+5. Create your own clinic as a comped practice:
+   `php app/cli/create_practice.php "Your Clinic" doc@yourclinic.com "Dr. Name" --comped`
+   (prints the practice id).
+6. Other practices sign up themselves at `/app.html#signup`.
 
-### Importing the existing spreadsheets
-Export both Google Sheets as CSV, then:
+### Stripe
+1. In Stripe, create a Product with a monthly Price for each plan. Put the
+   Price IDs in `STRIPE_PRICES`, along with `STRIPE_SECRET_KEY` and `APP_URL`.
+2. Add a webhook to `https://<app>/api/billing.php?action=webhook` for
+   `checkout.session.completed` and `customer.subscription.created/updated/deleted`.
+   Put its signing secret in `STRIPE_WEBHOOK_SECRET`.
+3. Turn on the Customer Portal (plan switching, cancellation, invoices) in
+   Stripe's settings.
+
+Without Stripe keys, everything else works and the Billing page says billing isn't set up.
+
+### Importing a practice's spreadsheets
+Export the Google Sheets as CSV, then:
 ```
-php app/cli/import_sheets.php --ar=ar.csv --tracking=tracking.csv --dry-run   # preview
-php app/cli/import_sheets.php --ar=ar.csv --tracking=tracking.csv
+php app/cli/import_sheets.php --practice=ID --ar=ar.csv --tracking=tracking.csv --dry-run   # preview
+php app/cli/import_sheets.php --practice=ID --ar=ar.csv --tracking=tracking.csv
 ```
 - A/R rows become cases with opening insurance/patient balances, the attorney
   and insurer as contacts, the last visit, last correspondence and settlement fields.
 - Tracking rows become cases with the checklist, MRI/EMC/consult referrals,
   outcome tools and prior care in the notes.
 - Unparseable dates are kept as notes rather than guessed. Every imported case
-  is labeled "imported — verify". "Still treating" rows whose care began over
-  a year ago are moved to Treatment complete.
-- The two sheets aren't linked by patient, so the same person can appear twice
-  (once from each sheet). Merge them by hand.
+  is labeled "imported — verify".
+- The two sheets aren't linked by patient, so the same person can appear twice. Merge them by hand.
 
 ### Local development
 ```
 php -S 127.0.0.1:8080 -t pi_portal/public pi_portal/app/dev_router.php
 ```
 The dev router sends the same security headers as `public/.htaccess`. It is never deployed.
+
+## Roadmap ideas
+- Email verification at signup and transactional email (through a vendor that signs a BAA)
+- HIPAA-compliant e-fax for attorney letters
+- PIP rules for other no-fault states (`app/pi_rules.php`, keyed by `practices.state`)
+- Self-service CSV import in the app
+- Narrative report generator

@@ -49,6 +49,6 @@ function totp_verify(string $secretB32, string $code, ?int $lastStep = null): ?i
 }
 
 function totp_uri(string $secretB32, string $email): string {
-    $issuer = rawurlencode(PI_PRACTICE_NAME . ' PI Portal');
+    $issuer = rawurlencode(BRAND_NAME);
     return 'otpauth://totp/' . $issuer . ':' . rawurlencode($email) . '?secret=' . $secretB32 . '&issuer=' . $issuer . '&period=30&digits=6';
 }

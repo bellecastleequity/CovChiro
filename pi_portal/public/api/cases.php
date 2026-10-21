@@ -74,8 +74,8 @@ function clean_fields(array $spec, array $in): array {
         elseif ($type === 'contact' || $type === 'user') {
             $id = ($v === null || $v === '') ? null : (int)$v;
             if ($id) {
-                $stmt = pi_db()->prepare($type === 'contact' ? 'SELECT id FROM contacts WHERE id = ?' : 'SELECT id FROM users WHERE id = ?');
-                $stmt->execute([$id]);
+                $stmt = pi_db()->prepare($type === 'contact' ? 'SELECT id FROM contacts WHERE id = ? AND practice_id = ?' : 'SELECT id FROM users WHERE id = ? AND practice_id = ?');
+                $stmt->execute([$id, pid()]);
                 if (!$stmt->fetch()) json_response(['error' => "Unknown $name"], 400);
             }
             $out[$name] = $id;
@@ -117,8 +117,8 @@ function patient_name(array $p): string {
 function handle_list() {
     $user = require_user('case.read');
     $pdo = pi_db();
-    $where = ['c.archived_at IS NULL'];
-    $args = [];
+    $where = ['c.practice_id = ?', 'c.archived_at IS NULL'];
+    $args = [pid()];
     $stage = $_GET['stage'] ?? 'open';
     if ($stage === 'open') $where[] = "c.stage IN ('" . implode("','", OPEN_STAGES) . "')";
     elseif ($stage === 'legal') $where[] = "c.stage IN ('" . implode("','", LEGAL_STAGES) . "')";
@@ -176,7 +176,7 @@ function full_case(int $id, array $user): array {
     $docs = $fetch('SELECT d.id, d.category, d.original_name, d.mime_type, d.size_bytes, d.uploaded_at, u.name uploaded_by_name FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by WHERE d.case_id = ? AND d.archived_at IS NULL ORDER BY d.uploaded_at DESC');
     $contacts = [];
     foreach (['attorney_contact_id', 'insurer_contact_id', 'referred_by_contact_id'] as $k) {
-        if ($c[$k]) { $s = $pdo->prepare('SELECT * FROM contacts WHERE id = ?'); $s->execute([$c[$k]]); $contacts[$k] = $s->fetch() ?: null; }
+        if ($c[$k]) { $s = $pdo->prepare('SELECT * FROM contacts WHERE id = ? AND practice_id = ?'); $s->execute([$c[$k], pid()]); $contacts[$k] = $s->fetch() ?: null; }
     }
 
     $totals = ledger_totals($ledger);
@@ -213,22 +213,25 @@ function handle_get() {
 function handle_create() {
     require_method('POST');
     $user = require_user('case.write');
+    enforce_limit('cases');
     $b = json_body();
     $pdo = pi_db();
     $pdo->beginTransaction();
     if (!empty($b['patient_id'])) {
         $patientId = (int)$b['patient_id'];
-        $s = $pdo->prepare('SELECT id FROM patients WHERE id = ?');
-        $s->execute([$patientId]);
+        $s = $pdo->prepare('SELECT id FROM patients WHERE id = ? AND practice_id = ?');
+        $s->execute([$patientId, pid()]);
         if (!$s->fetch()) json_response(['error' => 'Unknown patient'], 400);
     } else {
         $p = clean_fields(PATIENT_FIELDS, $b['patient'] ?? []);
         if (empty($p['first_name'])) json_response(['error' => "Enter the patient's first name."], 400);
         $p['last_name'] = $p['last_name'] ?? '';
+        $p['practice_id'] = pid();
         $p['created_at'] = $p['updated_at'] = now_str();
         $patientId = insert_row('patients', $p);
     }
     $cols = clean_fields(CASE_FIELDS, $b['case'] ?? []);
+    $cols['practice_id'] = pid();
     $cols['patient_id'] = $patientId;
     $cols['case_number'] = next_case_number($pdo);
     $cols['created_at'] = $cols['updated_at'] = now_str();
@@ -243,8 +246,8 @@ function handle_create() {
 
 function next_case_number(PDO $pdo): string {
     $prefix = 'PI-' . date('y') . '-';
-    $stmt = $pdo->prepare('SELECT case_number FROM cases WHERE case_number LIKE ? ORDER BY case_number DESC LIMIT 1 FOR UPDATE');
-    $stmt->execute([$prefix . '%']);
+    $stmt = $pdo->prepare('SELECT case_number FROM cases WHERE practice_id = ? AND case_number LIKE ? ORDER BY case_number DESC LIMIT 1 FOR UPDATE');
+    $stmt->execute([pid(), $prefix . '%']);
     $last = $stmt->fetchColumn();
     $n = $last ? (int)substr($last, strlen($prefix)) + 1 : 1;
     return $prefix . str_pad((string)$n, 4, '0', STR_PAD_LEFT);
@@ -385,9 +388,9 @@ function handle_tasks() {
     $sql = 'SELECT t.*, u.name assigned_name, c.case_number, p.first_name, p.last_name
             FROM tasks t LEFT JOIN users u ON u.id = t.assigned_user_id
             LEFT JOIN cases c ON c.id = t.case_id LEFT JOIN patients p ON p.id = c.patient_id
-            WHERE t.done_at IS NULL' . ($mine ? ' AND t.assigned_user_id = ?' : '') . ' ORDER BY t.due_on IS NULL, t.due_on LIMIT 500';
+            WHERE t.practice_id = ? AND t.done_at IS NULL' . ($mine ? ' AND t.assigned_user_id = ?' : '') . ' ORDER BY t.due_on IS NULL, t.due_on LIMIT 500';
     $stmt = pi_db()->prepare($sql);
-    $stmt->execute($mine ? [$user['id']] : []);
+    $stmt->execute($mine ? [pid(), $user['id']] : [pid()]);
     $rows = array_map(function ($t) {
         $t['patient'] = $t['case_id'] ? patient_name($t) : null;
         unset($t['first_name'], $t['last_name']);
@@ -418,7 +421,7 @@ function handle_task_save() {
         audit('update', 'task', $id, $caseId, $user, field_names($cols));
     } else {
         if (empty($cols['title'])) json_response(['error' => 'Enter a task.'], 400);
-        $cols += ['case_id' => $caseId, 'created_by' => $user['id'], 'created_at' => now_str()];
+        $cols += ['practice_id' => pid(), 'case_id' => $caseId, 'created_by' => $user['id'], 'created_at' => now_str()];
         $id = insert_row('tasks', $cols);
         audit('create', 'task', $id, $caseId, $user);
     }
@@ -429,11 +432,15 @@ function handle_task_save() {
 function handle_dashboard() {
     $user = require_user('case.read');
     $pdo = pi_db();
-    $cases = $pdo->query("SELECT c.*, p.first_name, p.last_name FROM cases c JOIN patients p ON p.id = c.patient_id
-        WHERE c.archived_at IS NULL AND c.stage IN ('" . implode("','", OPEN_STAGES) . "')")->fetchAll();
+    $stmt = $pdo->prepare("SELECT c.*, p.first_name, p.last_name FROM cases c JOIN patients p ON p.id = c.patient_id
+        WHERE c.practice_id = ? AND c.archived_at IS NULL AND c.stage IN ('" . implode("','", OPEN_STAGES) . "')");
+    $stmt->execute([pid()]);
+    $cases = $stmt->fetchAll();
     $ctx = bulk_case_context($pdo, $cases);
     $byStage = array_fill_keys(array_keys(STAGES), 0);
-    foreach ($pdo->query('SELECT stage, COUNT(*) n FROM cases WHERE archived_at IS NULL GROUP BY stage') as $r) $byStage[$r['stage']] = (int)$r['n'];
+    $stmt = $pdo->prepare('SELECT stage, COUNT(*) n FROM cases WHERE practice_id = ? AND archived_at IS NULL GROUP BY stage');
+    $stmt->execute([pid()]);
+    foreach ($stmt as $r) $byStage[$r['stage']] = (int)$r['n'];
 
     $alerts = [];
     $ar = ['insurance' => 0.0, 'patient' => 0.0, 'total' => 0.0, 'legal' => 0.0];
@@ -451,12 +458,16 @@ function handle_dashboard() {
     usort($alerts, fn($a, $b) => $rank[$a['level']] <=> $rank[$b['level']]);
 
     $stmt = $pdo->prepare('SELECT t.*, c.case_number, p.first_name, p.last_name FROM tasks t LEFT JOIN cases c ON c.id = t.case_id LEFT JOIN patients p ON p.id = c.patient_id
-        WHERE t.done_at IS NULL AND (t.assigned_user_id = ? OR t.assigned_user_id IS NULL) AND (t.due_on IS NULL OR t.due_on <= ?) ORDER BY t.due_on LIMIT 50');
-    $stmt->execute([$user['id'], add_days(date('Y-m-d'), 7)]);
+        WHERE t.practice_id = ? AND t.done_at IS NULL AND (t.assigned_user_id = ? OR t.assigned_user_id IS NULL) AND (t.due_on IS NULL OR t.due_on <= ?) ORDER BY t.due_on LIMIT 50');
+    $stmt->execute([pid(), $user['id'], add_days(date('Y-m-d'), 7)]);
     $tasks = array_map(function ($t) { $t['patient'] = $t['case_id'] ? patient_name($t) : null; unset($t['first_name'], $t['last_name']); return $t; }, $stmt->fetchAll());
 
-    $visitsThisWeek = (int)$pdo->query("SELECT COUNT(*) FROM visits WHERE archived_at IS NULL AND visit_type <> 'no_show' AND visit_date >= '" . date('Y-m-d', strtotime('monday this week')) . "'")->fetchColumn();
-    $newThisMonth = (int)$pdo->query("SELECT COUNT(*) FROM cases WHERE archived_at IS NULL AND created_at >= '" . date('Y-m-01') . "'")->fetchColumn();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM visits v JOIN cases c ON c.id = v.case_id WHERE c.practice_id = ? AND v.archived_at IS NULL AND v.visit_type <> 'no_show' AND v.visit_date >= ?");
+    $stmt->execute([pid(), date('Y-m-d', strtotime('monday this week'))]);
+    $visitsThisWeek = (int)$stmt->fetchColumn();
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM cases WHERE practice_id = ? AND archived_at IS NULL AND created_at >= ?');
+    $stmt->execute([pid(), date('Y-m-01')]);
+    $newThisMonth = (int)$stmt->fetchColumn();
     audit('view', 'dashboard', null, null, $user);
     json_response([
         'byStage' => $byStage, 'openCases' => count($cases), 'activelyTreating' => $treating,
@@ -472,10 +483,12 @@ function handle_ar_report() {
     $user = require_user('finance.read');
     $pdo = pi_db();
     $includeClosed = !empty($_GET['all']);
-    $cases = $pdo->query('SELECT c.*, p.first_name, p.last_name, a.organization atty_org, a.name atty_name, a.email atty_email, i.organization ins_org
+    $stmt = $pdo->prepare('SELECT c.*, p.first_name, p.last_name, a.organization atty_org, a.name atty_name, a.email atty_email, i.organization ins_org
         FROM cases c JOIN patients p ON p.id = c.patient_id
         LEFT JOIN contacts a ON a.id = c.attorney_contact_id LEFT JOIN contacts i ON i.id = c.insurer_contact_id
-        WHERE c.archived_at IS NULL' . ($includeClosed ? '' : " AND c.stage NOT IN ('closed','dropped')") . ' ORDER BY p.last_name, p.first_name')->fetchAll();
+        WHERE c.practice_id = ? AND c.archived_at IS NULL' . ($includeClosed ? '' : " AND c.stage NOT IN ('closed','dropped')") . ' ORDER BY p.last_name, p.first_name');
+    $stmt->execute([pid()]);
+    $cases = $stmt->fetchAll();
     $ctx = bulk_case_context($pdo, $cases);
     $rows = [];
     foreach ($cases as $c) {
@@ -560,7 +573,9 @@ function handle_letter() {
     header('Content-Type: text/html; charset=utf-8');
     header('Cache-Control: no-store');
     header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src 'self'");
-    $addr = nl2br($h(PI_PRACTICE_ADDRESS));
+    $practice = current_practice();
+    $addr = nl2br($h($practice['address'] ?? ''));
+    $contactLine = implode(' · ', array_filter([$practice['phone'] ? 'Phone ' . $h($practice['phone']) : null, $practice['fax'] ? 'Fax ' . $h($practice['fax']) : null]));
     $to = $atty ? $h($atty['name'] ?? '') . '<br>' . $h($atty['organization'] ?? '') . ($atty['address'] ? '<br>' . nl2br($h($atty['address'])) : '') . ($atty['fax'] ? '<br>Fax ' . $h($atty['fax']) : '') . ($atty['email'] ? '<br>' . $h($atty['email']) : '') : 'Attorney of record';
     echo '<!doctype html><html><head><meta charset="utf-8"><title>' . $h($title) . '</title><style>
         body{font-family:Georgia,serif;max-width:7in;margin:0.6in auto;color:#111;line-height:1.5;font-size:12pt}
@@ -570,11 +585,11 @@ function handle_letter() {
         @media print{.noprint{display:none}body{margin:0.5in}}
         </style></head><body>
         <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#fff8e1;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.</p>
-        <div class="lh"><b>' . $h(PI_PRACTICE_NAME) . '</b><br>' . $addr . '<br>Phone ' . $h(PI_PRACTICE_PHONE) . ' · Fax ' . $h(PI_PRACTICE_FAX) . '</div>
+        <div class="lh"><b>' . $h($practice['name']) . '</b>' . ($addr ? '<br>' . $addr : '') . ($contactLine ? '<br>' . $contactLine : '') . '</div>
         <p>' . date('F j, Y') . '</p><p>' . $to . '</p>
         <div class="re"><strong>RE: ' . $h($title) . '</strong><br>Patient: ' . $patientLine . '<br>Our file: ' . $h($c['case_number']) . '</div>
         <p>Dear ' . $h($atty['name'] ?? 'Counsel') . ',</p>' . $body . '
-        <p>Sincerely,</p><p style="margin-top:40px">' . $h($user['name']) . '<br>' . $h(PI_PRACTICE_NAME) . '</p>
+        <p>Sincerely,</p><p style="margin-top:40px">' . $h($user['name']) . '<br>' . $h($practice['name']) . '</p>
         <div class="conf">CONFIDENTIAL: This document contains protected health information. If you received it in error, notify the sender and destroy all copies.</div>
         </body></html>';
     exit;

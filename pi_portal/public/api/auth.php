@@ -1,7 +1,9 @@
 <?php
 // Sign-in flow: password -> (forced password change) -> 2FA enrollment or
 // 2FA code -> signed in. A session that has only passed the password step
-// can reach nothing but the next step of this flow.
+// can reach nothing but the next step of this flow. Also: self-service
+// practice signup (starts a free trial).
+define('PI_ALLOW_WHEN_LAPSED', true);
 require_once __DIR__ . '/../../app/bootstrap.php';
 pi_start_session();
 
@@ -10,6 +12,8 @@ switch ($action) {
     case 'session': handle_session(); break;
     case 'ping': handle_ping(); break;
     case 'login': handle_login(); break;
+    case 'signup': handle_signup(); break;
+    case 'plans': json_response(['plans' => PLANS, 'trialDays' => TRIAL_DAYS, 'brand' => BRAND_NAME]); break;
     case 'change_password': handle_change_password(); break;
     case 'mfa_setup_start': handle_mfa_setup_start(); break;
     case 'mfa_setup_confirm': handle_mfa_setup_confirm(); break;
@@ -39,16 +43,24 @@ function session_payload(?array $u) {
         'step' => $step,
         'csrf' => $_SESSION['csrf'],
         'idleTimeoutSeconds' => PI_IDLE_TIMEOUT_SECONDS,
-        'practice' => PI_PRACTICE_NAME,
+        'brand' => ['name' => BRAND_NAME, 'tagline' => BRAND_TAGLINE, 'support' => SUPPORT_EMAIL],
     ];
-    if ($u && $step !== 'signed_out') $out['user'] = ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email'], 'role' => $u['role']];
-    if ($step === 'signed_in') {
+    if ($u && $step !== 'signed_out') $out['user'] = ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email'], 'role' => $u['role'], 'operator' => $u['practice_id'] === null];
+    if ($step === 'signed_in' && $u['practice_id'] === null) {
+        $out['user']['perms'] = ['platform.manage'];
+    } elseif ($step === 'signed_in') {
+        $s = pi_db()->prepare('SELECT * FROM practices WHERE id = ?');
+        $s->execute([$u['practice_id']]);
+        $practice = $s->fetch();
+        $pid = (int)$practice['id'];
+        $out['practice'] = practice_summary($practice) + ['activeCases' => active_case_count($pid), 'activeUsers' => active_user_count($pid)];
         $out['user']['perms'] = ROLE_PERMS[$u['role']] ?? [];
+        $q = function (string $sql) use ($pid) { $st = pi_db()->prepare($sql); $st->execute([$pid]); return $st->fetchAll(); };
         $out['lookups'] = [
             'stages' => STAGES, 'benefits' => BENEFITS, 'referralTypes' => REFERRAL_TYPES,
             'outcomeMeasures' => OUTCOME_MEASURES, 'reductionFloorPct' => REDUCTION_FLOOR_PCT,
-            'providers' => pi_db()->query("SELECT id, name FROM users WHERE active = 1 AND role IN ('provider','admin') ORDER BY name")->fetchAll(),
-            'users' => pi_db()->query('SELECT id, name FROM users WHERE active = 1 ORDER BY name')->fetchAll(),
+            'providers' => $q("SELECT id, name FROM users WHERE practice_id = ? AND active = 1 AND role IN ('provider','admin') ORDER BY name"),
+            'users' => $q('SELECT id, name FROM users WHERE practice_id = ? AND active = 1 ORDER BY name'),
         ];
     }
     return $out;
@@ -131,6 +143,46 @@ function handle_login() {
     $_SESSION['started_at'] = $_SESSION['last_seen'] = time();
     $_SESSION['csrf'] = bin2hex(random_bytes(32));
     audit('login_password_ok', 'user', $u['id'], null, $u);
+    json_response(session_payload($u));
+}
+
+// New practice: creates the practice on a free trial and its first admin,
+// records BAA/Terms acceptance, and signs the owner in up to the 2FA step.
+function handle_signup() {
+    require_method('POST');
+    check_csrf();
+    check_login_throttle();
+    $b = json_body();
+    $practiceName = str_or_null($b['practice_name'] ?? null, 160);
+    $name = str_or_null($b['name'] ?? null, 120);
+    $email = strtolower(trim((string)($b['email'] ?? '')));
+    $password = (string)($b['password'] ?? '');
+    $plan = isset(PLANS[$b['plan'] ?? '']) ? $b['plan'] : 'solo';
+    if (!$practiceName || !$name) json_response(['error' => 'Enter your practice name and your name.'], 400);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) json_response(['error' => 'Enter a valid email address.'], 400);
+    if ($p = password_problem($password, ['email' => $email])) json_response(['error' => $p], 400);
+    if (empty($b['accept'])) json_response(['error' => 'Please accept the Terms and Business Associate Agreement.'], 400);
+    $pdo = pi_db();
+    $s = $pdo->prepare('SELECT id FROM users WHERE email = ?');
+    $s->execute([$email]);
+    if ($s->fetch()) json_response(['error' => 'That email already has an account — sign in instead.'], 400);
+
+    $pdo->beginTransaction();
+    $practiceId = create_practice($practiceName, $plan);
+    $pdo->prepare("INSERT INTO users (practice_id, email, name, role, password_hash, must_change_password, created_at) VALUES (?, ?, ?, 'admin', ?, 0, ?)")
+        ->execute([$practiceId, $email, $name, password_hash($password, PASSWORD_ARGON2ID), now_str()]);
+    $userId = (int)$pdo->lastInsertId();
+    $pdo->prepare('UPDATE practices SET baa_version = ?, baa_accepted_at = ?, baa_accepted_by = ? WHERE id = ?')->execute([BAA_VERSION, now_str(), $userId, $practiceId]);
+    $pdo->commit();
+
+    $u = load_user($userId);
+    audit('signup', 'practice', $practiceId, null, $u, "plan=$plan baa=" . BAA_VERSION);
+    session_regenerate_id(true);
+    $_SESSION['uid'] = $userId;
+    $_SESSION['email'] = $email;
+    $_SESSION['mfa_ok'] = false;
+    $_SESSION['started_at'] = $_SESSION['last_seen'] = time();
+    $_SESSION['csrf'] = bin2hex(random_bytes(32));
     json_response(session_payload($u));
 }
 
