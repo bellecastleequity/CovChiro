@@ -1,0 +1,2 @@
+# Never web-reachable. Keep this folder outside the web root as well.
+Require all denied

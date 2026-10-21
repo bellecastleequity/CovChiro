@@ -1,3 +1,7 @@
 php_backend/logs/
 php_backend/secrets.php
 php_backend/vendor/
+pi_portal/app/secrets.php
+pi_portal/storage/logs/
+pi_portal/storage/documents/*
+!pi_portal/storage/documents/.gitkeep
