@@ -1,4 +1,4 @@
--- CaseMGR — database schema (MySQL 8 / MariaDB 10.6+)
+-- InjuryCase — database schema (MySQL 8 / MariaDB 10.6+)
 --
 -- Multi-tenant: every subscribing practice is a row in `practices`, and
 -- every table holding a practice's data carries practice_id (directly, or

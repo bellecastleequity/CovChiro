@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# CaseMGR — one-time server setup on the EC2 instance created by casemgr.yaml
+# InjuryCase — one-time server setup on the EC2 instance created by injurycase.yaml
 # (Amazon Linux 2023). Run from a checkout of the repository:
 #
 #   aws ssm start-session --target <InstanceId>      # from your computer
 #   sudo -i
-#   git clone https://github.com/<you>/<repo>.git /opt/casemgr-src
-#   bash /opt/casemgr-src/pi_portal/deploy/aws/setup.sh
+#   git clone https://github.com/<you>/<repo>.git /opt/injurycase-src
+#   bash /opt/injurycase-src/pi_portal/deploy/aws/setup.sh
 #
 # Safe to re-run: it never overwrites secrets.php, the encryption key or the
 # database once they exist. Code updates afterwards: deploy/aws/update.sh.
 set -euo pipefail
 
 [[ $EUID -eq 0 ]] || { echo "Run as root (sudo -i)"; exit 1; }
-[[ -f /etc/casemgr.env ]] || { echo "/etc/casemgr.env missing — was this instance created by casemgr.yaml?"; exit 1; }
+[[ -f /etc/injurycase.env ]] || { echo "/etc/injurycase.env missing — was this instance created by injurycase.yaml?"; exit 1; }
 # shellcheck disable=SC1091
-source /etc/casemgr.env
+source /etc/injurycase.env
 export AWS_DEFAULT_REGION="$AWS_REGION"
 
 SRC="$(cd "$(dirname "$0")/../.." && pwd)"      # .../pi_portal
-APP=/var/www/casemgr
+APP=/var/www/injurycase
 RDS_CA=/etc/pki/tls/certs/rds-global-bundle.pem
 say() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
 
@@ -69,7 +69,7 @@ if [[ ! -f "$APP/app/secrets.php" ]]; then
 <?php
 // Written by deploy/aws/setup.sh. Values come from AWS Secrets Manager.
 define('PI_DB_HOST', '$DB_HOST');
-define('PI_DB_NAME', 'casemgr');
+define('PI_DB_NAME', 'injurycase');
 define('PI_DB_USER', '$DB_USER');
 define('PI_DB_PASSWORD', '$DB_PASS');
 define('PI_DB_SSL_CA', '$RDS_CA');
@@ -85,8 +85,8 @@ fi
 chown root:apache "$APP/app/secrets.php"; chmod 640 "$APP/app/secrets.php"
 
 say "Database schema"
-MYSQL=(mysql --ssl-ca="$RDS_CA" --ssl-verify-server-cert -h "$DB_HOST" -u "$DB_USER" "-p$DB_PASS" casemgr)
-TABLES=$("${MYSQL[@]}" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='casemgr'")
+MYSQL=(mysql --ssl-ca="$RDS_CA" --ssl-verify-server-cert -h "$DB_HOST" -u "$DB_USER" "-p$DB_PASS" injurycase)
+TABLES=$("${MYSQL[@]}" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='injurycase'")
 if [[ "$TABLES" == "0" ]]; then
   "${MYSQL[@]}" < "$APP/app/schema.sql"
   sudo -u apache php "$APP/app/cli/migrate.php" --baseline
@@ -96,7 +96,7 @@ else
 fi
 
 say "PHP settings"
-cat > /etc/php.d/90-casemgr.ini <<'EOF'
+cat > /etc/php.d/90-injurycase.ini <<'EOF'
 expose_php = Off
 display_errors = Off
 log_errors = On
@@ -111,12 +111,13 @@ date.timezone = America/New_York
 EOF
 
 say "Apache virtual host"
-cat > /etc/httpd/conf.d/casemgr.conf <<EOF
+cat > /etc/httpd/conf.d/injurycase.conf <<EOF
 ServerTokens Prod
 ServerSignature Off
 TraceEnable Off
 <VirtualHost *:80>
   ServerName $DOMAIN
+  ServerAlias www.$DOMAIN
   DocumentRoot $APP/public
   # Nothing outside public/ is ever served.
   <Directory $APP>
@@ -134,10 +135,13 @@ systemctl enable --now php-fpm httpd
 systemctl reload php-fpm httpd
 
 say "HTTPS certificate (Let's Encrypt)"
-if certbot --apache -d "$DOMAIN" -m "$ADMIN_EMAIL" --agree-tos -n --redirect; then
+# Both the bare domain and www; falls back to the bare domain alone if
+# www's DNS record isn't in place yet.
+if certbot --apache -d "$DOMAIN" -d "www.$DOMAIN" -m "$ADMIN_EMAIL" --agree-tos -n --redirect \
+   || certbot --apache -d "$DOMAIN" -m "$ADMIN_EMAIL" --agree-tos -n --redirect; then
   systemctl enable --now certbot-renew.timer 2>/dev/null || echo "0 3 * * * root certbot renew -q" > /etc/cron.d/certbot
 else
-  echo "Certificate not issued yet. Point $DOMAIN's DNS A record at this server's Elastic IP, wait a few minutes, then re-run this script."
+  echo "Certificate not issued yet. Point the DNS A records for $DOMAIN and www.$DOMAIN at this server's Elastic IP, wait a few minutes, then re-run this script."
 fi
 
 say "Done"

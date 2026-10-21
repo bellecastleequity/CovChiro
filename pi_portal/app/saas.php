@@ -4,9 +4,9 @@
 // secrets.php). Change a price here AND in Stripe — existing subscribers
 // keep the Stripe price they signed up on until moved.
 
-if (!defined('BRAND_NAME')) define('BRAND_NAME', 'CaseMGR');
+if (!defined('BRAND_NAME')) define('BRAND_NAME', 'InjuryCase');
 if (!defined('BRAND_TAGLINE')) define('BRAND_TAGLINE', 'Personal injury case management for chiropractors');
-if (!defined('SUPPORT_EMAIL')) define('SUPPORT_EMAIL', 'support@example.com');
+if (!defined('SUPPORT_EMAIL')) define('SUPPORT_EMAIL', 'support@injurycase.com');
 
 define('TRIAL_DAYS', 14);
 // Bump when the Business Associate Agreement or Terms text changes; the

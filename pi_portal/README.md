@@ -1,4 +1,4 @@
-# CaseMGR
+# InjuryCase
 
 **Personal injury case management for chiropractors**, sold as a monthly
 membership. Each subscribing practice manages its own patient load in its own

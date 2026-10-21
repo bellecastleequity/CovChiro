@@ -1,5 +1,5 @@
 <?php
-// CaseMGR — bootstrap: secrets, DB, hardened session, CSRF, auth,
+// InjuryCase — bootstrap: secrets, DB, hardened session, CSRF, auth,
 // tenant scoping, roles, audit logging. Every API endpoint requires this file first.
 //
 // This portal holds PHI, so it deliberately differs from the marketing

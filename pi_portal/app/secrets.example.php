@@ -30,5 +30,5 @@ define('STRIPE_WEBHOOK_SECRET', 'whsec_...');
 define('STRIPE_PRICES', ['solo' => 'price_...', 'practice' => 'price_...', 'group' => 'price_...']);
 
 // Public URL of the app (no trailing slash), used for Stripe return links.
-define('APP_URL', 'https://app.example.com');
-define('SUPPORT_EMAIL', 'support@example.com');
+define('APP_URL', 'https://injurycase.com');
+define('SUPPORT_EMAIL', 'support@injurycase.com');

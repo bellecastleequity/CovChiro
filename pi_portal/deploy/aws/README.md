@@ -1,6 +1,6 @@
-# Deploying CaseMGR on AWS
+# Deploying InjuryCase on AWS
 
-`casemgr.yaml` (CloudFormation) builds the whole environment. `setup.sh`
+`injurycase.yaml` (CloudFormation) builds the whole environment. `setup.sh`
 configures the server, and `update.sh` ships later code updates.
 
 ```
@@ -20,7 +20,7 @@ RDS + 20 GB ≈ $15, public IPv4 + Secrets Manager + backups ≈ $6–8. That's
 the database line.
 
 ## 1. Before anything else (HIPAA)
-1. Create a **dedicated AWS account** for CaseMGR (not shared with anything else).
+1. Create a **dedicated AWS account** for InjuryCase (not shared with anything else).
 2. **Accept the AWS Business Associate Addendum:** AWS Console → **AWS Artifact** →
    Agreements → *AWS Business Associate Addendum* → Accept. Do this before any PHI
    is stored. Only use services on AWS's *HIPAA Eligible Services* list. Everything
@@ -34,29 +34,29 @@ the database line.
 5. Set a **billing alarm** (Budgets) so a surprise doesn't come by invoice.
 
 ## 2. Create the stack
-Console → CloudFormation → Create stack → upload `casemgr.yaml`:
-- **DomainName:** for example `app.casemgr.com` (register the domain in Route 53 or anywhere)
+Console → CloudFormation → Create stack → upload `injurycase.yaml`:
+- **DomainName:** `injurycase.com`. The landing page is served at `/` and the app at `/app.html`.
 - **AdminEmail:** your email
 
 It takes about 15 minutes (most of that is RDS). When it finishes, open **Outputs**:
-- Point your domain's DNS **A record** at `ElasticIP`.
+- At your registrar, create **A records** for `injurycase.com` **and** `www.injurycase.com`, both pointing at `ElasticIP`. `www` redirects to the bare domain.
 - Copy `ConnectCommand`.
 
 CLI alternative:
 ```
-aws cloudformation deploy --stack-name casemgr --template-file casemgr.yaml \
+aws cloudformation deploy --stack-name injurycase --template-file injurycase.yaml \
   --capabilities CAPABILITY_IAM \
-  --parameter-overrides DomainName=app.casemgr.com AdminEmail=you@example.com
+  --parameter-overrides DomainName=injurycase.com AdminEmail=you@example.com
 ```
 
 ## 3. Set up the server
 ```
 aws ssm start-session --region <region> --target <InstanceId>   # or: EC2 console → Connect → Session Manager
 sudo -i
-git clone https://github.com/bellecastleequity/CovChiro.git /opt/casemgr-src   # private repo: use a deploy key or token
-bash /opt/casemgr-src/pi_portal/deploy/aws/setup.sh
+git clone https://github.com/bellecastleequity/CovChiro.git /opt/injurycase-src   # private repo: use a deploy key or token
+bash /opt/injurycase-src/pi_portal/deploy/aws/setup.sh
 ```
-The script installs Apache/PHP, copies the app to `/var/www/casemgr`, generates
+The script installs Apache/PHP, copies the app to `/var/www/injurycase`, generates
 the encryption key into Secrets Manager, writes `app/secrets.php`, imports the
 schema over TLS, configures Apache and PHP, enables automatic security updates,
 and gets the HTTPS certificate. If DNS hasn't propagated yet, re-run it a few
@@ -68,7 +68,7 @@ Finish with the commands the script prints: create your operator login and your
 own (comped) clinic, then import your spreadsheets.
 
 ## 4. Stripe
-Edit `/var/www/casemgr/app/secrets.php` and uncomment the Stripe lines (Price
+Edit `/var/www/injurycase/app/secrets.php` and uncomment the Stripe lines (Price
 IDs for $39 / $59 / $79). Set the webhook to
 `https://<domain>/api/billing.php?action=webhook`, then run `systemctl reload php-fpm`.
 See the main README for details.
@@ -76,7 +76,7 @@ See the main README for details.
 ## 5. Updating the code later
 ```
 sudo -i
-cd /opt/casemgr-src && git pull
+cd /opt/injurycase-src && git pull
 bash pi_portal/deploy/aws/update.sh
 ```
 This keeps `secrets.php` and uploaded documents, and applies any new database

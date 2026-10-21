@@ -1,8 +1,13 @@
-# CaseMGR — web root. Serve ONLY over HTTPS on a HIPAA-eligible host.
+# InjuryCase — web root. Serve ONLY over HTTPS on a HIPAA-eligible host.
 Options -Indexes
 DirectoryIndex index.html
 
 RewriteEngine On
+# www.injurycase.com -> injurycase.com (one canonical address).
+RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
+RewriteRule ^(.*)$ https://%1/$1 [L,R=301]
+
 RewriteCond %{HTTPS} off
 # Let's Encrypt validates over plain HTTP before a certificate exists.
 RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
