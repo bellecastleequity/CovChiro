@@ -1,11 +1,11 @@
-# Casewell
+# CaseMGR
 
 **Personal injury case management for chiropractors**, sold as a monthly
 membership. Each subscribing practice manages its own patient load in its own
 isolated workspace. It grew out of the "Injury Tracking Sheet" and
 "PI A/R – PIP" spreadsheets and tracks each case from intake through settlement.
 
-"Casewell" is a working name. To rename the product, change `BRAND_NAME` in
+To rename the product, change `BRAND_NAME` in
 `app/saas.php` plus the text in `public/index.html` and `public/legal.html`.
 Check trademark and domain availability before launch.
 
@@ -21,9 +21,9 @@ Check trademark and domain availability before launch.
 - **Tenancy.** Every practice is a row in `practices`. All practice data carries
   `practice_id`, and every query is scoped to the signed-in user's practice.
   An id belonging to another practice simply returns "not found".
-- **Plans** (`PLANS` in `app/saas.php`; prices are placeholders): Solo $99
-  (75 open cases, 3 users), Practice $199 (300 open, 10 users), Group $399
-  (unlimited). Limits count *open* cases only. Closed cases are free.
+- **Plans** (`PLANS` in `app/saas.php`): Solo $39 (75 open cases, 3 users),
+  Practice $59 (300 open, 10 users), Group $79 (unlimited). Limits count
+  *open* cases only. Closed cases are free.
 - **Trial.** 14 days, no card required. When the trial ends or a subscription
   is canceled, the practice goes **read-only**: it can still view and export
   everything (they're its medical records, and the BAA requires returning
@@ -94,15 +94,11 @@ safeguards and signed agreements that no code can provide.
 
 ### Your responsibilities (the real obstacles)
 0. **Get the legal documents reviewed.** Have a healthcare attorney finalize `legal.html`.
-1. **Hosting with a signed BAA.** Do **not** run this on the Namecheap shared
-   hosting used for the marketing sites. Namecheap does not sign Business
-   Associate Agreements. Use a HIPAA-eligible host that will sign a BAA, for example:
-   - AWS (Lightsail or EC2 + RDS MySQL with encryption on), after accepting the BAA in AWS Artifact
-   - Google Cloud or Azure (BAA available)
-   - A managed HIPAA host such as Liquid Web HIPAA, Atlantic.Net or HIPAA Vault
-
-   The database volume and backups must be encrypted at rest. That is what
-   protects patient *names*, which are left unencrypted so they can be searched.
+1. **Hosting with a signed BAA. Deploy on AWS** with `deploy/aws/`: a
+   CloudFormation stack plus setup script. See **[deploy/aws/README.md](deploy/aws/README.md)**.
+   Accept the AWS Business Associate Addendum in AWS Artifact first. The stack
+   encrypts the database, disk and backups, which protects patient *names*
+   (left unencrypted in the app so they can be searched).
 2. **BAAs with every vendor that touches PHI**: the host, backup provider,
    and any email/fax service. The portal sends no email. Letters are printed
    or saved as PDF. If you later add e-fax or email, that vendor needs a BAA too.

@@ -1,5 +1,5 @@
 <?php
-// Casewell — bootstrap: secrets, DB, hardened session, CSRF, auth,
+// CaseMGR — bootstrap: secrets, DB, hardened session, CSRF, auth,
 // tenant scoping, roles, audit logging. Every API endpoint requires this file first.
 //
 // This portal holds PHI, so it deliberately differs from the marketing
@@ -63,9 +63,17 @@ function pi_db(): PDO {
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
-        ]
+        ] + pi_db_tls_options()
     );
     return $pdo;
+}
+
+// On AWS the database is a separate RDS server, so traffic to it must be
+// encrypted: set PI_DB_SSL_CA to the RDS certificate bundle and PDO
+// refuses to connect without TLS and a valid RDS certificate.
+function pi_db_tls_options(): array {
+    if (!defined('PI_DB_SSL_CA') || !PI_DB_SSL_CA) return [];
+    return [PDO::MYSQL_ATTR_SSL_CA => PI_DB_SSL_CA, PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => true];
 }
 
 function now_str() { return date('Y-m-d H:i:s'); }

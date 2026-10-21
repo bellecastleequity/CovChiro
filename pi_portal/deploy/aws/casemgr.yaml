@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  CaseMGR - HIPAA-oriented single-server stack: VPC, EC2 web server (Apache +
+  PHP, encrypted disk, no SSH - Session Manager only), encrypted RDS MySQL in
+  private subnets with TLS required, Secrets Manager for credentials and the
+  app encryption key, and AWS Backup for the server's disk (uploaded documents).
+  Accept the AWS Business Associate Addendum in AWS Artifact BEFORE storing PHI.
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: Hostname the app will be served on (e.g. app.casemgr.com). Point its DNS A record at the ElasticIP output.
+  AdminEmail:
+    Type: String
+    Description: Email for Let's Encrypt certificate notices and backup alarms.
+  InstanceType:
+    Type: String
+    Default: t4g.small
+    AllowedValues: [t4g.small, t4g.medium, t4g.large]
+  DBInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    AllowedValues: [db.t4g.micro, db.t4g.small, db.t4g.medium]
+  DBMultiAZ:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Standby database in a second zone (roughly doubles database cost). Recommended once you have paying practices.
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+
+Resources:
+  # ---------------- Network ----------------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: [{ Key: Name, Value: casemgr }]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref Vpc, InternetGatewayId: !Ref InternetGateway }
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags: [{ Key: Name, Value: casemgr-public }]
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.11.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags: [{ Key: Name, Value: casemgr-private-a }]
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.12.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags: [{ Key: Name, Value: casemgr-private-b }]
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref Vpc }
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties: { RouteTableId: !Ref PublicRouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway }
+  PublicSubnetRoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnet, RouteTableId: !Ref PublicRouteTable }
+
+  # Web: only HTTP (redirects to HTTPS / certificate renewal) and HTTPS. No SSH.
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: CaseMGR web server
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0, Description: HTTP redirect and Lets Encrypt }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0, Description: HTTPS }
+  # Database: reachable only from the web server.
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: CaseMGR database
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 3306, ToPort: 3306, SourceSecurityGroupId: !Ref WebSecurityGroup, Description: MySQL from web server }
+
+  # ---------------- Secrets ----------------
+  DbSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: CaseMGR database credentials
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "casemgr"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\''`$ '
+  # Filled in by deploy/aws/setup.sh on first run with a random 32-byte key.
+  # Also keep an OFFLINE copy: without it, encrypted data is unrecoverable.
+  AppKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: CaseMGR field/document encryption key (PI_ENCRYPTION_KEY)
+      SecretString: unset
+
+  # ---------------- Database ----------------
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: CaseMGR private subnets
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+  DbParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: CaseMGR - require TLS for every connection
+      Family: mysql8.4
+      Parameters:
+        require_secure_transport: '1'
+        time_zone: America/New_York
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: mysql
+      EngineVersion: '8.4.11'
+      DBInstanceClass: !Ref DBInstanceClass
+      DBName: casemgr
+      MasterUsername: !Sub '{{resolve:secretsmanager:${DbSecret}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DbSecret}:SecretString:password}}'
+      AllocatedStorage: '20'
+      MaxAllocatedStorage: 200
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: !Ref DBMultiAZ
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DbSecurityGroup]
+      DBParameterGroupName: !Ref DbParameterGroup
+      BackupRetentionPeriod: 35
+      PreferredBackupWindow: '07:00-08:00'
+      CopyTagsToSnapshot: true
+      DeletionProtection: true
+      AutoMinorVersionUpgrade: true
+      EnableCloudwatchLogsExports: [error]
+  DbSecretAttachment:
+    Type: AWS::SecretsManager::SecretTargetAttachment
+    Properties:
+      SecretId: !Ref DbSecret
+      TargetId: !Ref Database
+      TargetType: AWS::RDS::DBInstance
+
+  # ---------------- Web server ----------------
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{ Effect: Allow, Principal: { Service: ec2.amazonaws.com }, Action: sts:AssumeRole }]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Policies:
+        - PolicyName: casemgr-secrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - { Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: [!Ref DbSecret, !Ref AppKeySecret] }
+              - { Effect: Allow, Action: secretsmanager:PutSecretValue, Resource: !Ref AppKeySecret }
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: { Roles: [!Ref InstanceRole] }
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        MetadataOptions: { HttpTokens: required, HttpEndpoint: enabled }
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs: { VolumeSize: 30, VolumeType: gp3, Encrypted: true, DeleteOnTermination: false }
+  WebServer:
+    Type: AWS::EC2::Instance
+    DependsOn: PublicRoute
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      LaunchTemplate: { LaunchTemplateId: !Ref LaunchTemplate, Version: !GetAtt LaunchTemplate.LatestVersionNumber }
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          SubnetId: !Ref PublicSubnet
+          GroupSet: [!Ref WebSecurityGroup]
+          AssociatePublicIpAddress: true
+      Tags: [{ Key: Name, Value: casemgr-web }, { Key: backup, Value: casemgr }]
+      # Records where everything is; deploy/aws/setup.sh reads this file.
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          cat > /etc/casemgr.env <<EOF
+          AWS_REGION=${AWS::Region}
+          DOMAIN=${DomainName}
+          ADMIN_EMAIL=${AdminEmail}
+          DB_SECRET_ARN=${DbSecret}
+          APP_KEY_SECRET_ARN=${AppKeySecret}
+          EOF
+          chmod 600 /etc/casemgr.env
+          dnf -y install git rsync jq
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Properties: { Domain: vpc, InstanceId: !Ref WebServer }
+
+  # ---------------- Backups (server disk = uploaded documents) ----------------
+  BackupVault:
+    Type: AWS::Backup::BackupVault
+    Properties: { BackupVaultName: !Sub 'casemgr-${AWS::StackName}' }
+  BackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: casemgr-daily
+        BackupPlanRule:
+          - RuleName: daily-35-days
+            TargetBackupVault: !Ref BackupVault
+            ScheduleExpression: cron(0 8 * * ? *)
+            Lifecycle: { DeleteAfterDays: 35 }
+  BackupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{ Effect: Allow, Principal: { Service: backup.amazonaws.com }, Action: sts:AssumeRole }]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores
+  BackupSelection:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref BackupPlan
+      BackupSelection:
+        SelectionName: casemgr-web
+        IamRoleArn: !GetAtt BackupRole.Arn
+        Resources: [!Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${WebServer}']
+
+Outputs:
+  ElasticIP:
+    Description: Point your domain's DNS A record here
+    Value: !Ref ElasticIp
+  InstanceId:
+    Value: !Ref WebServer
+  ConnectCommand:
+    Description: Shell on the server (no SSH keys or open port needed)
+    Value: !Sub 'aws ssm start-session --region ${AWS::Region} --target ${WebServer}'
+  DatabaseEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  AppKeySecretArn:
+    Description: Retrieve and store OFFLINE after setup
+    Value: !Ref AppKeySecret

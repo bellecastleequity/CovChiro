@@ -1,9 +1,11 @@
-# PI Case Portal — web root. Serve ONLY over HTTPS on a HIPAA-eligible host.
+# CaseMGR — web root. Serve ONLY over HTTPS on a HIPAA-eligible host.
 Options -Indexes
 DirectoryIndex index.html
 
 RewriteEngine On
 RewriteCond %{HTTPS} off
+# Let's Encrypt validates over plain HTTP before a certificate exists.
+RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
 RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
 <IfModule mod_headers.c>

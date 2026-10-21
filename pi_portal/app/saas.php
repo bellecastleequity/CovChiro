@@ -1,9 +1,10 @@
 <?php
 // Membership: brand, plans, trial/subscription state and plan limits.
-// Prices and limits here are placeholders — set your own, and create a
-// matching recurring Price in Stripe for each plan (IDs go in secrets.php).
+// Each plan needs a matching monthly recurring Price in Stripe (IDs go in
+// secrets.php). Change a price here AND in Stripe — existing subscribers
+// keep the Stripe price they signed up on until moved.
 
-if (!defined('BRAND_NAME')) define('BRAND_NAME', 'Casewell');
+if (!defined('BRAND_NAME')) define('BRAND_NAME', 'CaseMGR');
 if (!defined('BRAND_TAGLINE')) define('BRAND_TAGLINE', 'Personal injury case management for chiropractors');
 if (!defined('SUPPORT_EMAIL')) define('SUPPORT_EMAIL', 'support@example.com');
 
@@ -13,9 +14,9 @@ define('TRIAL_DAYS', 14);
 define('BAA_VERSION', '2026-10');
 
 const PLANS = [
-    'solo'     => ['name' => 'Solo',     'price' => 99,  'active_cases' => 75,   'users' => 3,    'blurb' => 'One doctor and front desk'],
-    'practice' => ['name' => 'Practice', 'price' => 199, 'active_cases' => 300,  'users' => 10,   'blurb' => 'A busy PI clinic'],
-    'group'    => ['name' => 'Group',    'price' => 399, 'active_cases' => null, 'users' => null, 'blurb' => 'Multiple doctors or locations'],
+    'solo'     => ['name' => 'Solo',     'price' => 39,  'active_cases' => 75,   'users' => 3,    'blurb' => 'One doctor and front desk'],
+    'practice' => ['name' => 'Practice', 'price' => 59, 'active_cases' => 300,  'users' => 10,   'blurb' => 'A busy PI clinic'],
+    'group'    => ['name' => 'Group',    'price' => 79, 'active_cases' => null, 'users' => null, 'blurb' => 'Multiple doctors or locations'],
 ];
 
 function plan_for(array $practice): array {

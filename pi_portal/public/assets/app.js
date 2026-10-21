@@ -1,11 +1,11 @@
-// Casewell — single-page front end.
+// CaseMGR — single-page front end.
 // No inline handlers or styles anywhere (the CSP forbids them): every
 // button carries data-act="..." and one delegated listener dispatches it.
 // Every dynamic value goes through esc() before it touches innerHTML.
 'use strict';
 (() => {
 
-const S = { csrf: '', user: null, lookups: null, brand: { name: 'Casewell' }, practice: null, contacts: [], caseData: null, caseTab: 'overview', idleTimeout: 900, lastActivity: Date.now() };
+const S = { csrf: '', user: null, lookups: null, brand: { name: 'CaseMGR' }, practice: null, contacts: [], caseData: null, caseTab: 'overview', idleTimeout: 900, lastActivity: Date.now() };
 const $app = document.getElementById('app');
 const $modalHost = document.getElementById('modal-host');
 

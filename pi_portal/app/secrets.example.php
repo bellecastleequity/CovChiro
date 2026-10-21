@@ -8,6 +8,9 @@ define('PI_DB_HOST', 'localhost');
 define('PI_DB_NAME', 'pi_portal');
 define('PI_DB_USER', 'pi_portal_app');
 define('PI_DB_PASSWORD', 'change-me');
+// AWS RDS: path to the RDS CA bundle, which forces TLS to the database
+// (deploy/aws/setup.sh downloads it). Leave '' for a local database.
+define('PI_DB_SSL_CA', '');
 
 // ========== ENCRYPTION KEY ==========
 // 32 random bytes, base64. Generate with:

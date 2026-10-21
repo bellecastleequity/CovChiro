@@ -1,8 +1,8 @@
-/* Casewell. System fonts only: a PHI app makes no third-party
+/* CaseMGR. System fonts only: a PHI app makes no third-party
    requests (no Google Fonts, CDNs or analytics), so nothing about who is
    viewing which page leaks to anyone else. */
 :root{
-  /* Casewell brand tokens */
+  /* CaseMGR brand tokens */
   --ink:#0F172A;--muted:#5B6476;--bg:#F4F6FB;--bg-2:#E9EDF5;--surface:#FFFFFF;
   --brand:#2B3FD6;--brand-dark:#1F2DA6;--brand-light:#8F9BF0;--brand-tint:rgba(43,63,214,0.08);
   --accent:#14B8A6;--accent-tint:rgba(20,184,166,0.12);
