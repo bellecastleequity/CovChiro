@@ -214,7 +214,7 @@ function drawQr(canvas, text) {
   canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = '#1C2430';
+  ctx.fillStyle = '#0B2340';
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) ctx.fillRect((c + margin) * scale, (r + margin) * scale, scale, scale);
 }
 

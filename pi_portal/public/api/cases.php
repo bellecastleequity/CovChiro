@@ -578,13 +578,13 @@ function handle_letter() {
     $contactLine = implode(' · ', array_filter([$practice['phone'] ? 'Phone ' . $h($practice['phone']) : null, $practice['fax'] ? 'Fax ' . $h($practice['fax']) : null]));
     $to = $atty ? $h($atty['name'] ?? '') . '<br>' . $h($atty['organization'] ?? '') . ($atty['address'] ? '<br>' . nl2br($h($atty['address'])) : '') . ($atty['fax'] ? '<br>Fax ' . $h($atty['fax']) : '') . ($atty['email'] ? '<br>' . $h($atty['email']) : '') : 'Attorney of record';
     echo '<!doctype html><html><head><meta charset="utf-8"><title>' . $h($title) . '</title><style>
-        body{font-family:Georgia,serif;max-width:7in;margin:0.6in auto;color:#111;line-height:1.5;font-size:12pt}
-        .lh{border-bottom:2px solid #2F5D53;padding-bottom:10px;margin-bottom:24px}.lh b{font-size:15pt;color:#2F5D53}
-        .re{margin:18px 0;padding:10px 12px;background:#f3f1ea;border-left:3px solid #2F5D53}
-        .conf{margin-top:40px;font-size:9pt;color:#555;border-top:1px solid #ccc;padding-top:8px}
+        body{font-family:Georgia,serif;max-width:7in;margin:0.6in auto;color:#0B2340;line-height:1.5;font-size:12pt}
+        .lh{border-bottom:2px solid #1FA866;padding-bottom:10px;margin-bottom:24px}.lh b{font-size:15pt;color:#0B2340}
+        .re{margin:18px 0;padding:10px 12px;background:#EEF2F7;border-left:3px solid #1FA866}
+        .conf{margin-top:40px;font-size:9pt;color:#0B2340;opacity:.75;border-top:1px solid #EEF2F7;padding-top:8px}
         @media print{.noprint{display:none}body{margin:0.5in}}
         </style></head><body>
-        <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#fff8e1;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.</p>
+        <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#EEF2F7;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.</p>
         <div class="lh"><b>' . $h($practice['name']) . '</b>' . ($addr ? '<br>' . $addr : '') . ($contactLine ? '<br>' . $contactLine : '') . '</div>
         <p>' . date('F j, Y') . '</p><p>' . $to . '</p>
         <div class="re"><strong>RE: ' . $h($title) . '</strong><br>Patient: ' . $patientLine . '<br>Our file: ' . $h($c['case_number']) . '</div>

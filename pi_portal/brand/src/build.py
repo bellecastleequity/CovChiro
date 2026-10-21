@@ -13,7 +13,8 @@ from mark import mark
 
 OUT = os.path.join(os.path.dirname(__file__), '..')
 FONTS = '/usr/share/fonts/opentype/inter/'
-INDIGO, MINT, NAVY, WHITE, BLACK = '#2B3FD6', '#5EEAD4', '#0F1733', '#FFFFFF', '#000000'
+# Brand: two colors (navy + green); the website adds one light shade, Mist #EEF2F7.
+NAVY, GREEN, WHITE, BLACK = '#0B2340', '#1FA866', '#FFFFFF', '#000000'
 TRACK = -0.012  # em; slightly tight, as display type should be
 
 class Face:
@@ -73,20 +74,21 @@ def wordmark_only(c1, c2):
 
 marks = {
     'mark': mark(),
-    'mark-navy': mark(bg=NAVY),
+    # White tile for dark backgrounds, so the icon doesn't vanish into navy.
+    'mark-reverse': mark(bg=WHITE, glyph=NAVY, arrow=GREEN),
     'mark-mono-black': mark(bg=BLACK, glyph=WHITE, arrow=WHITE),
     'mark-mono-white': mark(bg=WHITE, glyph=NAVY, arrow=NAVY),
     'mark-small': mark(with_c=False),
 }
 files = {k: v for k, v in marks.items()}
-files['logo-horizontal'] = horizontal(marks['mark'], NAVY, INDIGO)
-files['logo-horizontal-dark'] = horizontal(marks['mark'], WHITE, MINT)
-files['logo-stacked'] = stacked(marks['mark'], NAVY, INDIGO)
-files['logo-stacked-dark'] = stacked(marks['mark'], WHITE, MINT)
+files['logo-horizontal'] = horizontal(marks['mark'], NAVY, GREEN)
+files['logo-horizontal-dark'] = horizontal(marks['mark-reverse'], WHITE, GREEN)
+files['logo-stacked'] = stacked(marks['mark'], NAVY, GREEN)
+files['logo-stacked-dark'] = stacked(marks['mark-reverse'], WHITE, GREEN)
 files['logo-mono-black'] = horizontal(marks['mark-mono-black'], BLACK, BLACK)
 files['logo-mono-white'] = horizontal(marks['mark-mono-white'], WHITE, WHITE)
-files['wordmark'] = wordmark_only(NAVY, INDIGO)
-files['wordmark-dark'] = wordmark_only(WHITE, MINT)
+files['wordmark'] = wordmark_only(NAVY, GREEN)
+files['wordmark-dark'] = wordmark_only(WHITE, GREEN)
 
 # clipPath ids must be unique per file once several logos share a page
 import re

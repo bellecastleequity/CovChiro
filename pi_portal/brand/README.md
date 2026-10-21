@@ -11,17 +11,24 @@ mark in `src/mark.py`, then run:
 | `injurycase-logo-horizontal.svg` | Primary logo on white/light backgrounds |
 | `injurycase-logo-horizontal-dark.svg` | On navy/dark backgrounds |
 | `injurycase-logo-stacked(-dark).svg` | Square spaces: social profiles, signage |
-| `injurycase-mark.svg` / `-navy.svg` | App icon / avatar |
+| `injurycase-mark.svg` | App icon / avatar |
+| `injurycase-mark-reverse.svg` | White-tile icon for dark backgrounds |
 | `injurycase-mark-small.svg` | 16px favicon (simplified: "i" + arrow) |
 | `injurycase-logo-mono-black.svg` / `-mono-white.svg` | One-color: fax, print, embossing |
 | `injurycase-wordmark(-dark).svg` | Text only |
 | `png/` | Raster exports, `favicon.ico`, `apple-touch-icon.png`, 512px maskable icon |
 | `injurycase-brand-sheet.png` | Overview of everything above |
 
-- **Colors:** Indigo `#2B3FD6`, Mint `#5EEAD4`, Navy `#0F1733`.
+- **Logo colors (two only):** Navy `#0B2340` and Green `#1FA866`. White is
+  the paper, not a third color.
+- **Website and app (three only):** Navy for text and surfaces, Green for
+  actions and highlights (always with navy text on top, since white on green
+  is too low-contrast), and Mist `#EEF2F7` for shading and backgrounds.
+  Lighter versions of navy or green are fine; no other hues. Urgency in the
+  app is shown by fill (solid navy = urgent, navy outline = important,
+  light = low), not by red or amber.
 - **Type:** Inter Display, Medium for "Injury" and Bold for "Case" (SIL Open
   Font License). The wordmark in these files is already converted to outlines.
-- **On dark backgrounds** "Case" is mint, not indigo: indigo on navy has only
-  about 1.9:1 contrast and becomes hard to read.
+- **On dark backgrounds** use the `-dark` lockups: white tile icon, white "Injury", green "Case".
 - **Clear space:** keep at least the height of the "i" dot free on all sides.
   Don't recolor, stretch, rotate, add effects, or rebuild the wordmark in another font.
