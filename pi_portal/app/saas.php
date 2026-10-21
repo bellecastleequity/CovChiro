@@ -5,7 +5,7 @@
 // keep the Stripe price they signed up on until moved.
 
 if (!defined('BRAND_NAME')) define('BRAND_NAME', 'InjuryCase');
-if (!defined('BRAND_TAGLINE')) define('BRAND_TAGLINE', 'Personal injury case management for chiropractors');
+if (!defined('BRAND_TAGLINE')) define('BRAND_TAGLINE', 'Personal injury case management for providers');
 if (!defined('SUPPORT_EMAIL')) define('SUPPORT_EMAIL', 'support@injurycase.com');
 
 define('TRIAL_DAYS', 14);
