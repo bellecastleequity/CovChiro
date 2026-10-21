@@ -50,8 +50,8 @@ label.check{display:flex;align-items:center;gap:8px;font-weight:500;color:var(--
 /* ---------- auth ---------- */
 .auth-wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px 16px;}
 .auth-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:30px 28px;width:100%;max-width:400px;}
-.auth-card .brand{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
-.auth-card .brand img{width:40px;height:40px;border-radius:8px;}
+.auth-card .brand{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-bottom:18px;}
+.auth-card .brand img{height:40px;width:auto;}
 .auth-card .btn{width:100%;justify-content:center;margin-top:16px;padding:10px;}
 .auth-card p{margin-top:6px;color:var(--muted);font-size:0.88rem;}
 .qr-box{display:flex;justify-content:center;margin:14px 0;}
@@ -62,9 +62,9 @@ label.check{display:flex;align-items:center;gap:8px;font-weight:500;color:var(--
 /* ---------- shell ---------- */
 .shell{display:grid;grid-template-columns:220px 1fr;min-height:100%;}
 .sidebar{background:var(--nav-bg);color:var(--nav-ink);padding:18px 12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;}
-.sidebar .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 18px;font-size:1.1rem;font-weight:700;color:#fff;letter-spacing:-0.02em;}
-.sidebar .brand img{width:34px;height:34px;border-radius:7px;}
-.sidebar .brand small{color:var(--nav-ink);font-weight:400;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;font-family:var(--mono);font-size:0.62rem;letter-spacing:0.06em;text-transform:uppercase;opacity:0.7;}
+.sidebar .brand{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:4px 8px 18px;font-size:1.1rem;font-weight:700;color:#fff;letter-spacing:-0.02em;}
+.sidebar .brand img{height:30px;width:auto;align-self:flex-start;}
+.sidebar .brand small{color:var(--nav-ink);font-weight:400;max-width:190px;font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;font-family:var(--mono);font-size:0.62rem;letter-spacing:0.06em;text-transform:uppercase;opacity:0.7;}
 .sidebar a{color:inherit;text-decoration:none;padding:8px 10px;border-radius:5px;font-size:0.9rem;display:flex;align-items:center;justify-content:space-between;}
 .sidebar a:hover{background:rgba(255,255,255,0.08);}
 .sidebar a.active{background:var(--brand);color:#fff;font-weight:600;}

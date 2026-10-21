@@ -127,7 +127,7 @@ const entries = (obj) => Object.entries(obj || {});
 // ---------- auth screens ----------
 function authCard(inner, wide) {
   $app.innerHTML = `<div class="auth-wrap"><div class="auth-card${wide ? ' wide' : ''}">
-    <a class="brand" href="./"><img src="assets/logo.svg" alt=""><div><h2>${esc(S.brand.name)}</h2><div class="small muted">${esc(S.brand.tagline || '')}</div></div></a>
+    <a class="brand" href="./"><img src="assets/logo-horizontal.svg" alt="${esc(S.brand.name)}"><div class="small muted">${esc(S.brand.tagline || '')}</div></a>
     ${inner}</div></div>`;
 }
 
@@ -338,7 +338,7 @@ async function startShell() {
   const operator = S.user.operator;
   $app.innerHTML = `<div class="shell">
     <nav class="sidebar" aria-label="Main">
-      <div class="brand"><img src="assets/logo.svg" alt=""><div>${esc(S.brand.name)}<small>${esc(operator ? 'Operator console' : S.practice.name)}</small></div></div>
+      <div class="brand"><img src="assets/logo-horizontal-dark.svg" alt="${esc(S.brand.name)}"><small>${esc(operator ? 'Operator console' : S.practice.name)}</small></div>
       ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}</a>`).join('')}
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>

@@ -14,6 +14,6 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $file = realpath(dirname(__DIR__) . '/public' . ($path === '/' ? '/index.html' : $path));
 if (!$file || strpos($file, realpath(dirname(__DIR__) . '/public')) !== 0 || !is_file($file)) { http_response_code(404); exit; }
 if (substr($file, -4) === '.php') return false;
-$types = ['html' => 'text/html; charset=utf-8', 'js' => 'text/javascript', 'css' => 'text/css', 'png' => 'image/png', 'svg' => 'image/svg+xml'];
+$types = ['html' => 'text/html; charset=utf-8', 'js' => 'text/javascript', 'css' => 'text/css', 'png' => 'image/png', 'svg' => 'image/svg+xml', 'ico' => 'image/x-icon'];
 header('Content-Type: ' . ($types[pathinfo($file, PATHINFO_EXTENSION)] ?? 'application/octet-stream'));
 readfile($file);
