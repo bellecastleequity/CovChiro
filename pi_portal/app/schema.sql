@@ -82,7 +82,7 @@ CREATE TABLE trial_notices (
   FOREIGN KEY (practice_id) REFERENCES practices(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- A practice's offices (Group plan for more than one). Letters and exports
+-- A practice's offices (Platinum plan for more than one). Letters and exports
 -- use the case's location for the letterhead.
 CREATE TABLE locations (
   id INT AUTO_INCREMENT PRIMARY KEY,

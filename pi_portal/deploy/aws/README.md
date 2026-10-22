@@ -16,7 +16,7 @@ AWS Backup: daily server-disk snapshots, kept 35 days
 **Rough monthly cost** (us-east-1, single-AZ, on-demand, before taxes; check
 the AWS Pricing Calculator): t4g.small EC2 + 30 GB disk ≈ $15, db.t4g.micro
 RDS + 20 GB ≈ $15, public IPv4 + Secrets Manager + backups ≈ $6–8. That's
-**≈ $35–40/month**, roughly one Solo subscriber. Multi-AZ RDS roughly doubles
+**≈ $35–40/month**, roughly one Silver subscriber. Multi-AZ RDS roughly doubles
 the database line.
 
 ## 1. Before anything else (HIPAA)

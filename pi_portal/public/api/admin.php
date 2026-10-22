@@ -185,7 +185,7 @@ function handle_my_notify_save() {
     json_response(['ok' => true]);
 }
 
-// ---- locations (Group plan) ----
+// ---- locations (Platinum plan) ----
 function handle_locations() {
     require_user('users.manage');
     $s = pi_db()->prepare('SELECT l.*, (SELECT COUNT(*) FROM cases c WHERE c.location_id = l.id AND c.archived_at IS NULL) cases,

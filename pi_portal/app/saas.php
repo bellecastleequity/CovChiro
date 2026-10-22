@@ -17,10 +17,12 @@ const BILLING_INTERVALS = ['monthly', 'annual'];
 // practice owner is asked to accept the new version.
 define('BAA_VERSION', '2026-10');
 
+// Keys (solo / practice / group) are stored on practices and in Stripe
+// metadata, so they stay fixed; the customer-facing names are the tiers.
 const PLANS = [
-    'solo'     => ['name' => 'Solo',     'price' => 39,  'active_cases' => 75,   'users' => 3,    'blurb' => 'One doctor and front desk'],
-    'practice' => ['name' => 'Practice', 'price' => 59, 'active_cases' => 300,  'users' => 10,   'blurb' => 'A busy PI clinic'],
-    'group'    => ['name' => 'Group',    'price' => 79, 'active_cases' => null, 'users' => null, 'blurb' => 'Multiple doctors or locations'],
+    'solo'     => ['name' => 'Silver',   'price' => 39,  'active_cases' => 75,   'users' => 3,    'blurb' => 'One doctor and front desk'],
+    'practice' => ['name' => 'Gold',     'price' => 59, 'active_cases' => 300,  'users' => 10,   'blurb' => 'A busy PI clinic'],
+    'group'    => ['name' => 'Platinum', 'price' => 79, 'active_cases' => null, 'users' => null, 'blurb' => 'Multiple doctors or locations'],
 ];
 
 // ---------- features by plan ----------
