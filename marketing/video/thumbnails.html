@@ -1,0 +1,52 @@
+<!doctype html><html><head><meta charset="utf-8"><title>InjuryCase thumbnails</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--navy:#0B2340;--green:#1FA866;--green2:#127A49;--amber:#E89B1C;--red:#D64545}
+body{font-family:Inter,"Segoe UI",Arial,sans-serif;background:#888}
+.t{position:relative;overflow:hidden;background:radial-gradient(1100px 700px at 75% 15%,#1d4a7a 0%,var(--navy) 62%);color:#fff;margin:0 0 40px}
+.logo{position:absolute;height:54px}
+h1{font-weight:900;letter-spacing:-.035em;line-height:.98}
+.hl{color:var(--green)}
+.chip{display:inline-block;background:var(--green);color:#fff;font-weight:900;letter-spacing:.06em;text-transform:uppercase;border-radius:12px}
+.shot{position:absolute;border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 30px 70px rgba(0,0,0,.45),0 0 0 2px rgba(255,255,255,.15)}
+.shot img{display:block;width:100%}
+.alert{position:absolute;background:#fff;color:var(--navy);font-weight:800;border-radius:14px;box-shadow:0 18px 40px rgba(0,0,0,.4);display:flex;align-items:center;gap:12px}
+.alert b{background:var(--red);color:#fff;border-radius:50%;display:grid;place-items:center;flex:none}
+.hipaa{position:absolute;display:inline-flex;align-items:center;gap:10px;background:rgba(31,168,102,.16);border:2px solid rgba(127,224,176,.6);color:#fff;font-weight:800;border-radius:999px}
+.hipaa svg{flex:none}
+</style></head><body>
+
+<!-- YouTube: overview (1280x720) -->
+<div class="t" id="yt-overview" style="width:1280px;height:720px">
+  <img class="logo" src="assets/logo-horizontal-dark.svg" style="left:56px;top:48px">
+  <h1 style="position:absolute;left:56px;top:150px;font-size:118px;width:640px">Every PI case, <span class="hl">on track.</span></h1>
+  <div class="hipaa" style="left:56px;top:585px;font-size:26px;padding:12px 22px"><svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#1FA866"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready</div>
+  <div class="shot" style="left:720px;top:120px;width:760px;transform:rotate(-4deg)"><img src="shots_walk/dashboard.png"></div>
+  <div class="alert" style="left:700px;top:470px;font-size:30px;padding:16px 22px"><b style="width:40px;height:40px;font-size:26px">!</b>PIP deadline in 3 days</div>
+</div>
+
+<!-- YouTube: full walkthrough (1280x720) -->
+<div class="t" id="yt-walkthrough" style="width:1280px;height:720px">
+  <span class="chip" style="position:absolute;left:56px;top:52px;font-size:30px;padding:12px 22px">Full 7-min demo</span>
+  <h1 style="position:absolute;left:56px;top:150px;font-size:104px;width:640px">First visit <span class="hl">→</span> final check</h1>
+  <img class="logo" src="assets/logo-horizontal-dark.svg" style="left:56px;top:600px;height:60px">
+  <div class="shot" style="left:820px;top:40px;width:420px;transform:rotate(5deg)"><img src="shots_walk/txletter.png"></div>
+  <div class="shot" style="left:700px;top:150px;width:520px;transform:rotate(-3deg)"><img src="shots_walk/guide.png"></div>
+  <div class="shot" style="left:740px;top:420px;width:420px;transform:rotate(2deg)"><img src="shots_walk/value.png"></div>
+</div>
+
+<!-- Instagram: Reel / Story cover (1080x1920). Grid shows the middle 1080x1440. -->
+<div class="t" id="ig-reel-cover" style="width:1080px;height:1920px">
+  <img class="logo" src="assets/logo-horizontal-dark.svg" style="left:80px;top:330px;height:76px">
+  <h1 style="position:absolute;left:80px;top:450px;font-size:132px;width:920px">New to PI or a <span class="hl">seasoned clinic?</span></h1>
+  <div class="shot" style="left:90px;top:960px;width:900px;transform:rotate(-2deg)"><img src="shots_walk/guide.png"></div>
+  <div class="alert" style="left:430px;top:1380px;font-size:38px;padding:20px 28px"><b style="width:52px;height:52px;font-size:32px">!</b>Gap in care: 14 days</div>
+</div>
+
+<!-- Instagram: feed cover (1080x1350) -->
+<div class="t" id="ig-feed-cover" style="width:1080px;height:1350px">
+  <img class="logo" src="assets/logo-horizontal-dark.svg" style="left:80px;top:80px;height:70px">
+  <h1 style="position:absolute;left:80px;top:200px;font-size:124px;width:920px">Every PI case, <span class="hl">on track.</span></h1>
+  <div class="shot" style="left:90px;top:620px;width:900px;transform:rotate(-2deg)"><img src="shots_walk/dashboard.png"></div>
+  <div class="hipaa" style="left:80px;top:1190px;font-size:34px;padding:14px 26px"><svg width="38" height="38" viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#1FA866"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready · BAA included</div>
+</div>
+</body></html>
