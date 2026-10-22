@@ -51,6 +51,11 @@ def main():
         d = s['min'] if not c else max(s['min'], round(lead + dur(c) + tail, 2))
         durations.append(d)
         print(f"{s['id']:16} {d:5.1f}s  {os.path.basename(c) if c else ('full track' if full else 'silent')}")
+    if cfg.get('total_seconds'):  # ads: exact length, the last scene (end card) absorbs the slack
+        slack = cfg['total_seconds'] - sum(durations)
+        if slack < -0.01:
+            sys.exit(f'Voice runs {-slack:.2f}s over {cfg["total_seconds"]}s; shorten a line.')
+        durations[-1] = round(durations[-1] + slack, 3)
     total = sum(durations)
     os.makedirs(a.work, exist_ok=True)
     json.dump(durations, open(os.path.join(HERE, 'timeline.json'), 'w'))
@@ -82,7 +87,7 @@ def main():
     if os.path.exists(music):
         i = len(inputs) // 2
         inputs += ['-stream_loop', '-1', '-i', music]
-        filters.append(f'[{i}:a]aresample=48000,volume={0.12 if mix else 0.35},afade=t=in:d=2,afade=t=out:st={max(0, total - 4)}:d=4[m]'); mix.append('[m]')
+        filters.append(f'[{i}:a]aresample=48000,volume={cfg.get('music_volume', 0.12) if mix else 0.35},afade=t=in:d=2,afade=t=out:st={max(0, total - 4)}:d=4[m]'); mix.append('[m]')
     out = os.path.join(HERE, a.out)
     if not mix:
         subprocess.check_call(['ffmpeg', '-loglevel', 'error', '-y', '-i', silent, '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-shortest',

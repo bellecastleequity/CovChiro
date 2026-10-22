@@ -1,0 +1,20 @@
+{
+  "html": "ad15.html",
+  "vo_dir": "vo_ads",
+  "out": "InjuryCase ad 15s.mp4",
+  "total_seconds": 15,
+  "music_volume": 0.2,
+  "gemini": {
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "style": "Read this as an upbeat, confident TV commercial voiceover, warm and energetic, at a brisk but clear pace"
+  },
+  "lead_in_seconds": 0.25,
+  "tail_seconds": 0.35,
+  "trim_silence": true,
+  "scenes": [
+    {"id": "a15-1-hook", "min": 3, "text": "Whether you're new to personal injury, or an experienced clinic,"},
+    {"id": "a15-2-promise", "min": 3, "text": "InjuryCase keeps every PI case on track, from the first visit to the final check."},
+    {"id": "a15-3-cta", "min": 3, "text": "Start your free trial at injurycase.com."}
+  ]
+}

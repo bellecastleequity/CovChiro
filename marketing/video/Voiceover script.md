@@ -57,3 +57,12 @@ The video fits itself to the voice. Each scene lasts its default length or as lo
 - **Voice:** `python3 tts_gemini.py --scenes walkthrough.json` (clips go to `vo_walkthrough/`; redo one line with `--only w19-mmi`).
 - **Video:** `python3 build_video.py --scenes walkthrough.json`. Scenes stretch to fit their voice clips, as with the overview.
 - **Screens:** with the app running locally, run `node seed_and_shoot.js shots` (seeds the demo clinic), then `node walkthrough_shoot.js shots_walk`. It opens Maya's case through the real New case form and moves it through every stage. The layout is in `walkthrough.html`.
+
+## 15- and 30-second ads
+
+`InjuryCase ad 15s.mp4` and `InjuryCase ad 30s.mp4` (16:9). Theme: "Whether you're new to personal injury or an experienced clinic, InjuryCase keeps every case on track." Every spoken point is also on screen, for viewers watching muted.
+
+- Script and timing are in `ad15.json` / `ad30.json`; the layout is in `ad15.html` / `ad30.html`.
+- `"total_seconds"` locks the exact length: the end card absorbs any spare time, and the build stops if the voice runs over.
+- `"trim_silence"` trims each clip's own pauses for tighter timing, and `"music_volume"` sets the music a little louder than in the long videos.
+- Rebuild: `python3 tts_gemini.py --scenes ad30.json`, then `python3 build_video.py --scenes ad30.json --work .build/ad30` (same for `ad15`).

@@ -1,0 +1,23 @@
+{
+  "html": "ad30.html",
+  "vo_dir": "vo_ads",
+  "out": "InjuryCase ad 30s.mp4",
+  "total_seconds": 30,
+  "music_volume": 0.2,
+  "gemini": {
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "style": "Read this as an upbeat, confident TV commercial voiceover, warm and energetic, at a brisk but clear pace"
+  },
+  "lead_in_seconds": 0.25,
+  "tail_seconds": 0.35,
+  "trim_silence": true,
+  "scenes": [
+    {"id": "a30-1-hook", "min": 3, "text": "Whether you're new to personal injury, or an experienced PI clinic,"},
+    {"id": "a30-2-promise", "min": 3, "text": "InjuryCase keeps every case on track, from the first visit to the final check."},
+    {"id": "a30-3-new", "min": 3, "text": "New to PI? A built-in playbook shows your team the next step on every case."},
+    {"id": "a30-4-pro", "min": 3, "text": "Experienced? Catch gaps in care, missed deadlines, and bills nearing the policy limits, before they cost you."},
+    {"id": "a30-5-more", "min": 3, "text": "Attorney letters, daily huddles, and state rules, all built in."},
+    {"id": "a30-6-cta", "min": 3, "text": "Start your free trial at injurycase.com."}
+  ]
+}

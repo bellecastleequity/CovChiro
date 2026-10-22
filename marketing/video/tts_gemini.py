@@ -13,7 +13,7 @@ Voice and delivery come from the scene file's "gemini" block.
   python3 tts_gemini.py --scenes walkthrough.json           # the long walkthrough
 Then run build_video.py.
 """
-import argparse, base64, json, os, sys, time, urllib.request, urllib.error, wave
+import argparse, base64, json, os, subprocess, sys, time, urllib.request, urllib.error, wave
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 URL = 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
@@ -71,7 +71,13 @@ def main():
         for ext in ('.mp3', '.m4a'):  # build_video.py takes the first match, so clear stale clips
             if os.path.exists(os.path.join(vo, sc['id'] + ext)):
                 os.remove(os.path.join(vo, sc['id'] + ext))
-        save(synth(sc['text'], voice, model, style), os.path.join(vo, sc['id'] + '.wav'))
+        out = os.path.join(vo, sc['id'] + '.wav')
+        save(synth(sc['text'], voice, model, style), out)
+        if cfg.get('trim_silence'):  # ads: cut the clip's own lead-in/out silence for tighter timing
+            tmp = out + '.tmp.wav'
+            subprocess.check_call(['ffmpeg', '-v', 'error', '-y', '-i', out, '-af', 'silenceremove=start_periods=1:start_threshold=-45dB,areverse,'
+                                   'silenceremove=start_periods=1:start_threshold=-45dB,areverse', tmp])
+            os.replace(tmp, out)
 
 
 if __name__ == '__main__':
