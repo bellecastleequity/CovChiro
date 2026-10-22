@@ -39,6 +39,9 @@ CREATE TABLE practices (
   stripe_customer_id VARCHAR(64) NULL,
   stripe_subscription_id VARCHAR(64) NULL,
   billing_interval ENUM('monthly','annual') NOT NULL DEFAULT 'monthly',
+  -- Promo code entered at signup (app/promo.php).
+  promo_code_id INT NULL,
+  promo_applied_at DATETIME NULL,
   -- Who accepted the Business Associate Agreement and Terms, which version, when.
   baa_version VARCHAR(20) NULL,
   baa_accepted_at DATETIME NULL,
@@ -51,6 +54,28 @@ CREATE TABLE practices (
   created_at DATETIME NOT NULL,
   INDEX idx_practices_stripe (stripe_customer_id),
   UNIQUE INDEX idx_practices_badge (badge_token)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Promo codes entered at registration (app/promo.php); operators manage them.
+CREATE TABLE promo_codes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(40) NOT NULL,
+  description VARCHAR(200) NULL,
+  kind ENUM('trial_days','percent','amount','comp') NOT NULL,
+  trial_days INT NULL,
+  percent_off INT NULL,
+  amount_off DECIMAL(10,2) NULL,
+  duration ENUM('once','repeating','forever') NOT NULL DEFAULT 'once',
+  duration_months INT NULL,
+  plans VARCHAR(60) NULL,
+  max_redemptions INT NULL,
+  redeemed INT NOT NULL DEFAULT 0,
+  expires_on DATE NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  stripe_coupon_id VARCHAR(64) NULL,
+  created_by INT NULL,
+  created_at DATETIME NOT NULL,
+  UNIQUE INDEX idx_promo_code (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Feature suggestions from practice users (no patient information).
@@ -188,7 +213,7 @@ CREATE TABLE cases (
   -- or practice when the case is created.
   jurisdiction CHAR(2) NULL,
   stage ENUM('intake','treating','tx_complete','demand','litigation','mediation','negotiating','settled','closed','dropped') NOT NULL DEFAULT 'intake',
-  injury_type ENUM('auto','slip_fall','workers_comp') NOT NULL DEFAULT 'auto',
+  injury_type ENUM('auto','slip_fall','workers_comp','other_pi') NOT NULL DEFAULT 'auto',
   date_of_injury DATE NULL,
   first_visit DATE NULL,
   discharge_date DATE NULL,

@@ -15,7 +15,7 @@ const PATIENT_FIELDS = [
 ];
 const CASE_FIELDS = [
     'stage' => ['intake','treating','tx_complete','demand','litigation','mediation','negotiating','settled','closed','dropped'],
-    'injury_type' => ['auto','slip_fall','workers_comp'],
+    'injury_type' => ['auto','slip_fall','workers_comp','other_pi'],
     'date_of_injury' => 'date', 'first_visit' => 'date', 'discharge_date' => 'date',
     'referral_source' => ['attorney','self','provider','other'],
     'referred_by_contact_id' => 'contact', 'referred_by_text' => 'str:160',
@@ -716,7 +716,7 @@ function handle_playbook() {
             ['Narrative report', 'Only when the attorney requests one.'],
             ['Reports', 'Chase imaging and consult reports ' . REPORT_CHASE_DAYS . ' days after the appointment and enter them in the chart.'],
             ['Attorney updates', 'Call the attorney within 48 hours of the first visit. Once the case is in demand or litigation, ask for a status update at least every ' . STALE_CORRESPONDENCE_DAYS . ' days.'],
-            ["Workers' comp", $r['wc_rules'] ? 'Chiropractic care is limited to ' . WC_CHIRO_MAX_VISITS . ' visits or 8 weeks unless the carrier authorizes more; send a DWC-25 within ' . WC_DWC25_DAYS . ' days of each visit.' : 'Get carrier authorization before treating and track authorized visits; workers\' comp chiropractic limits and forms vary by state.'],
+            ["Workers' comp", $r['wc_rules'] ? 'Chiropractic care is limited to ' . WC_CHIRO_MAX_VISITS . ' treatments or ' . intdiv(WC_CHIRO_MAX_DAYS, 7) . ' weeks unless the carrier authorizes more or the injury is catastrophic; send a DWC-25 within ' . WC_DWC25_DAYS . ' days of each visit.' : 'Get carrier authorization before treating and track authorized visits; workers\' comp chiropractic limits and forms vary by state.'],
             ['At settlement', $r['balance_billing'] === 'allowed' ? 'Forward the patient balance to the attorney with an itemized statement.' : 'Forward any patient balance the state allows (deductible, copays, non-covered care) to the attorney with an itemized statement.'],
         ]]);
 }

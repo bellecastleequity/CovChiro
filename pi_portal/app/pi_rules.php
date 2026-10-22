@@ -22,7 +22,7 @@ const STAGES = [
 const OPEN_STAGES = ['intake', 'treating', 'tx_complete', 'demand', 'litigation', 'mediation', 'negotiating', 'settled'];
 const LEGAL_STAGES = ['demand', 'litigation', 'mediation', 'negotiating'];
 
-const INJURY_TYPES = ['auto' => 'Auto accident', 'slip_fall' => 'Slip & fall', 'workers_comp' => "Workers' comp"];
+const INJURY_TYPES = ['auto' => 'Auto accident', 'slip_fall' => 'Slip & fall', 'workers_comp' => "Workers' comp", 'other_pi' => 'Other injury'];
 
 const COVERAGE_TYPES = ['pip' => 'PIP', 'medpay' => 'MedPay', 'health' => 'Health insurance', 'workers_comp' => "Workers' comp"];
 const COVERAGE_STATUS = ['active' => 'Active', 'denied' => 'Denied', 'exhausted' => 'Exhausted', 'closed' => 'Closed'];
@@ -51,11 +51,13 @@ const EMC_CREDENTIALS = ['MD' => 'MD', 'DO' => 'DO', 'DMD' => 'Dentist (DMD/DDS)
 const EMC_QUALIFIED = ['MD', 'DO', 'DMD', 'PA', 'APRN'];
 // How soon before a billing deadline unbilled visits are flagged.
 define('BILL_WARN_DAYS', 10);
-// Florida workers' comp (§440.13(2)(a)) limits chiropractic care to 18
-// treatments or 8 weeks after the first chiropractic treatment unless the
-// carrier authorizes more. Verify against the current statute.
-define('WC_CHIRO_MAX_VISITS', 18);
-define('WC_CHIRO_MAX_DAYS', 56);
+// Florida workers' comp (§440.13(2)(a), as amended in 2003) limits
+// chiropractic care to 24 treatments or 12 weeks after the first
+// chiropractic treatment, whichever comes first, unless the carrier
+// authorizes more or the injury is catastrophic. Confirm against the
+// current statute (reports/Workers comp rules by state.md).
+define('WC_CHIRO_MAX_VISITS', 24);
+define('WC_CHIRO_MAX_DAYS', 84);
 define('WC_DWC25_DAYS', 3);
 // The lowest share of the patient balance the office will normally accept
 // on an attorney's reduction request (the "80%" column on the A/R sheet).
@@ -88,15 +90,15 @@ define('PIP_LOW_REMAINING', 1500.00);
 // 'source' => 'referral' items complete themselves from the Referrals tab,
 // 'source' => 'case' items from a date field on the case; the rest are
 // ticked off by hand.
-const ALL_CASES = ['auto', 'slip_fall', 'workers_comp'];
-const LIABILITY_CASES = ['auto', 'slip_fall'];
+const ALL_CASES = ['auto', 'slip_fall', 'workers_comp', 'other_pi'];
+const LIABILITY_CASES = ['auto', 'slip_fall', 'other_pi'];
 const CHECKLIST = [
     // Within 48 hours of the first visit
     'attorney_contacted'      => ['label' => 'Called attorney (ask for the policy limits)',                     'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => LIABILITY_CASES],
     'lor_received'            => ['label' => 'Letter of representation received',   'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => LIABILITY_CASES],
     'aob_signed'              => ['label' => 'PIP application / assignment of benefits signed', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto'], 'rule' => 'pip'],
-    'lop_signed'              => ['label' => 'Letter of protection signed by patient', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['slip_fall'], 'source' => 'case', 'field' => 'lop_signed_on'],
-    'incident_report'         => ['label' => 'Incident report & photos requested',  'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['slip_fall']],
+    'lop_signed'              => ['label' => 'Letter of protection signed by patient', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['slip_fall', 'other_pi'], 'source' => 'case', 'field' => 'lop_signed_on'],
+    'incident_report'         => ['label' => 'Incident report & photos requested',  'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['slip_fall', 'other_pi']],
     'claim_notice'            => ['label' => 'PIP / no-fault application sent to the insurer', 'group' => 'State requirements', 'anchor' => 'date_of_injury', 'days_rule' => 'notice_days', 'cases' => ['auto'], 'rule' => 'notice_days'],
     'tort_option'             => ['label' => "Asked which lawsuit (tort) option the patient's policy has", 'group' => 'State requirements', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto'], 'rule' => 'tort_options', 'source' => 'case_set', 'field' => 'tort_option'],
     'treatment_plan_sent'     => ['label' => 'Treatment plan sent to the insurer (required after the state\'s visit/day limit)', 'group' => 'State requirements', 'anchor' => 'first_visit', 'days_rule' => 'treatment_plan', 'cases' => ['auto'], 'rule' => 'treatment_plan'],
@@ -258,7 +260,7 @@ function derive_benefits(array $coverages, string $injuryType): ?string {
     }
     $active = active_coverages($coverages);
     if ($active) return $active[0]['type'] === 'medpay' ? 'medpay' : 'health';
-    if (!$coverages && $injuryType !== 'slip_fall') return null;
+    if (!$coverages && !in_array($injuryType, ['slip_fall', 'other_pi'], true)) return null;
     return 'lop';
 }
 
@@ -982,7 +984,7 @@ function case_alerts(array $case, array $ctx): array {
             if ($left <= 0) $alerts[] = ['level' => 'high', 'text' => 'All ' . $wc['authorized_visits'] . ' authorized visits used — request more authorization before the next visit.'];
             elseif ($left <= 2) $alerts[] = ['level' => 'medium', 'text' => $left . ' authorized visit' . ($left === 1 ? '' : 's') . ' left — request more authorization from the adjuster.'];
         } elseif ($r['wc_rules'] && ($visits['count'] >= WC_CHIRO_MAX_VISITS || ($case['first_visit'] && days_between($case['first_visit'], $today) > WC_CHIRO_MAX_DAYS))) {
-            $alerts[] = ['level' => 'high', 'text' => 'Past the ' . WC_CHIRO_MAX_VISITS . '-visit / 8-week chiropractic limit — further care needs carrier authorization.'];
+            $alerts[] = ['level' => 'high', 'text' => 'Past the ' . WC_CHIRO_MAX_VISITS . '-treatment / ' . intdiv(WC_CHIRO_MAX_DAYS, 7) . '-week chiropractic limit — further care needs carrier authorization (unless the injury is catastrophic).'];
         }
         if ($wc['authorized_through'] && $wc['authorized_through'] < $today) {
             $alerts[] = ['level' => 'high', 'text' => 'Carrier authorization expired ' . $wc['authorized_through'] . '.'];

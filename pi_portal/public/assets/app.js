@@ -160,7 +160,8 @@ function showLogin(message) {
 async function showSignup() {
   let plans = {}, trialDays = 14;
   try { const r = await api('auth.php?action=plans'); plans = r.plans; trialDays = r.trialDays; } catch { /* plans list is optional */ }
-  const wanted = new URLSearchParams(location.hash.split('?')[1] || '').get('plan');
+  const hq = new URLSearchParams(location.hash.split('?')[1] || '');
+  const wanted = hq.get('plan'), promo = hq.get('promo') || '';
   authCard(`<form data-form="signup">
     <h3>Start your ${trialDays}-day free trial</h3>
     <p>No card needed. Set up your practice, then invite your team.</p>
@@ -170,6 +171,9 @@ async function showSignup() {
       <div><label for="su-email">Work email</label><input id="su-email" type="email" required autocomplete="email"></div>
       <div><label for="su-pw">Password (12+ characters)</label><input id="su-pw" type="password" required autocomplete="new-password"></div>
       <div><label for="su-plan">Plan after trial</label><select id="su-plan">${entries(plans).map(([k, p]) => opt(k, `${p.name} — $${p.price}/mo or $${p.annual_price}/yr`, wanted || 'solo')).join('')}</select></div>
+      <div class="full"><label for="su-promo">Promo code (optional)</label>
+        <div class="promo-row"><input id="su-promo" value="${esc(promo)}" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="button" class="btn ghost" data-act="promo-check">Apply</button></div>
+        <div class="small" id="su-promo-msg" aria-live="polite"></div></div>
     </div>
     <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice, and understand that InjuryCase is an educational tool — clinical decisions remain with our treating providers.</label>
     <div class="err" data-role="err"></div>
@@ -177,6 +181,18 @@ async function showSignup() {
     <p class="auth-switch">Already have an account? <a href="#" data-act="show-login">Sign in</a></p>
   </form>`, true);
   document.getElementById('su-practice').focus();
+  if (promo) checkPromo();
+}
+
+// Shows what a promo code gives before the account is created.
+async function checkPromo() {
+  const code = document.getElementById('su-promo').value.trim(), msg = document.getElementById('su-promo-msg');
+  if (!code) { msg.textContent = ''; return; }
+  try {
+    const r = await api('auth.php?action=promo_check&code=' + encodeURIComponent(code) + '&plan=' + encodeURIComponent(document.getElementById('su-plan').value));
+    msg.className = 'small ' + (r.valid ? 'promo-ok' : 'promo-bad');
+    msg.textContent = r.valid ? `✓ ${r.code}: ${r.summary}` : r.error;
+  } catch (e) { msg.className = 'small promo-bad'; msg.textContent = e.message; }
 }
 
 function showPasswordChange() {
@@ -279,7 +295,7 @@ document.addEventListener('submit', async (e) => {
       s = await api('auth.php?action=signup', {
         practice_name: form.querySelector('#su-practice').value, name: form.querySelector('#su-name').value,
         email: form.querySelector('#su-email').value, password: form.querySelector('#su-pw').value,
-        plan: form.querySelector('#su-plan').value, accept: true,
+        plan: form.querySelector('#su-plan').value, promo: form.querySelector('#su-promo').value.trim(), accept: true,
       });
       history.replaceState(null, '', location.pathname);
     } else if (kind === 'mfasetup') s = await api('auth.php?action=mfa_setup_confirm', { code: form.querySelector('#mf-code').value });
@@ -636,23 +652,36 @@ const NEW_COVERAGE_DEFS = () => [
   { n: 'cov_claim', l: 'Claim #' }, { n: 'cov_policy', l: 'Policy / member #' }, { n: 'cov_adjuster', l: 'Adjuster' },
   { n: 'cov_auth', l: "Authorized visits (workers' comp)", t: 'number' },
 ];
-const DEFAULT_COVERAGE = { auto: 'pip', slip_fall: '', workers_comp: 'workers_comp' };
+const DEFAULT_COVERAGE = { auto: 'pip', slip_fall: '', workers_comp: 'workers_comp', other_pi: '' };
+// The case-type picker at the top of a new case: what each type sets up.
+const CASE_TYPE_CARDS = [
+  ['auto', '🚗', 'Auto accident', 'PIP / no-fault, the state\'s deadlines, attorney and policy limits'],
+  ['slip_fall', '⚠', 'Slip & fall', 'Premises liability: incident report, letter of protection, attorney'],
+  ['workers_comp', '🏗', "Workers' comp", 'Employer and carrier, authorization and visit limits, status reports'],
+  ['other_pi', '✚', 'Other injury', 'Dog bite, assault, product or other liability claim — letter of protection, attorney'],
+];
 function newCaseModal() {
   const m = openModal({
     title: 'New PI case', wide: true, okText: 'Create case',
-    body: `<h3>Patient</h3>${fieldsHtml(PATIENT_DEFS)}<h3 class="mt">Case</h3>${fieldsHtml(caseDefs(), { injury_type: 'auto' })}
+    body: `<h3>What kind of case is this?</h3>
+      <div class="case-types" role="radiogroup" aria-label="Case type">${CASE_TYPE_CARDS.map(([k, ic, t, dsc], i) => `<label class="case-type${i === 0 ? ' on' : ''}"><input type="radio" name="new_case_type" value="${k}"${i === 0 ? ' checked' : ''}><span class="ct-ic" aria-hidden="true">${ic}</span><strong>${esc(t)}</strong><span class="small muted">${esc(dsc)}</span></label>`).join('')}</div>
+      <h3 class="mt">Patient</h3>${fieldsHtml(PATIENT_DEFS)}<h3 class="mt">Case details</h3>${fieldsHtml(caseDefs().filter((f) => f.n !== 'injury_type'))}
       <h3 class="mt">Insurance</h3>${fieldsHtml(NEW_COVERAGE_DEFS(), { cov_type: 'pip' })}
       <p class="small muted mt">Bill insurance first if the patient has it. More coverage (e.g. health insurance) can be added under Financials. Need a new attorney or insurer? Add them under Contacts first.</p>`,
     onOk: async (el) => {
       const cv = readFields(el, NEW_COVERAGE_DEFS());
       const coverage = cv.cov_type ? { type: cv.cov_type, carrier_contact_id: cv.cov_carrier, carrier_text: cv.cov_carrier_text, claim_number: cv.cov_claim,
         policy_number: cv.cov_policy, adjuster: cv.cov_adjuster, authorized_visits: cv.cov_auth } : null;
-      const r = await api('cases.php?action=create', { patient: readFields(el, PATIENT_DEFS), case: readFields(el, caseDefs()), coverage });
+      const injuryType = el.querySelector('[name=new_case_type]:checked').value;
+      const r = await api('cases.php?action=create', { patient: readFields(el, PATIENT_DEFS), case: { ...readFields(el, caseDefs().filter((f) => f.n !== 'injury_type')), injury_type: injuryType }, coverage });
       toast('Case ' + r.caseNumber + ' created');
       location.hash = '#/case/' + r.id;
     },
   });
-  m.el.querySelector('[name=injury_type]').addEventListener('change', (e) => { m.el.querySelector('[name=cov_type]').value = DEFAULT_COVERAGE[e.target.value] ?? ''; });
+  m.el.querySelectorAll('[name=new_case_type]').forEach((r) => r.addEventListener('change', (e) => {
+    m.el.querySelectorAll('.case-type').forEach((c) => c.classList.toggle('on', c.contains(e.target)));
+    m.el.querySelector('[name=cov_type]').value = DEFAULT_COVERAGE[e.target.value] ?? '';
+  }));
   return m;
 }
 
@@ -1039,7 +1068,7 @@ async function pagePlaybook(main) {
   const st = r.state;
   const groups = {};
   r.checklist.forEach((i) => (groups[i.group] = groups[i.group] || []).push(i));
-  const types = (cs) => cs.length === 3 ? 'All cases' : cs.map((c) => label('injuryTypes', c)).join(', ');
+  const types = (cs) => cs.length === Object.keys(S.lookups.injuryTypes).length ? 'All cases' : cs.map((c) => label('injuryTypes', c)).join(', ');
   main.innerHTML = `<div class="page-head"><div><h1>PI playbook</h1><div class="sub">How a personal injury case runs, and the timelines ${esc(S.brand.name)} keeps you on. Every case shows these as next steps, checklist items and alerts.</div></div>
       <span class="spacer"></span><div><label for="pb-state">State</label><select id="pb-state">${stateOpts().map(([k, t]) => opt(k, t, st.code)).join('')}</select></div></div>
     <div class="notice"><strong>An educational guide.</strong> ${clinicalNote()} Legal and billing rules should be confirmed with qualified counsel.</div>
@@ -1875,7 +1904,7 @@ const AUDIT_VERBS = {
 const AUDIT_THINGS = {
   case: 'the case', visits: 'a visit', referrals: 'a co-management referral', coverages: 'insurance coverage', outcomes: 'an outcome assessment',
   correspondence: 'a correspondence entry', outreach: 'an outreach attempt', ledger: 'a ledger entry', task: 'task', milestone: 'checklist item', document: 'a document', contact: 'contact',
-  user: 'user', location: 'location', feedback: 'feature suggestion', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
+  user: 'user', location: 'location', promo_code: 'promo code', feedback: 'feature suggestion', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
   audit_log: 'the audit log', huddle: 'the daily huddle', permission: '', platform_practices: 'the practice list', care_guide: 'the referral guide',
 };
 const FIELD_NAMES = {
@@ -2257,6 +2286,7 @@ async function pageBilling(main) {
       <div class="tile"><div class="k">Users</div><div class="v">${usage(p.activeUsers, p.limits.users)}</div>${p.limits.users ? `<div class="bar"><i data-w="${pct(p.activeUsers, p.limits.users)}"></i></div>` : ''}</div>
     </div>
     ${!r.billingReady ? '<div class="notice">Online billing isn\'t switched on yet for this installation.</div>' : ''}
+    ${p.promo && !['active', 'past_due', 'comped'].includes(p.status) ? `<div class="notice ok">Promo code <strong class="mono">${esc(p.promo.code)}</strong>: ${esc(p.promo.summary)}${p.promo.plans ? ' (' + esc(p.promo.plans.map((k) => r.plans[k]?.name || k).join(' or ') + ' plan') + ')' : ''} — applied automatically at checkout.</div>` : ''}
     ${p.status === 'trialing' && p.access === 'full' ? `<div class="notice ok">${r.firstCharge ? `Subscribing now keeps the rest of your free trial — your card is first charged on <strong>${esc(fmtDate(r.firstCharge))}</strong>.` : 'Your trial ends within two days, so billing starts when you subscribe.'} Cancel any time before then and you won't be charged.</div>` : ''}
     <div class="interval-toggle" role="radiogroup" aria-label="Billing period">
       <button role="radio" data-act="billing-interval" data-v="monthly" class="${interval === 'monthly' ? 'on' : ''}" aria-checked="${interval === 'monthly'}">Monthly</button>
@@ -2340,10 +2370,38 @@ async function pagePlatform(main) {
       <td class="small">${esc(p.lastLogin || 'never')}</td><td class="small">${p.baaCurrent ? '✓' : '<span class="trend-up">needed</span>'}</td><td class="small">${esc(fmtDate(p.createdAt))}</td>
       <td class="nowrap">${['trialing', 'canceled'].includes(p.status) ? `<button class="btn ghost sm" data-act="op-extend" data-id="${p.id}">+14 days trial</button>` : ''}
         <button class="btn ghost sm" data-act="op-comp" data-id="${p.id}" data-on="${p.status === 'comped' ? 0 : 1}">${p.status === 'comped' ? 'Remove comp' : 'Comp'}</button></td></tr>`).join('')}
-    </tbody></table></div></div>${await feedbackSectionHtml()}`;
+    </tbody></table></div></div>${await promoSectionHtml()}${await feedbackSectionHtml()}`;
   main.querySelectorAll('[data-act-change=plan]').forEach((sel) => sel.addEventListener('change', async () => {
     if (await attempt(() => api('platform.php?action=practice_update', { id: +sel.dataset.id, plan: sel.value }))) { toast('Plan changed'); pagePlatform(main); }
   }));
+}
+
+// ---------- promo codes (operator) ----------
+async function promoSectionHtml() {
+  const r = await attempt(() => api('platform.php?action=promos'));
+  if (!r) return '';
+  promoSectionHtml.meta = r;
+  return `<div class="card mt"><div class="card-head"><h2>Promo codes</h2><span class="spacer"></span><button class="btn ghost sm" data-act="promo-new">+ New code</button></div>
+    <p class="small muted">Entered at registration. Share a link that fills it in: <span class="mono">${esc(location.origin)}/app.html#signup?promo=CODE</span></p>
+    ${r.promos.length ? `<div class="table-wrap"><table><thead><tr><th>Code</th><th>Gives</th><th>Plans</th><th class="num">Used</th><th>Ends</th><th>Status</th><th></th></tr></thead><tbody>
+    ${r.promos.map((p) => `<tr${p.active == 1 ? '' : ' class="muted"'}><td><strong class="mono">${esc(p.code)}</strong>${p.description ? `<div class="small muted">${esc(p.description)}</div>` : ''}</td>
+      <td>${esc(p.summary)}</td><td class="small">${p.plans ? esc(p.plans.split(',').map((k) => r.plans[k]?.name || k).join(', ')) : 'Any'}</td>
+      <td class="num">${p.redeemed}${p.max_redemptions != null ? ' / ' + p.max_redemptions : ''}</td><td class="small">${p.expires_on ? esc(fmtDate(p.expires_on)) : '—'}</td>
+      <td><span class="chip ${p.active == 1 ? 'teal' : 'na'}">${p.active == 1 ? 'Active' : 'Off'}</span></td>
+      <td><button class="btn ghost sm" data-act="promo-toggle" data-id="${p.id}" data-on="${p.active == 1 ? 0 : 1}">${p.active == 1 ? 'Turn off' : 'Turn on'}</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No promo codes yet.</div>'}</div>`;
+}
+
+function promoModal() {
+  const m = promoSectionHtml.meta;
+  const defs = [{ n: 'code', l: 'Code (letters and numbers)', req: true, ph: 'e.g. FLCHIRO25' }, { n: 'description', l: 'Internal note', ph: 'e.g. FCA conference, Oct 2026' },
+    { n: 'kind', l: 'What it gives', t: 'select', blank: false, opts: entries(m.kinds) },
+    { n: 'trial_days', l: 'Extra trial days', t: 'number' }, { n: 'percent_off', l: 'Percent off', t: 'number' }, { n: 'amount_off', l: '$ off per month', t: 'money' },
+    { n: 'duration', l: 'Discount lasts', t: 'select', blank: false, opts: entries(m.durations) }, { n: 'duration_months', l: 'Months (if for a number of months)', t: 'number' },
+    { n: 'max_redemptions', l: 'Limit uses (blank = unlimited)', t: 'number' }, { n: 'expires_on', l: 'Ends on (blank = no end)', t: 'date' }];
+  openModal({ title: 'New promo code', wide: true, okText: 'Create code',
+    body: fieldsHtml(defs, { kind: 'trial_days', trial_days: 14, duration: 'once' }) + `<h3 class="mt">Plans (none ticked = any plan)</h3><div class="mt">${entries(m.plans).map(([k, p]) => `<label class="check"><input type="checkbox" data-promo-plan="${k}"> ${esc(p.name)}</label>`).join('')}</div>
+      <p class="small muted mt">Fields that don't apply to the chosen kind are ignored. Discounts are applied in Stripe Checkout when the practice subscribes.</p>`,
+    onOk: async (el) => { await api('platform.php?action=promo_save', { ...readFields(el, defs), plans: [...el.querySelectorAll('[data-promo-plan]:checked')].map((x) => x.dataset.promoPlan) }); toast('Promo code created'); pagePlatform(document.getElementById('main')); } });
 }
 
 // ---------- letters ----------
@@ -2437,6 +2495,9 @@ const ACTIONS = {
   'outreach-log': outreachLogModal,
   'export-file': exportFileModal,
   'location-edit': (el) => locationModal(el.dataset.id ? +el.dataset.id : null),
+  'promo-check': () => checkPromo(),
+  'promo-new': () => promoModal(),
+  'promo-toggle': async (el) => { if (await attempt(() => api('platform.php?action=promo_save', { id: +el.dataset.id, active: el.dataset.on === '1' }))) { toast('Saved'); pagePlatform(document.getElementById('main')); } },
   'badge-style': (el) => { loadBadge.style = el.dataset.style; loadBadge(loadBadge.data); },
   'badge-toggle': async () => { const r = await attempt(() => api('admin.php?action=badge_save', { enabled: !loadBadge.data.enabled })); if (r) { toast(r.badge.enabled ? 'Badge turned on' : 'Badge turned off'); loadBadge(r.badge); } },
   'badge-copy': async () => {

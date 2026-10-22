@@ -478,3 +478,18 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .app-disclaimer a{color:inherit;}
 .guide-note{border-left:3px solid var(--line);padding-left:8px;}
 @media (max-width:860px){.app-disclaimer{margin:0 16px 20px;}}
+
+/* Promo code on signup */
+.promo-row{display:flex;gap:8px;}
+.promo-row input{flex:1;text-transform:uppercase;}
+.promo-ok{color:var(--green-dark);font-weight:600;margin-top:4px;}
+.promo-bad{color:var(--red);margin-top:4px;}
+
+/* Case-type picker on a new case */
+.case-types{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:8px;}
+.case-type{display:flex;flex-direction:column;gap:4px;padding:12px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;background:var(--bg);}
+.case-type input{position:absolute;opacity:0;pointer-events:none;}
+.case-type .ct-ic{font-size:1.3rem;}
+.case-type.on{border-color:var(--green);box-shadow:0 0 0 3px var(--brand-tint);}
+.case-type:focus-within{outline:2px solid var(--blue);outline-offset:2px;}
+@media (max-width:720px){.case-types{grid-template-columns:repeat(2,minmax(0,1fr));}}

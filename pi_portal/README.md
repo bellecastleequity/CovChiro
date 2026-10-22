@@ -102,7 +102,7 @@ Each case follows the state whose law applies (`cases.jurisdiction`, defaulting 
 - **Pre-suit demand letter** (§627.736(10)): unpaid PIP bills prompt it; Letters → "PIP pre-suit demand" prints the itemized letter to the insurer. Recording the date sent on the PIP coverage starts the 30-day cure clock, and the app flags when it ends.
 - **Letter-of-protection disclosures** (§768.0427, 2023): factoring sale and price, and the patient's health coverage, recorded under LOP & settlement.
 - Charges approaching the PIP limit.
-- Workers' comp: authorized visits used or nearly used, authorization expired, the 18-visit / 8-week chiropractic limit (§440.13, verify), and DWC-25 status forms not sent.
+- Workers' comp: authorized visits used or nearly used, authorization expired, the 24-treatment / 12-week chiropractic limit (§440.13(2)(a); confirm against the current statute), and DWC-25 status forms not sent.
 - Money: insurance charges unpaid after 45 days, PIP ended with no signed LOP, and a settled case whose balance hasn't been forwarded.
 - Plus: imaging/consult reports not received, referrals not scheduled, no-shows, gaps in care over 14 days, outcome tools due every 30 days, no attorney status update in 30 days on demand/litigation cases, follow-ups due, and settlement checks not received 30 days after authorization.
 

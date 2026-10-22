@@ -13,6 +13,7 @@ switch ($action) {
     case 'ping': handle_ping(); break;
     case 'login': handle_login(); break;
     case 'signup': handle_signup(); break;
+    case 'promo_check': handle_promo_check(); break;
     case 'plans': json_response(['plans' => plans_public(), 'coreFeatures' => CORE_FEATURES, 'trialDays' => TRIAL_DAYS, 'annualMonthsCharged' => ANNUAL_MONTHS_CHARGED, 'brand' => BRAND_NAME]); break;
     case 'change_password': handle_change_password(); break;
     case 'mfa_setup_start': handle_mfa_setup_start(); break;
@@ -172,6 +173,11 @@ function handle_signup() {
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) json_response(['error' => 'Enter a valid email address.'], 400);
     if ($p = password_problem($password, ['email' => $email])) json_response(['error' => $p], 400);
     if (empty($b['accept'])) json_response(['error' => 'Please accept the Terms and Business Associate Agreement.'], 400);
+    $promo = null;
+    if (trim((string)($b['promo'] ?? '')) !== '') {
+        $promo = promo_find($b['promo']);
+        if ($why = promo_problem($promo, $plan)) json_response(['error' => $why, 'field' => 'promo'], 400);
+    }
     $pdo = pi_db();
     $s = $pdo->prepare('SELECT id FROM users WHERE email = ?');
     $s->execute([$email]);
@@ -183,10 +189,11 @@ function handle_signup() {
         ->execute([$practiceId, $email, $name, password_hash($password, PASSWORD_ARGON2ID), now_str()]);
     $userId = (int)$pdo->lastInsertId();
     $pdo->prepare('UPDATE practices SET baa_version = ?, baa_accepted_at = ?, baa_accepted_by = ? WHERE id = ?')->execute([BAA_VERSION, now_str(), $userId, $practiceId]);
+    if ($promo && !promo_redeem($promo, $practiceId)) { $pdo->rollBack(); json_response(['error' => 'That promo code has been fully used.', 'field' => 'promo'], 400); }
     $pdo->commit();
 
     $u = load_user($userId);
-    audit('signup', 'practice', $practiceId, null, $u, "plan=$plan baa=" . BAA_VERSION);
+    audit('signup', 'practice', $practiceId, null, $u, "plan=$plan baa=" . BAA_VERSION . ($promo ? ' promo=' . $promo['code'] : ''));
     session_regenerate_id(true);
     $_SESSION['uid'] = $userId;
     $_SESSION['email'] = $email;
@@ -194,6 +201,16 @@ function handle_signup() {
     $_SESSION['started_at'] = $_SESSION['last_seen'] = time();
     $_SESSION['csrf'] = bin2hex(random_bytes(32));
     json_response(session_payload($u));
+}
+
+// Signup form check: is a code usable, and what does it give? Rate-limited
+// like sign-in so codes can't be guessed in bulk.
+function handle_promo_check() {
+    check_login_throttle();
+    $p = promo_find($_GET['code'] ?? '');
+    $plan = isset(PLANS[$_GET['plan'] ?? '']) ? $_GET['plan'] : null;
+    if ($why = promo_problem($p, $plan)) json_response(['valid' => false, 'error' => $why]);
+    json_response(['valid' => true, 'code' => $p['code'], 'summary' => promo_summary($p), 'kind' => $p['kind']]);
 }
 
 function password_problem(string $pw, array $u): ?string {

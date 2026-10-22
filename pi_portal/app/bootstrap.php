@@ -12,6 +12,7 @@ require_once __DIR__ . '/secrets.php';
 require_once __DIR__ . '/crypto.php';
 require_once __DIR__ . '/totp.php';
 require_once __DIR__ . '/pi_rules.php';
+require_once __DIR__ . '/promo.php';
 require_once __DIR__ . '/saas.php';
 
 define('PI_TIMEZONE', 'America/New_York');

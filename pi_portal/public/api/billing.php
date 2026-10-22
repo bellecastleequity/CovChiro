@@ -81,13 +81,18 @@ function handle_checkout() {
         'subscription_data[metadata][practice_id]' => $p['id'], 'subscription_data[metadata][plan]' => $plan,
         'subscription_data[metadata][interval]' => $interval,
         'success_url' => APP_URL . '/app.html#/billing?done=1', 'cancel_url' => APP_URL . '/app.html#/billing',
-        'allow_promotion_codes' => 'true',
     ];
+    // A discount code entered at signup is applied here; otherwise Stripe
+    // lets the customer type a Stripe promotion code (not both at once).
+    $promo = practice_discount($p);
+    // (Redeemed at signup, so only the plan limit is checked again here.)
+    if ($promo && (!$promo['plans'] || in_array($plan, explode(',', $promo['plans']), true))) $params['discounts[0][coupon]'] = promo_stripe_coupon($promo);
+    else $params['allow_promotion_codes'] = 'true';
     // Subscribing during the free trial keeps the remaining free days: the
     // card is first charged when the trial would have ended.
     if ($keep = remaining_trial_end($p)) $params['subscription_data[trial_end]'] = $keep;
     $session = stripe_api('POST', 'checkout/sessions', $params);
-    audit('billing_checkout', 'practice', $p['id'], null, $user, "$plan $interval" . ($keep ? ' first charge ' . date('Y-m-d', $keep) : ''));
+    audit('billing_checkout', 'practice', $p['id'], null, $user, "$plan $interval" . ($keep ? ' first charge ' . date('Y-m-d', $keep) : '') . (isset($params['discounts[0][coupon]']) ? ' promo ' . $promo['code'] : ''));
     json_response(['url' => $session['url']]);
 }
 

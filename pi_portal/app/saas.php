@@ -135,6 +135,7 @@ function practice_summary(array $p): array {
         'ehrName' => $p['ehr_name'] ?? null, 'interval' => $p['billing_interval'] ?? 'monthly',
         'trialEndsAt' => $p['trial_ends_at'], 'subscribed' => !empty($p['stripe_subscription_id']),
         'features' => practice_features($p), 'featureCatalog' => feature_catalog(),
+        'promo' => ($d = practice_discount($p)) ? ['code' => $d['code'], 'summary' => promo_summary($d), 'plans' => $d['plans'] ? explode(',', $d['plans']) : null] : null,
         // Features the trial includes that the chosen plan won't keep.
         'trialExtras' => $p['subscription_status'] === 'trialing' ? array_values(array_filter(array_keys(FEATURES), fn($f) => !plan_has_feature((string)$p['plan'], $f))) : [],
     ];
