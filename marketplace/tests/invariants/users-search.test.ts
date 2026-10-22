@@ -43,7 +43,8 @@ describe("Admin → Users: suspend, unsuspend, delete a single login", () => {
 describe("backend search", () => {
   it("admins find providers, clinics and shifts; clinics and providers only their own", async () => {
     const admin = await adminActor();
-    const tag = `Zq${uid().slice(0, 6)}`;
+    // Letters only: four or more digits would also match phone numbers and NPIs (search looks those up too).
+    const tag = `Zq${uid().slice(0, 6).replace(/[0-9]/g, (d) => "ghijklmnop"[+d])}`;
     const p = await makeProvider();
     await prisma.provider.update({ where: { id: p.id }, data: { displayName: `Dr. ${tag} Rivera` } });
     const clinic = await makeClinic();
