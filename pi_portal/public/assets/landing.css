@@ -31,6 +31,8 @@ h1,h2,h3{letter-spacing:-0.025em;line-height:1.15;}
 .link{text-decoration:none;font-weight:550;font-size:0.92rem;color:var(--muted);}
 .link:hover{color:var(--ink);}
 .fine{font-size:0.84rem;color:var(--muted);margin-top:14px;}
+.hero-trust{font-size:0.92rem;color:var(--muted);margin-top:18px;max-width:540px;padding-left:12px;border-left:3px solid var(--blue);}
+.hero-trust b{color:var(--navy);}
 
 /* nav */
 .nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);}
