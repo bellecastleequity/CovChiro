@@ -50,6 +50,7 @@ foreach ($pdo->query('SELECT * FROM practices ORDER BY id')->fetchAll() as $p) {
         $text = 'Hi ' . explode(' ', $u['name'])[0] . ",\n\nHere's what needs attention at {$p['name']} today (" . date('l, F j') . "):\n\n" . implode("\n", $lines)
             . "\n\nOpen the Daily huddle for the details:\n" . APP_URL . "/app.html#/huddle\n\n"
             . "For privacy, this email never includes patient names or case details — sign in to see them.\n"
+            . BRAND_NAME . " is an educational tool; clinical decisions rest with the treating provider.\n"
             . "Change what you receive under \"Email notifications\" in " . BRAND_NAME . ".\n\n— " . BRAND_NAME . "\n";
         if ($dry) { echo "[dry run] {$u['email']}: $subject\n" . implode("\n", $lines) . "\n"; continue; }
         if (send_mail($u['email'], $subject, $text)) {

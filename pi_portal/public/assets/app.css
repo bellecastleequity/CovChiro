@@ -427,6 +427,7 @@ table.huddle .done{width:46px;text-align:center;}
 table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid var(--navy);border-radius:3px;}
 @media print{
   .phi-banner,.banner,#banner,.huddle-summary{display:none !important;}
+  .app-disclaimer{border-top:1px solid #999;}
   .main{padding:0;}
   .card{box-shadow:none;border:1px solid #999;break-inside:avoid-page;}
   table.huddle .who{border-bottom:1px solid #999;}
@@ -471,3 +472,9 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .badge-preview.on-dark{background:#E3E8EF;}
 .badge-preview img{max-width:100%;height:auto;}
 #badge-code{width:100%;resize:vertical;}
+
+/* Educational-tool disclaimer under every page */
+.app-disclaimer{margin:0 28px 28px;padding-top:12px;border-top:1px solid var(--line);font-size:0.76rem;color:var(--muted);line-height:1.45;}
+.app-disclaimer a{color:inherit;}
+.guide-note{border-left:3px solid var(--line);padding-left:8px;}
+@media (max-width:860px){.app-disclaimer{margin:0 16px 20px;}}

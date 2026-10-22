@@ -171,7 +171,7 @@ async function showSignup() {
       <div><label for="su-pw">Password (12+ characters)</label><input id="su-pw" type="password" required autocomplete="new-password"></div>
       <div><label for="su-plan">Plan after trial</label><select id="su-plan">${entries(plans).map(([k, p]) => opt(k, `${p.name} — $${p.price}/mo or $${p.annual_price}/yr`, wanted || 'solo')).join('')}</select></div>
     </div>
-    <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice.</label>
+    <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice, and understand that InjuryCase is an educational tool — clinical decisions remain with our treating providers.</label>
     <div class="err" data-role="err"></div>
     <button class="btn" type="submit">Create practice account</button>
     <p class="auth-switch">Already have an account? <a href="#" data-act="show-login">Sign in</a></p>
@@ -384,7 +384,8 @@ async function startShell() {
         ${operator ? '' : '<button class="btn ghost sm" data-act="suggest">Suggest a feature</button>'}
         <button class="btn ghost sm" data-act="sign-out">Sign out</button></div>
     </nav>
-    <div class="main-col"><div id="banner">${bannerHtml()}</div><main class="main" id="main"></main></div>
+    <div class="main-col"><div id="banner">${bannerHtml()}</div><main class="main" id="main"></main>
+      <footer class="app-disclaimer">${clinicalNote()} State rules and deadlines are general information, not legal or billing advice. <a href="legal.html#disclaimer" target="_blank" rel="noopener">Disclaimer</a></footer></div>
   </div>`;
   document.getElementById('loc-switch')?.addEventListener('change', (e) => { setLocFilter(e.target.value); route(); });
   if (operator) { if (!location.hash.startsWith('#/platform')) location.hash = '#/platform'; route(); return; }
@@ -414,6 +415,8 @@ function route() {
 }
 
 const phiBanner = '<div class="phi-banner">Contains protected health information · access is logged</div>';
+// Shown wherever the app suggests care: the doctor decides, the app educates.
+const clinicalNote = () => `${esc(S.brand.name)} is an educational tool. Its prompts, timelines and suggestions are general guidance, not medical advice — every clinical decision (examination, diagnosis, treatment, referrals, imaging, frequency, MMI and discharge) rests on the treating provider's own professional judgment and discretion for each patient.`;
 
 // ---------- dashboard ----------
 async function pageDashboard(main) {
@@ -485,7 +488,8 @@ function dashTipsHtml(d) {
   return `<div class="card tips"><div class="card-head"><h2>Suggestions to strengthen cases</h2></div>
     <div class="filters">${Object.entries(TIP_CATS).map(([k, [t, cls]]) => `<span class="chip ${cls}">${esc(t)}: ${counts[k] || 0}</span>`).join('')}</div>
     <ul class="alerts">${d.tips.slice(0, 8).map((t) => `<li><span class="dot ${TIP_CATS[t.category][1]}"></span><div><a href="#/case/${t.caseId}" class="who">${esc(t.patient)}</a> <span class="muted small mono">${esc(t.caseNumber)}</span><div class="small">${esc(t.title)}</div></div></li>`).join('')}</ul>
-    ${d.tips.length > 8 ? `<p class="small muted">${d.tips.length - 8} more — open a case to see its suggestions.</p>` : ''}</div>`;
+    ${d.tips.length > 8 ? `<p class="small muted">${d.tips.length - 8} more — open a case to see its suggestions.</p>` : ''}
+    <p class="small muted guide-note">Educational prompts only — the treating provider decides what is clinically indicated.</p></div>`;
 }
 
 function taskListHtml(tasks, showCase, empty = 'No open tasks.') {
@@ -927,6 +931,7 @@ function guideCardHtml(d) {
           <details class="small"><summary>Why this matters</summary><p class="muted">${esc(g.why)}</p></details>
           ${act.length ? `<div class="filters gs-actions">${act.join('')}</div>` : ''}</div></li>`;
     }).join('')}</ol>
+    <p class="small muted guide-note">Educational guidance only: the treating provider decides whether each step is clinically appropriate for this patient, and may skip, delay or change any of them.</p>
     <p class="small muted">Need something else — a second MRI, another opinion, EMG, dental/TMJ? Add it any time on the <button class="linklike" data-act="case-tab" data-tab="referrals">Co-management</button> tab.</p></div>`;
 }
 
@@ -981,7 +986,8 @@ function tipsCardHtml(d) {
         <div class="small">${esc(t.text)}</div>
         <details class="small"><summary>Why it matters</summary><p class="muted">${esc(t.why)}</p></details>
         <div class="filters gs-actions">${act.join('')}</div></li>`;
-    }).join('')}</ul></div>`;
+    }).join('')}</ul>
+    <p class="small muted guide-note">Suggestions are educational prompts drawn from the case record. Act on them only when the treating provider judges them clinically indicated.</p></div>`;
 }
 function tipDismissModal(key) {
   const t = S.caseData.tips.find((x) => x.key === key);
@@ -1036,7 +1042,8 @@ async function pagePlaybook(main) {
   const types = (cs) => cs.length === 3 ? 'All cases' : cs.map((c) => label('injuryTypes', c)).join(', ');
   main.innerHTML = `<div class="page-head"><div><h1>PI playbook</h1><div class="sub">How a personal injury case runs, and the timelines ${esc(S.brand.name)} keeps you on. Every case shows these as next steps, checklist items and alerts.</div></div>
       <span class="spacer"></span><div><label for="pb-state">State</label><select id="pb-state">${stateOpts().map(([k, t]) => opt(k, t, st.code)).join('')}</select></div></div>
-    <div class="card"><div class="card-head"><h2>${esc(st.name)}: what's different</h2><span class="chip ${st.support === 'full' ? 'teal' : st.support === 'limited' ? 'ochre' : ''}">${esc(S.lookups.supportLabels[st.support])}</span></div>
+    <div class="notice"><strong>An educational guide.</strong> ${clinicalNote()} Legal and billing rules should be confirmed with qualified counsel.</div>
+    <div class="card mt"><div class="card-head"><h2>${esc(st.name)}: what's different</h2><span class="chip ${st.support === 'full' ? 'teal' : st.support === 'limited' ? 'ochre' : ''}">${esc(S.lookups.supportLabels[st.support])}</span></div>
       ${st.verified ? '' : `<div class="notice small">Draft rules from published sources (October 2026) — confirm with an attorney licensed in ${esc(st.name)} before relying on them. Not legal advice.</div>`}
       ${st.support === 'basic' ? `<p class="small muted mt-sm">${esc(st.name)} isn't configured yet, so cases there use general at-fault-state rules: no PIP deadlines, letters of protection for the balance. The care guide, checklist and alerts below still apply.</p>` : ''}
       <dl class="kv mt">${st.summary.map(([t, x]) => `<dt>${esc(t)}</dt><dd>${esc(x)}</dd>`).join('')}</dl></div>
