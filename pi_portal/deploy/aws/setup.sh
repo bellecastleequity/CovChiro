@@ -96,7 +96,10 @@ chown root:apache "$APP/app/secrets.php"; chmod 640 "$APP/app/secrets.php"
 
 say "Daily jobs"
 # Trial reminder emails (sends nothing until email is configured).
-echo "17 14 * * * apache php $APP/app/cli/trial_reminders.php >> $APP/storage/logs/cron.log 2>&1" > /etc/cron.d/injurycase
+# Times are the practice's (US Eastern): daily digest 6:38am, trial reminders 9:17am.
+printf '%s\n' "CRON_TZ=America/New_York" \
+  "38 6 * * * apache php $APP/app/cli/daily_digest.php >> $APP/storage/logs/cron.log 2>&1" \
+  "17 9 * * * apache php $APP/app/cli/trial_reminders.php >> $APP/storage/logs/cron.log 2>&1" > /etc/cron.d/injurycase
 chmod 644 /etc/cron.d/injurycase
 
 say "Database schema"

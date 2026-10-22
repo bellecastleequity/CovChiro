@@ -172,7 +172,7 @@ function handle_signup() {
 
     $pdo->beginTransaction();
     $practiceId = create_practice($practiceName, $plan);
-    $pdo->prepare("INSERT INTO users (practice_id, email, name, role, password_hash, must_change_password, created_at) VALUES (?, ?, ?, 'admin', ?, 0, ?)")
+    $pdo->prepare("INSERT INTO users (practice_id, email, name, role, notify_digest, password_hash, must_change_password, created_at) VALUES (?, ?, ?, 'admin', 1, ?, 0, ?)")
         ->execute([$practiceId, $email, $name, password_hash($password, PASSWORD_ARGON2ID), now_str()]);
     $userId = (int)$pdo->lastInsertId();
     $pdo->prepare('UPDATE practices SET baa_version = ?, baa_accepted_at = ?, baa_accepted_by = ? WHERE id = ?')->execute([BAA_VERSION, now_str(), $userId, $practiceId]);

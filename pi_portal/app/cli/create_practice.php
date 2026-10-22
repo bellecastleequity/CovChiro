@@ -18,7 +18,7 @@ if ($s->fetch()) exit("A user with that email already exists.\n");
 $pdo->beginTransaction();
 $practiceId = create_practice($practiceName, 'group', $comped ? 'comped' : 'trialing');
 $pw = rtrim(strtr(base64_encode(random_bytes(12)), '+/', 'Kq'), '=');
-$pdo->prepare("INSERT INTO users (practice_id, email, name, role, password_hash, must_change_password, created_at) VALUES (?, ?, ?, 'admin', ?, 1, ?)")
+$pdo->prepare("INSERT INTO users (practice_id, email, name, role, notify_digest, password_hash, must_change_password, created_at) VALUES (?, ?, ?, 'admin', 1, ?, 1, ?)")
     ->execute([$practiceId, $email, $name, password_hash($pw, PASSWORD_ARGON2ID), now_str()]);
 $pdo->commit();
 audit('create', 'practice', $practiceId, null, ['id' => null, 'email' => 'cli', 'practice_id' => $practiceId], $comped ? 'comped' : 'trial');

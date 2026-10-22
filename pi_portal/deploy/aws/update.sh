@@ -15,7 +15,10 @@ find "$APP" -path "$APP/storage" -prune -o -type f -exec chmod 640 {} +
 find "$APP" -path "$APP/storage" -prune -o -type d -exec chmod 750 {} +
 sudo -u apache php "$APP/app/cli/migrate.php"
 # Daily jobs (kept in step with setup.sh).
-echo "17 14 * * * apache php $APP/app/cli/trial_reminders.php >> $APP/storage/logs/cron.log 2>&1" > /etc/cron.d/injurycase
+# Times are the practice's (US Eastern): daily digest 6:38am, trial reminders 9:17am.
+printf '%s\n' "CRON_TZ=America/New_York" \
+  "38 6 * * * apache php $APP/app/cli/daily_digest.php >> $APP/storage/logs/cron.log 2>&1" \
+  "17 9 * * * apache php $APP/app/cli/trial_reminders.php >> $APP/storage/logs/cron.log 2>&1" > /etc/cron.d/injurycase
 chmod 644 /etc/cron.d/injurycase
 systemctl reload php-fpm httpd
 echo "Updated."

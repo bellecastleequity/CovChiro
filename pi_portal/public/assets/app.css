@@ -408,3 +408,28 @@ table.audit td{vertical-align:top;}
 .limit-scale span:nth-child(3){left:50%;}
 .limit-scale span:nth-child(4){left:75%;}
 .limit-scale span:nth-child(5){left:auto;right:0;transform:none;}
+
+/* ---------- daily huddle ---------- */
+.huddle-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:16px;}
+.huddle-summary .hs{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--amber);border-radius:var(--radius);padding:10px 12px;text-decoration:none;color:inherit;display:flex;flex-direction:column;}
+.huddle-summary .hs.zero{border-left-color:var(--green);opacity:0.75;}
+.huddle-summary .n{font-size:1.4rem;font-weight:700;}
+.huddle-summary .l{font-size:0.78rem;color:var(--muted);}
+.huddle-sec{margin-top:14px;}
+table.huddle td{vertical-align:top;}
+table.huddle .hc{width:14px;padding-right:0;}
+table.huddle .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-top:5px;}
+.dot.lv-high{background:var(--red);}
+.dot.lv-medium{background:var(--amber);}
+.dot.lv-low{background:var(--slate);}
+table.huddle .who{width:22%;}
+table.huddle .done{width:46px;text-align:center;}
+table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid var(--navy);border-radius:3px;}
+@media print{
+  .phi-banner,.banner,#banner,.huddle-summary{display:none !important;}
+  .main{padding:0;}
+  .card{box-shadow:none;border:1px solid #999;break-inside:avoid-page;}
+  table.huddle .who{border-bottom:1px solid #999;}
+  a{color:inherit;text-decoration:none;}
+  body{background:#fff;}
+}

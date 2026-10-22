@@ -8,7 +8,7 @@ pi_start_session();
 
 function handle_users() {
     require_user('users.manage');
-    $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
+    $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, notify_digest, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
     $stmt->execute([pid()]);
     json_response(['users' => $stmt->fetchAll(), 'limit' => plan_for(current_practice())['users']]);
 }
@@ -43,8 +43,9 @@ function handle_user_save() {
         if ($id === (int)$admin['id'] && ($role !== 'admin' || !$active)) json_response(['error' => "You can't remove your own admin access."], 400);
         if ($active && !$existing['active']) enforce_limit('users');
         $finAccess = $role === 'staff' && !empty($b['finance_access']) ? 1 : 0;
-        $pdo->prepare('UPDATE users SET name = ?, role = ?, active = ?, finance_access = ? WHERE id = ? AND practice_id = ?')->execute([$name, $role, $active, $finAccess, $id, pid()]);
-        $changes = audit_diff(['name' => 'label', 'role' => array_keys(ROLE_PERMS), 'active' => 'bool', 'finance_access' => 'bool'], $existing, ['name' => $name, 'role' => $role, 'active' => $active, 'finance_access' => $finAccess]);
+        $digest = array_key_exists('notify_digest', $b) ? (!empty($b['notify_digest']) ? 1 : 0) : (int)$existing['notify_digest'];
+        $pdo->prepare('UPDATE users SET name = ?, role = ?, active = ?, finance_access = ?, notify_digest = ? WHERE id = ? AND practice_id = ?')->execute([$name, $role, $active, $finAccess, $digest, $id, pid()]);
+        $changes = audit_diff(['name' => 'label', 'role' => array_keys(ROLE_PERMS), 'active' => 'bool', 'finance_access' => 'bool', 'notify_digest' => 'bool'], $existing, ['name' => $name, 'role' => $role, 'active' => $active, 'finance_access' => $finAccess, 'notify_digest' => $digest]);
         if ($changes) audit('update', 'user', $id, null, $admin, $existing['name'], $changes);
         json_response(['ok' => true]);
     }
@@ -55,8 +56,8 @@ function handle_user_save() {
     $s->execute([$email]);
     if ($s->fetch()) json_response(['error' => 'That email already has an account.'], 400);
     $pw = temp_password();
-    $pdo->prepare('INSERT INTO users (practice_id, email, name, role, finance_access, password_hash, must_change_password, created_at) VALUES (?,?,?,?,?,?,1,?)')
-        ->execute([pid(), $email, $name, $role, $role === 'staff' && !empty($b['finance_access']) ? 1 : 0, password_hash($pw, PASSWORD_ARGON2ID), now_str()]);
+    $pdo->prepare('INSERT INTO users (practice_id, email, name, role, finance_access, notify_digest, password_hash, must_change_password, created_at) VALUES (?,?,?,?,?,?,?,1,?)')
+        ->execute([pid(), $email, $name, $role, $role === 'staff' && !empty($b['finance_access']) ? 1 : 0, array_key_exists('notify_digest', $b) ? (!empty($b['notify_digest']) ? 1 : 0) : ($role === 'admin' ? 1 : 0), password_hash($pw, PASSWORD_ARGON2ID), now_str()]);
     $newId = (int)$pdo->lastInsertId();
     audit('create', 'user', $newId, null, $admin, $name, [['f' => 'role', 't' => 'enum', 'from' => null, 'to' => $role]]);
     json_response(['ok' => true, 'tempPassword' => $pw]);
@@ -94,6 +95,7 @@ function handle_practice() {
     json_response(['practice' => [
         'name' => $p['name'], 'address' => $p['address'], 'phone' => $p['phone'], 'fax' => $p['fax'], 'state' => $p['state'], 'ehrName' => $p['ehr_name'],
         'staffFinance' => array_values(array_filter(explode(',', (string)$p['staff_finance']))),
+        'notifyRules' => practice_rules($p), 'notifyCriteria' => NOTIFY_CRITERIA, 'mailReady' => mail_ready(),
         'baaVersion' => $p['baa_version'], 'baaAcceptedAt' => $p['baa_accepted_at'], 'currentBaaVersion' => BAA_VERSION,
     ]]);
 }
@@ -122,6 +124,48 @@ function handle_staff_finance() {
     $old = array_values(array_filter(explode(',', (string)current_practice()['staff_finance'])));
     audit('update', 'practice', pid(), null, $admin, null, [['f' => 'staff_finance', 't' => 'enum', 'from' => $old ? implode(', ', $old) : null, 'to' => $scopes ? implode(', ', $scopes) : null]]);
     json_response(['ok' => true, 'scopes' => $scopes]);
+}
+
+function mail_ready(): bool {
+    require_once __DIR__ . '/../../app/mailer.php';
+    return mail_configured();
+}
+
+// The practice's daily huddle / email digest criteria and thresholds.
+function handle_notify_rules_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $b = json_body();
+    $rules = ['criteria' => array_values(array_intersect((array)($b['criteria'] ?? []), array_keys(NOTIFY_CRITERIA))),
+        'gap_days' => (int)($b['gap_days'] ?? TREATMENT_GAP_DAYS), 'adherence_pct' => (int)($b['adherence_pct'] ?? 70), 'weekdays_only' => !empty($b['weekdays_only'])];
+    $before = practice_rules();
+    pi_db()->prepare('UPDATE practices SET notify_rules = ? WHERE id = ?')->execute([json_encode($rules), pid()]);
+    $after = practice_rules(['notify_rules' => json_encode($rules)]);
+    audit('update', 'practice', pid(), null, $admin, 'daily digest rules', audit_diff(['gap_days' => 'int', 'adherence_pct' => 'int', 'weekdays_only' => 'bool', 'criteria' => 'label'],
+        ['criteria' => implode(', ', $before['criteria'])] + $before, ['criteria' => implode(', ', $after['criteria'])] + $after));
+    json_response(['ok' => true, 'rules' => $after]);
+}
+
+// Each person's own daily email: on/off and which of the practice's
+// criteria. Admins can switch it for others from the Users page.
+function handle_my_notify() {
+    $user = require_user();
+    $s = pi_db()->prepare('SELECT notify_digest, notify_criteria FROM users WHERE id = ?');
+    $s->execute([$user['id']]);
+    $u = $s->fetch();
+    $rules = practice_rules();
+    json_response(['digest' => (bool)$u['notify_digest'], 'criteria' => $u['notify_criteria'] === null ? $rules['criteria'] : array_values(array_intersect(explode(',', $u['notify_criteria']), $rules['criteria'])),
+        'available' => array_intersect_key(NOTIFY_CRITERIA, array_flip($rules['criteria'])), 'email' => $user['email'], 'mailReady' => mail_ready(), 'weekdaysOnly' => $rules['weekdays_only']]);
+}
+
+function handle_my_notify_save() {
+    require_method('POST');
+    $user = require_user();
+    $b = json_body();
+    $crit = array_values(array_intersect((array)($b['criteria'] ?? []), array_keys(NOTIFY_CRITERIA)));
+    pi_db()->prepare('UPDATE users SET notify_digest = ?, notify_criteria = ? WHERE id = ?')->execute([!empty($b['digest']) ? 1 : 0, implode(',', $crit), $user['id']]);
+    audit('update', 'user', $user['id'], null, $user, 'email notifications', [['f' => 'notify_digest', 't' => 'bool', 'from' => null, 'to' => !empty($b['digest'])]]);
+    json_response(['ok' => true]);
 }
 
 function handle_accept_baa() {
@@ -207,5 +251,8 @@ switch ($action) {
     case 'staff_finance': handle_staff_finance(); break;
     case 'audit': handle_audit(); break;
     case 'audit_csv': handle_audit_csv(); break;
+    case 'notify_rules_save': handle_notify_rules_save(); break;
+    case 'my_notify': handle_my_notify(); break;
+    case 'my_notify_save': handle_my_notify_save(); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }

@@ -313,7 +313,7 @@ async function signOut() {
 
 // ---------- shell & routing ----------
 const NAV = [
-  ['dashboard', 'Dashboard', 'case.read'], ['cases', 'Cases', 'case.read'], ['tasks', 'Tasks', 'case.read'],
+  ['dashboard', 'Dashboard', 'case.read'], ['huddle', 'Daily huddle', 'case.read'], ['cases', 'Cases', 'case.read'], ['tasks', 'Tasks', 'case.read'],
   ['ar', 'A/R & settlements', 'fin:balances'], ['contacts', 'Contacts', 'case.read'], ['playbook', 'PI playbook', 'case.read'],
   ['admin', 'Users', 'users.manage'], ['settings', 'Practice settings', 'users.manage'], ['billing', 'Plan & billing', 'users.manage'],
   ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'],
@@ -345,6 +345,7 @@ async function startShell() {
       ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}</a>`).join('')}
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>
+        ${operator ? '' : '<button class="btn ghost sm" data-act="my-notify">Email notifications</button>'}
         <button class="btn ghost sm" data-act="sign-out">Sign out</button></div>
     </nav>
     <div class="main-col"><div id="banner">${bannerHtml()}</div><main class="main" id="main"></main></div>
@@ -370,7 +371,7 @@ function route() {
   main.innerHTML = '<div class="empty">Loading…</div>';
   window.scrollTo(0, 0);
   const pages = { dashboard: pageDashboard, cases: pageCases, case: pageCase, tasks: pageTasks, ar: pageAR, contacts: pageContacts, admin: pageAdmin, audit: pageAudit,
-    settings: pageSettings, billing: pageBilling, platform: pagePlatform, playbook: pagePlaybook };
+    settings: pageSettings, billing: pageBilling, platform: pagePlatform, playbook: pagePlaybook, huddle: pageHuddle };
   (pages[page] || (S.user.operator ? pagePlatform : pageDashboard))(main, parts.slice(1));
   if (!S.user.operator) refreshTaskBadge();
 }
@@ -463,6 +464,42 @@ function taskListHtml(tasks, showCase, empty = 'No open tasks.') {
       <div><button class="linklike" data-act="edit-task" data-id="${t.id}">${t.priority === 'high' && !t.done_at ? '<span class="chip red">High</span> ' : ''}${t.done_at ? `<s>${esc(t.title)}</s>` : esc(t.title)}</button>${t.notes ? ' <span class="small muted" title="Has notes">· notes</span>' : ''}
       <div class="small muted">${when} · <span title="Assigned to">${esc(assigneeText(t))}</span>${showCase && t.case_id ? ` · <a href="#/case/${t.case_id}">${esc(t.patient)}</a>` : ''}${t.created_by_name && t.created_by != S.user.id ? ' · from ' + esc(t.created_by_name) : ''}</div></div></li>`;
   }).join('')}</ul>`;
+}
+
+// ---------- daily huddle ----------
+// The morning team-meeting sheet: everything outstanding, grouped, with
+// space to note who takes each item. Prints cleanly.
+async function pageHuddle(main) {
+  const r = await attempt(() => api('cases.php?action=huddle'));
+  if (!r) return;
+  const secs = Object.entries(r.sections);
+  const total = secs.reduce((n, [, s]) => n + s.items.length, 0);
+  const dateText = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  main.innerHTML = `${phiBanner}<div class="page-head"><div><h1>Daily huddle</h1><div class="sub">${esc(r.practice)} · ${esc(dateText)} · ${total} item${total === 1 ? '' : 's'} outstanding</div></div><span class="spacer"></span>
+      <button class="btn ghost" data-act="huddle-print">Print sheet</button></div>
+    <div class="huddle-summary">${secs.map(([k, sec]) => `<a href="#h-${k}" class="hs ${sec.items.length ? '' : 'zero'}"><span class="n">${sec.items.length}</span><span class="l">${esc(sec.title)}</span></a>`).join('')}</div>
+    ${secs.map(([k, sec]) => `<div class="card huddle-sec" id="h-${k}"><div class="card-head"><h2>${esc(sec.title)}</h2><span class="badge-count${sec.items.length ? '' : ' zero'}">${sec.items.length}</span></div>
+      ${sec.items.length ? `<table class="huddle"><thead><tr><th class="hc"></th><th>Patient</th><th>Item</th>${k === 'tasks' ? '<th>Assigned</th>' : ''}<th class="who">Who / notes</th><th class="done">Done</th></tr></thead><tbody>
+        ${sec.items.map((i) => `<tr><td class="hc"><span class="dot lv-${esc(i.level)}"></span></td>
+          <td class="nowrap">${i.caseId ? `<a href="#/case/${i.caseId}">${esc(i.patient)}</a> <span class="small muted mono">${esc(i.caseNumber)}</span>` : '<span class="muted">—</span>'}</td>
+          <td>${esc(i.text)}</td>${k === 'tasks' ? `<td class="small">${esc(i.assignees)}</td>` : ''}<td class="who"></td><td class="done"><span class="box"></span></td></tr>`).join('')}</tbody></table>`
+        : '<div class="empty small">Nothing outstanding.</div>'}</div>`).join('')}
+    <p class="small muted mt">Thresholds and what's included are set under Practice settings → Daily huddle &amp; email digest.</p>`;
+}
+
+async function myNotifyModal() {
+  const r = await attempt(() => api('admin.php?action=my_notify'));
+  if (!r) return;
+  openModal({ title: 'Email notifications', okText: 'Save', body: `
+    <label class="check"><input type="checkbox" id="mn-on"${r.digest ? ' checked' : ''}> Send me a daily digest${r.weekdaysOnly ? ' on weekday mornings' : ' each morning'} at ${esc(r.email)}</label>
+    <p class="small muted mt">The email lists how many items need attention under each heading below, with a link to the Daily huddle. It never contains patient names or case details. No email is sent on a day with nothing to report.</p>
+    ${r.mailReady ? '' : '<div class="notice">Email sending isn\'t set up on this server yet — your choice is saved for when it is.</div>'}
+    <h3 class="mt">Include</h3>
+    <div class="mt">${Object.entries(r.available).map(([k, t]) => `<label class="check"><input type="checkbox" data-mn="${k}"${r.criteria.includes(k) ? ' checked' : ''}> ${esc(t)}</label>`).join('') || '<p class="small muted">Your practice hasn\'t turned any criteria on.</p>'}</div>`,
+    onOk: async (el) => {
+      await api('admin.php?action=my_notify_save', { digest: el.querySelector('#mn-on').checked, criteria: [...el.querySelectorAll('[data-mn]:checked')].map((x) => x.dataset.mn) });
+      toast('Saved');
+    } });
 }
 
 // ---------- cases list ----------
@@ -653,6 +690,7 @@ function tabOverview(el, d) {
         ${row('Bills go to', label('benefits', c.benefits))}${c.injury_type === 'auto' ? row('EMC determination', c.emc_status) : ''}
         ${row('LOP signed', c.lop_signed_on ? fmtDate(c.lop_signed_on) + (c.lop_acknowledged_on ? ' · firm acknowledged ' + fmtDate(c.lop_acknowledged_on) : ' · not countersigned') : '')}
         ${row('Actively treating', c.actively_treating == 1 ? 'Yes' : 'No')}
+        ${row('Treatment plan', c.plan_visits_per_week ? `${+c.plan_visits_per_week}x/week${c.plan_set_on ? ' since ' + fmtDate(c.plan_set_on) : ''}` : '')}
         ${row('Head injury', Object.fromEntries(HEAD_INJURY_OPTS)[c.head_injury])}
       </dl></div>
     <div>
@@ -672,9 +710,11 @@ function editCaseModal() {
   const d = S.caseData, c = d.case;
   const defs = [...caseDefs(), { n: 'discharge_date', l: 'Discharge date', t: 'date' },
     { n: 'emc_status', l: 'EMC determination', t: 'select', blank: false, opts: [['pending', 'Pending'], ['yes', 'Yes — EMC exists'], ['no', 'No EMC']] },
+    { n: 'plan_visits_per_week', l: 'Treatment plan: visits per week', t: 'select', blank: 'Not set', opts: [['1', '1x/week'], ['1.5', '1–2x/week'], ['2', '2x/week'], ['2.5', '2–3x/week'], ['3', '3x/week'], ['4', '4x/week'], ['5', '5x/week']] },
+    { n: 'plan_set_on', l: 'Plan in effect since', t: 'date' },
     { n: 'actively_treating', l: 'Actively treating', t: 'check' }];
   openModal({
-    title: 'Edit case', wide: true, body: fieldsHtml(defs, c),
+    title: 'Edit case', wide: true, body: fieldsHtml(defs, { ...c, plan_visits_per_week: c.plan_visits_per_week ? String(+c.plan_visits_per_week) : '', plan_set_on: c.plan_set_on || (c.plan_visits_per_week ? '' : today()) }),
     onOk: async (el) => {
       const vals = readFields(el, defs);
       S.caseData = await api('cases.php?action=update&id=' + c.id, { case: vals });
@@ -1685,7 +1725,7 @@ const AUDIT_THINGS = {
   case: 'the case', visits: 'a visit', referrals: 'a co-management referral', coverages: 'insurance coverage', outcomes: 'an outcome assessment',
   correspondence: 'a correspondence entry', ledger: 'a ledger entry', task: 'task', milestone: 'checklist item', document: 'a document', contact: 'contact',
   user: 'user', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
-  audit_log: 'the audit log', permission: '', platform_practices: 'the practice list', care_guide: 'the referral guide',
+  audit_log: 'the audit log', huddle: 'the daily huddle', permission: '', platform_practices: 'the practice list', care_guide: 'the referral guide',
 };
 const FIELD_NAMES = {
   provider_user_id: 'Provider', attorney_contact_id: 'Attorney', referred_by_contact_id: 'Referred by', referred_by_text: 'Referred by', contact_id: 'Contact',
@@ -1696,7 +1736,8 @@ const FIELD_NAMES = {
   dob: 'Date of birth', patient_dob: 'Date of birth', patient_first_name: 'First name', patient_last_name: 'Last name', patient_phone: 'Phone', patient_email: 'Email',
   patient_address: 'Address', cpt_codes: 'CPT codes', dwc25_sent: 'DWC-25 sent', staff_finance: 'Staff can see', finance_access: 'Full financial access',
   ehr_name: 'EHR', benefit_limit: 'Benefit limit', entry_date: 'Date', kind: 'Type', bucket: 'Owed by', status_on: 'Status date', insurance_balance: 'Insurance balance',
-  patient_balance: 'Patient balance', injury_type: 'Case type', bi_limit: 'At-fault BI limit', um_limit: 'UM limit', other_medical_estimate: "Other providers' bills (est.)",
+  patient_balance: 'Patient balance', injury_type: 'Case type', plan_visits_per_week: 'Treatment plan (visits/week)', plan_set_on: 'Plan since', notify_digest: 'Daily email digest',
+  gap_days: 'Gap days', adherence_pct: 'Adherence threshold %', weekdays_only: 'Weekdays only', criteria: 'Criteria', bi_limit: 'At-fault BI limit', um_limit: 'UM limit', other_medical_estimate: "Other providers' bills (est.)",
   liability_carrier: 'At-fault insurer', limits_source: 'Limits source', limits_noted_on: 'Limits as of', remaining_reported: 'PIP remaining (carrier)', remaining_reported_on: 'Remaining as of', visit_type: 'Visit type', head_injury: 'Head injury',
   guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)',
 };
@@ -1887,8 +1928,9 @@ function userModal(existing) {
   const defs = [{ n: 'name', l: 'Full name', req: true }, ...(existing ? [] : [{ n: 'email', l: 'Email', t: 'email', req: true }]),
     { n: 'role', l: 'Role', t: 'select', blank: false, opts: [['staff', 'Staff'], ['billing', 'Billing'], ['provider', 'Provider'], ['admin', 'Admin']] },
     { n: 'finance_access', l: 'Grant full financial access (staff role only)', t: 'check' },
+    { n: 'notify_digest', l: 'Daily email digest', t: 'check' },
     ...(existing ? [{ n: 'active', l: 'Active', t: 'check' }] : [])];
-  openModal({ title: existing ? 'Edit user' : 'Add user', body: fieldsHtml(defs, existing || { role: 'staff' }), onOk: async (el) => {
+  openModal({ title: existing ? 'Edit user' : 'Add user', body: fieldsHtml(defs, existing || { role: 'staff', notify_digest: 0 }), onOk: async (el) => {
     const r = await api('admin.php?action=user_save', { ...readFields(el, defs), ...(existing ? { id: existing.id } : {}) });
     if (r.tempPassword) showTempPassword(r.tempPassword);
     route();
@@ -1957,6 +1999,14 @@ async function pageSettings(main) {
          ['settlement', 'Settlement', 'Attorney offers, final settlement, reduction floor, amount forwarded, check received']]
         .map(([k, t, dsc]) => `<label class="check mt"><input type="checkbox" data-staff-fin="${k}"${(p.staffFinance || []).includes(k) ? ' checked' : ''}> <span><strong>${t}</strong> <span class="small muted">— ${dsc}</span></span></label>`).join('')}
       <button class="btn mt" data-act="save-staff-fin">Save visibility</button></div>
+    <div class="card mt" id="notify-rules"><h2>Daily huddle &amp; email digest</h2>
+      <p class="small mt">What the Daily huddle and the morning email watch for. Each person chooses whether to get the email (and which of these) under <em>Email notifications</em>; the email has counts and a link only — never patient names.</p>
+      ${p.mailReady ? '' : '<div class="notice">Email sending isn\'t set up on this server yet, so digests won\'t go out until it is (see the deployment guide).</div>'}
+      <div class="assignee-list mt">${Object.entries(p.notifyCriteria).map(([k, t]) => `<label class="check"><input type="checkbox" data-crit="${k}"${p.notifyRules.criteria.includes(k) ? ' checked' : ''}> ${esc(t)}</label>`).join('')}</div>
+      <div class="form-grid mt"><div><label for="nr-gap">Gap in care after (days without a visit)</label><input type="number" id="nr-gap" min="3" max="60" value="${p.notifyRules.gap_days}"></div>
+        <div><label for="nr-adh">Behind the treatment plan below (% of planned visits)</label><input type="number" id="nr-adh" min="10" max="100" step="5" value="${p.notifyRules.adherence_pct}"></div>
+        <div><label>&nbsp;</label><label class="check"><input type="checkbox" id="nr-weekdays"${p.notifyRules.weekdays_only ? ' checked' : ''}> Weekdays only</label></div></div>
+      <button class="btn mt" data-act="save-notify-rules">Save</button></div>
     <div class="card mt"><h2>EHR ledger layouts</h2>
       <p class="small mt">When someone uploads a ledger spreadsheet in a new layout, they match up its columns once and it's saved here. Later uploads in the same layout are read automatically.</p>
       <div id="ehr-formats" class="mt"><div class="empty">Loading…</div></div></div>`;
@@ -2088,6 +2138,14 @@ const ACTIONS = {
   'op-extend': async (el) => { if (await attempt(() => api('platform.php?action=practice_update', { id: +el.dataset.id, extend_trial_days: 14 }))) { toast('Trial extended'); route(); } },
   'op-comp': async (el) => { if (await attempt(() => api('platform.php?action=practice_update', { id: +el.dataset.id, comped: el.dataset.on === '1' }))) route(); },
   'change-password': changePasswordModal,
+  'my-notify': myNotifyModal,
+  'huddle-print': () => window.print(),
+  'save-notify-rules': async () => {
+    const box = document.getElementById('notify-rules');
+    const body = { criteria: [...box.querySelectorAll('[data-crit]:checked')].map((x) => x.dataset.crit), gap_days: +box.querySelector('#nr-gap').value,
+      adherence_pct: +box.querySelector('#nr-adh').value, weekdays_only: box.querySelector('#nr-weekdays').checked };
+    if (await attempt(() => api('admin.php?action=notify_rules_save', body))) toast('Saved');
+  },
   'new-case': newCaseModal,
   'goto-stage': (el) => { casesState.stage = el.dataset.stage; location.hash = '#/cases'; },
   'open-case': (el) => { S.caseTab = el.dataset.tab || 'overview'; location.hash = '#/case/' + el.dataset.id; },

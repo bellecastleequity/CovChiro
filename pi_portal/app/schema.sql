@@ -29,6 +29,9 @@ CREATE TABLE practices (
   staff_finance VARCHAR(60) NOT NULL DEFAULT '',
   -- The practice's EHR/EMR (label only; ledger uploads work with any).
   ehr_name VARCHAR(80) NULL,
+  -- Daily email digest: which criteria are on and their thresholds (JSON;
+  -- defaults in app/huddle.php).
+  notify_rules TEXT NULL,
   plan VARCHAR(20) NOT NULL DEFAULT 'starter',
   subscription_status ENUM('trialing','active','past_due','canceled','comped') NOT NULL DEFAULT 'trialing',
   trial_ends_at DATETIME NULL,
@@ -42,6 +45,14 @@ CREATE TABLE practices (
   baa_accepted_by INT NULL,
   created_at DATETIME NOT NULL,
   INDEX idx_practices_stripe (stripe_customer_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Daily digests sent (one per person per day).
+CREATE TABLE digest_log (
+  user_id INT NOT NULL,
+  sent_on DATE NOT NULL,
+  items INT NOT NULL,
+  PRIMARY KEY (user_id, sent_on)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Trial reminder emails already sent, so each goes out once.
@@ -63,6 +74,10 @@ CREATE TABLE users (
   role ENUM('admin','provider','staff','billing') NOT NULL DEFAULT 'staff',
   -- Admin-granted: this staff member may see all financials.
   finance_access TINYINT(1) NOT NULL DEFAULT 0,
+  -- Daily email digest: on/off, and which of the practice's criteria this
+  -- person wants (comma list; NULL = all).
+  notify_digest TINYINT(1) NOT NULL DEFAULT 0,
+  notify_criteria VARCHAR(255) NULL,
   password_hash VARCHAR(255) NOT NULL,
   must_change_password TINYINT(1) NOT NULL DEFAULT 1,
   totp_secret_enc TEXT NULL,
@@ -158,6 +173,10 @@ CREATE TABLE cases (
   -- Maximum medical improvement. At MMI the patient is discharged, or
   -- moves to maintenance care every N days (set by the doctor) until a
   -- final discharge.
+  -- Treatment plan frequency (visits per week) and since when; attendance
+  -- is compared against it.
+  plan_visits_per_week DECIMAL(3,1) NULL,
+  plan_set_on DATE NULL,
   mmi_date DATE NULL,
   maintenance_every_days SMALLINT NULL,
   -- Liability coverage that will pay the claim (often learned on the

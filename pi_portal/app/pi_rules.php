@@ -518,7 +518,11 @@ function case_tips(array $case, array $ctx): array {
             'There ' . (count($gaps) > 1 ? 'are ' . count($gaps) . ' gaps' : 'is a gap') . ' of more than ' . TIP_GAP_DAYS . ' days between visits (longest: ' . $d . ' days, ' . us_date($from) . ' – ' . us_date($to) . '). Make sure the chart says why (illness, travel, work, transportation).',
             "Unexplained gaps are the first thing an adjuster uses to argue the injury had resolved. A documented reason keeps the treatment record continuous.");
     }
-    if ($inCare && $fv && days_between($fv, $today) >= 28) {
+    if ($inCare && $fv && empty($case['plan_visits_per_week']) && days_between($fv, $today) >= 3) {
+        $add('plan', 'gaps', 'Set the treatment plan frequency', 'Record how often the patient should be seen (e.g. 3x/week) under Overview → Edit. Attendance is then checked against the plan, and missed visits show up in the daily huddle.',
+            "A written frequency makes the care plan clear to the patient and the team, and makes it obvious — early — when the patient falls behind.");
+    }
+    if ($inCare && $fv && empty($case['plan_visits_per_week']) && days_between($fv, $today) >= 28) {
         $recent = count(array_filter($attended, fn($d) => $d > add_days($today, -14)));
         $before = count(array_filter($attended, fn($d) => $d > add_days($today, -28) && $d <= add_days($today, -14)));
         if ($before >= 4 && $recent * 2 <= $before) $add('freq_drop', 'gaps', 'Visit frequency has dropped',
@@ -591,6 +595,54 @@ function case_tips(array $case, array $ctx): array {
             "Scores measured over time show both progress and lasting limitations in numbers — the clearest way to show how the injury affects daily life.");
     }
     return $tips;
+}
+
+// ---------- Practice rules ----------
+// What the daily huddle and email digest watch for, with the practice's
+// thresholds (Practice settings → Daily huddle & email). Gap days and the
+// adherence threshold also drive the case alerts.
+const NOTIFY_CRITERIA = [
+    'gap' => 'Gaps in care',
+    'adherence' => 'Not following the treatment plan frequency',
+    'mri' => 'MRI not ordered after visit #1',
+    'emc' => 'EMC determination overdue (auto)',
+    'referrals' => 'Ortho / neurology / pain-management referrals due',
+    'reexam' => 'Re-exams due',
+    'maintenance' => 'Maintenance visits overdue',
+    'tasks' => 'Tasks overdue or due today',
+    'money' => 'PIP running out / bills near policy limits',
+];
+const NOTIFY_DEFAULTS = ['criteria' => ['gap', 'adherence', 'mri', 'emc', 'referrals', 'reexam', 'maintenance', 'tasks', 'money'],
+    'gap_days' => TREATMENT_GAP_DAYS, 'adherence_pct' => 70, 'weekdays_only' => true];
+
+function practice_rules(?array $practice = null): array {
+    $p = $practice ?? current_practice();
+    $saved = $p && !empty($p['notify_rules']) ? (json_decode($p['notify_rules'], true) ?: []) : [];
+    $r = array_merge(NOTIFY_DEFAULTS, array_intersect_key($saved, NOTIFY_DEFAULTS));
+    $r['criteria'] = array_values(array_intersect((array)$r['criteria'], array_keys(NOTIFY_CRITERIA)));
+    $r['gap_days'] = max(3, min(60, (int)$r['gap_days']));
+    $r['adherence_pct'] = max(10, min(100, (int)$r['adherence_pct']));
+    $r['weekdays_only'] = (bool)$r['weekdays_only'];
+    return $r;
+}
+
+// Attendance against the treatment plan over the last 14 days (or since
+// the plan started, if more recent; at least 7 days). Null when there's no
+// plan or not enough time yet.
+function plan_adherence(array $case, array $attendedDates): ?array {
+    $rate = (float)($case['plan_visits_per_week'] ?? 0);
+    if ($rate <= 0) return null;
+    $today = date('Y-m-d');
+    $start = max(add_days($today, -14), (string)($case['plan_set_on'] ?: $case['first_visit']));
+    $days = days_between($start, $today);
+    if ($days < 7) return null;
+    $expected = $rate * $days / 7;
+    $actual = count(array_filter(array_unique($attendedDates), fn($d) => $d > $start && $d <= $today));
+    return ['rate' => $rate, 'days' => $days, 'expected' => round($expected, 1), 'actual' => $actual, 'ratio' => $expected > 0 ? $actual / $expected : 1.0];
+}
+
+function plan_label(float $rate): string {
+    return ($rate == (int)$rate ? (int)$rate : $rate) . 'x/week';
 }
 
 // ---------- Case value: bills vs. coverage ----------
@@ -815,7 +867,12 @@ function case_alerts(array $case, array $ctx): array {
     if ($treatingPhase && $case['actively_treating'] && $case['first_visit']) {
         $last = $ctx['lastVisit'] ?? $case['first_visit'];
         $gap = days_between($last, $today);
-        if ($gap > TREATMENT_GAP_DAYS) $alerts[] = ['level' => 'medium', 'text' => 'No visit in ' . $gap . ' days — gap in care weakens the claim.'];
+        $rules = practice_rules();
+        if ($gap > $rules['gap_days']) $alerts[] = ['level' => 'medium', 'text' => 'No visit in ' . $gap . ' days — gap in care weakens the claim.'];
+        $adh = plan_adherence($case, $ctx['attendedDates'] ?? []);
+        if ($adh && $gap <= $rules['gap_days'] && $adh['ratio'] * 100 < $rules['adherence_pct']) {
+            $alerts[] = ['level' => 'medium', 'text' => 'Not following the treatment plan: ' . $adh['actual'] . ' of ' . rtrim(rtrim(number_format($adh['expected'], 1), '0'), '.') . ' planned visits in the last ' . $adh['days'] . ' days (' . plan_label($adh['rate']) . ' plan).'];
+        }
         $lastOutcome = $ctx['lastOutcome'] ?? null;
         if (!$lastOutcome && days_between($case['first_visit'], $today) > 7) {
             $alerts[] = ['level' => 'low', 'text' => 'No outcome assessments recorded yet.'];
@@ -870,7 +927,10 @@ function bulk_case_context(PDO $pdo, array $cases): array {
     foreach ($pdo->query("SELECT case_id, MAX(occurred_on) d FROM correspondence WHERE archived_at IS NULL AND case_id IN ($in) GROUP BY case_id") as $r) $ctx[$r['case_id']]['lastCorrespondence'] = $r['d'];
     foreach ($pdo->query("SELECT case_id, MAX(taken_on) d FROM outcomes WHERE archived_at IS NULL AND case_id IN ($in) GROUP BY case_id") as $r) $ctx[$r['case_id']]['lastOutcome'] = $r['d'];
     foreach ($pdo->query("SELECT DISTINCT case_id, taken_on FROM outcomes WHERE archived_at IS NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['outcomeDates'][] = $r['taken_on'];
-    foreach ($pdo->query("SELECT case_id, visit_date, visit_type FROM visits WHERE archived_at IS NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['visits'][] = $r;
+    foreach ($pdo->query("SELECT case_id, visit_date, visit_type FROM visits WHERE archived_at IS NULL AND case_id IN ($in)") as $r) {
+        $ctx[$r['case_id']]['visits'][] = $r;
+        if ($r['visit_type'] !== 'no_show') $ctx[$r['case_id']]['attendedDates'][] = $r['visit_date'];
+    }
     foreach ($pdo->query("SELECT case_id, follow_up_on, subject FROM correspondence WHERE archived_at IS NULL AND follow_up_on IS NOT NULL AND follow_up_done = 0 AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['openFollowUps'][] = $r;
     $ledger = ledger_rows_by_case($pdo, $ids);
     foreach ($cases as $c) {

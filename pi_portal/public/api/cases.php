@@ -23,7 +23,7 @@ const CASE_FIELDS = [
     'lop_signed_on' => 'date', 'lop_acknowledged_on' => 'date',
     'balance_forwarded_on' => 'date', 'balance_forwarded_amount' => 'money',
     'actively_treating' => 'bool', 'provider_user_id' => 'user', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
-    'mmi_date' => 'date', 'maintenance_every_days' => 'int',
+    'mmi_date' => 'date', 'maintenance_every_days' => 'int', 'plan_visits_per_week' => 'money', 'plan_set_on' => 'date',
     'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
     'limits_source' => 'str:160', 'limits_noted_on' => 'date',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
@@ -223,7 +223,7 @@ function full_case(int $id, array $user): array {
         ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null,
         ($seen = array_column(array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'), 'visit_date')) ? max($seen) : null);
     $ctx = [
-        'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'totals' => $totals, 'ledgerRows' => $allLedger, 'coverages' => $coverages, 'openItems' => $openItems,
+        'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'totals' => $totals, 'ledgerRows' => $allLedger, 'attendedDates' => $visitDates, 'coverages' => $coverages, 'openItems' => $openItems,
         'wcVisits' => ['count' => count($attended), 'missing25' => count(array_filter($attended, fn($v) => !$v['dwc25_sent'] && $v['visit_date'] <= $cutoff))],
         'lastVisit' => $visitDates ? max($visitDates) : null,
         'lastCorrespondence' => $corr ? $corr[0]['occurred_on'] : null,
@@ -387,6 +387,15 @@ function handle_milestone() {
     audit('update', 'milestone', $key, $id, $user, null, audit_diff(['completed_on' => 'date', 'not_applicable' => 'bool'], $before,
         ['completed_on' => date_or_null($b['completed_on'] ?? null), 'not_applicable' => !empty($b['not_applicable']) ? 1 : 0]));
     json_response(full_case($id, $user));
+}
+
+// ---------- daily huddle ----------
+function handle_huddle() {
+    $user = require_user('case.read');
+    require_once __DIR__ . '/../../app/huddle.php';
+    $h = build_huddle(pi_db(), $user, pid());
+    audit('view', 'huddle', null, null, $user);
+    json_response($h + ['practice' => current_practice()['name']]);
 }
 
 // ---------- MMI ----------
@@ -1048,6 +1057,7 @@ switch ($action) {
     case 'activity': handle_activity(); break;
     case 'guide_step': handle_guide_step(); break;
     case 'mmi': handle_mmi(); break;
+    case 'huddle': handle_huddle(); break;
     case 'playbook': handle_playbook(); break;
     case 'letter': handle_letter(); break;
     default: json_response(['error' => 'Unknown action'], 400);
