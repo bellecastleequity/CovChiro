@@ -1,0 +1,6 @@
+vo/
+.build/
+frames/
+timeline.json
+preview_*.jpg
+music.mp3

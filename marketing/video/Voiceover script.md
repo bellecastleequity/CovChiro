@@ -23,8 +23,21 @@ The video (`InjuryCase sales video.mp4`, 1:41, 1080p) is built to play muted, wi
 - Video email tools (and many inboxes) show the thumbnail (`thumbnail.jpg`) with a play button linking to the video page; attach the MP4 only for small lists.
 - Use a promo code link to track and reward each campaign, e.g. `injurycase.com/app.html#signup?promo=FCA2026` (create the code in the operator console first).
 
-## Rebuilding the video
+## Switching the voice
 
-1. With the app running locally, `node seed_and_shoot.js <dir>/shots` seeds a fictional demo clinic (every name is made up) and captures the screens.
-2. `node render.js <dir> 30` renders `video.html` frame by frame; then `ffmpeg -framerate 30 -i frames/%05d.jpg -c:v libx264 -crf 20 -pix_fmt yuv420p "InjuryCase sales video.mp4"`.
-3. Edit wording and timing in `video.html` (each element's `data-in` is its entrance time in seconds).
+The video fits itself to the voice. Each scene lasts its default length or as long as its voiceover clip needs, whichever is longer, so rewording a line or changing voices never cuts anything off. The lines live in `scenes.json`.
+
+**Google Cloud Text-to-Speech (recommended)**
+1. In Google Cloud, enable the Text-to-Speech API and create an API key restricted to it.
+2. Add it as the `GOOGLE_TTS_API_KEY` secret (in this Claude environment: environment settings → Network secrets or environment variables; on your computer: `export GOOGLE_TTS_API_KEY=...`).
+3. `python3 tts_google.py` writes one clip per scene to `vo/`. Try voices with `--voice` (e.g. `en-US-Neural2-D`, `en-US-Studio-Q`, or a Chirp 3 HD voice) and list them with `--list en-US`; redo one line with `--only 04-playbook`.
+4. `python3 build_video.py` renders the video with the voice mixed in.
+
+**Your own recording:** save one file per scene as `vo/01-open.mp3` … `vo/11-cta.mp3` (any of .mp3/.wav/.m4a), or a single take as `vo/full.mp3` timed to the table above, then run `build_video.py`.
+
+**Music:** drop a licensed track in as `music.mp3`; it's mixed quietly under the voice and fades out at the end.
+
+## Rebuilding the screens
+
+1. With the app running locally, `node seed_and_shoot.js shots` seeds a fictional demo clinic (every name is made up) and captures the screens.
+2. Edit wording or layout in `video.html` (each element's `data-in` is seconds after its scene starts), then `python3 build_video.py`.
