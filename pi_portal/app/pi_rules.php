@@ -841,8 +841,11 @@ function case_value(array $case, array $ctx): array {
     $coverages = $ctx['coverages'] ?? [];
     $pip = first_coverage($coverages, 'pip');
     $out = ['pip' => null, 'limits' => null, 'threshold' => null];
-    // Other providers' bills: itemized estimates plus any lump sum not itemized.
-    $est = outside_estimates($ctx['referrals'] ?? [], $ctx['estimateRows'] ?? [], $ctx['costs'] ?? practice_costs());
+    // Other providers' bills: itemized estimates (a Gold-and-up feature)
+    // plus any lump sum not itemized.
+    $est = has_feature(current_practice(), 'outside_estimates')
+        ? outside_estimates($ctx['referrals'] ?? [], $ctx['estimateRows'] ?? [], $ctx['costs'] ?? practice_costs())
+        : ['lines' => [], 'total' => 0.0, 'locked' => true];
     $otherAll = $est['total'] + (float)($case['other_medical_estimate'] ?? 0);
     $out['outside'] = $est + ['lump' => round((float)($case['other_medical_estimate'] ?? 0), 2), 'all' => round($otherAll, 2)];
     if ($pip) {

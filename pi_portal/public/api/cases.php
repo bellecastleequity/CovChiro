@@ -773,6 +773,7 @@ function handle_child_save() {
     $spec = CHILD_SPECS[$table] ?? json_response(['error' => 'Unknown record type'], 400);
     if (!can_child($user, $spec)) json_response(['error' => 'Your role does not allow this.'], 403);
     if ($table === 'ledger') ehr_guard($case);
+    if ($table === 'case_estimates') require_feature('outside_estimates');
     $cols = clean_fields($spec['fields'], $b['row'] ?? [], $caseId);
     $childId = (int)($b['row']['id'] ?? 0);
 

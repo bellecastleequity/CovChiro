@@ -1766,7 +1766,10 @@ function caseValueCardHtml(d) {
       ${edit ? '<button class="btn ghost sm" data-act="edit-limits">Edit limits</button>' : ''}</div>`;
   }
   const o = v.outside;
-  const outHtml = o ? `<div class="cv-block"><div class="cv-title">Other providers' bills <span class="small muted">estimated from referrals and your cost list</span></div>
+  const outHtml = o && o.locked ? `<div class="cv-block"><div class="cv-title">Other providers' bills</div>
+      <div class="notice small">Estimating other facilities' bills from referrals (MRI, specialists, injections) is part of the ${esc(featureInfo('outside_estimates').planName)} plan and up. <a href="#/billing">See plans</a></div>
+      ${o.lump ? `<div class="money-row small"><span>Other bills (lump sum)</span><strong>${money(o.lump)}</strong></div>` : ''}</div>`
+    : o ? `<div class="cv-block"><div class="cv-title">Other providers' bills <span class="small muted">estimated from referrals and your cost list</span></div>
       <div class="cv-big">${money(o.all)}</div>
       ${o.lines.length || o.lump ? `<div class="est-lines">${o.lines.map((l) => `<div class="money-row small${l.excluded ? ' muted' : ''}"><span>${esc(l.label)} <span class="muted">· ${+l.qty} ${esc(l.unit)}${+l.qty === 1 ? '' : 's'} × ${money(l.unitCost)}${l.adjusted ? ' · adjusted' : l.referralId ? ' · from referral' : ''}</span></span><strong>${l.excluded ? 'left out' : money(l.amount)}</strong></div>`).join('')}
         ${o.lump ? `<div class="money-row small"><span>Other bills not itemized</span><strong>${money(o.lump)}</strong></div>` : ''}</div>`
@@ -2263,11 +2266,12 @@ async function pageSettings(main) {
       <div id="locations-list" class="mt">${hasFeature('locations') ? '<div class="empty">Loading…</div>' : `<div class="notice">Multiple locations are part of the ${esc(featureInfo('locations').planName)} plan.</div>`}</div></div>
     <div class="card mt" id="costs-card"><div class="card-head"><h2>Outside provider costs</h2></div>
       <p class="small">What other facilities typically charge, used to estimate the other bills on each case from its referrals (an MRI counts once per body region on the referral). Estimates for planning only; each case can adjust its own lines under Financials.</p>
+      ${hasFeature('outside_estimates') ? '' : `<div class="notice mt">Outside provider cost estimates are part of the ${esc(featureInfo('outside_estimates').planName)} plan and up. <a href="#/billing">See plans</a></div>`}
       <div class="table-wrap mt"><table><thead><tr><th>Item</th><th>Cost each ($)</th><th>Typical count per referral</th></tr></thead><tbody>
       ${entries(p.costs).map(([k, c]) => `<tr><td>${esc(c.label)} <span class="small muted">per ${esc(c.unit)}</span></td><td><input type="number" min="0" step="1" value="${+c.cost}" data-cost="${k}" data-f="cost" aria-label="${esc(c.label)} cost"></td>
         <td>${c.ref ? `<input type="number" min="0" step="1" value="${+c.typical}" data-cost="${k}" data-f="typical" aria-label="${esc(c.label)} typical count">` : '<span class="small muted">Added by hand on a case</span>'}</td></tr>`).join('')}
       </tbody></table></div>
-      <div class="badge-row mt"><button class="btn" data-act="save-costs">Save cost list</button><button class="btn ghost" data-act="save-costs" data-reset="1">Reset to defaults</button></div></div>
+      ${hasFeature('outside_estimates') ? '<div class="badge-row mt"><button class="btn" data-act="save-costs">Save cost list</button><button class="btn ghost" data-act="save-costs" data-reset="1">Reset to defaults</button></div>' : ''}</div>
     <div class="card mt" id="steps-card"><div class="card-head"><h2>Case steps &amp; checklist</h2><span class="spacer"></span>${hasFeature('custom_steps') ? '<button class="btn ghost sm" data-act="step-edit">+ Add your own step</button>' : ''}</div>
       <p class="small">Add the steps your office follows (they appear on every matching case's checklist, with due dates and alerts), and silence built-in steps your practice doesn't use. Silencing applies to every case; a single case can still mark a step "not needed".</p>
       <div id="steps-body" class="mt"><div class="empty">Loading…</div></div></div>

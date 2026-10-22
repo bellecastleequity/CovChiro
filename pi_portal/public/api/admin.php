@@ -190,6 +190,7 @@ function handle_my_notify_save() {
 function handle_costs_save() {
     require_method('POST');
     $admin = require_user('users.manage');
+    require_feature('outside_estimates');
     $b = json_body();
     $before = practice_costs();
     $save = [];
