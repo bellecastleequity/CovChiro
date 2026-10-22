@@ -840,7 +840,7 @@ function tabChecklist(el, d) {
     <p class="small muted">Deadlines follow the office protocol: intake items within 48 hours of the first visit, MRI within 10 days, EMC referral within 21 days, consults within 45 days. Imaging and consult items tick themselves off from the Co-management tab.</p>
     ${entries(groups).map(([g, items]) => `<div class="checklist-group"><h3>${esc(g)}</h3>${items.map((i) => `
       <div class="check-row" data-key="${esc(i.key)}">
-        <div class="lbl">${esc(i.label)}${i.due ? `<small>Due ${esc(fmtDate(i.due))}${i.note ? ' · ' + esc(i.note) : ''}</small>` : (i.note ? `<small>${esc(i.note)}</small>` : '')}</div>
+        <div class="lbl">${esc(i.label)}${i.custom ? ' <span class="chip">Our step</span>' : ''}${i.detail ? `<small>${esc(i.detail)}</small>` : ''}${i.due ? `<small>Due ${esc(fmtDate(i.due))}${i.note ? ' · ' + esc(i.note) : ''}</small>` : (i.note ? `<small>${esc(i.note)}</small>` : '')}</div>
         <div><span class="chip ${esc(i.status)}">${esc(STATUS_TEXT[i.status])}</span></div>
         <div>${i.auto ? `<span class="small muted">${i.completedOn ? esc(fmtDate(i.completedOn)) : 'From referrals'}</span>`
           : `<input type="date" value="${esc(i.completedOn || '')}" data-act-change="ms-date" aria-label="Completed on"${editable ? '' : ' disabled'}>`}</div>
@@ -1904,7 +1904,7 @@ const AUDIT_VERBS = {
 const AUDIT_THINGS = {
   case: 'the case', visits: 'a visit', referrals: 'a co-management referral', coverages: 'insurance coverage', outcomes: 'an outcome assessment',
   correspondence: 'a correspondence entry', outreach: 'an outreach attempt', ledger: 'a ledger entry', task: 'task', milestone: 'checklist item', document: 'a document', contact: 'contact',
-  user: 'user', location: 'location', promo_code: 'promo code', feedback: 'feature suggestion', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
+  user: 'user', location: 'location', promo_code: 'promo code', practice_step: 'office step', feedback: 'feature suggestion', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
   audit_log: 'the audit log', huddle: 'the daily huddle', permission: '', platform_practices: 'the practice list', care_guide: 'the referral guide',
 };
 const FIELD_NAMES = {
@@ -2195,6 +2195,9 @@ async function pageSettings(main) {
     <div class="card mt"><div class="card-head"><h2>Locations</h2><span class="spacer"></span>${hasFeature('locations') ? '<button class="btn ghost sm" data-act="location-edit">+ Add location</button>' : ''}</div>
       <p class="small">Run more than one office in this account: each case belongs to a location (its letterhead is used on letters and exports), lists filter by location, and team members can be limited to their own location's patients.</p>
       <div id="locations-list" class="mt">${hasFeature('locations') ? '<div class="empty">Loading…</div>' : `<div class="notice">Multiple locations are part of the ${esc(featureInfo('locations').planName)} plan.</div>`}</div></div>
+    <div class="card mt" id="steps-card"><div class="card-head"><h2>Case steps &amp; checklist</h2><span class="spacer"></span><button class="btn ghost sm" data-act="step-edit">+ Add your own step</button></div>
+      <p class="small">Add the steps your office follows (they appear on every matching case's checklist, with due dates and alerts), and silence built-in steps your practice doesn't use. Silencing applies to every case; a single case can still mark a step "not needed".</p>
+      <div id="steps-body" class="mt"><div class="empty">Loading…</div></div></div>
     <div class="card mt" id="badge-card"><div class="card-head"><h2>${esc(S.brand.name)} Certified badge</h2></div>
       <p class="small">Put a badge on your website to show patients, attorneys and referral partners that your practice manages PI cases on secure, HIPAA-ready software. It links to a live verification page and turns itself off if your account lapses.</p>
       <div id="badge-body" class="mt"><div class="empty">Loading…</div></div></div>
@@ -2204,6 +2207,41 @@ async function pageSettings(main) {
   loadEhrFormats();
   loadLocations();
   loadBadge();
+  loadSteps();
+}
+
+async function loadSteps() {
+  const box = document.getElementById('steps-body');
+  if (!box) return;
+  const r = await attempt(() => api('admin.php?action=steps'));
+  if (!r) return;
+  loadSteps.data = r;
+  const types = (cs) => !cs || cs.length >= Object.keys(r.injuryTypes).length ? 'All cases' : cs.map((c) => r.injuryTypes[c] || c).join(', ');
+  const due = (st) => st.anchor === 'none' ? 'When it happens' : `${+st.days ? st.days + ' day' + (+st.days === 1 ? '' : 's') + ' after the' : 'On the day of the'} ${r.anchors[st.anchor]}`;
+  const toggle = (it) => `<button class="btn ${it.silenced ? '' : 'ghost '}sm" data-act="step-silence" data-key="${esc(it.key)}" data-on="${it.silenced ? 0 : 1}">${it.silenced ? 'Turn back on' : 'Silence'}</button>`;
+  const row = (it, sub) => `<tr${it.silenced ? ' class="muted"' : ''}><td>${esc(it.title)}${it.stateOnly ? ' <span class="chip">State rule</span>' : ''}${sub ? `<div class="small muted">${esc(sub)}</div>` : ''}</td><td class="small">${esc(types(it.cases))}</td><td>${it.silenced ? '<span class="chip na">Silenced</span>' : '<span class="chip teal">On</span>'}</td><td class="right">${toggle(it)}</td></tr>`;
+  box.innerHTML = `<h3>Your own steps</h3>
+    ${r.custom.length ? `<div class="table-wrap"><table><thead><tr><th>Step</th><th>Applies to</th><th>Due</th><th></th></tr></thead><tbody>${r.custom.map((st) => `<tr><td><strong>${esc(st.title)}</strong>${st.detail ? `<div class="small muted">${esc(st.detail)}</div>` : ''}</td>
+      <td class="small">${esc(types(st.cases ? st.cases.split(',') : null))}</td><td class="small">${esc(due(st))}</td>
+      <td class="right nowrap"><button class="btn ghost sm" data-act="step-edit" data-id="${st.id}">Edit</button> <button class="btn ghost sm" data-act="step-remove" data-id="${st.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty">None yet — e.g. "Welcome call to the patient", "Send intake packet to the attorney", "30-day progress photos".</div>'}
+    <details class="mt"><summary><strong>Built-in Next steps</strong> <span class="small muted">(${r.guide.filter((g) => g.silenced).length} silenced)</span></summary>
+      <div class="table-wrap mt-sm"><table><tbody>${r.guide.map((g) => row(g, g.when)).join('')}</tbody></table></div></details>
+    <details class="mt"><summary><strong>Built-in checklist items</strong> <span class="small muted">(${r.checklist.filter((g) => g.silenced).length} silenced)</span></summary>
+      <div class="table-wrap mt-sm"><table><tbody>${r.checklist.map((c) => row(c, c.group)).join('')}</tbody></table></div></details>
+    <p class="small muted mt">"State rule" items only show on cases in states where they apply — silence them only if your counsel agrees they don't apply to you.</p>`;
+}
+
+function stepModal(id) {
+  const r = loadSteps.data;
+  const st = id ? r.custom.find((x) => +x.id === +id) : { anchor: 'first_visit', days: 2 };
+  const picked = st.cases ? st.cases.split(',') : Object.keys(r.injuryTypes);
+  const defs = [{ n: 'title', l: 'Step', req: true, full: true, ph: 'e.g. Welcome call to the patient' }, { n: 'detail', l: 'Instructions for the team (optional)', t: 'textarea', rows: 2 },
+    { n: 'anchor', l: 'Due — counted from', t: 'select', blank: false, opts: [['first_visit', 'First visit'], ['date_of_injury', 'Date of the accident'], ['care_end', 'MMI / discharge'], ['none', 'No due date']] },
+    { n: 'days', l: 'Days after', t: 'number' }];
+  openModal({ title: id ? 'Edit step' : 'Add your own step', wide: true, okText: 'Save',
+    body: fieldsHtml(defs, st) + `<h3 class="mt">Applies to</h3><div class="mt">${entries(r.injuryTypes).map(([k, t]) => `<label class="check"><input type="checkbox" data-step-case="${k}"${picked.includes(k) ? ' checked' : ''}> ${esc(t)}</label>`).join('')}</div>`,
+    onOk: async (el) => { await api('admin.php?action=step_save', { ...readFields(el, defs), cases: [...el.querySelectorAll('[data-step-case]:checked')].map((x) => x.dataset.stepCase), ...(id ? { id: +id } : {}) }); toast('Saved'); loadSteps(); } });
 }
 
 const BADGE_STYLES = [['light', 'Light'], ['dark', 'Dark'], ['seal', 'Round seal']];
@@ -2496,6 +2534,9 @@ const ACTIONS = {
   'export-file': exportFileModal,
   'location-edit': (el) => locationModal(el.dataset.id ? +el.dataset.id : null),
   'promo-check': () => checkPromo(),
+  'step-edit': (el) => stepModal(el.dataset.id ? +el.dataset.id : null),
+  'step-remove': async (el) => { if (!(await confirmBox('Remove this step?', 'It disappears from every case\'s checklist. Completions already recorded stay in the activity log.', 'Remove'))) return; if (await attempt(() => api('admin.php?action=step_save', { id: +el.dataset.id, remove: true }))) { toast('Removed'); loadSteps(); } },
+  'step-silence': async (el) => { if (await attempt(() => api('admin.php?action=step_silence', { key: el.dataset.key, silenced: el.dataset.on === '1' }))) { toast(el.dataset.on === '1' ? 'Silenced for every case' : 'Turned back on'); loadSteps(); } },
   'promo-new': () => promoModal(),
   'promo-toggle': async (el) => { if (await attempt(() => api('platform.php?action=promo_save', { id: +el.dataset.id, active: el.dataset.on === '1' }))) { toast('Saved'); pagePlatform(document.getElementById('main')); } },
   'badge-style': (el) => { loadBadge.style = el.dataset.style; loadBadge(loadBadge.data); },

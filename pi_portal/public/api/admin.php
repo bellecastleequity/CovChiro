@@ -186,6 +186,69 @@ function handle_my_notify_save() {
     json_response(['ok' => true]);
 }
 
+// ---- the practice's own case steps, and silencing built-in ones ----
+function handle_steps() {
+    require_user('users.manage');
+    $cfg = practice_step_config(pid());
+    $s = pi_db()->prepare('SELECT * FROM practice_steps WHERE practice_id = ? AND active = 1 ORDER BY id');
+    $s->execute([pid()]);
+    $guide = []; $check = [];
+    foreach (CARE_GUIDE as $k => $d) $guide[] = ['key' => 'guide:' . $k, 'title' => $d['title'], 'when' => $d['when'], 'cases' => $d['cases'], 'silenced' => isset($cfg['silenced']['guide:' . $k]),
+        'stateOnly' => isset($d['rule'])];
+    foreach (CHECKLIST as $k => $d) $check[] = ['key' => 'check:' . $k, 'title' => $d['label'], 'group' => $d['group'], 'cases' => $d['cases'], 'silenced' => isset($cfg['silenced']['check:' . $k]),
+        'stateOnly' => isset($d['rule']) || isset($d['states'])];
+    json_response(['custom' => $s->fetchAll(), 'guide' => $guide, 'checklist' => $check, 'anchors' => STEP_ANCHORS, 'injuryTypes' => INJURY_TYPES]);
+}
+
+function handle_step_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $b = json_body();
+    $pdo = pi_db();
+    $id = (int)($b['id'] ?? 0);
+    if ($id) {
+        $s = $pdo->prepare('SELECT * FROM practice_steps WHERE id = ? AND practice_id = ?'); $s->execute([$id, pid()]);
+        $before = $s->fetch() ?: json_response(['error' => 'Not found'], 404);
+        if (!empty($b['remove'])) {
+            $pdo->prepare('UPDATE practice_steps SET active = 0 WHERE id = ?')->execute([$id]);
+            audit('archive', 'practice_step', $id, null, $admin, $before['title']);
+            json_response(['ok' => true]);
+        }
+    }
+    $title = str_or_null($b['title'] ?? null, 200);
+    if (!$title) json_response(['error' => 'Give the step a name.'], 400);
+    $anchor = isset(STEP_ANCHORS[$b['anchor'] ?? '']) ? $b['anchor'] : 'first_visit';
+    $cases = array_values(array_filter((array)($b['cases'] ?? []), fn($c) => isset(INJURY_TYPES[$c])));
+    $cols = ['title' => $title, 'detail' => str_or_null($b['detail'] ?? null, 500), 'cases' => $cases && count($cases) < count(INJURY_TYPES) ? implode(',', $cases) : null,
+        'anchor' => $anchor, 'days' => $anchor === 'none' ? null : max(0, min(730, (int)($b['days'] ?? 0)))];
+    if ($id) {
+        $pdo->prepare('UPDATE practice_steps SET title = ?, detail = ?, cases = ?, anchor = ?, days = ? WHERE id = ?')->execute([...array_values($cols), $id]);
+        audit('update', 'practice_step', $id, null, $admin, $title, audit_diff(['title' => 'label', 'detail' => 'label', 'cases' => 'label', 'anchor' => 'label', 'days' => 'int'], $before, $cols));
+    } else {
+        $pdo->prepare('INSERT INTO practice_steps (practice_id, title, detail, cases, anchor, days, created_by, created_at) VALUES (?,?,?,?,?,?,?,?)')->execute([pid(), ...array_values($cols), $admin['id'], now_str()]);
+        $id = (int)$pdo->lastInsertId();
+        audit('create', 'practice_step', $id, null, $admin, $title);
+    }
+    json_response(['ok' => true, 'id' => $id]);
+}
+
+// Turn a built-in Next step or checklist item off (or back on) for every
+// case in the practice. Cases keep any completion already recorded.
+function handle_step_silence() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $b = json_body();
+    $key = (string)($b['key'] ?? '');
+    [$kind, $k] = array_pad(explode(':', $key, 2), 2, '');
+    if (!(($kind === 'guide' && isset(CARE_GUIDE[$k])) || ($kind === 'check' && isset(CHECKLIST[$k])))) json_response(['error' => 'Unknown step'], 400);
+    $pdo = pi_db();
+    if (!empty($b['silenced'])) $pdo->prepare('INSERT IGNORE INTO practice_silenced (practice_id, item_key, created_by, created_at) VALUES (?,?,?,?)')->execute([pid(), $key, $admin['id'], now_str()]);
+    else $pdo->prepare('DELETE FROM practice_silenced WHERE practice_id = ? AND item_key = ?')->execute([pid(), $key]);
+    $title = $kind === 'guide' ? CARE_GUIDE[$k]['title'] : CHECKLIST[$k]['label'];
+    audit('update', 'practice', pid(), null, $admin, 'Step ' . (!empty($b['silenced']) ? 'silenced' : 'turned back on') . ': ' . $title);
+    json_response(['ok' => true]);
+}
+
 // ---- "InjuryCase Certified" website badge ----
 function badge_payload(array $p): array {
     $st = badge_status($p);
@@ -338,6 +401,9 @@ switch ($action) {
     case 'audit': handle_audit(); break;
     case 'audit_csv': handle_audit_csv(); break;
     case 'notify_rules_save': handle_notify_rules_save(); break;
+    case 'steps': handle_steps(); break;
+    case 'step_save': handle_step_save(); break;
+    case 'step_silence': handle_step_silence(); break;
     case 'badge': handle_badge(); break;
     case 'badge_save': handle_badge_save(); break;
     case 'badge_reset': handle_badge_reset(); break;

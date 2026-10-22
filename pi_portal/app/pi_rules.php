@@ -288,6 +288,29 @@ function checklist_days(array $def, array $rules): ?int {
     return $rules[$def['days_rule']] ?? null;
 }
 
+// ---------- The practice's own steps and silenced steps ----------
+const STEP_ANCHORS = ['first_visit' => 'first visit', 'date_of_injury' => 'accident', 'care_end' => 'MMI / discharge', 'none' => ''];
+
+// ['custom' => key => checklist-style def, 'silenced' => item_key => true]
+function practice_step_config(?int $practiceId): array {
+    static $cache = [];
+    if (!$practiceId) return ['custom' => [], 'silenced' => []];
+    if (isset($cache[$practiceId])) return $cache[$practiceId];
+    $pdo = pi_db();
+    $s = $pdo->prepare('SELECT * FROM practice_steps WHERE practice_id = ? AND active = 1 ORDER BY id');
+    $s->execute([$practiceId]);
+    $custom = [];
+    foreach ($s->fetchAll() as $r) {
+        $custom['custom_' . $r['id']] = ['label' => $r['title'], 'detail' => $r['detail'], 'custom' => true,
+            'group' => $r['anchor'] === 'care_end' ? 'At MMI / discharge' : 'Our office steps',
+            'anchor' => $r['anchor'] === 'none' ? null : $r['anchor'], 'days' => $r['anchor'] === 'none' ? null : (int)$r['days'],
+            'cases' => $r['cases'] ? explode(',', $r['cases']) : ALL_CASES];
+    }
+    $s = $pdo->prepare('SELECT item_key FROM practice_silenced WHERE practice_id = ?');
+    $s->execute([$practiceId]);
+    return $cache[$practiceId] = ['custom' => $custom, 'silenced' => array_fill_keys($s->fetchAll(PDO::FETCH_COLUMN), true)];
+}
+
 function checklist_applies(array $def, array $case, array $rules): bool {
     return in_array($case['injury_type'], $def['cases'], true) && checklist_rule_ok($def, $rules);
 }
@@ -392,8 +415,10 @@ function care_guide(array $case, array $referrals, array $guideRows = [], array 
     }
     $steps = [];
     $rules = case_rules($case);
+    $silenced = practice_step_config(isset($case['practice_id']) ? (int)$case['practice_id'] : null)['silenced'];
     foreach (CARE_GUIDE as $key => $def) {
         if (!in_array($case['injury_type'], $def['cases'], true)) continue;
+        if (isset($silenced['guide:' . $key])) continue;
         if (isset($def['rule']) && empty($rules[$def['rule']])) continue;
         $refs = $def['types'] ? $ofType($def['types']) : [];
         usort($refs, fn($a, $b) => strcmp((string)($b['ordered_on'] ?? $b['created_at']), (string)($a['ordered_on'] ?? $a['created_at'])));
@@ -794,7 +819,9 @@ function case_checklist(array $case, array $milestoneRows, array $referrals): ar
     $today = date('Y-m-d');
     $items = [];
     $rules = case_rules($case);
-    foreach (CHECKLIST as $key => $def) {
+    $cfg = practice_step_config(isset($case['practice_id']) ? (int)$case['practice_id'] : null);
+    foreach (CHECKLIST + $cfg['custom'] as $key => $def) {
+        if (isset($cfg['silenced']['check:' . $key])) continue;
         if (!checklist_applies($def, $case, $rules)) continue;
         $def['days'] = checklist_days($def, $rules);
         if ($key === 'claim_notice' && $rules['code'] === 'DC') $def['label'] = 'PIP-or-tort election made (within 60 days of the accident)';
@@ -825,7 +852,7 @@ function case_checklist(array $case, array $milestoneRows, array $referrals): ar
             'key' => $key, 'label' => $def['label'], 'group' => $def['group'],
             'auto' => $source !== null, 'autoFrom' => $source,
             'due' => $due, 'completedOn' => $completedOn, 'status' => $status,
-            'note' => $m['note'] ?? null,
+            'note' => $m['note'] ?? null, 'custom' => !empty($def['custom']), 'detail' => $def['detail'] ?? null,
         ];
     }
     return $items;

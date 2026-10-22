@@ -429,7 +429,7 @@ function handle_milestone() {
     case_or_404($id);
     $b = json_body();
     $key = (string)($b['key'] ?? '');
-    if (!isset(CHECKLIST[$key])) json_response(['error' => 'Unknown checklist item'], 400);
+    if (!isset(CHECKLIST[$key]) && !isset(practice_step_config(pid())['custom'][$key])) json_response(['error' => 'Unknown checklist item'], 400);
     $prev = pi_db()->prepare('SELECT completed_on, not_applicable FROM case_milestones WHERE case_id = ? AND milestone = ?');
     $prev->execute([$id, $key]);
     $before = $prev->fetch() ?: [];
@@ -695,13 +695,14 @@ function handle_playbook() {
     // The practice's state unless another is picked; rules as of today.
     $r = jurisdiction_rules($_GET['state'] ?? (current_practice()['state'] ?? 'FL'), ['accident' => date('Y-m-d'), 'policy' => date('Y-m-d')]);
     $checklist = [];
-    foreach (CHECKLIST as $key => $d) {
-        if (!checklist_rule_ok($d, $r)) continue;
+    $cfg = practice_step_config(pid());
+    foreach (CHECKLIST + $cfg['custom'] as $key => $d) {
+        if (isset($cfg['silenced']['check:' . $key]) || !checklist_rule_ok($d, $r)) continue;
         $days = checklist_days($d, $r);
         $checklist[] = ['label' => $key === 'claim_notice' && $r['code'] === 'DC' ? 'PIP-or-tort election made' : $d['label'], 'group' => $d['group'], 'cases' => $d['cases'],
             'when' => $d['anchor'] === null || $days === null ? 'When it happens' : ($days === 0 ? 'Same day as the ' : $days . ' day' . ($days === 1 ? '' : 's') . ' after the ') . str_replace(['date_of_injury', '_'], ['accident', ' '], $d['anchor'])];
     }
-    $guide = array_values(array_filter(array_map(fn($k, $d) => ['key' => $k] + $d, array_keys(CARE_GUIDE), CARE_GUIDE), fn($g) => !isset($g['rule']) || !empty($r[$g['rule']])));
+    $guide = array_values(array_filter(array_map(fn($k, $d) => ['key' => $k] + $d, array_keys(CARE_GUIDE), CARE_GUIDE), fn($g) => (!isset($g['rule']) || !empty($r[$g['rule']])) && !isset($cfg['silenced']['guide:' . $g['key']])));
     $money = [];
     if ($r['pip_pays_pct'] && $r['pip_pays_pct'] < 1) $money[] = ['PIP pays ' . round($r['pip_pays_pct'] * 100) . '%', 'The ' . round(100 - $r['pip_pays_pct'] * 100) . '% PIP doesn\'t pay, and anything denied or past the limit, is moved to the patient balance by a person — backed by a signed letter of protection.'];
     json_response(['guide' => $guide, 'checklist' => $checklist,
