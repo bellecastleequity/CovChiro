@@ -197,12 +197,13 @@ function handle_steps() {
         'stateOnly' => isset($d['rule'])];
     foreach (CHECKLIST as $k => $d) $check[] = ['key' => 'check:' . $k, 'title' => $d['label'], 'group' => $d['group'], 'cases' => $d['cases'], 'silenced' => isset($cfg['silenced']['check:' . $k]),
         'stateOnly' => isset($d['rule']) || isset($d['states'])];
-    json_response(['custom' => $s->fetchAll(), 'guide' => $guide, 'checklist' => $check, 'anchors' => STEP_ANCHORS, 'injuryTypes' => INJURY_TYPES]);
+    json_response(['custom' => $s->fetchAll(), 'customEnabled' => has_feature(current_practice(), 'custom_steps'), 'guide' => $guide, 'checklist' => $check, 'anchors' => STEP_ANCHORS, 'injuryTypes' => INJURY_TYPES]);
 }
 
 function handle_step_save() {
     require_method('POST');
     $admin = require_user('users.manage');
+    require_feature('custom_steps');
     $b = json_body();
     $pdo = pi_db();
     $id = (int)($b['id'] ?? 0);

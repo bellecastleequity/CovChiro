@@ -297,10 +297,17 @@ function practice_step_config(?int $practiceId): array {
     if (!$practiceId) return ['custom' => [], 'silenced' => []];
     if (isset($cache[$practiceId])) return $cache[$practiceId];
     $pdo = pi_db();
-    $s = $pdo->prepare('SELECT * FROM practice_steps WHERE practice_id = ? AND active = 1 ORDER BY id');
-    $s->execute([$practiceId]);
+    // Custom steps are a plan feature; after a downgrade they're kept but
+    // stop appearing on cases. Silencing built-in steps works on every plan.
+    $p = $pdo->prepare('SELECT * FROM practices WHERE id = ?'); $p->execute([$practiceId]);
+    $rows = [];
+    if (has_feature($p->fetch() ?: null, 'custom_steps')) {
+        $s = $pdo->prepare('SELECT * FROM practice_steps WHERE practice_id = ? AND active = 1 ORDER BY id');
+        $s->execute([$practiceId]);
+        $rows = $s->fetchAll();
+    }
     $custom = [];
-    foreach ($s->fetchAll() as $r) {
+    foreach ($rows as $r) {
         $custom['custom_' . $r['id']] = ['label' => $r['title'], 'detail' => $r['detail'], 'custom' => true,
             'group' => $r['anchor'] === 'care_end' ? 'At MMI / discharge' : 'Our office steps',
             'anchor' => $r['anchor'] === 'none' ? null : $r['anchor'], 'days' => $r['anchor'] === 'none' ? null : (int)$r['days'],

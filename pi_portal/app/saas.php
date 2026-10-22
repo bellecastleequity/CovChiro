@@ -39,6 +39,8 @@ const FEATURES = [
         'blurb' => "A morning email to each team member with counts of what needs attention under the criteria they choose — no patient details in the email."],
     'locations' => ['name' => 'Multiple locations', 'plan' => 'group',
         'blurb' => "Run several offices in one account: cases and visits by location, location letterheads, location and provider filters, and team members limited to their own location's patients."],
+    'custom_steps' => ['name' => 'Custom case steps', 'plan' => 'group',
+        'blurb' => "Add your office's own steps to every case's checklist, with due dates, alerts and huddle items."],
 ];
 // Shown on every plan card (in all plans).
 const CORE_FEATURES = ['Case tracking & referral guide', 'Case suggestions & policy-limit warnings', 'EHR ledger uploads (any EHR)', 'Tasks, activity & audit log'];
