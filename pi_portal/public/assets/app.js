@@ -589,6 +589,7 @@ const caseDefs = () => [
   { n: 'referred_by_contact_id', l: 'Referred by (contact)', t: 'contact' },
   { n: 'referred_by_text', l: 'Referred by (other)', ph: 'e.g. friend, Google' },
   { n: 'attorney_contact_id', l: 'Attorney', t: 'contact', ctype: ['attorney'] },
+  { n: 'paralegal', l: 'Paralegal (name, phone / email)', ph: 'e.g. Maria — 305-555-0100' },
   { n: 'provider_user_id', l: 'Treating provider', t: 'user' },
   { n: 'head_injury', l: 'Head injury? (hit head, lost consciousness, concussion symptoms)', t: 'select', blank: false, opts: HEAD_INJURY_OPTS },
 ];
@@ -693,7 +694,7 @@ function tabOverview(el, d) {
   const row = (t, v) => `<dt>${esc(t)}</dt><dd>${v === null || v === undefined || v === '' ? '<span class="muted">—</span>' : esc(v)}</dd>`;
   const contactRow = (t, ct) => `<dt>${esc(t)}</dt><dd>${ct ? esc(contactName(ct)) + (ct.phone ? `<div class="small muted">☎ ${esc(ct.phone)}${ct.fax ? ' · fax ' + esc(ct.fax) : ''}</div>` : '') + (ct.email ? `<div class="small"><a href="mailto:${esc(ct.email)}">${esc(ct.email)}</a></div>` : '') : '<span class="muted">—</span>'}</dd>`;
   const provider = (S.lookups.providers || []).find((u) => +u.id === +c.provider_user_id);
-  el.innerHTML = `${guideCardHtml(d)}${tipsCardHtml(d)}<div class="grid-2">
+  el.innerHTML = `${outreachCardHtml(d)}${guideCardHtml(d)}${tipsCardHtml(d)}<div class="grid-2">
     <div class="card"><div class="card-head"><h2>Case</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-case">Edit</button>' : ''}</div>
       <dl class="kv">
         ${row('Case type', label('injuryTypes', c.injury_type))}
@@ -701,7 +702,7 @@ function tabOverview(el, d) {
         ${c.mmi_date ? row('MMI', fmtDate(c.mmi_date) + (c.maintenance_every_days && !c.discharge_date ? ' · maintenance ' + maintenanceLabel(+c.maintenance_every_days) : '')) : ''}${row('Discharged', fmtDate(c.discharge_date))}
         ${row('Treating provider', provider?.name)}
         ${row('Referral source', c.referral_source)}${contactRow('Referred by', k.referred_by_contact_id)}${c.referred_by_text ? row('Referred by (note)', c.referred_by_text) : ''}
-        ${contactRow('Attorney', k.attorney_contact_id)}
+        ${contactRow('Attorney', k.attorney_contact_id)}${c.paralegal ? row('Paralegal', c.paralegal) : ''}
         <dt>Insurance</dt><dd>${(d.coverages || []).length ? d.coverages.map((cv) => `<div>${esc(label('coverageTypes', cv.type))}${cv.carrier_org || cv.carrier_text ? ' — ' + esc(cv.carrier_org || cv.carrier_text) : ''} <span class="chip ${cv.status === 'active' ? 'teal' : 'na'}">${esc(label('coverageStatus', cv.status))}</span>${cv.claim_number ? `<div class="small muted">Claim # ${esc(cv.claim_number)}</div>` : ''}</div>`).join('') : '<span class="muted">None — patient balance / LOP</span>'}</dd>
         <dt>Policy limits</dt><dd>${c.bi_limit || c.um_limit ? `${c.bi_limit ? 'At-fault BI ' + esc(money(c.bi_limit)) : ''}${c.bi_limit && c.um_limit ? ' · ' : ''}${c.um_limit ? 'UM ' + esc(money(c.um_limit)) : ''}${c.limits_source ? `<div class="small muted">${esc(c.limits_source)}${c.limits_noted_on ? ' · ' + esc(fmtDate(c.limits_noted_on)) : ''}</div>` : ''}` : '<span class="muted">Not known yet — ask the attorney</span>'}
           ${can('case.write') || can('finance.write') ? ' <button class="linklike small" data-act="edit-limits">Edit</button>' : ''}</dd>
@@ -718,6 +719,7 @@ function tabOverview(el, d) {
         <div class="small prewrap">${c.notes ? esc(c.notes) : '<span class="muted">No notes.</span>'}</div></div>
       <div class="card"><div class="card-head"><h2>Letters</h2></div>
         <div class="filters"><button class="btn ghost sm" data-act="letter" data-type="status_request">Status update request</button>
+        <button class="btn ghost sm" data-act="letter" data-type="attendance">Scheduling help (attendance)</button>
         ${fin('balances') ? '<button class="btn ghost sm" data-act="letter" data-type="tx_complete">Treatment complete</button>' : ''}
         ${fin('settlement') ? '<button class="btn ghost sm" data-act="letter" data-type="reduction_response">Reduction response</button>' : ''}</div>
         <p class="small muted">Opens a printable letter addressed to the attorney of record. Log it under Correspondence once sent.</p></div>
@@ -787,6 +789,51 @@ function tabChecklist(el, d) {
   }));
 }
 
+
+// --- patient outreach: reaching a patient who has missed care ---
+// Three attempts without a return visit → ask the attorney/paralegal to
+// help (they can usually reach their client), then stop calling until the
+// patient comes back. Notes may be requested in the claim: keep them factual.
+function outreachCardHtml(d) {
+  const st = d.outreachState;
+  const flagged = (d.alerts || []).some((a) => /^(No visit in|Not following the treatment plan|\d+ outreach attempts|Attorney notified)/.test(a.text));
+  if (!st || (!flagged && !d.outreach.length && st.state !== 'hold')) return '';
+  const msg = {
+    none: 'The patient has missed care. Call to get them back on schedule.',
+    calling: `Outreach attempt ${st.attempts + 1} of ${st.needed} is next.`,
+    notify: `${st.attempts} attempts without a return visit. Ask the attorney or paralegal to help reach the patient, then calls pause.`,
+    hold: `Attorney notified ${fmtDate(st.holdOn)}. Calls are paused until the patient attends a visit.`,
+    scheduled: 'The patient scheduled an appointment on the last contact.',
+  }[st.state];
+  const recent = d.outreach.slice(0, 8);
+  return `<div class="card outreach st-${esc(st.state)}"><div class="card-head"><h2>Patient outreach</h2><span class="chip ${st.state === 'notify' ? 'overdue' : st.state === 'hold' ? 'legal' : st.state === 'scheduled' ? 'done' : 'due'}">${st.state === 'hold' ? 'Calls paused' : st.state === 'notify' ? 'Notify attorney' : st.attempts + ' of ' + st.needed + ' attempts'}</span>
+      <span class="spacer"></span>${st.lastVisit ? `<span class="small muted">Last visit ${esc(fmtDate(st.lastVisit))}</span>` : ''}</div>
+    <p>${esc(msg)}</p>
+    <div class="filters gs-actions">
+      ${st.state !== 'hold' ? '<button class="btn sm" data-act="outreach-log">+ Log outreach attempt</button>' : ''}
+      ${st.state === 'notify' ? '<button class="btn sm" data-act="letter" data-type="attendance">Preview letter to attorney</button><button class="btn sm" data-act="outreach-hold">Attorney notified — pause calls</button>' : ''}
+      ${st.state === 'hold' ? '<button class="btn ghost sm" data-act="outreach-resume">Resume calls</button>' : ''}
+    </div>
+    ${recent.length ? `<table class="small mt-sm"><thead><tr><th>Date</th><th>How</th><th>Outcome</th><th>Note</th><th>By</th></tr></thead><tbody>${recent.map((o) => `<tr><td class="nowrap">${esc(fmtDate(o.attempted_on))}</td><td>${esc(o.method)}</td><td>${esc(d.outreachOutcomes[o.outcome] || o.outcome)}</td><td>${esc(o.notes || '')}</td><td>${esc(o.created_by_name || '')}</td></tr>`).join('')}</tbody></table>` : ''}
+  </div>`;
+}
+function outreachLogModal() {
+  const d = S.caseData;
+  const defs = [{ n: 'attempted_on', l: 'Date', t: 'date', req: true }, { n: 'method', l: 'How', t: 'select', blank: false, opts: [['call', 'Phone call'], ['text', 'Text message'], ['email', 'Email'], ['letter', 'Letter']] },
+    { n: 'outcome', l: 'Outcome', t: 'select', blank: false, opts: Object.entries(d.outreachOutcomes) },
+    { n: 'notes', l: 'Note (optional)', t: 'textarea', rows: 2, ph: 'e.g. Left voicemail asking patient to call to schedule.' }];
+  openModal({ title: 'Log outreach attempt', okText: 'Save',
+    body: fieldsHtml(defs, { attempted_on: today(), method: 'call', outcome: 'no_answer' }) + '<p class="small muted mt-sm">Keep notes to the facts of the contact. Avoid opinions about the patient\'s reasons or condition — these records can be requested by insurers or opposing counsel.</p>',
+    onOk: async (el) => { await saveChild('outreach', readFields(el, defs)); toast('Logged'); } });
+}
+function outreachHoldModal() {
+  const c = S.caseData.case;
+  const defs = [{ n: 'date', l: 'Attorney / paralegal notified on', t: 'date', req: true },
+    { n: 'method', l: 'Sent by', t: 'select', blank: false, opts: [['email', 'Email'], ['fax', 'Fax'], ['phone', 'Phone'], ['mail', 'Mail'], ['portal', 'Portal']] }];
+  openModal({ title: 'Attorney notified — pause calls', okText: 'Save',
+    body: `<p class="small">${c.paralegal ? 'Paralegal: ' + esc(c.paralegal) + '. ' : ''}This is logged under Correspondence. Calls pause until the patient attends a visit; you can resume them any time.</p>${fieldsHtml(defs, { date: today(), method: 'email' })}`,
+    onOk: async (el) => { S.caseData = await api('cases.php?action=outreach_hold&id=' + c.id, readFields(el, defs)); renderCase(); toast('Calls paused'); } });
+}
 
 // --- care guide: referral next steps ---
 // Plain-language prompts for clinics new to PI: what to refer, when, why.
@@ -1741,7 +1788,7 @@ const AUDIT_VERBS = {
 };
 const AUDIT_THINGS = {
   case: 'the case', visits: 'a visit', referrals: 'a co-management referral', coverages: 'insurance coverage', outcomes: 'an outcome assessment',
-  correspondence: 'a correspondence entry', ledger: 'a ledger entry', task: 'task', milestone: 'checklist item', document: 'a document', contact: 'contact',
+  correspondence: 'a correspondence entry', outreach: 'an outreach attempt', ledger: 'a ledger entry', task: 'task', milestone: 'checklist item', document: 'a document', contact: 'contact',
   user: 'user', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
   audit_log: 'the audit log', huddle: 'the daily huddle', permission: '', platform_practices: 'the practice list', care_guide: 'the referral guide',
 };
@@ -1754,7 +1801,7 @@ const FIELD_NAMES = {
   dob: 'Date of birth', patient_dob: 'Date of birth', patient_first_name: 'First name', patient_last_name: 'Last name', patient_phone: 'Phone', patient_email: 'Email',
   patient_address: 'Address', cpt_codes: 'CPT codes', dwc25_sent: 'DWC-25 sent', staff_finance: 'Staff can see', finance_access: 'Full financial access',
   ehr_name: 'EHR', benefit_limit: 'Benefit limit', entry_date: 'Date', kind: 'Type', bucket: 'Owed by', status_on: 'Status date', insurance_balance: 'Insurance balance',
-  patient_balance: 'Patient balance', injury_type: 'Case type', plan_visits_per_week: 'Treatment plan (visits/week)', plan_set_on: 'Plan since', notify_digest: 'Daily email digest',
+  patient_balance: 'Patient balance', injury_type: 'Case type', outreach_hold_on: 'Calls paused (attorney notified)', paralegal: 'Paralegal', attempted_on: 'Date', method: 'How', outcome: 'Outcome', plan_visits_per_week: 'Treatment plan (visits/week)', plan_set_on: 'Plan since', notify_digest: 'Daily email digest',
   gap_days: 'Gap days', adherence_pct: 'Adherence threshold %', weekdays_only: 'Weekdays only', criteria: 'Criteria', bi_limit: 'At-fault BI limit', um_limit: 'UM limit', other_medical_estimate: "Other providers' bills (est.)",
   liability_carrier: 'At-fault insurer', limits_source: 'Limits source', limits_noted_on: 'Limits as of', remaining_reported: 'PIP remaining (carrier)', remaining_reported_on: 'Remaining as of', visit_type: 'Visit type', head_injury: 'Head injury',
   guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)',
@@ -2178,6 +2225,12 @@ const ACTIONS = {
   'guide-refer': (el) => referralModal(null, { type: el.dataset.type, ...(el.dataset.region ? { body_region: el.dataset.region } : {}) }),
   'tip-dismiss': (el) => tipDismissModal(el.dataset.key),
   'guide-visit': (el) => visitModal(null, { visit_type: el.dataset.type }),
+  'outreach-log': outreachLogModal,
+  'outreach-hold': outreachHoldModal,
+  'outreach-resume': async () => {
+    const r = await attempt(() => api('cases.php?action=outreach_hold&id=' + S.caseData.case.id, { resume: true }));
+    if (r) { S.caseData = r; renderCase(); toast('Calls resumed'); }
+  },
   'mmi': (el) => mmiModal(el.dataset.plan),
   'emc-result': async (el) => {
     const r = await attempt(() => api('cases.php?action=update&id=' + S.caseData.case.id, { case: { emc_status: el.dataset.v } }));

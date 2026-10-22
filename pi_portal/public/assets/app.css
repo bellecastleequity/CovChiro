@@ -440,3 +440,9 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .card.upgrade{border-top:3px solid var(--violet);max-width:620px;}
 .plan-card ul li.no{color:var(--muted);text-decoration:line-through;text-decoration-color:rgba(11,35,64,0.3);}
 .plan-card ul li.no::before{content:"– ";color:var(--muted);}
+
+/* ---------- patient outreach ---------- */
+.card.outreach{border-top:3px solid var(--amber);margin-bottom:16px;}
+.card.outreach.st-notify{border-top-color:var(--red);}
+.card.outreach.st-hold{border-top-color:var(--violet);}
+.card.outreach.st-scheduled{border-top-color:var(--green);}

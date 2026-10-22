@@ -500,6 +500,7 @@ function case_tips(array $case, array $ctx): array {
     $codes = icd_list($ctx['icd'] ?? []);
     $inCare = in_array($case['stage'], ['intake', 'treating'], true) && !($case['mmi_date'] ?? null);
     $fv = $case['first_visit'] ?? null;
+    $onHold = outreach_state($case, $ctx['outreach'] ?? [], $attended)['state'] === 'hold';
     $tips = [];
     $add = function (string $key, string $cat, string $title, string $text, string $why, ?array $action = null) use (&$tips, $dismissed) {
         if (!isset($dismissed[$key])) $tips[] = compact('key', 'title', 'text', 'why', 'action') + ['category' => $cat];
@@ -525,12 +526,12 @@ function case_tips(array $case, array $ctx): array {
     if ($inCare && $fv && empty($case['plan_visits_per_week']) && days_between($fv, $today) >= 28) {
         $recent = count(array_filter($attended, fn($d) => $d > add_days($today, -14)));
         $before = count(array_filter($attended, fn($d) => $d > add_days($today, -28) && $d <= add_days($today, -14)));
-        if ($before >= 4 && $recent * 2 <= $before) $add('freq_drop', 'gaps', 'Visit frequency has dropped',
+        if (!$onHold && $before >= 4 && $recent * 2 <= $before) $add('freq_drop', 'gaps', 'Visit frequency has dropped',
             "$recent visit" . ($recent === 1 ? '' : 's') . " in the last two weeks, down from $before the two weeks before. Call the patient, find out what's getting in the way, and reschedule to the care plan.",
             "Following the care plan is what gets the patient better, and an attendance record that tapers off without a clinical reason reads as recovery.");
     }
     $noShows = count(array_filter($visits, fn($v) => $v['visit_type'] === 'no_show' && $v['visit_date'] > add_days($today, -30)));
-    if ($inCare && $noShows >= 2) $add('no_shows', 'gaps', 'Repeated no-shows', "$noShows missed appointments in the last 30 days. Reach out, note the reason in the chart, and help with scheduling or transportation if that's the barrier.",
+    if ($inCare && !$onHold && $noShows >= 2) $add('no_shows', 'gaps', 'Repeated no-shows', "$noShows missed appointments in the last 30 days. Reach out, note the reason in the chart, and help with scheduling or transportation if that's the barrier.",
         "Missed visits slow recovery and create gaps; a documented reason shows the missed care wasn't because the patient felt better.");
     if ($inCare && $fv && !empty($case['date_of_injury']) && ($late = days_between($case['date_of_injury'], $fv)) > 7) {
         $add('late_start', 'gaps', 'Treatment started ' . $late . ' days after the injury', 'Document why care started then, and request records of any ER, urgent care or primary-care visit in between.',
@@ -643,6 +644,32 @@ function plan_adherence(array $case, array $attendedDates): ?array {
 
 function plan_label(float $rate): string {
     return ($rate == (int)$rate ? (int)$rate : $rate) . 'x/week';
+}
+
+// ---------- Patient outreach ----------
+// When a patient misses care the office calls; after OUTREACH_ATTEMPTS
+// attempts without a return visit, the attorney/paralegal is told (they
+// can usually reach their client) and calls pause until the patient
+// attends again. Counts attempts since the last attended visit.
+define('OUTREACH_ATTEMPTS', 3);
+const OUTREACH_OUTCOMES = [
+    'no_answer' => 'No answer', 'left_message' => 'Left a message', 'spoke_scheduled' => 'Spoke — appointment scheduled',
+    'spoke_will_call' => 'Spoke — will call back to schedule', 'unable_to_schedule' => 'Spoke — unable to schedule at this time', 'wrong_number' => 'Number not in service / wrong number',
+];
+
+// $attempts: outreach rows. Returns state: none | calling | notify | hold |
+// scheduled, with the attempts counted and the last visit.
+function outreach_state(array $case, array $attempts, array $attendedDates): array {
+    $lastVisit = $attendedDates ? max($attendedDates) : ($case['first_visit'] ?? null);
+    $hold = $case['outreach_hold_on'] ?? null;
+    if ($hold && $lastVisit && $lastVisit > $hold) $hold = null;   // the patient came back
+    $since = array_values(array_filter($attempts, fn($a) => empty($a['archived_at']) && (!$lastVisit || $a['attempted_on'] >= $lastVisit)));
+    usort($since, fn($a, $b) => strcmp($a['attempted_on'], $b['attempted_on']));
+    $scheduled = $since && end($since)['outcome'] === 'spoke_scheduled';
+    $count = count(array_filter($since, fn($a) => $a['outcome'] !== 'spoke_scheduled'));
+    $state = $hold ? 'hold' : ($scheduled ? 'scheduled' : ($count >= OUTREACH_ATTEMPTS ? 'notify' : ($count > 0 ? 'calling' : 'none')));
+    return ['state' => $state, 'attempts' => $count, 'needed' => OUTREACH_ATTEMPTS, 'holdOn' => $hold, 'lastVisit' => $lastVisit,
+        'dates' => array_column($since, 'attempted_on')];
 }
 
 // ---------- Case value: bills vs. coverage ----------
@@ -839,11 +866,12 @@ function case_alerts(array $case, array $ctx): array {
 
     // Care guide: referrals due or worth considering, while in care.
     foreach ($ctx['guide'] ?? [] as $g) {
-        if ($g['key'] === 'maintenance' && $g['status'] === 'now') $alerts[] = ['level' => 'low', 'text' => $g['title'] . ': ' . $g['text'] . '.'];
+        if ($g['key'] === 'maintenance' && $g['status'] === 'now' && !outreach_state($case, $ctx['outreach'] ?? [], $ctx['attendedDates'] ?? [])['holdOn']) $alerts[] = ['level' => 'low', 'text' => $g['title'] . ': ' . $g['text'] . '.'];
     }
+    $paused = outreach_state($case, $ctx['outreach'] ?? [], $ctx['attendedDates'] ?? [])['state'] === 'hold';
     if ($treatingPhase) {
         foreach ($ctx['guide'] ?? [] as $g) {
-            if ($g['key'] === 'maintenance') continue;
+            if ($g['key'] === 'maintenance' || ($paused && $g['key'] === 'reexam')) continue;
             if ($g['status'] === 'now') $alerts[] = ['level' => $g['key'] === 'emc' && $g['due'] < $today ? 'high' : 'medium', 'text' => $g['title'] . ' due: ' . $g['text'] . '.'];
             elseif ($g['status'] === 'consider') $alerts[] = ['level' => 'low', 'text' => 'Consider a ' . strtolower($g['title']) . ': ' . $g['text'] . '.'];
             elseif ($g['status'] === 'ask' && $case['first_visit']) $alerts[] = ['level' => 'low', 'text' => 'Head injury? Ask the patient and record it on the case — it decides whether a neurology referral is needed.'];
@@ -868,10 +896,19 @@ function case_alerts(array $case, array $ctx): array {
         $last = $ctx['lastVisit'] ?? $case['first_visit'];
         $gap = days_between($last, $today);
         $rules = practice_rules();
-        if ($gap > $rules['gap_days']) $alerts[] = ['level' => 'medium', 'text' => 'No visit in ' . $gap . ' days — gap in care weakens the claim.'];
+        $out = outreach_state($case, $ctx['outreach'] ?? [], $ctx['attendedDates'] ?? []);
         $adh = plan_adherence($case, $ctx['attendedDates'] ?? []);
-        if ($adh && $gap <= $rules['gap_days'] && $adh['ratio'] * 100 < $rules['adherence_pct']) {
-            $alerts[] = ['level' => 'medium', 'text' => 'Not following the treatment plan: ' . $adh['actual'] . ' of ' . rtrim(rtrim(number_format($adh['expected'], 1), '0'), '.') . ' planned visits in the last ' . $adh['days'] . ' days (' . plan_label($adh['rate']) . ' plan).'];
+        $missing = $gap > $rules['gap_days'] || ($adh && $adh['ratio'] * 100 < $rules['adherence_pct']);
+        if ($out['state'] === 'hold') {
+            $alerts[] = ['level' => 'low', 'text' => 'Attorney notified ' . us_date($out['holdOn']) . ' that we have been unable to reach the patient — calls paused until the patient returns.'];
+        } elseif ($missing && $out['state'] === 'notify') {
+            $alerts[] = ['level' => 'medium', 'text' => $out['attempts'] . ' outreach attempts without a return visit — send the attendance update to the attorney/paralegal.'];
+        } elseif ($out['state'] !== 'scheduled') {
+            $calls = $out['attempts'] ? ' (' . $out['attempts'] . ' of ' . OUTREACH_ATTEMPTS . ' outreach attempts logged)' : ' — call the patient';
+            if ($gap > $rules['gap_days']) $alerts[] = ['level' => 'medium', 'text' => 'No visit in ' . $gap . ' days' . $calls . '.'];
+            elseif ($adh && $adh['ratio'] * 100 < $rules['adherence_pct']) {
+                $alerts[] = ['level' => 'medium', 'text' => 'Not following the treatment plan: ' . $adh['actual'] . ' of ' . rtrim(rtrim(number_format($adh['expected'], 1), '0'), '.') . ' planned visits in the last ' . $adh['days'] . ' days (' . plan_label($adh['rate']) . ' plan)' . $calls . '.'];
+            }
         }
         $lastOutcome = $ctx['lastOutcome'] ?? null;
         if (!$lastOutcome && days_between($case['first_visit'], $today) > 7) {
@@ -916,6 +953,7 @@ function bulk_case_context(PDO $pdo, array $cases): array {
     foreach ($pdo->query("SELECT * FROM case_milestones WHERE case_id IN ($in)") as $r) $ctx[$r['case_id']]['milestones'][] = $r;
     foreach ($pdo->query("SELECT * FROM referrals WHERE archived_at IS NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['referrals'][] = $r;
     foreach ($pdo->query("SELECT * FROM case_guide WHERE case_id IN ($in)") as $r) $ctx[$r['case_id']]['guideRows'][] = $r;
+    foreach ($pdo->query("SELECT case_id, attempted_on, outcome, archived_at FROM outreach WHERE archived_at IS NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['outreach'][] = $r;
     foreach ($pdo->query("SELECT case_id, MAX(visit_date) d FROM visits WHERE archived_at IS NULL AND visit_type IN ('initial', 're_exam') AND case_id IN ($in) GROUP BY case_id") as $r) $ctx[$r['case_id']]['lastExam'] = $r['d'];
     foreach ($pdo->query("SELECT case_id, icd_codes FROM visits WHERE archived_at IS NULL AND icd_codes IS NOT NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['icd'][] = $r['icd_codes'];
     foreach ($pdo->query("SELECT cv.*, k.organization carrier_org FROM coverages cv LEFT JOIN contacts k ON k.id = cv.carrier_contact_id WHERE cv.archived_at IS NULL AND cv.case_id IN ($in) ORDER BY cv.priority, cv.id") as $r) $ctx[$r['case_id']]['coverages'][] = $r;

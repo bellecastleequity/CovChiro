@@ -38,17 +38,24 @@ function build_huddle(PDO $pdo, array $user, int $practiceId): array {
         if ($inCare && $c['actively_treating'] && $c['first_visit']) {
             $last = $attended ? max($attended) : $c['first_visit'];
             $gap = days_between($last, $today);
-            if ($gap > $rules['gap_days']) $sections['care']['items'][] = $item($c, "No visit in $gap days (last " . us_date($last) . ')', 'high', 'gap');
-            else {
-                $adh = plan_adherence($c, $attended);
-                if ($adh && $adh['ratio'] * 100 < $rules['adherence_pct']) {
-                    $sections['care']['items'][] = $item($c, $adh['actual'] . ' of ' . rtrim(rtrim(number_format($adh['expected'], 1), '0'), '.') . ' planned visits in the last ' . $adh['days'] . ' days (' . plan_label($adh['rate']) . ')', 'medium', 'adherence');
-                }
+            $out = outreach_state($c, $x['outreach'] ?? [], $attended);
+            $adh = plan_adherence($c, $attended);
+            $issue = null;
+            if ($gap > $rules['gap_days']) $issue = ["No visit in $gap days (last " . us_date($last) . ')', 'high', 'gap'];
+            elseif ($adh && $adh['ratio'] * 100 < $rules['adherence_pct']) $issue = [$adh['actual'] . ' of ' . rtrim(rtrim(number_format($adh['expected'], 1), '0'), '.') . ' planned visits in the last ' . $adh['days'] . ' days (' . plan_label($adh['rate']) . ')', 'medium', 'adherence'];
+            if ($issue && $out['state'] === 'hold') {
+                // Attorney already told; no more calls until the patient returns.
+            } elseif ($issue && $out['state'] === 'notify') {
+                $sections['legal']['items'][] = $item($c, 'Send attendance update to the attorney/paralegal — ' . $out['attempts'] . ' outreach attempts without a return visit', 'high', $issue[2]);
+            } elseif ($issue && $out['state'] !== 'scheduled') {
+                $sections['care']['items'][] = $item($c, $issue[0] . ' — ' . ($out['attempts'] ? 'outreach attempt ' . ($out['attempts'] + 1) . ' of ' . OUTREACH_ATTEMPTS : 'call the patient'), $issue[1], $issue[2]);
             }
         }
         // Referrals, evaluations, re-exams and maintenance from the care guide.
+        $paused = outreach_state($c, $x['outreach'] ?? [], $attended)['state'] === 'hold';
         foreach ($x['guide'] ?? [] as $g) {
             if ($g['status'] !== 'now') continue;
+            if ($paused && in_array($g['key'], ['reexam', 'maintenance'], true)) continue;   // can't schedule an unreachable patient
             if ($g['key'] === 'maintenance') { $sections['care']['items'][] = $item($c, $g['text'], 'medium', 'maintenance'); continue; }
             if (!$inCare) continue;
             if ($g['key'] === 'reexam') { $sections['care']['items'][] = $item($c, $g['text'], 'medium', 'reexam'); continue; }
@@ -67,7 +74,7 @@ function build_huddle(PDO $pdo, array $user, int $practiceId): array {
         foreach (case_alerts($c, $x) as $a) {
             if (!empty($a['fin']) && !$bal) continue;
             $t = $a['text'];
-            if (preg_match('/^(No visit in|Not following the treatment plan|Re-exam due|Maintenance care|MRI referral due|EMC determination due|Orthopedic referral due|Neurology referral due|Pain management referral due|Consider a|Head injury\?)/', $t)) continue;  // covered above
+            if (preg_match('/^(No visit in|Not following the treatment plan|Attorney notified|\d+ outreach attempts|Re-exam due|Maintenance care|MRI referral due|EMC determination due|Orthopedic referral due|Neurology referral due|Pain management referral due|Consider a|Head injury\?)/', $t)) continue;  // covered above
             if (!empty($a['fin'])) $sec = 'money';
             elseif (str_starts_with($t, 'Overdue: ')) $sec = 'checklist';
             elseif (preg_match('/attorney|correspondence|Settled|settled|Reduction|Follow-up due/i', $t)) $sec = 'legal';

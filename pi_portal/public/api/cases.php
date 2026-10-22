@@ -24,7 +24,7 @@ const CASE_FIELDS = [
     'balance_forwarded_on' => 'date', 'balance_forwarded_amount' => 'money',
     'actively_treating' => 'bool', 'provider_user_id' => 'user', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
     'mmi_date' => 'date', 'maintenance_every_days' => 'int', 'plan_visits_per_week' => 'money', 'plan_set_on' => 'date',
-    'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
+    'paralegal' => 'str:160', 'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
     'limits_source' => 'str:160', 'limits_noted_on' => 'date',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
 ];
@@ -63,6 +63,11 @@ const CHILD_SPECS = [
         'occurred_on' => 'date', 'direction' => ['out','in'], 'method' => ['fax','email','phone','mail','portal','in_person'],
         'contact_id' => 'contact', 'contact_text' => 'str:160', 'subject' => 'str:200', 'notes' => 'enc',
         'follow_up_on' => 'date', 'follow_up_done' => 'bool',
+    ]],
+    // Calls/texts to a patient who has missed care; front desk logs these.
+    'outreach' => ['perm' => 'case.read', 'required' => ['attempted_on', 'outcome'], 'fields' => [
+        'attempted_on' => 'date', 'method' => ['call','text','email','letter'],
+        'outcome' => ['no_answer','left_message','spoke_scheduled','spoke_will_call','unable_to_schedule','wrong_number'], 'notes' => 'enc',
     ]],
     'ledger' => ['perm' => 'finance.write', 'required' => ['entry_date', 'kind', 'bucket', 'amount'], 'fields' => [
         'entry_date' => 'date', 'kind' => ['charge','payment','adjustment','reduction','write_off','transfer'],
@@ -198,6 +203,7 @@ function full_case(int $id, array $user): array {
     $referrals = array_map('decrypt_row', $fetch('SELECT r.*, k.organization contact_org, k.name contact_name FROM referrals r LEFT JOIN contacts k ON k.id = r.contact_id WHERE r.case_id = ? AND r.archived_at IS NULL ORDER BY COALESCE(r.ordered_on, r.created_at)'));
     $visits = array_map('decrypt_row', $fetch('SELECT v.*, u.name provider_name FROM visits v LEFT JOIN users u ON u.id = v.provider_user_id WHERE v.case_id = ? AND v.archived_at IS NULL ORDER BY v.visit_date DESC'));
     $outcomes = $fetch('SELECT * FROM outcomes WHERE case_id = ? AND archived_at IS NULL ORDER BY taken_on');
+    $outreach = array_map('decrypt_row', $fetch('SELECT o.*, u.name created_by_name FROM outreach o LEFT JOIN users u ON u.id = o.created_by WHERE o.case_id = ? AND o.archived_at IS NULL ORDER BY o.attempted_on DESC, o.id DESC'));
     $corr = array_map('decrypt_row', $fetch('SELECT r.*, k.organization contact_org, k.name contact_name FROM correspondence r LEFT JOIN contacts k ON k.id = r.contact_id WHERE r.case_id = ? AND r.archived_at IS NULL ORDER BY r.occurred_on DESC, r.id DESC'));
     $ledger = $fetch("SELECT l.*, u.name updated_by_name FROM ledger l LEFT JOIN users u ON u.id = COALESCE(l.updated_by, l.created_by) WHERE l.case_id = ? AND l.archived_at IS NULL ORDER BY l.entry_date, l.id");
     $tasks = load_tasks('t.case_id = ?', [$id], 200);
@@ -223,7 +229,7 @@ function full_case(int $id, array $user): array {
         ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null,
         ($seen = array_column(array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'), 'visit_date')) ? max($seen) : null);
     $ctx = [
-        'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'totals' => $totals, 'ledgerRows' => $allLedger, 'attendedDates' => $visitDates, 'coverages' => $coverages, 'openItems' => $openItems,
+        'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'totals' => $totals, 'ledgerRows' => $allLedger, 'attendedDates' => $visitDates, 'outreach' => $outreach, 'coverages' => $coverages, 'openItems' => $openItems,
         'wcVisits' => ['count' => count($attended), 'missing25' => count(array_filter($attended, fn($v) => !$v['dwc25_sent'] && $v['visit_date'] <= $cutoff))],
         'lastVisit' => $visitDates ? max($visitDates) : null,
         'lastCorrespondence' => $corr ? $corr[0]['occurred_on'] : null,
@@ -247,6 +253,7 @@ function full_case(int $id, array $user): array {
     return [
         'case' => $case, 'patient' => $patient, 'contacts' => $contacts, 'coverages' => $coverages,
         'checklist' => $checklist, 'guide' => $guide, 'alerts' => $alerts, 'caseValue' => $caseValue,
+        'outreach' => $outreach, 'outreachState' => outreach_state($c, $outreach, $visitDates), 'outreachOutcomes' => OUTREACH_OUTCOMES,
         'tips' => case_tips($c, ['referrals' => $referrals, 'visits' => $visits, 'icd' => array_column($visits, 'icd_codes'), 'guideRows' => $guideRows, 'outcomeDates' => array_unique(array_column($outcomes, 'taken_on'))]),
         'referrals' => $referrals, 'visits' => $visits, 'outcomes' => $outcomes,
         'correspondence' => $corr, 'ledger' => $led ? $ledger : [], 'openItems' => $led ? $openItems : [], 'totals' => $bal ? $totals : null,
@@ -386,6 +393,29 @@ function handle_milestone() {
     touch_case($id);
     audit('update', 'milestone', $key, $id, $user, null, audit_diff(['completed_on' => 'date', 'not_applicable' => 'bool'], $before,
         ['completed_on' => date_or_null($b['completed_on'] ?? null), 'not_applicable' => !empty($b['not_applicable']) ? 1 : 0]));
+    json_response(full_case($id, $user));
+}
+
+// ---------- patient outreach ----------
+// The attorney/paralegal has been told we can't reach the patient: pause
+// calls (logged as correspondence), or resume them.
+function handle_outreach_hold() {
+    require_method('POST');
+    $user = require_user('case.read');
+    $id = (int)($_GET['id'] ?? 0);
+    $c = case_or_404($id);
+    $b = json_body();
+    if (!empty($b['resume'])) {
+        update_row('cases', $id, ['outreach_hold_on' => null, 'updated_at' => now_str()]);
+        audit('update', 'case', $id, $id, $user, 'outreach resumed', [['f' => 'outreach_hold_on', 't' => 'date', 'from' => $c['outreach_hold_on'], 'to' => null]]);
+        json_response(full_case($id, $user));
+    }
+    $date = date_or_null($b['date'] ?? null) ?? date('Y-m-d');
+    $method = enum_or($b['method'] ?? '', ['fax', 'email', 'phone', 'mail', 'portal'], 'email');
+    update_row('cases', $id, ['outreach_hold_on' => $date, 'updated_at' => now_str()]);
+    insert_row('correspondence', ['case_id' => $id, 'occurred_on' => $date, 'direction' => 'out', 'method' => $method, 'contact_id' => $c['attorney_contact_id'],
+        'contact_text' => $c['paralegal'], 'subject' => 'Attendance update: asked attorney/paralegal to help reach the patient', 'created_by' => $user['id'], 'created_at' => now_str()]);
+    audit('update', 'case', $id, $id, $user, 'attorney notified; outreach paused', [['f' => 'outreach_hold_on', 't' => 'date', 'from' => null, 'to' => $date]]);
     json_response(full_case($id, $user));
 }
 
@@ -971,6 +1001,20 @@ function handle_letter() {
             . ($d['stats']['lastVisit'] ? ' (last date of service ' . $h($d['stats']['lastVisit']) . ')' : '') . '.</p>'
             . '<p>Please let us know the current status of the case (pre-suit, in litigation, mediation scheduled, settled), any upcoming dates, and whether any additional records or a narrative report are needed from our office.</p>'
             . '<p>We extend our sincere gratitude for your prompt attention to this inquiry. Your swift response is truly valued and greatly appreciated. Upon receipt we will update our records to reflect the information provided.</p>';
+    } elseif ($type === 'attendance') {
+        // Neutral and factual: this letter can end up in the claim file.
+        // States what happened and asks for help — no characterisation of
+        // the patient, their motives or their condition.
+        $title = 'Scheduling assistance requested';
+        $st = $d['outreachState'];
+        $methods = array_unique(array_map(fn($o) => ['call' => 'telephone', 'text' => 'text message', 'email' => 'email', 'letter' => 'letter'][$o['method']], array_filter($d['outreach'], fn($o) => in_array($o['attempted_on'], $st['dates'], true))));
+        $dates = array_map(fn($x) => date('F j', strtotime($x)), $st['dates']);
+        $body = '<p>We are writing to ask for your help reaching your client to schedule their next appointment.</p>'
+            . '<p>' . ($st['lastVisit'] ? 'Your client was last seen in our office on ' . $h(date('F j, Y', strtotime($st['lastVisit']))) . '. ' : '')
+            . ($dates ? 'Our staff tried to reach them ' . ($methods ? 'by ' . $h(implode(' and ', $methods)) . ' ' : '') . 'on ' . $h(implode(', ', $dates)) . ' but have not been able to schedule a follow-up visit. ' : '')
+            . 'The treating provider has recommended continued care.</p>'
+            . '<p>We would appreciate it if you could ask your client to contact our office' . (current_practice()['phone'] ? ' at ' . $h(current_practice()['phone']) : '') . ' at their earliest convenience.</p>'
+            . '<p>Thank you for your assistance.</p>';
     } elseif ($type === 'tx_complete') {
         $title = 'Treatment complete';
         $body = '<p>Please be advised that your client has completed active care at our office'
@@ -1016,7 +1060,8 @@ function handle_letter() {
     $practice = current_practice();
     $addr = nl2br($h($practice['address'] ?? ''));
     $contactLine = implode(' · ', array_filter([$practice['phone'] ? 'Phone ' . $h($practice['phone']) : null, $practice['fax'] ? 'Fax ' . $h($practice['fax']) : null]));
-    $to = $atty ? $h($atty['name'] ?? '') . '<br>' . $h($atty['organization'] ?? '') . ($atty['address'] ? '<br>' . nl2br($h($atty['address'])) : '') . ($atty['fax'] ? '<br>Fax ' . $h($atty['fax']) : '') . ($atty['email'] ? '<br>' . $h($atty['email']) : '') : 'Attorney of record';
+    $attn = $c['paralegal'] ? 'Attn: ' . $h($c['paralegal']) . '<br>' : '';
+    $to = $attn . ($atty ? $h($atty['name'] ?? '') . '<br>' . $h($atty['organization'] ?? '') . ($atty['address'] ? '<br>' . nl2br($h($atty['address'])) : '') . ($atty['fax'] ? '<br>Fax ' . $h($atty['fax']) : '') . ($atty['email'] ? '<br>' . $h($atty['email']) : '') : 'Attorney of record');
     echo '<!doctype html><html><head><meta charset="utf-8"><title>' . $h($title) . '</title><style>
         body{font-family:Georgia,serif;max-width:7in;margin:0.6in auto;color:#0B2340;line-height:1.5;font-size:12pt}
         .lh{border-bottom:2px solid #1FA866;padding-bottom:10px;margin-bottom:24px}.lh b{font-size:15pt;color:#0B2340}
@@ -1059,6 +1104,7 @@ switch ($action) {
     case 'guide_step': handle_guide_step(); break;
     case 'mmi': handle_mmi(); break;
     case 'huddle': handle_huddle(); break;
+    case 'outreach_hold': handle_outreach_hold(); break;
     case 'playbook': handle_playbook(); break;
     case 'letter': handle_letter(); break;
     default: json_response(['error' => 'Unknown action'], 400);

@@ -177,6 +177,11 @@ CREATE TABLE cases (
   -- is compared against it.
   plan_visits_per_week DECIMAL(3,1) NULL,
   plan_set_on DATE NULL,
+  -- Patient outreach: once the attorney/paralegal has been told the office
+  -- can't reach the patient, calls pause from this date until the patient
+  -- attends a visit again (or staff resume them).
+  outreach_hold_on DATE NULL,
+  paralegal VARCHAR(160) NULL,
   mmi_date DATE NULL,
   maintenance_every_days SMALLINT NULL,
   -- Liability coverage that will pay the claim (often learned on the
@@ -281,6 +286,23 @@ CREATE TABLE referrals (
   FOREIGN KEY (case_id) REFERENCES cases(id),
   FOREIGN KEY (contact_id) REFERENCES contacts(id),
   INDEX idx_referrals_case (case_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Attempts to reach a patient who has missed care (calls, texts, ...).
+-- Outcomes are worded neutrally: these records can be requested in the
+-- claim.
+CREATE TABLE outreach (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  case_id INT NOT NULL,
+  attempted_on DATE NOT NULL,
+  method ENUM('call','text','email','letter') NOT NULL DEFAULT 'call',
+  outcome ENUM('no_answer','left_message','spoke_scheduled','spoke_will_call','unable_to_schedule','wrong_number') NOT NULL,
+  notes_enc TEXT NULL,
+  archived_at DATETIME NULL,
+  created_by INT NULL,
+  created_at DATETIME NOT NULL,
+  FOREIGN KEY (case_id) REFERENCES cases(id),
+  INDEX idx_outreach_case (case_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE visits (
