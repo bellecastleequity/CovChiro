@@ -5,48 +5,218 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Legal — InjuryCase</title>
 <meta name="robots" content="noindex">
+<meta name="description" content="InjuryCase Terms of Service, Privacy Policy, Business Associate Agreement, subprocessors and badge terms.">
 <link rel="icon" href="favicon.ico" sizes="48x48">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<link rel="stylesheet" href="assets/landing.css?v=2">
+<link rel="stylesheet" href="assets/landing.css?v=4">
 </head>
 <body>
 <header class="nav"><div class="wrap nav-inner"><a class="logo" href="./"><img src="assets/logo-horizontal.svg" alt="InjuryCase" height="38"></a>
   <div class="nav-cta"><a class="link" href="app.html">Sign in</a></div></div></header>
 <main class="wrap legal">
   <h1>Legal</h1>
-  <div class="draft"><strong>DRAFT — not yet reviewed by an attorney.</strong> These templates outline the required terms so the product can be built and tested. Have a healthcare attorney finalize them before any practice signs up. When the BAA text changes, bump <code>BAA_VERSION</code> in <code>app/saas.php</code> so practices are asked to accept the new version.</div>
-  <p><a href="#terms">Terms of Service</a> · <a href="#privacy">Privacy Policy</a> · <a href="#baa">Business Associate Agreement</a></p>
+  <p class="muted">Version 2026-10-22 · Last updated October 22, 2026</p>
 
+  <div class="draft"><strong>DRAFT for attorney review — not yet in effect.</strong> These documents are written to match how InjuryCase actually works, but they must be reviewed and finalized by a healthcare attorney licensed in Florida before any practice relies on them. Highlighted items like <mark class="ph">[COMPANY LEGAL NAME]</mark> must be filled in. When the Terms or BAA change, update the version and date here and set <code>BAA_VERSION</code> in <code>app/saas.php</code> to the same value, so every practice is asked to accept the new version.</div>
+
+  <nav class="legal-toc" aria-label="Contents">
+    <a href="#terms">Terms of Service</a><a href="#aup">Acceptable Use</a><a href="#privacy">Privacy Policy</a><a href="#baa">Business Associate Agreement</a><a href="#subprocessors">Subprocessors</a><a href="#badge">Badge terms</a><a href="#disclaimer">Clinical disclaimer</a>
+  </nav>
+
+  <!-- ===================================================== TERMS -->
   <h2 id="terms">Terms of Service</h2>
-  <p>These Terms govern use of InjuryCase (the "Service") by the subscribing healthcare practice ("Customer") and its authorized users.</p>
-  <h3>1. Accounts</h3><p>Customer is responsible for its users, for keeping credentials and two-factor devices secure, and for promptly deactivating users who no longer need access.</p>
-  <h3>2. Subscription and billing</h3><p>Plans are billed monthly or annually in advance through Stripe. A free trial converts only when Customer chooses a plan and adds a payment method; if that happens during the trial, the remaining trial days are kept and the first charge is made when the trial ends. Annual plans renew yearly unless canceled before the renewal date. Plan limits apply to open cases and active users.</p>
-  <h3>3. Cancellation</h3><p>Customer may cancel at any time; access continues to the end of the paid period, after which the account becomes read-only. Customer may export its data while read-only. [Retention period after cancellation and deletion process — attorney to specify, consistent with the BAA.]</p>
-  <h3>4. Customer data</h3><p>Customer owns its data. We use it only to provide the Service, as described in the Business Associate Agreement.</p>
-  <h3 id="disclaimer">5. Educational tool — not medical, legal or billing advice</h3>
-  <p>InjuryCase is intended solely as an educational and organizational tool. Its care guide, timelines, next steps, suggestions, alerts, playbook and state-rule summaries are general information drawn from common practice and published sources. They are not medical advice, do not establish a standard of care, and are not a substitute for the independent professional judgment of a licensed provider.</p>
-  <p>Every clinical decision — including examination, diagnosis, treatment plans and frequency, imaging, referrals, maximum medical improvement and discharge — must be made by the treating provider in the exercise of their own clinical judgment and discretion, based on each patient's individual presentation and the applicable scope of practice. A prompt or suggestion in the Service is never a reason to provide, order, withhold or continue care.</p>
-  <p>Deadlines, insurance and no-fault rules, lien steps and other state information (including Florida PIP rules) may be incomplete, out of date or not applicable to a particular claim, and are not legal or billing advice. Customer remains solely responsible for its clinical, billing, coding and legal decisions and should confirm legal requirements with qualified counsel in the relevant state.</p>
-  <h3>6. Warranty disclaimer and limitation of liability</h3><p>[Attorney to draft.]</p>
-  <h3>7. Governing law</h3><p>[State of Florida — attorney to confirm.]</p>
-  <h3 id="badge">8. "InjuryCase Certified" badge</h3><p>While Customer has an active paid subscription and a current Business Associate Agreement, Customer may display the InjuryCase Certified badge on its website, marketing and printed materials. Online, Customer should use the embed code from Practice settings, which links to a live verification page. The badge states only that Customer manages its case records on InjuryCase; Customer will not present it as an endorsement of its clinical care, licensure or results, and will not alter the artwork. The badge shows as not verified automatically when the conditions above stop being met, and Customer will remove downloaded copies within 30 days after its subscription ends. We may revoke the right to display the badge for misuse.</p>
+  <p>These Terms of Service ("Terms") are an agreement between <mark class="ph">[COMPANY LEGAL NAME]</mark>, a <mark class="ph">[STATE]</mark> <mark class="ph">[limited liability company]</mark> doing business as InjuryCase ("InjuryCase," "we," "us"), and the healthcare practice that creates an account ("Customer," "you"). They govern Customer's use of the InjuryCase web application, website and related services (the "Service"). The person who accepts these Terms represents that they are authorized to bind Customer. The <a href="#baa">Business Associate Agreement</a> and <a href="#privacy">Privacy Policy</a> are part of these Terms; if they conflict with these Terms about protected health information, the Business Associate Agreement controls.</p>
 
+  <h3>1. The Service</h3>
+  <p>InjuryCase is case-management software for practices that treat personal injury, no-fault and workers' compensation patients. It helps Customer organize cases, visits, referrals, correspondence, balances, settlements and team tasks. Features differ by plan, as shown on the pricing and billing pages. We may improve, change or retire features; we will not materially reduce the core functionality of a paid plan during a paid period without notice.</p>
+
+  <h3>2. Accounts and users</h3>
+  <p>Customer is responsible for: the people it invites as users and the roles and access it gives them; making sure each user signs in with their own account and two-factor authentication; keeping credentials and authenticator devices secure; promptly deactivating users who no longer need access; and all activity under its account. Users must be Customer's workforce members or agents acting for Customer. Customer will tell us promptly at <a href="mailto:support@injurycase.com">support@injurycase.com</a> if it suspects unauthorized access.</p>
+
+  <h3>3. Free trial</h3>
+  <p>New practices may receive a free trial (currently 14 days) that includes every feature and the limits of our top plan. No payment method is required to start a trial. A trial converts to a paid subscription only when Customer chooses a plan and adds a payment method. When the trial ends without a subscription, the account becomes read-only (see section 7).</p>
+
+  <h3>4. Subscriptions, automatic renewal and payment</h3>
+  <p><strong>Automatic renewal.</strong> Paid plans are subscriptions that <strong>renew automatically</strong> at the end of each billing period — monthly or annually, as Customer chooses — and the payment method on file is charged the then-current price for the plan in advance of each period until Customer cancels. If Customer subscribes during a free trial, the remaining trial days are kept and the first charge is made when the trial would have ended. Prices and what each plan includes are shown before purchase.</p>
+  <p><strong>Plan changes.</strong> Customer may switch plans or billing periods at any time in Plan &amp; billing. An upgrade is charged the prorated difference for the rest of the current period and takes effect when that payment is confirmed. A downgrade takes effect immediately, and the unused portion is credited toward future charges. Limits of the new plan (open cases, users, features) apply from the change.</p>
+  <p><strong>Price changes.</strong> We will give at least 30 days' notice by email before a price increase applies to an existing subscription; the new price applies from the next renewal after the notice period.</p>
+  <p><strong>Payments.</strong> Payments are processed by Stripe; we do not receive or store card numbers. Fees are in U.S. dollars and exclude taxes, which Customer pays where applicable. If a payment fails, we may retry it and the account may become past due; if it remains unpaid, the account may become read-only until payment is made.</p>
+  <p><strong>Promotional codes.</strong> Promotional codes and discounts apply only as stated when offered, have no cash value, cannot be combined unless stated, and may expire or be withdrawn.</p>
+  <p><strong>Refunds.</strong> Except where the law requires otherwise or as stated in these Terms, fees already paid are non-refundable, including for partial periods after cancellation. <mark class="ph">[Attorney / owner to confirm refund policy — e.g. pro-rated refunds of annual plans canceled within 30 days.]</mark></p>
+
+  <h3>5. Cancellation</h3>
+  <p>Customer may cancel at any time, online, in Plan &amp; billing → Manage billing &amp; invoices, or by emailing <a href="mailto:support@injurycase.com">support@injurycase.com</a>. Cancellation stops future renewals; access continues to the end of the period already paid for. No cancellation fee applies.</p>
+
+  <h3>6. Customer data</h3>
+  <p>"Customer Data" means information Customer and its users enter into or upload to the Service, including patient information that is protected health information ("PHI"). As between the parties, Customer owns Customer Data. We use Customer Data only to provide, secure and support the Service for Customer, as permitted by the Business Associate Agreement, and as required by law. We do not sell Customer Data or use PHI for marketing, advertising or training of artificial-intelligence models.</p>
+  <p>We may use aggregated, de-identified usage information (for example, how often a feature is used, with no patient information) to operate and improve the Service.</p>
+
+  <h3>7. Read-only access, export, retention and deletion</h3>
+  <p>When a subscription ends (or a trial ends without one), the account becomes <strong>read-only</strong>: Customer can still sign in, view and export its records, but cannot add or change them. Customer Data stays available this way for <strong>12 months</strong> after the subscription or trial ends. After that, we will delete it, after giving the account owner at least 30 days' notice by email. Customer may ask us to delete its data sooner, after it has exported what it needs. Deleted data is removed from the live system promptly and ages out of encrypted backups within 35 days. Return and destruction of PHI are also governed by the Business Associate Agreement.</p>
+
+  <h3>8. Customer responsibilities</h3>
+  <p>Customer is responsible for: the accuracy of the information it enters, imports or uploads (including EHR ledgers and appointment lists, which it should review in the preview before importing); its own HIPAA compliance program, including policies, workforce training, risk analysis and its Notice of Privacy Practices; having any patient authorization or other legal basis needed before sharing a patient's information with an attorney, insurer or other provider through the Service; the content of letters and messages it generates or sends; and complying with the laws that apply to its practice, billing, coding and patient communications.</p>
+
+  <h3>9. Messages sent for Customer</h3>
+  <p>The Service can send emails on Customer's behalf — for example, status update requests to a patient's attorney or the attorney's case manager, and alerts to Customer's own team. By turning these on, Customer authorizes us to send them in its name. We design these emails to contain no patient details; attorney requests carry a single-use secure link to a reply page that shows only what is needed to identify the client (name, date of injury, Customer's case number, last date of service and, if Customer allows, the balance). Customer is responsible for the recipients it enters and for having a basis to communicate with them about the patient. Replies are added to Customer's case records.</p>
+
+  <h3>10. Acceptable use</h3>
+  <p>Customer and its users will follow the <a href="#aup">Acceptable Use Policy</a>. We may suspend access, with notice where practical, to stop a violation, a security threat or non-payment, and will restore it promptly once the issue is resolved.</p>
+
+  <h3>11. Educational tool — not medical, legal or billing advice</h3>
+  <p>The Service's care guide, timelines, alerts, suggestions, playbook, state-rule summaries, cost estimates and similar content are general information and organizational aids, as described in the <a href="#disclaimer">clinical disclaimer</a>. They are not medical, legal, billing or coding advice, and Customer's providers remain solely responsible for clinical decisions.</p>
+
+  <h3>12. Third-party services</h3>
+  <p>The Service relies on third parties for hosting, payments and email, listed under <a href="#subprocessors">Subprocessors</a>. Customer's use of Stripe's payment pages is also subject to Stripe's terms. We are not responsible for third-party services Customer chooses to use outside the Service, such as its EHR.</p>
+
+  <h3>13. Intellectual property and feedback</h3>
+  <p>We own the Service, including its software, content, templates and the InjuryCase name and logos. We grant Customer a non-exclusive, non-transferable right to use the Service during its subscription for its internal business purposes. Letters and reports Customer generates from its data may be used freely by Customer. If Customer sends suggestions or feedback, we may use them without obligation.</p>
+
+  <h3>14. Confidentiality and security</h3>
+  <p>Each party will protect the other's non-public business information with reasonable care and use it only for this agreement. We maintain administrative, physical and technical safeguards appropriate to PHI, as described in the Business Associate Agreement and on our <a href="./#security">security page</a>, including encryption, two-factor sign-in for every user, access controls, audit logging and encrypted backups.</p>
+
+  <h3>15. Warranties and disclaimers</h3>
+  <p>We will provide the Service with reasonable skill and care and in material accordance with its documentation. EXCEPT AS EXPRESSLY STATED IN THESE TERMS, THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE," AND WE DISCLAIM ALL OTHER WARRANTIES, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. We do not warrant that the Service will be uninterrupted or error-free, that deadlines, rules or estimates it shows are complete or current for every claim, or any outcome of any case or claim.</p>
+
+  <h3>16. Limitation of liability</h3>
+  <p>TO THE EXTENT PERMITTED BY LAW, NEITHER PARTY WILL BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR PUNITIVE DAMAGES, OR LOST PROFITS, REVENUE OR SETTLEMENTS, EVEN IF ADVISED OF THE POSSIBILITY. EACH PARTY'S TOTAL LIABILITY ARISING OUT OF THESE TERMS WILL NOT EXCEED THE FEES CUSTOMER PAID FOR THE SERVICE IN THE 12 MONTHS BEFORE THE EVENT GIVING RISE TO THE CLAIM. These limits do not apply to Customer's payment obligations, either party's indemnity obligations, or liability that cannot be limited by law. <mark class="ph">[Attorney to confirm the cap and whether breach-of-BAA obligations carry a separate cap.]</mark></p>
+
+  <h3>17. Indemnification</h3>
+  <p>We will defend Customer against third-party claims that the Service infringes their intellectual property and pay resulting damages awarded. Customer will defend us against third-party claims arising from Customer Data, Customer's clinical, billing or legal decisions, messages sent at Customer's direction, or Customer's violation of these Terms or law, and pay resulting damages awarded. The indemnified party must give prompt notice and reasonable cooperation.</p>
+
+  <h3>18. Term and termination</h3>
+  <p>These Terms apply from acceptance until Customer's account is closed and its data deleted. Either party may terminate for the other's material breach that is not cured within 30 days of written notice. Sections 6–8, 13–17 and 19–20 survive termination.</p>
+
+  <h3>19. Changes to these Terms</h3>
+  <p>We may update these Terms. For material changes we will give at least 30 days' notice by email or in the Service, and the account owner will be asked to accept the new version in the Service. Changes do not apply retroactively.</p>
+
+  <h3>20. Governing law, disputes and general terms</h3>
+  <p>These Terms are governed by the laws of the State of Florida, without regard to conflict-of-laws rules. The parties will first try in good faith to resolve any dispute by contacting each other. Any lawsuit will be brought in the state or federal courts located in <mark class="ph">[COUNTY]</mark> County, Florida, and the parties consent to that jurisdiction. <mark class="ph">[Attorney to decide whether to use arbitration instead.]</mark> Customer may not assign these Terms without our consent, except to a successor of its practice; we may assign them to a successor of our business that agrees to the Business Associate Agreement. Neither party is liable for delays caused by events beyond its reasonable control. These Terms, with the documents they reference, are the entire agreement on their subject. Notices to us go to <a href="mailto:support@injurycase.com">support@injurycase.com</a> and <mark class="ph">[MAILING ADDRESS]</mark>; notices to Customer go to the account owner's email.</p>
+
+  <!-- ===================================================== AUP -->
+  <h2 id="aup">Acceptable Use Policy</h2>
+  <p>Customer and its users may use the Service only for managing Customer's own patients' cases and related business. They will not:</p>
+  <ul>
+    <li>share accounts or credentials, bypass two-factor authentication, or let anyone who is not Customer's workforce or authorized agent use the Service;</li>
+    <li>enter or upload information they are not permitted to hold, or use the Service to disclose PHI without a legal basis;</li>
+    <li>upload malware, or probe, scan or test the Service's security without our written permission (we welcome responsible reports at <a href="mailto:support@injurycase.com">support@injurycase.com</a>);</li>
+    <li>interfere with the Service's operation, exceed reasonable usage, or scrape it by automated means;</li>
+    <li>use messages sent through the Service to harass, mislead, or contact anyone without a legitimate purpose related to a patient's care or claim;</li>
+    <li>reverse engineer, copy, resell or build a competing product from the Service; or</li>
+    <li>misrepresent the InjuryCase Certified badge or use InjuryCase's name to suggest an endorsement of clinical care.</li>
+  </ul>
+
+  <!-- ===================================================== PRIVACY -->
   <h2 id="privacy">Privacy Policy</h2>
-  <p>We collect account information (practice name, user names, emails) to provide and bill for the Service. Patient information entered by a practice is protected health information handled solely under the Business Associate Agreement. We do not sell data, use advertising trackers, or load third-party scripts in the application. Payment details are collected and stored by Stripe, not by us.</p>
+  <p>This Privacy Policy explains how <mark class="ph">[COMPANY LEGAL NAME]</mark> ("InjuryCase") handles personal information through our website and the Service. It does not replace the <a href="#baa">Business Associate Agreement</a>, which governs the protected health information practices store in the Service.</p>
 
+  <h3>1. Patient information (PHI)</h3>
+  <p>Practices enter and control their patients' information. We process it only as their business associate: to provide, secure and support the Service for that practice, under the Business Associate Agreement and HIPAA. We never sell it, use it for advertising, or use it to train artificial-intelligence models. Patients with questions about their information should contact their healthcare provider, who controls their records.</p>
+
+  <h3>2. Information we collect about our customers and users</h3>
+  <ul>
+    <li><strong>Account information:</strong> practice name, address, phone and state; users' names, work emails and roles; promotional codes used.</li>
+    <li><strong>Security and usage information:</strong> sign-in events, IP addresses, browser type, and an audit log of actions taken in the Service (used for security, HIPAA audit controls and support).</li>
+    <li><strong>Billing information:</strong> plan, billing period and payment status. Card details are collected and stored by Stripe, not by us.</li>
+    <li><strong>Communications:</strong> support requests and feature suggestions you send us.</li>
+  </ul>
+
+  <h3 id="respondents">3. Attorneys and case managers who reply to status requests</h3>
+  <p>When a practice asks an attorney or case manager for a case status update, we send them an email on the practice's behalf. If they use the secure reply page, we record their reply, the name and email they enter, and the date, time and IP address of the visit, and add the reply to the practice's case records. We use this information only to deliver it to that practice and keep the audit trail, and we don't use it for marketing. Questions about a particular request should go to the practice that sent it.</p>
+
+  <h3>4. Website visitors</h3>
+  <p>Our marketing website does not use advertising or analytics trackers or third-party scripts. Our servers keep standard technical logs (such as IP address and pages requested) for security and reliability.</p>
+
+  <h3 id="cookies">5. Cookies</h3>
+  <p>We use only cookies that are strictly necessary: a session cookie that keeps you signed in and protects forms against cross-site requests. It is deleted when you sign out or after inactivity. We do not use advertising, tracking or analytics cookies, so there is nothing to opt out of.</p>
+
+  <h3>6. How we use information</h3>
+  <p>To provide, secure and support the Service; to bill for subscriptions; to send account and service emails (such as trial reminders, security notices and the alerts you turn on); to respond to requests; to improve the Service using aggregated, de-identified usage information; and to comply with law.</p>
+
+  <h3>7. How we share information</h3>
+  <p>We share information only with the subprocessors listed below that help us run the Service (hosting, payments, email), under contracts that protect it; when required by law or to protect rights and safety; or with a successor in a merger or sale that agrees to this policy and the Business Associate Agreement. We do not sell or "share" personal information for cross-context behavioral advertising.</p>
+
+  <h3>8. Retention</h3>
+  <p>Account and practice records are kept while the account is open and as described in section 7 of the Terms (12 months of read-only access after a subscription ends, then deletion after notice). Audit and security logs are kept as long as the practice's records, for HIPAA audit purposes. Backups age out within 35 days. Billing records are kept as required for tax and accounting.</p>
+
+  <h3>9. Security</h3>
+  <p>We protect information with encryption in transit (TLS) and at rest (including field-level encryption of sensitive patient fields and documents), two-factor sign-in for every user, role-based access, automatic sign-out, audit logging, daily encrypted backups and monitored hosting on HIPAA-eligible infrastructure. No system is perfectly secure; we will notify affected customers of security incidents as the law and the Business Associate Agreement require.</p>
+
+  <h3>10. Your choices and rights</h3>
+  <p>Users can update their name and notification choices in the Service, and practice admins can correct practice details and deactivate users. Depending on where you live, you may have rights to access, correct, delete or obtain a copy of personal information we hold about you as a customer or user; contact us at <a href="mailto:support@injurycase.com">support@injurycase.com</a> and we will respond as the law requires. Requests about patient information are handled by the patient's healthcare provider.</p>
+
+  <h3>11. Children</h3>
+  <p>The Service is for healthcare businesses and is not directed to children. Practices may store information about minor patients as their business associate, under the Business Associate Agreement.</p>
+
+  <h3>12. Location of data</h3>
+  <p>Information is stored and processed in the United States.</p>
+
+  <h3>13. Changes and contact</h3>
+  <p>We will post updates here and notify customers of material changes by email. Contact: <a href="mailto:support@injurycase.com">support@injurycase.com</a>, <mark class="ph">[MAILING ADDRESS]</mark>.</p>
+
+  <!-- ===================================================== BAA -->
   <h2 id="baa">Business Associate Agreement</h2>
-  <p>This Business Associate Agreement ("BAA") is between the subscribing practice ("Covered Entity") and the operator of InjuryCase ("Business Associate") and is effective when Covered Entity accepts it in the Service. Version: 2026-10.</p>
-  <h3>1. Permitted uses and disclosures</h3><p>Business Associate may use and disclose protected health information ("PHI") only to provide the Service to Covered Entity, as required by law, or for its proper management and administration as permitted by 45 CFR §164.504(e)(4).</p>
-  <h3>2. Safeguards</h3><p>Business Associate will use appropriate administrative, physical and technical safeguards, and comply with Subpart C of 45 CFR Part 164 (the Security Rule), to prevent use or disclosure of PHI other than as provided by this BAA.</p>
-  <h3>3. Reporting</h3><p>Business Associate will report to Covered Entity any use or disclosure not provided for by this BAA, any security incident, and any breach of unsecured PHI as required by 45 CFR §164.410, without unreasonable delay and no later than [__] days after discovery.</p>
-  <h3>4. Subcontractors</h3><p>Business Associate will ensure that any subcontractor that creates, receives, maintains or transmits PHI on its behalf (including its hosting provider) agrees in writing to the same restrictions and conditions.</p>
-  <h3>5. Individual rights</h3><p>Business Associate will make PHI available to Covered Entity as needed for Covered Entity to meet its obligations for access (§164.524), amendment (§164.526) and accounting of disclosures (§164.528).</p>
-  <h3>6. Books and records</h3><p>Business Associate will make its internal practices, books and records relating to PHI available to the Secretary of HHS for determining compliance.</p>
-  <h3>7. Term and termination</h3><p>This BAA lasts as long as Business Associate maintains PHI for Covered Entity. Covered Entity may terminate if Business Associate materially breaches it and does not cure.</p>
-  <h3>8. Return or destruction</h3><p>On termination, Business Associate will return (by export) or destroy all PHI, retaining no copies, or, where infeasible, extend these protections and limit further use. [Retention and destruction timeline — attorney to specify.]</p>
-  <h3>9. Minimum necessary</h3><p>Business Associate's personnel do not access PHI except as necessary to provide support requested by Covered Entity; platform operator accounts are technically prevented from viewing patient records.</p>
+  <p>This Business Associate Agreement ("BAA") is between the practice that accepts it in the Service ("Covered Entity") and <mark class="ph">[COMPANY LEGAL NAME]</mark> d/b/a InjuryCase ("Business Associate"). It is effective when Covered Entity accepts it and is part of the Terms of Service. Version 2026-10-22.</p>
+
+  <h3>1. Definitions</h3>
+  <p>Capitalized terms not defined here (including Breach, Data Aggregation, Designated Record Set, Electronic Protected Health Information, Individual, Protected Health Information ("PHI"), Required by Law, Secretary, Security Incident, Subcontractor and Unsecured PHI) have the meanings given in the HIPAA Rules at 45 CFR Parts 160 and 164. "HIPAA Rules" means the Privacy, Security, Breach Notification and Enforcement Rules, as amended by the HITECH Act.</p>
+
+  <h3>2. Permitted uses and disclosures</h3>
+  <p>Business Associate may use and disclose PHI only: (a) to provide the Service to Covered Entity as described in the Terms, including sending communications Covered Entity directs through the Service; (b) as Required by Law; and (c) for its proper management and administration or to carry out its legal responsibilities, as permitted by 45 CFR §164.504(e)(4), provided any disclosure is Required by Law or made with reasonable written assurances of confidentiality from the recipient. Business Associate will not use or disclose PHI in a way that would violate Subpart E of 45 CFR Part 164 if done by Covered Entity, will not sell PHI, and will not use PHI for marketing. Business Associate will not de-identify PHI or perform Data Aggregation for others without Covered Entity's written permission.</p>
+
+  <h3>3. Minimum necessary</h3>
+  <p>Business Associate will limit its uses, disclosures and requests of PHI to the minimum necessary. Its personnel do not access PHI except as necessary to provide support Covered Entity requests or to keep the Service secure and running; platform operator accounts are technically prevented from viewing patient records.</p>
+
+  <h3>4. Safeguards</h3>
+  <p>Business Associate will use appropriate administrative, physical and technical safeguards and comply with Subpart C of 45 CFR Part 164 (the Security Rule) with respect to Electronic PHI, to prevent use or disclosure of PHI other than as provided by this BAA.</p>
+
+  <h3>5. Reporting</h3>
+  <p>Business Associate will report to Covered Entity: (a) any use or disclosure of PHI not provided for by this BAA of which it becomes aware; (b) any Security Incident of which it becomes aware; and (c) any Breach of Unsecured PHI, as required by 45 CFR §164.410. Reports will be made without unreasonable delay and in no case later than <strong><mark class="ph">[10]</mark> business days</strong> after discovery, and will include, to the extent available, the identity of each Individual affected and the other information Covered Entity needs to give notice under 45 CFR §164.404. The parties agree that this section is notice of the ongoing existence of unsuccessful Security Incidents (such as pings, port scans and blocked sign-in attempts) that do not result in unauthorized access to PHI, for which no further report is required. Business Associate will cooperate with Covered Entity's investigation and mitigation, and will mitigate, to the extent practicable, harmful effects known to it.</p>
+
+  <h3>6. Subcontractors</h3>
+  <p>Business Associate will ensure, in accordance with 45 CFR §§164.502(e)(1)(ii) and 164.308(b)(2), that any Subcontractor that creates, receives, maintains or transmits PHI on its behalf (including its hosting provider) agrees in writing to the same restrictions, conditions and requirements that apply to Business Associate. Current subcontractors are listed under <a href="#subprocessors">Subprocessors</a>.</p>
+
+  <h3>7. Individual rights</h3>
+  <p>Within 15 business days of Covered Entity's request, Business Associate will make PHI in a Designated Record Set available to Covered Entity so it can meet its obligations for access (§164.524), amendment (§164.526) and an accounting of disclosures (§164.528). Most of this can be done by Covered Entity directly in the Service (records, exports and the audit log). If an Individual asks Business Associate directly, Business Associate will forward the request to Covered Entity.</p>
+
+  <h3>8. Covered Entity's obligations</h3>
+  <p>Covered Entity will: notify Business Associate of limitations in its Notice of Privacy Practices, changes in an Individual's permission, or restrictions it agrees to, to the extent they affect Business Associate's use or disclosure of PHI; not ask Business Associate to use or disclose PHI in a way not permitted for Covered Entity; and obtain any authorization needed before directing disclosures through the Service (for example, to an attorney).</p>
+
+  <h3>9. Books and records</h3>
+  <p>Business Associate will make its internal practices, books and records relating to PHI available to the Secretary for purposes of determining compliance with the HIPAA Rules.</p>
+
+  <h3>10. Term and termination</h3>
+  <p>This BAA starts on its effective date and lasts as long as Business Associate maintains PHI for Covered Entity. If either party knows of a pattern of activity or practice of the other that is a material breach of this BAA, it will give notice and an opportunity to cure within 30 days; if the breach is not cured, the non-breaching party may terminate the Terms and this BAA.</p>
+
+  <h3>11. Return or destruction of PHI</h3>
+  <p>When the Terms end, Covered Entity may export its PHI from the Service during the read-only period described in the Terms (12 months). Business Associate will then destroy all PHI it maintains, after at least 30 days' notice, and will confirm destruction in writing on request; Covered Entity may ask for earlier destruction. PHI in encrypted backups is destroyed as the backups expire, within 35 days. If return or destruction is infeasible for any PHI, Business Associate will extend the protections of this BAA to it and limit further uses and disclosures to the purposes that make return or destruction infeasible.</p>
+
+  <h3>12. Miscellaneous</h3>
+  <p>References to the HIPAA Rules mean them as in effect or amended. The parties will amend this BAA as needed to comply with changes in the law. Any ambiguity will be resolved to permit compliance with the HIPAA Rules. Nothing in this BAA gives rights to any third party. Business Associate's obligations under sections 6 and 11 survive termination.</p>
+
+  <!-- ===================================================== SUBPROCESSORS -->
+  <h2 id="subprocessors">Subprocessors</h2>
+  <p>These third parties help us run the Service. Those that may store or process PHI have signed business associate agreements with us.</p>
+  <div class="table-wrap"><table class="legal-table">
+    <thead><tr><th>Provider</th><th>What it does</th><th>Data</th><th>Location</th></tr></thead>
+    <tbody>
+      <tr><td>Amazon Web Services, Inc.</td><td>Hosting, database storage, encrypted backups, monitoring and DNS</td><td>All Service data, including PHI (covered by the AWS Business Associate Addendum)</td><td>United States</td></tr>
+      <tr><td>Amazon Web Services, Inc. (Simple Email Service)</td><td>Sending account, alert and status-request emails</td><td>Recipient email addresses and email text. Emails are designed to contain no patient details.</td><td>United States</td></tr>
+      <tr><td>Stripe, Inc.</td><td>Subscription billing and payment processing</td><td>Practice name, account owner email, plan and payment details. No PHI.</td><td>United States</td></tr>
+    </tbody></table></div>
+  <p class="small muted">We will update this list and notify customers by email at least 30 days before adding a subprocessor that will process PHI. <mark class="ph">[Confirm the list matches your production setup before launch.]</mark></p>
+
+  <!-- ===================================================== BADGE -->
+  <h2 id="badge">"InjuryCase Certified" badge terms</h2>
+  <p>While Customer has an active paid subscription and has accepted the current Business Associate Agreement, Customer may display the InjuryCase Certified badge on its website, marketing and printed materials. Online, Customer should use the embed code from Practice settings, which links to a live verification page. The badge states only that Customer manages its case records on InjuryCase; Customer will not present it as an endorsement of its clinical care, licensure or results, and will not alter the artwork. The badge shows as not verified automatically when these conditions stop being met, and Customer will remove downloaded copies within 30 days after its subscription ends. We may revoke the right to display the badge for misuse.</p>
+
+  <!-- ===================================================== DISCLAIMER -->
+  <h2 id="disclaimer">Clinical disclaimer — educational tool</h2>
+  <p>InjuryCase is intended solely as an educational and organizational tool. Its care guide, timelines, next steps, suggestions, alerts, playbook, cost estimates and state-rule summaries are general information drawn from common practice and published sources. They are not medical advice, do not establish a standard of care, and are not a substitute for the independent professional judgment of a licensed provider.</p>
+  <p>Every clinical decision — including examination, diagnosis, treatment plans and frequency, imaging, referrals, maximum medical improvement and discharge — must be made by the treating provider in the exercise of their own clinical judgment and discretion, based on each patient's individual presentation and the applicable scope of practice. A prompt or suggestion in the Service is never a reason to provide, order, withhold or continue care.</p>
+  <p>Deadlines, insurance and no-fault rules, lien steps, outside-provider cost estimates and other state information may be incomplete, out of date or not applicable to a particular claim, and are not legal or billing advice. Customer remains solely responsible for its clinical, billing, coding and legal decisions and should confirm legal requirements with qualified counsel in the relevant state.</p>
 </main>
-<footer class="foot"><div class="wrap foot-inner"><div class="logo"><img src="assets/logo-horizontal.svg" alt="InjuryCase" height="26"></div><nav><a href="./">Home</a><a href="app.html">Sign in</a></nav></div></footer>
+<footer class="foot"><div class="wrap foot-inner"><div class="logo"><img src="assets/logo-horizontal.svg" alt="InjuryCase" height="26"></div><nav><a href="./">Home</a><a href="#terms">Terms</a><a href="#privacy">Privacy</a><a href="#baa">BAA</a><a href="mailto:support@injurycase.com">Contact</a><a href="app.html">Sign in</a></nav></div></footer>
 </body>
 </html>

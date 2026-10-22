@@ -15,7 +15,7 @@ define('ANNUAL_MONTHS_CHARGED', 10);
 const BILLING_INTERVALS = ['monthly', 'annual'];
 // Bump when the Business Associate Agreement or Terms text changes; the
 // practice owner is asked to accept the new version.
-define('BAA_VERSION', '2026-10');
+define('BAA_VERSION', '2026-10-22');
 
 // Keys (solo / practice / group) are stored on practices and in Stripe
 // metadata, so they stay fixed; the customer-facing names are the tiers.

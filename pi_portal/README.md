@@ -179,6 +179,17 @@ safeguards and signed agreements that no code can provide.
 
 ---
 
+## Legal documents and data retention
+
+`public/legal.html` holds the **Terms of Service** (including automatic renewal, plan changes, refunds, cancellation, messages sent for the practice, retention and deletion), the **Acceptable Use Policy**, the **Privacy Policy** (including attorneys who reply to status requests, and cookies), the **Business Associate Agreement**, the **subprocessor list**, the **badge terms** and the **clinical disclaimer**. They are drafts written to match how the product works: highlighted placeholders (company legal name, state, address, county, refund policy, liability cap, breach-report days) must be filled in and the whole set reviewed by a healthcare attorney before launch.
+
+- **Versions:** the page's version and `BAA_VERSION` in `app/saas.php` must match. Changing `BAA_VERSION` asks every practice's admin to accept the updated Terms and BAA (banner + Practice settings); acceptance is recorded with who and when, and in the audit log.
+- **Where they're accepted / linked:** sign-up checkbox (Terms incl. auto-renewal, BAA, Privacy), Practice settings, the Plan & billing page (auto-renewal and online cancellation disclosure), the app footer, the attorney reply page, and the website footer.
+- **Retention (Terms §7, BAA §11):** after a subscription or trial ends, the practice is read-only for 12 months, then its data is deleted after at least 30 days' emailed notice to the owner. Run monthly:
+  `php app/cli/purge_practice.php --list` — practices to send the notice to, and those eligible for deletion;
+  `php app/cli/purge_practice.php --practice=ID` — dry run with counts;
+  `php app/cli/purge_practice.php --practice=ID --confirm` — permanent deletion of every row and encrypted document file for that practice (add `--early` for a practice's own written request inside the 12 months). A record with counts only (no patient data) stays in the audit log. Encrypted backups expire within 35 days.
+
 ## Install
 
 Requirements: PHP 8.1+ with `pdo_mysql`, `sodium`, `fileinfo` and `curl`; MySQL 8 or MariaDB 10.6+; Apache with `mod_rewrite`/`mod_headers` (or the nginx equivalent); and HTTPS.

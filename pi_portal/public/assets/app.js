@@ -176,7 +176,7 @@ async function showSignup() {
         <div class="promo-row"><input id="su-promo" value="${esc(promo)}" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="button" class="btn ghost" data-act="promo-check">Apply</button></div>
         <div class="small" id="su-promo-msg" aria-live="polite"></div></div>
     </div>
-    <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice, and understand that InjuryCase is an educational tool — clinical decisions remain with our treating providers.</label>
+    <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> (including automatic renewal of paid plans until canceled) and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice, have read the <a href="legal.html#privacy" target="_blank" rel="noopener">Privacy Policy</a>, and understand that InjuryCase is an educational tool — clinical decisions remain with our treating providers.</label>
     <div class="err" data-role="err"></div>
     <button class="btn" type="submit">Create practice account</button>
     <p class="auth-switch">Already have an account? <a href="#" data-act="show-login">Sign in</a></p>
@@ -374,7 +374,7 @@ function bannerHtml() {
   const cta = admin ? ' <a href="#/billing">Choose a plan</a>' : ' Ask your practice admin.';
   if (p.access === 'read_only') return `<div class="banner danger">Your ${p.status === 'trialing' ? 'free trial has ended' : 'subscription has ended'}. Records are read-only.${cta}</div>`;
   if (p.status === 'past_due') return `<div class="banner warn">Your last payment didn't go through.${admin ? ' <a href="#/billing">Update billing</a>' : ''}</div>`;
-  if (admin && !p.baaCurrent) return `<div class="banner warn">Please review and accept the current Business Associate Agreement. <a href="#/settings">Practice settings</a></div>`;
+  if (admin && !p.baaCurrent) return `<div class="banner warn">Our Terms of Service and Business Associate Agreement have been updated — please review and accept them. <a href="#/settings">Practice settings</a></div>`;
   if (p.status === 'trialing') {
     const extras = (p.trialExtras || []).map((f) => featureInfo(f));
     return `<div class="banner info">${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? '' : 's'} left in your free trial.${extras.length ? ` Your trial includes every feature — ${esc(extras.map((x) => `${x.name} (${x.planName})`).join(', '))} ${extras.length === 1 ? 'needs' : 'need'} a higher plan than ${esc(p.planName)} after the trial.` : ''}${admin ? ' <a href="#/billing">Choose a plan</a>' : ''}</div>`;
@@ -406,7 +406,7 @@ async function startShell() {
         <button class="btn ghost sm" data-act="sign-out">Sign out</button></div>
     </nav>
     <div class="main-col"><div id="banner">${bannerHtml()}</div><main class="main" id="main"></main>
-      <footer class="app-disclaimer">${clinicalNote()} State rules and deadlines are general information, not legal or billing advice. <a href="legal.html#disclaimer" target="_blank" rel="noopener">Disclaimer</a></footer></div>
+      <footer class="app-disclaimer">${clinicalNote()} State rules and deadlines are general information, not legal or billing advice. <a href="legal.html#disclaimer" target="_blank" rel="noopener">Disclaimer</a> · <a href="legal.html#terms" target="_blank" rel="noopener">Terms</a> · <a href="legal.html#privacy" target="_blank" rel="noopener">Privacy</a></footer></div>
   </div>`;
   document.getElementById('loc-switch')?.addEventListener('change', (e) => { setLocFilter(e.target.value); route(); });
   if (operator) { if (!location.hash.startsWith('#/platform')) location.hash = '#/platform'; route(); return; }
@@ -2511,9 +2511,9 @@ async function pageSettings(main) {
       <p class="small mt">Because ${esc(S.brand.name)} stores your patients' health information, HIPAA requires a Business Associate Agreement between your practice and us.</p>
       ${baaOk ? `<div class="notice ok mt">Accepted ${esc(fmtDate(p.baaAcceptedAt))} (version ${esc(p.baaVersion)}).</div>`
         : `<div class="notice mt">${p.baaVersion ? 'The agreement has been updated since you accepted it.' : 'Not yet accepted.'}</div>
-           <label class="check mt"><input type="checkbox" id="baa-accept"> I accept the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> (version ${esc(p.currentBaaVersion)}) on behalf of ${esc(p.name)}.</label>
+           <label class="check mt"><input type="checkbox" id="baa-accept"> I accept the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> (version ${esc(p.currentBaaVersion)}) on behalf of ${esc(p.name)}.</label>
            <button class="btn mt" data-act="accept-baa">Accept agreement</button>`}
-      <p class="small muted mt"><a href="legal.html#baa" target="_blank" rel="noopener">Read the agreement</a></p></div></div>
+      <p class="small muted mt"><a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> · <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> · <a href="legal.html#privacy" target="_blank" rel="noopener">Privacy Policy</a></p></div></div>
     <div class="card mt"><h2>Financial visibility for staff</h2>
       <p class="small mt">Admins, providers and billing always see financials. Choose what the <strong>staff</strong> role (front desk) can see. To open everything to one person, edit them under Users and grant full financial access.</p>
       ${[['balances', 'Balances', 'What insurance and the patient owe, totals, the A/R report and dashboard A/R'], ['ledger', 'Ledger detail', 'Individual charges, payments and balance moves; the itemized statement'],
@@ -2709,6 +2709,7 @@ async function pageBilling(main) {
         ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : subscribed ? changePlanButton(r, k, interval)
           : `<button class="btn${k === p.plan ? '' : ' ghost'}" data-act="checkout" data-plan="${k}" data-interval="${interval}"${avail ? '' : ' disabled'}>${p.status === 'trialing' && r.firstCharge ? 'Add card — keep free days' : 'Subscribe'}</button>`}</div>`;
     }).join('')}</div>
+    <p class="small mt"><strong>Paid plans renew automatically</strong> every month or year (as chosen) at the price shown, charged to your card until you cancel. Cancel any time online under <em>Manage billing &amp; invoices</em>; access continues to the end of the paid period. See the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a>.</p>
     <p class="small muted mt">Payments are processed by Stripe; ${esc(S.brand.name)} never sees your card. Closed and dropped cases don't count toward your limit. If you cancel, your records stay readable and exportable.</p>`;
   main.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
 }

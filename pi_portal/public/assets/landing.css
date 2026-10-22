@@ -257,3 +257,13 @@ h1,h2,h3{letter-spacing:-0.025em;line-height:1.15;}
 .status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 16px;}
 .status-form .err{color:#B42318;min-height:1.2em;}
 .status-foot{margin-top:28px;}
+
+/* Legal page */
+.legal-toc{display:flex;flex-wrap:wrap;gap:8px 16px;margin:18px 0 8px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--bg-2);font-size:0.92rem;}
+.legal mark.ph{background:#FFF3C4;color:var(--navy);padding:0 3px;border-radius:3px;}
+.legal-table{width:100%;border-collapse:collapse;font-size:0.92rem;}
+.legal-table th,.legal-table td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+.legal-table th{background:var(--bg-2);}
+.legal h2{scroll-margin-top:80px;}
+.legal .table-wrap{overflow-x:auto;max-width:100%;}
+@media (max-width:600px){.legal-table th,.legal-table td{padding:8px;font-size:0.84rem;}.legal-table{min-width:0;}.legal-table td{word-break:break-word;}}
