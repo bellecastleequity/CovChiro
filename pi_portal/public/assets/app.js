@@ -506,7 +506,7 @@ function renderCasesTable(rows) {
 }
 
 function stageChip(stage) {
-  const cls = ['litigation', 'mediation', 'demand', 'negotiating'].includes(stage) ? 'ochre' : ['closed', 'dropped'].includes(stage) ? '' : stage === 'settled' ? 'teal' : 'teal';
+  const cls = ['litigation', 'mediation', 'demand', 'negotiating'].includes(stage) ? 'legal' : ['closed', 'dropped'].includes(stage) ? '' : stage === 'intake' ? 'info' : stage === 'settled' || stage === 'tx_complete' ? 'settled' : 'teal';
   return `<span class="chip ${cls}">${esc(label('stages', stage))}</span>`;
 }
 
@@ -583,7 +583,7 @@ function renderCase() {
   // Same phase rule as the server's alerts: intake items matter while in
   // care, discharge items once care has ended.
   const inCare = ['intake', 'treating'].includes(c.stage);
-  const overdueCount = d.checklist.filter((i) => i.status === 'overdue' && (i.group === 'At discharge') !== inCare).length;
+  const overdueCount = d.checklist.filter((i) => i.status === 'overdue' && (i.group === 'At MMI / discharge') !== inCare).length;
   main.innerHTML = `${phiBanner}
     <div class="case-head"><div>
       <div class="small"><a href="#/cases">← All cases</a></div>
@@ -632,7 +632,8 @@ function tabOverview(el, d) {
     <div class="card"><div class="card-head"><h2>Case</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-case">Edit</button>' : ''}</div>
       <dl class="kv">
         ${row('Case type', label('injuryTypes', c.injury_type))}
-        ${row('Date of injury', fmtDate(c.date_of_injury))}${row('First visit', fmtDate(c.first_visit))}${row('Discharged', fmtDate(c.discharge_date))}
+        ${row('Date of injury', fmtDate(c.date_of_injury))}${row('First visit', fmtDate(c.first_visit))}
+        ${c.mmi_date ? row('MMI', fmtDate(c.mmi_date) + (c.maintenance_every_days && !c.discharge_date ? ' · maintenance ' + maintenanceLabel(+c.maintenance_every_days) : '')) : ''}${row('Discharged', fmtDate(c.discharge_date))}
         ${row('Treating provider', provider?.name)}
         ${row('Referral source', c.referral_source)}${contactRow('Referred by', k.referred_by_contact_id)}${c.referred_by_text ? row('Referred by (note)', c.referred_by_text) : ''}
         ${contactRow('Attorney', k.attorney_contact_id)}
@@ -753,7 +754,13 @@ function guideCardHtml(d) {
         if (w) act.push(`<span class="small muted">${g.status === 'done' ? 'Result:' : 'Done in house:'}</span><button class="btn sm${g.status === 'done' ? ' ghost' : ''}" data-act="emc-result" data-v="yes">EMC exists</button><button class="btn ghost sm" data-act="emc-result" data-v="no">No EMC</button>`);
         if (openish && cw) act.push(`<button class="btn ghost sm" data-act="guide-refer" data-type="emc">Refer out for EMC</button>`);
       }
-      if (g.kind === 'visit' && openish && cw) act.push(`<button class="btn sm${g.status === 'now' ? '' : ' ghost'}" data-act="guide-visit" data-type="${g.visitType}">${g.visitType === 'discharge' ? 'Log discharge visit (MMI)' : 'Log re-exam'}</button>`);
+      if (g.kind === 'visit' && openish && cw) act.push(`<button class="btn sm${g.status === 'now' ? '' : ' ghost'}" data-act="guide-visit" data-type="${g.visitType}">${g.visitType === 'maintenance' ? 'Log maintenance visit' : 'Log re-exam'}</button>`);
+      if (g.kind === 'mmi' && cw) {
+        const maint = d.case.mmi_date && d.case.maintenance_every_days && !d.case.discharge_date;
+        if (openish) act.push(`<button class="btn ghost sm" data-act="mmi" data-plan="">Reached MMI…</button>`);
+        else if (maint) act.push(`<button class="btn ghost sm" data-act="mmi" data-plan="maintenance">Change frequency</button><button class="btn ghost sm" data-act="mmi" data-plan="discharge">End maintenance — discharge</button>`);
+        else if (d.case.discharge_date) act.push(`<button class="btn ghost sm" data-act="mmi" data-plan="maintenance">Start a maintenance plan</button>`);
+      }
       if (['now', 'consider', 'ask'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-snooze" data-step="${g.key}">Remind me later</button>`);
       if (openish && g.kind !== 'visit' && w) act.push(`<button class="btn ghost sm" data-act="guide-dismiss" data-step="${g.key}">Not needed…</button>`);
       if (['dismissed', 'snoozed'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-clear" data-step="${g.key}">Undo</button>`);
@@ -766,6 +773,36 @@ function guideCardHtml(d) {
           ${act.length ? `<div class="filters gs-actions">${act.join('')}</div>` : ''}</div></li>`;
     }).join('')}</ol>
     <p class="small muted">Need something else — a second MRI, another opinion, EMG, dental/TMJ? Add it any time on the <button class="linklike" data-act="case-tab" data-tab="referrals">Co-management</button> tab.</p></div>`;
+}
+
+const MAINT_FREQ = [[7, 'Weekly'], [14, 'Every 2 weeks'], [21, 'Every 3 weeks'], [30, 'Monthly (1x per month)'], [42, 'Every 6 weeks'], [60, 'Every 2 months'], [90, 'Every 3 months']];
+const maintenanceLabel = (days) => (MAINT_FREQ.find(([n]) => n === days)?.[1] || `every ${days} days`).replace(/ \(.*\)$/, '').replace(/^./, (x) => x.toLowerCase());
+// At MMI: discharge, or a maintenance plan at a frequency the doctor sets.
+function mmiModal(plan) {
+  const c = S.caseData.case;
+  const maint = c.mmi_date && c.maintenance_every_days && !c.discharge_date;
+  const every = +c.maintenance_every_days || 30;
+  const known = MAINT_FREQ.some(([n]) => n === every);
+  const title = plan === 'discharge' ? 'End maintenance — discharge' : maint ? 'Maintenance frequency' : plan === 'maintenance' ? 'Start a maintenance plan' : 'Reached MMI';
+  const m = openModal({ title, okText: 'Save', body: `
+    ${!plan ? `<p class="small">The patient has improved as much as active treatment is expected to help. Do the final exam and outcome assessments, then choose what happens next.</p>
+      <label class="check mt"><input type="radio" name="mmi-plan" value="discharge"> <span><strong>Discharge</strong> <span class="small muted">— care is complete</span></span></label>
+      <label class="check"><input type="radio" name="mmi-plan" value="maintenance" checked> <span><strong>Maintenance plan</strong> <span class="small muted">— periodic visits to keep the improvement</span></span></label>` : ''}
+    <div class="form-grid mt">
+      <div><label for="mmi-date">${plan === 'discharge' ? 'Discharge date' : maint ? 'Effective' : 'MMI date'}</label><input type="date" id="mmi-date" value="${today()}"></div>
+      <div id="mmi-freq-box"${plan === 'discharge' ? ' hidden' : ''}><label for="mmi-freq">How often (doctor's call)</label><select id="mmi-freq">${MAINT_FREQ.map(([n, t]) => opt(n, t, known ? every : '')).join('')}${opt('custom', 'Other…', known ? '' : 'custom')}</select>
+        <input type="number" id="mmi-days" min="7" max="180" placeholder="Every … days" value="${known ? '' : every}"${known ? ' hidden' : ''} class="mt"></div>
+    </div>
+    ${plan !== 'discharge' ? '<p class="small muted mt">Maintenance visits are prompted at this frequency until you log a final discharge.</p>' : '<p class="small muted mt">Logs a discharge visit on this date.</p>'}`,
+    onOk: async (el) => {
+      const chosen = plan || el.querySelector('[name=mmi-plan]:checked').value;
+      const f = el.querySelector('#mmi-freq').value;
+      const body = { plan: chosen, date: el.querySelector('#mmi-date').value, every_days: f === 'custom' ? +el.querySelector('#mmi-days').value : +f };
+      S.caseData = await api('cases.php?action=mmi&id=' + c.id, body);
+      renderCase(); toast(chosen === 'discharge' ? 'Discharged' : 'Maintenance plan saved');
+    } });
+  m.el.querySelector('#mmi-freq').addEventListener('change', (e) => { m.el.querySelector('#mmi-days').hidden = e.target.value !== 'custom'; });
+  m.el.querySelectorAll('[name=mmi-plan]').forEach((r) => r.addEventListener('change', () => { m.el.querySelector('#mmi-freq-box').hidden = m.el.querySelector('[name=mmi-plan]:checked').value === 'discharge'; }));
 }
 
 async function guideStep(step, body) {
@@ -854,7 +891,7 @@ function referralModal(existing, prefill = {}) {
 }
 
 // --- visits ---
-const VISIT_TYPES = [['initial', 'Initial exam'], ['treatment', 'Treatment'], ['re_exam', 'Re-exam'], ['discharge', 'Discharge (MMI)'], ['no_show', 'No-show']];
+const VISIT_TYPES = [['initial', 'Initial exam'], ['treatment', 'Treatment'], ['re_exam', 'Re-exam'], ['maintenance', 'Maintenance'], ['discharge', 'Discharge'], ['no_show', 'No-show']];
 const visitDefs = () => [
   { n: 'visit_date', l: 'Date of service', t: 'date', req: true },
   { n: 'visit_type', l: 'Visit type', t: 'select', blank: false, opts: VISIT_TYPES },
@@ -1549,7 +1586,7 @@ const FIELD_NAMES = {
   patient_address: 'Address', cpt_codes: 'CPT codes', dwc25_sent: 'DWC-25 sent', staff_finance: 'Staff can see', finance_access: 'Full financial access',
   ehr_name: 'EHR', benefit_limit: 'Benefit limit', entry_date: 'Date', kind: 'Type', bucket: 'Owed by', status_on: 'Status date', insurance_balance: 'Insurance balance',
   patient_balance: 'Patient balance', injury_type: 'Case type', visit_type: 'Visit type', head_injury: 'Head injury',
-  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', guide_discharge: 'Discharge at MMI',
+  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)',
 };
 const humanize = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 function auditValue(c, v) {
@@ -1931,6 +1968,7 @@ const ACTIONS = {
   'add-referral': () => referralModal(null),
   'guide-refer': (el) => referralModal(null, { type: el.dataset.type }),
   'guide-visit': (el) => visitModal(null, { visit_type: el.dataset.type }),
+  'mmi': (el) => mmiModal(el.dataset.plan),
   'emc-result': async (el) => {
     const r = await attempt(() => api('cases.php?action=update&id=' + S.caseData.case.id, { case: { emc_status: el.dataset.v } }));
     if (r) { S.caseData = r; renderCase(); toast('EMC determination recorded'); }

@@ -23,6 +23,7 @@ const CASE_FIELDS = [
     'lop_signed_on' => 'date', 'lop_acknowledged_on' => 'date',
     'balance_forwarded_on' => 'date', 'balance_forwarded_amount' => 'money',
     'actively_treating' => 'bool', 'provider_user_id' => 'user', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
+    'mmi_date' => 'date', 'maintenance_every_days' => 'int',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
 ];
 // These need finance.write instead of case.write. Billing can also move a
@@ -38,7 +39,7 @@ const CHILD_SPECS = [
         'entered_in_chart' => 'bool', 'findings' => 'enc', 'notes' => 'enc',
     ]],
     'visits' => ['perm' => 'clinical.write', 'required' => ['visit_date'], 'fields' => [
-        'visit_date' => 'date', 'visit_type' => ['initial','treatment','re_exam','discharge','no_show'],
+        'visit_date' => 'date', 'visit_type' => ['initial','treatment','re_exam','maintenance','discharge','no_show'],
         'provider_user_id' => 'user', 'cpt_codes' => 'str:255', 'dwc25_sent' => 'bool', 'notes' => 'enc',
     ]],
     // Front desk enters insurance at intake; billing updates it later.
@@ -213,7 +214,8 @@ function full_case(int $id, array $user): array {
     $cutoff = add_days(date('Y-m-d'), -WC_DWC25_DAYS);
     $checklist = case_checklist($c, $milestones, $referrals);
     $guide = care_guide($c, $referrals, $fetch('SELECT * FROM case_guide WHERE case_id = ?'), head_injury_codes(array_column($visits, 'icd_codes')),
-        ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null);
+        ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null,
+        ($seen = array_column(array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'), 'visit_date')) ? max($seen) : null);
     $ctx = [
         'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'totals' => $totals, 'coverages' => $coverages, 'openItems' => $openItems,
         'wcVisits' => ['count' => count($attended), 'missing25' => count(array_filter($attended, fn($v) => !$v['dwc25_sent'] && $v['visit_date'] <= $cutoff))],
@@ -374,6 +376,41 @@ function handle_milestone() {
     json_response(full_case($id, $user));
 }
 
+// ---------- MMI ----------
+// The patient reached maximum medical improvement: discharge (logs the
+// discharge visit), or move to a maintenance plan every N days, chosen by
+// the doctor. Changing the frequency later, or ending maintenance with a
+// final discharge, goes through here too.
+function handle_mmi() {
+    require_method('POST');
+    $user = require_user('clinical.write');
+    $id = (int)($_GET['id'] ?? 0);
+    $c = case_or_404($id);
+    $b = json_body();
+    $plan = (string)($b['plan'] ?? '');
+    $date = date_or_null($b['date'] ?? null) ?? date('Y-m-d');
+    $before = $c;
+    $upd = ['updated_at' => now_str()];
+    if ($plan === 'maintenance') {
+        $every = (int)($b['every_days'] ?? 0);
+        if ($every < 7 || $every > 180) json_response(['error' => 'Choose how often: between every week and every 6 months.'], 400);
+        $upd += ['maintenance_every_days' => $every, 'mmi_date' => $c['mmi_date'] ?: $date, 'discharge_date' => null];
+        if (in_array($c['stage'], ['intake', 'treating'], true)) $upd['stage'] = 'tx_complete';
+        update_row('cases', $id, $upd);
+    } elseif ($plan === 'discharge') {
+        $upd += ['mmi_date' => $c['mmi_date'] ?: $date, 'discharge_date' => $date, 'actively_treating' => 0];
+        if (in_array($c['stage'], ['intake', 'treating'], true)) $upd['stage'] = 'tx_complete';
+        update_row('cases', $id, $upd);
+        $s = pi_db()->prepare("SELECT id FROM visits WHERE case_id = ? AND visit_date = ? AND archived_at IS NULL");
+        $s->execute([$id, $date]);
+        if ($vid = $s->fetchColumn()) pi_db()->prepare("UPDATE visits SET visit_type = 'discharge' WHERE id = ?")->execute([$vid]);
+        else $vid = insert_row('visits', ['case_id' => $id, 'visit_date' => $date, 'visit_type' => 'discharge', 'provider_user_id' => $c['provider_user_id'], 'created_by' => $user['id'], 'created_at' => now_str()]);
+    } else json_response(['error' => 'Choose discharge or maintenance.'], 400);
+    audit('update', 'case', $id, $id, $user, $plan === 'maintenance' ? 'maintenance plan' : 'discharged',
+        audit_diff(['mmi_date' => 'date', 'maintenance_every_days' => 'int', 'discharge_date' => 'date', 'stage' => array_keys(STAGES)], $before, $upd));
+    json_response(full_case($id, $user));
+}
+
 // ---------- care guide ----------
 // The clinic's call on a suggested referral: not needed (with a reason),
 // remind me later, or back to the suggestion.
@@ -416,7 +453,7 @@ function handle_playbook() {
             ['Gaps in care', 'No visit for more than ' . TREATMENT_GAP_DAYS . ' days weakens the claim; the app flags it.'],
             ['Re-exams & outcome assessments', 'Re-examine every ' . RE_EXAM_INTERVAL_DAYS . ' days and repeat the outcome assessments at each re-exam.'],
             ['X-rays', 'Only when clinically indicated — no prompt.'],
-            ['Discharge', 'At maximum medical improvement (MMI); the discharge checklist counts from the discharge date.'],
+            ['MMI', 'At maximum medical improvement the patient is discharged, or moved to a maintenance plan (e.g. once a month — the doctor decides the frequency). The MMI checklist (final ADL, treatment-complete letter) counts from the MMI date; maintenance continues until a final discharge visit.'],
             ['Narrative report', 'Only when the attorney requests one.'],
             ['Reports', 'Chase imaging and consult reports ' . REPORT_CHASE_DAYS . ' days after the appointment and enter them in the chart.'],
             ['Attorney updates', 'Call the attorney within 48 hours of the first visit. Once the case is in demand or litigation, ask for a status update at least every ' . STALE_CORRESPONDENCE_DAYS . ' days.'],
@@ -527,7 +564,12 @@ function handle_child_save() {
         $attended = ($cols['visit_type'] ?? 'treatment') !== 'no_show';
         if ($vd && $attended && (!$c['first_visit'] || $vd < $c['first_visit'])) $upd['first_visit'] = $vd;
         if ($attended && $c['stage'] === 'intake') $upd['stage'] = 'treating';
-        if (($cols['visit_type'] ?? null) === 'discharge') { $upd['discharge_date'] = $cols['visit_date']; $upd['actively_treating'] = 0; if (in_array($c['stage'], ['intake', 'treating'], true)) $upd['stage'] = 'tx_complete'; }
+        // A discharge visit is the final discharge: at MMI, or ending maintenance care.
+        if (($cols['visit_type'] ?? null) === 'discharge') {
+            $upd['discharge_date'] = $cols['visit_date']; $upd['actively_treating'] = 0;
+            if (!$c['mmi_date']) $upd['mmi_date'] = $cols['visit_date'];
+            if (in_array($c['stage'], ['intake', 'treating'], true)) $upd['stage'] = 'tx_complete';
+        }
         if ($upd) update_row('cases', $caseId, $upd);
     }
     touch_case($caseId);
@@ -899,8 +941,9 @@ function handle_letter() {
             . '<p>We extend our sincere gratitude for your prompt attention to this inquiry. Your swift response is truly valued and greatly appreciated. Upon receipt we will update our records to reflect the information provided.</p>';
     } elseif ($type === 'tx_complete') {
         $title = 'Treatment complete';
-        $body = '<p>Please be advised that your client has completed care at our office'
-            . ($c['discharge_date'] ? ' and was released from active treatment on ' . $h($c['discharge_date']) : '') . '.</p>'
+        $body = '<p>Please be advised that your client has completed active care at our office'
+            . ($c['mmi_date'] ? ' and reached maximum medical improvement (MMI) on ' . $h($c['mmi_date']) : ($c['discharge_date'] ? ' and was released from active treatment on ' . $h($c['discharge_date']) : ''))
+            . ($c['maintenance_every_days'] && !$c['discharge_date'] ? '. The patient continues on a maintenance care plan (about every ' . (int)round($c['maintenance_every_days'] / 7) . ' weeks); those visits will appear on future statements' : '') . '.</p>'
             . '<p>Dates of service: ' . $h($c['first_visit'] ?? '—') . ' through ' . $h($d['stats']['lastVisit'] ?? '—') . ' (' . (int)$d['stats']['visitCount'] . ' visits).<br>'
             . 'Total charges: <strong>' . $money($d['totals']['total_charges'] ?? 0) . '</strong>; outstanding balance: <strong>' . $money($d['totals']['total_balance'] ?? 0) . '</strong>.</p>'
             . '<p>Itemized billing and records are available on request. Please confirm whether a final narrative report is required, and keep us informed of the case status.</p>';
@@ -982,6 +1025,7 @@ switch ($action) {
     case 'task_counts': handle_task_counts(); break;
     case 'activity': handle_activity(); break;
     case 'guide_step': handle_guide_step(); break;
+    case 'mmi': handle_mmi(); break;
     case 'playbook': handle_playbook(); break;
     case 'letter': handle_letter(); break;
     default: json_response(['error' => 'Unknown action'], 400);

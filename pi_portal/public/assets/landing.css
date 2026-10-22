@@ -1,12 +1,13 @@
 /* InjuryCase marketing site. Same brand tokens as the app (assets/app.css);
    system fonts only, no third-party requests. */
 :root{
-  /* Three colors only: Navy (text, surfaces), Green (actions, highlights),
-     Mist (shading). White is the page. Tints of navy/green are allowed. */
+  /* Brand: Navy and Green on white/Mist, with supporting accents (blue,
+     violet, amber, teal) to give sections and features some variety. */
   --navy:#0B2340;--green:#1FA866;--mist:#EEF2F7;
+  --blue:#2F6FDE;--violet:#6E56CF;--amber:#E89B1C;--teal:#0E9F9A;--red:#D64550;
   --ink:var(--navy);--muted:rgba(11,35,64,0.72);--bg:#FFFFFF;--bg-2:var(--mist);--line:rgba(11,35,64,0.12);
   --brand:var(--green);--brand-dark:var(--navy);--brand-tint:rgba(31,168,102,0.12);--accent:var(--green);--accent-soft:var(--green);
-  --warn:var(--navy);--danger:var(--navy);
+  --warn:var(--amber);--danger:var(--red);
   --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -156,3 +157,14 @@ h1,h2,h3{letter-spacing:-0.025em;line-height:1.15;}
   .mock-tiles{grid-template-columns:1fr 1fr;}
   .foot nav{margin-left:0;}
 }
+
+/* ---------- supporting accents ---------- */
+.hero{background:radial-gradient(900px 420px at 85% 0%, rgba(31,168,102,0.18), transparent 65%),radial-gradient(900px 500px at 10% -10%, rgba(47,111,222,0.13), transparent 70%);}
+.eyebrow::before{background:linear-gradient(90deg,var(--green),var(--blue));}
+.features article:nth-child(6n+1) .ic{background:rgba(31,168,102,0.13);color:#127A49;}
+.features article:nth-child(6n+2) .ic{background:rgba(47,111,222,0.12);color:#1E4FA8;}
+.features article:nth-child(6n+3) .ic{background:rgba(110,86,207,0.13);color:var(--violet);}
+.features article:nth-child(6n+4) .ic{background:rgba(232,155,28,0.18);color:#8A5300;}
+.features article:nth-child(6n+5) .ic{background:rgba(14,159,154,0.13);color:#0A6F6B;}
+.features article:nth-child(6n+6) .ic{background:rgba(214,69,80,0.12);color:#A3222E;}
+.features article:hover{border-color:rgba(47,111,222,0.35);}

@@ -21,12 +21,19 @@ mark in `src/mark.py`, then run:
 
 - **Logo colors (two only):** Navy `#0B2340` and Green `#1FA866`. White is
   the paper, not a third color.
-- **Website and app (three only):** Navy for text and surfaces, Green for
-  actions and highlights (always with navy text on top, since white on green
-  is too low-contrast), and Mist `#EEF2F7` for shading and backgrounds.
-  Lighter versions of navy or green are fine; no other hues. Urgency in the
-  app is shown by fill (solid navy = urgent, navy outline = important,
-  light = low), not by red or amber.
+- **Website and app:** Navy for text and the sidebar, Green for actions and
+  done states (navy text on green buttons; white on green is too
+  low-contrast for text), on Mist `#EEF2F7`. Supporting colors carry
+  meaning and are used the same way everywhere:
+  | Color | Hex | Means |
+  |---|---|---|
+  | Red | `#D64550` | Urgent, overdue, errors |
+  | Amber | `#E89B1C` | Needs attention, consider |
+  | Blue | `#2F6FDE` | Information, coming up |
+  | Violet | `#6E56CF` | Legal stages (demand, litigation, mediation) |
+  | Teal | `#0E9F9A` | Treatment complete, settled |
+  Soft tints of each are used for chips and backgrounds. The logo stays two
+  colors.
 - **Type:** Inter Display, Medium for "Injury" and Bold for "Case" (SIL Open
   Font License). The wordmark in these files is already converted to outlines.
 - **On dark backgrounds** use the `-dark` lockups: white tile icon, white "Injury", green "Case".

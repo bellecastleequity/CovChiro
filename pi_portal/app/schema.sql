@@ -145,6 +145,11 @@ CREATE TABLE cases (
   -- Head injury (hit head, loss of consciousness, concussion symptoms):
   -- decides whether the care guide suggests a neurology referral.
   head_injury ENUM('unknown','yes','no') NOT NULL DEFAULT 'unknown',
+  -- Maximum medical improvement. At MMI the patient is discharged, or
+  -- moves to maintenance care every N days (set by the doctor) until a
+  -- final discharge.
+  mmi_date DATE NULL,
+  maintenance_every_days SMALLINT NULL,
   -- Set once the case's financials come from uploaded EHR ledgers.
   ehr_system VARCHAR(80) NULL,
   ehr_synced_at DATETIME NULL,
@@ -238,7 +243,7 @@ CREATE TABLE visits (
   id INT AUTO_INCREMENT PRIMARY KEY,
   case_id INT NOT NULL,
   visit_date DATE NOT NULL,
-  visit_type ENUM('initial','treatment','re_exam','discharge','no_show') NOT NULL DEFAULT 'treatment',
+  visit_type ENUM('initial','treatment','re_exam','maintenance','discharge','no_show') NOT NULL DEFAULT 'treatment',
   provider_user_id INT NULL,
   cpt_codes VARCHAR(255) NULL,
   icd_codes VARCHAR(500) NULL,

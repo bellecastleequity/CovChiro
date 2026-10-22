@@ -99,11 +99,11 @@ const CHECKLIST = [
     // neurology and pain-management referrals, re-exams and discharge are
     // timed by the care guide below.
     // Discharge
-    'final_adl'               => ['label' => 'Final ADL survey completed',          'group' => 'At discharge', 'anchor' => 'discharge_date', 'days' => 0, 'cases' => ALL_CASES],
-    'tx_complete_letter'      => ['label' => 'Treatment complete letter sent',      'group' => 'At discharge', 'anchor' => 'discharge_date', 'days' => 7, 'cases' => LIABILITY_CASES],
-    'final_narrative'         => ['label' => 'Narrative report sent (only when the attorney requests it)', 'group' => 'At discharge', 'anchor' => null, 'days' => null, 'cases' => LIABILITY_CASES],
-    'wc_final_status'         => ['label' => 'Final DWC-25 (MMI / discharge status) sent to carrier', 'group' => 'At discharge', 'anchor' => 'discharge_date', 'days' => 3, 'cases' => ['workers_comp']],
-    'records_request'         => ['label' => 'Attorney records request fulfilled',  'group' => 'At discharge', 'anchor' => null, 'days' => null, 'cases' => LIABILITY_CASES],
+    'final_adl'               => ['label' => 'Final ADL survey completed',          'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 0, 'cases' => ALL_CASES],
+    'tx_complete_letter'      => ['label' => 'Treatment complete letter sent',      'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 7, 'cases' => LIABILITY_CASES],
+    'final_narrative'         => ['label' => 'Narrative report sent (only when the attorney requests it)', 'group' => 'At MMI / discharge', 'anchor' => null, 'days' => null, 'cases' => LIABILITY_CASES],
+    'wc_final_status'         => ['label' => 'Final DWC-25 (MMI / discharge status) sent to carrier', 'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 3, 'cases' => ['workers_comp']],
+    'records_request'         => ['label' => 'Attorney records request fulfilled',  'group' => 'At MMI / discharge', 'anchor' => null, 'days' => null, 'cases' => LIABILITY_CASES],
 ];
 
 function days_between(?string $from, ?string $to): ?int {
@@ -299,10 +299,15 @@ const CARE_GUIDE = [
         'when' => 'Consider after 12–16 weeks of conservative care without full resolution.',
         'why' => "If the patient still isn't fully better after 12–16 weeks of conservative care (adjustments, therapy), a pain-management physician can evaluate for injections or other procedures. Documenting that conservative care came first supports medical necessity.",
     ],
-    'discharge' => [
-        'title' => 'Discharge at MMI', 'kind' => 'visit', 'visit_type' => 'discharge', 'types' => [], 'cases' => ALL_CASES,
+    'mmi' => [
+        'title' => 'MMI: discharge or maintenance', 'kind' => 'mmi', 'types' => [], 'cases' => ALL_CASES,
         'when' => 'When the patient reaches maximum medical improvement (MMI).',
-        'why' => "MMI means the patient has improved as much as treatment is expected to help — fully resolved, or stable with lasting impairment. Discharge then, with a final exam and final outcome assessments. The discharge checklist (final ADL, treatment-complete letter to the attorney) counts from the discharge date. A narrative report is only prepared when the attorney requests one.",
+        'why' => "MMI means the patient has improved as much as active treatment is expected to help — fully resolved, or stable with lasting impairment. Do a final exam and final outcome assessments, then either discharge, or move the patient to a maintenance plan (for example once a month; the doctor decides the frequency). The MMI checklist (final ADL, treatment-complete letter to the attorney) counts from the MMI date. A narrative report is only prepared when the attorney requests one.",
+    ],
+    'maintenance' => [
+        'title' => 'Maintenance care', 'kind' => 'visit', 'visit_type' => 'maintenance', 'types' => [], 'cases' => ALL_CASES,
+        'when' => 'After MMI, at the frequency the doctor sets.',
+        'why' => "Maintenance visits help keep the improvement the patient reached. Keeping to the planned frequency documents that the care is planned, not open-ended. When maintenance is no longer needed, log a final discharge visit.",
     ],
 ];
 
@@ -311,7 +316,7 @@ const CARE_GUIDE = [
 // Each step: key, title, when, why, kind, status, text, due, referrals
 // (its referrals, newest first). Status: done | now | consider | ask |
 // upcoming | waiting | na | dismissed | snoozed.
-function care_guide(array $case, array $referrals, array $guideRows = [], array $headCodes = [], ?string $lastExam = null): array {
+function care_guide(array $case, array $referrals, array $guideRows = [], array $headCodes = [], ?string $lastExam = null, ?string $lastVisit = null): array {
     $today = date('Y-m-d');
     $set = [];
     foreach ($guideRows as $g) $set[$g['step']] = $g;
@@ -362,7 +367,8 @@ function care_guide(array $case, array $referrals, array $guideRows = [], array 
             elseif ($headCodes) { $status = 'consider'; $text = 'Diagnosis codes suggest a head injury (' . implode(', ', $headCodes) . ') — confirm and refer'; }
             else { $status = 'ask'; $text = 'Did the patient hit their head, lose consciousness, or have concussion symptoms?'; }
         } elseif ($key === 'reexam') {
-            if ($disch) { $status = 'na'; $text = 'Discharged ' . us_date($disch); }
+            $mmi = $case['mmi_date'] ?? null;
+            if ($mmi || $disch) { $status = 'na'; $text = $mmi ? 'Reached MMI ' . us_date($mmi) : 'Discharged ' . us_date($disch); }
             elseif (!$fv) $text = 'Every 30 days from the first visit';
             else {
                 $last = max($fv, (string)$lastExam);
@@ -377,14 +383,28 @@ function care_guide(array $case, array $referrals, array $guideRows = [], array 
                 $consider = add_days($fv, PAIN_MGMT_CONSIDER_WEEKS * 7);
                 $refer = add_days($fv, PAIN_MGMT_REFER_WEEKS * 7);
                 $week = intdiv(days_between($fv, $disch && $disch < $today ? $disch : $today), 7) + 1;
-                if ($disch && $disch < $consider) { $status = 'na'; $text = 'Discharged before week ' . PAIN_MGMT_CONSIDER_WEEKS; }
+                $end = ($case['mmi_date'] ?? null) ?: $disch;
+                if ($end && $end < $consider) { $status = 'na'; $text = (($case['mmi_date'] ?? null) ? 'Reached MMI' : 'Discharged') . ' before week ' . PAIN_MGMT_CONSIDER_WEEKS; }
                 elseif ($today < $consider) { $text = 'Week ' . $week . ' of care — consider from ' . us_date($consider) . ' (week ' . PAIN_MGMT_CONSIDER_WEEKS . ')'; $due = $consider; }
                 elseif ($today < $refer) { $status = 'consider'; $due = $consider; $text = 'Week ' . $week . " of care — if the patient isn't fully resolved, refer to pain management"; }
                 else { $status = 'now'; $due = $refer; $text = 'Week ' . $week . ' of care — past ' . PAIN_MGMT_REFER_WEEKS . ' weeks without a pain-management referral'; }
             }
-        } elseif ($key === 'discharge') {
-            if ($disch) { $status = 'done'; $text = 'Discharged ' . us_date($disch); }
+        } elseif ($key === 'mmi') {
+            $mmi = $case['mmi_date'] ?? null;
+            $every = (int)($case['maintenance_every_days'] ?? 0);
+            if ($mmi && $every && !$disch) { $status = 'done'; $text = 'Reached MMI ' . us_date($mmi) . ' — maintenance plan ' . maintenance_label($every); }
+            elseif ($disch) { $status = 'done'; $text = ($mmi && $mmi !== $disch ? 'Reached MMI ' . us_date($mmi) . ' · ' : '') . 'Discharged ' . us_date($disch); }
             else $text = $fv ? 'Decide at each re-exam whether the patient has reached MMI' : 'When treatment is complete';
+        } elseif ($key === 'maintenance') {
+            $every = (int)($case['maintenance_every_days'] ?? 0);
+            if (!($case['mmi_date'] ?? null) || !$every) continue;  // only once a maintenance plan exists
+            if ($disch) { $status = 'done'; $text = 'Maintenance ended — discharged ' . us_date($disch); }
+            else {
+                $last = max((string)$case['mmi_date'], (string)$lastVisit);
+                $due = add_days($last, $every);
+                if ($due <= $today) { $status = 'now'; $text = 'Maintenance visit due ' . us_date($due) . ' (' . maintenance_label($every) . '; last visit ' . us_date($last) . ')'; }
+                else $text = 'Next maintenance visit by ' . us_date($due) . ' (' . maintenance_label($every) . ')';
+            }
         }
         // The clinic's own call overrides a suggestion (never a done step).
         $g = $set[$key] ?? null;
@@ -398,6 +418,11 @@ function care_guide(array $case, array $referrals, array $guideRows = [], array 
                 'ordered_on' => $r['ordered_on'], 'completed_on' => $r['completed_on'], 'report_received_on' => $r['report_received_on']], $refs)];
     }
     return $steps;
+}
+
+function maintenance_label(int $days): string {
+    $named = [7 => 'weekly', 14 => 'every 2 weeks', 21 => 'every 3 weeks', 28 => 'every 4 weeks', 30 => 'monthly', 42 => 'every 6 weeks', 56 => 'every 8 weeks', 60 => 'every 2 months', 90 => 'every 3 months'];
+    return $named[$days] ?? 'every ' . $days . ' days';
 }
 
 function us_date(?string $d): string { return $d ? date('n/j/Y', strtotime($d)) : ''; }
@@ -434,7 +459,8 @@ function case_checklist(array $case, array $milestoneRows, array $referrals): ar
         } elseif ($source === 'case' && !$completedOn) {
             $completedOn = $case[$def['field']] ?? null;
         }
-        $anchorDate = $def['anchor'] ? ($case[$def['anchor']] ?? null) : null;
+        // 'care_end': the end of active care — MMI, or discharge if no MMI date.
+        $anchorDate = $def['anchor'] === 'care_end' ? (($case['mmi_date'] ?? null) ?: ($case['discharge_date'] ?? null)) : ($def['anchor'] ? ($case[$def['anchor']] ?? null) : null);
         $due = ($anchorDate && $def['days'] !== null) ? add_days($anchorDate, $def['days']) : null;
         if ($m && $m['not_applicable']) $status = 'na';
         elseif ($completedOn) $status = 'done';
@@ -532,13 +558,17 @@ function case_alerts(array $case, array $ctx): array {
     // Intake/co-management items only nag while the patient is in care;
     // discharge items only once care has ended.
     foreach ($ctx['checklist'] ?? [] as $item) {
-        if (($item['group'] === 'At discharge') === $treatingPhase) continue;
+        if (($item['group'] === 'At MMI / discharge') === $treatingPhase) continue;
         if ($item['status'] === 'overdue') $alerts[] = ['level' => 'medium', 'text' => 'Overdue: ' . $item['label'] . ' (due ' . $item['due'] . ')'];
     }
 
     // Care guide: referrals due or worth considering, while in care.
+    foreach ($ctx['guide'] ?? [] as $g) {
+        if ($g['key'] === 'maintenance' && $g['status'] === 'now') $alerts[] = ['level' => 'low', 'text' => $g['title'] . ': ' . $g['text'] . '.'];
+    }
     if ($treatingPhase) {
         foreach ($ctx['guide'] ?? [] as $g) {
+            if ($g['key'] === 'maintenance') continue;
             if ($g['status'] === 'now') $alerts[] = ['level' => $g['key'] === 'emc' && $g['due'] < $today ? 'high' : 'medium', 'text' => $g['title'] . ' due: ' . $g['text'] . '.'];
             elseif ($g['status'] === 'consider') $alerts[] = ['level' => 'low', 'text' => 'Consider a ' . strtolower($g['title']) . ': ' . $g['text'] . '.'];
             elseif ($g['status'] === 'ask' && $case['first_visit']) $alerts[] = ['level' => 'low', 'text' => 'Head injury? Ask the patient and record it on the case — it decides whether a neurology referral is needed.'];
@@ -623,7 +653,7 @@ function bulk_case_context(PDO $pdo, array $cases): array {
         $ctx[$id]['totals'] = ledger_totals($ledger[$id] ?? []);
         $ctx[$id]['openItems'] = ledger_open_items($ledger[$id] ?? []);
         $ctx[$id]['checklist'] = case_checklist($c, $ctx[$id]['milestones'], $ctx[$id]['referrals']);
-        $ctx[$id]['guide'] = care_guide($c, $ctx[$id]['referrals'], $ctx[$id]['guideRows'], head_injury_codes($ctx[$id]['icd']), $ctx[$id]['lastExam'] ?? null);
+        $ctx[$id]['guide'] = care_guide($c, $ctx[$id]['referrals'], $ctx[$id]['guideRows'], head_injury_codes($ctx[$id]['icd']), $ctx[$id]['lastExam'] ?? null, $ctx[$id]['lastVisit'] ?? null);
     }
     return $ctx;
 }

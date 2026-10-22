@@ -2,16 +2,22 @@
    requests (no Google Fonts, CDNs or analytics), so nothing about who is
    viewing which page leaks to anyone else. */
 :root{
-  /* Three colors only: Navy (text, surfaces), Green (actions, highlights),
-     Mist (shading). White is the card surface. Tints of navy/green allowed.
-     Urgency is shown by fill (solid navy = urgent, navy outline = important,
-     light = low), not by red/amber. */
-  --navy:#0B2340;--green:#1FA866;--mist:#EEF2F7;
+  /* Brand: Navy (text, sidebar) and Green (actions, done), on Mist.
+     Supporting colors carry meaning, used consistently everywhere:
+     Red = urgent / overdue, Amber = needs attention, Blue = information /
+     coming up, Violet = legal stages, Teal = settled. */
+  --navy:#0B2340;--navy-2:#163C66;--green:#1FA866;--green-dark:#127A49;--mist:#EEF2F7;
+  --red:#D64550;--red-ink:#A3222E;--red-tint:rgba(214,69,80,0.12);
+  --amber:#E89B1C;--amber-ink:#8A5300;--amber-tint:rgba(232,155,28,0.16);
+  --blue:#2F6FDE;--blue-ink:#1E4FA8;--blue-tint:rgba(47,111,222,0.11);
+  --violet:#6E56CF;--violet-tint:rgba(110,86,207,0.12);
+  --teal:#0E9F9A;--teal-tint:rgba(14,159,154,0.12);
+  --slate:#8FA3BF;
   --ink:var(--navy);--muted:rgba(11,35,64,0.68);--bg:var(--mist);--bg-2:rgba(11,35,64,0.06);--surface:#FFFFFF;
-  --brand:var(--green);--brand-dark:var(--navy);--brand-light:var(--green);--brand-tint:rgba(31,168,102,0.13);
+  --brand:var(--green);--brand-dark:var(--green-dark);--brand-light:var(--green);--brand-tint:rgba(31,168,102,0.13);
   --accent:var(--green);--accent-tint:rgba(31,168,102,0.13);
-  --warn:var(--navy);--warn-ink:var(--navy);--warn-tint:rgba(11,35,64,0.07);--line:rgba(11,35,64,0.12);--danger:var(--navy);--danger-tint:rgba(11,35,64,0.08);
-  --nav-bg:var(--navy);--nav-ink:rgba(255,255,255,0.78);
+  --warn:var(--amber);--warn-ink:var(--amber-ink);--warn-tint:var(--amber-tint);--line:rgba(11,35,64,0.12);--danger:var(--red);--danger-tint:var(--red-tint);
+  --nav-bg:linear-gradient(180deg,var(--navy) 0%,#0F2D50 100%);--nav-ink:rgba(255,255,255,0.78);
   --radius:10px;--shadow:0 1px 2px rgba(11,35,64,0.05),0 6px 20px rgba(11,35,64,0.05);
   --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -297,3 +303,66 @@ table.audit td{vertical-align:top;}
 .steps li.on{background:var(--brand-tint);color:var(--navy);font-weight:600;}
 .playbook-steps{padding-left:20px;display:grid;gap:10px;margin-top:8px;}
 .playbook-steps p{margin-top:2px;max-width:80ch;}
+
+/* ---------- color: meaning ---------- */
+.btn.danger{color:var(--red-ink);border-color:var(--red);}
+.btn.danger:hover{background:var(--red);border-color:var(--red);color:#fff;}
+.notice{background:var(--amber-tint);border-color:var(--amber);}
+.notice.ok{background:var(--accent-tint);border-color:var(--accent);}
+.banner.info{background:var(--blue-tint);color:var(--navy);}
+.banner.warn{background:var(--amber-tint);color:var(--navy);box-shadow:inset 4px 0 0 var(--amber);}
+.banner.danger{background:var(--red);color:#fff;}
+.banner.danger a{color:#fff;}
+.banner-inline{background:var(--blue-tint);}
+.toast.error{background:var(--red);color:#fff;}
+.err{color:var(--red-ink);}
+.tabs button.active{color:var(--navy);}
+.linklike:hover,.btn.link:hover{text-decoration-color:var(--blue);color:var(--blue-ink);}
+/* urgency */
+.alerts .high .dot{background:var(--red);box-shadow:0 0 0 3px var(--red-tint);}
+.alerts .medium .dot{background:var(--amber);box-shadow:0 0 0 3px var(--amber-tint);}
+.alerts .low .dot{background:var(--slate);}
+.badge-count{background:var(--red);}
+.badge-count.med{background:var(--amber);color:#fff;box-shadow:none;}
+.chip.overdue,.chip.red{background:var(--red);color:#fff;}
+.chip.due,.chip.ochre{background:var(--amber-tint);color:var(--amber-ink);box-shadow:none;}
+.chip.done,.chip.teal{background:var(--brand-tint);color:var(--green-dark);}
+.chip.upcoming,.chip.waiting{background:var(--blue-tint);color:var(--blue-ink);border-color:transparent;}
+.chip.info{background:var(--blue-tint);color:var(--blue-ink);}
+.chip.legal{background:var(--violet-tint);color:var(--violet);}
+.chip.settled{background:var(--teal-tint);color:#0A6F6B;}
+.bar.warn > i{background:var(--amber);}
+.bar.over > i{background:var(--red);}
+.nav-badge.due{background:var(--red);color:#fff;}
+.alarm td:first-child,.activity li.alarm .when{box-shadow:inset 3px 0 0 var(--red);}
+/* checks (EHR preview) */
+.ck-ok .ck{background:var(--green);color:#fff;}
+.ck-fill .ck{background:var(--blue-tint);color:var(--blue-ink);box-shadow:none;}
+.ck-mismatch .ck{background:var(--red);color:#fff;}
+.ck-missing .ck{background:var(--amber-tint);color:var(--amber-ink);}
+.ck-info .ck{background:var(--bg-2);color:var(--muted);}
+/* care guide */
+.guide-steps > li.gs-done::before{background:var(--green);color:#fff;}
+.guide-steps > li.gs-now::before{background:var(--red);color:#fff;}
+.guide-steps > li.gs-consider::before,.guide-steps > li.gs-ask::before{background:var(--amber);color:#fff;box-shadow:none;}
+.guide-steps > li.gs-upcoming::before,.guide-steps > li.gs-waiting::before,.guide-steps > li.gs-snoozed::before{background:var(--blue-tint);color:var(--blue-ink);}
+.card.guide{border-top:3px solid var(--green);}
+.steps li.on{background:var(--brand-tint);color:var(--green-dark);}
+/* dashboard tiles and pipeline */
+.tile{border-left:4px solid var(--line);}
+.tiles .tile:nth-child(1){border-left-color:var(--green);}
+.tiles .tile:nth-child(2){border-left-color:var(--blue);}
+.tiles .tile:nth-child(3){border-left-color:var(--teal);}
+.tiles .tile:nth-child(4){border-left-color:var(--violet);}
+.tiles .tile:nth-child(5){border-left-color:var(--amber);}
+.tiles .tile:nth-child(6){border-left-color:var(--red);}
+.pipe{border-top:3px solid var(--slate);background:var(--surface);}
+.pipe[data-stage=intake]{border-top-color:var(--blue);}
+.pipe[data-stage=treating]{border-top-color:var(--green);}
+.pipe[data-stage=tx_complete]{border-top-color:var(--teal);}
+.pipe[data-stage=demand],.pipe[data-stage=litigation],.pipe[data-stage=mediation],.pipe[data-stage=negotiating]{border-top-color:var(--violet);}
+.pipe[data-stage=settled]{border-top-color:var(--teal);}
+.pipe[data-stage=closed],.pipe[data-stage=dropped]{border-top-color:var(--slate);}
+.pipe:hover{border-color:var(--line);box-shadow:var(--shadow);}
+.auth-wrap{background:radial-gradient(900px 420px at 20% -10%, rgba(31,168,102,0.18), transparent 70%),radial-gradient(800px 400px at 90% 0%, rgba(47,111,222,0.14), transparent 70%),var(--bg);}
+.plan-card ul li::before{color:var(--green);}
