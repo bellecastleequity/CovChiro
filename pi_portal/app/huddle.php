@@ -80,7 +80,8 @@ function build_huddle(PDO $pdo, array $user, int $practiceId): array {
             if (!empty($a['fin'])) $sec = 'money';
             elseif (str_starts_with($t, 'Overdue: ')) $sec = 'checklist';
             elseif (preg_match('/attorney|correspondence|Settled|settled|Reduction|Follow-up due/i', $t)) $sec = 'legal';
-            elseif (preg_match('/PIP|EMC|insurance|authoriz|DWC-25|policy limits|letter of protection|patient balance/i', $t)) $sec = 'money';
+            elseif (preg_match('/treatment plan after/i', $t)) $sec = 'care';
+            elseif (preg_match('/PIP|EMC|insurance|authoriz|DWC-25|policy limits|letter.of.protection|patient balance|claim entered|not billed|demand letter|cure period/i', $t)) $sec = 'money';
             else $sec = 'referrals';
             if ($sec === 'money' && !$bal && preg_match('/PIP has paid|insurance charge/', $t)) continue;
             $crit = !empty($a['fin']) ? 'money' : null;

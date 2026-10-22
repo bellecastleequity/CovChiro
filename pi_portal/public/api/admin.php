@@ -236,17 +236,18 @@ function handle_location_save() {
     require_feature('locations');
     $b = json_body();
     $id = (int)($b['id'] ?? 0);
-    $cols = ['name' => str_or_null($b['name'] ?? null, 120), 'address' => str_or_null($b['address'] ?? null, 255), 'phone' => str_or_null($b['phone'] ?? null, 40),
+    $st = strtoupper(trim((string)($b['state'] ?? '')));
+    $cols = ['name' => str_or_null($b['name'] ?? null, 120), 'address' => str_or_null($b['address'] ?? null, 255), 'state' => isset(US_STATES[$st]) ? $st : null, 'phone' => str_or_null($b['phone'] ?? null, 40),
         'fax' => str_or_null($b['fax'] ?? null, 40), 'active' => array_key_exists('active', $b) ? (!empty($b['active']) ? 1 : 0) : 1];
     if (!$cols['name']) json_response(['error' => 'Give the location a name.'], 400);
     $pdo = pi_db();
     if ($id) {
         $s = $pdo->prepare('SELECT * FROM locations WHERE id = ? AND practice_id = ?'); $s->execute([$id, pid()]);
         $before = $s->fetch() ?: json_response(['error' => 'Not found'], 404);
-        $pdo->prepare('UPDATE locations SET name = ?, address = ?, phone = ?, fax = ?, active = ? WHERE id = ? AND practice_id = ?')->execute([...array_values($cols), $id, pid()]);
-        audit('update', 'location', $id, null, $admin, $cols['name'], audit_diff(['name' => 'label', 'address' => 'label', 'phone' => 'label', 'fax' => 'label', 'active' => 'bool'], $before, $cols));
+        $pdo->prepare('UPDATE locations SET name = ?, address = ?, state = ?, phone = ?, fax = ?, active = ? WHERE id = ? AND practice_id = ?')->execute([...array_values($cols), $id, pid()]);
+        audit('update', 'location', $id, null, $admin, $cols['name'], audit_diff(['name' => 'label', 'address' => 'label', 'state' => 'label', 'phone' => 'label', 'fax' => 'label', 'active' => 'bool'], $before, $cols));
     } else {
-        $pdo->prepare('INSERT INTO locations (practice_id, name, address, phone, fax, active, created_at) VALUES (?,?,?,?,?,?,?)')->execute([pid(), ...array_values($cols), now_str()]);
+        $pdo->prepare('INSERT INTO locations (practice_id, name, address, state, phone, fax, active, created_at) VALUES (?,?,?,?,?,?,?,?)')->execute([pid(), ...array_values($cols), now_str()]);
         $id = (int)$pdo->lastInsertId();
         audit('create', 'location', $id, null, $admin, $cols['name']);
     }

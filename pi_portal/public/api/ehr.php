@@ -327,7 +327,7 @@ function handle_apply() {
     $claim = $data['accident']['claim_number'];
     if (!$target && ($claim || $data['accident']['insurer'])) {
         $pdo->prepare("INSERT INTO coverages (case_id, type, priority, carrier_text, claim_number_enc, status, benefit_limit, created_by, created_at, updated_at) VALUES (?, 'pip', 1, ?, ?, 'active', ?, ?, ?, ?)")
-            ->execute([$caseId, $data['accident']['insurer'], enc($claim), PIP_DEFAULT_LIMIT, $user['id'], $now, $now]);
+            ->execute([$caseId, $data['accident']['insurer'], enc($claim), case_rules($c)['pip_medical'], $user['id'], $now, $now]);
         $target = ['id' => (int)$pdo->lastInsertId(), 'type' => 'pip'];
     } elseif ($target && $target['type'] === 'pip') {
         if ($claim && !$target['claim_number_enc']) $pdo->prepare('UPDATE coverages SET claim_number_enc = ?, updated_at = ? WHERE id = ?')->execute([enc($claim), $now, $target['id']]);

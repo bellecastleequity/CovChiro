@@ -617,9 +617,13 @@ const caseDefs = () => [
   { n: 'provider_user_id', l: 'Treating provider', t: 'user' },
   ...((S.lookups.locations || []).length && !S.user.locationRestricted ? [{ n: 'location_id', l: 'Location', t: 'select', blank: '—', opts: S.lookups.locations.map((l) => [l.id, l.name]) }] : []),
   { n: 'head_injury', l: 'Head injury? (hit head, lost consciousness, concussion symptoms)', t: 'select', blank: false, opts: HEAD_INJURY_OPTS },
+  { n: 'jurisdiction', l: 'State whose rules apply (PIP, deadlines, liens)', t: 'select', blank: "Practice's state", opts: stateOpts() },
 ];
 
 const HEAD_INJURY_OPTS = [['unknown', 'Not asked yet'], ['yes', 'Yes'], ['no', 'No']];
+// State pickers: every state with how well the app's rules cover it.
+const stateOpts = () => (S.lookups.states || []).map((st) => [st.code, `${st.name}${st.support === 'basic' ? '' : ' — ' + S.lookups.supportLabels[st.support].toLowerCase()}`]);
+const stateName = (code) => (S.lookups.states || []).find((st) => st.code === code)?.name || code;
 // Insurance on the new-case form: the usual first payer for the case type.
 const NEW_COVERAGE_DEFS = () => [
   { n: 'cov_type', l: 'Insurance', t: 'select', blank: 'None — patient balance / LOP', opts: entries(S.lookups.coverageTypes) },
@@ -681,7 +685,8 @@ function renderCase() {
       <h1>${esc([p.first_name, p.last_name].filter(Boolean).join(' '))}</h1>
       <div class="meta"><span class="mono small muted">${esc(c.case_number)}</span>
         ${c.benefits ? `<span class="chip">${esc(label('benefits', c.benefits))}</span>` : ''}
-        <span class="chip ${c.emc_status === 'yes' ? 'teal' : c.emc_status === 'no' ? 'red' : 'ochre'}">EMC: ${esc(c.emc_status)}</span>
+        <span class="chip" title="${esc(d.rules.name + ' rules — ' + S.lookups.supportLabels[d.rules.support])}">${esc(d.rules.code)} rules</span>
+        ${d.rules.emcRule && c.injury_type === 'auto' ? `<span class="chip ${c.emc_status === 'yes' ? 'teal' : c.emc_status === 'no' ? 'red' : 'ochre'}">EMC: ${esc(c.emc_status)}</span>` : ''}
         ${c.actively_treating == 1 ? '<span class="chip teal">Actively treating</span>' : ''}
         <span class="small muted">DOI ${esc(fmtDate(c.date_of_injury))} · ${d.stats.visitCount} visits · last ${esc(fmtDate(d.stats.lastVisit))}${atty ? ' · ' + esc(contactName(atty)) : ''}</span>
       </div></div>
@@ -731,7 +736,9 @@ function tabOverview(el, d) {
         <dt>Insurance</dt><dd>${(d.coverages || []).length ? d.coverages.map((cv) => `<div>${esc(label('coverageTypes', cv.type))}${cv.carrier_org || cv.carrier_text ? ' — ' + esc(cv.carrier_org || cv.carrier_text) : ''} <span class="chip ${cv.status === 'active' ? 'teal' : 'na'}">${esc(label('coverageStatus', cv.status))}</span>${cv.claim_number ? `<div class="small muted">Claim # ${esc(cv.claim_number)}</div>` : ''}</div>`).join('') : '<span class="muted">None — patient balance / LOP</span>'}</dd>
         <dt>Policy limits</dt><dd>${c.bi_limit || c.um_limit ? `${c.bi_limit ? 'At-fault BI ' + esc(money(c.bi_limit)) : ''}${c.bi_limit && c.um_limit ? ' · ' : ''}${c.um_limit ? 'UM ' + esc(money(c.um_limit)) : ''}${c.limits_source ? `<div class="small muted">${esc(c.limits_source)}${c.limits_noted_on ? ' · ' + esc(fmtDate(c.limits_noted_on)) : ''}</div>` : ''}` : '<span class="muted">Not known yet — ask the attorney</span>'}
           ${can('case.write') || can('finance.write') ? ' <button class="linklike small" data-act="edit-limits">Edit</button>' : ''}</dd>
-        ${row('Bills go to', label('benefits', c.benefits))}${c.injury_type === 'auto' ? row('EMC determination', c.emc_status) : ''}
+        ${row('Bills go to', label('benefits', c.benefits))}${c.injury_type === 'auto' && d.rules.emcRule ? row('EMC determination', c.emc_status + (c.emc_by ? ' · by ' + (S.lookups.emcCredentials[c.emc_by] || c.emc_by) : '') + (c.emc_on ? ' · ' + fmtDate(c.emc_on) : '')) : ''}
+        ${c.injury_type === 'auto' && d.rules.tortOptions ? row('Lawsuit option', c.tort_option === 'unknown' ? 'Not asked yet' : d.rules.tortOptions[c.tort_option]) : ''}
+        ${row('State rules', d.rules.name + ' · ' + S.lookups.supportLabels[d.rules.support])}
         ${row('LOP signed', c.lop_signed_on ? fmtDate(c.lop_signed_on) + (c.lop_acknowledged_on ? ' · firm acknowledged ' + fmtDate(c.lop_acknowledged_on) : ' · not countersigned') : '')}
         ${row('Actively treating', c.actively_treating == 1 ? 'Yes' : 'No')}
         ${row('Treatment plan', c.plan_visits_per_week ? `${+c.plan_visits_per_week}x/week${c.plan_set_on ? ' since ' + fmtDate(c.plan_set_on) : ''}` : '')}
@@ -742,20 +749,25 @@ function tabOverview(el, d) {
         <dl class="kv">${row('Name', [p.first_name, p.last_name].join(' '))}${row('Date of birth', fmtDate(p.dob))}${row('Phone', p.phone)}${row('Email', p.email)}${row('Address', p.address)}</dl></div>
       <div class="card"><div class="card-head"><h2>Case notes</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-notes">Edit</button>' : ''}</div>
         <div class="small prewrap">${c.notes ? esc(c.notes) : '<span class="muted">No notes.</span>'}</div></div>
+      ${stateRulesCardHtml(d)}
       <div class="card"><div class="card-head"><h2>Letters</h2></div>
         <div class="filters"><button class="btn ghost sm" data-act="letter" data-type="status_request">Status update request</button>
         <button class="btn ghost sm" data-act="letter" data-type="attendance">Scheduling help (attendance)</button>
         ${can('export') || can('case.write') ? '<button class="btn ghost sm" data-act="export-file">Export patient file</button>' : ''}
         ${fin('balances') ? '<button class="btn ghost sm" data-act="letter" data-type="tx_complete">Treatment complete</button>' : ''}
-        ${fin('settlement') ? '<button class="btn ghost sm" data-act="letter" data-type="reduction_response">Reduction response</button>' : ''}</div>
-        <p class="small muted">Opens a printable letter addressed to the attorney of record. Log it under Correspondence once sent.</p></div>
+        ${fin('settlement') ? '<button class="btn ghost sm" data-act="letter" data-type="reduction_response">Reduction response</button>' : ''}
+        ${d.rules.demandLetter && fin('ledger') && (d.coverages || []).some((cv) => cv.type === 'pip') ? '<button class="btn ghost sm" data-act="letter" data-type="pip_demand">PIP pre-suit demand (to insurer)</button>' : ''}</div>
+        <p class="small muted">Opens a printable letter addressed to the attorney of record (the PIP demand goes to the insurer). Log it under Correspondence once sent.</p></div>
     </div></div>`;
 }
 
 function editCaseModal() {
   const d = S.caseData, c = d.case;
   const defs = [...caseDefs(), { n: 'discharge_date', l: 'Discharge date', t: 'date' },
-    { n: 'emc_status', l: 'EMC determination', t: 'select', blank: false, opts: [['pending', 'Pending'], ['yes', 'Yes — EMC exists'], ['no', 'No EMC']] },
+    ...(d.rules.emcRule && c.injury_type === 'auto' ? [{ n: 'emc_status', l: 'EMC determination', t: 'select', blank: false, opts: [['pending', 'Pending'], ['yes', 'Yes — EMC exists'], ['no', 'No EMC']] },
+      { n: 'emc_by', l: 'EMC determined by (MD, DO, dentist, PA or APRN only)', t: 'select', blank: 'Not recorded', opts: entries(S.lookups.emcCredentials) },
+      { n: 'emc_on', l: 'EMC determined on', t: 'date' }] : []),
+    ...(d.rules.tortOptions && c.injury_type === 'auto' ? [{ n: 'tort_option', l: "Lawsuit (tort) option on the patient's policy", t: 'select', blank: false, opts: [['unknown', 'Not asked yet'], ...entries(d.rules.tortOptions)] }] : []),
     { n: 'plan_visits_per_week', l: 'Treatment plan: visits per week', t: 'select', blank: 'Not set', opts: [['1', '1x/week'], ['1.5', '1–2x/week'], ['2', '2x/week'], ['2.5', '2–3x/week'], ['3', '3x/week'], ['4', '4x/week'], ['5', '5x/week']] },
     { n: 'plan_set_on', l: 'Plan in effect since', t: 'date' },
     { n: 'actively_treating', l: 'Actively treating', t: 'check' }];
@@ -1015,13 +1027,21 @@ function guideSnoozeModal(step) {
 
 // ---------- PI playbook ----------
 async function pagePlaybook(main) {
-  const r = await attempt(() => api('cases.php?action=playbook'));
+  const want = new URLSearchParams(location.hash.split('?')[1] || '').get('state');
+  const r = await attempt(() => api('cases.php?action=playbook' + (want ? '&state=' + encodeURIComponent(want) : '')));
   if (!r) return;
+  const st = r.state;
   const groups = {};
   r.checklist.forEach((i) => (groups[i.group] = groups[i.group] || []).push(i));
   const types = (cs) => cs.length === 3 ? 'All cases' : cs.map((c) => label('injuryTypes', c)).join(', ');
-  main.innerHTML = `<div class="page-head"><div><h1>PI playbook</h1><div class="sub">How a personal injury case runs, and the timelines ${esc(S.brand.name)} keeps you on. Every case shows these as next steps, checklist items and alerts.</div></div></div>
-    <div class="card"><h2>Care timeline</h2>
+  main.innerHTML = `<div class="page-head"><div><h1>PI playbook</h1><div class="sub">How a personal injury case runs, and the timelines ${esc(S.brand.name)} keeps you on. Every case shows these as next steps, checklist items and alerts.</div></div>
+      <span class="spacer"></span><div><label for="pb-state">State</label><select id="pb-state">${stateOpts().map(([k, t]) => opt(k, t, st.code)).join('')}</select></div></div>
+    <div class="card"><div class="card-head"><h2>${esc(st.name)}: what's different</h2><span class="chip ${st.support === 'full' ? 'teal' : st.support === 'limited' ? 'ochre' : ''}">${esc(S.lookups.supportLabels[st.support])}</span></div>
+      ${st.verified ? '' : `<div class="notice small">Draft rules from published sources (October 2026) — confirm with an attorney licensed in ${esc(st.name)} before relying on them. Not legal advice.</div>`}
+      ${st.support === 'basic' ? `<p class="small muted mt-sm">${esc(st.name)} isn't configured yet, so cases there use general at-fault-state rules: no PIP deadlines, letters of protection for the balance. The care guide, checklist and alerts below still apply.</p>` : ''}
+      <dl class="kv mt">${st.summary.map(([t, x]) => `<dt>${esc(t)}</dt><dd>${esc(x)}</dd>`).join('')}</dl></div>
+    
+    <div class="card mt"><h2>Care timeline</h2>
       <ol class="playbook-steps">${r.guide.map((g) => `<li><strong>${esc(g.title)}</strong>${g.cases.length < 3 ? ` <span class="chip">${esc(g.cases.map((c) => label('injuryTypes', c)).join(', '))} only</span>` : ''} — <span>${esc(g.when)}</span><p class="small muted">${esc(g.why)}</p></li>`).join('')}</ol>
       <p class="small muted">More than one of any referral is normal (an MRI per region, a second ortho opinion). Add others — EMG, X-ray, physical therapy, dental/TMJ — whenever the patient needs them.</p></div>
     <div class="card mt"><h2>Best outcomes, well-documented cases</h2>
@@ -1033,7 +1053,7 @@ async function pagePlaybook(main) {
         <dt>Objective testing</dt><dd>MRI for structural injury; EMG/NCV when there's radiating pain, numbness or tingling; neuropsychological testing for lasting concussion symptoms.</dd>
         <dt>Specialist involvement</dt><dd>Positive MRI findings → orthopedic evaluation. Follow through on what specialists recommend (injections, pain management, surgical consult).</dd>
         <dt>Measure progress</dt><dd>Outcome assessments at intake and every re-exam show improvement and lasting limitations in numbers.</dd>
-        <dt>At MMI</dt><dd>If symptoms or impairment remain, ask the treating specialist for a permanency opinion and impairment rating. In Florida auto cases, non-economic damages generally require a permanent injury.</dd>
+        <dt>At MMI</dt><dd>If symptoms or impairment remain, ask the treating specialist for a permanency opinion and impairment rating. In no-fault states, pain-and-suffering claims usually depend on the injury meeting the state's threshold (see above).</dd>
         <dt>Keep the attorney informed</dt><dd>Attorney on file, letter of protection signed, records and bills sent promptly.</dd>
       </dl></div>
     <div class="card mt"><h2>Wording: write for every reader</h2>
@@ -1047,6 +1067,7 @@ async function pagePlaybook(main) {
     <div class="card mt"><h2>Rules that cost money if missed</h2><dl class="kv">${r.rules.map(([t, x]) => `<dt>${esc(t)}</dt><dd>${esc(x)}</dd>`).join('')}</dl></div>
     <div class="card mt"><h2>Case checklist</h2>${Object.entries(groups).map(([g, items]) => `<h3 class="mt">${esc(g)}</h3>
       <table><thead><tr><th>Item</th><th>When</th><th>Applies to</th></tr></thead><tbody>${items.map((i) => `<tr><td>${esc(i.label)}</td><td class="small">${esc(i.when)}</td><td class="small muted">${esc(types(i.cases))}</td></tr>`).join('')}</tbody></table>`).join('')}</div>`;
+  main.querySelector('#pb-state').addEventListener('change', (e) => { location.hash = '#/playbook?state=' + e.target.value; });
 }
 
 // --- referrals / co-management ---
@@ -1232,7 +1253,7 @@ function tabFinancials(el, d) {
   const covCards = (d.coverages || []).map((cv) => {
     const b = t.by_coverage[cv.id] || { charges: 0, paid: 0, adjusted: 0, moved_out: 0, moved_in: 0, balance: 0 };
     const statusCls = cv.status === 'active' ? 'teal' : cv.status === 'closed' ? 'na' : 'overdue';
-    const limit = cv.type === 'pip' ? `<div class="small">Limit ${money(cv.benefit_limit ?? 10000)}${c.emc_status !== 'yes' ? ` · ${money(c.pip_effective_limit)} without EMC` : ''}</div>` : '';
+    const limit = cv.type === 'pip' ? `<div class="small">Limit ${cv.benefit_limit != null ? money(cv.benefit_limit) : d.rules.pipMedical ? money(d.rules.pipMedical) : 'not set'}${d.rules.emcRule && +c.pip_effective_limit < +(cv.benefit_limit ?? d.rules.pipMedical) ? ` · ${money(c.pip_effective_limit)} without a qualifying EMC` : ''}${cv.policy_effective_on ? ' · policy from ' + esc(fmtDate(cv.policy_effective_on)) : ''}</div>${cv.demand_sent_on ? `<div class="small">Pre-suit demand sent ${esc(fmtDate(cv.demand_sent_on))}</div>` : ''}` : '';
     const auth = cv.type === 'workers_comp' ? `<div class="small">Authorized: ${cv.authorized_visits ? esc(cv.authorized_visits) + ' visits' : 'visits not set'}${cv.authorized_through ? ' through ' + esc(fmtDate(cv.authorized_through)) : ''}</div>` : '';
     return `<div class="cov">
       <div class="cov-head"><strong>${esc(covName(cv))}</strong><span class="chip ${statusCls}">${esc(label('coverageStatus', cv.status))}${cv.status_on && cv.status !== 'active' ? ' ' + esc(fmtDate(cv.status_on)) : ''}</span><span class="spacer"></span><span class="small muted">Billing order ${esc(cv.priority)}</span></div>
@@ -1279,6 +1300,8 @@ function tabFinancials(el, d) {
         <div class="card"><div class="card-head"><h2>LOP &amp; settlement</h2><span class="spacer"></span>${can('case.write') || fw ? '<button class="btn ghost sm" data-act="edit-lop">Edit</button>' : ''}</div>
           <div class="money-row"><span>LOP signed by patient</span><strong>${esc(fmtDate(c.lop_signed_on))}</strong></div>
           <div class="money-row"><span>Acknowledged by law firm</span><strong>${c.lop_acknowledged_on ? esc(fmtDate(c.lop_acknowledged_on)) : (c.lop_signed_on ? 'Not countersigned' : '—')}</strong></div>
+          ${d.rules.lopDisclosure && c.lop_signed_on ? `<div class="money-row"><span>Disclosure facts (§768.0427)</span><strong>${c.lop_factored === 'unknown' ? 'Not recorded' : (c.lop_factored === 'yes' ? 'Factored' + (c.lop_factor_company ? ' to ' + esc(c.lop_factor_company) : '') + (c.lop_factor_price ? ' for ' + money(c.lop_factor_price) : '') : 'Not factored')} · health coverage: ${esc({ unknown: 'not recorded', yes: 'yes', no: 'no' }[c.lop_health_coverage] || 'not recorded')}</strong></div>` : ''}
+          ${d.rules.balanceBilling !== 'allowed' ? `<div class="notice mt">${esc(d.rules.balanceNote || 'This state limits billing the patient above the fee schedule.')}</div>` : ''}
           <div class="money-row"><span>Balance forwarded to attorney</span><strong>${c.balance_forwarded_on ? esc(fmtDate(c.balance_forwarded_on)) + (showSet ? ' · ' + money(c.balance_forwarded_amount) : '') : '—'}</strong></div>
           ${showSet ? `<div class="money-row"><span>${Math.round(S.lookups.reductionFloorPct * 100)}% floor (of patient balance)</span><strong>${money(t.reduction_floor)}</strong></div>
           <div class="money-row"><span>Attorney offer</span><strong>${money(c.atty_offer)}${c.atty_offer && t.patient_balance > 0 ? ` <span class="small muted">(${Math.round(c.atty_offer / t.patient_balance * 1000) / 10}%)</span>` : ''}</strong></div>
@@ -1326,11 +1349,13 @@ const coverageDefs = () => [
   { n: 'carrier_text', l: 'Carrier (if not in contacts)', ph: 'e.g. Florida Blue' },
   { n: 'claim_number', l: 'Claim #' }, { n: 'policy_number', l: 'Policy / member #' },
   { n: 'adjuster', l: 'Adjuster', ph: 'Name, phone' },
-  { n: 'benefit_limit', l: 'Benefit limit ($) — PIP is usually 10,000', t: 'money' },
+  { n: 'benefit_limit', l: `Benefit limit ($)${S.caseData?.rules?.pipMedical ? ' — ' + S.caseData.rules.name + ' minimum is ' + Math.round(S.caseData.rules.pipMedical).toLocaleString() : ''}`, t: 'money' },
+  { n: 'policy_effective_on', l: 'Policy issued / renewed on (some state changes depend on it)', t: 'date' },
   { n: 'remaining_reported', l: 'Remaining per carrier ($) — from the adjuster / PIP payout log', t: 'money' },
   { n: 'remaining_reported_on', l: 'Remaining as of', t: 'date' },
   { n: 'authorized_visits', l: "Authorized visits (workers' comp)", t: 'number' },
   { n: 'authorized_through', l: "Authorized through (workers' comp)", t: 'date' },
+  ...(S.caseData?.rules?.demandLetter ? [{ n: 'demand_sent_on', l: 'PIP pre-suit demand letter sent on (starts the 30-day clock)', t: 'date' }] : []),
   { n: 'notes', l: 'Notes', t: 'textarea' },
 ];
 function coverageModal(existing) {
@@ -1664,6 +1689,15 @@ function limitsModal() {
     body: `<p class="small">The attorney usually knows the at-fault driver's limits by the first call. These are the money that will pay the claim — medical bills, the attorney's fee and the patient's recovery all come out of them.</p>${fieldsHtml(LIMIT_DEFS, { limits_noted_on: today(), ...Object.fromEntries(LIMIT_DEFS.map((f) => [f.n, c[f.n] ?? (f.n === 'limits_noted_on' ? today() : '')])) })}`,
     onOk: async (el) => { S.caseData = await api('cases.php?action=update&id=' + c.id, { case: readFields(el, LIMIT_DEFS) }); renderCase(); toast('Policy limits saved'); } });
 }
+// The rules of the case's state, from the server (app/jurisdictions.php).
+function stateRulesCardHtml(d) {
+  const r = d.rules;
+  return `<div class="card"><div class="card-head"><h2>${esc(r.name)} rules</h2><span class="chip ${r.support === 'full' ? 'teal' : r.support === 'limited' ? 'ochre' : ''}">${esc(S.lookups.supportLabels[r.support])}</span><span class="spacer"></span><a class="small" href="#/playbook?state=${esc(r.code)}">Playbook</a></div>
+    ${r.verified ? '' : `<div class="notice small">Draft rules from published sources — confirm with an attorney licensed in ${esc(r.name)} before relying on them. Not legal advice.</div>`}
+    ${r.support === 'limited' ? '<div class="notice small">This state caps provider charges and reviews care in ways this app only partly models — balances, letters of protection and reductions may not apply.</div>' : ''}
+    <details class="mt-sm"><summary class="small">What's different in ${esc(r.name)}</summary><dl class="kv small mt-sm">${r.summary.map(([t, x]) => `<dt>${esc(t)}</dt><dd>${esc(x)}</dd>`).join('')}</dl></details></div>`;
+}
+
 function caseValueCardHtml(d) {
   const v = d.caseValue;
   if (!v) return '';
@@ -1689,7 +1723,12 @@ function caseValueCardHtml(d) {
       <p class="small muted">A settlement usually splits into thirds — attorney's fee, medical bills, the patient. Past about a third, reductions become likely; plan care and other coverage (UM, health insurance, MedPay) with the attorney. Clinical decisions stay with the doctor.</p>
       ${edit ? '<button class="btn ghost sm" data-act="edit-limits">Edit limits</button>' : ''}</div>`;
   }
-  return `<div class="card case-value"><h2>Policy limits &amp; case value</h2>${pipHtml}${limHtml}</div>`;
+  const th = v.threshold;
+  const thHtml = th ? `<div class="cv-block"><div class="cv-title">Lawsuit threshold <span class="small muted">${esc(th.state)}</span></div>
+      ${th.dollars ? `<div class="cv-big">${th.met ? '✓ Met' : money(th.dollars - th.amount) + ' to go'} <span class="small muted">${money(th.amount)} of ${money(th.dollars)}</span></div>
+      <div class="bar ${th.met ? '' : 'warn'}"><i data-w="${Math.min(100, Math.round(th.amount / th.dollars * 100))}"></i></div><p class="small muted">${esc(th.counts)}. Other injury categories can also qualify.</p>` : ''}
+      <p class="small">${esc(th.text)}</p></div>` : '';
+  return `<div class="card case-value"><h2>Policy limits &amp; case value</h2>${pipHtml}${limHtml}${thHtml}</div>`;
 }
 
 // ----- LOP, forwarding, settlement -----
@@ -1697,6 +1736,10 @@ function lopModal() {
   const c = S.caseData.case;
   const defs = [
     ...(can('case.write') ? [{ n: 'lop_signed_on', l: 'LOP signed by patient on', t: 'date' }, { n: 'lop_acknowledged_on', l: 'Acknowledged by law firm on (blank if not countersigned)', t: 'date' }] : []),
+    ...(can('case.write') && S.caseData.rules.lopDisclosure ? [
+      { n: 'lop_factored', l: 'Account sold to a factoring company? (§768.0427)', t: 'select', blank: false, opts: [['unknown', 'Not recorded'], ['no', 'No'], ['yes', 'Yes']] },
+      { n: 'lop_factor_company', l: 'Factoring company (if sold)' }, { n: 'lop_factor_price', l: 'Sale price ($, if sold)', t: 'money' },
+      { n: 'lop_health_coverage', l: 'Patient had health coverage when treated?', t: 'select', blank: false, opts: [['unknown', 'Not recorded'], ['no', 'No'], ['yes', 'Yes']] }] : []),
     ...(can('finance.write') ? [{ n: 'balance_forwarded_on', l: 'Balance forwarded to attorney on', t: 'date' }, { n: 'balance_forwarded_amount', l: 'Amount forwarded ($)', t: 'money' },
       { n: 'atty_offer', l: 'Attorney offer ($)', t: 'money' }, { n: 'final_settlement', l: 'Final settlement ($)', t: 'money' },
       { n: 'date_authorized', l: 'Reduction authorized on', t: 'date' }, { n: 'check_received_on', l: 'Check received on', t: 'date' }] : []),
@@ -1840,7 +1883,8 @@ const FIELD_NAMES = {
   patient_balance: 'Patient balance', injury_type: 'Case type', location_id: 'Location', location_restricted: 'Limited to location', outreach_hold_on: 'Calls paused (attorney notified)', paralegal: 'Paralegal', attempted_on: 'Date', method: 'How', outcome: 'Outcome', plan_visits_per_week: 'Treatment plan (visits/week)', plan_set_on: 'Plan since', notify_digest: 'Daily email digest',
   gap_days: 'Gap days', adherence_pct: 'Adherence threshold %', weekdays_only: 'Weekdays only', criteria: 'Criteria', bi_limit: 'At-fault BI limit', um_limit: 'UM limit', other_medical_estimate: "Other providers' bills (est.)",
   liability_carrier: 'At-fault insurer', limits_source: 'Limits source', limits_noted_on: 'Limits as of', remaining_reported: 'PIP remaining (carrier)', remaining_reported_on: 'Remaining as of', visit_type: 'Visit type', head_injury: 'Head injury',
-  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)', badge: 'Website badge shown',
+  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)', jurisdiction: 'State rules', emc_by: 'EMC determined by', emc_on: 'EMC date', tort_option: 'Lawsuit option',
+  lop_factored: 'LOP factored', lop_factor_company: 'Factoring company', lop_factor_price: 'Factoring price', lop_health_coverage: 'Health coverage at treatment', policy_effective_on: 'Policy issued/renewed', demand_sent_on: 'PIP demand sent', badge: 'Website badge shown',
 };
 const humanize = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 function auditValue(c, v) {
@@ -2080,14 +2124,14 @@ async function pageAudit(main) {
 }
 
 // ---------- practice settings ----------
-const PRACTICE_DEFS = [{ n: 'name', l: 'Practice name', req: true, full: true }, { n: 'address', l: 'Address (letterhead)', t: 'textarea', rows: 2 },
-  { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' }, { n: 'state', l: 'State', ph: 'FL' }, { n: 'ehr_name', l: 'Your EHR / EMR', ph: 'e.g. ChiroTouch, Jane, ECLIPSE' }];
+const practiceDefs = () => [{ n: 'name', l: 'Practice name', req: true, full: true }, { n: 'address', l: 'Address (letterhead)', t: 'textarea', rows: 2 },
+  { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' }, { n: 'state', l: 'State (default rules for new cases)', t: 'select', blank: false, opts: stateOpts() }, { n: 'ehr_name', l: 'Your EHR / EMR', ph: 'e.g. ChiroTouch, Jane, ECLIPSE' }];
 async function pageSettings(main) {
   const r = await attempt(() => api('admin.php?action=practice'));
   if (!r) return;
   const p = r.practice, baaOk = p.baaVersion === p.currentBaaVersion;
   main.innerHTML = `<div class="page-head"><div><h1>Practice settings</h1><div class="sub">Your letterhead appears on every letter generated for attorneys.</div></div></div>
-    <div class="grid-2"><div class="card"><h2>Practice details</h2><div id="practice-form">${fieldsHtml(PRACTICE_DEFS, p)}</div>
+    <div class="grid-2"><div class="card"><h2>Practice details</h2><div id="practice-form">${fieldsHtml(practiceDefs(), p)}</div>
       <div class="err" id="practice-err"></div><button class="btn mt" data-act="save-practice">Save</button></div>
     <div class="card"><h2>Business Associate Agreement</h2>
       <p class="small mt">Because ${esc(S.brand.name)} stores your patients' health information, HIPAA requires a Business Associate Agreement between your practice and us.</p>
@@ -2166,7 +2210,8 @@ async function loadLocations() {
 }
 function locationModal(id) {
   const l = id ? loadLocations.rows.find((x) => +x.id === +id) : { active: 1 };
-  const defs = [{ n: 'name', l: 'Name', req: true, ph: 'e.g. Miami — Coral Way' }, { n: 'address', l: 'Address (letterhead)', t: 'textarea', rows: 2 }, { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' },
+  const defs = [{ n: 'name', l: 'Name', req: true, ph: 'e.g. Miami — Coral Way' }, { n: 'address', l: 'Address (letterhead)', t: 'textarea', rows: 2 },
+    { n: 'state', l: "State (new cases here follow this state's rules)", t: 'select', blank: "Practice's state", opts: stateOpts() }, { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' },
     ...(id ? [{ n: 'active', l: 'Active', t: 'check' }] : [])];
   openModal({ title: id ? 'Edit location' : 'Add location', okText: 'Save', body: fieldsHtml(defs, l),
     onOk: async (el) => { await api('admin.php?action=location_save', { ...readFields(el, defs), ...(id ? { id: +id } : {}) }); toast('Saved'); await refreshSession(); loadLocations(); } });
@@ -2340,7 +2385,7 @@ const ACTIONS = {
   'show-login': () => { history.replaceState(null, '', location.pathname); showLogin(); },
   'save-practice': async () => {
     const box = document.getElementById('practice-form');
-    try { await api('admin.php?action=practice_save', readFields(box, PRACTICE_DEFS)); toast('Saved'); refreshSession(); }
+    try { await api('admin.php?action=practice_save', readFields(box, practiceDefs())); toast('Saved'); refreshSession(); }
     catch (e) { document.getElementById('practice-err').textContent = e.message; }
   },
   'save-staff-fin': async () => {

@@ -3,7 +3,9 @@
 // coverage, the checklist and its deadlines (from the practice's Injury
 // Tracking Sheet), Florida PIP and workers' comp rules, balances, and the
 // alerts that drive the dashboard. Edit the numbers here to match your own
-// office protocol.
+// office protocol. State-specific rules (PIP limits, deadlines, lawsuit
+// thresholds, liens) are in jurisdictions.php; each case follows its state.
+require_once __DIR__ . '/jurisdictions.php';
 
 const STAGES = [
     'intake'      => 'Intake',
@@ -43,15 +45,12 @@ const OUTCOME_MEASURES = [
     'shoulder' => 'Shoulder', 'knee' => 'Knee', 'adl' => 'ADL survey',
 ];
 
-// Florida PIP (§627.736): initial treatment within 14 days of the accident
-// or PIP medical benefits are denied; full $10,000 only with an Emergency
-// Medical Condition determination by an MD/DO/DMD/PA/APRN, otherwise
-// capped at $2,500. PIP pays 80% of reasonable charges; the other 20% is
-// moved to the patient balance.
-define('PIP_INITIAL_CARE_DAYS', 14);
-define('PIP_DEFAULT_LIMIT', 10000.00);
-define('PIP_NO_EMC_CAP', 2500.00);
-define('PIP_PAYS_PCT', 0.80);
+// Who may make Florida's Emergency Medical Condition determination
+// (§627.736(1)(a)): MD, DO, dentist, PA or APRN — never a chiropractor.
+const EMC_CREDENTIALS = ['MD' => 'MD', 'DO' => 'DO', 'DMD' => 'Dentist (DMD/DDS)', 'PA' => 'Physician assistant (PA)', 'APRN' => 'Nurse practitioner (APRN)', 'DC' => 'Chiropractor (DC)', 'other' => 'Other'];
+const EMC_QUALIFIED = ['MD', 'DO', 'DMD', 'PA', 'APRN'];
+// How soon before a billing deadline unbilled visits are flagged.
+define('BILL_WARN_DAYS', 10);
 // Florida workers' comp (§440.13(2)(a)) limits chiropractic care to 18
 // treatments or 8 weeks after the first chiropractic treatment unless the
 // carrier authorizes more. Verify against the current statute.
@@ -95,10 +94,15 @@ const CHECKLIST = [
     // Within 48 hours of the first visit
     'attorney_contacted'      => ['label' => 'Called attorney (ask for the policy limits)',                     'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => LIABILITY_CASES],
     'lor_received'            => ['label' => 'Letter of representation received',   'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => LIABILITY_CASES],
-    'aob_signed'              => ['label' => 'PIP application / assignment of benefits signed', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto']],
+    'aob_signed'              => ['label' => 'PIP application / assignment of benefits signed', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto'], 'rule' => 'pip'],
     'lop_signed'              => ['label' => 'Letter of protection signed by patient', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['slip_fall'], 'source' => 'case', 'field' => 'lop_signed_on'],
     'incident_report'         => ['label' => 'Incident report & photos requested',  'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['slip_fall']],
-    'wc_first_report'         => ["label" => "Employer's first report of injury (DWC-1) on file", 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['workers_comp']],
+    'claim_notice'            => ['label' => 'PIP / no-fault application sent to the insurer', 'group' => 'State requirements', 'anchor' => 'date_of_injury', 'days_rule' => 'notice_days', 'cases' => ['auto'], 'rule' => 'notice_days'],
+    'tort_option'             => ['label' => "Asked which lawsuit (tort) option the patient's policy has", 'group' => 'State requirements', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto'], 'rule' => 'tort_options', 'source' => 'case_set', 'field' => 'tort_option'],
+    'treatment_plan_sent'     => ['label' => 'Treatment plan sent to the insurer (required after the state\'s visit/day limit)', 'group' => 'State requirements', 'anchor' => 'first_visit', 'days_rule' => 'treatment_plan', 'cases' => ['auto'], 'rule' => 'treatment_plan'],
+    'nj_treatment_plan'       => ['label' => 'Attending Provider Treatment Plan sent (Care Paths decision point / precertification)', 'group' => 'State requirements', 'anchor' => 'first_visit', 'days' => 3, 'cases' => ['auto'], 'states' => ['NJ']],
+    'lien_notice'             => ['label' => 'Provider lien notice sent / lien filed (state lien law)', 'group' => 'State requirements', 'anchor' => 'first_visit', 'days_rule' => 'lien', 'cases' => LIABILITY_CASES, 'rule' => 'lien'],
+    'wc_first_report'         => ["label" => "Employer's first report of injury on file", 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['workers_comp']],
     'wc_authorization'        => ['label' => 'Carrier authorization received',      'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 0, 'cases' => ['workers_comp']],
     'prior_records_requested' => ['label' => 'Requested prior medical records (ER/hospital)', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ALL_CASES],
     'prior_imaging_requested' => ['label' => 'Requested prior imaging',             'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ALL_CASES],
@@ -112,7 +116,7 @@ const CHECKLIST = [
     'final_adl'               => ['label' => 'Final ADL survey completed',          'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 0, 'cases' => ALL_CASES],
     'tx_complete_letter'      => ['label' => 'Treatment complete letter sent',      'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 7, 'cases' => LIABILITY_CASES],
     'final_narrative'         => ['label' => 'Narrative report sent (only when the attorney requests it)', 'group' => 'At MMI / discharge', 'anchor' => null, 'days' => null, 'cases' => LIABILITY_CASES],
-    'wc_final_status'         => ['label' => 'Final DWC-25 (MMI / discharge status) sent to carrier', 'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 3, 'cases' => ['workers_comp']],
+    'wc_final_status'         => ['label' => 'Final DWC-25 (MMI / discharge status) sent to carrier', 'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 3, 'cases' => ['workers_comp'], 'rule' => 'wc_rules'],
     'records_request'         => ['label' => 'Attorney records request fulfilled',  'group' => 'At MMI / discharge', 'anchor' => null, 'days' => null, 'cases' => LIABILITY_CASES],
 ];
 
@@ -258,9 +262,52 @@ function derive_benefits(array $coverages, string $injuryType): ?string {
     return 'lop';
 }
 
+// ---------- State rules for a case ----------
+// The state whose law applies: set on the case (defaults to its location's
+// or the practice's state when the case is created).
+function case_jurisdiction(array $case): string {
+    if (!empty($case['jurisdiction'])) return jurisdiction_code($case['jurisdiction']);
+    return jurisdiction_code(current_practice()['state'] ?? 'FL');
+}
+
+// $pip: the PIP coverage, whose policy date decides policy-dated changes.
+function case_rules(array $case, ?array $pip = null): array {
+    return jurisdiction_rules(case_jurisdiction($case), ['accident' => $case['date_of_injury'] ?? null, 'policy' => $pip['policy_effective_on'] ?? null]);
+}
+
+// The checklist-item days for items whose deadline comes from the state.
+function checklist_days(array $def, array $rules): ?int {
+    if (!isset($def['days_rule'])) return $def['days'];
+    if ($def['days_rule'] === 'treatment_plan') return $rules['treatment_plan'] ? max(0, $rules['treatment_plan']['days'] - 7) : null;
+    if ($def['days_rule'] === 'lien') {
+        $l = $rules['lien'] ?? null;
+        return $l && !empty($l['file_days']) ? max(0, $l['file_days'] - (int)($l['notice_before_days'] ?? 0)) : null;
+    }
+    return $rules[$def['days_rule']] ?? null;
+}
+
+function checklist_applies(array $def, array $case, array $rules): bool {
+    return in_array($case['injury_type'], $def['cases'], true) && checklist_rule_ok($def, $rules);
+}
+
+// State conditions on a checklist item: 'states' lists where it applies;
+// 'rule' names a state rule that must be set ('pip': the state has PIP).
+function checklist_rule_ok(array $def, array $rules): bool {
+    if (isset($def['states']) && !in_array($rules['code'], $def['states'], true)) return false;
+    if (($def['rule'] ?? null) === 'pip') return $rules['pip_required'] !== 'none';
+    return !isset($def['rule']) || !empty($rules[$def['rule']]);
+}
+
 function pip_effective_limit(array $case, ?array $pip): float {
-    $limit = $pip && $pip['benefit_limit'] !== null ? (float)$pip['benefit_limit'] : PIP_DEFAULT_LIMIT;
-    return $case['emc_status'] === 'yes' ? $limit : min($limit, PIP_NO_EMC_CAP);
+    $r = case_rules($case, $pip);
+    $limit = $pip && $pip['benefit_limit'] !== null ? (float)$pip['benefit_limit'] : (float)($r['pip_medical'] ?? 0);
+    return $r['emc_rule'] && !emc_counts($case) ? min($limit, (float)$r['emc_cap']) : $limit;
+}
+
+// A positive EMC only counts when a qualifying provider made it (or who
+// made it hasn't been recorded yet).
+function emc_counts(array $case): bool {
+    return ($case['emc_status'] ?? '') === 'yes' && (empty($case['emc_by']) || in_array($case['emc_by'], EMC_QUALIFIED, true));
 }
 
 // ---------- Care guide ----------
@@ -287,7 +334,8 @@ const CARE_GUIDE = [
     'emc' => [
         'title' => 'EMC determination', 'kind' => 'emc', 'types' => ['emc'], 'cases' => ['auto'],
         'when' => 'Week 1 — done in house by an MD/DO, or referred out.',
-        'why' => "Florida PIP pays up to \$10,000 only if an MD, DO, PA or APRN finds an Emergency Medical Condition; without one, PIP stops at \$2,500. Get the determination in the first week — in house if you have a qualifying provider, otherwise refer out — and record the result on the case.",
+        'why' => "Florida PIP pays up to \$10,000 only if an MD, DO, dentist, PA or APRN finds an Emergency Medical Condition — a chiropractor can't make the finding. Without one, PIP stops at \$2,500. Get the determination in the first week — in house if you have a qualifying provider, otherwise refer out — and record the result and who made it on the case.",
+        'rule' => 'emc_rule',
     ],
     'ortho' => [
         'title' => 'Orthopedic referral', 'kind' => 'referral', 'types' => ['ortho'], 'cases' => ALL_CASES,
@@ -341,8 +389,10 @@ function care_guide(array $case, array $referrals, array $guideRows = [], array 
         if ($d && (!$mriDone || $d < $mriDone)) $mriDone = $d;
     }
     $steps = [];
+    $rules = case_rules($case);
     foreach (CARE_GUIDE as $key => $def) {
         if (!in_array($case['injury_type'], $def['cases'], true)) continue;
+        if (isset($def['rule']) && empty($rules[$def['rule']])) continue;
         $refs = $def['types'] ? $ofType($def['types']) : [];
         usort($refs, fn($a, $b) => strcmp((string)($b['ordered_on'] ?? $b['created_at']), (string)($a['ordered_on'] ?? $a['created_at'])));
         $due = null;
@@ -360,7 +410,8 @@ function care_guide(array $case, array $referrals, array $guideRows = [], array 
             else $text = 'Write the script at the first visit';
         } elseif ($key === 'emc') {
             $emc = $case['emc_status'] ?? 'pending';
-            if ($emc !== 'pending') { $status = 'done'; $text = $emc === 'yes' ? 'EMC determined to exist — PIP up to $' . number_format(PIP_DEFAULT_LIMIT) : 'No EMC — PIP capped at $' . number_format(PIP_NO_EMC_CAP); }
+            if ($emc === 'yes' && !emc_counts($case)) { $status = 'now'; $due = $fv ? add_days($fv, EMC_DUE_DAYS) : null; $text = 'The EMC finding on file is from ' . (EMC_CREDENTIALS[$case['emc_by']] ?? 'an unqualified provider') . ' — it needs an MD, DO, dentist, PA or APRN'; }
+            elseif ($emc !== 'pending') { $status = 'done'; $text = $emc === 'yes' ? 'EMC determined to exist — PIP up to $' . number_format((float)$rules['pip_medical']) : 'No EMC — PIP capped at $' . number_format((float)$rules['emc_cap']); }
             elseif ($refs) { $status = 'done'; $text = $referred() . ' — record the result when the report arrives'; }
             elseif ($fv) {
                 $due = add_days($fv, EMC_DUE_DAYS);
@@ -578,7 +629,7 @@ function case_tips(array $case, array $ctx): array {
     $liability = in_array($case['injury_type'], LIABILITY_CASES, true);
     if ($liability && ($case['mmi_date'] ?? null)) {
         $add('permanency', 'evaluation', 'Permanency opinion at MMI', 'If the patient has lasting symptoms or impairment at MMI, ask the treating specialist (orthopedic or pain management) for a permanency opinion and impairment rating.',
-            ($case['injury_type'] === 'auto' ? "In Florida auto cases, pain-and-suffering damages generally require a permanent injury established within reasonable medical probability (§627.737). " : '') . "A physician's permanency opinion and impairment rating document the long-term effect of the injury, including future care needs.");
+            ($case['injury_type'] === 'auto' && in_array(($tr = case_rules($case))['tort']['kind'], ['permanent', 'serious', 'choice'], true) ? 'In ' . $tr['name'] . ': ' . $tr['tort']['text'] . ' ' : '') . "A physician's permanency opinion and impairment rating document the long-term effect of the injury, including future care needs.");
     }
     if ($liability && $inCare && $fv && days_between($fv, $today) > 7 && empty($case['attorney_contact_id'])) {
         $add('no_attorney', 'evaluation', 'No attorney on file', 'Confirm whether the patient is represented and add the attorney under Overview → Edit — they receive the records, bills and status letters.',
@@ -682,7 +733,7 @@ function case_value(array $case, array $ctx): array {
     $totals = $ctx['totals'] ?? ledger_totals($rows);
     $coverages = $ctx['coverages'] ?? [];
     $pip = first_coverage($coverages, 'pip');
-    $out = ['pip' => null, 'limits' => null];
+    $out = ['pip' => null, 'limits' => null, 'threshold' => null];
     if ($pip) {
         $limit = pip_effective_limit($case, $pip);
         $paid = $totals['by_coverage'][(int)$pip['id']]['paid'] ?? 0.0;
@@ -695,6 +746,19 @@ function case_value(array $case, array $ctx): array {
         }
         $rem['status'] = $pip['status'];
         $out['pip'] = $rem;
+    }
+    // The state's lawsuit threshold: where it's a dollar amount, how close
+    // the medical bills are (Hawaii counts PIP benefits paid).
+    $r = case_rules($case, $pip);
+    if ($case['injury_type'] === 'auto' && $r['tort']['kind'] !== 'none') {
+        $th = ['state' => $r['name'], 'kind' => $r['tort']['kind'], 'text' => $r['tort']['text']];
+        if (in_array($r['tort']['kind'], ['medical', 'paid'], true)) {
+            $amt = $r['tort']['kind'] === 'paid' ? ($pip ? (float)($totals['by_coverage'][(int)$pip['id']]['paid'] ?? 0) : 0.0)
+                : (float)$totals['total_charges'] + (float)($case['other_medical_estimate'] ?? 0);
+            $th += ['dollars' => (float)$r['tort']['dollars'], 'amount' => round($amt, 2), 'met' => $amt > (float)$r['tort']['dollars'],
+                'counts' => $r['tort']['kind'] === 'paid' ? 'PIP benefits paid to this office' : "Our charges plus other providers' bills (estimate)"];
+        }
+        $out['threshold'] = $th;
     }
     $pool = (float)($case['bi_limit'] ?? 0) + (float)($case['um_limit'] ?? 0);
     if ($pool > 0) {
@@ -727,8 +791,11 @@ function case_checklist(array $case, array $milestoneRows, array $referrals): ar
     foreach ($milestoneRows as $m) $byKey[$m['milestone']] = $m;
     $today = date('Y-m-d');
     $items = [];
+    $rules = case_rules($case);
     foreach (CHECKLIST as $key => $def) {
-        if (!in_array($case['injury_type'], $def['cases'], true)) continue;
+        if (!checklist_applies($def, $case, $rules)) continue;
+        $def['days'] = checklist_days($def, $rules);
+        if ($key === 'claim_notice' && $rules['code'] === 'DC') $def['label'] = 'PIP-or-tort election made (within 60 days of the accident)';
         $m = $byKey[$key] ?? null;
         $completedOn = $m['completed_on'] ?? null;
         $source = $def['source'] ?? null;
@@ -740,6 +807,8 @@ function case_checklist(array $case, array $milestoneRows, array $referrals): ar
             }
         } elseif ($source === 'case' && !$completedOn) {
             $completedOn = $case[$def['field']] ?? null;
+        } elseif ($source === 'case_set' && !$completedOn && !in_array($case[$def['field']] ?? 'unknown', ['', 'unknown'], true)) {
+            $completedOn = substr((string)($case['updated_at'] ?? date('Y-m-d')), 0, 10);
         }
         // 'care_end': the end of active care — MMI, or discharge if no MMI date.
         $anchorDate = $def['anchor'] === 'care_end' ? (($case['mmi_date'] ?? null) ?: ($case['discharge_date'] ?? null)) : ($def['anchor'] ? ($case[$def['anchor']] ?? null) : null);
@@ -772,29 +841,43 @@ function case_alerts(array $case, array $ctx): array {
     $coverages = $ctx['coverages'] ?? [];
     $pip = first_coverage($coverages, 'pip');
     $wc = first_coverage($coverages, 'workers_comp');
-    // An auto case with no coverage entered yet is treated as PIP-eligible.
-    $autoPip = $case['injury_type'] === 'auto' && (!$pip || $pip['status'] === 'active') && !$wc;
+    $r = case_rules($case, $pip);
+    $pipState = in_array($r['pip_required'], ['mandatory', 'rejectable'], true);
+    $barred = $r['balance_billing'] !== 'allowed';
+    // An auto case with no coverage entered yet is treated as PIP-eligible
+    // where the state requires (or includes) PIP.
+    $autoPip = $case['injury_type'] === 'auto' && (!$pip || $pip['status'] === 'active') && !$wc && ($pip || $pipState);
 
-    // Florida PIP 14-day rule.
-    if ($autoPip && $treatingPhase && $case['date_of_injury']) {
-        $deadline = add_days($case['date_of_injury'], PIP_INITIAL_CARE_DAYS);
+    // First-visit deadline (Florida: 14 days).
+    if ($autoPip && $treatingPhase && $case['date_of_injury'] && $r['initial_care_days']) {
+        $deadline = add_days($case['date_of_injury'], $r['initial_care_days']);
         if ($case['first_visit'] && $case['first_visit'] > $deadline) {
-            $alerts[] = ['level' => 'high', 'text' => 'First visit was ' . days_between($case['date_of_injury'], $case['first_visit']) . ' days after the accident — PIP requires initial care within 14 days.'];
+            $alerts[] = ['level' => 'high', 'text' => 'First visit was ' . days_between($case['date_of_injury'], $case['first_visit']) . ' days after the accident — ' . $r['pip_label'] . ' requires initial care within ' . $r['initial_care_days'] . ' days.'];
         } elseif (!$case['first_visit'] && $today <= $deadline) {
-            $alerts[] = ['level' => 'high', 'text' => 'Not seen yet — must be treated by ' . $deadline . ' to keep PIP eligibility.'];
+            $alerts[] = ['level' => 'high', 'text' => 'Not seen yet — must be treated by ' . $deadline . ' to keep ' . $r['pip_label'] . ' eligibility.'];
         }
     }
-    if ($case['injury_type'] === 'auto' && !$pip && $treatingPhase && $case['first_visit']) {
-        $alerts[] = ['level' => 'medium', 'text' => 'No PIP claim entered — add the PIP coverage and claim # under Financials.'];
+    if ($case['injury_type'] === 'auto' && !$pip && $pipState && $treatingPhase && $case['first_visit']) {
+        $alerts[] = ['level' => 'medium', 'text' => 'No ' . $r['pip_label'] . ' claim entered — add the coverage and claim # under Financials' . ($r['pip_required'] === 'rejectable' ? ' (or note that the patient rejected it in writing)' : '') . '.'];
     }
 
-    // EMC determination: without one, PIP medical benefits cap at $2,500.
-    $emcStepOpen = (bool)array_filter($ctx['guide'] ?? [], fn($g) => $g['key'] === 'emc' && in_array($g['status'], ['now', 'snoozed'], true));
-    if ($autoPip && $treatingPhase && $case['emc_status'] !== 'yes' && !$emcStepOpen && $case['first_visit'] && days_between($case['first_visit'], $today) > 14) {
-        $alerts[] = ['level' => $case['emc_status'] === 'no' ? 'medium' : 'high',
-            'text' => $case['emc_status'] === 'no'
-                ? 'EMC determined NOT to exist — PIP benefits capped at $2,500.'
-                : 'No EMC determination on file — PIP benefits are capped at $2,500 until one is made.'];
+    // EMC determination (Florida): without one, PIP medical caps at $2,500.
+    if ($r['emc_rule']) {
+        $cap = '$' . number_format((float)$r['emc_cap']);
+        $emcStepOpen = (bool)array_filter($ctx['guide'] ?? [], fn($g) => $g['key'] === 'emc' && in_array($g['status'], ['now', 'snoozed'], true));
+        if ($autoPip && $treatingPhase && $case['emc_status'] !== 'yes' && !$emcStepOpen && $case['first_visit'] && days_between($case['first_visit'], $today) > 14) {
+            $alerts[] = ['level' => $case['emc_status'] === 'no' ? 'medium' : 'high',
+                'text' => $case['emc_status'] === 'no'
+                    ? "EMC determined NOT to exist — PIP benefits capped at $cap."
+                    : "No EMC determination on file — PIP benefits are capped at $cap until one is made."];
+        }
+        if ($autoPip && ($case['emc_status'] ?? '') === 'yes') {
+            if (!empty($case['emc_by']) && !in_array($case['emc_by'], EMC_QUALIFIED, true)) {
+                $alerts[] = ['level' => 'high', 'text' => 'The EMC finding on file was made by ' . (EMC_CREDENTIALS[$case['emc_by']] ?? $case['emc_by']) . " — only an MD, DO, dentist, PA or APRN can make it. PIP stays capped at $cap until a qualifying provider does."];
+            } elseif (empty($case['emc_by'])) {
+                $alerts[] = ['level' => 'low', 'text' => 'Record who made the EMC determination (MD, DO, dentist, PA or APRN) and when — Overview → Edit.'];
+            }
+        }
     }
 
     // PIP approaching its limit, from what PIP has actually paid (each
@@ -803,7 +886,7 @@ function case_alerts(array $case, array $ctx): array {
         $limit = pip_effective_limit($case, $pip);
         $paid = $ctx['totals']['by_coverage'][(int)$pip['id']]['paid'] ?? 0;
         if ($limit > 0 && $paid >= $limit * 0.85) {
-            $alerts[] = ['level' => 'medium', 'text' => 'PIP has paid $' . number_format($paid, 2) . ' of the $' . number_format($limit) . ' limit — when exhausted, move the remainder to the patient balance.'];
+            $alerts[] = ['level' => 'medium', 'text' => $r['pip_label'] . ' has paid $' . number_format($paid, 2) . ' of the $' . number_format($limit) . ' limit — ' . ($barred ? 'line up other coverage (health insurance, MedPay) before it runs out; ' . $r['name'] . ' limits billing the patient above the fee schedule.' : 'when exhausted, move the remainder to the patient balance.')];
         }
     }
 
@@ -813,7 +896,7 @@ function case_alerts(array $case, array $ctx): array {
         $cv = case_value($case, $ctx);
         $p = $cv['pip'];
         if ($p && $p['status'] === 'active' && $p['source'] === 'carrier' && $p['remaining'] < PIP_LOW_REMAINING) {
-            $alerts[] = ['level' => 'medium', 'fin' => true, 'text' => 'PIP nearly exhausted: about $' . number_format($p['remaining'], 2) . ' left (carrier reported $' . number_format($p['reported'], 2) . ' on ' . us_date($p['reportedOn']) . ', less payments since). Plan for the balance moving to the patient/LOP.'];
+            $alerts[] = ['level' => 'medium', 'fin' => true, 'text' => 'PIP nearly exhausted: about $' . number_format($p['remaining'], 2) . ' left (carrier reported $' . number_format($p['reported'], 2) . ' on ' . us_date($p['reportedOn']) . ', less payments since). ' . ($barred ? 'Line up other coverage (health insurance, MedPay) — billing the patient above the fee schedule is limited in ' . $r['name'] . '.' : 'Plan for the balance moving to the patient/LOP.')];
         }
         $l = $cv['limits'];
         if ($l && in_array($case['stage'], ['intake', 'treating', 'tx_complete'], true)) {
@@ -827,16 +910,68 @@ function case_alerts(array $case, array $ctx): array {
         }
     }
 
-    // PIP ended: the patient balance needs a signed LOP behind it.
-    if ($pip && in_array($pip['status'], ['denied', 'exhausted'], true) && !$case['lop_signed_on'] && $case['injury_type'] !== 'workers_comp') {
-        $alerts[] = ['level' => 'medium', 'text' => 'PIP ' . $pip['status'] . ($pip['status_on'] ? ' ' . $pip['status_on'] : '') . ' — get a letter of protection signed for the patient balance.'];
+    // PIP ended: the patient balance needs a signed LOP behind it — unless
+    // the state bars billing the patient above the fee schedule.
+    if ($pip && in_array($pip['status'], ['denied', 'exhausted'], true) && $case['injury_type'] !== 'workers_comp') {
+        if ($barred) $alerts[] = ['level' => 'medium', 'text' => $r['pip_label'] . ' ' . $pip['status'] . ($pip['status_on'] ? ' ' . $pip['status_on'] : '') . ' — ' . ($r['balance_note'] ?: 'billing the patient above the fee schedule is limited.') . ' Check for other coverage (health insurance, MedPay) before billing the patient.'];
+        elseif (!$case['lop_signed_on']) $alerts[] = ['level' => 'medium', 'text' => $r['pip_label'] . ' ' . $pip['status'] . ($pip['status_on'] ? ' ' . $pip['status_on'] : '') . ' — get a letter of protection signed for the patient balance.'];
+    }
+
+    // Florida §768.0427: what the attorney must disclose about an LOP.
+    if ($r['lop_disclosure'] && $case['lop_signed_on'] && in_array($case['lop_factored'] ?? 'unknown', ['', 'unknown'], true)) {
+        $alerts[] = ['level' => 'low', 'text' => 'Record the letter-of-protection disclosure facts (sold to a factoring company? patient\'s health coverage?) — the attorney must disclose them under §768.0427. Financials → Letter of protection.'];
+    }
+
+    // Billing deadline: visits not yet billed to PIP as the state's
+    // deadline nears. Only for cases whose insurance charges are kept here.
+    if ($r['bill_days'] && $pip && $pip['status'] === 'active') {
+        $ins = array_filter($ctx['ledgerRows'] ?? [], fn($e) => $e['kind'] === 'charge' && $e['bucket'] === 'insurance' && empty($e['archived_at']));
+        if ($ins) {
+            $billedOn = array_flip(array_column($ins, 'entry_date'));
+            $billedVisit = array_flip(array_filter(array_column($ins, 'visit_id')));
+            $start = min(array_column($ins, 'entry_date'));
+            $unbilled = [];
+            foreach ($ctx['visits'] ?? [] as $v) {
+                if ($v['visit_type'] === 'no_show' || !empty($v['archived_at']) || $v['visit_date'] < $start) continue;
+                if (isset($billedOn[$v['visit_date']]) || (isset($v['id']) && isset($billedVisit[$v['id']]))) continue;
+                if (days_between($v['visit_date'], $today) >= $r['bill_days'] - BILL_WARN_DAYS) $unbilled[] = $v['visit_date'];
+            }
+            if ($unbilled) {
+                sort($unbilled);
+                $due = add_days($unbilled[0], $r['bill_days']);
+                $n = count($unbilled);
+                $alerts[] = ['level' => $due < $today ? 'high' : 'medium', 'text' => $n . ' visit' . ($n === 1 ? '' : 's') . ' not billed to ' . $r['pip_label'] . ' yet — ' . ($due < $today
+                    ? 'the ' . $r['bill_days'] . '-day billing deadline for ' . us_date($unbilled[0]) . ' passed ' . us_date($due) . '.'
+                    : 'bills are due within ' . $r['bill_days'] . ' days of service (oldest due ' . us_date($due) . ').')];
+            }
+        }
+    }
+
+    // Hawaii: a treatment plan is required after N treatments or D days.
+    if ($r['treatment_plan'] && $autoPip && $treatingPhase && $case['first_visit']) {
+        $n = count($ctx['attendedDates'] ?? []);
+        $planDone = (bool)array_filter($ctx['checklist'] ?? [], fn($i) => $i['key'] === 'treatment_plan_sent' && in_array($i['status'], ['done', 'na'], true));
+        if (!$planDone && $n >= $r['treatment_plan']['visits'] - 2) {
+            $alerts[] = ['level' => $n >= $r['treatment_plan']['visits'] ? 'high' : 'medium', 'text' => $n . ' treatments so far — ' . $r['name'] . ' requires a treatment plan after ' . $r['treatment_plan']['visits'] . ' treatments or ' . $r['treatment_plan']['days'] . ' days. Send it to the insurer and tick it off on the checklist.'];
+        }
     }
 
     // Insurance charges unpaid for a while: follow up, or (if denied) move
     // them to the patient balance. Never moved automatically.
     $stale = array_filter($ctx['openItems'] ?? [], fn($i) => $i['ins_open'] > 0.005 && days_between($i['date'], $today) > INSURANCE_FOLLOWUP_DAYS);
+    $demand = $r['demand_letter'] && $pip ? $r['demand_letter'] : null;
+    $stalePip = $demand ? array_filter($stale, fn($i) => (int)($i['coverage_id'] ?? 0) === (int)$pip['id']) : [];
     if ($stale) {
-        $alerts[] = ['level' => 'low', 'text' => count($stale) . ' insurance charge' . (count($stale) === 1 ? '' : 's') . ' unpaid after ' . INSURANCE_FOLLOWUP_DAYS . ' days ($' . number_format(array_sum(array_column($stale, 'ins_open')), 2) . ')' . (!empty($case['ehr_synced_at']) ? ' — follow up with the carrier, or transfer it to patient responsibility in ' . $case['ehr_system'] . '.' : ' — follow up with the carrier, or move to the patient balance.')];
+        $next = $barred ? ' — follow up with the carrier, or check other coverage.' : (!empty($case['ehr_synced_at']) ? ' — follow up with the carrier, or transfer it to patient responsibility in ' . $case['ehr_system'] . '.' : ' — follow up with the carrier, or move to the patient balance.');
+        if ($stalePip && empty($pip['demand_sent_on'])) $next .= ' Before any suit over unpaid PIP bills, send the pre-suit demand letter (' . $demand['cite'] . ') from Overview → Letters.';
+        $alerts[] = ['level' => 'low', 'text' => count($stale) . ' insurance charge' . (count($stale) === 1 ? '' : 's') . ' unpaid after ' . INSURANCE_FOLLOWUP_DAYS . ' days ($' . number_format(array_sum(array_column($stale, 'ins_open')), 2) . ')' . $next];
+    }
+    // Pre-suit demand letter sent: the insurer's cure period.
+    if ($demand && !empty($pip['demand_sent_on'])) {
+        $cure = add_days($pip['demand_sent_on'], $demand['cure_days']);
+        $open = array_filter($ctx['openItems'] ?? [], fn($i) => $i['ins_open'] > 0.005 && (int)($i['coverage_id'] ?? 0) === (int)$pip['id'] && $i['date'] <= $pip['demand_sent_on']);
+        if ($open && $today <= $cure) $alerts[] = ['level' => 'low', 'text' => 'PIP demand letter sent ' . us_date($pip['demand_sent_on']) . ' — the insurer has until ' . us_date($cure) . ' to pay.'];
+        elseif ($open) $alerts[] = ['level' => 'medium', 'text' => "The insurer's " . $demand['cure_days'] . '-day cure period ended ' . us_date($cure) . ' (demand sent ' . us_date($pip['demand_sent_on']) . ') and ' . count($open) . ' PIP bill' . (count($open) === 1 ? ' is' : 's are') . ' still unpaid — refer to counsel.'];
     }
 
     // Workers' comp: authorization and DWC-25 status forms.
@@ -846,13 +981,13 @@ function case_alerts(array $case, array $ctx): array {
             $left = (int)$wc['authorized_visits'] - $visits['count'];
             if ($left <= 0) $alerts[] = ['level' => 'high', 'text' => 'All ' . $wc['authorized_visits'] . ' authorized visits used — request more authorization before the next visit.'];
             elseif ($left <= 2) $alerts[] = ['level' => 'medium', 'text' => $left . ' authorized visit' . ($left === 1 ? '' : 's') . ' left — request more authorization from the adjuster.'];
-        } elseif ($visits['count'] >= WC_CHIRO_MAX_VISITS || ($case['first_visit'] && days_between($case['first_visit'], $today) > WC_CHIRO_MAX_DAYS)) {
+        } elseif ($r['wc_rules'] && ($visits['count'] >= WC_CHIRO_MAX_VISITS || ($case['first_visit'] && days_between($case['first_visit'], $today) > WC_CHIRO_MAX_DAYS))) {
             $alerts[] = ['level' => 'high', 'text' => 'Past the ' . WC_CHIRO_MAX_VISITS . '-visit / 8-week chiropractic limit — further care needs carrier authorization.'];
         }
         if ($wc['authorized_through'] && $wc['authorized_through'] < $today) {
             $alerts[] = ['level' => 'high', 'text' => 'Carrier authorization expired ' . $wc['authorized_through'] . '.'];
         }
-        if ($visits['missing25'] > 0) {
+        if ($r['wc_rules'] && $visits['missing25'] > 0) {
             $alerts[] = ['level' => 'medium', 'text' => 'DWC-25 not sent for ' . $visits['missing25'] . ' visit' . ($visits['missing25'] === 1 ? '' : 's') . '.'];
         }
     }

@@ -88,15 +88,25 @@ Check trademark and domain availability before launch.
 | **Users** | Role-based accounts: admin, provider, staff, billing. |
 | **Certified website badge** | Practice settings → "InjuryCase Certified badge": admins switch it on and copy embed code (light, dark or round seal) for their website, or download PNG/SVG for print. The embed loads from `api/badge.php` and links to `verify.html`, which checks live. It shows as certified only while the practice has an active paid subscription (or is comped) and a current BAA; otherwise it reads "Not verified". "New links" retires old embeds. Only the practice name and state are public. Artwork is in `app/badge.php`; the files in `public/assets/badges/` are generated from it. Terms are in legal.html#badge. |
 
-### Florida PIP rules built into the alerts (`app/pi_rules.php`)
+### State rules (`app/jurisdictions.php`)
+Each case follows the state whose law applies (`cases.jurisdiction`, defaulting to the case location's state, then the practice's). The clinical workflow is the same everywhere; what changes per state is data in `JURISDICTIONS`: PIP/no-fault medical limit and whether it's required, the Florida EMC cap, first-visit deadline, claim-notice and bill-submission deadlines, fee basis and interest, whether billing the patient above the fee schedule is barred, the lawsuit threshold (dollar thresholds are tracked on Financials), tort options in choice states, the pre-suit demand letter, treatment-plan limits, insurer review, provider lien steps and statute of limitations. Later changes are effective-dated `versions` keyed to the accident, policy or service date (e.g. Kentucky's 2026 HB 627 by policy date).
+
+- **Support levels:** Florida is *full*. KS, UT, MN, ND, DE, MD, OR, WA, TX, AR, DC, GA, AZ, CO, LA, MT, OK, IL, NC, VA, MA, KY, PA and HI are *supported*. NY, NJ and MI are *limited*: their fee caps and reviews sit outside the balance/LOP model. Any other state uses general at-fault rules.
+- **Not verified:** every state except Florida is marked unverified. The figures come from `reports/PIP rules by state.md`, built from search extracts and secondary sources. Have a licensed attorney in each state confirm them. This is not legal advice.
+- **Playbook:** the PI playbook shows any state's rules (state picker), and each case has a "*State* rules" card.
+
+### Florida PIP rules built into the alerts
 - Initial care within **14 days** of the accident (§627.736(1)(a)), flagged for new intakes and late first visits.
-- No **EMC determination** means PIP medical benefits are capped at **$2,500**.
+- No **EMC determination** means PIP medical benefits are capped at **$2,500**. Only a finding by an MD, DO, dentist, PA or APRN counts; one recorded from a chiropractor raises an alert and keeps the cap.
+- Bills must reach the PIP insurer within **35 days** of service: unbilled visits are flagged 10 days before the deadline (for cases whose insurance charges are kept in the app).
+- **Pre-suit demand letter** (§627.736(10)): unpaid PIP bills prompt it; Letters → "PIP pre-suit demand" prints the itemized letter to the insurer. Recording the date sent on the PIP coverage starts the 30-day cure clock, and the app flags when it ends.
+- **Letter-of-protection disclosures** (§768.0427, 2023): factoring sale and price, and the patient's health coverage, recorded under LOP & settlement.
 - Charges approaching the PIP limit.
 - Workers' comp: authorized visits used or nearly used, authorization expired, the 18-visit / 8-week chiropractic limit (§440.13, verify), and DWC-25 status forms not sent.
 - Money: insurance charges unpaid after 45 days, PIP ended with no signed LOP, and a settled case whose balance hasn't been forwarded.
 - Plus: imaging/consult reports not received, referrals not scheduled, no-shows, gaps in care over 14 days, outcome tools due every 30 days, no attorney status update in 30 days on demand/litigation cases, follow-ups due, and settlement checks not received 30 days after authorization.
 
-All of these thresholds are constants at the top of `app/pi_rules.php`.
+Office thresholds are constants at the top of `app/pi_rules.php`; state rules are in `app/jurisdictions.php`.
 
 ---
 

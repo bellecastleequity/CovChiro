@@ -95,6 +95,7 @@ CREATE TABLE locations (
   practice_id INT NOT NULL,
   name VARCHAR(120) NOT NULL,
   address VARCHAR(255) NULL,
+  state CHAR(2) NULL,
   phone VARCHAR(40) NULL,
   fax VARCHAR(40) NULL,
   active TINYINT(1) NOT NULL DEFAULT 1,
@@ -183,6 +184,9 @@ CREATE TABLE cases (
   case_number VARCHAR(20) NOT NULL,
   patient_id INT NOT NULL,
   location_id INT NULL,
+  -- State whose law applies (app/jurisdictions.php); set from the location
+  -- or practice when the case is created.
+  jurisdiction CHAR(2) NULL,
   stage ENUM('intake','treating','tx_complete','demand','litigation','mediation','negotiating','settled','closed','dropped') NOT NULL DEFAULT 'intake',
   injury_type ENUM('auto','slip_fall','workers_comp') NOT NULL DEFAULT 'auto',
   date_of_injury DATE NULL,
@@ -197,12 +201,22 @@ CREATE TABLE cases (
   -- medpay / health / wc / lop (no insurance: patient balance only).
   benefits ENUM('pip','benex','denied','medpay','health','wc','lop') NULL,
   emc_status ENUM('pending','yes','no') NOT NULL DEFAULT 'pending',
+  -- Who made the EMC determination (Florida: MD, DO, DMD, PA or APRN only).
+  emc_by VARCHAR(10) NULL,
+  emc_on DATE NULL,
+  -- Choice states (NJ, PA, KY): the lawsuit option on the patient's policy.
+  tort_option ENUM('unknown','limited','full') NOT NULL DEFAULT 'unknown',
   actively_treating TINYINT(1) NOT NULL DEFAULT 1,
   provider_user_id INT NULL,
   -- Letter of protection: the patient balance is held until settlement and
   -- then forwarded to the attorney. Law firms don't always countersign.
   lop_signed_on DATE NULL,
   lop_acknowledged_on DATE NULL,
+  -- Florida §768.0427 letter-of-protection disclosures.
+  lop_factored ENUM('unknown','no','yes') NOT NULL DEFAULT 'unknown',
+  lop_factor_company VARCHAR(160) NULL,
+  lop_factor_price DECIMAL(10,2) NULL,
+  lop_health_coverage ENUM('unknown','no','yes') NOT NULL DEFAULT 'unknown',
   balance_forwarded_on DATE NULL,
   balance_forwarded_amount DECIMAL(10,2) NULL,
   atty_offer DECIMAL(10,2) NULL,
@@ -272,12 +286,16 @@ CREATE TABLE coverages (
   status_on DATE NULL,
   status_reason VARCHAR(255) NULL,
   benefit_limit DECIMAL(10,2) NULL,
+  -- Policy issued/renewed on: decides policy-dated rule changes (e.g. KY 2026).
+  policy_effective_on DATE NULL,
   -- What the carrier says is left (PIP is shared with every provider, so
   -- the adjuster's figure beats our own payments), and as of when.
   remaining_reported DECIMAL(10,2) NULL,
   remaining_reported_on DATE NULL,
   authorized_visits INT NULL,
   authorized_through DATE NULL,
+  -- Florida pre-suit demand letter (§627.736(10)) sent for overdue bills.
+  demand_sent_on DATE NULL,
   notes_enc TEXT NULL,
   archived_at DATETIME NULL,
   created_by INT NULL,

@@ -187,7 +187,7 @@ if (!empty($opts['ar'])) {
             $stats['coverages']++;
             if (!$dry) {
                 $pdo->prepare('INSERT INTO coverages (case_id, type, priority, carrier_contact_id, status, benefit_limit, created_at, updated_at) VALUES (?,?,1,?,?,?,?,?)')
-                    ->execute([$caseId, $cov[0], $insId > 0 ? $insId : null, $cov[1], $cov[0] === 'pip' ? PIP_DEFAULT_LIMIT : null, now_str(), now_str()]);
+                    ->execute([$caseId, $cov[0], $insId > 0 ? $insId : null, $cov[1], $cov[0] === 'pip' ? jurisdiction_rules(current_practice()['state'] ?? 'FL')['pip_medical'] : null, now_str(), now_str()]);
                 $coverageId = (int)$pdo->lastInsertId();
             }
         }

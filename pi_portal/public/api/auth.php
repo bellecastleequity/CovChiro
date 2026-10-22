@@ -62,9 +62,10 @@ function session_payload(?array $u) {
             'stages' => STAGES, 'benefits' => BENEFITS, 'referralTypes' => REFERRAL_TYPES,
             'injuryTypes' => INJURY_TYPES, 'coverageTypes' => COVERAGE_TYPES, 'coverageStatus' => COVERAGE_STATUS,
             'outcomeMeasures' => OUTCOME_MEASURES, 'reductionFloorPct' => REDUCTION_FLOOR_PCT,
+            'states' => jurisdiction_list(), 'supportLabels' => SUPPORT_LABELS, 'emcCredentials' => EMC_CREDENTIALS,
             'providers' => $q("SELECT id, name FROM users WHERE practice_id = ? AND active = 1 AND role IN ('provider','admin') ORDER BY name"),
             'users' => $q('SELECT id, name FROM users WHERE practice_id = ? AND active = 1 ORDER BY name'),
-            'locations' => $q('SELECT id, name FROM locations WHERE practice_id = ? AND active = 1 ORDER BY name'),
+            'locations' => $q('SELECT id, name, state FROM locations WHERE practice_id = ? AND active = 1 ORDER BY name'),
         ];
         $loc = pi_db()->prepare('SELECT location_id, location_restricted FROM users WHERE id = ?');
         $loc->execute([$u['id']]);

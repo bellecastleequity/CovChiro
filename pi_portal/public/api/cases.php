@@ -20,7 +20,9 @@ const CASE_FIELDS = [
     'referral_source' => ['attorney','self','provider','other'],
     'referred_by_contact_id' => 'contact', 'referred_by_text' => 'str:160',
     'attorney_contact_id' => 'contact', 'emc_status' => ['pending','yes','no'],
+    'emc_by' => ['MD','DO','DMD','PA','APRN','DC','other'], 'emc_on' => 'date', 'tort_option' => ['unknown','limited','full'], 'jurisdiction' => 'state',
     'lop_signed_on' => 'date', 'lop_acknowledged_on' => 'date',
+    'lop_factored' => ['unknown','no','yes'], 'lop_factor_company' => 'str:160', 'lop_factor_price' => 'money', 'lop_health_coverage' => ['unknown','no','yes'],
     'balance_forwarded_on' => 'date', 'balance_forwarded_amount' => 'money',
     'actively_treating' => 'bool', 'provider_user_id' => 'user', 'location_id' => 'location', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
     'mmi_date' => 'date', 'maintenance_every_days' => 'int', 'plan_visits_per_week' => 'money', 'plan_set_on' => 'date',
@@ -53,7 +55,8 @@ const CHILD_SPECS = [
         'carrier_contact_id' => 'contact', 'carrier_text' => 'str:160', 'adjuster' => 'str:160',
         'claim_number' => 'enc', 'policy_number' => 'enc',
         'status' => ['active','denied','exhausted','closed'], 'status_on' => 'date', 'status_reason' => 'str:255',
-        'benefit_limit' => 'money', 'remaining_reported' => 'money', 'remaining_reported_on' => 'date', 'authorized_visits' => 'int', 'authorized_through' => 'date', 'notes' => 'enc',
+        'benefit_limit' => 'money', 'policy_effective_on' => 'date', 'remaining_reported' => 'money', 'remaining_reported_on' => 'date', 'authorized_visits' => 'int', 'authorized_through' => 'date',
+        'demand_sent_on' => 'date', 'notes' => 'enc',
     ]],
     'outcomes' => ['perm' => 'clinical.write', 'required' => ['measure', 'score', 'taken_on'], 'fields' => [
         'measure' => ['bournemouth_neck','bournemouth_back','oswestry','ndi','hdi','shoulder','knee','adl'],
@@ -85,12 +88,17 @@ function clean_fields(array $spec, array $in, ?int $caseId = null): array {
         if (!array_key_exists($name, $in)) continue;
         $v = $in[$name];
         if (is_array($type)) {
-            if ($v === null || $v === '') { $out[$name] = null; continue; }
+            if ($v === null || $v === '') { $out[$name] = in_array('unknown', $type, true) ? 'unknown' : null; continue; }
             if (!in_array($v, $type, true)) json_response(['error' => "Invalid value for $name"], 400);
             $out[$name] = $v;
         } elseif ($type === 'date') $out[$name] = date_or_null($v);
         elseif ($type === 'money') $out[$name] = money_or_null($v);
         elseif ($type === 'bool') $out[$name] = $v ? 1 : 0;
+        elseif ($type === 'state') {
+            $code = strtoupper(trim((string)$v));
+            if ($code !== '' && !isset(US_STATES[$code])) json_response(['error' => "Invalid value for $name"], 400);
+            $out[$name] = $code ?: null;
+        }
         elseif ($type === 'int') $out[$name] = ($v === null || $v === '') ? null : max(0, (int)$v);
         elseif ($type === 'coverage' || $type === 'charge') {
             $id = ($v === null || $v === '') ? null : (int)$v;
@@ -233,7 +241,7 @@ function full_case(int $id, array $user): array {
     $tasks = load_tasks('t.case_id = ?', [$id], 200);
     $ehr = $fetch('SELECT e.id, e.ehr_system, e.uploaded_at, e.document_id, u.name uploaded_by_name FROM ehr_imports e LEFT JOIN users u ON u.id = e.uploaded_by WHERE e.case_id = ? ORDER BY e.id DESC LIMIT 1')[0] ?? null;
     $docs = $fetch('SELECT d.id, d.category, d.original_name, d.mime_type, d.size_bytes, d.uploaded_at, u.name uploaded_by_name FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by WHERE d.case_id = ? AND d.archived_at IS NULL ORDER BY d.uploaded_at DESC');
-    $coverages = array_map('decrypt_row', $fetch('SELECT cv.*, k.organization carrier_org, k.name carrier_name, k.phone carrier_phone, k.fax carrier_fax FROM coverages cv LEFT JOIN contacts k ON k.id = cv.carrier_contact_id WHERE cv.case_id = ? AND cv.archived_at IS NULL ORDER BY cv.priority, cv.id'));
+    $coverages = array_map('decrypt_row', $fetch('SELECT cv.*, k.organization carrier_org, k.name carrier_name, k.phone carrier_phone, k.fax carrier_fax, k.address carrier_address FROM coverages cv LEFT JOIN contacts k ON k.id = cv.carrier_contact_id WHERE cv.case_id = ? AND cv.archived_at IS NULL ORDER BY cv.priority, cv.id'));
     $contacts = [];
     foreach (['attorney_contact_id', 'referred_by_contact_id'] as $k) {
         if ($c[$k]) { $s = $pdo->prepare('SELECT * FROM contacts WHERE id = ? AND practice_id = ?'); $s->execute([$c[$k], pid()]); $contacts[$k] = $s->fetch() ?: null; }
@@ -253,7 +261,7 @@ function full_case(int $id, array $user): array {
         ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null,
         ($seen = array_column(array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'), 'visit_date')) ? max($seen) : null);
     $ctx = [
-        'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'totals' => $totals, 'ledgerRows' => $allLedger, 'attendedDates' => $visitDates, 'outreach' => $outreach, 'coverages' => $coverages, 'openItems' => $openItems,
+        'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'visits' => $visits, 'totals' => $totals, 'ledgerRows' => $allLedger, 'attendedDates' => $visitDates, 'outreach' => $outreach, 'coverages' => $coverages, 'openItems' => $openItems,
         'wcVisits' => ['count' => count($attended), 'missing25' => count(array_filter($attended, fn($v) => !$v['dwc25_sent'] && $v['visit_date'] <= $cutoff))],
         'lastVisit' => $visitDates ? max($visitDates) : null,
         'lastCorrespondence' => $corr ? $corr[0]['occurred_on'] : null,
@@ -274,8 +282,13 @@ function full_case(int $id, array $user): array {
     else $alerts = array_map(fn($a) => ['level' => $a['level'], 'text' => $a['text']], $alerts);
     $caseValue = $bal ? case_value($c, $ctx) : null;
     if (!$bal) $corr = array_map(fn($r) => str_contains($r['subject'], 'forwarded to attorney') ? ['subject' => 'Patient balance forwarded to attorney'] + $r : $r, $corr);
+    $rules = case_rules($c, first_coverage($coverages, 'pip'));
     return [
         'case' => $case, 'patient' => $patient, 'contacts' => $contacts, 'coverages' => $coverages,
+        'rules' => ['code' => $rules['code'], 'name' => $rules['name'], 'support' => $rules['support'], 'regime' => $rules['regime'], 'verified' => $rules['verified'],
+            'pipLabel' => $rules['pip_label'], 'pipMedical' => $rules['pip_medical'], 'emcRule' => $rules['emc_rule'], 'emcCap' => $rules['emc_cap'],
+            'tortOptions' => $rules['tort_options'], 'lopDisclosure' => $rules['lop_disclosure'], 'demandLetter' => (bool)$rules['demand_letter'],
+            'balanceBilling' => $rules['balance_billing'], 'balanceNote' => $rules['balance_note'], 'summary' => jurisdiction_summary($rules)],
         'checklist' => $checklist, 'guide' => $guide, 'alerts' => $alerts, 'caseValue' => $caseValue,
         'outreach' => $outreach, 'outreachState' => outreach_state($c, $outreach, $visitDates), 'outreachOutcomes' => OUTREACH_OUTCOMES,
         'tips' => case_tips($c, ['referrals' => $referrals, 'visits' => $visits, 'icd' => array_column($visits, 'icd_codes'), 'guideRows' => $guideRows, 'outcomeDates' => array_unique(array_column($outcomes, 'taken_on'))]),
@@ -335,12 +348,18 @@ function handle_create() {
     foreach (['stage' => 'intake', 'injury_type' => 'auto', 'emc_status' => 'pending', 'actively_treating' => 1] as $k => $def) {
         if (!isset($cols[$k])) $cols[$k] = $def;
     }
+    // The state whose rules apply: the case's location, else the practice.
+    if (empty($cols['jurisdiction'])) {
+        $locState = null;
+        if (!empty($cols['location_id'])) { $s = $pdo->prepare('SELECT state FROM locations WHERE id = ?'); $s->execute([$cols['location_id']]); $locState = $s->fetchColumn() ?: null; }
+        $cols['jurisdiction'] = jurisdiction_code($locState ?: (current_practice()['state'] ?? 'FL'));
+    }
     $id = insert_row('cases', $cols);
     // Insurance entered on the new-case form.
     if (!empty($b['coverage']['type'])) {
         $cv = clean_fields(CHILD_SPECS['coverages']['fields'], $b['coverage'], $id);
         $cv += ['case_id' => $id, 'priority' => 1, 'status' => 'active', 'created_by' => $user['id'], 'created_at' => now_str(), 'updated_at' => now_str()];
-        if ($cv['type'] === 'pip' && !isset($cv['benefit_limit'])) $cv['benefit_limit'] = PIP_DEFAULT_LIMIT;
+        if ($cv['type'] === 'pip' && !isset($cv['benefit_limit'])) $cv['benefit_limit'] = case_rules($cols)['pip_medical'];
         insert_row('coverages', $cv);
     }
     sync_benefits($id);
@@ -673,14 +692,23 @@ function handle_guide_step() {
 // The PI playbook: every timeline the app follows, in plain language.
 function handle_playbook() {
     require_user('case.read');
+    // The practice's state unless another is picked; rules as of today.
+    $r = jurisdiction_rules($_GET['state'] ?? (current_practice()['state'] ?? 'FL'), ['accident' => date('Y-m-d'), 'policy' => date('Y-m-d')]);
     $checklist = [];
-    foreach (CHECKLIST as $key => $d) $checklist[] = ['label' => $d['label'], 'group' => $d['group'], 'cases' => $d['cases'],
-        'when' => $d['anchor'] === null ? 'When it happens' : ($d['days'] === 0 ? 'Same day as the ' : $d['days'] . ' day' . ($d['days'] === 1 ? '' : 's') . ' after the ') . ($d['anchor'] === null ? '' : str_replace('_', ' ', $d['anchor']))];
-    json_response(['guide' => array_map(fn($k, $d) => ['key' => $k] + $d, array_keys(CARE_GUIDE), CARE_GUIDE), 'checklist' => $checklist,
+    foreach (CHECKLIST as $key => $d) {
+        if (!checklist_rule_ok($d, $r)) continue;
+        $days = checklist_days($d, $r);
+        $checklist[] = ['label' => $key === 'claim_notice' && $r['code'] === 'DC' ? 'PIP-or-tort election made' : $d['label'], 'group' => $d['group'], 'cases' => $d['cases'],
+            'when' => $d['anchor'] === null || $days === null ? 'When it happens' : ($days === 0 ? 'Same day as the ' : $days . ' day' . ($days === 1 ? '' : 's') . ' after the ') . str_replace(['date_of_injury', '_'], ['accident', ' '], $d['anchor'])];
+    }
+    $guide = array_values(array_filter(array_map(fn($k, $d) => ['key' => $k] + $d, array_keys(CARE_GUIDE), CARE_GUIDE), fn($g) => !isset($g['rule']) || !empty($r[$g['rule']])));
+    $money = [];
+    if ($r['pip_pays_pct'] && $r['pip_pays_pct'] < 1) $money[] = ['PIP pays ' . round($r['pip_pays_pct'] * 100) . '%', 'The ' . round(100 - $r['pip_pays_pct'] * 100) . '% PIP doesn\'t pay, and anything denied or past the limit, is moved to the patient balance by a person — backed by a signed letter of protection.'];
+    json_response(['guide' => $guide, 'checklist' => $checklist,
+        'state' => ['code' => $r['code'], 'name' => $r['name'], 'support' => $r['support'], 'regime' => $r['regime'], 'verified' => $r['verified'], 'summary' => jurisdiction_summary($r)],
+        'states' => jurisdiction_list(),
         'rules' => [
-            ['PIP 14-day rule (auto)', 'The patient must be seen within ' . PIP_INITIAL_CARE_DAYS . ' days of the accident or PIP medical benefits are lost.'],
-            ['EMC determination (auto)', 'Without an Emergency Medical Condition finding from an MD/DO, PIP pays at most $' . number_format(PIP_NO_EMC_CAP) . ' instead of $' . number_format(PIP_DEFAULT_LIMIT) . '.'],
-            ['PIP pays 80%', 'The 20% PIP doesn\'t pay, and anything denied or past the limit, is moved to the patient balance by a person — backed by a signed letter of protection.'],
+            ...$money,
             ['Gaps in care', 'No visit for more than ' . TREATMENT_GAP_DAYS . ' days weakens the claim; the app flags it.'],
             ['Re-exams & outcome assessments', 'Re-examine every ' . RE_EXAM_INTERVAL_DAYS . ' days and repeat the outcome assessments at each re-exam.'],
             ['X-rays', 'Only when clinically indicated — no prompt.'],
@@ -688,8 +716,8 @@ function handle_playbook() {
             ['Narrative report', 'Only when the attorney requests one.'],
             ['Reports', 'Chase imaging and consult reports ' . REPORT_CHASE_DAYS . ' days after the appointment and enter them in the chart.'],
             ['Attorney updates', 'Call the attorney within 48 hours of the first visit. Once the case is in demand or litigation, ask for a status update at least every ' . STALE_CORRESPONDENCE_DAYS . ' days.'],
-            ["Workers' comp", 'Chiropractic care is limited to ' . WC_CHIRO_MAX_VISITS . ' visits or 8 weeks unless the carrier authorizes more; send a DWC-25 within ' . WC_DWC25_DAYS . ' days of each visit.'],
-            ['At settlement', 'Forward the patient balance to the attorney with an itemized statement.'],
+            ["Workers' comp", $r['wc_rules'] ? 'Chiropractic care is limited to ' . WC_CHIRO_MAX_VISITS . ' visits or 8 weeks unless the carrier authorizes more; send a DWC-25 within ' . WC_DWC25_DAYS . ' days of each visit.' : 'Get carrier authorization before treating and track authorized visits; workers\' comp chiropractic limits and forms vary by state.'],
+            ['At settlement', $r['balance_billing'] === 'allowed' ? 'Forward the patient balance to the attorney with an itemized statement.' : 'Forward any patient balance the state allows (deductible, copays, non-covered care) to the attorney with an itemized statement.'],
         ]]);
 }
 
@@ -760,7 +788,7 @@ function handle_child_save() {
             $n = pi_db()->prepare('SELECT COUNT(*) FROM coverages WHERE case_id = ? AND archived_at IS NULL');
             $n->execute([$caseId]);
             $cols += ['priority' => (int)$n->fetchColumn() + 1, 'status' => 'active'];
-            if ($cols['type'] === 'pip' && !isset($cols['benefit_limit'])) $cols['benefit_limit'] = PIP_DEFAULT_LIMIT;
+            if ($cols['type'] === 'pip' && !isset($cols['benefit_limit'])) $cols['benefit_limit'] = case_rules(case_or_404($caseId))['pip_medical'];
         }
         if ($table === 'visits' && empty($cols['location_id']) && $case['location_id']) $cols['location_id'] = (int)$case['location_id'];
         $cols['case_id'] = $caseId;
@@ -1163,7 +1191,8 @@ function handle_letter() {
     $money = fn($n) => '$' . number_format((float)$n, 2);
     $patientLine = $h(patient_name($p)) . ($p['dob'] ? ' &nbsp;·&nbsp; DOB ' . $h($p['dob']) : '') . ($c['date_of_injury'] ? ' &nbsp;·&nbsp; DOI ' . $h($c['date_of_injury']) : '');
 
-    $needs = ['tx_complete' => 'balances', 'reduction_response' => 'settlement', 'statement' => 'ledger'];
+    $needs = ['tx_complete' => 'balances', 'reduction_response' => 'settlement', 'statement' => 'ledger', 'pip_demand' => 'ledger'];
+    $toOverride = null; $dear = null;
     if (isset($needs[$type]) && !fin_can($user, $needs[$type])) json_response(['error' => 'This letter includes financial details not available to your account.'], 403);
     if ($type === 'status_request' && !fin_can($user, 'balances')) {
         $title = 'Case status update request';
@@ -1206,6 +1235,29 @@ function handle_letter() {
             . $money($d['totals']['patient_balance'] ?? 0) . '</strong>.</p>'
             . ($c['atty_offer'] !== null ? '<p>Your offer of ' . $money($c['atty_offer']) . ' has been received and is under review.</p>' : '')
             . '<p>Our office is able to accept <strong>' . $money($d['totals']['reduction_floor'] ?? 0) . '</strong> (' . round(REDUCTION_FLOOR_PCT * 100) . '% of the balance) in full satisfaction of this account, provided payment is received within 30 days of settlement.</p>';
+    } elseif ($type === 'pip_demand') {
+        // Florida pre-suit demand letter (§627.736(10)) to the PIP insurer
+        // for overdue bills: insured, claim/policy number, and an itemized
+        // statement of each amount, date of service and benefit claimed.
+        if (!$d['rules']['demandLetter']) json_response(['error' => 'The pre-suit demand letter applies to Florida PIP claims.'], 400);
+        $pip = first_coverage($d['coverages'], 'pip');
+        if (!$pip) json_response(['error' => 'Add the PIP coverage first.'], 400);
+        $title = 'Pre-suit demand for payment of overdue PIP benefits';
+        $items = array_values(array_filter($d['openItems'], fn($it) => $it['ins_open'] > 0.005 && (int)($it['coverage_id'] ?? 0) === (int)$pip['id']));
+        if (!$items) json_response(['error' => 'No unpaid PIP charges on this case.'], 400);
+        $rowsHtml = '';
+        foreach ($items as $it) $rowsHtml .= '<tr><td>' . $h($it['date']) . '</td><td>' . $h($it['memo'] ?: 'Medical services') . ($it['reference'] ? ' (' . $h($it['reference']) . ')' : '') . '</td><td>Medical benefits</td><td class="n">' . $money($it['amount']) . '</td><td class="n">' . $money($it['ins_open']) . '</td></tr>';
+        $total = array_sum(array_column($items, 'ins_open'));
+        $body = '<p>This letter is a demand under section 627.736(10), Florida Statutes, for payment of overdue personal injury protection benefits.</p>'
+            . '<p>Insured / claimant: <strong>' . $h(patient_name($p)) . '</strong><br>Date of accident: ' . $h($c['date_of_injury'] ?? '—')
+            . '<br>Claim number: ' . $h($pip['claim_number'] ?? '—') . '<br>Policy number: ' . $h($pip['policy_number'] ?? '—') . '</p>'
+            . '<p>The following charges were submitted and remain unpaid. This itemized statement specifies each exact amount, the date of treatment or service, and the type of benefit claimed to be due:</p>'
+            . '<table class="it"><thead><tr><th>Date of service</th><th>Service</th><th>Benefit</th><th class="n">Charge</th><th class="n">Amount due</th></tr></thead><tbody>' . $rowsHtml
+            . '</tbody><tfoot><tr><td colspan="4">Total amount due</td><td class="n">' . $money($total) . '</td></tr></tfoot></table>'
+            . '<p>Copies of the bills previously submitted are available on request. Please pay the overdue amount, with any applicable interest and penalty, within 30 days of receipt of this letter.</p>';
+        $toOverride = ($pip['adjuster'] ? 'Attn: ' . $h($pip['adjuster']) . '<br>' : '') . $h($pip['carrier_org'] ?: ($pip['carrier_text'] ?: 'PIP insurer'))
+            . ($pip['carrier_address'] ? '<br>' . nl2br($h($pip['carrier_address'])) : '') . ($pip['carrier_fax'] ? '<br>Fax ' . $h($pip['carrier_fax']) : '');
+        $dear = 'Claims Adjuster';
     } elseif ($type === 'statement') {
         // Itemized patient balance, by date of service, for the attorney.
         $title = 'Itemized statement — patient balance';
@@ -1238,7 +1290,7 @@ function handle_letter() {
     $addr = nl2br($h($practice['address'] ?? ''));
     $contactLine = implode(' · ', array_filter([$practice['phone'] ? 'Phone ' . $h($practice['phone']) : null, $practice['fax'] ? 'Fax ' . $h($practice['fax']) : null]));
     $attn = $c['paralegal'] ? 'Attn: ' . $h($c['paralegal']) . '<br>' : '';
-    $to = $attn . ($atty ? $h($atty['name'] ?? '') . '<br>' . $h($atty['organization'] ?? '') . ($atty['address'] ? '<br>' . nl2br($h($atty['address'])) : '') . ($atty['fax'] ? '<br>Fax ' . $h($atty['fax']) : '') . ($atty['email'] ? '<br>' . $h($atty['email']) : '') : 'Attorney of record');
+    $to = $toOverride ?? $attn . ($atty ? $h($atty['name'] ?? '') . '<br>' . $h($atty['organization'] ?? '') . ($atty['address'] ? '<br>' . nl2br($h($atty['address'])) : '') . ($atty['fax'] ? '<br>Fax ' . $h($atty['fax']) : '') . ($atty['email'] ? '<br>' . $h($atty['email']) : '') : 'Attorney of record');
     echo '<!doctype html><html><head><meta charset="utf-8"><title>' . $h($title) . '</title><style>
         body{font-family:Georgia,serif;max-width:7in;margin:0.6in auto;color:#0B2340;line-height:1.5;font-size:12pt}
         .lh{border-bottom:2px solid #1FA866;padding-bottom:10px;margin-bottom:24px}.lh b{font-size:15pt;color:#0B2340}
@@ -1248,11 +1300,11 @@ function handle_letter() {
         table.it .n{text-align:right;white-space:nowrap}table.it tfoot td{font-weight:bold;border-top:2px solid #0B2340}
         @media print{.noprint{display:none}body{margin:0.5in}}
         </style></head><body>
-        <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#EEF2F7;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.</p>
+        <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#EEF2F7;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.' . ($type === 'pip_demand' ? ' Review with your attorney before sending, send it so receipt can be proven, then record the date sent on the PIP coverage (Financials) to start the 30-day clock.' : '') . '</p>
         <div class="lh"><b>' . $h($practice['name']) . '</b>' . ($addr ? '<br>' . $addr : '') . ($contactLine ? '<br>' . $contactLine : '') . '</div>
         <p>' . date('F j, Y') . '</p><p>' . $to . '</p>
         <div class="re"><strong>RE: ' . $h($title) . '</strong><br>Patient: ' . $patientLine . '<br>Our file: ' . $h($c['case_number']) . '</div>
-        <p>Dear ' . $h($atty['name'] ?? 'Counsel') . ',</p>' . $body . '
+        <p>Dear ' . $h($dear ?? ($atty['name'] ?? 'Counsel')) . ',</p>' . $body . '
         <p>Sincerely,</p><p style="margin-top:40px">' . $h($user['name']) . '<br>' . $h($practice['name']) . '</p>
         <div class="conf">CONFIDENTIAL: This document contains protected health information. If you received it in error, notify the sender and destroy all copies.</div>
         </body></html>';
