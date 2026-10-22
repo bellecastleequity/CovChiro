@@ -6,19 +6,6 @@ define('PI_ALLOW_WHEN_LAPSED', true);
 require_once __DIR__ . '/../../app/bootstrap.php';
 pi_start_session();
 
-$action = $_GET['action'] ?? '';
-switch ($action) {
-    case 'users': handle_users(); break;
-    case 'user_save': handle_user_save(); break;
-    case 'user_reset': handle_user_reset(); break;
-    case 'practice': handle_practice(); break;
-    case 'practice_save': handle_practice_save(); break;
-    case 'accept_baa': handle_accept_baa(); break;
-    case 'staff_finance': handle_staff_finance(); break;
-    case 'audit': handle_audit(); break;
-    default: json_response(['error' => 'Unknown action'], 400);
-}
-
 function handle_users() {
     require_user('users.manage');
     $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
@@ -57,7 +44,8 @@ function handle_user_save() {
         if ($active && !$existing['active']) enforce_limit('users');
         $finAccess = $role === 'staff' && !empty($b['finance_access']) ? 1 : 0;
         $pdo->prepare('UPDATE users SET name = ?, role = ?, active = ?, finance_access = ? WHERE id = ? AND practice_id = ?')->execute([$name, $role, $active, $finAccess, $id, pid()]);
-        audit('update', 'user', $id, null, $admin, "role=$role active=$active finance_access=$finAccess");
+        $changes = audit_diff(['name' => 'label', 'role' => array_keys(ROLE_PERMS), 'active' => 'bool', 'finance_access' => 'bool'], $existing, ['name' => $name, 'role' => $role, 'active' => $active, 'finance_access' => $finAccess]);
+        if ($changes) audit('update', 'user', $id, null, $admin, $existing['name'], $changes);
         json_response(['ok' => true]);
     }
     enforce_limit('users');
@@ -70,7 +58,7 @@ function handle_user_save() {
     $pdo->prepare('INSERT INTO users (practice_id, email, name, role, finance_access, password_hash, must_change_password, created_at) VALUES (?,?,?,?,?,?,1,?)')
         ->execute([pid(), $email, $name, $role, $role === 'staff' && !empty($b['finance_access']) ? 1 : 0, password_hash($pw, PASSWORD_ARGON2ID), now_str()]);
     $newId = (int)$pdo->lastInsertId();
-    audit('create', 'user', $newId, null, $admin, "role=$role");
+    audit('create', 'user', $newId, null, $admin, $name, [['f' => 'role', 't' => 'enum', 'from' => null, 'to' => $role]]);
     json_response(['ok' => true, 'tempPassword' => $pw]);
 }
 
@@ -96,7 +84,7 @@ function handle_user_reset() {
     } else {
         json_response(['error' => 'Unknown reset'], 400);
     }
-    audit('reset_' . $what, 'user', $id, null, $admin);
+    audit('reset_' . $what, 'user', $id, null, $admin, user_in_practice($id)['name']);
     json_response($out);
 }
 
@@ -104,7 +92,7 @@ function handle_practice() {
     require_user('users.manage');
     $p = current_practice();
     json_response(['practice' => [
-        'name' => $p['name'], 'address' => $p['address'], 'phone' => $p['phone'], 'fax' => $p['fax'], 'state' => $p['state'],
+        'name' => $p['name'], 'address' => $p['address'], 'phone' => $p['phone'], 'fax' => $p['fax'], 'state' => $p['state'], 'ehrName' => $p['ehr_name'],
         'staffFinance' => array_values(array_filter(explode(',', (string)$p['staff_finance']))),
         'baaVersion' => $p['baa_version'], 'baaAcceptedAt' => $p['baa_accepted_at'], 'currentBaaVersion' => BAA_VERSION,
     ]]);
@@ -117,9 +105,11 @@ function handle_practice_save() {
     $name = str_or_null($b['name'] ?? null, 160);
     if (!$name) json_response(['error' => 'Enter the practice name.'], 400);
     $state = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', (string)($b['state'] ?? 'FL')), 0, 2)) ?: 'FL';
-    pi_db()->prepare('UPDATE practices SET name = ?, address = ?, phone = ?, fax = ?, state = ? WHERE id = ?')
-        ->execute([$name, str_or_null($b['address'] ?? null, 255), str_or_null($b['phone'] ?? null, 40), str_or_null($b['fax'] ?? null, 40), $state, pid()]);
-    audit('update', 'practice', pid(), null, $admin);
+    $after = ['name' => $name, 'address' => str_or_null($b['address'] ?? null, 255), 'phone' => str_or_null($b['phone'] ?? null, 40), 'fax' => str_or_null($b['fax'] ?? null, 40), 'state' => $state, 'ehr_name' => str_or_null($b['ehr_name'] ?? null, 80)];
+    $changes = audit_diff(['name' => 'label', 'address' => 'label', 'phone' => 'label', 'fax' => 'label', 'state' => 'label', 'ehr_name' => 'label'], current_practice(), $after);
+    pi_db()->prepare('UPDATE practices SET name = ?, address = ?, phone = ?, fax = ?, state = ?, ehr_name = ? WHERE id = ?')
+        ->execute([...array_values($after), pid()]);
+    if ($changes) audit('update', 'practice', pid(), null, $admin, null, $changes);
     json_response(['ok' => true]);
 }
 
@@ -129,7 +119,8 @@ function handle_staff_finance() {
     $admin = require_user('users.manage');
     $scopes = array_values(array_intersect(FIN_SCOPES, (array)(json_body()['scopes'] ?? [])));
     pi_db()->prepare('UPDATE practices SET staff_finance = ? WHERE id = ?')->execute([implode(',', $scopes), pid()]);
-    audit('update', 'practice', pid(), null, $admin, 'staff_finance=' . implode(',', $scopes));
+    $old = array_values(array_filter(explode(',', (string)current_practice()['staff_finance'])));
+    audit('update', 'practice', pid(), null, $admin, null, [['f' => 'staff_finance', 't' => 'enum', 'from' => $old ? implode(', ', $old) : null, 'to' => $scopes ? implode(', ', $scopes) : null]]);
     json_response(['ok' => true, 'scopes' => $scopes]);
 }
 
@@ -143,17 +134,78 @@ function handle_accept_baa() {
     json_response(['ok' => true]);
 }
 
-function handle_audit() {
-    $admin = require_user('audit.read');
+// The practice's audit log: who did what, when, from where. Filter by team
+// member, kind of activity, case and dates; page back with "before";
+// download as CSV for a compliance review.
+const AUDIT_CATEGORIES = [
+    'changes' => "a.action IN ('create','update','archive','forward_balance','ehr_import','letter','upload')",
+    'access' => "a.action IN ('view','list','download','export','ehr_preview')",
+    'signin' => "(a.action LIKE 'login%' OR a.action LIKE 'mfa%' OR a.action IN ('logout','session_timeout','password_changed','access_denied'))",
+    'admin' => "(a.entity IN ('user','practice','audit_log') OR a.action LIKE 'reset_%' OR a.action LIKE 'billing_%' OR a.action = 'accept_baa')",
+];
+
+function audit_query(array $q, int $limit): array {
     $where = ['a.practice_id = ?'];
     $args = [pid()];
-    if (!empty($_GET['case_id'])) { $where[] = 'a.case_id = ?'; $args[] = (int)$_GET['case_id']; }
-    if (!empty($_GET['user_id'])) { $where[] = 'a.user_id = ?'; $args[] = (int)$_GET['user_id']; }
-    if (!empty($_GET['action_filter'])) { $where[] = 'a.action = ?'; $args[] = $_GET['action_filter']; }
-    if (!empty($_GET['from'])) { $where[] = 'a.occurred_at >= ?'; $args[] = date_or_null($_GET['from']) . ' 00:00:00'; }
-    if (!empty($_GET['to'])) { $where[] = 'a.occurred_at <= ?'; $args[] = date_or_null($_GET['to']) . ' 23:59:59'; }
-    $stmt = pi_db()->prepare('SELECT a.*, c.case_number FROM audit_log a LEFT JOIN cases c ON c.id = a.case_id WHERE ' . implode(' AND ', $where) . ' ORDER BY a.id DESC LIMIT 500');
+    if (!empty($q['case_id'])) { $where[] = 'a.case_id = ?'; $args[] = (int)$q['case_id']; }
+    if (!empty($q['case_number'])) { $where[] = 'c.case_number = ?'; $args[] = trim((string)$q['case_number']); }
+    if (!empty($q['user_id'])) { $where[] = 'a.user_id = ?'; $args[] = (int)$q['user_id']; }
+    if (!empty($q['category']) && isset(AUDIT_CATEGORIES[$q['category']])) $where[] = AUDIT_CATEGORIES[$q['category']];
+    if (!empty($q['action_filter'])) { $where[] = 'a.action = ?'; $args[] = (string)$q['action_filter']; }
+    if (!empty($q['from']) && date_or_null($q['from'])) { $where[] = 'a.occurred_at >= ?'; $args[] = date_or_null($q['from']) . ' 00:00:00'; }
+    if (!empty($q['to']) && date_or_null($q['to'])) { $where[] = 'a.occurred_at <= ?'; $args[] = date_or_null($q['to']) . ' 23:59:59'; }
+    if (!empty($q['before'])) { $where[] = 'a.id < ?'; $args[] = (int)$q['before']; }
+    $stmt = pi_db()->prepare('SELECT a.*, COALESCE(u.name, a.user_email) user_name, c.case_number, tk.title label FROM audit_log a
+        LEFT JOIN users u ON u.id = a.user_id LEFT JOIN cases c ON c.id = a.case_id LEFT JOIN tasks tk ON a.entity = \'task\' AND tk.id = a.entity_id
+        WHERE ' . implode(' AND ', $where) . " ORDER BY a.id DESC LIMIT $limit");
     $stmt->execute($args);
+    return $stmt->fetchAll();
+}
+
+function handle_audit() {
+    $admin = require_user('audit.read');
+    $rows = audit_query($_GET, 201);
+    $more = count($rows) > 200;
+    $members = pi_db()->prepare('SELECT id, name, active FROM users WHERE practice_id = ? ORDER BY active DESC, name');
+    $members->execute([pid()]);
     audit('view', 'audit_log', null, null, $admin);
-    json_response(['entries' => $stmt->fetchAll()]);
+    json_response(['entries' => array_map(fn($r) => present_audit($r, $admin), array_slice($rows, 0, 200)), 'more' => $more, 'members' => $members->fetchAll()]);
+}
+
+function handle_audit_csv() {
+    $admin = require_user('audit.read');
+    $rows = audit_query($_GET, 50000);
+    audit('export', 'audit_log', null, null, $admin, ['rows' => count($rows)]);
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="injurycase-audit-' . date('Y-m-d') . '.csv"');
+    header('Cache-Control: no-store');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['When', 'Team member', 'Email', 'Action', 'Record', 'Record id', 'Case', 'Changes', 'Detail', 'IP address']);
+    foreach ($rows as $r) {
+        $e = present_audit($r, $admin);
+        $changes = implode('; ', array_map(fn($c) => $c['f'] . (array_key_exists('to', $c) ? ': ' . json_encode($c['from'] ?? null) . ' -> ' . json_encode($c['to'])  : ''), $e['changes']));
+        fputcsv($out, array_map('csv_safe', [$r['occurred_at'], $r['user_name'], $r['user_email'], $r['action'], $r['entity'], $r['entity_id'], $r['case_number'], $changes, $e['detail'], $r['ip_address']]));
+    }
+    exit;
+}
+
+// Spreadsheet apps run cells that start with = + - @ as formulas.
+function csv_safe($v): string {
+    $v = (string)$v;
+    return $v !== '' && strpbrk($v[0], "=+-@\t\r") !== false ? "'" . $v : $v;
+}
+
+// Dispatch last, once the constants above are defined.
+$action = $_GET['action'] ?? '';
+switch ($action) {
+    case 'users': handle_users(); break;
+    case 'user_save': handle_user_save(); break;
+    case 'user_reset': handle_user_reset(); break;
+    case 'practice': handle_practice(); break;
+    case 'practice_save': handle_practice_save(); break;
+    case 'accept_baa': handle_accept_baa(); break;
+    case 'staff_finance': handle_staff_finance(); break;
+    case 'audit': handle_audit(); break;
+    case 'audit_csv': handle_audit_csv(); break;
+    default: json_response(['error' => 'Unknown action'], 400);
 }

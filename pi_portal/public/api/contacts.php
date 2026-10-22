@@ -46,15 +46,21 @@ function handle_save() {
     if ($cols['email'] && !filter_var($cols['email'], FILTER_VALIDATE_EMAIL)) json_response(['error' => 'That email address looks wrong.'], 400);
     $pdo = pi_db();
     $id = (int)($b['id'] ?? 0);
+    $spec = ['type' => 'label', 'organization' => 'label', 'name' => 'label', 'email' => 'label', 'phone' => 'label', 'fax' => 'label', 'address' => 'label', 'notes' => 'str:2000'];
+    $label = $cols['organization'] ?: $cols['name'];
     if ($id) {
+        $before = $pdo->prepare('SELECT * FROM contacts WHERE id = ? AND practice_id = ?');
+        $before->execute([$id, pid()]);
+        $before = $before->fetch() ?: json_response(['error' => 'Contact not found'], 404);
         $pdo->prepare('UPDATE contacts SET type=?, organization=?, name=?, email=?, phone=?, fax=?, address=?, notes=? WHERE id = ? AND practice_id = ?')
             ->execute([...array_values($cols), $id, pid()]);
-        audit('update', 'contact', $id, null, $user);
+        $changes = audit_diff($spec, $before, $cols);
+        if ($changes) audit('update', 'contact', $id, null, $user, $label, $changes);
     } else {
         $pdo->prepare('INSERT INTO contacts (type, organization, name, email, phone, fax, address, notes, practice_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
             ->execute([...array_values($cols), pid(), now_str()]);
         $id = (int)$pdo->lastInsertId();
-        audit('create', 'contact', $id, null, $user);
+        audit('create', 'contact', $id, null, $user, $label);
     }
     $stmt = $pdo->prepare('SELECT * FROM contacts WHERE id = ? AND practice_id = ?');
     $stmt->execute([$id, pid()]);

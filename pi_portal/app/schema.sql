@@ -27,6 +27,8 @@ CREATE TABLE practices (
   -- Which financial categories the staff role may see (comma list of
   -- balances, ledger, settlement). Empty = none.
   staff_finance VARCHAR(60) NOT NULL DEFAULT '',
+  -- The practice's EHR/EMR (label only; ledger uploads work with any).
+  ehr_name VARCHAR(80) NULL,
   plan VARCHAR(20) NOT NULL DEFAULT 'starter',
   subscription_status ENUM('trialing','active','past_due','canceled','comped') NOT NULL DEFAULT 'trialing',
   trial_ends_at DATETIME NULL,
@@ -141,7 +143,7 @@ CREATE TABLE cases (
   check_received_on DATE NULL,
   notes_enc TEXT NULL,
   -- Set once the case's financials come from uploaded EHR ledgers.
-  ehr_system VARCHAR(40) NULL,
+  ehr_system VARCHAR(80) NULL,
   ehr_synced_at DATETIME NULL,
   archived_at DATETIME NULL,
   created_at DATETIME NOT NULL,
@@ -325,7 +327,8 @@ CREATE TABLE ledger (
 CREATE TABLE ehr_imports (
   id INT AUTO_INCREMENT PRIMARY KEY,
   case_id INT NOT NULL,
-  ehr_system VARCHAR(40) NOT NULL,
+  ehr_system VARCHAR(80) NOT NULL,
+  method ENUM('pdf','spreadsheet','totals') NOT NULL DEFAULT 'pdf',
   file_sha256 CHAR(64) NOT NULL,
   summary_enc TEXT NULL,
   document_id INT NULL,
@@ -335,19 +338,50 @@ CREATE TABLE ehr_imports (
   INDEX idx_ehr_case (case_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- A saved spreadsheet layout for one EHR's ledger export: which column
+-- holds what. Recognised by its header row on later uploads. Holds column
+-- names only, never patient data.
+CREATE TABLE ehr_formats (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NOT NULL,
+  name VARCHAR(80) NOT NULL,
+  layout ENUM('lines','transactions') NOT NULL,
+  signature CHAR(64) NOT NULL,
+  mapping TEXT NOT NULL,
+  created_by INT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  FOREIGN KEY (practice_id) REFERENCES practices(id),
+  UNIQUE KEY uq_ehr_format (practice_id, signature)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE tasks (
   id INT AUTO_INCREMENT PRIMARY KEY,
   practice_id INT NOT NULL,
   case_id INT NULL,
   title VARCHAR(200) NOT NULL,
+  notes_enc TEXT NULL,
+  priority ENUM('normal','high') NOT NULL DEFAULT 'normal',
   due_on DATE NULL,
-  assigned_user_id INT NULL,
   done_at DATETIME NULL,
+  done_by INT NULL,
+  archived_at DATETIME NULL,
   created_by INT NULL,
   created_at DATETIME NOT NULL,
+  updated_at DATETIME NULL,
   FOREIGN KEY (practice_id) REFERENCES practices(id),
   FOREIGN KEY (case_id) REFERENCES cases(id),
   INDEX idx_tasks_open (practice_id, done_at, due_on)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- A task can be assigned to one or more team members (none = anyone).
+CREATE TABLE task_assignees (
+  task_id INT NOT NULL,
+  user_id INT NOT NULL,
+  PRIMARY KEY (task_id, user_id),
+  FOREIGN KEY (task_id) REFERENCES tasks(id),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  INDEX idx_task_assignee_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Files are encrypted on disk under storage/documents/ (outside the web
@@ -384,6 +418,10 @@ CREATE TABLE audit_log (
   ip_address VARCHAR(45) NULL,
   user_agent VARCHAR(255) NULL,
   detail VARCHAR(500) NULL,
+  -- What changed: [{"f":field,"t":type,"from":..,"to":..}]. Values are kept
+  -- only for structured fields (stages, dates, amounts, people); free text
+  -- and encrypted fields are named without their contents.
+  changes TEXT NULL,
   INDEX idx_audit_time (practice_id, occurred_at),
   INDEX idx_audit_case (case_id),
   INDEX idx_audit_user (user_id)

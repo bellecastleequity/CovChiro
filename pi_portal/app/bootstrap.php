@@ -280,19 +280,86 @@ function require_user(?string $perm = null, bool $allowPending = false): array {
 // ========== AUDIT ==========
 // Keep `detail` free of clinical content — it records WHAT was touched
 // (field names, ids), not the PHI values themselves.
-function audit(string $action, ?string $entity = null, $entityId = null, $caseId = null, ?array $user = null, $detail = null) {
+function audit(string $action, ?string $entity = null, $entityId = null, $caseId = null, ?array $user = null, $detail = null, ?array $changes = null) {
     $uid = $user['id'] ?? ($_SESSION['uid'] ?? null);
     $email = $user['email'] ?? ($_SESSION['email'] ?? null);
     if (is_array($detail)) $detail = json_encode($detail);
     $practiceId = current_practice()['id'] ?? ($user['practice_id'] ?? null);
-    pi_db()->prepare('INSERT INTO audit_log (occurred_at, practice_id, user_id, user_email, action, entity, entity_id, case_id, ip_address, user_agent, detail) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    pi_db()->prepare('INSERT INTO audit_log (occurred_at, practice_id, user_id, user_email, action, entity, entity_id, case_id, ip_address, user_agent, detail, changes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
         ->execute([
             now_str(), $practiceId, $uid, $email, $action, $entity,
             $entityId === null ? null : (string)$entityId,
             $caseId, $_SERVER['REMOTE_ADDR'] ?? 'cli',
             mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
             $detail === null ? null : mb_substr($detail, 0, 500),
+            $changes ? json_encode(array_values($changes)) : null,
         ]);
+}
+
+// What an edit changed, for the audit trail: only fields whose value
+// actually differs. $spec uses the field-type codes of the case API
+// (enum list, date, money, bool, int, user, contact, coverage, charge,
+// str:N, enc; 'label' = plain text that isn't patient data, shown as is). Structured values (stages, dates, amounts, people) are kept
+// so the log reads "Stage: Treating → Settled"; free text and encrypted
+// fields are named without their contents.
+function audit_diff(array $spec, array $before, array $after): array {
+    static $names = [];
+    $label = function (string $type, $id) use (&$names) {
+        if ($id === null || $id === '') return null;
+        $key = "$type:$id";
+        if (!array_key_exists($key, $names)) {
+            $sql = ['user' => 'SELECT name FROM users WHERE id = ?', 'contact' => 'SELECT COALESCE(organization, name) FROM contacts WHERE id = ?',
+                    'coverage' => "SELECT CONCAT(UPPER(type), COALESCE(CONCAT(' · ', carrier_text), '')) FROM coverages WHERE id = ?"][$type] ?? null;
+            if (!$sql) return '#' . $id;
+            $s = pi_db()->prepare($sql); $s->execute([$id]);
+            $names[$key] = $s->fetchColumn() ?: '#' . $id;
+        }
+        return $names[$key];
+    };
+    $out = [];
+    foreach ($spec as $field => $type) {
+        $col = $type === 'enc' ? $field . '_enc' : $field;
+        if (!array_key_exists($col, $after)) continue;
+        $from = $before[$col] ?? null; $to = $after[$col];
+        $t = is_array($type) || $type === 'label' ? 'enum' : (strncmp($type, 'str:', 4) === 0 || $type === 'enc' ? 'text' : $type);
+        if ($t === 'money') { $same = ($from === null) === ($to === null) && round((float)$from, 2) === round((float)$to, 2); }
+        elseif ($t === 'bool') { $same = (bool)$from === (bool)$to; }
+        elseif ($type === 'enc') { $same = dec($from) === dec($to); }
+        else { $same = (string)$from === (string)$to; }
+        if ($same) continue;
+        $c = ['f' => $field, 't' => $t];
+        if ($t === 'text') { /* named only */ }
+        elseif (in_array($t, ['user', 'contact', 'coverage'], true)) { $c['from'] = $label($t, $from); $c['to'] = $label($t, $to); $c['t'] = 'name'; }
+        elseif ($t === 'charge') { $c['t'] = 'ref'; }
+        elseif ($t === 'money') { $c['from'] = $from === null ? null : round((float)$from, 2); $c['to'] = $to === null ? null : round((float)$to, 2); }
+        elseif ($t === 'bool') { $c['from'] = (bool)$from; $c['to'] = (bool)$to; }
+        else { $c['from'] = $from; $c['to'] = $to; }
+        $out[] = $c;
+    }
+    return $out;
+}
+
+// An audit row for display, with amounts hidden from people who can't see
+// them (the same financial-visibility rules as the rest of the app).
+const SETTLEMENT_FIELDS = ['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'balance_forwarded_amount'];
+function present_audit(array $r, array $user): array {
+    $changes = $r['changes'] ? (json_decode($r['changes'], true) ?: []) : [];
+    $hideLedger = $r['entity'] === 'ledger' && !fin_can($user, 'ledger');
+    $changes = array_map(function ($c) use ($user, $hideLedger) {
+        $hide = $hideLedger || ($c['t'] === 'money' && !fin_can($user, 'balances'))
+            || (in_array($c['f'], SETTLEMENT_FIELDS, true) && !fin_can($user, 'settlement'));
+        if ($hide) { unset($c['from'], $c['to']); $c['hidden'] = true; }
+        return $c;
+    }, $changes);
+    $detail = $r['detail'];
+    if ($detail !== null && in_array($r['action'], ['ehr_import', 'forward_balance'], true) && !fin_can($user, 'balances')) $detail = null;
+    return [
+        'id' => (int)$r['id'], 'at' => $r['occurred_at'], 'userId' => $r['user_id'] === null ? null : (int)$r['user_id'],
+        'user' => $r['user_name'] ?? $r['user_email'] ?? null, 'action' => $r['action'], 'entity' => $r['entity'], 'entityId' => $r['entity_id'],
+        'caseId' => isset($r['case_id']) ? (int)$r['case_id'] : null, 'caseNumber' => $r['case_number'] ?? null,
+        'label' => $r['label'] ?? null, 'detail' => $detail, 'changes' => $changes,
+        'ip' => $r['ip_address'] ?? null,
+    ];
 }
 
 // ========== SHARED LOOKUPS ==========
@@ -312,7 +379,7 @@ function child_or_404(string $table, int $id, ?int $caseId = null): array {
     static $tables = ['referrals', 'visits', 'outcomes', 'correspondence', 'ledger', 'tasks', 'documents', 'coverages'];
     if (!in_array($table, $tables, true)) throw new InvalidArgumentException('bad table');
     if ($table === 'tasks') {
-        $sql = 'SELECT * FROM tasks WHERE id = ? AND practice_id = ?';
+        $sql = 'SELECT * FROM tasks WHERE id = ? AND practice_id = ? AND archived_at IS NULL';
         $args = [$id, pid()];
     } else {
         $sql = "SELECT t.* FROM $table t JOIN cases c ON c.id = t.case_id WHERE t.id = ? AND c.practice_id = ?";

@@ -1,0 +1,1 @@
+ALTER TABLE tasks ADD COLUMN notes_enc TEXT NULL AFTER title, ADD COLUMN priority ENUM('normal','high') NOT NULL DEFAULT 'normal' AFTER notes_enc, ADD COLUMN done_by INT NULL AFTER done_at, ADD COLUMN archived_at DATETIME NULL AFTER done_by, ADD COLUMN updated_at DATETIME NULL AFTER created_at

@@ -43,6 +43,7 @@ function practice_summary(array $p): array {
         'status' => $p['subscription_status'], 'access' => practice_access($p), 'trialDaysLeft' => $daysLeft,
         'currentPeriodEnd' => $p['current_period_end'], 'baaCurrent' => $p['baa_version'] === BAA_VERSION,
         'limits' => ['activeCases' => $plan['active_cases'], 'users' => $plan['users']],
+        'ehrName' => $p['ehr_name'] ?? null,
     ];
 }
 

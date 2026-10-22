@@ -247,3 +247,31 @@ input.amt{width:110px;text-align:right;padding:4px 6px;}
 .ck-fill .ck{background:transparent;box-shadow:inset 0 0 0 1.5px var(--navy);color:var(--navy);}
 .ck-mismatch .ck{background:var(--navy);color:#fff;}
 .ck-missing .ck{background:var(--mist);color:var(--navy);}
+
+/* ---------- tasks, activity, audit ---------- */
+.linklike{background:none;border:0;padding:0;font:inherit;color:var(--navy);text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;}
+.linklike:hover{text-decoration-color:var(--green);}
+.alerts .grow,.alerts li > div{flex:1 1 auto;min-width:0;}
+.alerts.tasks input[type=checkbox]{margin-top:4px;accent-color:var(--green);}
+.alerts li.done{opacity:0.7;}
+.nav-badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:999px;font-size:0.72rem;font-weight:700;line-height:18px;text-align:center;background:rgba(255,255,255,0.16);color:#fff;}
+.nav-badge.due{background:var(--green);color:var(--navy);}
+.sidebar a.active .nav-badge{background:var(--navy);color:#fff;}
+.assignees{border:1px solid var(--line);border-radius:8px;padding:8px 12px 10px;}
+.assignees legend{font-size:0.84rem;font-weight:600;padding:0 4px;}
+.assignee-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:2px 12px;}
+.activity{list-style:none;}
+.activity li{display:grid;grid-template-columns:150px 1fr;gap:12px;padding:9px 2px;border-bottom:1px solid var(--bg-2);}
+.activity li:last-child{border-bottom:none;}
+.activity li.empty{display:block;}
+.changes{list-style:none;margin-top:3px;font-size:0.84rem;color:var(--muted);}
+.changes li{display:block;padding:0;border:0;}
+.changes strong{color:var(--ink);font-weight:600;}
+.alarm td:first-child,.activity li.alarm .when{box-shadow:inset 3px 0 0 var(--navy);padding-left:8px;}
+table.audit td{vertical-align:top;}
+.ck-info .ck{background:var(--bg-2);color:var(--navy);font-style:italic;}
+.table-wrap.sample{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:6px;}
+.table-wrap.sample th,.table-wrap.sample td{white-space:nowrap;}
+@media (max-width:640px){.activity li{grid-template-columns:1fr;gap:2px;}}
+[hidden]{display:none !important;}
+.check input[type=radio]{width:auto;flex:0 0 auto;margin-top:3px;accent-color:var(--green);}

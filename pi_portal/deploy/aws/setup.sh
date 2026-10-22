@@ -23,8 +23,8 @@ RDS_CA=/etc/pki/tls/certs/rds-global-bundle.pem
 say() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
 
 say "Installing Apache, PHP 8.3, MySQL client"
-dnf -y install httpd mod_ssl php8.3 php8.3-fpm php8.3-cli php8.3-mysqlnd php8.3-pdo php8.3-sodium php8.3-mbstring \
-  mariadb105 jq rsync cronie dnf-automatic poppler-utils
+dnf -y install httpd mod_ssl php8.3 php8.3-fpm php8.3-cli php8.3-mysqlnd php8.3-pdo php8.3-sodium php8.3-mbstring php8.3-xml \
+  mariadb105 jq rsync cronie dnf-automatic poppler-utils unzip
 if ! command -v certbot >/dev/null; then
   dnf -y install certbot python3-certbot-apache 2>/dev/null || {
     python3 -m venv /opt/certbot && /opt/certbot/bin/pip install -q certbot certbot-apache && ln -sf /opt/certbot/bin/certbot /usr/bin/certbot

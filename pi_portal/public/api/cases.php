@@ -124,9 +124,10 @@ function update_row(string $table, int $id, array $cols) {
     pi_db()->prepare($sql)->execute([...array_values($cols), $id]);
 }
 
-// Audit detail names the fields that changed, never their values.
-function field_names(array $cols): string {
-    return implode(',', array_map(fn($c) => preg_replace('/_enc$/', '', $c), array_keys($cols)));
+// The identifying, non-free-text fields of a created or removed row, so
+// the activity log reads "Added visit · Date 2026-10-01 · Treatment".
+function safe_snapshot(array $spec, array $row): array {
+    return array_values(array_filter(audit_diff($spec, [], $row), fn($c) => $c['t'] !== 'text' && ($c['to'] ?? null) !== null && ($c['to'] ?? null) !== false));
 }
 
 function patient_name(array $p): string {
@@ -193,7 +194,7 @@ function full_case(int $id, array $user): array {
     $outcomes = $fetch('SELECT * FROM outcomes WHERE case_id = ? AND archived_at IS NULL ORDER BY taken_on');
     $corr = array_map('decrypt_row', $fetch('SELECT r.*, k.organization contact_org, k.name contact_name FROM correspondence r LEFT JOIN contacts k ON k.id = r.contact_id WHERE r.case_id = ? AND r.archived_at IS NULL ORDER BY r.occurred_on DESC, r.id DESC'));
     $ledger = $fetch("SELECT l.*, u.name updated_by_name FROM ledger l LEFT JOIN users u ON u.id = COALESCE(l.updated_by, l.created_by) WHERE l.case_id = ? AND l.archived_at IS NULL ORDER BY l.entry_date, l.id");
-    $tasks = $fetch('SELECT t.*, u.name assigned_name FROM tasks t LEFT JOIN users u ON u.id = t.assigned_user_id WHERE t.case_id = ? ORDER BY t.done_at IS NOT NULL, t.due_on');
+    $tasks = load_tasks('t.case_id = ?', [$id], 200);
     $ehr = $fetch('SELECT e.id, e.ehr_system, e.uploaded_at, e.document_id, u.name uploaded_by_name FROM ehr_imports e LEFT JOIN users u ON u.id = e.uploaded_by WHERE e.case_id = ? ORDER BY e.id DESC LIMIT 1')[0] ?? null;
     $docs = $fetch('SELECT d.id, d.category, d.original_name, d.mime_type, d.size_bytes, d.uploaded_at, u.name uploaded_by_name FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by WHERE d.case_id = ? AND d.archived_at IS NULL ORDER BY d.uploaded_at DESC');
     $coverages = array_map('decrypt_row', $fetch('SELECT cv.*, k.organization carrier_org, k.name carrier_name, k.phone carrier_phone, k.fax carrier_fax FROM coverages cv LEFT JOIN contacts k ON k.id = cv.carrier_contact_id WHERE cv.case_id = ? AND cv.archived_at IS NULL ORDER BY cv.priority, cv.id'));
@@ -296,7 +297,7 @@ function handle_create() {
     }
     sync_benefits($id);
     $pdo->commit();
-    audit('create', 'case', $id, $id, $user);
+    audit('create', 'case', $id, $id, $user, null, safe_snapshot(CASE_FIELDS, $cols));
     json_response(['id' => $id, 'caseNumber' => $cols['case_number']]);
 }
 
@@ -332,11 +333,14 @@ function handle_update() {
 
     $cols = clean_fields(CASE_FIELDS, $caseIn);
     if (array_key_exists('stage', $cols) && $cols['stage'] === null) unset($cols['stage']);
+    $changes = audit_diff(CASE_FIELDS, $c, $cols);
     if (!empty($cols)) {
         $cols['updated_at'] = now_str();
         update_row('cases', $id, $cols);
     }
     $pcols = clean_fields(PATIENT_FIELDS, $patientIn);
+    $ps = pi_db()->prepare('SELECT * FROM patients WHERE id = ?'); $ps->execute([$c['patient_id']]);
+    $changes = array_merge($changes, array_map(fn($x) => ['f' => 'patient_' . $x['f']] + $x, audit_diff(PATIENT_FIELDS, $ps->fetch(), $pcols)));
     if (array_key_exists('first_name', $pcols) && !$pcols['first_name']) json_response(['error' => "First name can't be blank."], 400);
     if (array_key_exists('last_name', $pcols)) $pcols['last_name'] = $pcols['last_name'] ?? '';
     if ($pcols) {
@@ -344,7 +348,7 @@ function handle_update() {
         update_row('patients', (int)$c['patient_id'], $pcols);
     }
     if (array_key_exists('injury_type', $cols)) sync_benefits($id);
-    audit('update', 'case', $id, $id, $user, field_names(array_merge($cols, $pcols)));
+    if ($changes) audit('update', 'case', $id, $id, $user, null, $changes);
     json_response(full_case($id, $user));
 }
 
@@ -357,10 +361,14 @@ function handle_milestone() {
     $b = json_body();
     $key = (string)($b['key'] ?? '');
     if (!isset(CHECKLIST[$key])) json_response(['error' => 'Unknown checklist item'], 400);
+    $prev = pi_db()->prepare('SELECT completed_on, not_applicable FROM case_milestones WHERE case_id = ? AND milestone = ?');
+    $prev->execute([$id, $key]);
+    $before = $prev->fetch() ?: [];
     pi_db()->prepare('REPLACE INTO case_milestones (case_id, milestone, completed_on, not_applicable, note, updated_by, updated_at) VALUES (?,?,?,?,?,?,?)')
         ->execute([$id, $key, date_or_null($b['completed_on'] ?? null), !empty($b['not_applicable']) ? 1 : 0, str_or_null($b['note'] ?? null), $user['id'], now_str()]);
     touch_case($id);
-    audit('update', 'milestone', $key, $id, $user);
+    audit('update', 'milestone', $key, $id, $user, null, audit_diff(['completed_on' => 'date', 'not_applicable' => 'bool'], $before,
+        ['completed_on' => date_or_null($b['completed_on'] ?? null), 'not_applicable' => !empty($b['not_applicable']) ? 1 : 0]));
     json_response(full_case($id, $user));
 }
 
@@ -420,7 +428,8 @@ function handle_child_save() {
         }
         if (in_array($table, ['referrals', 'coverages'], true)) $cols['updated_at'] = now_str();
         update_row($table, $childId, $cols);
-        audit('update', $table, $childId, $caseId, $user, field_names($cols));
+        $changes = audit_diff($spec['fields'], $existing, $cols);
+        if ($changes) audit('update', $table, $childId, $caseId, $user, null, $changes);
     } else {
         foreach ($spec['required'] as $r) {
             if (!isset($cols[$r]) || $cols[$r] === null || $cols[$r] === '') json_response(['error' => 'Missing ' . str_replace('_', ' ', $r)], 400);
@@ -437,7 +446,7 @@ function handle_child_save() {
         $cols['created_at'] = now_str();
         if (in_array($table, ['referrals', 'coverages'], true)) $cols['updated_at'] = now_str();
         $childId = insert_row($table, $cols);
-        audit('create', $table, $childId, $caseId, $user);
+        audit('create', $table, $childId, $caseId, $user, null, safe_snapshot($spec['fields'], $cols));
         // A visit can post its charge in the same step, billed to a chosen
         // coverage or straight to the patient balance (not on EHR-synced cases).
         if ($table === 'visits' && !empty($b['charge']['amount']) && can($user, 'finance.write') && !$case['ehr_synced_at']) {
@@ -452,7 +461,7 @@ function handle_child_save() {
                     'memo' => !empty($cols['cpt_codes']) ? 'CPT ' . $cols['cpt_codes'] : 'Office visit',
                     'created_by' => $user['id'], 'created_at' => now_str(),
                 ]);
-                audit('create', 'ledger', $lid, $caseId, $user);
+                audit('create', 'ledger', $lid, $caseId, $user, null, safe_snapshot(CHILD_SPECS['ledger']['fields'], ['entry_date' => $cols['visit_date'], 'kind' => 'charge', 'amount' => $amount, 'coverage_id' => $coverageId]));
             }
         }
     }
@@ -499,7 +508,7 @@ function handle_move_balance() {
         ], $caseId) + ['kind' => 'transfer', 'bucket' => $from, 'to_bucket' => $toCoverage ? 'insurance' : 'patient', 'to_coverage_id' => $toCoverage]);
         $row += ['case_id' => $caseId, 'entry_date' => $date, 'memo' => $reason, 'created_by' => $user['id'], 'created_at' => now_str()];
         $lid = insert_row('ledger', $row);
-        audit('create', 'ledger', $lid, $caseId, $user, 'transfer');
+        audit('create', 'ledger', $lid, $caseId, $user, null, safe_snapshot(CHILD_SPECS['ledger']['fields'], $row));
         $n++;
     }
     $pdo->commit();
@@ -527,7 +536,7 @@ function handle_forward_balance() {
         'contact_id' => $c['attorney_contact_id'], 'subject' => 'Patient balance forwarded to attorney: $' . number_format($amount, 2),
         'created_by' => $user['id'], 'created_at' => now_str(),
     ]);
-    audit('forward_balance', 'case', $caseId, $caseId, $user);
+    audit('forward_balance', 'case', $caseId, $caseId, $user, null, [['f' => 'balance_forwarded_amount', 't' => 'money', 'from' => null, 'to' => round($amount, 2)], ['f' => 'balance_forwarded_on', 't' => 'date', 'from' => null, 'to' => $date]]);
     json_response(full_case($caseId, $user));
 }
 
@@ -541,59 +550,158 @@ function handle_child_archive() {
     if (!can_child($user, $spec)) json_response(['error' => 'Your role does not allow this.'], 403);
     if ($table === 'ledger') ehr_guard(case_or_404($caseId));
     $childId = (int)($b['child_id'] ?? 0);
-    child_or_404($table, $childId, $caseId);
+    $row = child_or_404($table, $childId, $caseId);
     pi_db()->prepare("UPDATE $table SET archived_at = ? WHERE id = ?")->execute([now_str(), $childId]);
     touch_case($caseId);
     if ($table === 'coverages') sync_benefits($caseId);
-    audit('archive', $table, $childId, $caseId, $user);
+    audit('archive', $table, $childId, $caseId, $user, null, safe_snapshot($spec['fields'], $row));
     json_response(full_case($caseId, $user));
 }
 
 // ---------- tasks ----------
-function handle_tasks() {
-    $user = require_user('case.read');
-    $mine = ($_GET['scope'] ?? '') === 'mine';
-    $sql = 'SELECT t.*, u.name assigned_name, c.case_number, p.first_name, p.last_name
-            FROM tasks t LEFT JOIN users u ON u.id = t.assigned_user_id
-            LEFT JOIN cases c ON c.id = t.case_id LEFT JOIN patients p ON p.id = c.patient_id
-            WHERE t.practice_id = ? AND t.done_at IS NULL' . ($mine ? ' AND t.assigned_user_id = ?' : '') . ' ORDER BY t.due_on IS NULL, t.due_on LIMIT 500';
-    $stmt = pi_db()->prepare($sql);
-    $stmt->execute($mine ? [pid(), $user['id']] : [pid()]);
-    $rows = array_map(function ($t) {
+// A task can be assigned to one or more team members; with none it's for
+// anyone. Any team member can create, assign, edit and complete tasks.
+const TASK_SPEC = ['title' => 'str:200', 'notes' => 'enc', 'priority' => ['normal', 'high'], 'due_on' => 'date'];
+
+// $where filters tasks t (and may use the joined case c); returns tasks with
+// their assignees, ready for the API.
+function load_tasks(string $where, array $args, int $limit = 500): array {
+    $pdo = pi_db();
+    $stmt = $pdo->prepare("SELECT t.*, c.case_number, p.first_name, p.last_name, cu.name created_by_name, du.name done_by_name
+        FROM tasks t LEFT JOIN cases c ON c.id = t.case_id LEFT JOIN patients p ON p.id = c.patient_id
+        LEFT JOIN users cu ON cu.id = t.created_by LEFT JOIN users du ON du.id = t.done_by
+        WHERE t.practice_id = ? AND t.archived_at IS NULL AND ($where)
+        ORDER BY t.done_at IS NOT NULL, t.done_at DESC, t.due_on IS NULL, t.due_on, t.priority = 'high' DESC, t.id LIMIT $limit");
+    $stmt->execute([pid(), ...$args]);
+    $rows = $stmt->fetchAll();
+    $assignees = [];
+    if ($rows) {
+        $ids = array_column($rows, 'id');
+        $a = $pdo->prepare('SELECT ta.task_id, u.id, u.name FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY u.name');
+        $a->execute($ids);
+        foreach ($a as $r) $assignees[$r['task_id']][] = ['id' => (int)$r['id'], 'name' => $r['name']];
+    }
+    return array_map(function ($t) use ($assignees) {
+        $t = decrypt_row($t);
         $t['patient'] = $t['case_id'] ? patient_name($t) : null;
+        $t['assignees'] = $assignees[$t['id']] ?? [];
         unset($t['first_name'], $t['last_name']);
         return $t;
-    }, $stmt->fetchAll());
-    json_response(['tasks' => $rows]);
+    }, $rows);
+}
+
+function handle_tasks() {
+    $user = require_user('case.read');
+    $scope = (string)($_GET['scope'] ?? 'all');
+    $done = ($_GET['status'] ?? 'open') === 'done';
+    $where = [$done ? 't.done_at IS NOT NULL' : 't.done_at IS NULL'];
+    $args = [];
+    if ($scope === 'mine') { $where[] = 'EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?)'; $args[] = $user['id']; }
+    elseif ($scope === 'unassigned') { $where[] = 'NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id)'; }
+    elseif ($scope === 'created') { $where[] = 't.created_by = ?'; $args[] = $user['id']; }
+    elseif (preg_match('/^user:(\d+)$/', $scope, $m)) { $where[] = 'EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?)'; $args[] = (int)$m[1]; }
+    if ($done) { $where[] = 't.done_at >= ?'; $args[] = add_days(date('Y-m-d'), -90) . ' 00:00:00'; }
+    json_response(['tasks' => load_tasks(implode(' AND ', $where), $args)]);
+}
+
+// Open tasks for the nav badge: assigned to me, due today or earlier.
+function handle_task_counts() {
+    $user = require_user('case.read');
+    $s = pi_db()->prepare('SELECT COUNT(*) total, SUM(t.due_on IS NOT NULL AND t.due_on <= ?) due FROM tasks t JOIN task_assignees ta ON ta.task_id = t.id AND ta.user_id = ?
+        WHERE t.practice_id = ? AND t.done_at IS NULL AND t.archived_at IS NULL');
+    $s->execute([date('Y-m-d'), $user['id'], pid()]);
+    $r = $s->fetch();
+    json_response(['mine' => (int)$r['total'], 'due' => (int)$r['due']]);
 }
 
 function handle_task_save() {
     require_method('POST');
     $user = require_user('case.read');
     $b = json_body();
+    $pdo = pi_db();
     $id = (int)($b['id'] ?? 0);
-    $caseId = !empty($b['case_id']) ? (int)$b['case_id'] : null;
-    if ($caseId) case_or_404($caseId);
-    $cols = [];
-    if (array_key_exists('title', $b)) {
-        $cols['title'] = str_or_null($b['title'], 200);
-        if (!$cols['title']) json_response(['error' => 'Enter a task.'], 400);
+    $existing = $id ? child_or_404('tasks', $id) : null;
+    $caseId = $existing ? ($existing['case_id'] ? (int)$existing['case_id'] : null) : (!empty($b['case_id']) ? (int)$b['case_id'] : null);
+    if ($caseId && !$existing) case_or_404($caseId);
+    $cols = clean_fields(TASK_SPEC, $b);
+    if (array_key_exists('title', $cols) && !$cols['title']) json_response(['error' => 'Enter a task.'], 400);
+    if (!$existing && empty($cols['title'])) json_response(['error' => 'Enter a task.'], 400);
+    if (array_key_exists('priority', $cols) && !$cols['priority']) $cols['priority'] = 'normal';
+    $changes = audit_diff(TASK_SPEC, $existing ?? [], $cols);
+    if (array_key_exists('done', $b) && (bool)$b['done'] !== (bool)($existing['done_at'] ?? null)) {
+        $cols['done_at'] = $b['done'] ? now_str() : null;
+        $cols['done_by'] = $b['done'] ? $user['id'] : null;
+        $changes[] = ['f' => 'done', 't' => 'bool', 'from' => !$b['done'], 'to' => (bool)$b['done']];
     }
-    if (array_key_exists('due_on', $b)) $cols['due_on'] = date_or_null($b['due_on']);
-    if (array_key_exists('assigned_user_id', $b)) $cols['assigned_user_id'] = clean_fields(['a' => 'user'], ['a' => $b['assigned_user_id']])['a'];
-    if (array_key_exists('done', $b)) $cols['done_at'] = $b['done'] ? now_str() : null;
-    if ($id) {
-        $t = child_or_404('tasks', $id);
-        update_row('tasks', $id, $cols);
-        $caseId = $t['case_id'] ? (int)$t['case_id'] : null;
-        audit('update', 'task', $id, $caseId, $user, field_names($cols));
+
+    // Assignees: active members of this practice.
+    $newAssignees = null;
+    if (array_key_exists('assignee_ids', $b)) {
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array)$b['assignee_ids']))));
+        if ($ids) {
+            $q = $pdo->prepare('SELECT id, name FROM users WHERE practice_id = ? AND active = 1 AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+            $q->execute([pid(), ...$ids]);
+            $found = $q->fetchAll(PDO::FETCH_KEY_PAIR);
+            if (count($found) !== count($ids)) json_response(['error' => 'Pick active team members to assign.'], 400);
+            asort($found);
+        }
+        $newAssignees = $ids ? $found : [];
+    }
+
+    $pdo->beginTransaction();
+    if ($existing) {
+        if ($cols) update_row('tasks', $id, $cols + ['updated_at' => now_str()]);
     } else {
-        if (empty($cols['title'])) json_response(['error' => 'Enter a task.'], 400);
-        $cols += ['practice_id' => pid(), 'case_id' => $caseId, 'created_by' => $user['id'], 'created_at' => now_str()];
+        $cols += ['practice_id' => pid(), 'case_id' => $caseId, 'priority' => 'normal', 'created_by' => $user['id'], 'created_at' => now_str()];
         $id = insert_row('tasks', $cols);
-        audit('create', 'task', $id, $caseId, $user);
     }
+    if ($newAssignees !== null) {
+        $q = $pdo->prepare('SELECT u.id, u.name FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id = ? ORDER BY u.name');
+        $q->execute([$id]);
+        $old = $q->fetchAll(PDO::FETCH_KEY_PAIR);
+        if (array_keys($old) != array_keys($newAssignees) || array_diff_key($old, $newAssignees) || array_diff_key($newAssignees, $old)) {
+            $pdo->prepare('DELETE FROM task_assignees WHERE task_id = ?')->execute([$id]);
+            $ins = $pdo->prepare('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)');
+            foreach (array_keys($newAssignees) as $uid) $ins->execute([$id, $uid]);
+            $changes[] = ['f' => 'assignees', 't' => 'name', 'from' => $old ? implode(', ', $old) : null, 'to' => $newAssignees ? implode(', ', $newAssignees) : null];
+        }
+    }
+    $pdo->commit();
+    if (!$existing) audit('create', 'task', $id, $caseId, $user, null, array_values(array_filter($changes, fn($c) => $c['t'] !== 'text' || $c['f'] === 'title')));
+    elseif ($changes) audit('update', 'task', $id, $caseId, $user, null, $changes);
     json_response($caseId && !empty($b['return_case']) ? full_case($caseId, $user) : ['ok' => true, 'id' => $id]);
+}
+
+function handle_task_delete() {
+    require_method('POST');
+    $user = require_user('case.read');
+    $t = child_or_404('tasks', (int)(json_body()['id'] ?? 0));
+    if ((int)$t['created_by'] !== (int)$user['id'] && !can($user, 'users.manage')) json_response(['error' => 'Only the person who created a task (or an admin) can delete it.'], 403);
+    pi_db()->prepare('UPDATE tasks SET archived_at = ? WHERE id = ?')->execute([now_str(), $t['id']]);
+    audit('archive', 'task', $t['id'], $t['case_id'] ? (int)$t['case_id'] : null, $user, null, [['f' => 'title', 't' => 'text']]);
+    json_response(['ok' => true]);
+}
+
+// ---------- activity ----------
+// Who did what on a case, for the whole team. Changes only; views and
+// downloads (access history) are shown to admins on request.
+const ACCESS_ACTIONS = ['view', 'list', 'download', 'export', 'ehr_preview'];
+
+function handle_activity() {
+    $user = require_user('case.read');
+    $caseId = (int)($_GET['case_id'] ?? 0);
+    case_or_404($caseId);
+    $withViews = !empty($_GET['views']) && can($user, 'audit.read');
+    $where = 'a.practice_id = ? AND a.case_id = ?';
+    $args = [pid(), $caseId];
+    if (!$withViews) $where .= " AND a.action NOT IN ('" . implode("','", ACCESS_ACTIONS) . "')";
+    if (!empty($_GET['before'])) { $where .= ' AND a.id < ?'; $args[] = (int)$_GET['before']; }
+    $s = pi_db()->prepare("SELECT a.id, a.occurred_at, a.user_id, COALESCE(u.name, a.user_email) user_name, a.action, a.entity, a.entity_id, a.detail, a.changes, tk.title label
+        FROM audit_log a LEFT JOIN users u ON u.id = a.user_id LEFT JOIN tasks tk ON a.entity = 'task' AND tk.id = a.entity_id WHERE $where ORDER BY a.id DESC LIMIT 101");
+    $s->execute($args);
+    $rows = $s->fetchAll();
+    $more = count($rows) > 100;
+    json_response(['entries' => array_map(fn($r) => present_audit($r, $user), array_slice($rows, 0, 100)), 'more' => $more]);
 }
 
 // ---------- dashboard ----------
@@ -628,10 +736,9 @@ function handle_dashboard() {
     $rank = ['high' => 0, 'medium' => 1, 'low' => 2];
     usort($alerts, fn($a, $b) => $rank[$a['level']] <=> $rank[$b['level']]);
 
-    $stmt = $pdo->prepare('SELECT t.*, c.case_number, p.first_name, p.last_name FROM tasks t LEFT JOIN cases c ON c.id = t.case_id LEFT JOIN patients p ON p.id = c.patient_id
-        WHERE t.practice_id = ? AND t.done_at IS NULL AND (t.assigned_user_id = ? OR t.assigned_user_id IS NULL) AND (t.due_on IS NULL OR t.due_on <= ?) ORDER BY t.due_on LIMIT 50');
-    $stmt->execute([pid(), $user['id'], add_days(date('Y-m-d'), 7)]);
-    $tasks = array_map(function ($t) { $t['patient'] = $t['case_id'] ? patient_name($t) : null; unset($t['first_name'], $t['last_name']); return $t; }, $stmt->fetchAll());
+    // Mine (or anyone's) and due within a week.
+    $tasks = load_tasks('t.done_at IS NULL AND (t.due_on IS NULL OR t.due_on <= ?) AND (EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?) OR NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id))',
+        [add_days(date('Y-m-d'), 7), $user['id']], 50);
 
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM visits v JOIN cases c ON c.id = v.case_id WHERE c.practice_id = ? AND v.archived_at IS NULL AND v.visit_type <> 'no_show' AND v.visit_date >= ?");
     $stmt->execute([pid(), date('Y-m-d', strtotime('monday this week'))]);
@@ -818,6 +925,9 @@ switch ($action) {
     case 'ar_report': handle_ar_report(); break;
     case 'tasks': handle_tasks(); break;
     case 'task_save': handle_task_save(); break;
+    case 'task_delete': handle_task_delete(); break;
+    case 'task_counts': handle_task_counts(); break;
+    case 'activity': handle_activity(); break;
     case 'letter': handle_letter(); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }

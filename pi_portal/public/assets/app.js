@@ -342,7 +342,7 @@ async function startShell() {
   $app.innerHTML = `<div class="shell">
     <nav class="sidebar" aria-label="Main">
       <div class="brand"><img src="assets/logo-horizontal-dark.svg" alt="${esc(S.brand.name)}"><small>${esc(operator ? 'Operator console' : S.practice.name)}</small></div>
-      ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}</a>`).join('')}
+      ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}</a>`).join('')}
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>
         <button class="btn ghost sm" data-act="sign-out">Sign out</button></div>
@@ -372,6 +372,7 @@ function route() {
   const pages = { dashboard: pageDashboard, cases: pageCases, case: pageCase, tasks: pageTasks, ar: pageAR, contacts: pageContacts, admin: pageAdmin, audit: pageAudit,
     settings: pageSettings, billing: pageBilling, platform: pagePlatform };
   (pages[page] || (S.user.operator ? pagePlatform : pageDashboard))(main, parts.slice(1));
+  if (!S.user.operator) refreshTaskBadge();
 }
 
 const phiBanner = '<div class="phi-banner">Contains protected health information · access is logged</div>';
@@ -409,8 +410,8 @@ async function pageDashboard(main) {
         <span class="spacer"></span>
         <select id="alert-level" aria-label="Filter alerts"><option value="">All</option><option value="high">Urgent only</option><option value="medium">Urgent + important</option></select></div>
         <ul class="alerts" id="dash-alerts"></ul></div>
-      <div class="card"><div class="card-head"><h2>My tasks (next 7 days)</h2><span class="spacer"></span><button class="btn ghost sm" data-act="new-task">+ Task</button></div>
-        ${taskListHtml(d.tasks, true)}</div>
+      <div class="card"><div class="card-head"><h2>My tasks (next 7 days)</h2><span class="spacer"></span><a class="small" href="#/tasks">All tasks</a><button class="btn ghost sm" data-act="new-task">+ Task</button></div>
+        ${taskListHtml(d.tasks, true, 'Nothing assigned to you this week.')}</div>
     </div>`;
   let showAll = false;
   const renderAlerts = () => {
@@ -418,7 +419,8 @@ async function pageDashboard(main) {
     const keep = lvl === 'high' ? ['high'] : lvl === 'medium' ? ['high', 'medium'] : ['high', 'medium', 'low'];
     const matching = d.alerts.filter((a) => keep.includes(a.level));
     const list = showAll ? matching : matching.slice(0, 25);
-    document.getElementById('dash-alerts').innerHTML = list.length ? list.map((a) => `<li class="${esc(a.level)}"><span class="dot"></span><div><a href="#/case/${a.caseId}" class="who">${esc(a.patient)}</a> <span class="muted small mono">${esc(a.caseNumber)}</span><div>${esc(a.text)}</div></div></li>`).join('')
+    document.getElementById('dash-alerts').innerHTML = list.length ? list.map((a) => `<li class="${esc(a.level)}"><span class="dot"></span><div class="grow"><a href="#/case/${a.caseId}" class="who">${esc(a.patient)}</a> <span class="muted small mono">${esc(a.caseNumber)}</span><div>${esc(a.text)}</div></div>
+      <button class="btn ghost sm" data-act="task-from-alert" data-case="${a.caseId}" data-text="${esc(a.text)}" title="Make this a task for someone">+ Task</button></li>`).join('')
       : '<li class="empty">Nothing needs attention.</li>';
     if (matching.length > list.length) {
       const more = document.createElement('li');
@@ -433,13 +435,23 @@ async function pageDashboard(main) {
   renderAlerts();
 }
 
-function taskListHtml(tasks, showCase) {
-  if (!tasks.length) return '<div class="empty">No open tasks.</div>';
-  return `<ul class="alerts">${tasks.map((t) => {
-    const overdue = t.due_on && t.due_on < today();
-    return `<li class="${overdue ? 'high' : 'low'}"><input type="checkbox" data-act="task-done" data-id="${t.id}" aria-label="Mark done">
-      <div><div>${esc(t.title)}</div><div class="small muted">${t.due_on ? (overdue ? '<span class="chip overdue">Overdue</span> ' : '') + 'Due ' + esc(fmtDate(t.due_on)) : 'No due date'}${t.assigned_name ? ' · ' + esc(t.assigned_name) : ''}
-      ${showCase && t.case_id ? ` · <a href="#/case/${t.case_id}">${esc(t.patient)}</a>` : ''}</div></div></li>`;
+// Tasks rendered anywhere are kept here so a click can open them for editing.
+const taskCache = new Map();
+function assigneeText(t) {
+  return t.assignees.length ? t.assignees.map((a) => a.id == S.user.id ? 'You' : a.name).join(', ') : 'Anyone';
+}
+function taskListHtml(tasks, showCase, empty = 'No open tasks.') {
+  if (!tasks.length) return `<div class="empty">${esc(empty)}</div>`;
+  tasks.forEach((t) => taskCache.set(t.id, t));
+  return `<ul class="alerts tasks">${tasks.map((t) => {
+    const overdue = !t.done_at && t.due_on && t.due_on < today();
+    const dueToday = !t.done_at && t.due_on === today();
+    const level = t.done_at ? 'low' : overdue ? 'high' : (t.priority === 'high' || dueToday) ? 'medium' : 'low';
+    const when = t.done_at ? `Done ${esc(fmtDate(t.done_at))}${t.done_by_name ? ' by ' + esc(t.done_by_name) : ''}`
+      : t.due_on ? `${overdue ? '<span class="chip overdue">Overdue</span> ' : dueToday ? '<span class="chip due">Today</span> ' : ''}Due ${esc(fmtDate(t.due_on))}` : 'No due date';
+    return `<li class="${level}${t.done_at ? ' done' : ''}"><input type="checkbox" data-act="task-done" data-id="${t.id}" aria-label="${t.done_at ? 'Reopen task' : 'Mark done'}"${t.done_at ? ' checked' : ''}>
+      <div><button class="linklike" data-act="edit-task" data-id="${t.id}">${t.priority === 'high' && !t.done_at ? '<span class="chip red">High</span> ' : ''}${t.done_at ? `<s>${esc(t.title)}</s>` : esc(t.title)}</button>${t.notes ? ' <span class="small muted" title="Has notes">· notes</span>' : ''}
+      <div class="small muted">${when} · <span title="Assigned to">${esc(assigneeText(t))}</span>${showCase && t.case_id ? ` · <a href="#/case/${t.case_id}">${esc(t.patient)}</a>` : ''}${t.created_by_name && t.created_by != S.user.id ? ' · from ' + esc(t.created_by_name) : ''}</div></div></li>`;
   }).join('')}</ul>`;
 }
 
@@ -546,7 +558,7 @@ function newCaseModal() {
 // ---------- case page ----------
 const CASE_TABS = [
   ['overview', 'Overview'], ['checklist', 'Checklist'], ['referrals', 'Co-management'], ['visits', 'Visits'], ['outcomes', 'Outcomes'],
-  ['correspondence', 'Correspondence'], ['financials', 'Financials', 'fin:any'], ['documents', 'Documents'], ['tasks', 'Tasks'], ['activity', 'Activity', 'audit.read'],
+  ['correspondence', 'Correspondence'], ['financials', 'Financials', 'fin:any'], ['documents', 'Documents'], ['tasks', 'Tasks'], ['activity', 'Activity'],
 ];
 
 async function pageCase(main, args) {
@@ -583,7 +595,7 @@ function renderCase() {
       <span class="spacer"></span>
       <div><label for="case-stage">Stage</label><select id="case-stage" data-act-change="stage"${can('case.write') || can('finance.write') ? '' : ' disabled'}>${entries(S.lookups.stages).map(([k, t]) => opt(k, t, c.stage)).join('')}</select></div>
     </div>
-    ${d.alerts.length ? `<div class="alert-box"><ul class="alerts">${d.alerts.map((a) => `<li class="${esc(a.level)}"><span class="dot"></span><div>${esc(a.text)}</div></li>`).join('')}</ul></div>` : ''}
+    ${d.alerts.length ? `<div class="alert-box"><ul class="alerts">${d.alerts.map((a) => `<li class="${esc(a.level)}"><span class="dot"></span><div class="grow">${esc(a.text)}</div><button class="btn ghost sm" data-act="task-from-alert" data-case="${c.id}" data-text="${esc(a.text)}" title="Make this a task for someone">+ Task</button></li>`).join('')}</ul></div>` : ''}
     <div class="tabs" role="tablist">${tabs.map(([k, t]) => `<button role="tab" data-act="case-tab" data-tab="${k}" class="${S.caseTab === k ? 'active' : ''}">${esc(t)}${k === 'checklist' && overdueCount ? ` <span class="badge-count">${overdueCount}</span>` : ''}</button>`).join('')}</div>
     <div id="case-tab"></div>`;
   main.querySelector('#case-stage').addEventListener('change', async (e) => {
@@ -1121,47 +1133,174 @@ function ledgerEditModal(row) {
 // ----- EHR ledger upload -----
 // Two steps: preview (checks it's the right patient, shows what changes),
 // then apply. The EHR's numbers replace the case's EHR-sourced lines.
+// Upload one patient's ledger from the practice's EHR — any EHR:
+//   spreadsheet (CSV/Excel): columns mapped once per EHR, then remembered
+//   PDF: read directly where there's a built-in reader (DrChrono)
+//   totals: typed in when nothing else is available
+// Every route ends at the same preview, then "Apply to case".
+const SHEET_CAT_OPTS = [['charge', 'Charge'], ['insurance_payment', 'Insurance payment'], ['patient_payment', 'Patient payment'],
+  ['adjustment', 'Adjustment / write-off'], ['transfer', 'Moved to patient responsibility'], ['ignore', 'Ignore']];
 function ehrUploadModal() {
   const d = S.caseData;
-  let preview = null;
-  const icon = { ok: '✓', fill: '+', mismatch: '!', missing: '–' };
-  const m = openModal({ title: 'Upload EHR ledger', wide: true, okText: 'Preview', body: `
-    <p class="small">Export the patient's <strong>billing ledger as a PDF</strong> from DrChrono and upload it here. Your EHR stays the source of truth — this case's charges, payments and patient/insurance split will mirror it.</p>
-    <div class="filters mt"><input type="file" id="ehr-file" accept="application/pdf,.pdf" aria-label="Ledger PDF"></div>
-    <div id="ehr-preview"></div>`,
-    onOk: async (el) => {
-      if (!preview) {
-        const file = el.querySelector('#ehr-file').files[0];
-        if (!file) throw new Error('Choose the ledger PDF first.');
-        const fd = new FormData(); fd.append('case_id', d.case.id); fd.append('file', file);
-        preview = await api('ehr.php?action=preview', fd);
-        const pv = preview, L = pv.ledger, C = pv.current;
-        el.querySelector('#ehr-preview').innerHTML = `
-          <h3 class="mt">Is this the right patient?</h3>
-          <ul class="checks">${pv.checks.map((k) => `<li class="ck-${esc(k.status)}"><span class="ck">${icon[k.status] || '·'}</span><strong>${esc(k.label)}</strong> <span class="small muted">${esc(k.detail)}</span></li>`).join('')}</ul>
-          <h3 class="mt">What changes</h3>
-          <table><thead><tr><th></th><th class="num">${esc(pv.system)} ledger</th><th class="num">Now in ${esc(S.brand.name)}</th></tr></thead><tbody>
-            <tr><td>Total charges</td><td class="num">${money(L.billed)}</td><td class="num">${money(C.charges)}</td></tr>
-            <tr><td>Insurance balance</td><td class="num"><strong>${money(L.insuranceBalance)}</strong></td><td class="num">${money(C.insuranceBalance)}</td></tr>
-            <tr><td>Patient balance</td><td class="num"><strong>${money(L.patientBalance)}</strong></td><td class="num">${money(C.patientBalance)}</td></tr>
-            <tr><td class="small muted">Insurance paid · patient paid · adjustments</td><td class="num small">${money(L.insurancePaid)} · ${money(L.patientPaid)} · ${money(L.adjustment)}</td><td></td></tr>
-          </tbody></table>
-          <p class="small muted">${pv.counts.lines} charge lines across ${pv.counts.visits} visits (${esc(fmtDate(pv.firstDos))} – ${esc(fmtDate(pv.lastDos))}).</p>
-          <label class="check mt"><input type="checkbox" id="ehr-visits" checked> Add the ${pv.counts.newVisits} visit${pv.counts.newVisits === 1 ? '' : 's'} not yet on this case (with CPT and ICD-10 codes)</label>
-          ${pv.counts.manualRows ? `<label class="check"><input type="checkbox" id="ehr-manual" checked> Retire the ${pv.counts.manualRows} manually entered ledger line${pv.counts.manualRows === 1 ? '' : 's'} (e.g. opening balances) — the EHR replaces them</label>` : ''}
-          <label class="check"><input type="checkbox" id="ehr-pdf"> Also save the PDF to this case's documents <span class="small muted">(it includes demographics such as SSN)</span></label>
-          ${pv.needsOverride ? `<div class="notice mt"><label class="check"><input type="checkbox" id="ehr-confirm"> The name and date of birth don't match this case. I've confirmed this is the right patient.</label></div>` : ''}`;
-        el.querySelector('[data-ok]').textContent = 'Apply to case';
-        return false; // stay open for the second step
-      }
-      const confirm = el.querySelector('#ehr-confirm');
-      if (confirm && !confirm.checked) throw new Error("Confirm it's the right patient, or cancel.");
-      const r = await api('ehr.php?action=apply', { token: preview.token, create_visits: el.querySelector('#ehr-visits').checked,
-        replace_manual: !!el.querySelector('#ehr-manual')?.checked, save_pdf: el.querySelector('#ehr-pdf').checked, confirm_mismatch: !!confirm?.checked });
-      toast(`Ledger applied${r.visitsCreated ? ' — ' + r.visitsCreated + ' visits added' : ''}`);
-      await reloadCase();
-    } });
-  m.el.querySelector('#ehr-file').addEventListener('change', () => { preview = null; m.el.querySelector('#ehr-preview').innerHTML = ''; m.el.querySelector('[data-ok]').textContent = 'Preview'; });
+  const ehr = S.practice?.ehrName || 'your EHR';
+  let step = 'file', token = null, preview = null, insp = null, pdfMessage = null;
+  const icon = { ok: '✓', fill: '+', mismatch: '!', missing: '–', info: 'i' };
+  const m = openModal({ title: 'Upload EHR ledger', wide: true, okText: 'Continue', body: '<div id="ehr-step"></div>', onOk: async (el) => {
+    if (step === 'file') {
+      const file = el.querySelector('#ehr-file').files[0];
+      if (!file) throw new Error('Choose the ledger file first.');
+      const fd = new FormData(); fd.append('case_id', d.case.id); fd.append('file', file);
+      const r = await api('ehr.php?action=preview', fd);
+      token = r.token;
+      if (r.needsMapping) { insp = r; showMap(r.error); }
+      else if (r.unrecognized) { pdfMessage = r.message; showTotals(); }
+      else showPreview(r);
+      return false;
+    }
+    if (step === 'map') { showPreview(await api('ehr.php?action=map', readMapping(el))); return false; }
+    if (step === 'totals') { showPreview(await api('ehr.php?action=totals', readTotals(el))); return false; }
+    // preview → apply
+    if (preview.blocked) throw new Error(preview.blocked);
+    const confirmM = el.querySelector('#ehr-confirm'), confirmT = el.querySelector('#ehr-totals-ok');
+    if (confirmM && !confirmM.checked) throw new Error("Confirm it's the right patient, or cancel.");
+    if (confirmT && !confirmT.checked) throw new Error(`Compare the totals with ${preview.system} and tick the box to confirm.`);
+    const r = await api('ehr.php?action=apply', { token: preview.token, create_visits: !!el.querySelector('#ehr-visits')?.checked,
+      replace_manual: !!el.querySelector('#ehr-manual')?.checked, save_file: !!el.querySelector('#ehr-save')?.checked,
+      confirm_mismatch: !!confirmM?.checked, confirm_totals: !!confirmT?.checked });
+    toast(`Ledger applied${r.visitsCreated ? ' — ' + r.visitsCreated + ' visits added' : ''}`);
+    await reloadCase();
+  } });
+  const host = m.el.querySelector('#ehr-step');
+  const okBtn = m.el.querySelector('[data-ok]');
+  const setErr = (t) => { m.el.querySelector('[data-role=err]').textContent = t || ''; };
+
+  function showFile() {
+    step = 'file'; okBtn.textContent = 'Continue'; setErr('');
+    host.innerHTML = `<p class="small">Export <strong>this patient's ledger</strong> from ${esc(ehr)} and upload it. One patient per upload — filter the report to this patient before exporting. ${esc(ehr === 'your EHR' ? 'Your EHR' : ehr)} stays the source of truth: this case's charges, payments and patient/insurance split will mirror it.</p>
+      <ul class="small muted mt"><li><strong>Spreadsheet (CSV or Excel)</strong> — works with every EHR. The first time, you'll match up the columns; after that it's automatic.</li>
+        <li><strong>PDF</strong> — read directly for DrChrono billing ledgers.</li></ul>
+      <div class="filters mt"><input type="file" id="ehr-file" accept=".csv,.xlsx,.pdf,.txt,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Ledger file"></div>
+      <p class="small mt">No export available? <button class="linklike" id="ehr-to-totals">Enter the ledger totals instead</button></p>`;
+    host.querySelector('#ehr-to-totals').addEventListener('click', () => { pdfMessage = null; showTotals(); });
+  }
+
+  // ---- column mapping ----
+  function colOptions(selected) {
+    return opt('', '— not in this file —', selected ?? '') + insp.header.map((h, i) => opt(i, `${String.fromCharCode(65 + (i % 26))} · ${h || '(blank)'}`, selected ?? '')).join('');
+  }
+  function showMap(error) {
+    step = 'map'; okBtn.textContent = 'Preview'; setErr(error || '');
+    const saved = insp.saved;
+    const layout = saved?.layout || insp.guess.layout;
+    const name = saved?.name || insp.ehrName || '';
+    host.innerHTML = `<p class="small">${saved ? 'This file doesn\'t fit the saved layout exactly — check the columns below.' : 'First upload in this layout: tell us which column is which. We\'ll remember it for next time.'}
+        Columns we recognised are filled in.</p>
+      <div class="form-grid mt">
+        <div><label for="map-name">EHR</label><input id="map-name" list="ehr-names" value="${esc(name)}" placeholder="e.g. ChiroTouch" autocomplete="off">
+          <datalist id="ehr-names">${(insp.ehrs || []).map((n) => `<option value="${esc(n)}">`).join('')}</datalist></div>
+        <div><label for="map-header">Column headings are on</label><select id="map-header">${insp.topRows.map((r, i) => opt(i, `Row ${i + 1}: ${r.filter(Boolean).slice(0, 4).join(' · ').slice(0, 60)}`, insp.headerRow)).join('')}</select></div>
+        <div class="full"><label>The file has</label>
+          <label class="check"><input type="radio" name="map-layout" value="lines"${layout === 'lines' ? ' checked' : ''}> <span><strong>One row per charge</strong> <span class="small muted">— each CPT line with its billed, paid and balance amounts</span></span></label>
+          <label class="check"><input type="radio" name="map-layout" value="transactions"${layout === 'transactions' ? ' checked' : ''}> <span><strong>One row per transaction</strong> <span class="small muted">— charges, payments and adjustments each on their own row</span></span></label></div>
+      </div>
+      <div id="map-cols" class="form-grid mt"></div>
+      <div id="map-types"></div>
+      <div class="form-grid mt">
+        <div><label for="map-dates">Dates like 3/4/2026 mean</label><select id="map-dates">${opt('mdy', 'March 4 (US)', saved?.date_order || insp.dateOrder)}${opt('dmy', '3 April', saved?.date_order || insp.dateOrder)}</select></div>
+        <div><label>&nbsp;</label><label class="check"><input type="checkbox" id="map-save" checked> Remember this layout for future uploads</label></div>
+      </div>
+      <h3 class="mt">First rows of the file</h3>
+      <div class="table-wrap sample"><table><thead><tr>${insp.header.map((h, i) => `<th>${String.fromCharCode(65 + (i % 26))} · ${esc(h)}</th>`).join('')}</tr></thead>
+        <tbody>${insp.sample.map((r) => `<tr>${insp.header.map((_, i) => `<td class="small">${esc(r[i] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    const renderCols = () => {
+      const lay = host.querySelector('[name=map-layout]:checked').value;
+      const cols = (saved && saved.layout === lay ? saved.columns : null) || insp.guess.columns[lay] || {};
+      host.querySelector('#map-cols').innerHTML = Object.entries(insp.fields[lay]).map(([f, [lbl, req]]) =>
+        `<div><label for="mc-${f}">${esc(lbl)}${req ? ' *' : ''}</label><select id="mc-${f}" data-col="${f}">${colOptions(cols[f])}</select></div>`).join('')
+        + (lay === 'transactions' ? '<p class="full small muted">Map either the one Amount column (plus Type or Description), or the separate Charges / Payments / Adjustments columns.</p>' : '<p class="full small muted">Map at least one balance column (patient or insurance) if the file has one — otherwise any unpaid amount counts as owed by insurance.</p>');
+      host.querySelectorAll('[data-col=type],[data-col=description]').forEach((x) => x.addEventListener('change', renderTypes));
+      renderTypes();
+    };
+    const renderTypes = () => {
+      const lay = host.querySelector('[name=map-layout]:checked').value;
+      const box = host.querySelector('#map-types');
+      if (lay !== 'transactions') { box.innerHTML = ''; return; }
+      const tc = host.querySelector('[data-col=type]').value || host.querySelector('[data-col=description]').value;
+      const values = tc === '' ? null : insp.distinct[tc];
+      const savedTypes = saved?.types || {};
+      const sep = !host.querySelector('[data-col=amount]').value;
+      box.innerHTML = `${values && values.length ? `<h3 class="mt">What each ${tc === host.querySelector('[data-col=type]').value ? 'type' : 'description'} means</h3>
+          <div class="form-grid">${values.map((v, i) => `<div><label for="mt-${i}" class="small">${esc(v)}</label><select id="mt-${i}" data-type-value="${esc(v)}">${SHEET_CAT_OPTS.map(([k, t]) => opt(k, t, savedTypes[v] || insp.typeGuess[tc]?.[v] || 'ignore')).join('')}</select></div>`).join('')}</div>`
+        : tc !== '' ? '<p class="small muted mt">That column has too many different values to list; they\'ll be read by keyword (e.g. “Ins Pmt”, “Copay”, “Adj”).</p>' : ''}
+        ${sep ? `<div class="form-grid mt"><div><label for="map-defpay">Payments with no clear type are from</label><select id="map-defpay">${opt('insurance_payment', 'Insurance', saved?.default_payment)}${opt('patient_payment', 'The patient', saved?.default_payment)}${opt('ignore', 'Skip them', saved?.default_payment || 'ignore')}</select></div></div>` : ''}`;
+    };
+    host.querySelectorAll('[name=map-layout]').forEach((x) => x.addEventListener('change', renderCols));
+    host.querySelector('#map-header').addEventListener('change', async (e) => {
+      const r = await attempt(() => api('ehr.php?action=inspect', { token, header_row: +e.target.value }));
+      if (r) { insp = r; showMap(); }
+    });
+    renderCols();
+  }
+  function readMapping(el) {
+    const columns = {};
+    el.querySelectorAll('[data-col]').forEach((x) => { if (x.value !== '') columns[x.dataset.col] = +x.value; });
+    const types = {};
+    el.querySelectorAll('[data-type-value]').forEach((x) => { types[x.dataset.typeValue] = x.value; });
+    return { token, header_row: +el.querySelector('#map-header').value, name: el.querySelector('#map-name').value.trim(), save: el.querySelector('#map-save').checked,
+      mapping: { layout: el.querySelector('[name=map-layout]:checked').value, columns, types, date_order: el.querySelector('#map-dates').value, default_payment: el.querySelector('#map-defpay')?.value || 'ignore' } };
+  }
+
+  // ---- typed totals ----
+  const TOTAL_DEFS = [{ n: 'ehr_name', l: 'EHR' }, { n: 'as_of', l: 'Totals as of', t: 'date', req: true }, { n: 'first_dos', l: 'First date of service', t: 'date' },
+    { n: 'billed', l: 'Total billed ($)', t: 'money', req: true }, { n: 'insurance_paid', l: 'Insurance paid ($)', t: 'money' }, { n: 'patient_paid', l: 'Patient paid ($)', t: 'money' },
+    { n: 'adjustment', l: 'Adjustments / write-offs ($)', t: 'money' }, { n: 'insurance_balance', l: 'Insurance balance ($)', t: 'money' }, { n: 'patient_balance', l: 'Patient balance ($)', t: 'money' }];
+  function showTotals() {
+    step = 'totals'; okBtn.textContent = 'Preview'; setErr('');
+    host.innerHTML = `${pdfMessage ? `<div class="notice">${esc(pdfMessage)}</div>` : ''}
+      <p class="small mt">Copy the totals from the patient's ledger in ${esc(ehr)}. The case will show these balances (without line-by-line detail) until you upload a spreadsheet.</p>
+      ${fieldsHtml(TOTAL_DEFS, { ehr_name: S.practice?.ehrName || '', as_of: today() })}
+      <p class="small mt" id="tot-check"></p>`;
+    const check = () => {
+      const v = (n) => +(host.querySelector(`[name=${n}]`).value || 0);
+      const left = v('billed') - v('insurance_paid') - v('patient_paid') - v('adjustment'), right = v('insurance_balance') + v('patient_balance');
+      host.querySelector('#tot-check').innerHTML = v('billed') ? (Math.abs(left - right) < 0.005 ? '<span class="chip teal">Adds up</span> billed − paid − adjustments = the two balances'
+        : `<span class="chip ochre">Off by ${money(Math.abs(left - right))}</span> billed − paid − adjustments = ${money(left)}, balances = ${money(right)}`) : '';
+    };
+    host.querySelectorAll('input').forEach((x) => x.addEventListener('input', check));
+  }
+  const readTotals = (el) => ({ ...readFields(el, TOTAL_DEFS), case_id: d.case.id, token });
+
+  // ---- preview (all routes) ----
+  function showPreview(pv) {
+    step = 'preview'; preview = pv; token = pv.token; okBtn.textContent = 'Apply to case'; setErr('');
+    const L = pv.ledger, C = pv.current;
+    const fileWord = { pdf: 'PDF', csv: 'spreadsheet', xlsx: 'spreadsheet' }[pv.fileKind] || 'file';
+    host.innerHTML = `
+      ${pv.format ? `<p class="small">Read with the saved <strong>${esc(pv.format.name)}</strong> layout. <button class="linklike" id="ehr-remap">Change column mapping</button></p>` : ''}
+      ${pv.method === 'spreadsheet' && !pv.format ? `<p class="small"><button class="linklike" id="ehr-remap">Back to column mapping</button></p>` : ''}
+      ${pv.checks.length ? `<h3 class="mt">Is this the right patient?</h3>
+      <ul class="checks">${pv.checks.map((k) => `<li class="ck-${esc(k.status)}"><span class="ck">${icon[k.status] || '·'}</span><strong>${esc(k.label)}</strong> <span class="small muted">${esc(k.detail)}</span></li>`).join('')}</ul>` : ''}
+      ${pv.blocked ? `<div class="notice mt">${esc(pv.blocked)}</div>` : ''}
+      <h3 class="mt">What changes</h3>
+      <table><thead><tr><th></th><th class="num">${esc(pv.system)}</th><th class="num">Now in ${esc(S.brand.name)}</th></tr></thead><tbody>
+        <tr><td>Total charges</td><td class="num">${money(L.billed)}</td><td class="num">${money(C.charges)}</td></tr>
+        <tr><td>Insurance balance</td><td class="num"><strong>${money(L.insuranceBalance)}</strong></td><td class="num">${money(C.insuranceBalance)}</td></tr>
+        <tr><td>Patient balance</td><td class="num"><strong>${money(L.patientBalance)}</strong></td><td class="num">${money(C.patientBalance)}</td></tr>
+        <tr><td class="small muted">Insurance paid · patient paid · adjustments</td><td class="num small">${money(L.insurancePaid)} · ${money(L.patientPaid)} · ${money(L.adjustment)}</td><td></td></tr>
+      </tbody></table>
+      ${pv.method !== 'totals' ? `<p class="small muted">${pv.counts.lines} charge line${pv.counts.lines === 1 ? '' : 's'} across ${pv.counts.visits} date${pv.counts.visits === 1 ? '' : 's'} of service (${esc(fmtDate(pv.firstDos))} – ${esc(fmtDate(pv.lastDos))}).</p>
+      ${pv.counts.newVisits ? `<label class="check mt"><input type="checkbox" id="ehr-visits" checked> Add the ${pv.counts.newVisits} visit${pv.counts.newVisits === 1 ? '' : 's'} not yet on this case (with CPT and ICD-10 codes)</label>` : ''}` : ''}
+      ${pv.counts.manualRows ? `<label class="check"><input type="checkbox" id="ehr-manual" checked> Retire the ${pv.counts.manualRows} manually entered ledger line${pv.counts.manualRows === 1 ? '' : 's'} (e.g. opening balances) — the EHR replaces them</label>` : ''}
+      ${pv.hasFile ? `<label class="check"><input type="checkbox" id="ehr-save"> Also save the ${fileWord} to this case's documents <span class="small muted">(EHR exports often include demographics such as SSN)</span></label>` : ''}
+      ${!pv.verified && !pv.blocked ? `<div class="notice mt"><label class="check"><input type="checkbox" id="ehr-totals-ok"> I've compared these totals with ${esc(pv.system)} and they match, and this is ${esc(pv.patientName)}'s ledger.</label></div>` : ''}
+      ${pv.needsOverride ? `<div class="notice mt"><label class="check"><input type="checkbox" id="ehr-confirm"> The name and date of birth don't match this case. I've confirmed this is the right patient.</label></div>` : ''}`;
+    host.querySelector('#ehr-remap')?.addEventListener('click', async () => {
+      const r = await attempt(() => api('ehr.php?action=inspect', { token, header_row: pv.headerRow ?? undefined }));
+      if (r) { insp = r; showMap(); }
+    });
+    okBtn.disabled = !!pv.blocked;
+  }
+  showFile();
 }
 
 // ----- LOP, forwarding, settlement -----
@@ -1232,46 +1371,170 @@ function tabCaseTasks(el, d) {
   const open = d.tasks.filter((t) => !t.done_at), done = d.tasks.filter((t) => t.done_at);
   el.innerHTML = `<div class="card"><div class="card-head"><h2>Tasks</h2><span class="spacer"></span><button class="btn sm" data-act="new-task" data-case="${d.case.id}">+ Task</button></div>
     ${taskListHtml(open, false)}
-    ${done.length ? `<details class="mt"><summary class="small muted">${done.length} completed</summary><ul class="alerts">${done.map((t) => `<li class="low"><span class="dot"></span><div><s>${esc(t.title)}</s> <span class="small muted">done ${esc(fmtDate(t.done_at))}</span></div></li>`).join('')}</ul></details>` : ''}
+    ${done.length ? `<details class="mt"><summary class="small muted">${done.length} completed</summary>${taskListHtml(done, false)}</details>` : ''}
   </div>`;
 }
 
-function taskModal(caseId) {
-  const defs = [{ n: 'title', l: 'Task', req: true, full: true }, { n: 'due_on', l: 'Due', t: 'date' }, { n: 'assigned_user_id', l: 'Assign to', t: 'select', opts: (S.lookups.users || []).map((u) => [u.id, u.name]) }];
-  openModal({ title: 'New task', body: fieldsHtml(defs, { assigned_user_id: S.user.id }), onOk: async (el) => {
-    const v = readFields(el, defs);
-    const r = await api('cases.php?action=task_save', { ...v, case_id: caseId || null, return_case: !!caseId });
-    if (caseId && r.case) { S.caseData = r; renderCase(); } else route();
-    toast('Task added');
-  } });
+// A task for one or more team members (none = anyone can pick it up).
+function taskModal(caseId, task = null, prefill = {}) {
+  const t = task || { title: prefill.title || '', notes: '', due_on: prefill.due_on || '', priority: 'normal', assignees: prefill.assignees || [{ id: S.user.id }] };
+  const defs = [{ n: 'title', l: 'Task', req: true, full: true }, { n: 'notes', l: 'Notes', t: 'textarea', rows: 2 }, { n: 'due_on', l: 'Due', t: 'date' },
+    { n: 'priority', l: 'Priority', t: 'select', blank: false, opts: [['normal', 'Normal'], ['high', 'High']] }];
+  const chosen = new Set(t.assignees.map((a) => +a.id));
+  const team = S.lookups.users || [];
+  const body = fieldsHtml(defs, t) + `<fieldset class="assignees mt"><legend>Assign to <span class="small muted">— one or more people; leave all unticked for anyone</span></legend>
+      <div class="assignee-list">${team.map((u) => `<label class="check"><input type="checkbox" data-assignee="${u.id}"${chosen.has(+u.id) ? ' checked' : ''}> ${esc(u.name)}${u.id == S.user.id ? ' <span class="small muted">(you)</span>' : ''}</label>`).join('')}</div></fieldset>
+    ${task ? `<p class="small muted mt">${task.case_id ? `Case: <a href="#/case/${task.case_id}">${esc(task.patient)}</a> · ` : ''}Created by ${esc(task.created_by_name || '—')} on ${esc(fmtDate(task.created_at))}</p>` : ''}`;
+  const canDelete = task && (task.created_by == S.user.id || can('users.manage'));
+  const caseOf = task ? task.case_id : caseId;
+  const inCase = () => !!caseOf && location.hash.startsWith('#/case/' + caseOf);
+  const m = openModal({ title: task ? 'Edit task' : 'New task', body, okText: task ? 'Save' : 'Add task',
+    extraButtons: canDelete ? '<button class="btn danger" data-del>Delete</button>' : '',
+    onOk: async (el) => {
+      const v = readFields(el, defs);
+      v.assignee_ids = [...el.querySelectorAll('[data-assignee]:checked')].map((x) => +x.dataset.assignee);
+      const r = await api('cases.php?action=task_save', { ...v, ...(task ? { id: task.id } : { case_id: caseId || null }), return_case: inCase() });
+      afterTaskChange(r, inCase());
+      toast(task ? 'Task saved' : 'Task added');
+    } });
+  m.el.querySelector('[data-del]')?.addEventListener('click', async () => {
+    if (!await confirmBox('Delete task', `Delete “${task.title}”? It stays in the activity history.`, 'Delete')) return;
+    if (await attempt(() => api('cases.php?action=task_delete', { id: task.id }))) { m.close(); afterTaskChange(null, false); toast('Task deleted'); }
+  });
 }
 
-// --- activity (audit for this case) ---
+function afterTaskChange(r, inCase) {
+  if (inCase && r && r.case) { S.caseData = r; renderCase(); }
+  else if (location.hash.startsWith('#/case/')) reloadCase();
+  else route();
+  refreshTaskBadge();
+}
+
+// Open tasks assigned to me, on the sidebar.
+async function refreshTaskBadge() {
+  const b = document.getElementById('task-badge');
+  if (!b) return;
+  try {
+    const r = await api('cases.php?action=task_counts', undefined, { passive: true });
+    b.hidden = !r.mine;
+    b.textContent = r.mine;
+    b.classList.toggle('due', r.due > 0);
+    b.title = `${r.mine} open task${r.mine === 1 ? '' : 's'} assigned to you${r.due ? `, ${r.due} due today or overdue` : ''}`;
+  } catch { /* badge is best-effort */ }
+}
+
+// --- activity: who did what ---
+const AUDIT_VERBS = {
+  create: 'added', update: 'updated', archive: 'removed', view: 'opened', list: 'viewed the case list', download: 'downloaded', upload: 'uploaded',
+  export: 'exported', letter: 'generated a letter', forward_balance: 'forwarded the patient balance to the attorney', ehr_import: 'uploaded the EHR ledger',
+  ehr_preview: 'previewed an EHR ledger upload', login: 'signed in', logout: 'signed out', login_password_ok: 'entered their password', login_failed: 'failed to sign in',
+  login_locked: 'tried to sign in to a locked account', mfa_failed: 'entered a wrong two-factor code', mfa_enrolled: 'set up two-factor sign-in',
+  password_changed: 'changed their password', session_timeout: 'was signed out after inactivity', access_denied: 'was refused access to', reset_password: 'issued a new one-time password for',
+  reset_mfa: 'reset two-factor for', reset_unlock: 'unlocked', accept_baa: 'accepted the Business Associate Agreement', signup: 'signed the practice up',
+  billing_checkout: 'started a plan checkout', billing_portal: 'opened billing', platform_update: 'changed the plan for',
+};
+const AUDIT_THINGS = {
+  case: 'the case', visits: 'a visit', referrals: 'a co-management referral', coverages: 'insurance coverage', outcomes: 'an outcome assessment',
+  correspondence: 'a correspondence entry', ledger: 'a ledger entry', task: 'task', milestone: 'checklist item', document: 'a document', contact: 'contact',
+  user: 'user', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
+  audit_log: 'the audit log', permission: '', platform_practices: 'the practice list',
+};
+const FIELD_NAMES = {
+  provider_user_id: 'Provider', attorney_contact_id: 'Attorney', referred_by_contact_id: 'Referred by', referred_by_text: 'Referred by', contact_id: 'Contact',
+  carrier_contact_id: 'Carrier', carrier_text: 'Carrier', coverage_id: 'Coverage', to_coverage_id: 'Moved to coverage', to_bucket: 'Moved to', applies_to_id: 'Applies to charge',
+  atty_offer: 'Attorney offer', emc_status: 'EMC', lop_signed_on: 'LOP signed', lop_acknowledged_on: 'LOP acknowledged by law firm', date_of_injury: 'Date of injury',
+  balance_forwarded_on: 'Balance forwarded on', balance_forwarded_amount: 'Balance forwarded', final_settlement: 'Final settlement', check_received_on: 'Check received',
+  date_authorized: 'Reduction authorized', due_on: 'Due', assignees: 'Assigned to', done: 'Done', not_applicable: 'Not applicable', completed_on: 'Completed',
+  dob: 'Date of birth', patient_dob: 'Date of birth', patient_first_name: 'First name', patient_last_name: 'Last name', patient_phone: 'Phone', patient_email: 'Email',
+  patient_address: 'Address', cpt_codes: 'CPT codes', dwc25_sent: 'DWC-25 sent', staff_finance: 'Staff can see', finance_access: 'Full financial access',
+  ehr_name: 'EHR', benefit_limit: 'Benefit limit', entry_date: 'Date', kind: 'Type', bucket: 'Owed by', status_on: 'Status date', insurance_balance: 'Insurance balance',
+  patient_balance: 'Patient balance', injury_type: 'Case type', visit_type: 'Visit type',
+};
+const humanize = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+function auditValue(c, v) {
+  if (v === null || v === undefined || v === '') return '—';
+  if (c.t === 'money') return money(v);
+  if (c.t === 'date') return fmtDate(v);
+  if (c.t === 'bool') return v ? 'Yes' : 'No';
+  if (c.t === 'enum') {
+    const maps = { stage: 'stages', injury_type: 'injuryTypes', type: 'coverageTypes', status: 'coverageStatus' };
+    return S.lookups?.[maps[c.f]]?.[v] ?? humanize(v);
+  }
+  return String(v);
+}
+function auditChangesHtml(e) {
+  if (!e.changes || !e.changes.length) return '';
+  const create = e.action === 'create' || e.action === 'archive';
+  const rows = create ? e.changes.filter((c) => c.t !== 'text' && c.t !== 'ref') : e.changes;
+  if (!rows.length) return '';
+  return `<ul class="changes">${rows.map((c) => {
+    const name = esc(FIELD_NAMES[c.f] || humanize(c.f));
+    if (c.hidden) return `<li>${name} <span class="muted">(amount hidden)</span></li>`;
+    if (c.t === 'text' || c.t === 'ref') return `<li>${name} <span class="muted">changed</span></li>`;
+    if (create || c.from === null || c.from === undefined) return `<li>${name}: <strong>${esc(auditValue(c, c.to))}</strong></li>`;
+    return `<li>${name}: ${esc(auditValue(c, c.from))} → <strong>${esc(auditValue(c, c.to))}</strong></li>`;
+  }).join('')}</ul>`;
+}
+function auditSentence(e) {
+  const who = `<strong>${esc(e.user || 'System')}</strong>`;
+  const verb = AUDIT_VERBS[e.action] || humanize(e.action);
+  let thing = AUDIT_THINGS[e.entity] ?? humanize(e.entity || '');
+  if (e.entity === 'task') thing = `task “${esc(e.label || '#' + e.entityId)}”`;
+  else if (e.entity === 'milestone') thing = `checklist item “${esc(humanize(e.entityId || ''))}”`;
+  else if (['user', 'contact', 'ehr_format'].includes(e.entity) && e.detail) thing = `${thing} ${esc(e.detail)}`;
+  else thing = esc(thing);
+  if (['list', 'login', 'logout', 'login_password_ok', 'login_failed', 'login_locked', 'mfa_failed', 'mfa_enrolled', 'password_changed', 'session_timeout', 'accept_baa', 'forward_balance', 'ehr_import', 'ehr_preview', 'signup', 'billing_checkout', 'billing_portal'].includes(e.action)) thing = '';
+  if (e.action === 'access_denied') thing = esc(e.entityId || '');
+  let extra = '';
+  if (e.action === 'letter' && e.detail) extra = ` <span class="muted">(${esc(humanize(e.detail))})</span>`;
+  if (e.action === 'ehr_import' && e.detail) extra = ` <span class="muted">— ${esc(e.detail)}</span>`;
+  if (['login_failed', 'mfa_failed'].includes(e.action) && e.detail) extra = ` <span class="muted">(${esc(e.detail)})</span>`;
+  return `${who} ${esc(verb)} ${thing}${extra}`;
+}
+const fmtDateTime = (s) => { if (!s) return '—'; const d = new Date(String(s).replace(' ', 'T')); return isNaN(d) ? s : d.toLocaleString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+const auditAlarm = (e) => /fail|denied|locked/.test(e.action);
+function activityItemsHtml(entries) {
+  return entries.map((e) => `<li${auditAlarm(e) ? ' class="alarm"' : ''}><div class="when small muted nowrap">${esc(fmtDateTime(e.at))}</div><div>${auditSentence(e)}${auditChangesHtml(e)}</div></li>`).join('');
+}
+
 async function tabActivity(el, d) {
-  el.innerHTML = '<div class="card"><div class="empty">Loading…</div></div>';
-  const r = await attempt(() => api('admin.php?action=audit&case_id=' + d.case.id));
-  if (!r) return;
-  el.innerHTML = `<div class="card"><div class="card-head"><h2>Access &amp; change history</h2></div>${auditTable(r.entries)}</div>`;
-}
-
-function auditTable(rows) {
-  if (!rows.length) return '<div class="empty">No entries.</div>';
-  return `<div class="table-wrap"><table><thead><tr><th>When</th><th>User</th><th>Action</th><th>Record</th><th>Case</th><th>IP</th><th>Detail</th></tr></thead><tbody>
-    ${rows.map((a) => `<tr><td class="nowrap small">${esc(a.occurred_at)}</td><td class="small">${esc(a.user_email || '—')}</td><td><span class="chip ${/fail|denied|locked/.test(a.action) ? 'red' : ''}">${esc(a.action)}</span></td>
-      <td class="small">${esc([a.entity, a.entity_id].filter(Boolean).join(' #'))}</td><td class="small mono">${a.case_id ? `<a href="#/case/${a.case_id}">${esc(a.case_number || a.case_id)}</a>` : ''}</td>
-      <td class="small mono">${esc(a.ip_address || '')}</td><td class="small">${esc(a.detail || '')}</td></tr>`).join('')}</tbody></table></div>`;
+  const state = { views: false };
+  const load = async (before) => {
+    const r = await attempt(() => api(`cases.php?action=activity&case_id=${d.case.id}${state.views ? '&views=1' : ''}${before ? '&before=' + before : ''}`));
+    if (!r) return;
+    const list = el.querySelector('#act-list');
+    if (!before) list.innerHTML = '';
+    list.insertAdjacentHTML('beforeend', r.entries.length ? activityItemsHtml(r.entries) : (before ? '' : '<li class="empty">No activity yet.</li>'));
+    const more = el.querySelector('#act-more');
+    more.hidden = !r.more;
+    more.dataset.before = r.entries.length ? r.entries[r.entries.length - 1].id : '';
+  };
+  el.innerHTML = `<div class="card"><div class="card-head"><h2>Activity</h2><span class="small muted">Who changed what on this case, newest first</span><span class="spacer"></span>
+      ${can('audit.read') ? '<label class="check small"><input type="checkbox" id="act-views"> Include who opened it</label>' : ''}</div>
+    <ul class="activity" id="act-list"><li class="empty">Loading…</li></ul>
+    <button class="btn ghost sm mt" id="act-more" hidden>Show older</button></div>`;
+  el.querySelector('#act-views')?.addEventListener('change', (e) => { state.views = e.target.checked; load(); });
+  el.querySelector('#act-more').addEventListener('click', (e) => load(e.target.dataset.before));
+  load();
 }
 
 // ---------- tasks page ----------
+const taskState = { scope: 'mine', status: 'open' };
 async function pageTasks(main) {
-  const scope = main.dataset.scope || 'all';
-  const r = await attempt(() => api('cases.php?action=tasks&scope=' + scope));
+  const st = taskState;
+  const r = await attempt(() => api(`cases.php?action=tasks&scope=${encodeURIComponent(st.scope)}&status=${st.status}`));
   if (!r) return;
-  main.innerHTML = `<div class="page-head"><div><h1>Tasks</h1><div class="sub">${r.tasks.length} open</div></div><span class="spacer"></span>
-    <select id="task-scope" aria-label="Scope">${opt('all', 'Everyone\'s tasks', scope)}${opt('mine', 'Assigned to me', scope)}</select>
-    <button class="btn" data-act="new-task">+ Task</button></div>
-    <div class="card">${taskListHtml(r.tasks, true)}</div>`;
-  main.querySelector('#task-scope').addEventListener('change', (e) => { main.dataset.scope = e.target.value; pageTasks(main); });
+  const team = S.lookups.users || [];
+  const who = st.scope === 'mine' ? 'assigned to you' : st.scope === 'unassigned' ? 'for anyone' : st.scope === 'created' ? 'you created' : st.scope.startsWith('user:') ? 'assigned to ' + (team.find((u) => 'user:' + u.id === st.scope)?.name || '') : '';
+  main.innerHTML = `<div class="page-head"><div><h1>Tasks</h1><div class="sub">${r.tasks.length} ${st.status === 'done' ? 'completed in the last 90 days' : 'open'} ${esc(who)}</div></div><span class="spacer"></span>
+      <button class="btn" data-act="new-task">+ Task</button></div>
+    <div class="filters">
+      <select id="task-scope" aria-label="Whose tasks">${opt('mine', 'Assigned to me', st.scope)}${opt('all', 'Everyone', st.scope)}${opt('unassigned', 'For anyone (unassigned)', st.scope)}${opt('created', 'Created by me', st.scope)}
+        <optgroup label="Team member">${team.map((u) => opt('user:' + u.id, u.name, st.scope)).join('')}</optgroup></select>
+      <select id="task-status" aria-label="Status">${opt('open', 'Open', st.status)}${opt('done', 'Completed', st.status)}</select></div>
+    <div class="card">${taskListHtml(r.tasks, true, st.status === 'done' ? 'Nothing completed in the last 90 days.' : 'No open tasks here.')}</div>`;
+  main.querySelector('#task-scope').addEventListener('change', (e) => { st.scope = e.target.value; pageTasks(main); });
+  main.querySelector('#task-status').addEventListener('change', (e) => { st.status = e.target.value; pageTasks(main); });
 }
 
 // ---------- A/R ----------
@@ -1388,20 +1651,42 @@ function showTempPassword(pw) {
 }
 
 // ---------- audit ----------
+const AUDIT_CATEGORIES = [['', 'All activity'], ['changes', 'Changes (added, edited, removed)'], ['access', 'Access (opened, downloaded, exported)'],
+  ['signin', 'Sign-ins & security'], ['admin', 'Users, settings & billing']];
 async function pageAudit(main) {
-  const f = main._f || { action_filter: '', from: '', to: '' };
-  const qs = new URLSearchParams({ action: 'audit', ...f });
-  const r = await attempt(() => api('admin.php?' + qs));
+  const f = main._f || { user_id: '', category: '', case_number: '', from: '', to: '' };
+  const qs = new URLSearchParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v)));
+  const r = await attempt(() => api('admin.php?action=audit&' + qs));
   if (!r) return;
-  main.innerHTML = `<div class="page-head"><div><h1>Audit log</h1><div class="sub">Latest 500 matching entries. Review regularly — HIPAA requires you to watch for inappropriate access.</div></div></div>
-    <div class="filters"><select id="au-action" aria-label="Action">${['', 'login', 'login_failed', 'mfa_failed', 'view', 'update', 'create', 'archive', 'download', 'upload', 'export', 'letter', 'access_denied', 'session_timeout'].map((a) => opt(a, a || 'All actions', f.action_filter)).join('')}</select>
-      <input type="date" id="au-from" value="${esc(f.from)}" aria-label="From"><input type="date" id="au-to" value="${esc(f.to)}" aria-label="To"><button class="btn ghost sm" data-act="audit-filter">Filter</button></div>
-    <div class="card">${auditTable(r.entries)}</div>`;
+  main.innerHTML = `<div class="page-head"><div><h1>Audit log</h1><div class="sub">Every sign-in, view and change, by team member. Review it regularly — HIPAA expects you to watch for inappropriate access.</div></div><span class="spacer"></span>
+      <a class="btn ghost" href="api/admin.php?action=audit_csv&${esc(qs.toString())}" download>Download CSV</a></div>
+    <div class="filters">
+      <select id="au-user" aria-label="Team member">${opt('', 'Everyone', f.user_id)}${r.members.map((u) => opt(u.id, u.name + (u.active == 1 ? '' : ' (inactive)'), f.user_id)).join('')}</select>
+      <select id="au-cat" aria-label="Kind of activity">${AUDIT_CATEGORIES.map(([k, t]) => opt(k, t, f.category)).join('')}</select>
+      <input id="au-case" placeholder="Case #" value="${esc(f.case_number)}" aria-label="Case number" size="10">
+      <input type="date" id="au-from" value="${esc(f.from)}" aria-label="From"><input type="date" id="au-to" value="${esc(f.to)}" aria-label="To">
+      <button class="btn ghost sm" data-act="audit-filter">Filter</button></div>
+    <div class="card"><div class="table-wrap"><table class="audit"><thead><tr><th>When</th><th>What happened</th><th>Case</th><th>IP address</th></tr></thead><tbody id="au-rows"></tbody></table></div>
+      <button class="btn ghost sm mt" id="au-more" hidden>Show older</button></div>`;
+  const add = (rows, more) => {
+    main.querySelector('#au-rows').insertAdjacentHTML('beforeend', rows.length ? rows.map((e) => `<tr${auditAlarm(e) ? ' class="alarm"' : ''}><td class="nowrap small">${esc(fmtDateTime(e.at))}</td>
+      <td>${auditSentence(e)}${auditChangesHtml(e)}</td>
+      <td class="small mono">${e.caseId ? `<a href="#/case/${e.caseId}/activity">${esc(e.caseNumber || e.caseId)}</a>` : ''}</td><td class="small mono">${esc(e.ip || '')}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="empty">No matching entries.</td></tr>');
+    const btn = main.querySelector('#au-more');
+    btn.hidden = !more;
+    if (rows.length) btn.dataset.before = rows[rows.length - 1].id;
+  };
+  add(r.entries, r.more);
+  main.querySelector('#au-more').addEventListener('click', async (e) => {
+    const r2 = await attempt(() => api('admin.php?action=audit&' + qs + '&before=' + e.target.dataset.before));
+    if (r2) add(r2.entries, r2.more);
+  });
 }
 
 // ---------- practice settings ----------
 const PRACTICE_DEFS = [{ n: 'name', l: 'Practice name', req: true, full: true }, { n: 'address', l: 'Address (letterhead)', t: 'textarea', rows: 2 },
-  { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' }, { n: 'state', l: 'State', ph: 'FL' }];
+  { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' }, { n: 'state', l: 'State', ph: 'FL' }, { n: 'ehr_name', l: 'Your EHR / EMR', ph: 'e.g. ChiroTouch, Jane, ECLIPSE' }];
 async function pageSettings(main) {
   const r = await attempt(() => api('admin.php?action=practice'));
   if (!r) return;
@@ -1421,7 +1706,22 @@ async function pageSettings(main) {
       ${[['balances', 'Balances', 'What insurance and the patient owe, totals, the A/R report and dashboard A/R'], ['ledger', 'Ledger detail', 'Individual charges, payments and balance moves; the itemized statement'],
          ['settlement', 'Settlement', 'Attorney offers, final settlement, reduction floor, amount forwarded, check received']]
         .map(([k, t, dsc]) => `<label class="check mt"><input type="checkbox" data-staff-fin="${k}"${(p.staffFinance || []).includes(k) ? ' checked' : ''}> <span><strong>${t}</strong> <span class="small muted">— ${dsc}</span></span></label>`).join('')}
-      <button class="btn mt" data-act="save-staff-fin">Save visibility</button></div>`;
+      <button class="btn mt" data-act="save-staff-fin">Save visibility</button></div>
+    <div class="card mt"><h2>EHR ledger layouts</h2>
+      <p class="small mt">When someone uploads a ledger spreadsheet in a new layout, they match up its columns once and it's saved here. Later uploads in the same layout are read automatically.</p>
+      <div id="ehr-formats" class="mt"><div class="empty">Loading…</div></div></div>`;
+  loadEhrFormats();
+}
+
+async function loadEhrFormats() {
+  const box = document.getElementById('ehr-formats');
+  if (!box) return;
+  const r = await attempt(() => api('ehr.php?action=formats'));
+  if (!r) { box.innerHTML = ''; return; }
+  box.innerHTML = r.formats.length ? `<table><thead><tr><th>EHR</th><th>Layout</th><th>Saved by</th><th>Updated</th><th></th></tr></thead><tbody>
+    ${r.formats.map((f) => `<tr><td>${esc(f.name)}</td><td class="small">${f.layout === 'lines' ? 'One row per charge' : 'One row per transaction'}</td><td class="small">${esc(f.created_by_name || '—')}</td>
+      <td class="small">${esc(fmtDate(f.updated_at))}</td><td class="right"><button class="btn ghost sm" data-act="delete-ehr-format" data-id="${f.id}">Forget</button></td></tr>`).join('')}</tbody></table>`
+    : '<div class="empty">None yet — the first spreadsheet upload creates one.</div>';
 }
 
 // ---------- plan & billing ----------
@@ -1550,12 +1850,15 @@ const ACTIONS = {
   },
   'letter': (el) => openLetter(el.dataset.type),
   'new-task': (el) => taskModal(el.dataset.case ? +el.dataset.case : null),
+  'edit-task': (el) => { const t = taskCache.get(+el.dataset.id); if (t) taskModal(t.case_id, t); },
+  'task-from-alert': (el) => taskModal(+el.dataset.case, null, { title: el.dataset.text.slice(0, 200), assignees: [] }),
   'task-done': async (el) => {
     const inCase = location.hash.startsWith('#/case/');
-    const r = await attempt(() => api('cases.php?action=task_save', { id: +el.dataset.id, done: true, return_case: inCase }));
-    if (!r) { el.checked = false; return; }
-    toast('Task done');
-    if (inCase && r.case) { S.caseData = r; renderCase(); } else route();
+    const done = el.checked;
+    const r = await attempt(() => api('cases.php?action=task_save', { id: +el.dataset.id, done, return_case: inCase }));
+    if (!r) { el.checked = !done; return; }
+    toast(done ? 'Task done' : 'Task reopened');
+    afterTaskChange(r, inCase);
   },
   'add-contact': () => contactModal(null),
   'edit-contact': (el) => contactModal(S.contacts.find((c) => c.id == el.dataset.id)),
@@ -1570,9 +1873,14 @@ const ACTIONS = {
     if (r.tempPassword) showTempPassword(r.tempPassword); else toast('Done');
     route();
   },
+  'delete-ehr-format': async (el) => {
+    if (!await confirmBox('Forget layout', 'Forget this layout? The next upload in this format will ask for the columns again.', 'Forget')) return;
+    if (await attempt(() => api('ehr.php?action=format_delete', { id: +el.dataset.id }))) loadEhrFormats();
+  },
   'audit-filter': () => {
     const main = document.getElementById('main');
-    main._f = { action_filter: document.getElementById('au-action').value, from: document.getElementById('au-from').value, to: document.getElementById('au-to').value };
+    main._f = { user_id: document.getElementById('au-user').value, category: document.getElementById('au-cat').value, case_number: document.getElementById('au-case').value.trim(),
+      from: document.getElementById('au-from').value, to: document.getElementById('au-to').value };
     pageAudit(main);
   },
 };
