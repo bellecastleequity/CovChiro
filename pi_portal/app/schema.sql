@@ -37,6 +37,10 @@ CREATE TABLE practices (
   -- Task email alerts: default triggers, recipients and late-reminder
   -- interval for new tasks (JSON; defaults in app/task_mail.php).
   task_email_rules TEXT NULL,
+  -- Automatic attorney status requests: default on for new cases, interval
+  -- and whether the reply page shows the balance (JSON; defaults in
+  -- app/status_requests.php).
+  status_request_rules TEXT NULL,
   plan VARCHAR(20) NOT NULL DEFAULT 'starter',
   subscription_status ENUM('trialing','active','past_due','canceled','comped') NOT NULL DEFAULT 'trialing',
   trial_ends_at DATETIME NULL,
@@ -304,6 +308,15 @@ CREATE TABLE cases (
   -- attends a visit again (or staff resume them).
   outreach_hold_on DATE NULL,
   paralegal VARCHAR(160) NULL,
+  -- The attorney's case manager, and automatic status requests: on/off,
+  -- to whom (attorney / case_manager / both), every N days (NULL = the
+  -- practice's) and when the last one went out.
+  case_manager_name VARCHAR(160) NULL,
+  case_manager_email VARCHAR(190) NULL,
+  auto_status TINYINT(1) NOT NULL DEFAULT 0,
+  auto_status_to VARCHAR(20) NOT NULL DEFAULT 'attorney',
+  auto_status_every SMALLINT NULL,
+  auto_status_last_on DATE NULL,
   mmi_date DATE NULL,
   maintenance_every_days SMALLINT NULL,
   -- Liability coverage that will pay the claim (often learned on the
@@ -481,6 +494,29 @@ CREATE TABLE outcomes (
   created_at DATETIME NOT NULL,
   FOREIGN KEY (case_id) REFERENCES cases(id),
   INDEX idx_outcomes_case (case_id, measure, taken_on)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Status update requests emailed to the attorney / case manager. The email
+-- holds no patient details, only a link with a one-time token (stored
+-- hashed) to a reply page; the reply is stored encrypted and logged as
+-- incoming correspondence.
+CREATE TABLE status_requests (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NOT NULL,
+  case_id INT NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  kind ENUM('auto','manual') NOT NULL DEFAULT 'auto',
+  sent_to VARCHAR(400) NOT NULL,
+  sent_by INT NULL,
+  sent_at DATETIME NOT NULL,
+  expires_at DATETIME NOT NULL,
+  viewed_at DATETIME NULL,
+  responded_at DATETIME NULL,
+  response_enc TEXT NULL,
+  FOREIGN KEY (practice_id) REFERENCES practices(id),
+  FOREIGN KEY (case_id) REFERENCES cases(id),
+  UNIQUE KEY uq_status_token (token_hash),
+  INDEX idx_status_case (case_id, sent_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE correspondence (

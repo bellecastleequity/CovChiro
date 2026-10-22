@@ -26,7 +26,8 @@ const CASE_FIELDS = [
     'balance_forwarded_on' => 'date', 'balance_forwarded_amount' => 'money',
     'actively_treating' => 'bool', 'provider_user_id' => 'user', 'location_id' => 'location', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
     'mmi_date' => 'date', 'maintenance_every_days' => 'int', 'plan_visits_per_week' => 'money', 'plan_set_on' => 'date',
-    'paralegal' => 'str:160', 'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
+    'paralegal' => 'str:160', 'case_manager_name' => 'str:160', 'case_manager_email' => 'email',
+    'auto_status' => 'bool', 'auto_status_to' => ['attorney', 'case_manager', 'both'], 'auto_status_every' => 'int', 'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
     'limits_source' => 'str:160', 'limits_noted_on' => 'date',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
     'mediation_on' => 'date', 'trial_on' => 'date', 'settlement_signed_on' => 'date', 'disbursement_expected_on' => 'date',
@@ -37,7 +38,9 @@ const CASE_FIELDS = [
 // the adjuster — either may record them.
 const LIMIT_CASE_FIELDS = ['liability_carrier', 'bi_limit', 'um_limit', 'other_medical_estimate', 'limits_source', 'limits_noted_on'];
 // Case status dates heard from the attorney's office: front desk or billing.
-const STATUS_DATE_FIELDS = ['mediation_on', 'trial_on', 'settlement_signed_on', 'disbursement_expected_on'];
+const STATUS_DATE_FIELDS = ['mediation_on', 'trial_on', 'settlement_signed_on', 'disbursement_expected_on',
+    // Automatic status requests (front desk or billing may set them up).
+    'case_manager_name', 'case_manager_email', 'auto_status', 'auto_status_to', 'auto_status_every'];
 const FINANCE_CASE_FIELDS = ['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'balance_forwarded_on', 'balance_forwarded_amount'];
 
 const CHILD_SPECS = [
@@ -107,6 +110,11 @@ function clean_fields(array $spec, array $in, ?int $caseId = null): array {
             $out[$name] = $code ?: null;
         }
         elseif ($type === 'int') $out[$name] = ($v === null || $v === '') ? null : max(0, (int)$v);
+        elseif ($type === 'email') {
+            $e = str_or_null($v, 190);
+            if ($e && !filter_var($e, FILTER_VALIDATE_EMAIL)) json_response(['error' => "Check the email address for $name"], 400);
+            $out[$name] = $e;
+        }
         elseif ($type === 'coverage' || $type === 'charge' || $type === 'referral') {
             $id = ($v === null || $v === '') ? null : (int)$v;
             if ($id) {
@@ -297,7 +305,7 @@ function full_case(int $id, array $user): array {
             'pipLabel' => $rules['pip_label'], 'pipMedical' => $rules['pip_medical'], 'emcRule' => $rules['emc_rule'], 'emcCap' => $rules['emc_cap'],
             'tortOptions' => $rules['tort_options'], 'lopDisclosure' => $rules['lop_disclosure'], 'demandLetter' => (bool)$rules['demand_letter'],
             'balanceBilling' => $rules['balance_billing'], 'balanceNote' => $rules['balance_note'], 'summary' => jurisdiction_summary($rules)],
-        'checklist' => $checklist, 'guide' => $guide, 'alerts' => $alerts, 'caseValue' => $caseValue,
+        'checklist' => $checklist, 'guide' => $guide, 'alerts' => $alerts, 'caseValue' => $caseValue, 'statusRequests' => status_info($c),
         'outreach' => $outreach, 'outreachState' => outreach_state($c, $outreach, $visitDates), 'outreachOutcomes' => OUTREACH_OUTCOMES,
         'tips' => case_tips($c, ['referrals' => $referrals, 'visits' => $visits, 'icd' => array_column($visits, 'icd_codes'), 'guideRows' => $guideRows, 'outcomeDates' => array_unique(array_column($outcomes, 'taken_on'))]),
         'referrals' => $referrals, 'visits' => $visits, 'outcomes' => $outcomes,
@@ -362,6 +370,8 @@ function handle_create() {
         if (!empty($cols['location_id'])) { $s = $pdo->prepare('SELECT state FROM locations WHERE id = ?'); $s->execute([$cols['location_id']]); $locState = $s->fetchColumn() ?: null; }
         $cols['jurisdiction'] = jurisdiction_code($locState ?: (current_practice()['state'] ?? 'FL'));
     }
+    // Automatic attorney status requests: the practice's default for new cases.
+    if (!isset($cols['auto_status']) && status_rules()['default_on'] && has_feature(current_practice(), 'auto_status')) $cols['auto_status'] = 1;
     $id = insert_row('cases', $cols);
     // Insurance entered on the new-case form.
     if (!empty($b['coverage']['type'])) {
@@ -977,6 +987,33 @@ function handle_tasks() {
     json_response(['tasks' => load_tasks(implode(' AND ', $where), $args)]);
 }
 
+// ---------- attorney status requests ----------
+// Settings and history for a case's status requests.
+function status_info(array $c): array {
+    $p = current_practice();
+    $s = pi_db()->prepare('SELECT id, kind, sent_to, sent_at, viewed_at, responded_at, response_enc FROM status_requests WHERE case_id = ? ORDER BY id DESC LIMIT 6');
+    $s->execute([$c['id']]);
+    $hist = array_map(function ($r) {
+        $resp = $r['response_enc'] ? json_decode((string)dec($r['response_enc']), true) : null;
+        unset($r['response_enc']);
+        return $r + ['status' => $resp ? (STATUS_REPLY_OPTIONS[$resp['status']] ?? $resp['status']) : null, 'repliedBy' => $resp['name'] ?? null];
+    }, $s->fetchAll());
+    return ['on' => (bool)$c['auto_status'], 'to' => $c['auto_status_to'], 'every' => $c['auto_status_every'] ? (int)$c['auto_status_every'] : null,
+        'defaultEvery' => status_rules($p)['every_days'], 'lastOn' => $c['auto_status_last_on'], 'nextOn' => status_next_on($c, $p, date('Y-m-d')),
+        'recipients' => array_column(status_recipients($c), 0), 'problem' => status_problem($c, $p), 'available' => has_feature($p, 'auto_status'), 'history' => $hist];
+}
+
+function handle_status_send() {
+    require_method('POST');
+    $user = require_user('case.read');
+    if (!can($user, 'case.write') && !can($user, 'finance.write')) json_response(['error' => 'Your role does not allow sending status requests.'], 403);
+    require_feature('auto_status');
+    $c = case_or_404((int)($_GET['id'] ?? 0));
+    $r = status_send($c, current_practice(), 'manual', $user);
+    if (isset($r['error'])) json_response(['error' => $r['error']], 400);
+    json_response(['ok' => true, 'sent' => $r['sent'], 'to' => $r['to']] + full_case((int)$c['id'], $user));
+}
+
 // One task (the link in task emails opens it).
 function handle_task() {
     require_user('case.read');
@@ -1395,6 +1432,7 @@ switch ($action) {
     case 'tasks': handle_tasks(); break;
     case 'task_save': handle_task_save(); break;
     case 'task': handle_task(); break;
+    case 'status_send': handle_status_send(); break;
     case 'task_delete': handle_task_delete(); break;
     case 'task_counts': handle_task_counts(); break;
     case 'activity': handle_activity(); break;

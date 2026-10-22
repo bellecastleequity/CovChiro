@@ -39,6 +39,8 @@ const FEATURES = [
         'blurb' => "Estimate other facilities' bills (MRI, specialists, injections) from each case's referrals, so the policy-limits meter shows the whole picture."],
     'task_emails' => ['name' => 'Task email alerts', 'plan' => 'practice',
         'blurb' => "Email the right people when a task is marked urgent, goes late (with a reminder every few days) or is completed — no patient details in the email."],
+    'auto_status' => ['name' => 'Automatic attorney status requests', 'plan' => 'practice',
+        'blurb' => "Email the attorney or case manager every 30 days (or your interval) for a case and payment status update, with a secure one-minute reply form that updates the case for you."],
     'email_digest' => ['name' => 'Daily email digest', 'plan' => 'group',
         'blurb' => "A morning email to each team member with counts of what needs attention under the criteria they choose — no patient details in the email."],
     'locations' => ['name' => 'Multiple locations', 'plan' => 'group',

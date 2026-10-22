@@ -107,12 +107,17 @@ function handle_user_reset() {
 function handle_practice() {
     require_user('users.manage');
     $p = current_practice();
+    $q = pi_db()->prepare("SELECT COUNT(*) FROM cases WHERE practice_id = ? AND auto_status = 1 AND archived_at IS NULL AND stage IN ('" . implode("','", OPEN_STAGES) . "')");
+    $q->execute([$p['id']]);
+    $autoCount = (int)$q->fetchColumn();
     json_response(['practice' => [
         'name' => $p['name'], 'address' => $p['address'], 'phone' => $p['phone'], 'fax' => $p['fax'], 'state' => $p['state'], 'ehrName' => $p['ehr_name'],
         'staffFinance' => array_values(array_filter(explode(',', (string)$p['staff_finance']))),
         'notifyRules' => practice_rules($p), 'notifyCriteria' => NOTIFY_CRITERIA, 'mailReady' => mail_ready(),
         'hasHuddle' => has_feature($p, 'huddle'), 'hasDigest' => has_feature($p, 'email_digest'), 'costs' => practice_costs($p),
         'taskEmail' => task_email_rules($p), 'hasTaskEmails' => has_feature($p, 'task_emails'),
+        'statusRules' => status_rules($p), 'hasAutoStatus' => has_feature($p, 'auto_status'),
+        'autoStatusCount' => $autoCount,
         'baaVersion' => $p['baa_version'], 'baaAcceptedAt' => $p['baa_accepted_at'], 'currentBaaVersion' => BAA_VERSION,
     ]]);
 }
@@ -176,6 +181,28 @@ function handle_task_email_rules_save() {
     $flat = fn($r) => ['on' => implode(', ', $r['on']), 'who' => implode(', ', $r['who']), 'repeat_days' => $r['repeat_days']];
     audit('update', 'practice', pid(), null, $admin, 'task email defaults', audit_diff(['on' => 'label', 'who' => 'label', 'repeat_days' => 'int'], $flat($before), $flat($rules)));
     json_response(['ok' => true, 'rules' => task_email_rules(['task_email_rules' => json_encode($rules)])]);
+}
+
+// Automatic attorney status requests: practice defaults, and switching
+// them on for every open case that has an attorney.
+function handle_status_rules_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    require_feature('auto_status');
+    $b = json_body();
+    $before = status_rules();
+    $rules = ['default_on' => !empty($b['default_on']), 'every_days' => status_every($b['every_days'] ?? 30), 'show_balance' => !empty($b['show_balance'])];
+    pi_db()->prepare('UPDATE practices SET status_request_rules = ? WHERE id = ?')->execute([json_encode($rules), pid()]);
+    audit('update', 'practice', pid(), null, $admin, 'status request defaults', audit_diff(['default_on' => 'bool', 'every_days' => 'int', 'show_balance' => 'bool'], $before, $rules));
+    $turnedOn = 0;
+    if (!empty($b['enable_open'])) {
+        $s = pi_db()->prepare("UPDATE cases SET auto_status = 1 WHERE practice_id = ? AND auto_status = 0 AND archived_at IS NULL AND check_received_on IS NULL
+            AND stage IN ('" . implode("','", array_merge(LEGAL_STAGES, ['tx_complete', 'settled'])) . "') AND (attorney_contact_id IS NOT NULL OR case_manager_email IS NOT NULL)");
+        $s->execute([pid()]);
+        $turnedOn = $s->rowCount();
+        if ($turnedOn) audit('update', 'practice', pid(), null, $admin, "status requests switched on for $turnedOn open case(s)");
+    }
+    json_response(['ok' => true, 'rules' => $rules, 'turnedOn' => $turnedOn]);
 }
 
 // Each person's own daily email: on/off and which of the practice's
@@ -473,5 +500,6 @@ switch ($action) {
     case 'my_notify': handle_my_notify(); break;
     case 'my_notify_save': handle_my_notify_save(); break;
     case 'task_email_rules_save': handle_task_email_rules_save(); break;
+    case 'status_rules_save': handle_status_rules_save(); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }

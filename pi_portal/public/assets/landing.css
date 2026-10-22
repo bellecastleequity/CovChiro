@@ -242,3 +242,18 @@ h1,h2,h3{letter-spacing:-0.025em;line-height:1.15;}
 .outcomes .patient p,.outcomes .patient ul{color:rgba(255,255,255,0.85);}
 .outcomes .patient .o-foot{margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,0.18);font-weight:600;color:#fff;}
 @media (max-width:900px){.outcomes{grid-template-columns:1fr;}}
+/* Attorney status reply page (status.html) */
+.nav-secure{font-size:0.86rem;font-weight:600;color:var(--green);}
+.status-page .wrap{max-width:760px;}
+.status-head h1{font-size:1.6rem;margin:6px 0 4px;}
+.status-client{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:22px 0;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--bg-2);}
+.status-client small{display:block;font-size:0.76rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+.status-client b{color:var(--navy);}
+.status-form fieldset{border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin:0 0 16px;}
+.status-form legend{font-weight:700;color:var(--navy);padding:0 6px;}
+.status-form label{display:block;font-size:0.9rem;color:var(--navy);margin:6px 0 4px;}
+.status-form label.radio{display:flex;gap:10px;align-items:flex-start;font-size:0.95rem;margin:8px 0;}
+.status-form input:not([type=radio]):not([type=checkbox]),.status-form textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font:inherit;}
+.status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 16px;}
+.status-form .err{color:#B42318;min-height:1.2em;}
+.status-foot{margin-top:28px;}

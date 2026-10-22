@@ -773,7 +773,7 @@ function tabOverview(el, d) {
         ${c.mmi_date ? row('MMI', fmtDate(c.mmi_date) + (c.maintenance_every_days && !c.discharge_date ? ' · maintenance ' + maintenanceLabel(+c.maintenance_every_days) : '')) : ''}${row('Discharged', fmtDate(c.discharge_date))}
         ${row('Treating provider', provider?.name)}${c.location_id ? row('Location', locationName(c.location_id)) : ''}
         ${row('Referral source', c.referral_source)}${contactRow('Referred by', k.referred_by_contact_id)}${c.referred_by_text ? row('Referred by (note)', c.referred_by_text) : ''}
-        ${contactRow('Attorney', k.attorney_contact_id)}${c.paralegal ? row('Paralegal', c.paralegal) : ''}
+        ${contactRow('Attorney', k.attorney_contact_id)}${c.paralegal ? row('Paralegal', c.paralegal) : ''}${c.case_manager_name || c.case_manager_email ? `<dt>Case manager</dt><dd>${esc(c.case_manager_name || '')}${c.case_manager_email ? `<div class="small"><a href="mailto:${esc(c.case_manager_email)}">${esc(c.case_manager_email)}</a></div>` : ''}</dd>` : ''}
         <dt>Insurance</dt><dd>${(d.coverages || []).length ? d.coverages.map((cv) => `<div>${esc(label('coverageTypes', cv.type))}${cv.carrier_org || cv.carrier_text ? ' — ' + esc(cv.carrier_org || cv.carrier_text) : ''} <span class="chip ${cv.status === 'active' ? 'teal' : 'na'}">${esc(label('coverageStatus', cv.status))}</span>${cv.claim_number ? `<div class="small muted">Claim # ${esc(cv.claim_number)}</div>` : ''}</div>`).join('') : '<span class="muted">None — patient balance / LOP</span>'}</dd>
         <dt>Policy limits</dt><dd>${c.bi_limit || c.um_limit ? `${c.bi_limit ? 'At-fault BI ' + esc(money(c.bi_limit)) : ''}${c.bi_limit && c.um_limit ? ' · ' : ''}${c.um_limit ? 'UM ' + esc(money(c.um_limit)) : ''}${c.limits_source ? `<div class="small muted">${esc(c.limits_source)}${c.limits_noted_on ? ' · ' + esc(fmtDate(c.limits_noted_on)) : ''}</div>` : ''}` : '<span class="muted">Not known yet — ask the attorney</span>'}
           ${can('case.write') || can('finance.write') ? ' <button class="linklike small" data-act="edit-limits">Edit</button>' : ''}</dd>
@@ -787,7 +787,7 @@ function tabOverview(el, d) {
         ${row('Treatment plan', c.plan_visits_per_week ? `${+c.plan_visits_per_week}x/week${c.plan_set_on ? ' since ' + fmtDate(c.plan_set_on) : ''}` : '')}
         ${row('Head injury', Object.fromEntries(HEAD_INJURY_OPTS)[c.head_injury])}
       </dl></div>
-    <div>
+    <div>${statusCardHtml(d)}
       <div class="card"><div class="card-head"><h2>Patient</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-patient">Edit</button>' : ''}</div>
         <dl class="kv">${row('Name', [p.first_name, p.last_name].join(' '))}${row('Date of birth', fmtDate(p.dob))}${row('Phone', p.phone)}${row('Email', p.email)}${row('Address', p.address)}</dl></div>
       <div class="card"><div class="card-head"><h2>Case notes</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-notes">Edit</button>' : ''}</div>
@@ -877,6 +877,41 @@ function tabChecklist(el, d) {
 // Three attempts without a return visit → ask the attorney/paralegal to
 // help (they can usually reach their client), then stop calling until the
 // patient comes back. Notes may be requested in the claim: keep them factual.
+// Automatic status requests to the attorney / case manager (Gold and up).
+function statusCardHtml(d) {
+  const sr = d.statusRequests, editable = can('case.write') || can('finance.write');
+  if (!sr) return '';
+  if (!sr.available) return `<div class="card status-req"><div class="card-head"><h2>Attorney status requests</h2><span class="chip legal">${esc(featureInfo('auto_status').planName)} plan &amp; up</span></div>
+    <p class="small muted">Email the attorney or case manager every 30 days for a case and payment status update, with a one-minute secure reply form that updates this case for you.</p></div>`;
+  const hist = sr.history.map((h) => `<li><span>${esc(fmtDate(h.sent_at))} · ${h.kind === 'auto' ? 'automatic' : 'sent by hand'} to ${esc(h.sent_to)}</span>
+    <span class="small ${h.responded_at ? '' : 'muted'}">${h.responded_at ? `✓ Replied ${esc(fmtDate(h.responded_at))}${h.repliedBy ? ' by ' + esc(h.repliedBy) : ''}: ${esc(h.status)}` : h.viewed_at ? 'Opened, no reply yet' : 'Not opened yet'}</span></li>`).join('');
+  const every = sr.every || sr.defaultEvery;
+  return `<div class="card status-req"><div class="card-head"><h2>Attorney status requests</h2><span class="chip ${sr.on && !sr.problem ? 'teal' : 'na'}">${sr.on ? (sr.problem ? 'On — needs attention' : 'Automatic') : 'Off'}</span></div>
+    ${sr.on ? `<p class="small">Every ${every} days to ${esc(sr.recipients.join(', ') || S.lookups.statusTo[sr.to])}. ${sr.problem ? '' : `Next: <strong>${esc(sr.nextOn === today() ? 'today' : fmtDate(sr.nextOn))}</strong>${sr.lastOn ? ` · last ${esc(fmtDate(sr.lastOn))}` : ''}. Skipped while the attorney has replied within ${every} days.`}</p>`
+      : '<p class="small muted">Turn on to email the attorney or case manager automatically for a case and payment status update. They reply on a secure one-minute form, and the answer updates this case.</p>'}
+    ${sr.problem && sr.on ? `<div class="notice mt-sm">${esc(sr.problem)}</div>` : ''}
+    ${hist ? `<ul class="status-hist mt-sm">${hist}</ul>` : ''}
+    ${editable ? `<div class="badge-row mt-sm"><button class="btn ghost sm" data-act="status-settings">${sr.on ? 'Settings' : 'Set up'}</button>${sr.recipients.length ? '<button class="btn ghost sm" data-act="status-send">Send a request now</button>' : ''}</div>` : ''}
+    <p class="small muted mt-sm">The email never includes patient details — only a secure link.</p></div>`;
+}
+
+function statusSettingsModal() {
+  const d = S.caseData, c = d.case, sr = d.statusRequests;
+  const defs = [{ n: 'auto_status', l: `Email automatically every ${sr.every || sr.defaultEvery} days (or the number below)`, t: 'check' },
+    { n: 'auto_status_to', l: 'Send to', t: 'select', blank: false, opts: Object.entries(S.lookups.statusTo) },
+    { n: 'auto_status_every', l: `Every (days) — blank = practice default (${sr.defaultEvery})`, t: 'number', min: 7, max: 180 },
+    { n: 'case_manager_name', l: "Attorney's case manager" }, { n: 'case_manager_email', l: 'Case manager email', t: 'email' }];
+  const atty = d.contacts.attorney_contact_id;
+  openModal({ title: 'Attorney status requests', okText: 'Save', body: `<p class="small">${atty ? `Attorney: <strong>${esc(contactName(atty))}</strong> — ${atty.email ? esc(atty.email) : '<span class="err">no email on file; add it under Contacts</span>'}` : 'No attorney chosen on this case yet.'}</p>
+      ${fieldsHtml(defs, { auto_status: +c.auto_status, auto_status_to: c.auto_status_to, auto_status_every: c.auto_status_every || '', case_manager_name: c.case_manager_name || '', case_manager_email: c.case_manager_email || '' })}
+      <p class="small muted mt">They get a short email with a secure link (no patient details in the email). The link shows which client and asks for the case status, upcoming dates, settlement and payment status, and anything they need from you. Their reply is logged under Correspondence, fills in mediation, trial and settlement dates, and creates a task for your team.</p>`,
+    onOk: async (el) => {
+      const v = readFields(el, defs);
+      const r = await api('cases.php?action=update&id=' + c.id, { case: v });
+      S.caseData = r; renderCase(); toast('Saved');
+    } });
+}
+
 function outreachCardHtml(d) {
   const st = d.outreachState;
   const flagged = (d.alerts || []).some((a) => /^(No visit in|Not following the treatment plan|\d+ outreach attempts|Attorney notified)/.test(a.text));
@@ -2308,6 +2343,15 @@ async function pageSettings(main) {
       <fieldset class="assignees mt"><legend>Send to</legend><div class="assignee-list">${entries(S.lookups.taskEmail.whoLabels).map(([k, l]) => `<label class="check"><input type="checkbox" data-tr-who="${k}"${p.taskEmail.who.includes(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></fieldset>
       <div class="form-grid mt"><div><label for="tr-repeat">Repeat late emails every (days; 0 = once)</label><input type="number" id="tr-repeat" min="0" max="60" value="${p.taskEmail.repeat_days}"></div></div>
       ${p.hasTaskEmails ? '<button class="btn mt" data-act="save-task-email">Save</button>' : ''}</div>
+    <div class="card mt" id="status-rules-card"><h2>Attorney status requests</h2>
+      <p class="small">Email the attorney or case manager on a schedule asking for a case and payment status update. Each case has its own on/off switch and recipients (on the case's Overview); these are the defaults. The email holds no patient details — just a secure link to a one-minute reply form whose answer is logged on the case, fills in mediation, trial and settlement dates, and creates a task for your team.</p>
+      ${p.hasAutoStatus ? '' : `<div class="notice mt">Automatic status requests are part of the ${esc(featureInfo('auto_status').planName)} plan and up. <a href="#/billing">See plans</a></div>`}
+      ${p.mailReady ? '' : '<div class="notice mt">Email sending isn\'t set up on this server yet, so requests won\'t go out until it is.</div>'}
+      <div class="form-grid mt"><div><label for="sq-every">Send every (days)</label><input type="number" id="sq-every" min="7" max="180" value="${p.statusRules.every_days}"></div></div>
+      <label class="check mt"><input type="checkbox" id="sq-default"${p.statusRules.default_on ? ' checked' : ''}> Turn on automatically for new cases</label>
+      <label class="check"><input type="checkbox" id="sq-balance"${p.statusRules.show_balance ? ' checked' : ''}> Show the outstanding balance on the reply page (helps with payment status)</label>
+      <p class="small muted mt-sm">${p.autoStatusCount} open case${p.autoStatusCount === 1 ? '' : 's'} currently ${p.autoStatusCount === 1 ? 'has' : 'have'} automatic requests on. Requests go out on weekday mornings.</p>
+      ${p.hasAutoStatus ? '<div class="badge-row mt"><button class="btn" data-act="save-status-rules">Save</button><button class="btn ghost" data-act="save-status-rules" data-enable="1">Save and turn on for open cases with an attorney</button></div>' : ''}</div>
     <div class="card mt"><div class="card-head"><h2>Locations</h2><span class="spacer"></span>${hasFeature('locations') ? '<button class="btn ghost sm" data-act="location-edit">+ Add location</button>' : ''}</div>
       <p class="small">Run more than one office in this account: each case belongs to a location (its letterhead is used on letters and exports), lists filter by location, and team members can be limited to their own location's patients.</p>
       <div id="locations-list" class="mt">${hasFeature('locations') ? '<div class="empty">Loading…</div>' : `<div class="notice">Multiple locations are part of the ${esc(featureInfo('locations').planName)} plan.</div>`}</div></div>
@@ -2696,6 +2740,21 @@ const ACTIONS = {
     if (r) { toast(el.dataset.reset ? 'Back to the defaults' : 'Cost list saved'); await refreshSession(); pageSettings(document.getElementById('main')); }
   },
   'promo-check': () => checkPromo(),
+  'status-settings': () => statusSettingsModal(),
+  'status-send': async () => {
+    const sr = S.caseData.statusRequests;
+    if (!(await confirmBox('Send a status request now?', `An email with a secure reply link goes to ${sr.recipients.join(', ')}. No patient details are in the email.`, 'Send'))) return;
+    const r = await attempt(() => api('cases.php?action=status_send&id=' + S.caseData.case.id, {}));
+    if (r) { S.caseData = r; renderCase(); toast('Request sent to ' + r.to.join(', ')); }
+  },
+  'save-status-rules': async (el) => {
+    const box = document.getElementById('status-rules-card');
+    const enable = !!el.dataset.enable;
+    if (enable && !(await confirmBox('Turn on for open cases?', 'Every open case past treatment (or in demand, litigation, mediation, negotiation or settled awaiting the check) that has an attorney or case manager will start getting automatic status requests.', 'Turn on'))) return;
+    const r = await attempt(() => api('admin.php?action=status_rules_save', { default_on: box.querySelector('#sq-default').checked, every_days: +box.querySelector('#sq-every').value,
+      show_balance: box.querySelector('#sq-balance').checked, enable_open: enable }));
+    if (r) { toast(enable ? `Turned on for ${r.turnedOn} case${r.turnedOn === 1 ? '' : 's'}` : 'Saved'); pageSettings(document.getElementById('main')); }
+  },
   'save-task-email': async () => {
     const box = document.getElementById('task-email-card');
     const r = await attempt(() => api('admin.php?action=task_email_rules_save', { on: [...box.querySelectorAll('[data-tr-on]:checked')].map((x) => x.dataset.trOn),
