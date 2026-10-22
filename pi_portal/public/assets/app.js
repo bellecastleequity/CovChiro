@@ -363,6 +363,7 @@ async function startShell() {
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>
         ${operator || !hasFeature('email_digest') ? '' : '<button class="btn ghost sm" data-act="my-notify">Email notifications</button>'}
+        ${operator ? '' : '<button class="btn ghost sm" data-act="suggest">Suggest a feature</button>'}
         <button class="btn ghost sm" data-act="sign-out">Sign out</button></div>
     </nav>
     <div class="main-col"><div id="banner">${bannerHtml()}</div><main class="main" id="main"></main></div>
@@ -2146,6 +2147,48 @@ async function pageBilling(main) {
 }
 
 // ---------- operator console ----------
+// ---------- feature suggestions ----------
+const FB_CHIP = { new: 'info', reviewing: 'due', planned: 'legal', done: 'done', declined: 'na' };
+async function suggestModal() {
+  const r = await attempt(() => api('feedback.php?action=list'));
+  if (!r) return;
+  const page = (location.hash.replace(/^#\/?/, '').split('/')[0] || 'dashboard');
+  openModal({ title: 'Suggest a feature', wide: true, okText: 'Send suggestion', body: `
+    <p class="small">Tell us what would make ${esc(S.brand.name)} work better for your practice — a new feature, a change to an existing one, or something that isn't working.</p>
+    <div class="notice">Please don't include patient names or any patient details.</div>
+    <div class="form-grid mt">
+      <div><label for="fb-kind">Type</label><select id="fb-kind">${Object.entries(r.kinds).map(([k, t]) => opt(k, t, 'feature')).join('')}</select></div>
+      <div><label for="fb-area">Area</label><select id="fb-area">${r.areas.map((a) => opt(a, a, '')).join('')}</select></div>
+      <div class="full"><label for="fb-title">Short title *</label><input id="fb-title" maxlength="160" placeholder="e.g. Text-message reminders for appointments"></div>
+      <div class="full"><label for="fb-body">Details</label><textarea id="fb-body" rows="4" placeholder="What would you like it to do, and how would it help your team?"></textarea></div>
+    </div>
+    ${r.items.length ? `<h3 class="mt">Your practice's suggestions</h3><ul class="fb-list">${r.items.map((i) => `<li><div><span class="chip ${FB_CHIP[i.status]}">${esc(r.statuses[i.status])}</span> <strong>${esc(i.title)}</strong> <span class="small muted">${esc(i.by || '')} · ${esc(fmtDate(i.at))}</span></div>${i.response ? `<div class="small fb-reply">Reply: ${esc(i.response)}</div>` : ''}</li>`).join('')}</ul>` : ''}`,
+    onOk: async (el) => {
+      const title = el.querySelector('#fb-title').value.trim();
+      if (!title) throw new Error('Give your suggestion a short title.');
+      await api('feedback.php?action=submit', { kind: el.querySelector('#fb-kind').value, area: el.querySelector('#fb-area').value, title, body: el.querySelector('#fb-body').value.trim(), page });
+      toast('Thanks — suggestion sent');
+    } });
+}
+
+async function feedbackSectionHtml() {
+  const r = await attempt(() => api('feedback.php?action=all'));
+  if (!r) return '';
+  pagePlatform._fb = r;
+  return `<div class="card mt"><div class="card-head"><h2>Feature suggestions</h2>${Object.entries(r.statuses).map(([k, t]) => `<span class="chip ${FB_CHIP[k]}">${esc(t)}: ${r.counts[k] || 0}</span>`).join(' ')}</div>
+    ${r.items.length ? `<div class="table-wrap"><table><thead><tr><th>Suggestion</th><th>Practice</th><th>Area</th><th>Received</th><th>Status</th><th></th></tr></thead><tbody>
+      ${r.items.map((i) => `<tr><td><strong>${esc(i.title)}</strong> <span class="small muted">${esc(r.kinds[i.kind])}</span>${i.body ? `<div class="small prewrap">${esc(i.body)}</div>` : ''}${i.response ? `<div class="small fb-reply">Reply: ${esc(i.response)}</div>` : ''}</td>
+        <td class="small">${esc(i.practice || '')}<br>${esc(i.by || '')}</td><td class="small">${esc(i.area || '')}</td><td class="small nowrap">${esc(fmtDate(i.at))}</td>
+        <td><span class="chip ${FB_CHIP[i.status]}">${esc(r.statuses[i.status])}</span></td><td><button class="btn ghost sm" data-act="op-feedback" data-id="${i.id}">Update</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No suggestions yet.</div>'}</div>`;
+}
+function feedbackUpdateModal(id) {
+  const r = pagePlatform._fb; const i = r.items.find((x) => x.id === id);
+  openModal({ title: 'Update suggestion', okText: 'Save', body: `<p><strong>${esc(i.title)}</strong></p>
+    <label for="fbu-status">Status</label><select id="fbu-status">${Object.entries(r.statuses).map(([k, t]) => opt(k, t, i.status)).join('')}</select>
+    <label for="fbu-resp">Reply to the practice (optional)</label><textarea id="fbu-resp" rows="3">${esc(i.response || '')}</textarea>`,
+    onOk: async (el) => { await api('feedback.php?action=update', { id, status: el.querySelector('#fbu-status').value, response: el.querySelector('#fbu-resp').value.trim() }); toast('Saved'); pagePlatform(document.getElementById('main')); } });
+}
+
 async function pagePlatform(main) {
   const r = await attempt(() => api('platform.php?action=practices'));
   if (!r) return;
@@ -2163,7 +2206,7 @@ async function pagePlatform(main) {
       <td class="small">${esc(p.lastLogin || 'never')}</td><td class="small">${p.baaCurrent ? '✓' : '<span class="trend-up">needed</span>'}</td><td class="small">${esc(fmtDate(p.createdAt))}</td>
       <td class="nowrap">${['trialing', 'canceled'].includes(p.status) ? `<button class="btn ghost sm" data-act="op-extend" data-id="${p.id}">+14 days trial</button>` : ''}
         <button class="btn ghost sm" data-act="op-comp" data-id="${p.id}" data-on="${p.status === 'comped' ? 0 : 1}">${p.status === 'comped' ? 'Remove comp' : 'Comp'}</button></td></tr>`).join('')}
-    </tbody></table></div></div>`;
+    </tbody></table></div></div>${await feedbackSectionHtml()}`;
   main.querySelectorAll('[data-act-change=plan]').forEach((sel) => sel.addEventListener('change', async () => {
     if (await attempt(() => api('platform.php?action=practice_update', { id: +sel.dataset.id, plan: sel.value }))) { toast('Plan changed'); pagePlatform(main); }
   }));
@@ -2259,6 +2302,8 @@ const ACTIONS = {
   'guide-visit': (el) => visitModal(null, { visit_type: el.dataset.type }),
   'outreach-log': outreachLogModal,
   'export-file': exportFileModal,
+  'suggest': suggestModal,
+  'op-feedback': (el) => feedbackUpdateModal(+el.dataset.id),
   'outreach-hold': outreachHoldModal,
   'outreach-resume': async () => {
     const r = await attempt(() => api('cases.php?action=outreach_hold&id=' + S.caseData.case.id, { resume: true }));
