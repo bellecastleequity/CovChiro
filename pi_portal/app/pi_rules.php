@@ -757,6 +757,79 @@ function outreach_state(array $case, array $attempts, array $attendedDates): arr
         'dates' => array_column($since, 'attempted_on')];
 }
 
+// ---------- Outside providers' bills (estimates) ----------
+// Typical charges at other facilities, used to estimate the other bills on
+// a case from its referrals. Planning figures only — every practice edits
+// them (Practice settings → Outside provider costs), and any line can be
+// adjusted per case. 'typical' is how many a referral usually brings (an
+// MRI counts one per body region listed on the referral); 'ref' is the
+// referral type that adds it automatically.
+const OUTSIDE_COSTS = [
+    'mri' => ['label' => 'MRI', 'unit' => 'area', 'cost' => 1500, 'typical' => 1, 'ref' => 'mri'],
+    'xray' => ['label' => 'X-ray', 'unit' => 'study', 'cost' => 250, 'typical' => 1, 'ref' => 'xray'],
+    'ct' => ['label' => 'CT scan', 'unit' => 'area', 'cost' => 1200, 'typical' => 1, 'ref' => 'ct'],
+    'emg' => ['label' => 'EMG / NCV study', 'unit' => 'study', 'cost' => 1200, 'typical' => 1, 'ref' => 'emg'],
+    'emc' => ['label' => 'EMC evaluation', 'unit' => 'evaluation', 'cost' => 350, 'typical' => 1, 'ref' => 'emc'],
+    'ortho' => ['label' => 'Orthopedic visit', 'unit' => 'visit', 'cost' => 450, 'typical' => 2, 'ref' => 'ortho'],
+    'neuro' => ['label' => 'Neurology visit', 'unit' => 'visit', 'cost' => 450, 'typical' => 2, 'ref' => 'neuro'],
+    'pain_mgmt' => ['label' => 'Pain management visit', 'unit' => 'visit', 'cost' => 450, 'typical' => 2, 'ref' => 'pain_mgmt'],
+    'injection' => ['label' => 'Injection (epidural, facet, nerve block)', 'unit' => 'injection', 'cost' => 2500, 'typical' => 0, 'ref' => null],
+    'surgical' => ['label' => 'Surgical consult', 'unit' => 'visit', 'cost' => 650, 'typical' => 1, 'ref' => 'surgical'],
+    'surgery' => ['label' => 'Surgery', 'unit' => 'procedure', 'cost' => 45000, 'typical' => 0, 'ref' => null],
+    'pt' => ['label' => 'Physical therapy visit', 'unit' => 'visit', 'cost' => 150, 'typical' => 12, 'ref' => 'pt'],
+    'er' => ['label' => 'ER / urgent care visit', 'unit' => 'visit', 'cost' => 3500, 'typical' => 0, 'ref' => null],
+    'ambulance' => ['label' => 'Ambulance', 'unit' => 'transport', 'cost' => 1200, 'typical' => 0, 'ref' => null],
+];
+
+// The practice's cost list: defaults with its own amounts and counts.
+function practice_costs(?array $practice = null): array {
+    $practice = $practice ?? current_practice();
+    $saved = json_decode((string)($practice['cost_estimates'] ?? ''), true) ?: [];
+    $out = [];
+    foreach (OUTSIDE_COSTS as $k => $d) {
+        $o = $saved[$k] ?? [];
+        $out[$k] = ['cost' => isset($o['cost']) ? (float)$o['cost'] : (float)$d['cost'], 'typical' => isset($o['typical']) ? (float)$o['typical'] : (float)$d['typical']] + $d;
+    }
+    return $out;
+}
+
+// Body regions listed on an imaging referral ("C-spine, L-spine" = 2).
+function referral_region_count(?string $region): int {
+    $parts = array_filter(array_map('trim', preg_split('/,|;|&|\/|\band\b|\+/i', (string)$region)));
+    return max(1, count($parts));
+}
+
+// Itemized estimate of other providers' bills. Returns lines (auto from
+// referrals, adjusted, or added by hand) and the total of included lines.
+function outside_estimates(array $referrals, array $rows, array $costs): array {
+    $byRef = []; $manual = [];
+    foreach ($rows as $r) {
+        if (!empty($r['archived_at'])) continue;
+        if ($r['referral_id']) $byRef[(int)$r['referral_id']] = $r; else $manual[] = $r;
+    }
+    $refType = [];
+    foreach ($costs as $k => $c) if ($c['ref']) $refType[$c['ref']] = $k;
+    $lines = [];
+    foreach ($referrals as $ref) {
+        if (!empty($ref['archived_at']) || $ref['status'] === 'cancelled' || !isset($refType[$ref['type']])) continue;
+        $cat = $refType[$ref['type']]; $c = $costs[$cat];
+        $o = $byRef[(int)$ref['id']] ?? null;
+        $qty = $o ? (float)$o['qty'] : (in_array($cat, ['mri', 'ct', 'xray'], true) ? referral_region_count($ref['body_region'] ?? null) * max(1, $c['typical']) : $c['typical']);
+        $unit = $o && $o['unit_cost'] !== null ? (float)$o['unit_cost'] : $c['cost'];
+        $where = trim(($ref['body_region'] ?? '') . ' ' . ($ref['contact_org'] ?? $ref['facility_text'] ?? ''));
+        $lines[] = ['id' => $o ? (int)$o['id'] : null, 'referralId' => (int)$ref['id'], 'category' => $cat, 'label' => $c['label'] . ($where ? ' — ' . $where : ''),
+            'unit' => $c['unit'], 'qty' => $qty, 'unitCost' => $unit, 'amount' => round($qty * $unit, 2), 'auto' => !$o, 'adjusted' => (bool)$o, 'excluded' => $qty <= 0];
+    }
+    foreach ($manual as $r) {
+        $c = $costs[$r['category']] ?? null;
+        $unit = $r['unit_cost'] !== null ? (float)$r['unit_cost'] : ($c['cost'] ?? 0.0);
+        $lines[] = ['id' => (int)$r['id'], 'referralId' => null, 'category' => $r['category'], 'label' => ($r['description'] ?: ($c['label'] ?? 'Other')),
+            'unit' => $c['unit'] ?? 'each', 'qty' => (float)$r['qty'], 'unitCost' => $unit, 'amount' => round((float)$r['qty'] * $unit, 2), 'auto' => false, 'adjusted' => false, 'excluded' => (float)$r['qty'] <= 0];
+    }
+    $total = round(array_sum(array_map(fn($l) => $l['excluded'] ? 0 : $l['amount'], $lines)), 2);
+    return ['lines' => $lines, 'total' => $total];
+}
+
 // ---------- Case value: bills vs. coverage ----------
 // PIP left and the medical bills against the liability limits. Uses our
 // own charges plus the estimate of other providers' bills; projects when
@@ -768,6 +841,13 @@ function case_value(array $case, array $ctx): array {
     $coverages = $ctx['coverages'] ?? [];
     $pip = first_coverage($coverages, 'pip');
     $out = ['pip' => null, 'limits' => null, 'threshold' => null];
+    // Other providers' bills: itemized estimates (a Gold-and-up feature)
+    // plus any lump sum not itemized.
+    $est = has_feature(current_practice(), 'outside_estimates')
+        ? outside_estimates($ctx['referrals'] ?? [], $ctx['estimateRows'] ?? [], $ctx['costs'] ?? practice_costs())
+        : ['lines' => [], 'total' => 0.0, 'locked' => true];
+    $otherAll = $est['total'] + (float)($case['other_medical_estimate'] ?? 0);
+    $out['outside'] = $est + ['lump' => round((float)($case['other_medical_estimate'] ?? 0), 2), 'all' => round($otherAll, 2)];
     if ($pip) {
         $limit = pip_effective_limit($case, $pip);
         $paid = $totals['by_coverage'][(int)$pip['id']]['paid'] ?? 0.0;
@@ -788,7 +868,7 @@ function case_value(array $case, array $ctx): array {
         $th = ['state' => $r['name'], 'kind' => $r['tort']['kind'], 'text' => $r['tort']['text']];
         if (in_array($r['tort']['kind'], ['medical', 'paid'], true)) {
             $amt = $r['tort']['kind'] === 'paid' ? ($pip ? (float)($totals['by_coverage'][(int)$pip['id']]['paid'] ?? 0) : 0.0)
-                : (float)$totals['total_charges'] + (float)($case['other_medical_estimate'] ?? 0);
+                : (float)$totals['total_charges'] + $otherAll;
             $th += ['dollars' => (float)$r['tort']['dollars'], 'amount' => round($amt, 2), 'met' => $amt > (float)$r['tort']['dollars'],
                 'counts' => $r['tort']['kind'] === 'paid' ? 'PIP benefits paid to this office' : "Our charges plus other providers' bills (estimate)"];
         }
@@ -797,7 +877,7 @@ function case_value(array $case, array $ctx): array {
     $pool = (float)($case['bi_limit'] ?? 0) + (float)($case['um_limit'] ?? 0);
     if ($pool > 0) {
         $ours = (float)$totals['total_charges'];
-        $other = (float)($case['other_medical_estimate'] ?? 0);
+        $other = $otherAll;
         $medical = $ours + $other;
         $share = $medical / $pool;
         // Recent pace: our charges per week over the last 4 weeks.
@@ -1103,7 +1183,29 @@ function case_alerts(array $case, array $ctx): array {
     if ($case['stage'] === 'settled' && !$case['balance_forwarded_on'] && ($ctx['totals']['patient_balance'] ?? 0) > 0) {
         $alerts[] = ['level' => 'medium', 'text' => 'Case settled — forward the patient balance to the attorney.'];
     }
-    if ($case['stage'] === 'settled' && !$case['check_received_on'] && $case['date_authorized'] && days_between($case['date_authorized'], $today) > 30) {
+    // Case status dates from the attorney's office.
+    $med = $case['mediation_on'] ?? null; $trial = $case['trial_on'] ?? null;
+    $signed = $case['settlement_signed_on'] ?? null; $expect = $case['disbursement_expected_on'] ?? null;
+    $preSettle = in_array($case['stage'], ['tx_complete', 'demand', 'litigation', 'mediation', 'negotiating'], true);
+    if ($med && $preSettle) {
+        $d = days_between($today, $med);
+        if ($d >= 0 && $d <= 14) $alerts[] = ['level' => 'medium', 'text' => 'Mediation ' . ($d === 0 ? 'today' : 'on ' . us_date($med)) . ' — confirm the attorney has the current itemized bill and records.'];
+        elseif ($d < 0 && $d >= -60 && !$signed) $alerts[] = ['level' => 'medium', 'text' => 'Mediation was ' . us_date($med) . ' — ask the attorney for the outcome and update the case stage.'];
+    }
+    if ($trial && $preSettle) {
+        $d = days_between($today, $trial);
+        if ($d >= 0 && $d <= 21) $alerts[] = ['level' => 'medium', 'text' => 'Trial ' . ($d === 0 ? 'today' : 'on ' . us_date($trial)) . ' — confirm with the attorney whether records, bills or provider testimony are needed.'];
+        elseif ($d < 0 && $d >= -60 && !$signed) $alerts[] = ['level' => 'low', 'text' => 'Trial date ' . us_date($trial) . ' has passed — ask the attorney for the outcome.'];
+    }
+    if ($signed && $preSettle) $alerts[] = ['level' => 'low', 'text' => 'Settlement signed ' . us_date($signed) . ' — move the case to "Settled — awaiting check" (stage).'];
+    $awaiting = !$case['check_received_on'] && in_array($case['stage'], ['settled', 'negotiating'], true);
+    if ($awaiting && $expect) {
+        if ($expect < $today) $alerts[] = ['level' => 'high', 'text' => 'Settlement check expected from the attorney by ' . us_date($expect) . ' — not received yet; call the attorney\'s office.'];
+        elseif (days_between($today, $expect) <= 7) $alerts[] = ['level' => 'low', 'text' => 'Settlement check expected from the attorney by ' . us_date($expect) . '.'];
+    } elseif ($awaiting && $signed && $case['stage'] === 'settled') {
+        $alerts[] = ['level' => 'low', 'text' => 'Settlement signed ' . us_date($signed) . ' — ask the attorney when they expect to mail / disburse the check.'];
+    }
+    if ($case['stage'] === 'settled' && !$case['check_received_on'] && !$expect && $case['date_authorized'] && days_between($case['date_authorized'], $today) > 30) {
         $alerts[] = ['level' => 'high', 'text' => 'Reduction authorized ' . $case['date_authorized'] . ' — check still not received.'];
     }
 
@@ -1123,6 +1225,7 @@ function bulk_case_context(PDO $pdo, array $cases): array {
     $in = implode(',', $ids);
     foreach ($pdo->query("SELECT * FROM case_milestones WHERE case_id IN ($in)") as $r) $ctx[$r['case_id']]['milestones'][] = $r;
     foreach ($pdo->query("SELECT * FROM referrals WHERE archived_at IS NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['referrals'][] = $r;
+    foreach ($pdo->query("SELECT * FROM case_estimates WHERE archived_at IS NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['estimateRows'][] = $r;
     foreach ($pdo->query("SELECT * FROM case_guide WHERE case_id IN ($in)") as $r) $ctx[$r['case_id']]['guideRows'][] = $r;
     foreach ($pdo->query("SELECT case_id, attempted_on, outcome, archived_at FROM outreach WHERE archived_at IS NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['outreach'][] = $r;
     foreach ($pdo->query("SELECT case_id, MAX(visit_date) d FROM visits WHERE archived_at IS NULL AND visit_type IN ('initial', 're_exam') AND case_id IN ($in) GROUP BY case_id") as $r) $ctx[$r['case_id']]['lastExam'] = $r['d'];

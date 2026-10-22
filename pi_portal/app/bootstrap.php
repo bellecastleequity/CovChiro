@@ -14,6 +14,7 @@ require_once __DIR__ . '/totp.php';
 require_once __DIR__ . '/pi_rules.php';
 require_once __DIR__ . '/promo.php';
 require_once __DIR__ . '/saas.php';
+require_once __DIR__ . '/task_mail.php';
 
 define('PI_TIMEZONE', 'America/New_York');
 define('PI_IDLE_TIMEOUT_SECONDS', 15 * 60);
@@ -303,8 +304,9 @@ function case_scope(string $a = 'c'): array {
 // Keep `detail` free of clinical content — it records WHAT was touched
 // (field names, ids), not the PHI values themselves.
 function audit(string $action, ?string $entity = null, $entityId = null, $caseId = null, ?array $user = null, $detail = null, ?array $changes = null) {
-    $uid = $user['id'] ?? ($_SESSION['uid'] ?? null);
-    $email = $user['email'] ?? ($_SESSION['email'] ?? null);
+    // A passed user (including a system one with no id) wins over the session.
+    $uid = $user ? ($user['id'] ?? null) : ($_SESSION['uid'] ?? null);
+    $email = $user ? ($user['email'] ?? null) : ($_SESSION['email'] ?? null);
     if (is_array($detail)) $detail = json_encode($detail);
     $practiceId = current_practice()['id'] ?? ($user['practice_id'] ?? null);
     pi_db()->prepare('INSERT INTO audit_log (occurred_at, practice_id, user_id, user_email, action, entity, entity_id, case_id, ip_address, user_agent, detail, changes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
@@ -399,7 +401,7 @@ function case_or_404(int $id): array {
 // the case they belong to, and through it the practice, so an id from one
 // case — or one practice — can never be used to read or edit another's.
 function child_or_404(string $table, int $id, ?int $caseId = null): array {
-    static $tables = ['referrals', 'visits', 'outcomes', 'correspondence', 'ledger', 'tasks', 'documents', 'coverages', 'outreach'];
+    static $tables = ['referrals', 'visits', 'outcomes', 'correspondence', 'ledger', 'tasks', 'documents', 'coverages', 'outreach', 'case_estimates'];
     if (!in_array($table, $tables, true)) throw new InvalidArgumentException('bad table');
     $loc = restricted_location();
     if ($table === 'tasks') {

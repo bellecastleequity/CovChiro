@@ -15,6 +15,6 @@
   "scenes": [
     {"id": "a15-1-hook", "min": 3, "text": "Whether you're new to personal injury, or an experienced clinic,"},
     {"id": "a15-2-promise", "min": 3, "text": "InjuryCase keeps every PI case on track, from the first visit to the final check."},
-    {"id": "a15-3-cta", "min": 3, "text": "Start your free trial at injurycase.com."}
+    {"id": "a15-3-cta", "min": 3, "text": "HIPAA-ready from day one. Start your free trial at injurycase.com."}
   ]
 }

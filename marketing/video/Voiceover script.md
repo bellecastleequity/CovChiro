@@ -1,20 +1,20 @@
 # InjuryCase sales video — voiceover script
 
-The video (`InjuryCase sales video.mp4`, 1:41, 1080p) is built to play muted, with every point on screen. To add a voice, record these lines to match the timecodes (about 140 words a minute — calm and confident), then send the audio file and it will be merged into the video. A doctor's own voice works best with clinic owners.
+The video (`InjuryCase sales video.mp4`, 2:32, 1080p) is built to play muted, with every point on screen. HIPAA readiness is shown from the first scene: a badge on the opening, a corner badge on every product screen, a full HIPAA & security scene, the pricing line and the closing call to action. It is narrated with the Gemini voice (see "Switching the voice" below); timecodes shift slightly to fit the voice. A doctor's own recording also works and often lands best with clinic owners.
 
 | Time | On screen | Voiceover |
 |---|---|---|
-| 0:00 | InjuryCase logo — "Every PI case, from first visit to final check." | Every personal injury case — from the first visit to the final check. This is InjuryCase. |
-| 0:06 | Spreadsheets and sticky notes · a missed deadline · attorneys waiting · patients slipping through | If your PI cases live in spreadsheets and sticky notes, you know the cost: a missed deadline, an attorney waiting on an update, a patient who quietly stops coming in. There's a better way. |
-| 0:15 | Dashboard | Every morning, InjuryCase shows your team exactly what needs attention — gaps in care, overdue referrals, PIP billing deadlines and settlements still waiting on a check — ranked by urgency. |
-| 0:26 | Next steps on a case | Every case comes with a built-in PI playbook: the MRI script at visit one, the EMC determination in week one, the orthopedic referral after the MRI, and a re-exam every thirty days. It's guidance — your doctors always make the clinical calls. |
-| 0:38 | Daily huddle | Run a ten-minute morning huddle from one printable sheet, with an owner for every item — and a morning email digest that never includes patient details. |
-| 0:47 | Policy limits & case value | Protect what every case is worth. See PIP remaining and medical bills against the policy limits, with soft warnings before a big reduction surprises you. |
-| 0:57 | Letters and patient outreach | Keep attorneys in the loop in one click — status, treatment-complete and reduction letters on your letterhead, with outreach logged in neutral, records-safe wording. |
-| 1:06 | State rules | Built in Florida and ready for your state, with PIP, no-fault, lawsuit-threshold and lien rules configured for twenty-seven states plus D.C. |
-| 1:14 | Security | HIPAA-ready from day one: a Business Associate Agreement, two-factor sign-in for every user, encryption and daily backups — shaped by more than ten years of personal injury attorney input. |
-| 1:22 | Pricing | Plans start at thirty-nine dollars a month, with a fourteen-day free trial and no credit card required. |
-| 1:30 | Call to action + QR code | Put every PI case on track this week. Start your free trial at injurycase.com, or email support@injurycase.com to request a demo. |
+| 0:00 | InjuryCase logo — "Every PI case, from first visit to final check." · HIPAA-ready badge | Every personal injury case — from the first visit to the final check. This is InjuryCase: HIPAA-ready case management for clinics that treat injury patients. |
+| 0:07 | Spreadsheets and sticky notes · a missed deadline · attorneys waiting · patients slipping through | If your PI cases live in spreadsheets and sticky notes, you know the cost: a missed deadline, an attorney waiting on an update, a patient who quietly stops coming in. There's a better way. |
+| 0:16 | Dashboard | Every morning, InjuryCase shows your team exactly what needs attention — gaps in care, overdue referrals, PIP billing deadlines, and settlements still waiting on a check — ranked by urgency. |
+| 0:27 | Next steps on a case | Every case comes with a built-in PI playbook: the MRI script at visit one, the EMC determination in week one, the orthopedic referral after the MRI, and a re-exam every thirty days. Add your office's own steps, too. It's guidance — your doctors always make the clinical calls. |
+| 0:39 | Daily huddle | Run a ten-minute morning huddle from one printable sheet, with an owner for every item — and a morning email digest that never includes patient details. |
+| 0:48 | Policy limits & case value | Protect what every case is worth. See PIP remaining and medical bills against the policy limits, with soft warnings before a big reduction surprises you. |
+| 0:58 | Letters and patient outreach | Keep attorneys in the loop in one click — status, treatment-complete, and reduction letters on your letterhead, with outreach logged in neutral, records-safe wording — a workflow shaped by more than ten years of personal injury attorney input. |
+| 1:09 | State rules | Built in Florida and ready for your state, with PIP, no-fault, lawsuit-threshold, and lien rules configured for twenty-seven states plus D.C. |
+| 1:17 | HIPAA & security — BAA, two-factor, encryption, backups, audit trail | And it's HIPAA-ready from day one. We sign a Business Associate Agreement with every practice, and the Security Rule's technical safeguards are built in: two-factor sign-in for every user, encryption, role-based access, automatic sign-out, a complete audit trail, and daily encrypted backups. |
+| 1:28 | Pricing — "Every plan: HIPAA safeguards … signed BAA" | Plans start at thirty-nine dollars a month — every plan with the same HIPAA safeguards and a signed BAA — with a fourteen-day free trial and no credit card required. |
+| 1:37 | Call to action + QR code · HIPAA-ready badge | Put every PI case on track this week. Start your free trial at injurycase.com, or email support at injurycase.com to request a demo. |
 
 ## Sending it to clinics
 
@@ -50,7 +50,7 @@ The video fits itself to the voice. Each scene lasts its default length or as lo
 
 ## Full walkthrough (6–8 minutes)
 
-`InjuryCase full walkthrough.mp4` follows one fictional patient, Maya Collins, from intake to a closed, paid case, in seven chapters: intake, the first weeks of care, keeping patients on track, the end of care, getting paid, running your office, and pricing. Use it for the website's "Watch the demo", replies to interested clinics, and after trial sign-up. The overview video above stays the one for cold outreach.
+`InjuryCase full walkthrough.mp4` follows one fictional patient, Maya Collins, from intake to a closed, paid case, with the same HIPAA elements as the overview (opening badge, corner badge on every product screen, a HIPAA & security scene, the pricing line and the end-card badge), in seven chapters: intake, the first weeks of care, keeping patients on track, the end of care, getting paid, running your office, and pricing. Use it for the website's "Watch the demo", replies to interested clinics, and after trial sign-up. The overview video above stays the one for cold outreach.
 
 - **Script:** every line is in `walkthrough.json` (same format as `scenes.json`; a scene with a `"chapter"` starts a chapter).
 - **Chapters:** each build writes `InjuryCase full walkthrough chapters.txt`, ready to paste into a YouTube description.
@@ -60,7 +60,7 @@ The video fits itself to the voice. Each scene lasts its default length or as lo
 
 ## 15- and 30-second ads
 
-`InjuryCase ad 15s.mp4` and `InjuryCase ad 30s.mp4` (16:9). Theme: "Whether you're new to personal injury or an experienced clinic, InjuryCase keeps every case on track." Every spoken point is also on screen, for viewers watching muted.
+`InjuryCase ad 15s.mp4` and `InjuryCase ad 30s.mp4` (16:9). Theme: "Whether you're new to personal injury or an experienced clinic, InjuryCase keeps every case on track." Every spoken point is also on screen, for viewers watching muted. HIPAA appears as in the overview: a HIPAA-ready badge under the main promise and on the end card, a corner badge on product screens, and (30s) a "HIPAA-ready security" tile and line.
 
 - Script and timing are in `ad15.json` / `ad30.json`; the layout is in `ad15.html` / `ad30.html`.
 - `"total_seconds"` locks the exact length: the end card absorbs any spare time, and the build stops if the voice runs over.

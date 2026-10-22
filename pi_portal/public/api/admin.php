@@ -22,7 +22,7 @@ function handle_users() {
     require_user('users.manage');
     $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, notify_digest, location_id, location_restricted, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
     $stmt->execute([pid()]);
-    json_response(['users' => $stmt->fetchAll(), 'limit' => plan_for(current_practice())['users']]);
+    json_response(['users' => $stmt->fetchAll(), 'limit' => effective_plan(current_practice())['users']]);
 }
 
 // A readable one-time password the admin hands over in person or by
@@ -111,7 +111,8 @@ function handle_practice() {
         'name' => $p['name'], 'address' => $p['address'], 'phone' => $p['phone'], 'fax' => $p['fax'], 'state' => $p['state'], 'ehrName' => $p['ehr_name'],
         'staffFinance' => array_values(array_filter(explode(',', (string)$p['staff_finance']))),
         'notifyRules' => practice_rules($p), 'notifyCriteria' => NOTIFY_CRITERIA, 'mailReady' => mail_ready(),
-        'hasHuddle' => has_feature($p, 'huddle'), 'hasDigest' => has_feature($p, 'email_digest'),
+        'hasHuddle' => has_feature($p, 'huddle'), 'hasDigest' => has_feature($p, 'email_digest'), 'costs' => practice_costs($p),
+        'taskEmail' => task_email_rules($p), 'hasTaskEmails' => has_feature($p, 'task_emails'),
         'baaVersion' => $p['baa_version'], 'baaAcceptedAt' => $p['baa_accepted_at'], 'currentBaaVersion' => BAA_VERSION,
     ]]);
 }
@@ -162,28 +163,86 @@ function handle_notify_rules_save() {
     json_response(['ok' => true, 'rules' => $after]);
 }
 
+// Defaults for new tasks' email alerts (each task can change its own).
+function handle_task_email_rules_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    require_feature('task_emails');
+    $b = json_body();
+    $rules = ['on' => array_values(array_intersect(array_keys(TASK_EMAIL_EVENTS), (array)($b['on'] ?? []))),
+        'who' => array_values(array_intersect(array_keys(TASK_EMAIL_WHO), (array)($b['who'] ?? []))), 'repeat_days' => task_repeat_days($b['repeat_days'] ?? 5)];
+    $before = task_email_rules();
+    pi_db()->prepare('UPDATE practices SET task_email_rules = ? WHERE id = ?')->execute([json_encode($rules), pid()]);
+    $flat = fn($r) => ['on' => implode(', ', $r['on']), 'who' => implode(', ', $r['who']), 'repeat_days' => $r['repeat_days']];
+    audit('update', 'practice', pid(), null, $admin, 'task email defaults', audit_diff(['on' => 'label', 'who' => 'label', 'repeat_days' => 'int'], $flat($before), $flat($rules)));
+    json_response(['ok' => true, 'rules' => task_email_rules(['task_email_rules' => json_encode($rules)])]);
+}
+
 // Each person's own daily email: on/off and which of the practice's
 // criteria. Admins can switch it for others from the Users page.
+// Also: task email alerts on/off (Gold and up).
+function require_some_email() {
+    if (!has_feature(current_practice(), 'email_digest')) require_feature('task_emails');
+}
+
 function handle_my_notify() {
     $user = require_user();
-    require_feature('email_digest');
-    $s = pi_db()->prepare('SELECT notify_digest, notify_criteria FROM users WHERE id = ?');
+    require_some_email();
+    $s = pi_db()->prepare('SELECT notify_digest, notify_criteria, notify_tasks FROM users WHERE id = ?');
     $s->execute([$user['id']]);
     $u = $s->fetch();
     $rules = practice_rules();
-    json_response(['digest' => (bool)$u['notify_digest'], 'criteria' => $u['notify_criteria'] === null ? $rules['criteria'] : array_values(array_intersect(explode(',', $u['notify_criteria']), $rules['criteria'])),
+    json_response(['hasDigest' => has_feature(current_practice(), 'email_digest'), 'hasTaskEmails' => has_feature(current_practice(), 'task_emails'), 'tasks' => (bool)$u['notify_tasks'],
+        'digest' => (bool)$u['notify_digest'], 'criteria' => $u['notify_criteria'] === null ? $rules['criteria'] : array_values(array_intersect(explode(',', $u['notify_criteria']), $rules['criteria'])),
         'available' => array_intersect_key(NOTIFY_CRITERIA, array_flip($rules['criteria'])), 'email' => $user['email'], 'mailReady' => mail_ready(), 'weekdaysOnly' => $rules['weekdays_only']]);
 }
 
 function handle_my_notify_save() {
     require_method('POST');
     $user = require_user();
-    require_feature('email_digest');
+    require_some_email();
     $b = json_body();
-    $crit = array_values(array_intersect((array)($b['criteria'] ?? []), array_keys(NOTIFY_CRITERIA)));
-    pi_db()->prepare('UPDATE users SET notify_digest = ?, notify_criteria = ? WHERE id = ?')->execute([!empty($b['digest']) ? 1 : 0, implode(',', $crit), $user['id']]);
-    audit('update', 'user', $user['id'], null, $user, 'email notifications', [['f' => 'notify_digest', 't' => 'bool', 'from' => null, 'to' => !empty($b['digest'])]]);
+    $changes = [];
+    if (has_feature(current_practice(), 'email_digest') && array_key_exists('digest', $b)) {
+        $crit = array_values(array_intersect((array)($b['criteria'] ?? []), array_keys(NOTIFY_CRITERIA)));
+        pi_db()->prepare('UPDATE users SET notify_digest = ?, notify_criteria = ? WHERE id = ?')->execute([!empty($b['digest']) ? 1 : 0, implode(',', $crit), $user['id']]);
+        $changes[] = ['f' => 'notify_digest', 't' => 'bool', 'from' => null, 'to' => !empty($b['digest'])];
+    }
+    if (has_feature(current_practice(), 'task_emails') && array_key_exists('tasks', $b)) {
+        pi_db()->prepare('UPDATE users SET notify_tasks = ? WHERE id = ?')->execute([!empty($b['tasks']) ? 1 : 0, $user['id']]);
+        $changes[] = ['f' => 'notify_tasks', 't' => 'bool', 'from' => null, 'to' => !empty($b['tasks'])];
+    }
+    audit('update', 'user', $user['id'], null, $user, 'email notifications', $changes);
     json_response(['ok' => true]);
+}
+
+// ---- expected costs at outside providers (case value estimates) ----
+function handle_costs_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    require_feature('outside_estimates');
+    $b = json_body();
+    $before = practice_costs();
+    $save = [];
+    if (empty($b['reset'])) {
+        foreach (OUTSIDE_COSTS as $k => $d) {
+            $in = $b['costs'][$k] ?? null;
+            if (!is_array($in)) continue;
+            $cost = isset($in['cost']) && $in['cost'] !== '' ? max(0, min(1000000, round((float)$in['cost'], 2))) : (float)$d['cost'];
+            $typ = isset($in['typical']) && $in['typical'] !== '' ? max(0, min(100, round((float)$in['typical'], 1))) : (float)$d['typical'];
+            if ($cost != $d['cost'] || $typ != $d['typical']) $save[$k] = ['cost' => $cost, 'typical' => $typ];
+        }
+    }
+    pi_db()->prepare('UPDATE practices SET cost_estimates = ? WHERE id = ?')->execute([$save ? json_encode($save) : null, pid()]);
+    $p = current_practice(); $p['cost_estimates'] = $save ? json_encode($save) : null;
+    $after = practice_costs($p);
+    $changes = [];
+    foreach ($after as $k => $a) {
+        if ($a['cost'] != $before[$k]['cost']) $changes[] = ['f' => $a['label'] . ' cost', 't' => 'money', 'from' => $before[$k]['cost'], 'to' => $a['cost']];
+        if ($a['typical'] != $before[$k]['typical']) $changes[] = ['f' => $a['label'] . ' typical count', 't' => 'int', 'from' => $before[$k]['typical'], 'to' => $a['typical']];
+    }
+    audit('update', 'practice', pid(), null, $admin, 'outside provider costs', $changes ?: null);
+    json_response(['costs' => $after]);
 }
 
 // ---- the practice's own case steps, and silencing built-in ones ----
@@ -402,6 +461,7 @@ switch ($action) {
     case 'audit': handle_audit(); break;
     case 'audit_csv': handle_audit_csv(); break;
     case 'notify_rules_save': handle_notify_rules_save(); break;
+    case 'costs_save': handle_costs_save(); break;
     case 'steps': handle_steps(); break;
     case 'step_save': handle_step_save(); break;
     case 'step_silence': handle_step_silence(); break;
@@ -412,5 +472,6 @@ switch ($action) {
     case 'location_save': handle_location_save(); break;
     case 'my_notify': handle_my_notify(); break;
     case 'my_notify_save': handle_my_notify_save(); break;
+    case 'task_email_rules_save': handle_task_email_rules_save(); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }

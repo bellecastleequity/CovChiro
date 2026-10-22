@@ -68,6 +68,9 @@ def main():
     if not a.remix:
         shutil.rmtree(frames, ignore_errors=True)
         subprocess.check_call(['node', os.path.join(HERE, 'render.js'), HERE, str(a.fps), '', os.path.join(HERE, 'timeline.json'), frames, html])
+        n = len(glob.glob(os.path.join(frames, '*.jpg')))
+        if abs(n - round(total * a.fps)) > 1:  # the page ignored the timeline (e.g. its scene count doesn't match)
+            sys.exit(f'{html} rendered {n / a.fps:.1f}s but the voice timeline is {total:.1f}s; check its DEFAULTS and scenes.')
         subprocess.check_call(['ffmpeg', '-loglevel', 'error', '-y', '-framerate', str(a.fps), '-i', os.path.join(frames, '%05d.jpg'),
                            '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-pix_fmt', 'yuv420p', silent])
     # Audio: each clip placed at its scene start (+ lead-in), or the full track; optional music bed.

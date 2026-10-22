@@ -10,7 +10,7 @@
   "lead_in_seconds": 0.5,
   "tail_seconds": 0.8,
   "scenes": [
-    {"id": "w01-open", "chapter": "Introduction", "min": 7, "text": "This is a full walkthrough of InjuryCase. We'll follow one personal injury patient from the first phone call to the final check, and show how your team stays on top of every step along the way."},
+    {"id": "w01-open", "chapter": "Introduction", "min": 7, "text": "This is a full walkthrough of InjuryCase, HIPAA-ready case management for personal injury clinics. We'll follow one patient from the first phone call to the final check, and show how your team stays on top of every step along the way."},
     {"id": "w02-chapters", "min": 9, "text": "We'll cover intake, the first weeks of care, keeping patients on track, the end of care, getting paid, and the tools that run your office. Use the chapters to jump straight to any part."},
 
     {"id": "w03-meet", "chapter": "Intake", "min": 7, "text": "Meet Maya Collins. Two days ago she was rear-ended at a stoplight, and her attorney's office calls to set up her first visit. Like every name in this video, she's fictional."},
@@ -46,9 +46,9 @@
     {"id": "w28-team", "min": 9, "text": "Give each person their own login and role: front desk, billing, provider or admin. You decide exactly which financial details the front desk can see."},
     {"id": "w29-audit", "min": 7, "text": "Every view and every change is recorded in the audit log, so you always know who did what, and when."},
     {"id": "w30-states", "min": 9, "text": "InjuryCase was built in Florida and is configured for twenty-seven states plus D.C. Each case follows its state's PIP, no-fault, threshold and lien rules, and the playbook explains what's different."},
-    {"id": "w31-security", "min": 9, "text": "Security comes standard: a Business Associate Agreement, two-factor sign-in for every user, and encryption. And the InjuryCase Certified badge lets attorneys and patients verify your practice online."},
+    {"id": "w31-security", "min": 9, "text": "And it's HIPAA-ready from day one. We sign a Business Associate Agreement with every practice, and the Security Rule's technical safeguards are built in: two-factor sign-in, encryption, role-based access, automatic sign-out, a complete audit trail, and daily encrypted backups."},
 
-    {"id": "w32-pricing", "chapter": "Pricing and free trial", "min": 9, "text": "Plans start at thirty-nine dollars a month for Silver. Gold adds the daily huddle for a busy clinic, and Platinum adds multiple locations, the email digest and custom steps."},
+    {"id": "w32-pricing", "chapter": "Pricing and free trial", "min": 9, "text": "Plans start at thirty-nine dollars a month for Silver. Gold adds the daily huddle for a busy clinic, and Platinum adds multiple locations, the email digest and custom steps. Every plan has the same HIPAA safeguards and a signed BAA."},
     {"id": "w33-import", "min": 7, "text": "Moving from spreadsheets? Send us your tracking and A R sheets, and we'll import them for you."},
     {"id": "w34-cta", "min": 11, "text": "Start your fourteen-day free trial at injurycase.com. No credit card required. Or email support at injurycase.com to book a live demo. Thanks for watching."}
   ]

@@ -43,6 +43,12 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
 .pill i{font-style:normal;color:#7FE0B0}
 .foot{position:absolute;left:0;right:0;bottom:34px;text-align:center;font-size:15px;color:rgba(11,35,64,.55)}
 .dark .foot{color:rgba(255,255,255,.55)}
+.hipaa{display:inline-flex;align-items:center;gap:14px;background:rgba(31,168,102,.14);border:2px solid rgba(127,224,176,.55);color:#fff;font-size:26px;font-weight:700;padding:14px 28px;border-radius:999px}
+.hipaa svg{width:32px;height:32px;flex:none}
+.hipaa span{color:rgba(255,255,255,.75);font-weight:500}
+.corner{position:absolute;right:90px;top:62px;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #CFE9DC;color:var(--navy);font-size:19px;font-weight:700;padding:10px 18px;border-radius:999px;box-shadow:0 8px 22px rgba(11,35,64,.10)}
+.corner svg{width:24px;height:24px}
+.corner span{color:var(--muted);font-weight:500}
 .progress{position:absolute;left:0;bottom:0;height:6px;background:var(--green);z-index:9}
 
 .big{font-size:96px;line-height:1.02;font-weight:800;letter-spacing:-.025em}
@@ -55,10 +61,10 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
 .chk{display:flex;flex-direction:column;gap:22px;margin-top:10px}
 .chk div{font-size:40px;font-weight:700;color:var(--navy);display:flex;gap:18px;align-items:center}
 .chk b{width:52px;height:52px;border-radius:50%;background:#FDE8E8;color:#D64545;display:grid;place-items:center;font-size:30px;flex:none}
-.tiles3{position:absolute;left:110px;right:110px;top:380px;display:flex;gap:44px}
+.tiles3{position:absolute;left:90px;right:90px;top:380px;display:flex;gap:34px}
 .tiles3>div{flex:1;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 30px 70px rgba(11,35,64,.18),0 0 0 1px rgba(11,35,64,.06)}
 .tiles3 .im{height:420px;overflow:hidden;background:#F6F8FB}.tiles3 img{width:100%;display:block}
-.tiles3 .lb{font-size:34px;font-weight:800;color:var(--navy);padding:24px 30px}
+.tiles3 .lb{font-size:30px;font-weight:800;color:var(--navy);padding:24px 30px}
 .url{font-size:92px;font-weight:800;color:#fff;letter-spacing:-.02em}
 </style></head><body>
 <!-- Ad layout; narration and timing live in ad30.json. -->
@@ -70,7 +76,7 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
 <div style="position:absolute;left:110px;top:0;bottom:0;width:640px;display:flex;flex-direction:column;justify-content:center;gap:34px">
 <img class="a" data-in="0.1" data-fx="up" src="assets/logo-horizontal-dark.svg" style="height:78px;align-self:flex-start">
 <div class="big white a" data-in="0.4" data-fx="up">Every PI case, <span class="hl">on track.</span></div>
-<p class="lead a" data-in="1.2" data-fx="up" style="color:rgba(255,255,255,.8);font-size:34px">From the first visit to the final check.</p></div>
+<p class="lead a" data-in="1.2" data-fx="up" style="color:rgba(255,255,255,.8);font-size:34px">From the first visit to the final check.</p><div class="a" data-in="1.8" data-fx="up"><span class="hipaa" style="white-space:nowrap"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#1FA866"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready <span>· BAA included · Encrypted</span></span></div></div>
 <div class="frame a" data-in="0.2" data-fx="right" style="right:70px;top:200px"><div class="bar"><i></i><i></i><i></i><span>injurycase.com/app</span></div><div class="view"><img src="shots_walk/dashboard.png" data-kb="0.2,1,1.25,30,40"></div></div>
 </section>
 <section class="scene light" data-id="a30-3-new">
@@ -91,20 +97,23 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
 <div class="a" data-in="0.1" data-fx="up" style="position:absolute;left:0;right:0;top:150px;text-align:center"><div class="big" style="font-size:80px;color:var(--navy)">All built in.</div></div>
 <div class="tiles3"><div class="a" data-in="0.5" data-fx="up"><div class="im"><img src="shots_walk/txletter.png"></div><div class="lb">Attorney letters</div></div>
 <div class="a" data-in="1.2" data-fx="up"><div class="im"><img src="shots_walk/huddle.png"></div><div class="lb">Daily huddle</div></div>
-<div class="a" data-in="1.9" data-fx="up"><div class="im"><img src="shots/playbook.png"></div><div class="lb">State rules · 27 states + D.C.</div></div></div>
+<div class="a" data-in="1.9" data-fx="up"><div class="im"><img src="shots/playbook.png"></div><div class="lb">State rules · 27 states + D.C.</div></div>
+<div class="a" data-in="2.6" data-fx="up"><div class="im" style="background:var(--navy);display:grid;place-items:center"><svg style="width:190px;height:190px" viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#1FA866"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="lb">HIPAA-ready security</div></div></div>
 </section>
 <section class="scene dark" data-id="a30-6-cta">
 <div style="position:absolute;left:130px;top:170px;width:1050px;display:flex;flex-direction:column;gap:34px">
 <img class="a" data-in="0.1" data-fx="up" src="assets/logo-horizontal-dark.svg" style="height:84px;align-self:flex-start">
 <div class="big white a" data-in="0.3" data-fx="up">Start your <span class="hl">free trial.</span></div>
 <div class="url a" data-in="0.7" data-fx="up">injurycase.com</div>
-<p class="a" data-in="1.1" data-fx="up" style="font-size:34px;color:rgba(255,255,255,.85);font-weight:600">14 days free · No credit card · Plans from $39/month</p></div>
+<p class="a" data-in="1.1" data-fx="up" style="font-size:34px;color:rgba(255,255,255,.85);font-weight:600">14 days free · No credit card · Plans from $39/month</p><div class="a" data-in="1.4" data-fx="up"><span class="hipaa" style="white-space:nowrap"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#1FA866"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready <span>· Business Associate Agreement included</span></span></div></div>
 <div class="a" data-in="0.8" data-fx="zoom" style="position:absolute;right:170px;top:250px;background:#fff;border-radius:24px;padding:26px;text-align:center;width:400px">
 <img src="assets/qr.svg" style="width:348px;height:348px;display:block"><div style="font-size:24px;font-weight:700;color:var(--navy);margin-top:14px">Scan to start free</div></div>
 <p class="foot">Clinical decisions rest with the treating provider. Demo data shown is fictional.</p>
 </section>
 
 <div class="progress" id="prog"></div>
+<template id="corner"><div class="corner"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#1FA866"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready <span>· BAA included</span></div></template>
+<script>document.querySelectorAll('.scene.light').forEach((sc) => sc.appendChild(document.getElementById('corner').content.cloneNode(true)));</script>
 <script>
 // Scene durations come from timeline.json (written by build_video.py to fit
 // each scene's voiceover); these defaults are the silent-cut timings.

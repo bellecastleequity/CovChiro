@@ -57,7 +57,7 @@ async function api(path, body, { passive = false } = {}) {
     lockOut(data.error);
     throw new Error(data.error);
   }
-  if (!res.ok) throw new Error(data?.error || 'Request failed');
+  if (!res.ok) { const err = new Error(data?.error || 'Request failed'); err.data = data; err.status = res.status; throw err; }
   return data;
 }
 
@@ -152,6 +152,7 @@ function showLogin(message) {
     <div class="err" data-role="err">${esc(message || '')}</div>
     <button class="btn" type="submit">Sign in</button>
     <p class="small">Authorized personnel only. All access to patient records is logged.</p>
+    <p class="small hipaa-note"><b>HIPAA-ready</b> · Business Associate Agreement · encrypted · two-factor sign-in</p>
     <p class="auth-switch">New practice? <a href="#signup" data-act="show-signup">Start a free trial</a></p>
   </form>`);
   document.getElementById('li-email').focus();
@@ -383,7 +384,11 @@ function bannerHtml() {
 
 async function refreshSession() {
   const s = await attempt(() => api('auth.php?action=session'));
-  if (s && s.step === 'signed_in') { S.practice = s.practice; S.lookups = s.lookups; const b = document.getElementById('banner'); if (b) b.innerHTML = bannerHtml(); }
+  if (s && s.step === 'signed_in') {
+    S.practice = s.practice; S.lookups = s.lookups; const b = document.getElementById('banner'); if (b) b.innerHTML = bannerHtml();
+    // A plan change takes effect at once, so drop the plan tags on nav items it unlocked.
+    document.querySelectorAll('.sidebar a[data-nav]').forEach((a) => { const f = NAV_FEATURE[a.dataset.nav]; if (f && hasFeature(f)) a.querySelector('.nav-lock')?.remove(); });
+  }
 }
 
 async function startShell() {
@@ -396,7 +401,7 @@ async function startShell() {
       ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}${NAV_FEATURE[k] && !operator && !hasFeature(NAV_FEATURE[k]) ? ` <span class="nav-lock" title="${esc(featureInfo(NAV_FEATURE[k]).planName)} plan">${esc(featureInfo(NAV_FEATURE[k]).planName)}</span>` : ''}</a>`).join('')}
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>
-        ${operator || !hasFeature('email_digest') ? '' : '<button class="btn ghost sm" data-act="my-notify">Email notifications</button>'}
+        ${operator || !(hasFeature('email_digest') || hasFeature('task_emails')) ? '' : '<button class="btn ghost sm" data-act="my-notify">Email notifications</button>'}
         ${operator ? '' : '<button class="btn ghost sm" data-act="suggest">Suggest a feature</button>'}
         <button class="btn ghost sm" data-act="sign-out">Sign out</button></div>
     </nav>
@@ -552,13 +557,16 @@ async function myNotifyModal() {
   const r = await attempt(() => api('admin.php?action=my_notify'));
   if (!r) return;
   openModal({ title: 'Email notifications', okText: 'Save', body: `
-    <label class="check"><input type="checkbox" id="mn-on"${r.digest ? ' checked' : ''}> Send me a daily digest${r.weekdaysOnly ? ' on weekday mornings' : ' each morning'} at ${esc(r.email)}</label>
+    ${r.hasTaskEmails ? `<h3>Tasks</h3><label class="check mt-sm"><input type="checkbox" id="mn-tasks"${r.tasks ? ' checked' : ''}> Email me when a task I'm on the email list of is marked urgent, goes late or is completed</label>
+      <p class="small muted mt-sm">Each task chooses who's emailed (usually the people assigned and whoever created it). Emails never include the task, patient or case.</p>` : ''}
+    ${r.hasDigest ? `${r.hasTaskEmails ? '<h3 class="mt">Daily digest</h3>' : ''}<label class="check"><input type="checkbox" id="mn-on"${r.digest ? ' checked' : ''}> Send me a daily digest${r.weekdaysOnly ? ' on weekday mornings' : ' each morning'} at ${esc(r.email)}</label>
     <p class="small muted mt">The email lists how many items need attention under each heading below, with a link to the Daily huddle. It never contains patient names or case details. No email is sent on a day with nothing to report.</p>
     ${r.mailReady ? '' : '<div class="notice">Email sending isn\'t set up on this server yet — your choice is saved for when it is.</div>'}
     <h3 class="mt">Include</h3>
-    <div class="mt">${Object.entries(r.available).map(([k, t]) => `<label class="check"><input type="checkbox" data-mn="${k}"${r.criteria.includes(k) ? ' checked' : ''}> ${esc(t)}</label>`).join('') || '<p class="small muted">Your practice hasn\'t turned any criteria on.</p>'}</div>`,
+    <div class="mt">${Object.entries(r.available).map(([k, t]) => `<label class="check"><input type="checkbox" data-mn="${k}"${r.criteria.includes(k) ? ' checked' : ''}> ${esc(t)}</label>`).join('') || '<p class="small muted">Your practice hasn\'t turned any criteria on.</p>'}</div>` : (r.mailReady ? '' : '<div class="notice mt">Email sending isn\'t set up on this server yet — your choice is saved for when it is.</div>')}`,
     onOk: async (el) => {
-      await api('admin.php?action=my_notify_save', { digest: el.querySelector('#mn-on').checked, criteria: [...el.querySelectorAll('[data-mn]:checked')].map((x) => x.dataset.mn) });
+      await api('admin.php?action=my_notify_save', { ...(r.hasDigest ? { digest: el.querySelector('#mn-on').checked, criteria: [...el.querySelectorAll('[data-mn]:checked')].map((x) => x.dataset.mn) } : {}),
+        ...(r.hasTaskEmails ? { tasks: el.querySelector('#mn-tasks').checked } : {}) });
       toast('Saved');
     } });
 }
@@ -773,6 +781,8 @@ function tabOverview(el, d) {
         ${c.injury_type === 'auto' && d.rules.tortOptions ? row('Lawsuit option', c.tort_option === 'unknown' ? 'Not asked yet' : d.rules.tortOptions[c.tort_option]) : ''}
         ${row('State rules', d.rules.name + ' · ' + S.lookups.supportLabels[d.rules.support])}
         ${row('LOP signed', c.lop_signed_on ? fmtDate(c.lop_signed_on) + (c.lop_acknowledged_on ? ' · firm acknowledged ' + fmtDate(c.lop_acknowledged_on) : ' · not countersigned') : '')}
+        ${c.mediation_on || c.trial_on ? row('Mediation · trial', (fmtDate(c.mediation_on) || '—') + ' · ' + (fmtDate(c.trial_on) || '—')) : ''}
+        ${c.settlement_signed_on || c.disbursement_expected_on ? row('Settlement', (c.settlement_signed_on ? 'signed ' + fmtDate(c.settlement_signed_on) : '') + (c.disbursement_expected_on ? (c.settlement_signed_on ? ' · ' : '') + 'check expected ' + fmtDate(c.disbursement_expected_on) : '')) : ''}
         ${row('Actively treating', c.actively_treating == 1 ? 'Yes' : 'No')}
         ${row('Treatment plan', c.plan_visits_per_week ? `${+c.plan_visits_per_week}x/week${c.plan_set_on ? ' since ' + fmtDate(c.plan_set_on) : ''}` : '')}
         ${row('Head injury', Object.fromEntries(HEAD_INJURY_OPTS)[c.head_injury])}
@@ -803,6 +813,8 @@ function editCaseModal() {
     ...(d.rules.tortOptions && c.injury_type === 'auto' ? [{ n: 'tort_option', l: "Lawsuit (tort) option on the patient's policy", t: 'select', blank: false, opts: [['unknown', 'Not asked yet'], ...entries(d.rules.tortOptions)] }] : []),
     { n: 'plan_visits_per_week', l: 'Treatment plan: visits per week', t: 'select', blank: 'Not set', opts: [['1', '1x/week'], ['1.5', '1–2x/week'], ['2', '2x/week'], ['2.5', '2–3x/week'], ['3', '3x/week'], ['4', '4x/week'], ['5', '5x/week']] },
     { n: 'plan_set_on', l: 'Plan in effect since', t: 'date' },
+    { n: 'mediation_on', l: 'Mediation date', t: 'date' }, { n: 'trial_on', l: 'Trial date', t: 'date' },
+    { n: 'settlement_signed_on', l: 'Settlement signed on', t: 'date' }, { n: 'disbursement_expected_on', l: 'Attorney expects to mail / disburse by', t: 'date' },
     { n: 'actively_treating', l: 'Actively treating', t: 'check' }];
   openModal({
     title: 'Edit case', wide: true, body: fieldsHtml(defs, { ...c, plan_visits_per_week: c.plan_visits_per_week ? String(+c.plan_visits_per_week) : '', plan_set_on: c.plan_set_on || (c.plan_visits_per_week ? '' : today()) }),
@@ -1338,6 +1350,8 @@ function tabFinancials(el, d) {
           <div class="money-row"><span>Acknowledged by law firm</span><strong>${c.lop_acknowledged_on ? esc(fmtDate(c.lop_acknowledged_on)) : (c.lop_signed_on ? 'Not countersigned' : '—')}</strong></div>
           ${d.rules.lopDisclosure && c.lop_signed_on ? `<div class="money-row"><span>Disclosure facts (§768.0427)</span><strong>${c.lop_factored === 'unknown' ? 'Not recorded' : (c.lop_factored === 'yes' ? 'Factored' + (c.lop_factor_company ? ' to ' + esc(c.lop_factor_company) : '') + (c.lop_factor_price ? ' for ' + money(c.lop_factor_price) : '') : 'Not factored')} · health coverage: ${esc({ unknown: 'not recorded', yes: 'yes', no: 'no' }[c.lop_health_coverage] || 'not recorded')}</strong></div>` : ''}
           ${d.rules.balanceBilling !== 'allowed' ? `<div class="notice mt">${esc(d.rules.balanceNote || 'This state limits billing the patient above the fee schedule.')}</div>` : ''}
+          <div class="money-row"><span>Mediation · trial</span><strong>${esc(fmtDate(c.mediation_on) || '—')} · ${esc(fmtDate(c.trial_on) || '—')}</strong></div>
+          <div class="money-row"><span>Settlement signed · check expected</span><strong>${esc(fmtDate(c.settlement_signed_on) || '—')} · ${c.disbursement_expected_on ? `<span class="${!c.check_received_on && c.disbursement_expected_on < today() ? 'trend-up' : ''}">${esc(fmtDate(c.disbursement_expected_on))}</span>` : '—'}</strong></div>
           <div class="money-row"><span>Balance forwarded to attorney</span><strong>${c.balance_forwarded_on ? esc(fmtDate(c.balance_forwarded_on)) + (showSet ? ' · ' + money(c.balance_forwarded_amount) : '') : '—'}</strong></div>
           ${showSet ? `<div class="money-row"><span>${Math.round(S.lookups.reductionFloorPct * 100)}% floor (of patient balance)</span><strong>${money(t.reduction_floor)}</strong></div>
           <div class="money-row"><span>Attorney offer</span><strong>${money(c.atty_offer)}${c.atty_offer && t.patient_balance > 0 ? ` <span class="small muted">(${Math.round(c.atty_offer / t.patient_balance * 1000) / 10}%)</span>` : ''}</strong></div>
@@ -1715,7 +1729,7 @@ const LIMIT_DEFS = [
   { n: 'bi_limit', l: "At-fault driver's bodily-injury limit ($)", t: 'money', ph: 'e.g. 25000' },
   { n: 'um_limit', l: "Patient's UM/UIM limit ($)", t: 'money' },
   { n: 'liability_carrier', l: 'At-fault insurer', ph: 'e.g. State Farm' },
-  { n: 'other_medical_estimate', l: "Other providers' bills, estimate ($)", t: 'money', ph: 'ER, imaging, specialists' },
+  { n: 'other_medical_estimate', l: 'Other bills not itemized, lump sum ($)', t: 'money', ph: 'Itemize under Financials → Other providers' },
   { n: 'limits_source', l: 'Where this came from', ph: 'e.g. Attorney call — Jane, Smith Law' },
   { n: 'limits_noted_on', l: 'As of', t: 'date' },
 ];
@@ -1759,12 +1773,62 @@ function caseValueCardHtml(d) {
       <p class="small muted">A settlement usually splits into thirds — attorney's fee, medical bills, the patient. Past about a third, reductions become likely; plan care and other coverage (UM, health insurance, MedPay) with the attorney. Clinical decisions stay with the doctor.</p>
       ${edit ? '<button class="btn ghost sm" data-act="edit-limits">Edit limits</button>' : ''}</div>`;
   }
+  const o = v.outside;
+  const outHtml = o && o.locked ? `<div class="cv-block"><div class="cv-title">Other providers' bills</div>
+      <div class="notice small">Estimating other facilities' bills from referrals (MRI, specialists, injections) is part of the ${esc(featureInfo('outside_estimates').planName)} plan and up. <a href="#/billing">See plans</a></div>
+      ${o.lump ? `<div class="money-row small"><span>Other bills (lump sum)</span><strong>${money(o.lump)}</strong></div>` : ''}</div>`
+    : o ? `<div class="cv-block"><div class="cv-title">Other providers' bills <span class="small muted">estimated from referrals and your cost list</span></div>
+      <div class="cv-big">${money(o.all)}</div>
+      ${o.lines.length || o.lump ? `<div class="est-lines">${o.lines.map((l) => `<div class="money-row small${l.excluded ? ' muted' : ''}"><span>${esc(l.label)} <span class="muted">· ${+l.qty} ${esc(l.unit)}${+l.qty === 1 ? '' : 's'} × ${money(l.unitCost)}${l.adjusted ? ' · adjusted' : l.referralId ? ' · from referral' : ''}</span></span><strong>${l.excluded ? 'left out' : money(l.amount)}</strong></div>`).join('')}
+        ${o.lump ? `<div class="money-row small"><span>Other bills not itemized</span><strong>${money(o.lump)}</strong></div>` : ''}</div>`
+        : '<p class="small muted">No outside referrals yet. MRI, ortho, neurology, pain management and other referrals add estimated bills here automatically.</p>'}
+      <p class="small muted">Estimates for planning only — actual bills from other facilities will differ.</p>
+      ${edit ? '<button class="btn ghost sm" data-act="edit-estimates">Adjust estimates</button>' : ''}</div>` : '';
   const th = v.threshold;
   const thHtml = th ? `<div class="cv-block"><div class="cv-title">Lawsuit threshold <span class="small muted">${esc(th.state)}</span></div>
       ${th.dollars ? `<div class="cv-big">${th.met ? '✓ Met' : money(th.dollars - th.amount) + ' to go'} <span class="small muted">${money(th.amount)} of ${money(th.dollars)}</span></div>
       <div class="bar ${th.met ? '' : 'warn'}"><i data-w="${Math.min(100, Math.round(th.amount / th.dollars * 100))}"></i></div><p class="small muted">${esc(th.counts)}. Other injury categories can also qualify.</p>` : ''}
       <p class="small">${esc(th.text)}</p></div>` : '';
-  return `<div class="card case-value"><h2>Policy limits &amp; case value</h2>${pipHtml}${limHtml}${thHtml}</div>`;
+  return `<div class="card case-value"><h2>Policy limits &amp; case value</h2>${pipHtml}${limHtml}${outHtml}${thHtml}</div>`;
+}
+
+// Other providers' estimated bills: adjust a referral's line (count or unit
+// cost, or leave it out), or add lines such as injections, ER or surgery.
+function estimatesModal() {
+  const d = S.caseData, o = d.caseValue.outside, costs = S.lookups.outsideCosts;
+  const rows = o.lines.map((l, i) => `<tr data-i="${i}"><td>${esc(l.label)}${l.referralId ? '<div class="small muted">From a referral</div>' : ''}</td>
+      <td><input type="number" min="0" step="0.5" class="est-qty" value="${+l.qty}" aria-label="Count"> <span class="small muted">${esc(l.unit)}s</span></td>
+      <td><input type="number" min="0" step="1" class="est-cost" value="${+l.unitCost}" aria-label="Cost each"></td>
+      <td class="nowrap">${l.referralId ? '<span class="small muted">Set count to 0 to leave out</span>' : `<button type="button" class="btn link small" data-est-remove="${l.id}">Remove</button>`}</td></tr>`).join('');
+  const m = openModal({ title: "Other providers' bills — estimates", wide: true, okText: 'Save estimates', body: `
+    <p class="small">Expected charges at other facilities, used for the policy-limits and case-value math. Referrals add lines automatically from your <a href="#/settings">cost list</a>; change any count or cost for this case.</p>
+    <div class="table-wrap mt"><table class="est-table"><thead><tr><th>Item</th><th>Count</th><th>Cost each ($)</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="empty">No lines yet.</td></tr>'}</tbody></table></div>
+    <h3 class="mt">Add a line</h3>
+    <div class="form-grid mt-sm"><div><label for="est-cat">Item</label><select id="est-cat">${entries(costs).map(([k, c]) => opt(k, `${c.label} — ${money(c.cost)} per ${c.unit}`, 'injection')).join('')}<option value="custom">Other (describe)</option></select></div>
+      <div><label for="est-desc">Description (optional)</label><input id="est-desc" placeholder="e.g. L4-5 epidural, Tampa Pain Center"></div>
+      <div><label for="est-qty">Count</label><input id="est-qty" type="number" min="0" step="0.5" value="1"></div>
+      <div><label for="est-cost">Cost each ($, blank = cost list)</label><input id="est-cost" type="number" min="0" step="1"></div></div>
+    <p class="small muted mt">Estimates for planning only — the treating providers decide what care is needed.</p>`,
+    onOk: async (el) => {
+      const save = (row) => api('cases.php?action=child_save&id=' + d.case.id, { table: 'case_estimates', row });
+      for (const tr of el.querySelectorAll('tr[data-i]')) {
+        const l = o.lines[+tr.dataset.i], qty = +tr.querySelector('.est-qty').value, cost = +tr.querySelector('.est-cost').value;
+        if (qty === +l.qty && cost === +l.unitCost) continue;
+        const listCost = costs[l.category]?.cost;
+        await save({ ...(l.id ? { id: l.id } : {}), ...(l.referralId ? { referral_id: l.referralId } : {}), category: l.category, qty, unit_cost: cost === listCost ? null : cost });
+      }
+      const qty = el.querySelector('#est-qty').value, cat = el.querySelector('#est-cat').value, desc = el.querySelector('#est-desc').value.trim(), cost = el.querySelector('#est-cost').value;
+      // Add the new line only if someone filled in the "Add a line" fields.
+      const touched = el.dataset.addLine === '1' || desc || cost !== '';
+      if (touched && (cat !== 'custom' || desc)) await save({ category: cat, description: desc || null, qty: +qty || 1, unit_cost: cost === '' ? null : +cost });
+      S.caseData = await api('cases.php?action=get&id=' + d.case.id); renderCase(); toast('Estimates saved');
+    } });
+  m.el.querySelectorAll('[data-est-remove]').forEach((b) => b.addEventListener('click', async () => {
+    S.caseData = await api('cases.php?action=child_archive&id=' + d.case.id, { table: 'case_estimates', child_id: +b.dataset.estRemove });
+    m.close(); renderCase(); estimatesModal();
+  }));
+  m.el.querySelector('#est-cat').addEventListener('change', () => { m.el.dataset.addLine = '1'; });
+  m.el.querySelector('#est-qty').addEventListener('input', () => { m.el.dataset.addLine = '1'; });
 }
 
 // ----- LOP, forwarding, settlement -----
@@ -1772,6 +1836,8 @@ function lopModal() {
   const c = S.caseData.case;
   const defs = [
     ...(can('case.write') ? [{ n: 'lop_signed_on', l: 'LOP signed by patient on', t: 'date' }, { n: 'lop_acknowledged_on', l: 'Acknowledged by law firm on (blank if not countersigned)', t: 'date' }] : []),
+    ...(can('case.write') || can('finance.write') ? [{ n: 'mediation_on', l: 'Mediation date', t: 'date' }, { n: 'trial_on', l: 'Trial date', t: 'date' },
+      { n: 'settlement_signed_on', l: 'Settlement signed on', t: 'date' }, { n: 'disbursement_expected_on', l: 'Attorney expects to mail / disburse by', t: 'date' }] : []),
     ...(can('case.write') && S.caseData.rules.lopDisclosure ? [
       { n: 'lop_factored', l: 'Account sold to a factoring company? (§768.0427)', t: 'select', blank: false, opts: [['unknown', 'Not recorded'], ['no', 'No'], ['yes', 'Yes']] },
       { n: 'lop_factor_company', l: 'Factoring company (if sold)' }, { n: 'lop_factor_price', l: 'Sale price ($, if sold)', t: 'money' },
@@ -1845,13 +1911,16 @@ function tabCaseTasks(el, d) {
 
 // A task for one or more team members (none = anyone can pick it up).
 function taskModal(caseId, task = null, prefill = {}) {
-  const t = task || { title: prefill.title || '', notes: '', due_on: prefill.due_on || '', priority: 'normal', assignees: prefill.assignees || [{ id: S.user.id }] };
+  const te = S.lookups.taskEmail || { on: [], who: [], repeat_days: 5, events: {}, whoLabels: {} };
+  const t = task || { title: prefill.title || '', notes: '', due_on: prefill.due_on || '', priority: 'normal', assignees: prefill.assignees || [{ id: S.user.id }],
+    email_on: te.on, email_who: te.who, email_to: [], late_repeat_days: null };
   const defs = [{ n: 'title', l: 'Task', req: true, full: true }, { n: 'notes', l: 'Notes', t: 'textarea', rows: 2 }, { n: 'due_on', l: 'Due', t: 'date' },
     { n: 'priority', l: 'Priority', t: 'select', blank: false, opts: [['normal', 'Normal'], ['high', 'High']] }];
   const chosen = new Set(t.assignees.map((a) => +a.id));
   const team = S.lookups.users || [];
   const body = fieldsHtml(defs, t) + `<fieldset class="assignees mt"><legend>Assign to <span class="small muted">— one or more people; leave all unticked for anyone</span></legend>
       <div class="assignee-list">${team.map((u) => `<label class="check"><input type="checkbox" data-assignee="${u.id}"${chosen.has(+u.id) ? ' checked' : ''}> ${esc(u.name)}${u.id == S.user.id ? ' <span class="small muted">(you)</span>' : ''}</label>`).join('')}</div></fieldset>
+    ${taskEmailHtml(t, te, team)}
     ${task ? `<p class="small muted mt">${task.case_id ? `Case: <a href="#/case/${task.case_id}">${esc(task.patient)}</a> · ` : ''}Created by ${esc(task.created_by_name || '—')} on ${esc(fmtDate(task.created_at))}</p>` : ''}`;
   const canDelete = task && (task.created_by == S.user.id || can('users.manage'));
   const caseOf = task ? task.case_id : caseId;
@@ -1861,6 +1930,13 @@ function taskModal(caseId, task = null, prefill = {}) {
     onOk: async (el) => {
       const v = readFields(el, defs);
       v.assignee_ids = [...el.querySelectorAll('[data-assignee]:checked')].map((x) => +x.dataset.assignee);
+      if (hasFeature('task_emails')) {
+        v.email_on = [...el.querySelectorAll('[data-te-on]:checked')].map((x) => x.dataset.teOn);
+        v.email_who = [...el.querySelectorAll('[data-te-who]:checked')].map((x) => x.dataset.teWho);
+        v.email_to = [...el.querySelectorAll('[data-te-to]:checked')].map((x) => +x.dataset.teTo);
+        const rep = el.querySelector('#te-repeat').value;
+        v.late_repeat_days = rep === '' || +rep === te.repeat_days ? null : +rep;
+      }
       const r = await api('cases.php?action=task_save', { ...v, ...(task ? { id: task.id } : { case_id: caseId || null }), return_case: inCase() });
       afterTaskChange(r, inCase());
       toast(task ? 'Task saved' : 'Task added');
@@ -1870,6 +1946,21 @@ function taskModal(caseId, task = null, prefill = {}) {
     if (await attempt(() => api('cases.php?action=task_delete', { id: task.id }))) { m.close(); afterTaskChange(null, false); toast('Task deleted'); }
   });
 }
+
+// Email alerts on a task (Gold and up). Emails never include the task or
+// patient — just what happened and a link.
+function taskEmailHtml(t, te, team) {
+  if (!hasFeature('task_emails')) return `<p class="small muted mt">Email alerts when a task is urgent, late or completed are part of the ${esc(featureInfo('task_emails').planName)} plan and up.</p>`;
+  const on = new Set(t.email_on || []), who = new Set(t.email_who || []), to = new Set((t.email_to || []).map(Number));
+  return `<details class="mt"${taskEmailsOpen(t, te) ? ' open' : ''}><summary>Email alerts <span class="small muted">— ${on.size ? esc([...on].map((k) => ({ urgent: 'urgent', late: 'late', done: 'completed' })[k]).join(', ')) : 'off'}</span></summary>
+    <fieldset class="assignees mt"><legend>Email when the task is</legend><div class="assignee-list">${entries(te.events).map(([k, l]) => `<label class="check"><input type="checkbox" data-te-on="${k}"${on.has(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></fieldset>
+    <div class="form-grid mt"><div><label for="te-repeat">Late reminder: repeat every (days, 0 = once)</label><input type="number" id="te-repeat" min="0" max="60" value="${t.late_repeat_days ?? te.repeat_days}"></div></div>
+    <fieldset class="assignees mt"><legend>Send to</legend><div class="assignee-list">${entries(te.whoLabels).map(([k, l]) => `<label class="check"><input type="checkbox" data-te-who="${k}"${who.has(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>
+      <div class="small muted mt-sm">Also email:</div><div class="assignee-list">${team.map((u) => `<label class="check"><input type="checkbox" data-te-to="${u.id}"${to.has(+u.id) ? ' checked' : ''}> ${esc(u.name)}</label>`).join('')}</div></fieldset>
+    <p class="small muted mt-sm">You're not emailed about changes you make yourself. Emails never include the task, patient or case — just what happened and a sign-in link.</p></details>`;
+}
+// Opened when this task differs from the practice's defaults.
+const taskEmailsOpen = (t, te) => (t.email_to || []).length > 0 || t.late_repeat_days != null || [...(t.email_on || [])].sort().join() !== [...te.on].sort().join() || [...(t.email_who || [])].sort().join() !== [...te.who].sort().join();
 
 function afterTaskChange(r, inCase) {
   if (inCase && r && r.case) { S.caseData = r; renderCase(); }
@@ -1904,7 +1995,7 @@ const AUDIT_VERBS = {
 const AUDIT_THINGS = {
   case: 'the case', visits: 'a visit', referrals: 'a co-management referral', coverages: 'insurance coverage', outcomes: 'an outcome assessment',
   correspondence: 'a correspondence entry', outreach: 'an outreach attempt', ledger: 'a ledger entry', task: 'task', milestone: 'checklist item', document: 'a document', contact: 'contact',
-  user: 'user', location: 'location', promo_code: 'promo code', practice_step: 'office step', feedback: 'feature suggestion', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
+  user: 'user', location: 'location', promo_code: 'promo code', practice_step: 'office step', case_estimates: "an outside-provider estimate", feedback: 'feature suggestion', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
   audit_log: 'the audit log', huddle: 'the daily huddle', permission: '', platform_practices: 'the practice list', care_guide: 'the referral guide',
 };
 const FIELD_NAMES = {
@@ -1919,7 +2010,7 @@ const FIELD_NAMES = {
   patient_balance: 'Patient balance', injury_type: 'Case type', location_id: 'Location', location_restricted: 'Limited to location', outreach_hold_on: 'Calls paused (attorney notified)', paralegal: 'Paralegal', attempted_on: 'Date', method: 'How', outcome: 'Outcome', plan_visits_per_week: 'Treatment plan (visits/week)', plan_set_on: 'Plan since', notify_digest: 'Daily email digest',
   gap_days: 'Gap days', adherence_pct: 'Adherence threshold %', weekdays_only: 'Weekdays only', criteria: 'Criteria', bi_limit: 'At-fault BI limit', um_limit: 'UM limit', other_medical_estimate: "Other providers' bills (est.)",
   liability_carrier: 'At-fault insurer', limits_source: 'Limits source', limits_noted_on: 'Limits as of', remaining_reported: 'PIP remaining (carrier)', remaining_reported_on: 'Remaining as of', visit_type: 'Visit type', head_injury: 'Head injury',
-  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)', jurisdiction: 'State rules', emc_by: 'EMC determined by', emc_on: 'EMC date', tort_option: 'Lawsuit option',
+  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)', qty: 'Count', unit_cost: 'Cost each', referral_id: 'Referral', mediation_on: 'Mediation', trial_on: 'Trial', settlement_signed_on: 'Settlement signed', disbursement_expected_on: 'Check expected', jurisdiction: 'State rules', emc_by: 'EMC determined by', emc_on: 'EMC date', tort_option: 'Lawsuit option',
   lop_factored: 'LOP factored', lop_factor_company: 'Factoring company', lop_factor_price: 'Factoring price', lop_health_coverage: 'Health coverage at treatment', policy_effective_on: 'Policy issued/renewed', demand_sent_on: 'PIP demand sent', badge: 'Website badge shown',
 };
 const humanize = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -1992,8 +2083,14 @@ async function tabActivity(el, d) {
 
 // ---------- tasks page ----------
 const taskState = { scope: 'mine', status: 'open' };
-async function pageTasks(main) {
+async function pageTasks(main, args = []) {
   const st = taskState;
+  if (args[0] && /^\d+$/.test(args[0])) {
+    // From a task email: open that task.
+    history.replaceState(null, '', '#/tasks');
+    const one = await attempt(() => api('cases.php?action=task&id=' + args[0]));
+    if (one) setTimeout(() => { taskCache.set(one.task.id, one.task); taskModal(one.task.case_id, one.task); }, 0);
+  }
   const r = await attempt(() => api(`cases.php?action=tasks&scope=${encodeURIComponent(st.scope)}&status=${st.status}`));
   if (!r) return;
   const team = S.lookups.users || [];
@@ -2011,13 +2108,23 @@ async function pageTasks(main) {
 
 // ---------- A/R ----------
 let arState = { all: false, sort: 'patient', dir: 1 };
+// The next date to watch on a case: an overdue expected check first, then the
+// soonest upcoming mediation, trial or expected check.
+function nextCaseDate(x) {
+  const t = today();
+  if (x.disbursementExpected && !x.checkReceived && x.disbursementExpected < t) return { label: 'Check overdue', date: x.disbursementExpected };
+  const up = [['Mediation', x.mediationOn], ['Trial', x.trialOn], ['Check expected', x.checkReceived ? null : x.disbursementExpected]].filter(([, d]) => d && d >= t).sort((a, b) => a[1].localeCompare(b[1]));
+  return up.length ? { label: up[0][0], date: up[0][1] } : null;
+}
+
 async function pageAR(main) {
   const r = await attempt(() => api('cases.php?action=ar_report' + (arState.all ? '&all=1' : '') + locQS()));
   if (!r) return;
   const rows = r.rows;
   const { sort, dir } = arState;
   rows.sort((a, b) => { const x = a[sort] ?? '', y = b[sort] ?? ''; return (typeof x === 'number' || typeof y === 'number' ? (+x || 0) - (+y || 0) : String(x).localeCompare(String(y))) * dir; });
-  const cols = [['patient', 'Patient'], ['benefits', 'Benefits'], ['stage', 'Status'], ['lastVisit', 'Last visit'], ['lastCorrespondence', 'Last contact'], ['attorney', 'Attorney'],
+  rows.forEach((x) => { x.nextDate = nextCaseDate(x)?.date || null; });
+  const cols = [['patient', 'Patient'], ['benefits', 'Benefits'], ['stage', 'Status'], ['nextDate', 'Next date'], ['lastVisit', 'Last visit'], ['lastCorrespondence', 'Last contact'], ['attorney', 'Attorney'],
     ['insuranceBalance', 'Insurance', 1], ['patientBalance', 'Patient/LOP', 1], ['totalBalance', 'Total', 1], ['forwardedOn', 'Forwarded'], ['reductionFloor', Math.round(S.lookups.reductionFloorPct * 100) + '% floor', 1], ['attyOffer', 'Offer', 1], ['finalSettlement', 'Settled', 1], ['checkReceived', 'Check rec\'d']];
   main.innerHTML = `${phiBanner}<div class="page-head"><div><h1>A/R &amp; settlements</h1><div class="sub">${rows.length} cases with a balance</div></div><span class="spacer"></span>
       <label class="check small"><input type="checkbox" id="ar-all"${arState.all ? ' checked' : ''}> Include closed</label>
@@ -2032,6 +2139,7 @@ async function pageAR(main) {
       <tbody>${rows.map((x) => `<tr class="click" data-act="open-case" data-id="${x.id}" data-tab="financials">
         <td><strong>${esc(x.patient)}</strong><div class="small muted mono">${esc(x.caseNumber)}</div></td>
         <td>${x.benefits ? esc(label('benefits', x.benefits)) : '—'}</td><td>${stageChip(x.stage)}</td>
+        <td class="nowrap small">${(() => { const n = nextCaseDate(x); return n ? `<span class="${n.date < today() ? 'trend-up' : ''}">${esc(n.label)} ${esc(fmtDate(n.date))}</span>` : '—'; })()}</td>
         <td class="nowrap">${esc(fmtDate(x.lastVisit))}</td>
         <td class="nowrap">${x.lastCorrespondence ? `<span class="${daysSince(x.lastCorrespondence) > 30 ? 'trend-up' : ''}">${esc(fmtDate(x.lastCorrespondence))}</span>` : '<span class="trend-up">never</span>'}</td>
         <td class="small">${esc(x.attorney || '—')}</td>
@@ -2039,7 +2147,7 @@ async function pageAR(main) {
         <td class="nowrap small">${x.forwardedOn ? esc(fmtDate(x.forwardedOn)) : (x.lopSigned ? 'LOP ' + esc(fmtDate(x.lopSigned)) : '—')}</td>
         <td class="num">${money(x.reductionFloor)}</td><td class="num">${x.attyOffer !== null ? money(x.attyOffer) + `<div class="small muted">${x.offerPct}%</div>` : '—'}</td>
         <td class="num">${money(x.finalSettlement)}</td><td class="nowrap">${esc(fmtDate(x.checkReceived))}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="6">Totals</td><td class="num">${money(r.totals.insurance)}</td><td class="num">${money(r.totals.patient)}</td><td class="num">${money(r.totals.total)}</td><td colspan="5"></td></tr></tfoot></table></div></div>`;
+      <tfoot><tr><td colspan="7">Totals</td><td class="num">${money(r.totals.insurance)}</td><td class="num">${money(r.totals.patient)}</td><td class="num">${money(r.totals.total)}</td><td colspan="5"></td></tr></tfoot></table></div></div>`;
   main.querySelector('#ar-all').addEventListener('change', (e) => { arState.all = e.target.checked; pageAR(main); });
 }
 
@@ -2192,9 +2300,25 @@ async function pageSettings(main) {
         <div><label for="nr-adh">Behind the treatment plan below (% of planned visits)</label><input type="number" id="nr-adh" min="10" max="100" step="5" value="${p.notifyRules.adherence_pct}"></div>
         <div><label>&nbsp;</label><label class="check"><input type="checkbox" id="nr-weekdays"${p.notifyRules.weekdays_only ? ' checked' : ''}> Weekdays only</label></div></div>
       <button class="btn mt" data-act="save-notify-rules">Save</button></div>
+    <div class="card mt" id="task-email-card"><h2>Task email alerts</h2>
+      <p class="small">The defaults for new tasks — each task can change its own under <em>Email alerts</em>. Emails say only what happened (urgent, late, completed) with a sign-in link — never the task, patient or case. Late tasks are first emailed the morning after the due date. Each person can turn task emails off under <em>Email notifications</em>.</p>
+      ${p.hasTaskEmails ? '' : `<div class="notice mt">Task email alerts are part of the ${esc(featureInfo('task_emails').planName)} plan and up. <a href="#/billing">See plans</a></div>`}
+      ${p.mailReady ? '' : '<div class="notice mt">Email sending isn\'t set up on this server yet, so task emails won\'t go out until it is.</div>'}
+      <fieldset class="assignees mt"><legend>Email when a task is</legend><div class="assignee-list">${entries(S.lookups.taskEmail.events).map(([k, l]) => `<label class="check"><input type="checkbox" data-tr-on="${k}"${p.taskEmail.on.includes(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></fieldset>
+      <fieldset class="assignees mt"><legend>Send to</legend><div class="assignee-list">${entries(S.lookups.taskEmail.whoLabels).map(([k, l]) => `<label class="check"><input type="checkbox" data-tr-who="${k}"${p.taskEmail.who.includes(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></fieldset>
+      <div class="form-grid mt"><div><label for="tr-repeat">Repeat late emails every (days; 0 = once)</label><input type="number" id="tr-repeat" min="0" max="60" value="${p.taskEmail.repeat_days}"></div></div>
+      ${p.hasTaskEmails ? '<button class="btn mt" data-act="save-task-email">Save</button>' : ''}</div>
     <div class="card mt"><div class="card-head"><h2>Locations</h2><span class="spacer"></span>${hasFeature('locations') ? '<button class="btn ghost sm" data-act="location-edit">+ Add location</button>' : ''}</div>
       <p class="small">Run more than one office in this account: each case belongs to a location (its letterhead is used on letters and exports), lists filter by location, and team members can be limited to their own location's patients.</p>
       <div id="locations-list" class="mt">${hasFeature('locations') ? '<div class="empty">Loading…</div>' : `<div class="notice">Multiple locations are part of the ${esc(featureInfo('locations').planName)} plan.</div>`}</div></div>
+    <div class="card mt" id="costs-card"><div class="card-head"><h2>Outside provider costs</h2></div>
+      <p class="small">What other facilities typically charge, used to estimate the other bills on each case from its referrals (an MRI counts once per body region on the referral). Estimates for planning only; each case can adjust its own lines under Financials.</p>
+      ${hasFeature('outside_estimates') ? '' : `<div class="notice mt">Outside provider cost estimates are part of the ${esc(featureInfo('outside_estimates').planName)} plan and up. <a href="#/billing">See plans</a></div>`}
+      <div class="table-wrap mt"><table><thead><tr><th>Item</th><th>Cost each ($)</th><th>Typical count per referral</th></tr></thead><tbody>
+      ${entries(p.costs).map(([k, c]) => `<tr><td>${esc(c.label)} <span class="small muted">per ${esc(c.unit)}</span></td><td><input type="number" min="0" step="1" value="${+c.cost}" data-cost="${k}" data-f="cost" aria-label="${esc(c.label)} cost"></td>
+        <td>${c.ref ? `<input type="number" min="0" step="1" value="${+c.typical}" data-cost="${k}" data-f="typical" aria-label="${esc(c.label)} typical count">` : '<span class="small muted">Added by hand on a case</span>'}</td></tr>`).join('')}
+      </tbody></table></div>
+      ${hasFeature('outside_estimates') ? '<div class="badge-row mt"><button class="btn" data-act="save-costs">Save cost list</button><button class="btn ghost" data-act="save-costs" data-reset="1">Reset to defaults</button></div>' : ''}</div>
     <div class="card mt" id="steps-card"><div class="card-head"><h2>Case steps &amp; checklist</h2><span class="spacer"></span>${hasFeature('custom_steps') ? '<button class="btn ghost sm" data-act="step-edit">+ Add your own step</button>' : ''}</div>
       <p class="small">Add the steps your office follows (they appear on every matching case's checklist, with due dates and alerts), and silence built-in steps your practice doesn't use. Silencing applies to every case; a single case can still mark a step "not needed".</p>
       <div id="steps-body" class="mt"><div class="empty">Loading…</div></div></div>
@@ -2307,6 +2431,7 @@ const billingInterval = { value: '' };
 async function pageBilling(main) {
   const r = await attempt(() => api('billing.php?action=status'));
   if (!r) return;
+  changePlan.status = r;
   const p = r.practice;
   if (location.hash.includes('done=1')) { toast('Thanks! Your subscription is being activated.'); history.replaceState(null, '', '#/billing'); setTimeout(refreshSession, 2500); }
   const freeUntil = p.status === 'active' && p.subscribed && p.trialEndsAt && p.trialEndsAt.slice(0, 10) > today() ? p.trialEndsAt.slice(0, 10) : null;
@@ -2325,6 +2450,7 @@ async function pageBilling(main) {
     </div>
     ${!r.billingReady ? '<div class="notice">Online billing isn\'t switched on yet for this installation.</div>' : ''}
     ${p.promo && !['active', 'past_due', 'comped'].includes(p.status) ? `<div class="notice ok">Promo code <strong class="mono">${esc(p.promo.code)}</strong>: ${esc(p.promo.summary)}${p.promo.plans ? ' (' + esc(p.promo.plans.map((k) => r.plans[k]?.name || k).join(' or ') + ' plan') + ')' : ''} — applied automatically at checkout.</div>` : ''}
+    ${p.status === 'trialing' && p.access === 'full' ? `<div class="notice ok">Your free trial includes everything in ${esc(r.plans[PLAN_TOP(r)].name)} — unlimited cases and users and every feature. When you subscribe, the plan you choose applies straight away. You can change plans any time; upgrades are charged only the difference and start the moment the payment goes through.</div>` : ''}
     ${p.status === 'trialing' && p.access === 'full' ? `<div class="notice ok">${r.firstCharge ? `Subscribing now keeps the rest of your free trial — your card is first charged on <strong>${esc(fmtDate(r.firstCharge))}</strong>.` : 'Your trial ends within two days, so billing starts when you subscribe.'} Cancel any time before then and you won't be charged.</div>` : ''}
     <div class="interval-toggle" role="radiogroup" aria-label="Billing period">
       <button role="radio" data-act="billing-interval" data-v="monthly" class="${interval === 'monthly' ? 'on' : ''}" aria-checked="${interval === 'monthly'}">Monthly</button>
@@ -2341,11 +2467,40 @@ async function pageBilling(main) {
         <p class="small muted">${esc(pl.blurb)}</p>
         <ul class="small"><li>${pl.active_cases ? pl.active_cases + ' open cases' : 'Unlimited open cases'}</li><li>${pl.users ? pl.users + ' users' : 'Unlimited users'}</li><li>Unlimited closed cases</li>
           ${(pl.features || []).map((f) => `<li class="${f.included ? '' : 'no'}">${esc(f.name)}</li>`).join('')}</ul>
-        ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : subscribed ? '<button class="btn ghost" data-act="billing-portal">Switch in Manage billing</button>'
+        ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : subscribed ? changePlanButton(r, k, interval)
           : `<button class="btn${k === p.plan ? '' : ' ghost'}" data-act="checkout" data-plan="${k}" data-interval="${interval}"${avail ? '' : ' disabled'}>${p.status === 'trialing' && r.firstCharge ? 'Add card — keep free days' : 'Subscribe'}</button>`}</div>`;
     }).join('')}</div>
     <p class="small muted mt">Payments are processed by Stripe; ${esc(S.brand.name)} never sees your card. Closed and dropped cases don't count toward your limit. If you cancel, your records stay readable and exportable.</p>`;
   main.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
+}
+
+const PLAN_TOP = (r) => Object.keys(r.plans).at(-1);
+
+// Switching a live subscription: upgrades pay the prorated difference now
+// and take effect the moment the payment is confirmed.
+function changePlanButton(r, plan, interval) {
+  const o = r.changePreview?.options?.[plan]?.[interval];
+  if (!o) return '<button class="btn ghost" data-act="billing-portal">Switch in Manage billing</button>';
+  if (!o.available) return '<button class="btn ghost" disabled>Not available</button>';
+  const label = r.changePreview.inTrial ? (o.upgrade ? 'Upgrade — free during your trial' : 'Switch — free during your trial')
+    : o.upgrade ? `Upgrade — about ${money(o.today)} today` : `Switch${o.credit ? ` — about ${money(o.credit)} credit` : ''}`;
+  return `<button class="btn${o.upgrade ? '' : ' ghost'}" data-act="change-plan" data-plan="${plan}" data-interval="${interval}">${esc(label)}</button>`;
+}
+
+async function changePlan(el) {
+  const r = changePlan.status, plan = el.dataset.plan, interval = el.dataset.interval, pl = r.plans[plan], o = r.changePreview.options[plan][interval];
+  const what = `${pl.name} (${interval === 'annual' ? 'billed yearly' : 'billed monthly'})`;
+  const text = r.changePreview.inTrial ? `You'll move to ${what} now. Nothing is charged until your free trial ends.`
+    : o.upgrade ? `You'll be charged the prorated difference for the rest of this billing period — about ${money(o.today)} — to your card on file. ${pl.name} features and limits start the moment the payment is confirmed.`
+    : `You'll move to ${what} now. Features and limits change immediately, and the unused part of this period (about ${money(o.credit)}) is credited to your next bill.`;
+  if (!(await confirmBox('Change to ' + what + '?', text, o.upgrade && !r.changePreview.inTrial ? 'Pay and upgrade' : 'Change plan'))) return;
+  try {
+    await api('billing.php?action=change_plan', { plan, interval });
+    toast('You\'re now on ' + pl.name); await refreshSession(); pageBilling(document.getElementById('main'));
+  } catch (e) {
+    if (e.data?.payUrl) { if (await confirmBox('Payment needed', e.message, 'Complete payment')) window.open(e.data.payUrl, '_blank', 'noopener'); }
+    else toast(e.message, true);
+  }
 }
 
 // ---------- operator console ----------
@@ -2533,7 +2688,21 @@ const ACTIONS = {
   'outreach-log': outreachLogModal,
   'export-file': exportFileModal,
   'location-edit': (el) => locationModal(el.dataset.id ? +el.dataset.id : null),
+  'edit-estimates': () => estimatesModal(),
+  'save-costs': async (el) => {
+    const box = document.getElementById('costs-card'), costs = {};
+    box.querySelectorAll('[data-cost]').forEach((inp) => { (costs[inp.dataset.cost] = costs[inp.dataset.cost] || {})[inp.dataset.f] = inp.value; });
+    const r = await attempt(() => api('admin.php?action=costs_save', el.dataset.reset ? { reset: true } : { costs }));
+    if (r) { toast(el.dataset.reset ? 'Back to the defaults' : 'Cost list saved'); await refreshSession(); pageSettings(document.getElementById('main')); }
+  },
   'promo-check': () => checkPromo(),
+  'save-task-email': async () => {
+    const box = document.getElementById('task-email-card');
+    const r = await attempt(() => api('admin.php?action=task_email_rules_save', { on: [...box.querySelectorAll('[data-tr-on]:checked')].map((x) => x.dataset.trOn),
+      who: [...box.querySelectorAll('[data-tr-who]:checked')].map((x) => x.dataset.trWho), repeat_days: +box.querySelector('#tr-repeat').value }));
+    if (r) { toast('Task email defaults saved'); await refreshSession(); }
+  },
+  'change-plan': (el) => changePlan(el),
   'step-edit': (el) => stepModal(el.dataset.id ? +el.dataset.id : null),
   'step-remove': async (el) => { if (!(await confirmBox('Remove this step?', 'It disappears from every case\'s checklist. Completions already recorded stay in the activity log.', 'Remove'))) return; if (await attempt(() => api('admin.php?action=step_save', { id: +el.dataset.id, remove: true }))) { toast('Removed'); loadSteps(); } },
   'step-silence': async (el) => { if (await attempt(() => api('admin.php?action=step_silence', { key: el.dataset.key, silenced: el.dataset.on === '1' }))) { toast(el.dataset.on === '1' ? 'Silenced for every case' : 'Turned back on'); loadSteps(); } },

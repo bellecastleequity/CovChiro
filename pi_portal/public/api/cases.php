@@ -29,12 +29,15 @@ const CASE_FIELDS = [
     'paralegal' => 'str:160', 'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
     'limits_source' => 'str:160', 'limits_noted_on' => 'date',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
+    'mediation_on' => 'date', 'trial_on' => 'date', 'settlement_signed_on' => 'date', 'disbursement_expected_on' => 'date',
 ];
 // These need finance.write instead of case.write. Billing can also move a
 // case through the legal / settlement stages.
 // Policy limits: front desk hears them on the attorney call, billing from
 // the adjuster — either may record them.
 const LIMIT_CASE_FIELDS = ['liability_carrier', 'bi_limit', 'um_limit', 'other_medical_estimate', 'limits_source', 'limits_noted_on'];
+// Case status dates heard from the attorney's office: front desk or billing.
+const STATUS_DATE_FIELDS = ['mediation_on', 'trial_on', 'settlement_signed_on', 'disbursement_expected_on'];
 const FINANCE_CASE_FIELDS = ['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'balance_forwarded_on', 'balance_forwarded_amount'];
 
 const CHILD_SPECS = [
@@ -72,6 +75,10 @@ const CHILD_SPECS = [
         'attempted_on' => 'date', 'method' => ['call','text','email','letter'],
         'outcome' => ['no_answer','left_message','spoke_scheduled','spoke_will_call','unable_to_schedule','wrong_number'], 'notes' => 'enc',
     ]],
+    // Estimated bills at outside providers (case value); front desk or billing.
+    'case_estimates' => ['perm_any' => ['case.write', 'finance.write'], 'required' => ['category'], 'fields' => [
+        'referral_id' => 'referral', 'category' => 'str:40', 'description' => 'str:160', 'qty' => 'money', 'unit_cost' => 'money',
+    ]],
     'ledger' => ['perm' => 'finance.write', 'required' => ['entry_date', 'kind', 'bucket', 'amount'], 'fields' => [
         'entry_date' => 'date', 'kind' => ['charge','payment','adjustment','reduction','write_off','transfer'],
         'bucket' => ['insurance','patient'], 'coverage_id' => 'coverage',
@@ -100,10 +107,10 @@ function clean_fields(array $spec, array $in, ?int $caseId = null): array {
             $out[$name] = $code ?: null;
         }
         elseif ($type === 'int') $out[$name] = ($v === null || $v === '') ? null : max(0, (int)$v);
-        elseif ($type === 'coverage' || $type === 'charge') {
+        elseif ($type === 'coverage' || $type === 'charge' || $type === 'referral') {
             $id = ($v === null || $v === '') ? null : (int)$v;
             if ($id) {
-                $stmt = pi_db()->prepare($type === 'coverage' ? 'SELECT id FROM coverages WHERE id = ? AND case_id = ?' : "SELECT id FROM ledger WHERE id = ? AND case_id = ? AND kind = 'charge'");
+                $stmt = pi_db()->prepare($type === 'coverage' ? 'SELECT id FROM coverages WHERE id = ? AND case_id = ?' : ($type === 'referral' ? 'SELECT id FROM referrals WHERE id = ? AND case_id = ?' : "SELECT id FROM ledger WHERE id = ? AND case_id = ? AND kind = 'charge'"));
                 $stmt->execute([$id, (int)$caseId]);
                 if (!$stmt->fetch()) json_response(['error' => "Unknown $name"], 400);
             }
@@ -261,6 +268,7 @@ function full_case(int $id, array $user): array {
         ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null,
         ($seen = array_column(array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'), 'visit_date')) ? max($seen) : null);
     $ctx = [
+        'estimateRows' => $fetch('SELECT * FROM case_estimates WHERE case_id = ? AND archived_at IS NULL ORDER BY id'), 'costs' => practice_costs(),
         'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'visits' => $visits, 'totals' => $totals, 'ledgerRows' => $allLedger, 'attendedDates' => $visitDates, 'outreach' => $outreach, 'coverages' => $coverages, 'openItems' => $openItems,
         'wcVisits' => ['count' => count($attended), 'missing25' => count(array_filter($attended, fn($v) => !$v['dwc25_sent'] && $v['visit_date'] <= $cutoff))],
         'lastVisit' => $visitDates ? max($visitDates) : null,
@@ -389,7 +397,9 @@ function handle_update() {
     $limitsIn = array_intersect_key($caseIn, array_flip(LIMIT_CASE_FIELDS));
     if ($limitsIn && !can($user, 'case.write') && !can($user, 'finance.write')) json_response(['error' => 'Your role does not allow editing policy limits.'], 403);
     $financeOnly = array_intersect_key($caseIn, array_flip(FINANCE_CASE_FIELDS));
-    $general = array_diff_key($caseIn, array_flip(array_merge(FINANCE_CASE_FIELDS, LIMIT_CASE_FIELDS)));
+    $datesIn = array_intersect_key($caseIn, array_flip(STATUS_DATE_FIELDS));
+    if ($datesIn && !can($user, 'case.write') && !can($user, 'finance.write')) json_response(['error' => 'Your role does not allow editing case dates.'], 403);
+    $general = array_diff_key($caseIn, array_flip(array_merge(FINANCE_CASE_FIELDS, LIMIT_CASE_FIELDS, STATUS_DATE_FIELDS)));
     // Billing may move a case between the post-treatment stages without
     // general case-edit rights.
     if (isset($general['stage']) && !can($user, 'case.write') && can($user, 'finance.write')
@@ -763,6 +773,7 @@ function handle_child_save() {
     $spec = CHILD_SPECS[$table] ?? json_response(['error' => 'Unknown record type'], 400);
     if (!can_child($user, $spec)) json_response(['error' => 'Your role does not allow this.'], 403);
     if ($table === 'ledger') ehr_guard($case);
+    if ($table === 'case_estimates') require_feature('outside_estimates');
     $cols = clean_fields($spec['fields'], $b['row'] ?? [], $caseId);
     $childId = (int)($b['row']['id'] ?? 0);
 
@@ -930,17 +941,23 @@ function load_tasks(string $where, array $args, int $limit = 500): array {
         ORDER BY t.done_at IS NOT NULL, t.done_at DESC, t.due_on IS NULL, t.due_on, t.priority = 'high' DESC, t.id LIMIT $limit");
     $stmt->execute([pid(), ...$args, ...(restricted_location() ? [restricted_location()] : [])]);
     $rows = $stmt->fetchAll();
-    $assignees = [];
+    $assignees = []; $emailTo = [];
     if ($rows) {
         $ids = array_column($rows, 'id');
         $a = $pdo->prepare('SELECT ta.task_id, u.id, u.name FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY u.name');
         $a->execute($ids);
         foreach ($a as $r) $assignees[$r['task_id']][] = ['id' => (int)$r['id'], 'name' => $r['name']];
+        $e = $pdo->prepare('SELECT task_id, user_id FROM task_email_to WHERE task_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+        $e->execute($ids);
+        foreach ($e as $r) $emailTo[$r['task_id']][] = (int)$r['user_id'];
     }
-    return array_map(function ($t) use ($assignees) {
+    return array_map(function ($t) use ($assignees, $emailTo) {
         $t = decrypt_row($t);
         $t['patient'] = $t['case_id'] ? patient_name($t) : null;
         $t['assignees'] = $assignees[$t['id']] ?? [];
+        $t['email_on'] = task_csv($t['email_on'], TASK_EMAIL_EVENTS);
+        $t['email_who'] = task_csv($t['email_who'], TASK_EMAIL_WHO);
+        $t['email_to'] = $emailTo[$t['id']] ?? [];
         unset($t['first_name'], $t['last_name']);
         return $t;
     }, $rows);
@@ -958,6 +975,14 @@ function handle_tasks() {
     elseif (preg_match('/^user:(\d+)$/', $scope, $m)) { $where[] = 'EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?)'; $args[] = (int)$m[1]; }
     if ($done) { $where[] = 't.done_at >= ?'; $args[] = add_days(date('Y-m-d'), -90) . ' 00:00:00'; }
     json_response(['tasks' => load_tasks(implode(' AND ', $where), $args)]);
+}
+
+// One task (the link in task emails opens it).
+function handle_task() {
+    require_user('case.read');
+    $t = load_tasks('t.id = ?', [(int)($_GET['id'] ?? 0)], 1);
+    if (!$t) json_response(['error' => 'That task was deleted or isn\'t available to you.'], 404);
+    json_response(['task' => $t[0]]);
 }
 
 // Open tasks for the nav badge: assigned to me, due today or earlier.
@@ -984,10 +1009,34 @@ function handle_task_save() {
     if (!$existing && empty($cols['title'])) json_response(['error' => 'Enter a task.'], 400);
     if (array_key_exists('priority', $cols) && !$cols['priority']) $cols['priority'] = 'normal';
     $changes = audit_diff(TASK_SPEC, $existing ?? [], $cols);
+    $nowDone = false;
     if (array_key_exists('done', $b) && (bool)$b['done'] !== (bool)($existing['done_at'] ?? null)) {
         $cols['done_at'] = $b['done'] ? now_str() : null;
         $cols['done_by'] = $b['done'] ? $user['id'] : null;
+        $nowDone = (bool)$b['done'];
         $changes[] = ['f' => 'done', 't' => 'bool', 'from' => !$b['done'], 'to' => (bool)$b['done']];
+    }
+
+    // Email alerts: new tasks take the practice's defaults unless set.
+    $rules = task_email_rules();
+    foreach (['email_on' => TASK_EMAIL_EVENTS, 'email_who' => TASK_EMAIL_WHO] as $f => $allowed) {
+        if (array_key_exists($f, $b)) $cols[$f] = implode(',', array_values(array_intersect(array_keys($allowed), (array)$b[$f])));
+        elseif (!$existing) $cols[$f] = implode(',', $rules[$f === 'email_on' ? 'on' : 'who']);
+    }
+    if (array_key_exists('late_repeat_days', $b)) $cols['late_repeat_days'] = $b['late_repeat_days'] === null || $b['late_repeat_days'] === '' ? null : task_repeat_days($b['late_repeat_days']);
+    foreach (['email_on', 'email_who'] as $f) if ($existing && array_key_exists($f, $cols) && $cols[$f] !== (string)$existing[$f]) $changes[] = ['f' => $f, 't' => 'label', 'from' => $existing[$f] ?: null, 'to' => $cols[$f] ?: null];
+    // A new due date or a reopened task starts the late reminders over.
+    if ($existing && ((array_key_exists('due_on', $cols) && $cols['due_on'] !== $existing['due_on']) || (array_key_exists('done_at', $cols) && !$cols['done_at']))) $cols['late_emailed_at'] = null;
+    $nowUrgent = ($cols['priority'] ?? null) === 'high' && ($existing['priority'] ?? 'normal') !== 'high' && !($existing['done_at'] ?? null) && !$nowDone;
+    $newEmailTo = null;
+    if (array_key_exists('email_to', $b)) {
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array)$b['email_to']))));
+        if ($ids) {
+            $q = $pdo->prepare('SELECT id FROM users WHERE practice_id = ? AND active = 1 AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+            $q->execute([pid(), ...$ids]);
+            if (count($q->fetchAll()) !== count($ids)) json_response(['error' => 'Pick active team members to email.'], 400);
+        }
+        $newEmailTo = $ids;
     }
 
     // Assignees: active members of this practice.
@@ -1022,7 +1071,23 @@ function handle_task_save() {
             $changes[] = ['f' => 'assignees', 't' => 'name', 'from' => $old ? implode(', ', $old) : null, 'to' => $newAssignees ? implode(', ', $newAssignees) : null];
         }
     }
+    if ($newEmailTo !== null) {
+        $pdo->prepare('DELETE FROM task_email_to WHERE task_id = ?')->execute([$id]);
+        $ins = $pdo->prepare('INSERT INTO task_email_to (task_id, user_id) VALUES (?, ?)');
+        foreach ($newEmailTo as $uid) $ins->execute([$id, $uid]);
+    }
     $pdo->commit();
+    // Urgent / completed emails go out after the response is sent.
+    if ($nowUrgent || $nowDone) {
+        $practice = current_practice();
+        register_shutdown_function(function () use ($id, $practice, $user, $nowUrgent, $nowDone) {
+            if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+            $s = pi_db()->prepare('SELECT * FROM tasks WHERE id = ?'); $s->execute([$id]);
+            $t = $s->fetch();
+            if ($nowUrgent) task_email_send('urgent', $t, $practice, $user);
+            if ($nowDone) task_email_send('done', $t, $practice, $user);
+        });
+    }
     if (!$existing) audit('create', 'task', $id, $caseId, $user, null, array_values(array_filter($changes, fn($c) => $c['t'] !== 'text' || $c['f'] === 'title')));
     elseif ($changes) audit('update', 'task', $id, $caseId, $user, null, $changes);
     json_response($caseId && !empty($b['return_case']) ? full_case($caseId, $user) : ['ok' => true, 'id' => $id]);
@@ -1151,6 +1216,7 @@ function handle_ar_report() {
             'lopSigned' => $c['lop_signed_on'], 'forwardedOn' => $c['balance_forwarded_on'],
             'forwardedAmount' => $set && $c['balance_forwarded_amount'] !== null ? (float)$c['balance_forwarded_amount'] : null,
             'finalSettlement' => $set && $c['final_settlement'] !== null ? (float)$c['final_settlement'] : null,
+            'mediationOn' => $c['mediation_on'], 'trialOn' => $c['trial_on'], 'settlementSignedOn' => $c['settlement_signed_on'], 'disbursementExpected' => $c['disbursement_expected_on'],
             'dateAuthorized' => $set ? $c['date_authorized'] : null, 'checkReceived' => $set ? $c['check_received_on'] : null,
         ];
     }
@@ -1161,12 +1227,12 @@ function handle_ar_report() {
         header('Content-Disposition: attachment; filename="pi-ar-' . date('Y-m-d') . '.csv"');
         header('Cache-Control: no-store');
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['Case #', 'Patient', 'Benefits', 'Stage', 'Last visit', 'Last correspondence', 'Insurer', 'Attorney', 'Insurance balance', 'Patient balance', 'Total outstanding', 'LOP signed', 'Forwarded to attorney', 'Amount forwarded', '80% floor', 'Atty offer', 'Offer %', 'Final settlement', 'Date authorized', 'Check received']);
+        fputcsv($out, ['Case #', 'Patient', 'Benefits', 'Stage', 'Last visit', 'Last correspondence', 'Insurer', 'Attorney', 'Insurance balance', 'Patient balance', 'Total outstanding', 'LOP signed', 'Forwarded to attorney', 'Amount forwarded', '80% floor', 'Atty offer', 'Offer %', 'Final settlement', 'Date authorized', 'Check received', 'Mediation', 'Trial', 'Settlement signed', 'Check expected']);
         foreach ($rows as $r) {
             // Neutralise spreadsheet formula injection in text cells.
             $safe = fn($v) => is_string($v) && preg_match('/^[=+\-@]/', $v) ? "'" . $v : $v;
             fputcsv($out, array_map($safe, [$r['caseNumber'], $r['patient'], BENEFITS[$r['benefits']] ?? '', STAGES[$r['stage']], $r['lastVisit'], $r['lastCorrespondence'], $r['insurer'], $r['attorney'],
-                $r['insuranceBalance'], $r['patientBalance'], $r['totalBalance'], $r['lopSigned'], $r['forwardedOn'], $r['forwardedAmount'], $r['reductionFloor'], $r['attyOffer'], $r['offerPct'], $r['finalSettlement'], $r['dateAuthorized'], $r['checkReceived']]));
+                $r['insuranceBalance'], $r['patientBalance'], $r['totalBalance'], $r['lopSigned'], $r['forwardedOn'], $r['forwardedAmount'], $r['reductionFloor'], $r['attyOffer'], $r['offerPct'], $r['finalSettlement'], $r['dateAuthorized'], $r['checkReceived'], $r['mediationOn'], $r['trialOn'], $r['settlementSignedOn'], $r['disbursementExpected']]));
         }
         exit;
     }
@@ -1328,6 +1394,7 @@ switch ($action) {
     case 'ar_report': handle_ar_report(); break;
     case 'tasks': handle_tasks(); break;
     case 'task_save': handle_task_save(); break;
+    case 'task': handle_task(); break;
     case 'task_delete': handle_task_delete(); break;
     case 'task_counts': handle_task_counts(); break;
     case 'activity': handle_activity(); break;
