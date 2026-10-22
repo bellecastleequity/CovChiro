@@ -349,7 +349,7 @@ function case_alerts(array $case, array $ctx): array {
     // them to the patient balance. Never moved automatically.
     $stale = array_filter($ctx['openItems'] ?? [], fn($i) => $i['ins_open'] > 0.005 && days_between($i['date'], $today) > INSURANCE_FOLLOWUP_DAYS);
     if ($stale) {
-        $alerts[] = ['level' => 'low', 'text' => count($stale) . ' insurance charge' . (count($stale) === 1 ? '' : 's') . ' unpaid after ' . INSURANCE_FOLLOWUP_DAYS . ' days ($' . number_format(array_sum(array_column($stale, 'ins_open')), 2) . ') — follow up with the carrier, or move to the patient balance.'];
+        $alerts[] = ['level' => 'low', 'text' => count($stale) . ' insurance charge' . (count($stale) === 1 ? '' : 's') . ' unpaid after ' . INSURANCE_FOLLOWUP_DAYS . ' days ($' . number_format(array_sum(array_column($stale, 'ins_open')), 2) . ')' . (!empty($case['ehr_synced_at']) ? ' — follow up with the carrier, or transfer it to patient responsibility in ' . $case['ehr_system'] . '.' : ' — follow up with the carrier, or move to the patient balance.')];
     }
 
     // Workers' comp: authorization and DWC-25 status forms.

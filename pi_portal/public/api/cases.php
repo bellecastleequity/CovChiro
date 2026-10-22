@@ -194,6 +194,7 @@ function full_case(int $id, array $user): array {
     $corr = array_map('decrypt_row', $fetch('SELECT r.*, k.organization contact_org, k.name contact_name FROM correspondence r LEFT JOIN contacts k ON k.id = r.contact_id WHERE r.case_id = ? AND r.archived_at IS NULL ORDER BY r.occurred_on DESC, r.id DESC'));
     $ledger = $fetch("SELECT l.*, u.name updated_by_name FROM ledger l LEFT JOIN users u ON u.id = COALESCE(l.updated_by, l.created_by) WHERE l.case_id = ? AND l.archived_at IS NULL ORDER BY l.entry_date, l.id");
     $tasks = $fetch('SELECT t.*, u.name assigned_name FROM tasks t LEFT JOIN users u ON u.id = t.assigned_user_id WHERE t.case_id = ? ORDER BY t.done_at IS NOT NULL, t.due_on');
+    $ehr = $fetch('SELECT e.id, e.ehr_system, e.uploaded_at, e.document_id, u.name uploaded_by_name FROM ehr_imports e LEFT JOIN users u ON u.id = e.uploaded_by WHERE e.case_id = ? ORDER BY e.id DESC LIMIT 1')[0] ?? null;
     $docs = $fetch('SELECT d.id, d.category, d.original_name, d.mime_type, d.size_bytes, d.uploaded_at, u.name uploaded_by_name FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by WHERE d.case_id = ? AND d.archived_at IS NULL ORDER BY d.uploaded_at DESC');
     $coverages = array_map('decrypt_row', $fetch('SELECT cv.*, k.organization carrier_org, k.name carrier_name, k.phone carrier_phone, k.fax carrier_fax FROM coverages cv LEFT JOIN contacts k ON k.id = cv.carrier_contact_id WHERE cv.case_id = ? AND cv.archived_at IS NULL ORDER BY cv.priority, cv.id'));
     $contacts = [];
@@ -234,7 +235,7 @@ function full_case(int $id, array $user): array {
         'referrals' => $referrals, 'visits' => $visits, 'outcomes' => $outcomes,
         'correspondence' => $corr, 'ledger' => $led ? $ledger : [], 'openItems' => $led ? $openItems : [], 'totals' => $bal ? $totals : null,
         'fin' => fin_scopes($user),
-        'tasks' => $tasks, 'documents' => $docs,
+        'tasks' => $tasks, 'documents' => $docs, 'ehr' => $ehr,
         'stats' => ['visitCount' => count($visitDates), 'lastVisit' => $ctx['lastVisit']],
     ];
 }
@@ -364,6 +365,14 @@ function handle_milestone() {
 }
 
 // ---------- child rows ----------
+// Cases whose money comes from uploaded EHR ledgers: the EHR is the source
+// of truth, so ledger lines aren't changed here.
+function ehr_guard(array $case) {
+    if ($case['ehr_synced_at']) {
+        json_response(['error' => "This case's financials come from " . $case['ehr_system'] . '. Make the change there, then upload the updated ledger.', 'code' => 'ehr_synced'], 409);
+    }
+}
+
 function can_child(array $user, array $spec): bool {
     foreach ($spec['perm_any'] ?? [$spec['perm']] as $p) if (can($user, $p)) return true;
     return false;
@@ -395,6 +404,7 @@ function handle_child_save() {
     $table = (string)($b['table'] ?? '');
     $spec = CHILD_SPECS[$table] ?? json_response(['error' => 'Unknown record type'], 400);
     if (!can_child($user, $spec)) json_response(['error' => 'Your role does not allow this.'], 403);
+    if ($table === 'ledger') ehr_guard($case);
     $cols = clean_fields($spec['fields'], $b['row'] ?? [], $caseId);
     $childId = (int)($b['row']['id'] ?? 0);
 
@@ -429,8 +439,8 @@ function handle_child_save() {
         $childId = insert_row($table, $cols);
         audit('create', $table, $childId, $caseId, $user);
         // A visit can post its charge in the same step, billed to a chosen
-        // coverage or straight to the patient balance.
-        if ($table === 'visits' && !empty($b['charge']['amount']) && can($user, 'finance.write')) {
+        // coverage or straight to the patient balance (not on EHR-synced cases).
+        if ($table === 'visits' && !empty($b['charge']['amount']) && can($user, 'finance.write') && !$case['ehr_synced_at']) {
             $amount = money_or_null($b['charge']['amount']);
             $target = (string)($b['charge']['to'] ?? 'patient');
             $coverageId = $target === 'patient' ? null : (clean_fields(['c' => 'coverage'], ['c' => $target], $caseId)['c'] ?? null);
@@ -470,7 +480,7 @@ function handle_move_balance() {
     require_method('POST');
     $user = require_user('finance.write');
     $caseId = (int)($_GET['id'] ?? 0);
-    case_or_404($caseId);
+    ehr_guard(case_or_404($caseId));
     $b = json_body();
     $date = date_or_null($b['date'] ?? date('Y-m-d')) ?? date('Y-m-d');
     $reason = str_or_null($b['reason'] ?? null, 255);
@@ -529,6 +539,7 @@ function handle_child_archive() {
     $table = (string)($b['table'] ?? '');
     $spec = CHILD_SPECS[$table] ?? json_response(['error' => 'Unknown record type'], 400);
     if (!can_child($user, $spec)) json_response(['error' => 'Your role does not allow this.'], 403);
+    if ($table === 'ledger') ehr_guard(case_or_404($caseId));
     $childId = (int)($b['child_id'] ?? 0);
     child_or_404($table, $childId, $caseId);
     pi_db()->prepare("UPDATE $table SET archived_at = ? WHERE id = ?")->execute([now_str(), $childId]);

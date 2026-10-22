@@ -238,3 +238,12 @@ td select{min-width:110px;width:auto;}
 .mt-sm{margin:8px 0 0;}
 input.amt{width:110px;text-align:right;padding:4px 6px;}
 .row-acts{display:flex;flex-direction:column;gap:4px;align-items:stretch;}
+/* ---------- EHR ledger upload ---------- */
+.banner-inline{background:var(--brand-tint);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.86rem;color:var(--navy);}
+.checks{list-style:none;display:grid;gap:6px;margin-top:6px;}
+.checks li{display:flex;align-items:baseline;gap:8px;font-size:0.88rem;}
+.checks .ck{flex:0 0 20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:700;}
+.ck-ok .ck{background:var(--green);color:var(--navy);}
+.ck-fill .ck{background:transparent;box-shadow:inset 0 0 0 1.5px var(--navy);color:var(--navy);}
+.ck-mismatch .ck{background:var(--navy);color:#fff;}
+.ck-missing .ck{background:var(--mist);color:var(--navy);}

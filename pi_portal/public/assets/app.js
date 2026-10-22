@@ -759,7 +759,7 @@ function tabVisits(el, d) {
     ${d.visits.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Provider</th><th>CPT</th>${d.case.injury_type === 'workers_comp' ? '<th>DWC-25</th>' : ''}<th>Note</th><th></th></tr></thead><tbody>
     ${d.visits.map((v) => `<tr class="click" data-act="edit-visit" data-id="${v.id}"><td class="nowrap">${esc(fmtDate(v.visit_date))}</td>
       <td><span class="chip ${v.visit_type === 'no_show' ? 'overdue' : v.visit_type === 'discharge' ? 'teal' : ''}">${esc(Object.fromEntries(VISIT_TYPES)[v.visit_type])}</span></td>
-      <td>${esc(v.provider_name || '—')}</td><td class="mono small">${esc(v.cpt_codes || '')}</td>${d.case.injury_type === 'workers_comp' ? `<td>${v.visit_type === 'no_show' ? '—' : v.dwc25_sent == 1 ? '<span class="chip done">Sent</span>' : '<span class="chip due">Not sent</span>'}</td>` : ''}<td class="small">${esc((v.notes || '').slice(0, 140))}</td>
+      <td>${esc(v.provider_name || '—')}</td><td class="mono small">${esc(v.cpt_codes || '')}${v.icd_codes ? `<div class="muted" title="${esc(v.icd_codes)}">ICD ${esc(v.icd_codes.split(', ').slice(0, 4).join(', '))}${v.icd_codes.split(', ').length > 4 ? '…' : ''}</div>` : ''}${v.source === 'ehr' ? ' <span class="chip">EHR</span>' : ''}</td>${d.case.injury_type === 'workers_comp' ? `<td>${v.visit_type === 'no_show' ? '—' : v.dwc25_sent == 1 ? '<span class="chip done">Sent</span>' : '<span class="chip due">Not sent</span>'}</td>` : ''}<td class="small">${esc((v.notes || '').slice(0, 140))}</td>
       <td>${can('clinical.write') ? `<button class="btn link small" data-act="archive-child" data-table="visits" data-id="${v.id}">Remove</button>` : ''}</td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">No visits logged yet.</div>'}
     <p class="small muted mt">Logging the first visit moves an intake case to Treating; logging a Discharge visit sets the discharge date and moves it to Treatment complete.</p>
@@ -865,7 +865,11 @@ const defaultBillTo = () => { const a = (S.caseData.coverages || []).filter((c) 
 const chargeLabel = (it) => `${fmtDate(it.date)} — ${it.memo || 'Charge'} (${money(it.amount)})`;
 
 function tabFinancials(el, d) {
-  const c = d.case, fw = can('finance.write');
+  const c = d.case;
+  // Cases synced from an EHR ledger: the EHR is the source of truth, so
+  // charges, payments and transfers aren't entered or edited here.
+  const synced = !!c.ehr_synced_at;
+  const fwAny = can('finance.write'), fw = fwAny && !synced;
   const showBal = fin('balances'), showLed = fin('ledger'), showSet = fin('settlement');
   // Without the balances category, totals are withheld by the server.
   const t = d.totals || { by_coverage: {}, patient_balance: 0, total_balance: 0 };
@@ -902,9 +906,11 @@ function tabFinancials(el, d) {
   })();
 
   el.innerHTML = `
-    ${fw ? `<div class="filters"><button class="btn sm" data-act="add-charge">+ Charge</button><button class="btn sm" data-act="add-payment">+ Payment</button>
-      <button class="btn ghost sm" data-act="move-balance">Move balance…</button><span class="spacer"></span>
+    ${fwAny ? `<div class="filters">${fw ? `<button class="btn sm" data-act="add-charge">+ Charge</button><button class="btn sm" data-act="add-payment">+ Payment</button>
+      <button class="btn ghost sm" data-act="move-balance">Move balance…</button>` : ''}<button class="btn ghost sm" data-act="ehr-upload">Upload EHR ledger</button><span class="spacer"></span>
       ${showLed ? '<button class="btn ghost sm" data-act="letter" data-type="statement">Print statement</button>' : ''}</div>` : ''}
+    ${synced ? `<div class="banner-inline"><strong>Financials mirror the ${esc(c.ehr_system)} ledger</strong> uploaded ${esc(fmtDate(d.ehr?.uploaded_at || c.ehr_synced_at))}${d.ehr?.uploaded_by_name ? ' by ' + esc(d.ehr.uploaded_by_name) : ''}.
+      To change charges, payments or transfers, update ${esc(c.ehr_system)} and upload the new ledger.${d.ehr?.document_id ? ` <a href="api/documents.php?action=download&id=${d.ehr.document_id}&inline=1" target="_blank" rel="noopener">View ledger PDF</a>` : ''}</div>` : ''}
     <div class="grid-2">
       <div class="card"><div class="card-head"><h2>Insurance</h2><span class="spacer"></span>${covEdit ? '<button class="btn ghost sm" data-act="add-coverage">+ Add insurance</button>' : ''}</div>
         ${covCards || `<div class="empty">No insurance on file. Add PIP, MedPay, health insurance or workers' comp if the patient has it — insurance must be billed before the patient balance.</div>`}
@@ -942,12 +948,12 @@ function tabFinancials(el, d) {
         <td>${fw ? `<div class="row-acts"><button class="btn ghost sm" data-act="add-payment" data-charge="${it.id}">Payment</button><button class="btn ghost sm" data-act="move-balance" data-charge="${it.id}">Move</button></div>` : ''}</td></tr>`).join('')}
       </tbody></table></div>` : `<div class="empty">${items.length ? 'Every charge is paid. Tick "Show paid charges" to see them.' : 'No charges yet. Log a visit with a charge, or add one with "+ Charge".'}</div>`}
     </div>
-    <div class="card mt"><div class="card-head"><h2>Ledger history</h2><span class="small muted">Every entry stays editable — changes are recorded in the case's Activity.</span></div>
+    <div class="card mt"><div class="card-head"><h2>Ledger history</h2><span class="small muted">${synced ? 'From the EHR ledger — read-only here.' : "Every entry stays editable — changes are recorded in the case's Activity."}</span></div>
       ${d.ledger.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Who owes / moved</th><th>For</th><th>Ref / memo</th><th class="num">Amount</th><th>Last change</th><th></th></tr></thead><tbody>
       ${d.ledger.map((l) => {
         const charge = l.applies_to_id ? items.find((i) => i.id === +l.applies_to_id) : null;
         const who = l.kind === 'transfer' ? `${esc(holderName(l.bucket, l.coverage_id))} → ${esc(holderName(l.to_bucket, l.to_coverage_id))}` : esc(holderName(l.bucket, l.coverage_id));
-        return `<tr><td class="nowrap">${esc(fmtDate(l.entry_date))}</td><td>${esc(Object.fromEntries(LEDGER_KINDS)[l.kind])}</td><td class="small">${who}</td>
+        return `<tr><td class="nowrap">${esc(fmtDate(l.entry_date))}</td><td>${esc(Object.fromEntries(LEDGER_KINDS)[l.kind])}${l.source === 'ehr' ? ' <span class="chip">EHR</span>' : ''}</td><td class="small">${who}</td>
           <td class="small">${charge ? 'DOS ' + esc(fmtDate(charge.date)) : '—'}</td><td class="small">${esc([l.reference, l.memo].filter(Boolean).join(' · '))}</td>
           <td class="num">${l.kind === 'charge' || l.kind === 'transfer' ? money(l.amount) : '(' + money(l.amount) + ')'}</td>
           <td class="small muted">${esc(l.updated_by_name || '')}${l.updated_at ? ' · edited ' + esc(fmtDate(l.updated_at)) : ''}</td>
@@ -1110,6 +1116,52 @@ function ledgerEditModal(row) {
       if (isTransfer) { const to = parseHolder(v.to_holder); delete v.to_holder; v.to_bucket = to.bucket; v.to_coverage_id = to.coverage_id; }
       await saveChild('ledger', { id: row.id, ...v, ...h });
     } });
+}
+
+// ----- EHR ledger upload -----
+// Two steps: preview (checks it's the right patient, shows what changes),
+// then apply. The EHR's numbers replace the case's EHR-sourced lines.
+function ehrUploadModal() {
+  const d = S.caseData;
+  let preview = null;
+  const icon = { ok: '✓', fill: '+', mismatch: '!', missing: '–' };
+  const m = openModal({ title: 'Upload EHR ledger', wide: true, okText: 'Preview', body: `
+    <p class="small">Export the patient's <strong>billing ledger as a PDF</strong> from DrChrono and upload it here. Your EHR stays the source of truth — this case's charges, payments and patient/insurance split will mirror it.</p>
+    <div class="filters mt"><input type="file" id="ehr-file" accept="application/pdf,.pdf" aria-label="Ledger PDF"></div>
+    <div id="ehr-preview"></div>`,
+    onOk: async (el) => {
+      if (!preview) {
+        const file = el.querySelector('#ehr-file').files[0];
+        if (!file) throw new Error('Choose the ledger PDF first.');
+        const fd = new FormData(); fd.append('case_id', d.case.id); fd.append('file', file);
+        preview = await api('ehr.php?action=preview', fd);
+        const pv = preview, L = pv.ledger, C = pv.current;
+        el.querySelector('#ehr-preview').innerHTML = `
+          <h3 class="mt">Is this the right patient?</h3>
+          <ul class="checks">${pv.checks.map((k) => `<li class="ck-${esc(k.status)}"><span class="ck">${icon[k.status] || '·'}</span><strong>${esc(k.label)}</strong> <span class="small muted">${esc(k.detail)}</span></li>`).join('')}</ul>
+          <h3 class="mt">What changes</h3>
+          <table><thead><tr><th></th><th class="num">${esc(pv.system)} ledger</th><th class="num">Now in ${esc(S.brand.name)}</th></tr></thead><tbody>
+            <tr><td>Total charges</td><td class="num">${money(L.billed)}</td><td class="num">${money(C.charges)}</td></tr>
+            <tr><td>Insurance balance</td><td class="num"><strong>${money(L.insuranceBalance)}</strong></td><td class="num">${money(C.insuranceBalance)}</td></tr>
+            <tr><td>Patient balance</td><td class="num"><strong>${money(L.patientBalance)}</strong></td><td class="num">${money(C.patientBalance)}</td></tr>
+            <tr><td class="small muted">Insurance paid · patient paid · adjustments</td><td class="num small">${money(L.insurancePaid)} · ${money(L.patientPaid)} · ${money(L.adjustment)}</td><td></td></tr>
+          </tbody></table>
+          <p class="small muted">${pv.counts.lines} charge lines across ${pv.counts.visits} visits (${esc(fmtDate(pv.firstDos))} – ${esc(fmtDate(pv.lastDos))}).</p>
+          <label class="check mt"><input type="checkbox" id="ehr-visits" checked> Add the ${pv.counts.newVisits} visit${pv.counts.newVisits === 1 ? '' : 's'} not yet on this case (with CPT and ICD-10 codes)</label>
+          ${pv.counts.manualRows ? `<label class="check"><input type="checkbox" id="ehr-manual" checked> Retire the ${pv.counts.manualRows} manually entered ledger line${pv.counts.manualRows === 1 ? '' : 's'} (e.g. opening balances) — the EHR replaces them</label>` : ''}
+          <label class="check"><input type="checkbox" id="ehr-pdf"> Also save the PDF to this case's documents <span class="small muted">(it includes demographics such as SSN)</span></label>
+          ${pv.needsOverride ? `<div class="notice mt"><label class="check"><input type="checkbox" id="ehr-confirm"> The name and date of birth don't match this case. I've confirmed this is the right patient.</label></div>` : ''}`;
+        el.querySelector('[data-ok]').textContent = 'Apply to case';
+        return false; // stay open for the second step
+      }
+      const confirm = el.querySelector('#ehr-confirm');
+      if (confirm && !confirm.checked) throw new Error("Confirm it's the right patient, or cancel.");
+      const r = await api('ehr.php?action=apply', { token: preview.token, create_visits: el.querySelector('#ehr-visits').checked,
+        replace_manual: !!el.querySelector('#ehr-manual')?.checked, save_pdf: el.querySelector('#ehr-pdf').checked, confirm_mismatch: !!confirm?.checked });
+      toast(`Ledger applied${r.visitsCreated ? ' — ' + r.visitsCreated + ' visits added' : ''}`);
+      await reloadCase();
+    } });
+  m.el.querySelector('#ehr-file').addEventListener('change', () => { preview = null; m.el.querySelector('#ehr-preview').innerHTML = ''; m.el.querySelector('[data-ok]').textContent = 'Preview'; });
 }
 
 // ----- LOP, forwarding, settlement -----
@@ -1489,7 +1541,7 @@ const ACTIONS = {
   'add-payment': (el) => paymentModal(el.dataset.charge ? +el.dataset.charge : null),
   'move-balance': (el) => moveModal({ fromValue: el.dataset.from || null, chargeId: el.dataset.charge ? +el.dataset.charge : null }),
   'edit-ledger': (el) => ledgerEditModal(S.caseData.ledger.find((l) => l.id == el.dataset.id)),
-  'edit-lop': lopModal, 'forward-balance': forwardModal,
+  'edit-lop': lopModal, 'forward-balance': forwardModal, 'ehr-upload': ehrUploadModal,
   'archive-child': (el) => archiveChild(el.dataset.table, +el.dataset.id),
   'upload-doc': uploadDoc,
   'archive-doc': async (el) => {

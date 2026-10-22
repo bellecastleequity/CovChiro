@@ -140,6 +140,9 @@ CREATE TABLE cases (
   date_authorized DATE NULL,
   check_received_on DATE NULL,
   notes_enc TEXT NULL,
+  -- Set once the case's financials come from uploaded EHR ledgers.
+  ehr_system VARCHAR(40) NULL,
+  ehr_synced_at DATETIME NULL,
   archived_at DATETIME NULL,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
@@ -231,8 +234,10 @@ CREATE TABLE visits (
   visit_type ENUM('initial','treatment','re_exam','discharge','no_show') NOT NULL DEFAULT 'treatment',
   provider_user_id INT NULL,
   cpt_codes VARCHAR(255) NULL,
+  icd_codes VARCHAR(500) NULL,
   -- Workers' comp: DWC-25 status form sent to the carrier for this visit.
   dwc25_sent TINYINT(1) NOT NULL DEFAULT 0,
+  source ENUM('manual','ehr') NOT NULL DEFAULT 'manual',
   notes_enc TEXT NULL,
   archived_at DATETIME NULL,
   created_by INT NULL,
@@ -300,6 +305,10 @@ CREATE TABLE ledger (
   amount DECIMAL(10,2) NOT NULL,
   reference VARCHAR(120) NULL,
   memo VARCHAR(255) NULL,
+  -- 'ehr' rows come from an uploaded EHR ledger and are replaced by the
+  -- next upload; the EHR is the source of truth for them.
+  source ENUM('manual','ehr') NOT NULL DEFAULT 'manual',
+  ehr_import_id INT NULL,
   archived_at DATETIME NULL,
   created_by INT NULL,
   created_at DATETIME NOT NULL,
@@ -310,6 +319,20 @@ CREATE TABLE ledger (
   FOREIGN KEY (to_coverage_id) REFERENCES coverages(id),
   INDEX idx_ledger_case (case_id),
   INDEX idx_ledger_applies (applies_to_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Each EHR ledger upload applied to a case (the history of syncs).
+CREATE TABLE ehr_imports (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  case_id INT NOT NULL,
+  ehr_system VARCHAR(40) NOT NULL,
+  file_sha256 CHAR(64) NOT NULL,
+  summary_enc TEXT NULL,
+  document_id INT NULL,
+  uploaded_by INT NULL,
+  uploaded_at DATETIME NOT NULL,
+  FOREIGN KEY (case_id) REFERENCES cases(id),
+  INDEX idx_ehr_case (case_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE tasks (

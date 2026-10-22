@@ -6,3 +6,4 @@ pi_portal/storage/logs/
 pi_portal/storage/documents/*
 !pi_portal/storage/documents/.gitkeep
 __pycache__/
+pi_portal/storage/pending/
