@@ -11,13 +11,14 @@ let phoneSeq = 0;
 export const testPhone = () => `+1407${String(2000000 + (process.pid % 1000) * 7000 + phoneSeq++ % 7000).padStart(7, "0")}`;
 const FAR = new Date("2031-01-01T00:00:00Z");
 
-/** A weekday at 9:00–17:00 Eastern, `days` from now (always a Wednesday so no weekend premium). */
+/** A weekday at 9:00–17:00 Eastern, `days` from now (a Wednesday, or the Tuesday before when that Wednesday is a holiday; never a weekend premium). */
 export function futureWeekday(days: number, startHourUtc = 13, hours = 8) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + days);
   while (d.getUTCDay() !== 3) d.setUTCDate(d.getUTCDate() + 1);
-  // Never a federal holiday: the holiday premium would change every price assertion.
-  while (isFederalHoliday(d.toISOString().slice(0, 10))) d.setUTCDate(d.getUTCDate() + 7);
+  // Never a federal holiday: the holiday premium would change every price assertion. Use the day before
+  // (a Tuesday), not the next week, so two dates a week apart never land on the same day.
+  while (isFederalHoliday(d.toISOString().slice(0, 10))) d.setUTCDate(d.getUTCDate() - 1);
   d.setUTCHours(startHourUtc, 0, 0, 0);
   return { startsAt: d, endsAt: new Date(+d + hours * 3_600_000) };
 }
