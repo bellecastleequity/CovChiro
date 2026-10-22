@@ -16,7 +16,7 @@
   <div class="wrap nav-inner">
     <a class="logo" href="./"><img src="assets/logo-horizontal.svg" alt="InjuryCase" height="38"></a>
     <nav class="nav-links" aria-label="Main">
-      <a href="#outcomes">Why it matters</a><a href="#features">Features</a><a href="#security">Security</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a>
+      <a href="#outcomes">Why it matters</a><a href="#features">Features</a><a href="#security">HIPAA &amp; security</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a>
     </nav>
     <div class="nav-cta"><a class="link" href="app.html">Sign in</a><a class="btn" href="app.html#signup">Start free trial</a></div>
   </div>
@@ -30,7 +30,8 @@
       <h1>Every PI case, from first visit to <span class="hl">final check</span>.</h1>
       <p class="lede">InjuryCase replaces the spreadsheets. Track referrals, co-management, visits, attorney correspondence and liens in one place — so patients get consistent care, attorneys get what they need, and your clinic gets paid.</p>
       <div class="cta-row"><a class="btn lg" href="app.html#signup">Start your 14-day free trial</a><a class="btn ghost lg" href="#features">See how it works</a></div>
-      <p class="fine">No credit card required · Business Associate Agreement included</p>
+      <p class="fine">No credit card required · Cancel any time</p>
+      <a class="hipaa-strip" href="#security"><span class="hs-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z"/><path d="m8.5 12 2.4 2.4 4.6-4.8"/></svg></span><span><b>HIPAA-ready</b> — we sign a Business Associate Agreement with every practice. Encrypted, two-factor sign-in, full audit trail.</span></a>
       <p class="hero-trust"><b>Shaped by 10+ years of attorney input.</b> The workflow behind InjuryCase was refined with personal injury attorneys, including some of the nation's largest PI firms, so your records support the case from day one.</p>
     </div>
     <div class="mock" aria-hidden="true">
@@ -111,7 +112,18 @@
 
 <section id="security" class="section">
   <div class="wrap security">
-    <div class="section-head"><span class="eyebrow">Security &amp; HIPAA</span><h2>Built for protected health information from day one</h2><p>InjuryCase signs a Business Associate Agreement with every practice and runs on HIPAA-eligible infrastructure.</p></div>
+    <div class="section-head"><span class="eyebrow">Security &amp; HIPAA</span><h2>Built for protected health information from day one</h2><p>InjuryCase signs a Business Associate Agreement with every practice, on every plan, and runs on AWS HIPAA-eligible infrastructure. Here's how it covers the HIPAA Security Rule's technical safeguards.</p></div>
+    <div class="hipaa-table-wrap"><table class="hipaa-table">
+      <thead><tr><th>HIPAA requires</th><th>How InjuryCase covers it</th></tr></thead>
+      <tbody>
+        <tr><td><b>Business Associate Agreement</b><small>§164.502(e), §164.504(e)</small></td><td>Signed electronically with every practice before any patient data is entered. <a href="legal.html#baa">Read the BAA</a></td></tr>
+        <tr><td><b>Access control</b><small>§164.312(a)</small></td><td>Unique login for every person, role-based permissions, optional limits to one location, automatic sign-out after 15 minutes idle.</td></tr>
+        <tr><td><b>Person authentication</b><small>§164.312(d)</small></td><td>Two-factor sign-in required for every user; accounts lock after repeated failed attempts.</td></tr>
+        <tr><td><b>Audit controls</b><small>§164.312(b)</small></td><td>Every view, edit, export and download is logged with who, when and from where — reviewable and exportable by your admins.</td></tr>
+        <tr><td><b>Encryption &amp; integrity</b><small>§164.312(a)(2)(iv), (c)</small></td><td>256-bit encryption at rest for sensitive fields and every document; changes recorded field by field.</td></tr>
+        <tr><td><b>Transmission security</b><small>§164.312(e)</small></td><td>TLS on every connection. Emails we send never contain patient names or case details.</td></tr>
+        <tr><td><b>Contingency &amp; backups</b><small>§164.308(a)(7)</small></td><td>Daily encrypted backups kept for 35 days, with monitored uptime and automatic recovery.</td></tr>
+      </tbody></table></div>
     <div class="sec-grid">
       <div><h3>Two-factor sign-in for everyone</h3><p>Every user needs an authenticator-app code. There are no shared logins, and accounts lock after repeated failures.</p></div>
       <div><h3>Encrypted, field by field</h3><p>Dates of birth, contact details, claim numbers, clinical notes and every uploaded document are encrypted at rest.</p></div>

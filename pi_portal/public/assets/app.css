@@ -232,6 +232,8 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none;}
 .auth-card.wide{max-width:560px;}
 .auth-card .brand{text-decoration:none;color:inherit;}
 .auth-switch{text-align:center;margin-top:14px;}
+.hipaa-note{text-align:center;margin-top:10px;}
+.hipaa-note b{color:var(--green-dark);}
 @media (max-width:760px){ .banner{padding:10px 16px;} }
 td select{min-width:110px;width:auto;}
 .notice{color:var(--navy);margin-bottom:14px;}

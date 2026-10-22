@@ -43,6 +43,12 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
 .pill i{font-style:normal;color:#7FE0B0}
 .foot{position:absolute;left:0;right:0;bottom:34px;text-align:center;font-size:15px;color:rgba(11,35,64,.55)}
 .dark .foot{color:rgba(255,255,255,.55)}
+.hipaa{display:inline-flex;align-items:center;gap:14px;background:rgba(31,168,102,.14);border:2px solid rgba(127,224,176,.55);color:#fff;font-size:26px;font-weight:700;padding:14px 28px;border-radius:999px}
+.hipaa svg{width:32px;height:32px;flex:none}
+.hipaa span{color:rgba(255,255,255,.75);font-weight:500}
+.corner{position:absolute;right:90px;top:62px;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #CFE9DC;color:var(--navy);font-size:19px;font-weight:700;padding:10px 18px;border-radius:999px;box-shadow:0 8px 22px rgba(11,35,64,.10)}
+.corner svg{width:24px;height:24px}
+.corner span{color:var(--muted);font-weight:500}
 .progress{position:absolute;left:0;bottom:0;height:6px;background:var(--green);z-index:9}
 </style></head><body>
 
@@ -51,6 +57,7 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
   <div class="a" data-in="0.3" data-fx="zoom" style="position:absolute;left:0;right:0;top:330px;text-align:center"><img src="assets/logo-horizontal-dark.svg" style="height:120px"></div>
   <h1 class="a white" data-in="1.4" data-fx="up" style="position:absolute;left:0;right:0;top:520px;text-align:center">Every PI case, from first visit<br>to <span class="hl">final check</span>.</h1>
   <p class="a lead" data-in="2.6" data-fx="up" style="position:absolute;left:0;right:0;top:720px;text-align:center;color:rgba(255,255,255,.75)">Case management built for clinics that treat injury patients.</p>
+  <div class="a" data-in="3.4" data-fx="up" style="position:absolute;left:0;right:0;top:810px;text-align:center"><span class="hipaa"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#1FA866"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready <span>· BAA signed with every practice · Encrypted · Two-factor sign-in</span></span></div>
 </section>
 
 <!-- 2. problem -->
@@ -127,12 +134,14 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
 <!-- 9. trust -->
 <section class="scene dark" data-id="09-security">
   <div style="position:absolute;left:150px;top:180px;width:700px;display:flex;flex-direction:column;gap:26px">
-    <div class="eyebrow a" data-in="0.3" data-fx="up">Secure by design</div>
+    <div class="eyebrow a" data-in="0.3" data-fx="up">HIPAA &amp; security</div>
     <h2 class="a white" data-in="0.6" data-fx="up" style="color:#fff">HIPAA-ready, from day one.</h2>
-    <p class="lead a" data-in="1.2" data-fx="up" style="color:rgba(255,255,255,.75)">Shaped by 10+ years of personal injury attorney input — so your records support the case.</p>
+    <p class="lead a" data-in="1.2" data-fx="up" style="color:rgba(255,255,255,.75)">We sign a Business Associate Agreement with every practice and host on AWS HIPAA-eligible infrastructure — with the HIPAA Security Rule's technical safeguards built in.</p>
+    <div class="a" data-in="3.6" data-fx="up" style="display:flex;flex-wrap:wrap;gap:12px;font-size:20px;color:#fff">
+      <span class="hipaa" style="font-size:20px;padding:10px 18px">Unique logins</span><span class="hipaa" style="font-size:20px;padding:10px 18px">Role-based access</span><span class="hipaa" style="font-size:20px;padding:10px 18px">Auto sign-out</span><span class="hipaa" style="font-size:20px;padding:10px 18px">Full audit trail</span></div>
   </div>
   <div style="position:absolute;right:150px;top:170px;display:flex;flex-direction:column;gap:20px">
-    <div class="badge a" data-in="1.4" data-fx="left"><div class="ic" style="background:#E3F6EC">🛡</div><div><b>Business Associate Agreement</b><small>Included with every plan</small></div></div>
+    <div class="badge a" data-in="1.4" data-fx="left"><div class="ic" style="background:#E3F6EC">🛡</div><div><b>Business Associate Agreement</b><small>Signed with every practice, every plan</small></div></div>
     <div class="badge a" data-in="1.9" data-fx="left"><div class="ic" style="background:#FDF1DC">🔑</div><div><b>Two-factor sign-in</b><small>Required for every user</small></div></div>
     <div class="badge a" data-in="2.4" data-fx="left"><div class="ic" style="background:#E2ECFC">🔒</div><div><b>256-bit encryption at rest</b><small>Plus TLS on every connection</small></div></div>
     <div class="badge a" data-in="2.9" data-fx="left"><div class="ic" style="background:#DDF3F2">💾</div><div><b>Daily encrypted backups</b><small>Every access logged in the audit trail</small></div></div>
@@ -146,6 +155,7 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
   <div class="price feat a" data-in="1.3" data-fx="up" style="left:740px"><div class="tag">Most popular</div><h3>Gold</h3><p class="blurb">A busy PI clinic</p><div class="amt">$59<span>/month</span></div><ul><li>300 open cases · 10 users</li><li>Daily huddle sheet</li><li>Everything in Silver</li></ul></div>
   <div class="price a" data-in="1.7" data-fx="up" style="left:1250px"><h3>Platinum</h3><p class="blurb">Multiple doctors or locations</p><div class="amt">$79<span>/month</span></div><ul><li>Unlimited cases & users</li><li>Email digest · locations</li><li>Everything in Gold</li></ul></div>
   <div class="a" data-in="2.6" data-fx="up" style="position:absolute;left:0;right:0;top:860px;text-align:center;font-size:30px;font-weight:700;color:var(--green2)">14-day free trial · No credit card · 2 months free on annual plans</div>
+  <div class="a" data-in="3.0" data-fx="up" style="position:absolute;left:0;right:0;top:920px;text-align:center;font-size:24px;color:var(--navy)">Every plan: HIPAA safeguards, two-factor sign-in, encryption and a signed BAA</div>
 </section>
 
 <!-- 11. CTA -->
@@ -155,6 +165,7 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
     <h1 class="a white" data-in="0.7" data-fx="up">Put every PI case<br>on track — <span class="hl">this week</span>.</h1>
     <div class="a" data-in="1.6" data-fx="up" style="display:flex;gap:22px;align-items:center"><span class="btn">Start your free trial</span><span class="btn ghost">Request a demo</span></div>
     <p class="a" data-in="2.4" data-fx="up" style="font-size:30px;color:rgba(255,255,255,.85)"><b style="color:#fff">injurycase.com</b> &nbsp;·&nbsp; Demos: support@injurycase.com</p>
+    <div class="a" data-in="2.9" data-fx="up"><span class="hipaa"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#1FA866"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready <span>· Business Associate Agreement included</span></span></div>
   </div>
   <div class="a" data-in="2.0" data-fx="zoom" style="position:absolute;right:190px;top:260px;background:#fff;border-radius:24px;padding:26px;text-align:center;width:380px">
     <img src="assets/qr.svg" style="width:328px;height:328px;display:block"><div style="font-size:22px;font-weight:700;color:var(--navy);margin-top:14px">Scan to start free</div></div>
@@ -162,6 +173,8 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
 </section>
 
 <div class="progress" id="prog"></div>
+<template id="corner"><div class="corner"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#1FA866"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready <span>· BAA included</span></div></template>
+<script>document.querySelectorAll('.scene.light').forEach((sc) => sc.appendChild(document.getElementById('corner').content.cloneNode(true)));</script>
 <script>
 // Scene durations come from timeline.json (written by build_video.py to fit
 // each scene's voiceover); these defaults are the silent-cut timings.

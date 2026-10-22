@@ -152,6 +152,7 @@ function showLogin(message) {
     <div class="err" data-role="err">${esc(message || '')}</div>
     <button class="btn" type="submit">Sign in</button>
     <p class="small">Authorized personnel only. All access to patient records is logged.</p>
+    <p class="small hipaa-note"><b>HIPAA-ready</b> · Business Associate Agreement · encrypted · two-factor sign-in</p>
     <p class="auth-switch">New practice? <a href="#signup" data-act="show-signup">Start a free trial</a></p>
   </form>`);
   document.getElementById('li-email').focus();
