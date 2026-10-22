@@ -451,3 +451,8 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .fb-list{list-style:none;display:grid;gap:8px;margin-top:6px;max-height:240px;overflow:auto;}
 .fb-list li{border:1px solid var(--line);border-radius:8px;padding:8px 10px;}
 .fb-reply{margin-top:4px;padding:6px 8px;background:var(--blue-tint);border-radius:6px;}
+
+/* ---------- locations ---------- */
+.sidebar .loc-switch{margin:0 8px 12px;width:auto;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.2);font-size:0.82rem;padding:5px 8px;}
+.sidebar .loc-switch option{color:var(--navy);}
+.sidebar div.loc-switch{background:none;border:none;color:var(--nav-ink);padding:0 8px;margin-bottom:12px;}

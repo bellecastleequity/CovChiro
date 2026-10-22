@@ -248,7 +248,7 @@ function pid(): int {
 function require_user(?string $perm = null, bool $allowPending = false): array {
     if (empty($_SESSION['uid'])) json_response(['error' => 'Not signed in', 'code' => 'auth'], 401);
     if (!$allowPending && empty($_SESSION['mfa_ok'])) json_response(['error' => 'Two-factor verification required', 'code' => 'mfa'], 401);
-    $stmt = pi_db()->prepare('SELECT id, practice_id, email, name, role, finance_access, active, must_change_password, totp_enabled FROM users WHERE id = ?');
+    $stmt = pi_db()->prepare('SELECT id, practice_id, email, name, role, finance_access, location_id, location_restricted, active, must_change_password, totp_enabled FROM users WHERE id = ?');
     $stmt->execute([$_SESSION['uid']]);
     $user = $stmt->fetch();
     if (!$user || !$user['active']) {
@@ -274,7 +274,28 @@ function require_user(?string $perm = null, bool $allowPending = false): array {
         audit('access_denied', 'permission', $perm, null, $user);
         json_response(['error' => 'Your role does not allow this.'], 403);
     }
+    current_user($user);
     return $user;
+}
+
+function current_user(?array $set = null): ?array {
+    static $user = null;
+    if ($set !== null) $user = $set;
+    return $user;
+}
+
+// Team members limited to one location see only that location's cases.
+// Returns the location id to restrict to, or null for everyone else.
+function restricted_location(): ?int {
+    $u = current_user();
+    return $u && !empty($u['location_restricted']) && $u['location_id'] ? (int)$u['location_id'] : null;
+}
+
+// SQL to append to a query on cases (alias $a) for the current user's
+// location restriction: [' AND ...', args].
+function case_scope(string $a = 'c'): array {
+    $loc = restricted_location();
+    return $loc ? [" AND $a.location_id = ?", [$loc]] : ['', []];
 }
 
 // ========== AUDIT ==========
@@ -365,8 +386,9 @@ function present_audit(array $r, array $user): array {
 // ========== SHARED LOOKUPS ==========
 // A case id from another practice is simply "not found".
 function case_or_404(int $id): array {
-    $stmt = pi_db()->prepare('SELECT * FROM cases WHERE id = ? AND practice_id = ?');
-    $stmt->execute([$id, pid()]);
+    [$scope, $sargs] = case_scope('cases');
+    $stmt = pi_db()->prepare('SELECT * FROM cases WHERE id = ? AND practice_id = ?' . $scope);
+    $stmt->execute([$id, pid(), ...$sargs]);
     $row = $stmt->fetch();
     if (!$row) json_response(['error' => 'Case not found'], 404);
     return $row;
@@ -378,12 +400,14 @@ function case_or_404(int $id): array {
 function child_or_404(string $table, int $id, ?int $caseId = null): array {
     static $tables = ['referrals', 'visits', 'outcomes', 'correspondence', 'ledger', 'tasks', 'documents', 'coverages', 'outreach'];
     if (!in_array($table, $tables, true)) throw new InvalidArgumentException('bad table');
+    $loc = restricted_location();
     if ($table === 'tasks') {
-        $sql = 'SELECT * FROM tasks WHERE id = ? AND practice_id = ? AND archived_at IS NULL';
-        $args = [$id, pid()];
+        $sql = 'SELECT t.* FROM tasks t WHERE t.id = ? AND t.practice_id = ? AND t.archived_at IS NULL'
+            . ($loc ? ' AND (t.case_id IS NULL OR t.case_id IN (SELECT id FROM cases WHERE location_id = ?))' : '');
+        $args = $loc ? [$id, pid(), $loc] : [$id, pid()];
     } else {
-        $sql = "SELECT t.* FROM $table t JOIN cases c ON c.id = t.case_id WHERE t.id = ? AND c.practice_id = ?";
-        $args = [$id, pid()];
+        $sql = "SELECT t.* FROM $table t JOIN cases c ON c.id = t.case_id WHERE t.id = ? AND c.practice_id = ?" . ($loc ? ' AND c.location_id = ?' : '');
+        $args = $loc ? [$id, pid(), $loc] : [$id, pid()];
     }
     if ($caseId !== null) { $sql .= ' AND t.case_id = ?'; $args[] = $caseId; }
     $stmt = pi_db()->prepare($sql);

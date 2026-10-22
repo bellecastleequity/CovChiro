@@ -22,7 +22,7 @@ const CASE_FIELDS = [
     'attorney_contact_id' => 'contact', 'emc_status' => ['pending','yes','no'],
     'lop_signed_on' => 'date', 'lop_acknowledged_on' => 'date',
     'balance_forwarded_on' => 'date', 'balance_forwarded_amount' => 'money',
-    'actively_treating' => 'bool', 'provider_user_id' => 'user', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
+    'actively_treating' => 'bool', 'provider_user_id' => 'user', 'location_id' => 'location', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
     'mmi_date' => 'date', 'maintenance_every_days' => 'int', 'plan_visits_per_week' => 'money', 'plan_set_on' => 'date',
     'paralegal' => 'str:160', 'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
     'limits_source' => 'str:160', 'limits_noted_on' => 'date',
@@ -45,7 +45,7 @@ const CHILD_SPECS = [
     ]],
     'visits' => ['perm' => 'clinical.write', 'required' => ['visit_date'], 'fields' => [
         'visit_date' => 'date', 'visit_type' => ['initial','treatment','re_exam','maintenance','discharge','no_show'],
-        'provider_user_id' => 'user', 'cpt_codes' => 'str:255', 'dwc25_sent' => 'bool', 'notes' => 'enc',
+        'provider_user_id' => 'user', 'location_id' => 'location', 'cpt_codes' => 'str:255', 'dwc25_sent' => 'bool', 'notes' => 'enc',
     ]],
     // Front desk enters insurance at intake; billing updates it later.
     'coverages' => ['perm_any' => ['case.write', 'finance.write'], 'required' => ['type'], 'fields' => [
@@ -102,6 +102,17 @@ function clean_fields(array $spec, array $in, ?int $caseId = null): array {
             $out[$name] = $id;
         }
         elseif ($type === 'enc') $out[$name . '_enc'] = enc(str_or_null($v, 20000));
+        elseif ($type === 'location') {
+            $id = ($v === null || $v === '') ? null : (int)$v;
+            if ($id) {
+                $stmt = pi_db()->prepare('SELECT id FROM locations WHERE id = ? AND practice_id = ?');
+                $stmt->execute([$id, pid()]);
+                if (!$stmt->fetch()) json_response(['error' => "Unknown $name"], 400);
+            }
+            // Someone limited to one location can't move a case or visit elsewhere.
+            if (restricted_location() && $id !== restricted_location()) json_response(['error' => 'You can only use your own location.'], 403);
+            $out[$name] = $id;
+        }
         elseif ($type === 'contact' || $type === 'user') {
             $id = ($v === null || $v === '') ? null : (int)$v;
             if ($id) {
@@ -145,6 +156,16 @@ function patient_name(array $p): string {
     return trim($p['first_name'] . ' ' . $p['last_name']);
 }
 
+// ---------- location / provider filters ----------
+// Case-list style filters from the query string (?location=, ?provider=)
+// plus the user's location restriction, for a query on cases alias $a.
+function case_filters(string $a = 'c'): array {
+    [$sql, $args] = case_scope($a);
+    if (!empty($_GET['location']) && !restricted_location()) { $sql .= " AND $a.location_id = ?"; $args[] = (int)$_GET['location']; }
+    if (!empty($_GET['provider'])) { $sql .= " AND $a.provider_user_id = ?"; $args[] = (int)$_GET['provider']; }
+    return [$sql, $args];
+}
+
 // ---------- list ----------
 function handle_list() {
     $user = require_user('case.read');
@@ -157,6 +178,8 @@ function handle_list() {
     elseif (isset(STAGES[$stage])) { $where[] = 'c.stage = ?'; $args[] = $stage; }
     if (!empty($_GET['attorney'])) { $where[] = 'c.attorney_contact_id = ?'; $args[] = (int)$_GET['attorney']; }
     if (!empty($_GET['benefits'])) { $where[] = 'c.benefits = ?'; $args[] = $_GET['benefits']; }
+    [$fsql, $fargs] = case_filters('c');
+    if ($fsql) { $where[] = '1=1' . $fsql; array_push($args, ...$fargs); }
     if (($q = trim($_GET['q'] ?? '')) !== '') {
         $where[] = '(p.first_name LIKE ? OR p.last_name LIKE ? OR CONCAT(p.first_name, " ", p.last_name) LIKE ? OR c.case_number LIKE ?)';
         $like = '%' . $q . '%';
@@ -181,6 +204,7 @@ function handle_list() {
             'firstVisit' => $c['first_visit'], 'lastVisit' => $x['lastVisit'], 'lastCorrespondence' => $x['lastCorrespondence'],
             'attorney' => trim(($c['atty_org'] ?? '') . ($c['atty_name'] ? ' — ' . $c['atty_name'] : ''), ' —'),
             'activelyTreating' => (bool)$c['actively_treating'], 'emc' => $c['emc_status'],
+            'locationId' => $c['location_id'] ? (int)$c['location_id'] : null, 'providerId' => $c['provider_user_id'] ? (int)$c['provider_user_id'] : null,
             'balance' => $bal ? $x['totals']['total_balance'] : null, 'insuranceBalance' => $bal ? $x['totals']['insurance_balance'] : null, 'patientBalance' => $bal ? $x['totals']['patient_balance'] : null,
             'alerts' => count($alerts), 'highAlerts' => count(array_filter($alerts, fn($a) => $a['level'] === 'high')),
             'checklistDone' => count(array_filter($x['checklist'], fn($i) => in_array($i['status'], ['done', 'na'], true))),
@@ -302,6 +326,8 @@ function handle_create() {
         $patientId = insert_row('patients', $p);
     }
     $cols = clean_fields(CASE_FIELDS, $b['case'] ?? []);
+    if (restricted_location()) $cols['location_id'] = restricted_location();
+    elseif (empty($cols['location_id']) && !empty(current_user()['location_id'])) $cols['location_id'] = (int)current_user()['location_id'];
     $cols['practice_id'] = pid();
     $cols['patient_id'] = $patientId;
     $cols['case_number'] = next_case_number($pdo);
@@ -396,6 +422,21 @@ function handle_milestone() {
     json_response(full_case($id, $user));
 }
 
+// The practice's letterhead, with the case location's address and numbers
+// when the case belongs to a location.
+function letterhead(array $case): array {
+    $p = current_practice();
+    if (!empty($case['location_id'])) {
+        $s = pi_db()->prepare('SELECT * FROM locations WHERE id = ? AND practice_id = ?');
+        $s->execute([$case['location_id'], pid()]);
+        if ($l = $s->fetch()) {
+            $p['name'] = $p['name'] . ($l['name'] !== $p['name'] ? ' — ' . $l['name'] : '');
+            foreach (['address', 'phone', 'fax'] as $k) if (!empty($l[$k])) $p[$k] = $l[$k];
+        }
+    }
+    return $p;
+}
+
 // ---------- patient file export ----------
 // A records-ready summary of the case workup for a records request
 // (insurer, defense counsel, the patient's attorney). Deliberately limited
@@ -423,10 +464,13 @@ function handle_export_file() {
     $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
     $date = fn($s) => $s ? date('m/d/Y', strtotime($s)) : '—';
     $on = fn($k) => in_array($k, $inc, true);
-    $practice = current_practice();
+    $practice = letterhead($c);
     $provider = null;
     foreach (pi_db()->query('SELECT id, name FROM users WHERE practice_id = ' . (int)pid()) as $u) if ((int)$u['id'] === (int)$c['provider_user_id']) $provider = $u['name'];
     $atty = $d['contacts']['attorney_contact_id'] ?? null;
+    $locNames = [];
+    foreach (pi_db()->query('SELECT id, name FROM locations WHERE practice_id = ' . (int)pid()) as $l) $locNames[(int)$l['id']] = $l['name'];
+    $multiLoc = count(array_unique(array_filter(array_column($d['visits'], 'location_id')))) > 1;
     $visitLabel = ['initial' => 'Initial examination', 'treatment' => 'Treatment', 're_exam' => 'Re-examination', 'maintenance' => 'Maintenance care', 'discharge' => 'Discharge examination', 'no_show' => 'Missed appointment'];
     $refStatus = ['ordered' => 'Ordered', 'scheduled' => 'Scheduled', 'completed' => 'Completed', 'report_received' => 'Report received', 'no_show' => $on('missed') ? 'Appointment missed' : 'Not completed', 'cancelled' => 'Cancelled'];
     $sections = [];
@@ -449,9 +493,9 @@ function handle_export_file() {
         $rows = '';
         foreach ($visits as $v) {
             if ($v['visit_type'] === 'no_show' && !$on('missed')) continue;
-            $rows .= '<tr><td>' . $h($date($v['visit_date'])) . '</td><td>' . $h($visitLabel[$v['visit_type']] ?? $v['visit_type']) . '</td><td>' . $h($v['provider_name'] ?? '') . '</td><td>' . $h($v['icd_codes'] ?? '') . '</td></tr>';
+            $rows .= '<tr><td>' . $h($date($v['visit_date'])) . '</td><td>' . $h($visitLabel[$v['visit_type']] ?? $v['visit_type']) . '</td><td>' . $h($v['provider_name'] ?? '') . '</td>' . ($multiLoc ? '<td>' . $h($locNames[(int)$v['location_id']] ?? '') . '</td>' : '') . '<td>' . $h($v['icd_codes'] ?? '') . '</td></tr>';
         }
-        $sections[] = ['Visits', $rows ? '<table><thead><tr><th>Date</th><th>Visit</th><th>Provider</th><th>Diagnosis codes (ICD-10)</th></tr></thead><tbody>' . $rows . '</tbody></table>' : '<p>No visits recorded.</p>'];
+        $sections[] = ['Visits', $rows ? '<table><thead><tr><th>Date</th><th>Visit</th><th>Provider</th>' . ($multiLoc ? '<th>Location</th>' : '') . '<th>Diagnosis codes (ICD-10)</th></tr></thead><tbody>' . $rows . '</tbody></table>' : '<p>No visits recorded.</p>'];
     }
     if ($on('referrals')) {
         $rows = '';
@@ -718,6 +762,7 @@ function handle_child_save() {
             $cols += ['priority' => (int)$n->fetchColumn() + 1, 'status' => 'active'];
             if ($cols['type'] === 'pip' && !isset($cols['benefit_limit'])) $cols['benefit_limit'] = PIP_DEFAULT_LIMIT;
         }
+        if ($table === 'visits' && empty($cols['location_id']) && $case['location_id']) $cols['location_id'] = (int)$case['location_id'];
         $cols['case_id'] = $caseId;
         $cols['created_by'] = $user['id'];
         $cols['created_at'] = now_str();
@@ -852,9 +897,9 @@ function load_tasks(string $where, array $args, int $limit = 500): array {
     $stmt = $pdo->prepare("SELECT t.*, c.case_number, p.first_name, p.last_name, cu.name created_by_name, du.name done_by_name
         FROM tasks t LEFT JOIN cases c ON c.id = t.case_id LEFT JOIN patients p ON p.id = c.patient_id
         LEFT JOIN users cu ON cu.id = t.created_by LEFT JOIN users du ON du.id = t.done_by
-        WHERE t.practice_id = ? AND t.archived_at IS NULL AND ($where)
+        WHERE t.practice_id = ? AND t.archived_at IS NULL AND ($where)" . (restricted_location() ? ' AND (t.case_id IS NULL OR c.location_id = ?)' : '') . "
         ORDER BY t.done_at IS NOT NULL, t.done_at DESC, t.due_on IS NULL, t.due_on, t.priority = 'high' DESC, t.id LIMIT $limit");
-    $stmt->execute([pid(), ...$args]);
+    $stmt->execute([pid(), ...$args, ...(restricted_location() ? [restricted_location()] : [])]);
     $rows = $stmt->fetchAll();
     $assignees = [];
     if ($rows) {
@@ -990,14 +1035,15 @@ function handle_activity() {
 function handle_dashboard() {
     $user = require_user('case.read');
     $pdo = pi_db();
+    [$fsql, $fargs] = case_filters('c');
     $stmt = $pdo->prepare("SELECT c.*, p.first_name, p.last_name FROM cases c JOIN patients p ON p.id = c.patient_id
-        WHERE c.practice_id = ? AND c.archived_at IS NULL AND c.stage IN ('" . implode("','", OPEN_STAGES) . "')");
-    $stmt->execute([pid()]);
+        WHERE c.practice_id = ? AND c.archived_at IS NULL AND c.stage IN ('" . implode("','", OPEN_STAGES) . "')" . $fsql);
+    $stmt->execute([pid(), ...$fargs]);
     $cases = $stmt->fetchAll();
     $ctx = bulk_case_context($pdo, $cases);
     $byStage = array_fill_keys(array_keys(STAGES), 0);
-    $stmt = $pdo->prepare('SELECT stage, COUNT(*) n FROM cases WHERE practice_id = ? AND archived_at IS NULL GROUP BY stage');
-    $stmt->execute([pid()]);
+    $stmt = $pdo->prepare('SELECT stage, COUNT(*) n FROM cases c WHERE c.practice_id = ? AND c.archived_at IS NULL' . $fsql . ' GROUP BY stage');
+    $stmt->execute([pid(), ...$fargs]);
     foreach ($stmt as $r) $byStage[$r['stage']] = (int)$r['n'];
 
     $alerts = [];
@@ -1027,11 +1073,11 @@ function handle_dashboard() {
     $tasks = load_tasks('t.done_at IS NULL AND (t.due_on IS NULL OR t.due_on <= ?) AND (EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?) OR NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id))',
         [add_days(date('Y-m-d'), 7), $user['id']], 50);
 
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM visits v JOIN cases c ON c.id = v.case_id WHERE c.practice_id = ? AND v.archived_at IS NULL AND v.visit_type <> 'no_show' AND v.visit_date >= ?");
-    $stmt->execute([pid(), date('Y-m-d', strtotime('monday this week'))]);
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM visits v JOIN cases c ON c.id = v.case_id WHERE c.practice_id = ? AND v.archived_at IS NULL AND v.visit_type <> 'no_show' AND v.visit_date >= ?" . $fsql);
+    $stmt->execute([pid(), date('Y-m-d', strtotime('monday this week')), ...$fargs]);
     $visitsThisWeek = (int)$stmt->fetchColumn();
-    $stmt = $pdo->prepare('SELECT COUNT(*) FROM cases WHERE practice_id = ? AND archived_at IS NULL AND created_at >= ?');
-    $stmt->execute([pid(), date('Y-m-01')]);
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM cases c WHERE c.practice_id = ? AND c.archived_at IS NULL AND c.created_at >= ?' . $fsql);
+    $stmt->execute([pid(), date('Y-m-01'), ...$fargs]);
     $newThisMonth = (int)$stmt->fetchColumn();
     audit('view', 'dashboard', null, null, $user);
     json_response([
@@ -1054,8 +1100,8 @@ function handle_ar_report() {
     $stmt = $pdo->prepare('SELECT c.*, p.first_name, p.last_name, a.organization atty_org, a.name atty_name, a.email atty_email
         FROM cases c JOIN patients p ON p.id = c.patient_id
         LEFT JOIN contacts a ON a.id = c.attorney_contact_id
-        WHERE c.practice_id = ? AND c.archived_at IS NULL' . ($includeClosed ? '' : " AND c.stage NOT IN ('closed','dropped')") . ' ORDER BY p.last_name, p.first_name');
-    $stmt->execute([pid()]);
+        WHERE c.practice_id = ? AND c.archived_at IS NULL' . ($includeClosed ? '' : " AND c.stage NOT IN ('closed','dropped')") . case_filters('c')[0] . ' ORDER BY p.last_name, p.first_name');
+    $stmt->execute([pid(), ...case_filters('c')[1]]);
     $cases = $stmt->fetchAll();
     $ctx = bulk_case_context($pdo, $cases);
     $rows = [];
@@ -1142,9 +1188,9 @@ function handle_letter() {
         $dates = array_map(fn($x) => date('F j', strtotime($x)), $st['dates']);
         $body = '<p>We are writing to ask for your help reaching your client to schedule their next appointment.</p>'
             . '<p>' . ($st['lastVisit'] ? 'Your client was last seen in our office on ' . $h(date('F j, Y', strtotime($st['lastVisit']))) . '. ' : '')
-            . ($dates ? 'Our staff tried to reach them ' . ($methods ? 'by ' . $h(implode(' and ', $methods)) . ' ' : '') . 'on ' . $h(implode(', ', $dates)) . ' but have not been able to schedule a follow-up visit. ' : '')
+            . ($dates ? 'Our staff tried to reach them ' . ($methods ? 'by ' . $h(implode(' and ', $methods)) . ' ' : '') . 'on ' . $h(count($dates) > 1 ? implode(', ', array_slice($dates, 0, -1)) . ' and ' . end($dates) : $dates[0]) . ' but have not been able to schedule a follow-up visit. ' : '')
             . 'The treating provider has recommended continued care.</p>'
-            . '<p>We would appreciate it if you could ask your client to contact our office' . (current_practice()['phone'] ? ' at ' . $h(current_practice()['phone']) : '') . ' at their earliest convenience.</p>'
+            . '<p>We would appreciate it if you could ask your client to contact our office' . (($ph = letterhead($c)['phone'] ?? null) ? ' at ' . $h($ph) : '') . ' at their earliest convenience.</p>'
             . '<p>Thank you for your assistance.</p>';
     } elseif ($type === 'tx_complete') {
         $title = 'Treatment complete';
@@ -1188,7 +1234,7 @@ function handle_letter() {
     header('Content-Type: text/html; charset=utf-8');
     header('Cache-Control: no-store');
     header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src 'self'");
-    $practice = current_practice();
+    $practice = letterhead($c);
     $addr = nl2br($h($practice['address'] ?? ''));
     $contactLine = implode(' · ', array_filter([$practice['phone'] ? 'Phone ' . $h($practice['phone']) : null, $practice['fax'] ? 'Fax ' . $h($practice['fax']) : null]));
     $attn = $c['paralegal'] ? 'Attn: ' . $h($c['paralegal']) . '<br>' : '';

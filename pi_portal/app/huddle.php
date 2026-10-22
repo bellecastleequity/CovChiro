@@ -21,9 +21,11 @@ function build_huddle(PDO $pdo, array $user, int $practiceId): array {
     $today = date('Y-m-d');
     $rules = practice_rules();
     $bal = fin_can($user, 'balances');
+    // Location restriction (and, on the page, the location/provider filters).
+    [$fsql, $fargs] = function_exists('case_filters') ? case_filters('c') : case_scope('c');
     $stmt = $pdo->prepare("SELECT c.*, p.first_name, p.last_name FROM cases c JOIN patients p ON p.id = c.patient_id
-        WHERE c.practice_id = ? AND c.archived_at IS NULL AND c.stage IN ('" . implode("','", OPEN_STAGES) . "')");
-    $stmt->execute([$practiceId]);
+        WHERE c.practice_id = ? AND c.archived_at IS NULL AND c.stage IN ('" . implode("','", OPEN_STAGES) . "')" . $fsql);
+    $stmt->execute([$practiceId, ...$fargs]);
     $cases = $stmt->fetchAll();
     $ctx = bulk_case_context($pdo, $cases);
     $sections = array_map(fn($t) => ['title' => $t, 'items' => []], HUDDLE_SECTIONS);
@@ -90,8 +92,9 @@ function build_huddle(PDO $pdo, array $user, int $practiceId): array {
             (SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR ', ') FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id = t.id) assignees,
             (SELECT GROUP_CONCAT(ta.user_id) FROM task_assignees ta WHERE ta.task_id = t.id) assignee_ids
         FROM tasks t LEFT JOIN cases c ON c.id = t.case_id LEFT JOIN patients p ON p.id = c.patient_id
-        WHERE t.practice_id = ? AND t.done_at IS NULL AND t.archived_at IS NULL AND t.due_on IS NOT NULL AND t.due_on <= ? ORDER BY t.due_on, t.priority = 'high' DESC");
-    $t->execute([$practiceId, $today]);
+        WHERE t.practice_id = ? AND t.done_at IS NULL AND t.archived_at IS NULL AND t.due_on IS NOT NULL AND t.due_on <= ?"
+        . (restricted_location() ? ' AND (t.case_id IS NULL OR c.location_id = ?)' : '') . " ORDER BY t.due_on, t.priority = 'high' DESC");
+    $t->execute([$practiceId, $today, ...(restricted_location() ? [restricted_location()] : [])]);
     foreach ($t->fetchAll() as $r) {
         $sections['tasks']['items'][] = ['caseId' => $r['case_id'] ? (int)$r['case_id'] : null, 'patient' => $r['case_id'] ? trim($r['first_name'] . ' ' . $r['last_name']) : null,
             'caseNumber' => $r['case_number'], 'text' => $r['title'] . ($r['due_on'] < $today ? ' — overdue since ' . us_date($r['due_on']) : ' — due today'),

@@ -64,7 +64,13 @@ function session_payload(?array $u) {
             'outcomeMeasures' => OUTCOME_MEASURES, 'reductionFloorPct' => REDUCTION_FLOOR_PCT,
             'providers' => $q("SELECT id, name FROM users WHERE practice_id = ? AND active = 1 AND role IN ('provider','admin') ORDER BY name"),
             'users' => $q('SELECT id, name FROM users WHERE practice_id = ? AND active = 1 ORDER BY name'),
+            'locations' => $q('SELECT id, name FROM locations WHERE practice_id = ? AND active = 1 ORDER BY name'),
         ];
+        $loc = pi_db()->prepare('SELECT location_id, location_restricted FROM users WHERE id = ?');
+        $loc->execute([$u['id']]);
+        $l = $loc->fetch();
+        $out['user']['locationId'] = $l['location_id'] ? (int)$l['location_id'] : null;
+        $out['user']['locationRestricted'] = (bool)$l['location_restricted'] && $l['location_id'];
     }
     return $out;
 }

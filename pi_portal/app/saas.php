@@ -35,6 +35,8 @@ const FEATURES = [
         'blurb' => "A printable morning team-meeting sheet of everything outstanding: tasks, gaps in care, patients behind plan, referrals due, insurance and attorney items."],
     'email_digest' => ['name' => 'Daily email digest', 'plan' => 'group',
         'blurb' => "A morning email to each team member with counts of what needs attention under the criteria they choose — no patient details in the email."],
+    'locations' => ['name' => 'Multiple locations', 'plan' => 'group',
+        'blurb' => "Run several offices in one account: cases and visits by location, location letterheads, location and provider filters, and team members limited to their own location's patients."],
 ];
 // Shown on every plan card (in all plans).
 const CORE_FEATURES = ['Case tracking & referral guide', 'Case suggestions & policy-limit warnings', 'EHR ledger uploads (any EHR)', 'Tasks, activity & audit log'];

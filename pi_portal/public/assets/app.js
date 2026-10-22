@@ -330,6 +330,22 @@ const NAV = [
   ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'],
 ];
 
+// ---------- locations & providers ----------
+// Location filter for the case list, dashboard, huddle and A/R (a per-
+// browser preference; people limited to one location are filtered by the
+// server regardless). Shown when the practice has more than one location.
+const multiLocation = () => (S.lookups?.locations || []).length > 1;
+const locationName = (id) => (S.lookups?.locations || []).find((l) => +l.id === +id)?.name || '';
+function locFilter() {
+  if (!multiLocation() || S.user?.locationRestricted) return '';
+  let v = null;
+  try { v = localStorage.getItem('ic.loc'); } catch { /* storage unavailable */ }
+  if (v === null) v = S.user?.locationId ? String(S.user.locationId) : '';
+  return v;
+}
+function setLocFilter(v) { try { localStorage.setItem('ic.loc', v); } catch { /* storage unavailable */ } }
+const locQS = () => { const l = locFilter(); return l ? '&location=' + encodeURIComponent(l) : ''; };
+
 // Nav items that are plan features.
 const NAV_FEATURE = { huddle: 'huddle' };
 
@@ -359,6 +375,8 @@ async function startShell() {
   $app.innerHTML = `<div class="shell">
     <nav class="sidebar" aria-label="Main">
       <div class="brand"><img src="assets/logo-horizontal-dark.svg" alt="${esc(S.brand.name)}"><small>${esc(operator ? 'Operator console' : S.practice.name)}</small></div>
+      ${!operator && multiLocation() ? (S.user.locationRestricted ? `<div class="loc-switch small">${esc(locationName(S.user.locationId))}</div>`
+        : `<select class="loc-switch" id="loc-switch" aria-label="Location">${opt('', 'All locations', locFilter())}${S.lookups.locations.map((l) => opt(l.id, l.name, locFilter())).join('')}</select>`) : ''}
       ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}${NAV_FEATURE[k] && !operator && !hasFeature(NAV_FEATURE[k]) ? ` <span class="nav-lock" title="${esc(featureInfo(NAV_FEATURE[k]).planName)} plan">${esc(featureInfo(NAV_FEATURE[k]).planName)}</span>` : ''}</a>`).join('')}
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>
@@ -368,6 +386,7 @@ async function startShell() {
     </nav>
     <div class="main-col"><div id="banner">${bannerHtml()}</div><main class="main" id="main"></main></div>
   </div>`;
+  document.getElementById('loc-switch')?.addEventListener('change', (e) => { setLocFilter(e.target.value); route(); });
   if (operator) { if (!location.hash.startsWith('#/platform')) location.hash = '#/platform'; route(); return; }
   await loadContacts();
   route();
@@ -398,7 +417,7 @@ const phiBanner = '<div class="phi-banner">Contains protected health information
 
 // ---------- dashboard ----------
 async function pageDashboard(main) {
-  const d = await attempt(() => api('cases.php?action=dashboard'));
+  const d = await attempt(() => api('cases.php?action=dashboard' + locQS()));
   if (!d) return;
   const ac = d.alertCounts || {};
   main.innerHTML = `${phiBanner}
@@ -487,14 +506,16 @@ function taskListHtml(tasks, showCase, empty = 'No open tasks.') {
 // ---------- daily huddle ----------
 // The morning team-meeting sheet: everything outstanding, grouped, with
 // space to note who takes each item. Prints cleanly.
+const huddleProvider = { value: '' };
 async function pageHuddle(main) {
   if (!hasFeature('huddle')) { main.innerHTML = `<div class="page-head"><div><h1>Daily huddle</h1></div></div>${upgradeCardHtml('huddle')}`; return; }
-  const r = await attempt(() => api('cases.php?action=huddle'));
+  const r = await attempt(() => api('cases.php?action=huddle' + locQS() + (huddleProvider.value ? '&provider=' + huddleProvider.value : '')));
   if (!r) return;
   const secs = Object.entries(r.sections);
   const total = secs.reduce((n, [, s]) => n + s.items.length, 0);
   const dateText = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   main.innerHTML = `${phiBanner}<div class="page-head"><div><h1>Daily huddle</h1><div class="sub">${esc(r.practice)} · ${esc(dateText)} · ${total} item${total === 1 ? '' : 's'} outstanding</div></div><span class="spacer"></span>
+      <select id="hd-provider" aria-label="Provider">${opt('', 'All providers', huddleProvider.value)}${(S.lookups.providers || []).map((u) => opt(u.id, u.name, huddleProvider.value)).join('')}</select>
       <button class="btn ghost" data-act="huddle-print">Print sheet</button></div>
     <div class="huddle-summary">${secs.map(([k, sec]) => `<a href="#h-${k}" class="hs ${sec.items.length ? '' : 'zero'}"><span class="n">${sec.items.length}</span><span class="l">${esc(sec.title)}</span></a>`).join('')}</div>
     ${secs.map(([k, sec]) => `<div class="card huddle-sec" id="h-${k}"><div class="card-head"><h2>${esc(sec.title)}</h2><span class="badge-count${sec.items.length ? '' : ' zero'}">${sec.items.length}</span></div>
@@ -504,6 +525,7 @@ async function pageHuddle(main) {
           <td>${esc(i.text)}</td>${k === 'tasks' ? `<td class="small">${esc(i.assignees)}</td>` : ''}<td class="who"></td><td class="done"><span class="box"></span></td></tr>`).join('')}</tbody></table>`
         : '<div class="empty small">Nothing outstanding.</div>'}</div>`).join('')}
     <p class="small muted mt">Thresholds and what's included are set under Practice settings → Daily huddle &amp; email digest.</p>`;
+  main.querySelector('#hd-provider').addEventListener('change', (e) => { huddleProvider.value = e.target.value; pageHuddle(main); });
 }
 
 async function myNotifyModal() {
@@ -522,7 +544,7 @@ async function myNotifyModal() {
 }
 
 // ---------- cases list ----------
-let casesState = { stage: 'open', q: '', benefits: '', attorney: '', sort: 'patient', dir: 1 };
+let casesState = { stage: 'open', q: '', benefits: '', attorney: '', provider: '', sort: 'patient', dir: 1 };
 async function pageCases(main, args) {
   if (args[0] === 'stage' && args[1]) casesState.stage = args[1];
   main.innerHTML = `${phiBanner}<div class="page-head"><div><h1>Cases</h1><div class="sub" id="cases-count"></div></div><span class="spacer"></span>
@@ -532,16 +554,17 @@ async function pageCases(main, args) {
       <select id="cf-stage" aria-label="Stage">${opt('open', 'All open cases', casesState.stage)}${opt('legal', 'Demand / litigation / mediation', casesState.stage)}${opt('all', 'All cases (incl. closed)', casesState.stage)}${entries(S.lookups.stages).map(([k, t]) => opt(k, t, casesState.stage)).join('')}</select>
       <select id="cf-benefits" aria-label="Benefits">${opt('', 'Any benefits')}${entries(S.lookups.benefits).map(([k, t]) => opt(k, t, casesState.benefits)).join('')}</select>
       <select id="cf-atty" aria-label="Attorney">${opt('', 'Any attorney')}${S.contacts.filter((c) => c.type === 'attorney').map((c) => opt(c.id, contactName(c), casesState.attorney)).join('')}</select>
+      <select id="cf-provider" aria-label="Provider">${opt('', 'Any provider')}${S.user.role === 'provider' ? opt(S.user.id, 'My cases', casesState.provider) : ''}${(S.lookups.providers || []).filter((u) => +u.id !== +S.user.id || S.user.role !== 'provider').map((u) => opt(u.id, u.name, casesState.provider)).join('')}</select>
     </div>
     <div class="card"><div class="table-wrap" id="cases-table"><div class="empty">Loading…</div></div></div>`;
   let timer;
   const reload = async () => {
-    const qs = new URLSearchParams({ action: 'list', stage: casesState.stage === 'all' ? 'all' : casesState.stage, q: casesState.q, benefits: casesState.benefits, attorney: casesState.attorney });
-    const r = await attempt(() => api('cases.php?' + qs));
+    const qs = new URLSearchParams({ action: 'list', stage: casesState.stage === 'all' ? 'all' : casesState.stage, q: casesState.q, benefits: casesState.benefits, attorney: casesState.attorney, provider: casesState.provider });
+    const r = await attempt(() => api('cases.php?' + qs + locQS()));
     if (r) renderCasesTable(r.cases);
   };
   main.querySelector('#cf-q').addEventListener('input', (e) => { casesState.q = e.target.value; clearTimeout(timer); timer = setTimeout(reload, 300); });
-  [['#cf-stage', 'stage'], ['#cf-benefits', 'benefits'], ['#cf-atty', 'attorney']].forEach(([sel, key]) => main.querySelector(sel).addEventListener('change', (e) => { casesState[key] = e.target.value; reload(); }));
+  [['#cf-stage', 'stage'], ['#cf-benefits', 'benefits'], ['#cf-atty', 'attorney'], ['#cf-provider', 'provider']].forEach(([sel, key]) => main.querySelector(sel).addEventListener('change', (e) => { casesState[key] = e.target.value; reload(); }));
   reload();
 }
 
@@ -592,6 +615,7 @@ const caseDefs = () => [
   { n: 'attorney_contact_id', l: 'Attorney', t: 'contact', ctype: ['attorney'] },
   { n: 'paralegal', l: 'Paralegal (name, phone / email)', ph: 'e.g. Maria — 305-555-0100' },
   { n: 'provider_user_id', l: 'Treating provider', t: 'user' },
+  ...((S.lookups.locations || []).length && !S.user.locationRestricted ? [{ n: 'location_id', l: 'Location', t: 'select', blank: '—', opts: S.lookups.locations.map((l) => [l.id, l.name]) }] : []),
   { n: 'head_injury', l: 'Head injury? (hit head, lost consciousness, concussion symptoms)', t: 'select', blank: false, opts: HEAD_INJURY_OPTS },
 ];
 
@@ -701,7 +725,7 @@ function tabOverview(el, d) {
         ${row('Case type', label('injuryTypes', c.injury_type))}
         ${row('Date of injury', fmtDate(c.date_of_injury))}${row('First visit', fmtDate(c.first_visit))}
         ${c.mmi_date ? row('MMI', fmtDate(c.mmi_date) + (c.maintenance_every_days && !c.discharge_date ? ' · maintenance ' + maintenanceLabel(+c.maintenance_every_days) : '')) : ''}${row('Discharged', fmtDate(c.discharge_date))}
-        ${row('Treating provider', provider?.name)}
+        ${row('Treating provider', provider?.name)}${c.location_id ? row('Location', locationName(c.location_id)) : ''}
         ${row('Referral source', c.referral_source)}${contactRow('Referred by', k.referred_by_contact_id)}${c.referred_by_text ? row('Referred by (note)', c.referred_by_text) : ''}
         ${contactRow('Attorney', k.attorney_contact_id)}${c.paralegal ? row('Paralegal', c.paralegal) : ''}
         <dt>Insurance</dt><dd>${(d.coverages || []).length ? d.coverages.map((cv) => `<div>${esc(label('coverageTypes', cv.type))}${cv.carrier_org || cv.carrier_text ? ' — ' + esc(cv.carrier_org || cv.carrier_text) : ''} <span class="chip ${cv.status === 'active' ? 'teal' : 'na'}">${esc(label('coverageStatus', cv.status))}</span>${cv.claim_number ? `<div class="small muted">Claim # ${esc(cv.claim_number)}</div>` : ''}</div>`).join('') : '<span class="muted">None — patient balance / LOP</span>'}</dd>
@@ -1071,7 +1095,9 @@ const VISIT_TYPES = [['initial', 'Initial exam'], ['treatment', 'Treatment'], ['
 const visitDefs = () => [
   { n: 'visit_date', l: 'Date of service', t: 'date', req: true },
   { n: 'visit_type', l: 'Visit type', t: 'select', blank: false, opts: VISIT_TYPES },
-  { n: 'provider_user_id', l: 'Provider', t: 'user' }, { n: 'cpt_codes', l: 'CPT codes', ph: '98941, 97140, 97110' },
+  { n: 'provider_user_id', l: 'Provider', t: 'user' },
+  ...(multiLocation() && !S.user.locationRestricted ? [{ n: 'location_id', l: 'Location', t: 'select', blank: 'Case location', opts: S.lookups.locations.map((l) => [l.id, l.name]) }] : []),
+  { n: 'cpt_codes', l: 'CPT codes', ph: '98941, 97140, 97110' },
   ...(S.caseData?.case.injury_type === 'workers_comp' ? [{ n: 'dwc25_sent', l: 'DWC-25 sent to carrier', t: 'check' }] : []),
   { n: 'notes', l: 'Visit note', t: 'textarea' },
 ];
@@ -1799,7 +1825,7 @@ const AUDIT_VERBS = {
 const AUDIT_THINGS = {
   case: 'the case', visits: 'a visit', referrals: 'a co-management referral', coverages: 'insurance coverage', outcomes: 'an outcome assessment',
   correspondence: 'a correspondence entry', outreach: 'an outreach attempt', ledger: 'a ledger entry', task: 'task', milestone: 'checklist item', document: 'a document', contact: 'contact',
-  user: 'user', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
+  user: 'user', location: 'location', feedback: 'feature suggestion', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
   audit_log: 'the audit log', huddle: 'the daily huddle', permission: '', platform_practices: 'the practice list', care_guide: 'the referral guide',
 };
 const FIELD_NAMES = {
@@ -1811,7 +1837,7 @@ const FIELD_NAMES = {
   dob: 'Date of birth', patient_dob: 'Date of birth', patient_first_name: 'First name', patient_last_name: 'Last name', patient_phone: 'Phone', patient_email: 'Email',
   patient_address: 'Address', cpt_codes: 'CPT codes', dwc25_sent: 'DWC-25 sent', staff_finance: 'Staff can see', finance_access: 'Full financial access',
   ehr_name: 'EHR', benefit_limit: 'Benefit limit', entry_date: 'Date', kind: 'Type', bucket: 'Owed by', status_on: 'Status date', insurance_balance: 'Insurance balance',
-  patient_balance: 'Patient balance', injury_type: 'Case type', outreach_hold_on: 'Calls paused (attorney notified)', paralegal: 'Paralegal', attempted_on: 'Date', method: 'How', outcome: 'Outcome', plan_visits_per_week: 'Treatment plan (visits/week)', plan_set_on: 'Plan since', notify_digest: 'Daily email digest',
+  patient_balance: 'Patient balance', injury_type: 'Case type', location_id: 'Location', location_restricted: 'Limited to location', outreach_hold_on: 'Calls paused (attorney notified)', paralegal: 'Paralegal', attempted_on: 'Date', method: 'How', outcome: 'Outcome', plan_visits_per_week: 'Treatment plan (visits/week)', plan_set_on: 'Plan since', notify_digest: 'Daily email digest',
   gap_days: 'Gap days', adherence_pct: 'Adherence threshold %', weekdays_only: 'Weekdays only', criteria: 'Criteria', bi_limit: 'At-fault BI limit', um_limit: 'UM limit', other_medical_estimate: "Other providers' bills (est.)",
   liability_carrier: 'At-fault insurer', limits_source: 'Limits source', limits_noted_on: 'Limits as of', remaining_reported: 'PIP remaining (carrier)', remaining_reported_on: 'Remaining as of', visit_type: 'Visit type', head_injury: 'Head injury',
   guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)',
@@ -1906,7 +1932,7 @@ async function pageTasks(main) {
 // ---------- A/R ----------
 let arState = { all: false, sort: 'patient', dir: 1 };
 async function pageAR(main) {
-  const r = await attempt(() => api('cases.php?action=ar_report' + (arState.all ? '&all=1' : '')));
+  const r = await attempt(() => api('cases.php?action=ar_report' + (arState.all ? '&all=1' : '') + locQS()));
   if (!r) return;
   const rows = r.rows;
   const { sort, dir } = arState;
@@ -2004,6 +2030,8 @@ function userModal(existing) {
     { n: 'role', l: 'Role', t: 'select', blank: false, opts: [['staff', 'Staff'], ['billing', 'Billing'], ['provider', 'Provider'], ['admin', 'Admin']] },
     { n: 'finance_access', l: 'Grant full financial access (staff role only)', t: 'check' },
     ...(hasFeature('email_digest') ? [{ n: 'notify_digest', l: 'Daily email digest', t: 'check' }] : []),
+    ...((S.lookups.locations || []).length ? [{ n: 'location_id', l: 'Home location', t: 'select', blank: '—', opts: S.lookups.locations.map((l) => [l.id, l.name]) },
+      { n: 'location_restricted', l: "Only see this location's patients", t: 'check' }] : []),
     ...(existing ? [{ n: 'active', l: 'Active', t: 'check' }] : [])];
   openModal({ title: existing ? 'Edit user' : 'Add user', body: fieldsHtml(defs, existing || { role: 'staff', notify_digest: 0 }), onOk: async (el) => {
     const r = await api('admin.php?action=user_save', { ...readFields(el, defs), ...(existing ? { id: existing.id } : {}) });
@@ -2084,10 +2112,34 @@ async function pageSettings(main) {
         <div><label for="nr-adh">Behind the treatment plan below (% of planned visits)</label><input type="number" id="nr-adh" min="10" max="100" step="5" value="${p.notifyRules.adherence_pct}"></div>
         <div><label>&nbsp;</label><label class="check"><input type="checkbox" id="nr-weekdays"${p.notifyRules.weekdays_only ? ' checked' : ''}> Weekdays only</label></div></div>
       <button class="btn mt" data-act="save-notify-rules">Save</button></div>
+    <div class="card mt"><div class="card-head"><h2>Locations</h2><span class="spacer"></span>${hasFeature('locations') ? '<button class="btn ghost sm" data-act="location-edit">+ Add location</button>' : ''}</div>
+      <p class="small">Run more than one office in this account: each case belongs to a location (its letterhead is used on letters and exports), lists filter by location, and team members can be limited to their own location's patients.</p>
+      <div id="locations-list" class="mt">${hasFeature('locations') ? '<div class="empty">Loading…</div>' : `<div class="notice">Multiple locations are part of the ${esc(featureInfo('locations').planName)} plan.</div>`}</div></div>
     <div class="card mt"><h2>EHR ledger layouts</h2>
       <p class="small mt">When someone uploads a ledger spreadsheet in a new layout, they match up its columns once and it's saved here. Later uploads in the same layout are read automatically.</p>
       <div id="ehr-formats" class="mt"><div class="empty">Loading…</div></div></div>`;
   loadEhrFormats();
+  loadLocations();
+}
+
+async function loadLocations() {
+  const box = document.getElementById('locations-list');
+  if (!box || !hasFeature('locations')) return;
+  const r = await attempt(() => api('admin.php?action=locations'));
+  if (!r) return;
+  loadLocations.rows = r.locations;
+  box.innerHTML = r.locations.length ? `<table><thead><tr><th>Location</th><th>Address</th><th>Phone / fax</th><th class="num">Open cases</th><th class="num">Team</th><th></th></tr></thead><tbody>
+    ${r.locations.map((l) => `<tr${l.active == 1 ? '' : ' class="muted"'}><td><strong>${esc(l.name)}</strong>${l.active == 1 ? '' : ' <span class="chip na">Inactive</span>'}</td><td class="small">${esc(l.address || '')}</td>
+      <td class="small">${esc([l.phone, l.fax ? 'fax ' + l.fax : ''].filter(Boolean).join(' · '))}</td><td class="num">${l.cases}</td><td class="num">${l.users}</td>
+      <td class="right"><button class="btn ghost sm" data-act="location-edit" data-id="${l.id}">Edit</button></td></tr>`).join('')}</tbody></table>`
+    : '<div class="empty">No locations yet — add your first office.</div>';
+}
+function locationModal(id) {
+  const l = id ? loadLocations.rows.find((x) => +x.id === +id) : { active: 1 };
+  const defs = [{ n: 'name', l: 'Name', req: true, ph: 'e.g. Miami — Coral Way' }, { n: 'address', l: 'Address (letterhead)', t: 'textarea', rows: 2 }, { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' },
+    ...(id ? [{ n: 'active', l: 'Active', t: 'check' }] : [])];
+  openModal({ title: id ? 'Edit location' : 'Add location', okText: 'Save', body: fieldsHtml(defs, l),
+    onOk: async (el) => { await api('admin.php?action=location_save', { ...readFields(el, defs), ...(id ? { id: +id } : {}) }); toast('Saved'); await refreshSession(); loadLocations(); } });
 }
 
 async function loadEhrFormats() {
@@ -2302,6 +2354,7 @@ const ACTIONS = {
   'guide-visit': (el) => visitModal(null, { visit_type: el.dataset.type }),
   'outreach-log': outreachLogModal,
   'export-file': exportFileModal,
+  'location-edit': (el) => locationModal(el.dataset.id ? +el.dataset.id : null),
   'suggest': suggestModal,
   'op-feedback': (el) => feedbackUpdateModal(+el.dataset.id),
   'outreach-hold': outreachHoldModal,

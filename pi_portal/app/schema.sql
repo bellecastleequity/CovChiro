@@ -82,6 +82,20 @@ CREATE TABLE trial_notices (
   FOREIGN KEY (practice_id) REFERENCES practices(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- A practice's offices (Group plan for more than one). Letters and exports
+-- use the case's location for the letterhead.
+CREATE TABLE locations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  address VARCHAR(255) NULL,
+  phone VARCHAR(40) NULL,
+  fax VARCHAR(40) NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL,
+  FOREIGN KEY (practice_id) REFERENCES practices(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- practice_id NULL = a platform operator (you, running the service):
 -- operators manage subscriptions but can never open patient records.
 CREATE TABLE users (
@@ -94,6 +108,10 @@ CREATE TABLE users (
   finance_access TINYINT(1) NOT NULL DEFAULT 0,
   -- Daily email digest: on/off, and which of the practice's criteria this
   -- person wants (comma list; NULL = all).
+  -- Home location (default filter) and, optionally, access limited to the
+  -- cases of that location.
+  location_id INT NULL,
+  location_restricted TINYINT(1) NOT NULL DEFAULT 0,
   notify_digest TINYINT(1) NOT NULL DEFAULT 0,
   notify_criteria VARCHAR(255) NULL,
   password_hash VARCHAR(255) NOT NULL,
@@ -158,6 +176,7 @@ CREATE TABLE cases (
   practice_id INT NOT NULL,
   case_number VARCHAR(20) NOT NULL,
   patient_id INT NOT NULL,
+  location_id INT NULL,
   stage ENUM('intake','treating','tx_complete','demand','litigation','mediation','negotiating','settled','closed','dropped') NOT NULL DEFAULT 'intake',
   injury_type ENUM('auto','slip_fall','workers_comp') NOT NULL DEFAULT 'auto',
   date_of_injury DATE NULL,
@@ -328,6 +347,7 @@ CREATE TABLE visits (
   case_id INT NOT NULL,
   visit_date DATE NOT NULL,
   visit_type ENUM('initial','treatment','re_exam','maintenance','discharge','no_show') NOT NULL DEFAULT 'treatment',
+  location_id INT NULL,
   provider_user_id INT NULL,
   cpt_codes VARCHAR(255) NULL,
   icd_codes VARCHAR(500) NULL,

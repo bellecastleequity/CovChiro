@@ -6,9 +6,20 @@ define('PI_ALLOW_WHEN_LAPSED', true);
 require_once __DIR__ . '/../../app/bootstrap.php';
 pi_start_session();
 
+// Home location (must belong to the practice) and whether access is
+// limited to it (only meaningful with a location).
+function user_location_input(array $b): array {
+    $loc = !empty($b['location_id']) ? (int)$b['location_id'] : null;
+    if ($loc) {
+        $s = pi_db()->prepare('SELECT id FROM locations WHERE id = ? AND practice_id = ?'); $s->execute([$loc, pid()]);
+        if (!$s->fetch()) json_response(['error' => 'Unknown location'], 400);
+    }
+    return [$loc, $loc && !empty($b['location_restricted']) ? 1 : 0];
+}
+
 function handle_users() {
     require_user('users.manage');
-    $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, notify_digest, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
+    $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, notify_digest, location_id, location_restricted, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
     $stmt->execute([pid()]);
     json_response(['users' => $stmt->fetchAll(), 'limit' => plan_for(current_practice())['users']]);
 }
@@ -44,8 +55,10 @@ function handle_user_save() {
         if ($active && !$existing['active']) enforce_limit('users');
         $finAccess = $role === 'staff' && !empty($b['finance_access']) ? 1 : 0;
         $digest = array_key_exists('notify_digest', $b) ? (!empty($b['notify_digest']) ? 1 : 0) : (int)$existing['notify_digest'];
-        $pdo->prepare('UPDATE users SET name = ?, role = ?, active = ?, finance_access = ?, notify_digest = ? WHERE id = ? AND practice_id = ?')->execute([$name, $role, $active, $finAccess, $digest, $id, pid()]);
-        $changes = audit_diff(['name' => 'label', 'role' => array_keys(ROLE_PERMS), 'active' => 'bool', 'finance_access' => 'bool', 'notify_digest' => 'bool'], $existing, ['name' => $name, 'role' => $role, 'active' => $active, 'finance_access' => $finAccess, 'notify_digest' => $digest]);
+        [$locId, $locOnly] = array_key_exists('location_id', $b) ? user_location_input($b) : [$existing['location_id'], (int)$existing['location_restricted']];
+        if ($id === (int)$admin['id'] && $locOnly) json_response(['error' => "You can't limit your own account to one location."], 400);
+        $pdo->prepare('UPDATE users SET name = ?, role = ?, active = ?, finance_access = ?, notify_digest = ?, location_id = ?, location_restricted = ? WHERE id = ? AND practice_id = ?')->execute([$name, $role, $active, $finAccess, $digest, $locId, $locOnly, $id, pid()]);
+        $changes = audit_diff(['name' => 'label', 'role' => array_keys(ROLE_PERMS), 'active' => 'bool', 'finance_access' => 'bool', 'notify_digest' => 'bool', 'location_id' => 'int', 'location_restricted' => 'bool'], $existing, ['name' => $name, 'role' => $role, 'active' => $active, 'finance_access' => $finAccess, 'notify_digest' => $digest, 'location_id' => $locId, 'location_restricted' => $locOnly]);
         if ($changes) audit('update', 'user', $id, null, $admin, $existing['name'], $changes);
         json_response(['ok' => true]);
     }
@@ -56,8 +69,9 @@ function handle_user_save() {
     $s->execute([$email]);
     if ($s->fetch()) json_response(['error' => 'That email already has an account.'], 400);
     $pw = temp_password();
-    $pdo->prepare('INSERT INTO users (practice_id, email, name, role, finance_access, notify_digest, password_hash, must_change_password, created_at) VALUES (?,?,?,?,?,?,?,1,?)')
-        ->execute([pid(), $email, $name, $role, $role === 'staff' && !empty($b['finance_access']) ? 1 : 0, array_key_exists('notify_digest', $b) ? (!empty($b['notify_digest']) ? 1 : 0) : ($role === 'admin' ? 1 : 0), password_hash($pw, PASSWORD_ARGON2ID), now_str()]);
+    [$locId, $locOnly] = user_location_input($b);
+    $pdo->prepare('INSERT INTO users (practice_id, email, name, role, finance_access, location_id, location_restricted, notify_digest, password_hash, must_change_password, created_at) VALUES (?,?,?,?,?,?,?,?,?,1,?)')
+        ->execute([pid(), $email, $name, $role, $role === 'staff' && !empty($b['finance_access']) ? 1 : 0, $locId, $locOnly, array_key_exists('notify_digest', $b) ? (!empty($b['notify_digest']) ? 1 : 0) : ($role === 'admin' ? 1 : 0), password_hash($pw, PASSWORD_ARGON2ID), now_str()]);
     $newId = (int)$pdo->lastInsertId();
     audit('create', 'user', $newId, null, $admin, $name, [['f' => 'role', 't' => 'enum', 'from' => null, 'to' => $role]]);
     json_response(['ok' => true, 'tempPassword' => $pw]);
@@ -171,6 +185,38 @@ function handle_my_notify_save() {
     json_response(['ok' => true]);
 }
 
+// ---- locations (Group plan) ----
+function handle_locations() {
+    require_user('users.manage');
+    $s = pi_db()->prepare('SELECT l.*, (SELECT COUNT(*) FROM cases c WHERE c.location_id = l.id AND c.archived_at IS NULL) cases,
+        (SELECT COUNT(*) FROM users u WHERE u.location_id = l.id AND u.active = 1) users FROM locations l WHERE l.practice_id = ? ORDER BY l.active DESC, l.name');
+    $s->execute([pid()]);
+    json_response(['locations' => $s->fetchAll(), 'enabled' => has_feature(current_practice(), 'locations')]);
+}
+
+function handle_location_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    require_feature('locations');
+    $b = json_body();
+    $id = (int)($b['id'] ?? 0);
+    $cols = ['name' => str_or_null($b['name'] ?? null, 120), 'address' => str_or_null($b['address'] ?? null, 255), 'phone' => str_or_null($b['phone'] ?? null, 40),
+        'fax' => str_or_null($b['fax'] ?? null, 40), 'active' => array_key_exists('active', $b) ? (!empty($b['active']) ? 1 : 0) : 1];
+    if (!$cols['name']) json_response(['error' => 'Give the location a name.'], 400);
+    $pdo = pi_db();
+    if ($id) {
+        $s = $pdo->prepare('SELECT * FROM locations WHERE id = ? AND practice_id = ?'); $s->execute([$id, pid()]);
+        $before = $s->fetch() ?: json_response(['error' => 'Not found'], 404);
+        $pdo->prepare('UPDATE locations SET name = ?, address = ?, phone = ?, fax = ?, active = ? WHERE id = ? AND practice_id = ?')->execute([...array_values($cols), $id, pid()]);
+        audit('update', 'location', $id, null, $admin, $cols['name'], audit_diff(['name' => 'label', 'address' => 'label', 'phone' => 'label', 'fax' => 'label', 'active' => 'bool'], $before, $cols));
+    } else {
+        $pdo->prepare('INSERT INTO locations (practice_id, name, address, phone, fax, active, created_at) VALUES (?,?,?,?,?,?,?)')->execute([pid(), ...array_values($cols), now_str()]);
+        $id = (int)$pdo->lastInsertId();
+        audit('create', 'location', $id, null, $admin, $cols['name']);
+    }
+    json_response(['ok' => true, 'id' => $id]);
+}
+
 function handle_accept_baa() {
     require_method('POST');
     $admin = require_user('users.manage');
@@ -255,6 +301,8 @@ switch ($action) {
     case 'audit': handle_audit(); break;
     case 'audit_csv': handle_audit_csv(); break;
     case 'notify_rules_save': handle_notify_rules_save(); break;
+    case 'locations': handle_locations(); break;
+    case 'location_save': handle_location_save(); break;
     case 'my_notify': handle_my_notify(); break;
     case 'my_notify_save': handle_my_notify_save(); break;
     default: json_response(['error' => 'Unknown action'], 400);

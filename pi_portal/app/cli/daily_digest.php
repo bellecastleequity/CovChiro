@@ -23,7 +23,7 @@ foreach ($pdo->query('SELECT * FROM practices ORDER BY id')->fetchAll() as $p) {
     current_practice($p);
     $rules = practice_rules($p);
     if ($weekend && $rules['weekdays_only'] && !$force) continue;
-    $users = $pdo->prepare('SELECT id, practice_id, email, name, role, finance_access, notify_criteria FROM users WHERE practice_id = ? AND active = 1 AND notify_digest = 1');
+    $users = $pdo->prepare('SELECT id, practice_id, email, name, role, finance_access, location_id, location_restricted, notify_criteria FROM users WHERE practice_id = ? AND active = 1 AND notify_digest = 1');
     $users->execute([$p['id']]);
     $users = $users->fetchAll();
     if (!$users) continue;
@@ -35,7 +35,9 @@ foreach ($pdo->query('SELECT * FROM practices ORDER BY id')->fetchAll() as $p) {
             if ($s->fetchColumn()) continue;
         }
         // Money items depend on what this person may see.
-        $key = fin_can($u, 'balances') ? 'fin' : 'nofin';
+        // ... and on their location restriction.
+        current_user($u);
+        $key = (fin_can($u, 'balances') ? 'fin' : 'nofin') . ':' . (restricted_location() ?? 'all');
         $huddleFor[$key] ??= build_huddle($pdo, $u, (int)$p['id']);
         $criteria = $u['notify_criteria'] === null ? $rules['criteria'] : array_values(array_intersect(explode(',', $u['notify_criteria']), $rules['criteria']));
         if (!fin_can($u, 'balances')) $criteria = array_values(array_diff($criteria, ['money']));
