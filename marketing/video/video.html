@@ -1,0 +1,191 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--navy:#0B2340;--navy2:#163C66;--green:#1FA866;--green2:#127A49;--mist:#EEF2F7;--blue:#2F6FDE;--violet:#6E56CF;--amber:#E89B1C;--teal:#0E9F9A;--muted:rgba(11,35,64,.68)}
+html,body{width:1920px;height:1080px;overflow:hidden;font-family:Inter,"Segoe UI",Arial,sans-serif;background:var(--navy)}
+.scene{position:absolute;inset:0;opacity:0}
+.dark{background:radial-gradient(1200px 700px at 75% 20%,#17406b 0%,var(--navy) 60%)}
+.light{background:linear-gradient(135deg,#F6F8FB 0%,#E8EEF6 100%)}
+.a{opacity:0;will-change:transform,opacity}
+h1{font-size:76px;line-height:1.05;letter-spacing:-.02em;font-weight:800}
+h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:var(--navy)}
+.lead{font-size:28px;line-height:1.45;color:var(--muted)}
+.white{color:#fff}.hl{color:var(--green)}
+.eyebrow{font-size:18px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--green);display:flex;align-items:center;gap:12px}
+.eyebrow::before{content:"";width:34px;height:4px;border-radius:2px;background:var(--green)}
+.copy{position:absolute;left:110px;top:0;bottom:0;width:560px;display:flex;flex-direction:column;justify-content:center;gap:26px}
+.frame{position:absolute;right:90px;top:180px;width:1080px;height:713px;border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 40px 90px rgba(11,35,64,.28),0 0 0 1px rgba(11,35,64,.08)}
+.frame .bar{height:38px;background:#E9EEF5;display:flex;align-items:center;gap:8px;padding:0 16px}
+.frame .bar i{width:12px;height:12px;border-radius:50%;background:#C8D2DF}
+.frame .bar span{margin-left:14px;font-size:14px;color:#6B7A90;background:#fff;border-radius:6px;padding:4px 14px}
+.frame .view{position:absolute;top:38px;left:0;right:0;bottom:0;overflow:hidden}
+.frame img{position:absolute;left:0;top:0;width:100%}
+.card{position:absolute;background:#fff;border-radius:18px;box-shadow:0 30px 70px rgba(11,35,64,.22),0 0 0 1px rgba(11,35,64,.06);overflow:hidden}
+.card img{display:block;width:100%}
+.pts{display:flex;flex-direction:column;gap:14px}
+.pt{font-size:24px;color:var(--navy);display:flex;gap:14px;align-items:flex-start;line-height:1.35}
+.pt b{flex:none;width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;font-size:17px;display:grid;place-items:center;margin-top:2px}
+.note{font-size:17px;color:var(--muted);border-left:3px solid #C8D2DF;padding-left:12px;line-height:1.4}
+.problem{font-size:64px;font-weight:800;color:#fff;letter-spacing:-.015em}
+.problem s{text-decoration-color:var(--amber);text-decoration-thickness:6px}
+.price{position:absolute;top:330px;width:440px;height:470px;background:#fff;border-radius:22px;padding:42px;box-shadow:0 30px 70px rgba(11,35,64,.18),0 0 0 1px rgba(11,35,64,.07)}
+.price h3{font-size:34px;color:var(--navy)}.price .blurb{font-size:20px;color:var(--muted);margin-top:6px}
+.price .amt{font-size:84px;font-weight:800;color:var(--navy);margin-top:26px;letter-spacing:-.02em}.price .amt span{font-size:26px;font-weight:500;color:var(--muted)}
+.price ul{list-style:none;margin-top:22px;display:flex;flex-direction:column;gap:12px;font-size:21px;color:var(--navy)}
+.price li::before{content:"✓  ";color:var(--green);font-weight:800}
+.price.feat{border:3px solid var(--green);transform-origin:50% 50%}
+.price .tag{position:absolute;top:-18px;left:40px;background:var(--green);color:#fff;font-size:16px;font-weight:700;padding:6px 14px;border-radius:999px}
+.badge{display:flex;align-items:center;gap:20px;background:#fff;border-radius:18px;padding:24px 28px;box-shadow:0 16px 40px rgba(11,35,64,.12);width:640px}
+.badge .ic{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;font-size:30px;flex:none}
+.badge b{font-size:28px;color:var(--navy);display:block}.badge small{font-size:20px;color:var(--muted)}
+.btn{display:inline-block;background:var(--green);color:#fff;font-size:36px;font-weight:800;padding:26px 54px;border-radius:16px;box-shadow:0 18px 40px rgba(31,168,102,.4)}
+.btn.ghost{background:transparent;border:3px solid rgba(255,255,255,.6);box-shadow:none;font-size:30px;padding:20px 40px}
+.pill{position:absolute;background:var(--navy);color:#fff;font-size:22px;font-weight:700;padding:14px 22px;border-radius:14px;box-shadow:0 18px 40px rgba(11,35,64,.35)}
+.pill i{font-style:normal;color:#7FE0B0}
+.foot{position:absolute;left:0;right:0;bottom:34px;text-align:center;font-size:15px;color:rgba(11,35,64,.55)}
+.dark .foot{color:rgba(255,255,255,.55)}
+.progress{position:absolute;left:0;bottom:0;height:6px;background:var(--green);z-index:9}
+</style></head><body>
+
+<!-- 1. open -->
+<section class="scene dark" data-s="0" data-e="6.2">
+  <div class="a" data-in="0.3" data-fx="zoom" style="position:absolute;left:0;right:0;top:330px;text-align:center"><img src="assets/logo-horizontal-dark.svg" style="height:120px"></div>
+  <h1 class="a white" data-in="1.4" data-fx="up" style="position:absolute;left:0;right:0;top:520px;text-align:center">Every PI case, from first visit<br>to <span class="hl">final check</span>.</h1>
+  <p class="a lead" data-in="2.6" data-fx="up" style="position:absolute;left:0;right:0;top:720px;text-align:center;color:rgba(255,255,255,.75)">Case management built for clinics that treat injury patients.</p>
+</section>
+
+<!-- 2. problem -->
+<section class="scene dark" data-s="6" data-e="15.2">
+  <div style="position:absolute;left:180px;top:220px;display:flex;flex-direction:column;gap:34px">
+    <div class="eyebrow a" data-in="6.3" data-fx="up">Sound familiar?</div>
+    <div class="problem a" data-in="6.8" data-fx="left">Spreadsheets and sticky notes.</div>
+    <div class="problem a" data-in="8.0" data-fx="left">A missed deadline that costs a case thousands.</div>
+    <div class="problem a" data-in="9.2" data-fx="left">Attorneys waiting on updates.</div>
+    <div class="problem a" data-in="10.4" data-fx="left">Patients slipping through the cracks.</div>
+    <div class="a" data-in="12.0" data-fx="up" style="font-size:44px;font-weight:800;color:var(--green);margin-top:20px">There's a better way to run your PI cases.</div>
+  </div>
+</section>
+
+<!-- 3. dashboard -->
+<section class="scene light" data-s="15" data-e="26.2">
+  <div class="copy"><div class="eyebrow a" data-in="15.3" data-fx="up">Your dashboard</div>
+    <h2 class="a" data-in="15.6" data-fx="up">Know what needs attention — every morning.</h2>
+    <p class="lead a" data-in="16.2" data-fx="up">Every open case, ranked by urgency: gaps in care, overdue referrals, PIP deadlines and settlements waiting on a check.</p></div>
+  <div class="frame a" data-in="15.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>injurycase.com/app</span></div><div class="view"><img src="shots/dashboard.png" data-kb="15.4,26.2,1,1.4,28,72"></div></div>
+  <div class="pill a" data-in="19" data-fx="pop" style="right:150px;top:640px"><i>●</i> 35-day PIP billing deadline flagged automatically</div>
+</section>
+
+<!-- 4. care guide -->
+<section class="scene light" data-s="26" data-e="38.2">
+  <div class="copy"><div class="eyebrow a" data-in="26.3" data-fx="up">Built-in PI playbook</div>
+    <h2 class="a" data-in="26.6" data-fx="up">Next steps on every case.</h2>
+    <div class="pts">
+      <div class="pt a" data-in="27.4" data-fx="up"><b>1</b>MRI script at visit #1</div>
+      <div class="pt a" data-in="28.0" data-fx="up"><b>2</b>EMC determination in week 1</div>
+      <div class="pt a" data-in="28.6" data-fx="up"><b>3</b>Orthopedic referral after the MRI</div>
+      <div class="pt a" data-in="29.2" data-fx="up"><b>4</b>Re-exams every 30 days, MMI and maintenance</div>
+    </div>
+    <p class="note a" data-in="30.4" data-fx="up">Educational guidance only — every clinical decision stays with your treating providers.</p></div>
+  <div class="frame a" data-in="26.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Jordan Avery · PI-26-0001</span></div><div class="view"><img src="shots/case_guide.png" data-kb="26.4,38.2,1,1.3,35,35"></div></div>
+</section>
+
+<!-- 5. huddle -->
+<section class="scene light" data-s="38" data-e="47.2">
+  <div class="copy"><div class="eyebrow a" data-in="38.3" data-fx="up">Daily huddle</div>
+    <h2 class="a" data-in="38.6" data-fx="up">A 10-minute team huddle that actually works.</h2>
+    <p class="lead a" data-in="39.2" data-fx="up">One printable sheet of everything outstanding — tasks, care gaps, referrals, insurance and attorney items — with who owns each one.</p>
+    <p class="note a" data-in="40.4" data-fx="up">Plus a morning email digest with counts only — never patient details.</p></div>
+  <div class="frame a" data-in="38.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Daily huddle</span></div><div class="view"><img src="shots/huddle.png" data-kb="38.4,47.2,1,1.3,40,40"></div></div>
+</section>
+
+<!-- 6. case value -->
+<section class="scene light" data-s="47" data-e="57.2">
+  <div class="copy"><div class="eyebrow a" data-in="47.3" data-fx="up">Case value</div>
+    <h2 class="a" data-in="47.6" data-fx="up">Protect what every case is worth.</h2>
+    <p class="lead a" data-in="48.2" data-fx="up">PIP remaining, medical bills against the policy limits, and soft warnings at ⅓, ½ and ¾ — before a big reduction surprises you.</p></div>
+  <div class="card a" data-in="47.6" data-fx="up" style="right:520px;top:120px;width:660px"><img src="shots/case_value.png"></div>
+  <div class="pill a" data-in="50.5" data-fx="pop" style="right:90px;top:330px">Bills at <i>65%</i> of limits → talk to the attorney</div>
+</section>
+
+<!-- 7. attorneys -->
+<section class="scene light" data-s="57" data-e="66.2">
+  <div class="copy"><div class="eyebrow a" data-in="57.3" data-fx="up">Attorney communication</div>
+    <h2 class="a" data-in="57.6" data-fx="up">Keep attorneys in the loop in one click.</h2>
+    <p class="lead a" data-in="58.2" data-fx="up">Status requests, treatment-complete and reduction letters on your letterhead. Patient outreach logged with neutral, records-safe wording.</p></div>
+  <div class="card a" data-in="57.6" data-fx="right" style="right:560px;top:110px;width:600px"><img src="shots/letter_c.png"></div>
+  <div class="card a" data-in="59.2" data-fx="up" style="right:80px;top:560px;width:760px"><img src="shots/outreach_card.png"></div>
+</section>
+
+<!-- 8. states -->
+<section class="scene light" data-s="66" data-e="74.2">
+  <div class="copy"><div class="eyebrow a" data-in="66.3" data-fx="up">State rules</div>
+    <h2 class="a" data-in="66.6" data-fx="up">Florida-tuned. Ready for your state.</h2>
+    <p class="lead a" data-in="67.2" data-fx="up">PIP and no-fault limits, deadlines, lawsuit thresholds and provider-lien steps for 27 states plus D.C. — each case follows its own state's rules.</p>
+    <p class="note a" data-in="68.2" data-fx="up">Rules outside Florida are configured from published sources; confirm with local counsel.</p></div>
+  <div class="card a" data-in="66.6" data-fx="right" style="right:70px;top:240px;width:1150px"><img src="shots/state_ny.png"></div>
+</section>
+
+<!-- 9. trust -->
+<section class="scene dark" data-s="74" data-e="82.2">
+  <div style="position:absolute;left:150px;top:180px;width:700px;display:flex;flex-direction:column;gap:26px">
+    <div class="eyebrow a" data-in="74.3" data-fx="up">Secure by design</div>
+    <h2 class="a white" data-in="74.6" data-fx="up" style="color:#fff">HIPAA-ready, from day one.</h2>
+    <p class="lead a" data-in="75.2" data-fx="up" style="color:rgba(255,255,255,.75)">Shaped by 10+ years of personal injury attorney input — so your records support the case.</p>
+  </div>
+  <div style="position:absolute;right:150px;top:170px;display:flex;flex-direction:column;gap:20px">
+    <div class="badge a" data-in="75.4" data-fx="left"><div class="ic" style="background:#E3F6EC">🛡</div><div><b>Business Associate Agreement</b><small>Included with every plan</small></div></div>
+    <div class="badge a" data-in="75.9" data-fx="left"><div class="ic" style="background:#FDF1DC">🔑</div><div><b>Two-factor sign-in</b><small>Required for every user</small></div></div>
+    <div class="badge a" data-in="76.4" data-fx="left"><div class="ic" style="background:#E2ECFC">🔒</div><div><b>256-bit encryption at rest</b><small>Plus TLS on every connection</small></div></div>
+    <div class="badge a" data-in="76.9" data-fx="left"><div class="ic" style="background:#DDF3F2">💾</div><div><b>Daily encrypted backups</b><small>Every access logged in the audit trail</small></div></div>
+  </div>
+</section>
+
+<!-- 10. pricing -->
+<section class="scene light" data-s="82" data-e="90.2">
+  <div class="a" data-in="82.3" data-fx="up" style="position:absolute;left:0;right:0;top:120px;text-align:center"><div class="eyebrow" style="justify-content:center">Simple pricing</div><h2 style="margin-top:18px">Start free. Pick a plan when you're ready.</h2></div>
+  <div class="price a" data-in="82.9" data-fx="up" style="left:230px"><h3>Silver</h3><p class="blurb">One doctor and front desk</p><div class="amt">$39<span>/month</span></div><ul><li>75 open cases · 3 users</li><li>Case guide & alerts</li><li>Attorney letters</li></ul></div>
+  <div class="price feat a" data-in="83.3" data-fx="up" style="left:740px"><div class="tag">Most popular</div><h3>Gold</h3><p class="blurb">A busy PI clinic</p><div class="amt">$59<span>/month</span></div><ul><li>300 open cases · 10 users</li><li>Daily huddle sheet</li><li>Everything in Silver</li></ul></div>
+  <div class="price a" data-in="83.7" data-fx="up" style="left:1250px"><h3>Platinum</h3><p class="blurb">Multiple doctors or locations</p><div class="amt">$79<span>/month</span></div><ul><li>Unlimited cases & users</li><li>Email digest · locations</li><li>Everything in Gold</li></ul></div>
+  <div class="a" data-in="84.6" data-fx="up" style="position:absolute;left:0;right:0;top:860px;text-align:center;font-size:30px;font-weight:700;color:var(--green2)">14-day free trial · No credit card · 2 months free on annual plans</div>
+</section>
+
+<!-- 11. CTA -->
+<section class="scene dark" data-s="90" data-e="101">
+  <div style="position:absolute;left:150px;top:200px;width:1000px;display:flex;flex-direction:column;gap:34px">
+    <img class="a" data-in="90.3" data-fx="up" src="assets/logo-horizontal-dark.svg" style="height:70px;align-self:flex-start">
+    <h1 class="a white" data-in="90.7" data-fx="up">Put every PI case<br>on track — <span class="hl">this week</span>.</h1>
+    <div class="a" data-in="91.6" data-fx="up" style="display:flex;gap:22px;align-items:center"><span class="btn">Start your free trial</span><span class="btn ghost">Request a demo</span></div>
+    <p class="a" data-in="92.4" data-fx="up" style="font-size:30px;color:rgba(255,255,255,.85)"><b style="color:#fff">injurycase.com</b> &nbsp;·&nbsp; Demos: support@injurycase.com</p>
+  </div>
+  <div class="a" data-in="92.0" data-fx="zoom" style="position:absolute;right:190px;top:260px;background:#fff;border-radius:24px;padding:26px;text-align:center;width:380px">
+    <img src="assets/qr.svg" style="width:328px;height:328px;display:block"><div style="font-size:22px;font-weight:700;color:var(--navy);margin-top:14px">Scan to start free</div></div>
+  <p class="foot">InjuryCase is an educational and organizational tool; clinical decisions rest with the treating provider. Demo data shown is fictional.</p>
+</section>
+
+<div class="progress" id="prog"></div>
+<script>
+const ease = (x) => x < 0 ? 0 : x > 1 ? 1 : 1 - Math.pow(1 - x, 3);
+const T = 101;
+function render(t) {
+  document.querySelectorAll('.scene').forEach((s) => {
+    const a = +s.dataset.s, b = +s.dataset.e;
+    const fadeIn = ease((t - a) / 0.5), fadeOut = 1 - ease((t - (b - 0.5)) / 0.5);
+    s.style.opacity = t < a || t > b ? 0 : Math.min(fadeIn, fadeOut);
+    s.style.visibility = t < a - 0.1 || t > b + 0.1 ? 'hidden' : 'visible';
+  });
+  document.querySelectorAll('.a').forEach((el) => {
+    const p = ease((t - +el.dataset.in) / 0.7), fx = el.dataset.fx;
+    el.style.opacity = p;
+    const d = (1 - p);
+    el.style.transform = fx === 'up' ? `translateY(${d * 40}px)` : fx === 'left' ? `translateX(${-d * 60}px)` : fx === 'right' ? `translateX(${d * 80}px)` : fx === 'zoom' ? `scale(${0.9 + 0.1 * p})` : fx === 'pop' ? `scale(${0.8 + 0.2 * p})` : '';
+  });
+  document.querySelectorAll('[data-kb]').forEach((img) => {
+    const [a, b, s0, s1, fx, fy] = img.dataset.kb.split(',').map(Number);
+    const k = Math.min(1, Math.max(0, (t - a) / (b - a)));
+    const e = k * k * (3 - 2 * k);
+    img.style.transformOrigin = `${fx}% ${fy}%`;
+    img.style.transform = `scale(${s0 + (s1 - s0) * e})`;
+  });
+  document.getElementById('prog').style.width = (t / T * 100) + '%';
+}
+window.render = render; window.TOTAL = T; render(0);
+</script></body></html>
