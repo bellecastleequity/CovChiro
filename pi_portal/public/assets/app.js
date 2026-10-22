@@ -400,7 +400,7 @@ async function startShell() {
       ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}${NAV_FEATURE[k] && !operator && !hasFeature(NAV_FEATURE[k]) ? ` <span class="nav-lock" title="${esc(featureInfo(NAV_FEATURE[k]).planName)} plan">${esc(featureInfo(NAV_FEATURE[k]).planName)}</span>` : ''}</a>`).join('')}
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>
-        ${operator || !hasFeature('email_digest') ? '' : '<button class="btn ghost sm" data-act="my-notify">Email notifications</button>'}
+        ${operator || !(hasFeature('email_digest') || hasFeature('task_emails')) ? '' : '<button class="btn ghost sm" data-act="my-notify">Email notifications</button>'}
         ${operator ? '' : '<button class="btn ghost sm" data-act="suggest">Suggest a feature</button>'}
         <button class="btn ghost sm" data-act="sign-out">Sign out</button></div>
     </nav>
@@ -556,13 +556,16 @@ async function myNotifyModal() {
   const r = await attempt(() => api('admin.php?action=my_notify'));
   if (!r) return;
   openModal({ title: 'Email notifications', okText: 'Save', body: `
-    <label class="check"><input type="checkbox" id="mn-on"${r.digest ? ' checked' : ''}> Send me a daily digest${r.weekdaysOnly ? ' on weekday mornings' : ' each morning'} at ${esc(r.email)}</label>
+    ${r.hasTaskEmails ? `<h3>Tasks</h3><label class="check mt-sm"><input type="checkbox" id="mn-tasks"${r.tasks ? ' checked' : ''}> Email me when a task I'm on the email list of is marked urgent, goes late or is completed</label>
+      <p class="small muted mt-sm">Each task chooses who's emailed (usually the people assigned and whoever created it). Emails never include the task, patient or case.</p>` : ''}
+    ${r.hasDigest ? `${r.hasTaskEmails ? '<h3 class="mt">Daily digest</h3>' : ''}<label class="check"><input type="checkbox" id="mn-on"${r.digest ? ' checked' : ''}> Send me a daily digest${r.weekdaysOnly ? ' on weekday mornings' : ' each morning'} at ${esc(r.email)}</label>
     <p class="small muted mt">The email lists how many items need attention under each heading below, with a link to the Daily huddle. It never contains patient names or case details. No email is sent on a day with nothing to report.</p>
     ${r.mailReady ? '' : '<div class="notice">Email sending isn\'t set up on this server yet — your choice is saved for when it is.</div>'}
     <h3 class="mt">Include</h3>
-    <div class="mt">${Object.entries(r.available).map(([k, t]) => `<label class="check"><input type="checkbox" data-mn="${k}"${r.criteria.includes(k) ? ' checked' : ''}> ${esc(t)}</label>`).join('') || '<p class="small muted">Your practice hasn\'t turned any criteria on.</p>'}</div>`,
+    <div class="mt">${Object.entries(r.available).map(([k, t]) => `<label class="check"><input type="checkbox" data-mn="${k}"${r.criteria.includes(k) ? ' checked' : ''}> ${esc(t)}</label>`).join('') || '<p class="small muted">Your practice hasn\'t turned any criteria on.</p>'}</div>` : (r.mailReady ? '' : '<div class="notice mt">Email sending isn\'t set up on this server yet — your choice is saved for when it is.</div>')}`,
     onOk: async (el) => {
-      await api('admin.php?action=my_notify_save', { digest: el.querySelector('#mn-on').checked, criteria: [...el.querySelectorAll('[data-mn]:checked')].map((x) => x.dataset.mn) });
+      await api('admin.php?action=my_notify_save', { ...(r.hasDigest ? { digest: el.querySelector('#mn-on').checked, criteria: [...el.querySelectorAll('[data-mn]:checked')].map((x) => x.dataset.mn) } : {}),
+        ...(r.hasTaskEmails ? { tasks: el.querySelector('#mn-tasks').checked } : {}) });
       toast('Saved');
     } });
 }
@@ -1907,13 +1910,16 @@ function tabCaseTasks(el, d) {
 
 // A task for one or more team members (none = anyone can pick it up).
 function taskModal(caseId, task = null, prefill = {}) {
-  const t = task || { title: prefill.title || '', notes: '', due_on: prefill.due_on || '', priority: 'normal', assignees: prefill.assignees || [{ id: S.user.id }] };
+  const te = S.lookups.taskEmail || { on: [], who: [], repeat_days: 5, events: {}, whoLabels: {} };
+  const t = task || { title: prefill.title || '', notes: '', due_on: prefill.due_on || '', priority: 'normal', assignees: prefill.assignees || [{ id: S.user.id }],
+    email_on: te.on, email_who: te.who, email_to: [], late_repeat_days: null };
   const defs = [{ n: 'title', l: 'Task', req: true, full: true }, { n: 'notes', l: 'Notes', t: 'textarea', rows: 2 }, { n: 'due_on', l: 'Due', t: 'date' },
     { n: 'priority', l: 'Priority', t: 'select', blank: false, opts: [['normal', 'Normal'], ['high', 'High']] }];
   const chosen = new Set(t.assignees.map((a) => +a.id));
   const team = S.lookups.users || [];
   const body = fieldsHtml(defs, t) + `<fieldset class="assignees mt"><legend>Assign to <span class="small muted">— one or more people; leave all unticked for anyone</span></legend>
       <div class="assignee-list">${team.map((u) => `<label class="check"><input type="checkbox" data-assignee="${u.id}"${chosen.has(+u.id) ? ' checked' : ''}> ${esc(u.name)}${u.id == S.user.id ? ' <span class="small muted">(you)</span>' : ''}</label>`).join('')}</div></fieldset>
+    ${taskEmailHtml(t, te, team)}
     ${task ? `<p class="small muted mt">${task.case_id ? `Case: <a href="#/case/${task.case_id}">${esc(task.patient)}</a> · ` : ''}Created by ${esc(task.created_by_name || '—')} on ${esc(fmtDate(task.created_at))}</p>` : ''}`;
   const canDelete = task && (task.created_by == S.user.id || can('users.manage'));
   const caseOf = task ? task.case_id : caseId;
@@ -1923,6 +1929,13 @@ function taskModal(caseId, task = null, prefill = {}) {
     onOk: async (el) => {
       const v = readFields(el, defs);
       v.assignee_ids = [...el.querySelectorAll('[data-assignee]:checked')].map((x) => +x.dataset.assignee);
+      if (hasFeature('task_emails')) {
+        v.email_on = [...el.querySelectorAll('[data-te-on]:checked')].map((x) => x.dataset.teOn);
+        v.email_who = [...el.querySelectorAll('[data-te-who]:checked')].map((x) => x.dataset.teWho);
+        v.email_to = [...el.querySelectorAll('[data-te-to]:checked')].map((x) => +x.dataset.teTo);
+        const rep = el.querySelector('#te-repeat').value;
+        v.late_repeat_days = rep === '' || +rep === te.repeat_days ? null : +rep;
+      }
       const r = await api('cases.php?action=task_save', { ...v, ...(task ? { id: task.id } : { case_id: caseId || null }), return_case: inCase() });
       afterTaskChange(r, inCase());
       toast(task ? 'Task saved' : 'Task added');
@@ -1932,6 +1945,21 @@ function taskModal(caseId, task = null, prefill = {}) {
     if (await attempt(() => api('cases.php?action=task_delete', { id: task.id }))) { m.close(); afterTaskChange(null, false); toast('Task deleted'); }
   });
 }
+
+// Email alerts on a task (Gold and up). Emails never include the task or
+// patient — just what happened and a link.
+function taskEmailHtml(t, te, team) {
+  if (!hasFeature('task_emails')) return `<p class="small muted mt">Email alerts when a task is urgent, late or completed are part of the ${esc(featureInfo('task_emails').planName)} plan and up.</p>`;
+  const on = new Set(t.email_on || []), who = new Set(t.email_who || []), to = new Set((t.email_to || []).map(Number));
+  return `<details class="mt"${taskEmailsOpen(t, te) ? ' open' : ''}><summary>Email alerts <span class="small muted">— ${on.size ? esc([...on].map((k) => ({ urgent: 'urgent', late: 'late', done: 'completed' })[k]).join(', ')) : 'off'}</span></summary>
+    <fieldset class="assignees mt"><legend>Email when the task is</legend><div class="assignee-list">${entries(te.events).map(([k, l]) => `<label class="check"><input type="checkbox" data-te-on="${k}"${on.has(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></fieldset>
+    <div class="form-grid mt"><div><label for="te-repeat">Late reminder: repeat every (days, 0 = once)</label><input type="number" id="te-repeat" min="0" max="60" value="${t.late_repeat_days ?? te.repeat_days}"></div></div>
+    <fieldset class="assignees mt"><legend>Send to</legend><div class="assignee-list">${entries(te.whoLabels).map(([k, l]) => `<label class="check"><input type="checkbox" data-te-who="${k}"${who.has(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>
+      <div class="small muted mt-sm">Also email:</div><div class="assignee-list">${team.map((u) => `<label class="check"><input type="checkbox" data-te-to="${u.id}"${to.has(+u.id) ? ' checked' : ''}> ${esc(u.name)}</label>`).join('')}</div></fieldset>
+    <p class="small muted mt-sm">You're not emailed about changes you make yourself. Emails never include the task, patient or case — just what happened and a sign-in link.</p></details>`;
+}
+// Opened when this task differs from the practice's defaults.
+const taskEmailsOpen = (t, te) => (t.email_to || []).length > 0 || t.late_repeat_days != null || [...(t.email_on || [])].sort().join() !== [...te.on].sort().join() || [...(t.email_who || [])].sort().join() !== [...te.who].sort().join();
 
 function afterTaskChange(r, inCase) {
   if (inCase && r && r.case) { S.caseData = r; renderCase(); }
@@ -2054,8 +2082,14 @@ async function tabActivity(el, d) {
 
 // ---------- tasks page ----------
 const taskState = { scope: 'mine', status: 'open' };
-async function pageTasks(main) {
+async function pageTasks(main, args = []) {
   const st = taskState;
+  if (args[0] && /^\d+$/.test(args[0])) {
+    // From a task email: open that task.
+    history.replaceState(null, '', '#/tasks');
+    const one = await attempt(() => api('cases.php?action=task&id=' + args[0]));
+    if (one) setTimeout(() => { taskCache.set(one.task.id, one.task); taskModal(one.task.case_id, one.task); }, 0);
+  }
   const r = await attempt(() => api(`cases.php?action=tasks&scope=${encodeURIComponent(st.scope)}&status=${st.status}`));
   if (!r) return;
   const team = S.lookups.users || [];
@@ -2265,6 +2299,14 @@ async function pageSettings(main) {
         <div><label for="nr-adh">Behind the treatment plan below (% of planned visits)</label><input type="number" id="nr-adh" min="10" max="100" step="5" value="${p.notifyRules.adherence_pct}"></div>
         <div><label>&nbsp;</label><label class="check"><input type="checkbox" id="nr-weekdays"${p.notifyRules.weekdays_only ? ' checked' : ''}> Weekdays only</label></div></div>
       <button class="btn mt" data-act="save-notify-rules">Save</button></div>
+    <div class="card mt" id="task-email-card"><h2>Task email alerts</h2>
+      <p class="small">The defaults for new tasks — each task can change its own under <em>Email alerts</em>. Emails say only what happened (urgent, late, completed) with a sign-in link — never the task, patient or case. Late tasks are first emailed the morning after the due date. Each person can turn task emails off under <em>Email notifications</em>.</p>
+      ${p.hasTaskEmails ? '' : `<div class="notice mt">Task email alerts are part of the ${esc(featureInfo('task_emails').planName)} plan and up. <a href="#/billing">See plans</a></div>`}
+      ${p.mailReady ? '' : '<div class="notice mt">Email sending isn\'t set up on this server yet, so task emails won\'t go out until it is.</div>'}
+      <fieldset class="assignees mt"><legend>Email when a task is</legend><div class="assignee-list">${entries(S.lookups.taskEmail.events).map(([k, l]) => `<label class="check"><input type="checkbox" data-tr-on="${k}"${p.taskEmail.on.includes(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></fieldset>
+      <fieldset class="assignees mt"><legend>Send to</legend><div class="assignee-list">${entries(S.lookups.taskEmail.whoLabels).map(([k, l]) => `<label class="check"><input type="checkbox" data-tr-who="${k}"${p.taskEmail.who.includes(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></fieldset>
+      <div class="form-grid mt"><div><label for="tr-repeat">Repeat late emails every (days; 0 = once)</label><input type="number" id="tr-repeat" min="0" max="60" value="${p.taskEmail.repeat_days}"></div></div>
+      ${p.hasTaskEmails ? '<button class="btn mt" data-act="save-task-email">Save</button>' : ''}</div>
     <div class="card mt"><div class="card-head"><h2>Locations</h2><span class="spacer"></span>${hasFeature('locations') ? '<button class="btn ghost sm" data-act="location-edit">+ Add location</button>' : ''}</div>
       <p class="small">Run more than one office in this account: each case belongs to a location (its letterhead is used on letters and exports), lists filter by location, and team members can be limited to their own location's patients.</p>
       <div id="locations-list" class="mt">${hasFeature('locations') ? '<div class="empty">Loading…</div>' : `<div class="notice">Multiple locations are part of the ${esc(featureInfo('locations').planName)} plan.</div>`}</div></div>
@@ -2653,6 +2695,12 @@ const ACTIONS = {
     if (r) { toast(el.dataset.reset ? 'Back to the defaults' : 'Cost list saved'); await refreshSession(); pageSettings(document.getElementById('main')); }
   },
   'promo-check': () => checkPromo(),
+  'save-task-email': async () => {
+    const box = document.getElementById('task-email-card');
+    const r = await attempt(() => api('admin.php?action=task_email_rules_save', { on: [...box.querySelectorAll('[data-tr-on]:checked')].map((x) => x.dataset.trOn),
+      who: [...box.querySelectorAll('[data-tr-who]:checked')].map((x) => x.dataset.trWho), repeat_days: +box.querySelector('#tr-repeat').value }));
+    if (r) { toast('Task email defaults saved'); await refreshSession(); }
+  },
   'change-plan': (el) => changePlan(el),
   'step-edit': (el) => stepModal(el.dataset.id ? +el.dataset.id : null),
   'step-remove': async (el) => { if (!(await confirmBox('Remove this step?', 'It disappears from every case\'s checklist. Completions already recorded stay in the activity log.', 'Remove'))) return; if (await attempt(() => api('admin.php?action=step_save', { id: +el.dataset.id, remove: true }))) { toast('Removed'); loadSteps(); } },

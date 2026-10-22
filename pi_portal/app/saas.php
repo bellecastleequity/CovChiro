@@ -37,6 +37,8 @@ const FEATURES = [
         'blurb' => "A printable morning team-meeting sheet of everything outstanding: tasks, gaps in care, patients behind plan, referrals due, insurance and attorney items."],
     'outside_estimates' => ['name' => 'Outside provider cost estimates', 'plan' => 'practice',
         'blurb' => "Estimate other facilities' bills (MRI, specialists, injections) from each case's referrals, so the policy-limits meter shows the whole picture."],
+    'task_emails' => ['name' => 'Task email alerts', 'plan' => 'practice',
+        'blurb' => "Email the right people when a task is marked urgent, goes late (with a reminder every few days) or is completed — no patient details in the email."],
     'email_digest' => ['name' => 'Daily email digest', 'plan' => 'group',
         'blurb' => "A morning email to each team member with counts of what needs attention under the criteria they choose — no patient details in the email."],
     'locations' => ['name' => 'Multiple locations', 'plan' => 'group',

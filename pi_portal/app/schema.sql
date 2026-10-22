@@ -34,6 +34,9 @@ CREATE TABLE practices (
   notify_rules TEXT NULL,
   -- Expected costs at outside providers (JSON overrides of OUTSIDE_COSTS).
   cost_estimates TEXT NULL,
+  -- Task email alerts: default triggers, recipients and late-reminder
+  -- interval for new tasks (JSON; defaults in app/task_mail.php).
+  task_email_rules TEXT NULL,
   plan VARCHAR(20) NOT NULL DEFAULT 'starter',
   subscription_status ENUM('trialing','active','past_due','canceled','comped') NOT NULL DEFAULT 'trialing',
   trial_ends_at DATETIME NULL,
@@ -174,6 +177,9 @@ CREATE TABLE users (
   location_restricted TINYINT(1) NOT NULL DEFAULT 0,
   notify_digest TINYINT(1) NOT NULL DEFAULT 0,
   notify_criteria VARCHAR(255) NULL,
+  -- Task email alerts (urgent / late / completed) for tasks this person is
+  -- on the email list of. On by default; each person can turn it off.
+  notify_tasks TINYINT(1) NOT NULL DEFAULT 1,
   password_hash VARCHAR(255) NOT NULL,
   must_change_password TINYINT(1) NOT NULL DEFAULT 1,
   totp_secret_enc TEXT NULL,
@@ -592,6 +598,13 @@ CREATE TABLE tasks (
   notes_enc TEXT NULL,
   priority ENUM('normal','high') NOT NULL DEFAULT 'normal',
   due_on DATE NULL,
+  -- Email alerts: triggers (urgent,late,done), who gets them (assignees,
+  -- creator; plus task_email_to), late reminder interval in days (NULL =
+  -- the practice's; 0 = once) and when the last late email went out.
+  email_on VARCHAR(40) NULL,
+  email_who VARCHAR(40) NULL,
+  late_repeat_days TINYINT NULL,
+  late_emailed_at DATETIME NULL,
   done_at DATETIME NULL,
   done_by INT NULL,
   archived_at DATETIME NULL,
@@ -611,6 +624,15 @@ CREATE TABLE task_assignees (
   FOREIGN KEY (task_id) REFERENCES tasks(id),
   FOREIGN KEY (user_id) REFERENCES users(id),
   INDEX idx_task_assignee_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Extra people emailed about a task (besides its assignees / creator).
+CREATE TABLE task_email_to (
+  task_id INT NOT NULL,
+  user_id INT NOT NULL,
+  PRIMARY KEY (task_id, user_id),
+  FOREIGN KEY (task_id) REFERENCES tasks(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Files are encrypted on disk under storage/documents/ (outside the web

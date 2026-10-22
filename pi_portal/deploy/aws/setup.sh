@@ -99,6 +99,7 @@ say "Daily jobs"
 # Times are the practice's (US Eastern): daily digest 6:38am, trial reminders 9:17am.
 printf '%s\n' "CRON_TZ=America/New_York" \
   "38 6 * * * apache php $APP/app/cli/daily_digest.php >> $APP/storage/logs/cron.log 2>&1" \
+  "52 7 * * * apache php $APP/app/cli/task_reminders.php >> $APP/storage/logs/cron.log 2>&1" \
   "17 9 * * * apache php $APP/app/cli/trial_reminders.php >> $APP/storage/logs/cron.log 2>&1" > /etc/cron.d/injurycase
 chmod 644 /etc/cron.d/injurycase
 

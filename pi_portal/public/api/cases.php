@@ -941,17 +941,23 @@ function load_tasks(string $where, array $args, int $limit = 500): array {
         ORDER BY t.done_at IS NOT NULL, t.done_at DESC, t.due_on IS NULL, t.due_on, t.priority = 'high' DESC, t.id LIMIT $limit");
     $stmt->execute([pid(), ...$args, ...(restricted_location() ? [restricted_location()] : [])]);
     $rows = $stmt->fetchAll();
-    $assignees = [];
+    $assignees = []; $emailTo = [];
     if ($rows) {
         $ids = array_column($rows, 'id');
         $a = $pdo->prepare('SELECT ta.task_id, u.id, u.name FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY u.name');
         $a->execute($ids);
         foreach ($a as $r) $assignees[$r['task_id']][] = ['id' => (int)$r['id'], 'name' => $r['name']];
+        $e = $pdo->prepare('SELECT task_id, user_id FROM task_email_to WHERE task_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+        $e->execute($ids);
+        foreach ($e as $r) $emailTo[$r['task_id']][] = (int)$r['user_id'];
     }
-    return array_map(function ($t) use ($assignees) {
+    return array_map(function ($t) use ($assignees, $emailTo) {
         $t = decrypt_row($t);
         $t['patient'] = $t['case_id'] ? patient_name($t) : null;
         $t['assignees'] = $assignees[$t['id']] ?? [];
+        $t['email_on'] = task_csv($t['email_on'], TASK_EMAIL_EVENTS);
+        $t['email_who'] = task_csv($t['email_who'], TASK_EMAIL_WHO);
+        $t['email_to'] = $emailTo[$t['id']] ?? [];
         unset($t['first_name'], $t['last_name']);
         return $t;
     }, $rows);
@@ -969,6 +975,14 @@ function handle_tasks() {
     elseif (preg_match('/^user:(\d+)$/', $scope, $m)) { $where[] = 'EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?)'; $args[] = (int)$m[1]; }
     if ($done) { $where[] = 't.done_at >= ?'; $args[] = add_days(date('Y-m-d'), -90) . ' 00:00:00'; }
     json_response(['tasks' => load_tasks(implode(' AND ', $where), $args)]);
+}
+
+// One task (the link in task emails opens it).
+function handle_task() {
+    require_user('case.read');
+    $t = load_tasks('t.id = ?', [(int)($_GET['id'] ?? 0)], 1);
+    if (!$t) json_response(['error' => 'That task was deleted or isn\'t available to you.'], 404);
+    json_response(['task' => $t[0]]);
 }
 
 // Open tasks for the nav badge: assigned to me, due today or earlier.
@@ -995,10 +1009,34 @@ function handle_task_save() {
     if (!$existing && empty($cols['title'])) json_response(['error' => 'Enter a task.'], 400);
     if (array_key_exists('priority', $cols) && !$cols['priority']) $cols['priority'] = 'normal';
     $changes = audit_diff(TASK_SPEC, $existing ?? [], $cols);
+    $nowDone = false;
     if (array_key_exists('done', $b) && (bool)$b['done'] !== (bool)($existing['done_at'] ?? null)) {
         $cols['done_at'] = $b['done'] ? now_str() : null;
         $cols['done_by'] = $b['done'] ? $user['id'] : null;
+        $nowDone = (bool)$b['done'];
         $changes[] = ['f' => 'done', 't' => 'bool', 'from' => !$b['done'], 'to' => (bool)$b['done']];
+    }
+
+    // Email alerts: new tasks take the practice's defaults unless set.
+    $rules = task_email_rules();
+    foreach (['email_on' => TASK_EMAIL_EVENTS, 'email_who' => TASK_EMAIL_WHO] as $f => $allowed) {
+        if (array_key_exists($f, $b)) $cols[$f] = implode(',', array_values(array_intersect(array_keys($allowed), (array)$b[$f])));
+        elseif (!$existing) $cols[$f] = implode(',', $rules[$f === 'email_on' ? 'on' : 'who']);
+    }
+    if (array_key_exists('late_repeat_days', $b)) $cols['late_repeat_days'] = $b['late_repeat_days'] === null || $b['late_repeat_days'] === '' ? null : task_repeat_days($b['late_repeat_days']);
+    foreach (['email_on', 'email_who'] as $f) if ($existing && array_key_exists($f, $cols) && $cols[$f] !== (string)$existing[$f]) $changes[] = ['f' => $f, 't' => 'label', 'from' => $existing[$f] ?: null, 'to' => $cols[$f] ?: null];
+    // A new due date or a reopened task starts the late reminders over.
+    if ($existing && ((array_key_exists('due_on', $cols) && $cols['due_on'] !== $existing['due_on']) || (array_key_exists('done_at', $cols) && !$cols['done_at']))) $cols['late_emailed_at'] = null;
+    $nowUrgent = ($cols['priority'] ?? null) === 'high' && ($existing['priority'] ?? 'normal') !== 'high' && !($existing['done_at'] ?? null) && !$nowDone;
+    $newEmailTo = null;
+    if (array_key_exists('email_to', $b)) {
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array)$b['email_to']))));
+        if ($ids) {
+            $q = $pdo->prepare('SELECT id FROM users WHERE practice_id = ? AND active = 1 AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+            $q->execute([pid(), ...$ids]);
+            if (count($q->fetchAll()) !== count($ids)) json_response(['error' => 'Pick active team members to email.'], 400);
+        }
+        $newEmailTo = $ids;
     }
 
     // Assignees: active members of this practice.
@@ -1033,7 +1071,23 @@ function handle_task_save() {
             $changes[] = ['f' => 'assignees', 't' => 'name', 'from' => $old ? implode(', ', $old) : null, 'to' => $newAssignees ? implode(', ', $newAssignees) : null];
         }
     }
+    if ($newEmailTo !== null) {
+        $pdo->prepare('DELETE FROM task_email_to WHERE task_id = ?')->execute([$id]);
+        $ins = $pdo->prepare('INSERT INTO task_email_to (task_id, user_id) VALUES (?, ?)');
+        foreach ($newEmailTo as $uid) $ins->execute([$id, $uid]);
+    }
     $pdo->commit();
+    // Urgent / completed emails go out after the response is sent.
+    if ($nowUrgent || $nowDone) {
+        $practice = current_practice();
+        register_shutdown_function(function () use ($id, $practice, $user, $nowUrgent, $nowDone) {
+            if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+            $s = pi_db()->prepare('SELECT * FROM tasks WHERE id = ?'); $s->execute([$id]);
+            $t = $s->fetch();
+            if ($nowUrgent) task_email_send('urgent', $t, $practice, $user);
+            if ($nowDone) task_email_send('done', $t, $practice, $user);
+        });
+    }
     if (!$existing) audit('create', 'task', $id, $caseId, $user, null, array_values(array_filter($changes, fn($c) => $c['t'] !== 'text' || $c['f'] === 'title')));
     elseif ($changes) audit('update', 'task', $id, $caseId, $user, null, $changes);
     json_response($caseId && !empty($b['return_case']) ? full_case($caseId, $user) : ['ok' => true, 'id' => $id]);
@@ -1340,6 +1394,7 @@ switch ($action) {
     case 'ar_report': handle_ar_report(); break;
     case 'tasks': handle_tasks(); break;
     case 'task_save': handle_task_save(); break;
+    case 'task': handle_task(); break;
     case 'task_delete': handle_task_delete(); break;
     case 'task_counts': handle_task_counts(); break;
     case 'activity': handle_activity(); break;
