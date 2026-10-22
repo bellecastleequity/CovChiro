@@ -1,28 +1,33 @@
-type,name,address,phone,website,source,status,contact_person,last_contact,next_step,notes
-Attorney,Morgan & Morgan (Ocala office),,,https://forthepeople.com/ocala/car-accident-lawyers,firm website,to contact,,,,Large firm; ask for the Ocala office's intake or case manager
-Attorney,Meldon Law (Ocala office),"1326 S Pine Ave, Ocala, FL 34471",(352) 629-5700,https://www.meldonlaw.com/ocala-car-accident-attorney/,firm website,to contact,,,,
-Attorney,Farah & Farah (Ocala office),,(352) 205-4023,https://farahandfarah.com/ocala/,firm website,to contact,,,,
-Attorney,Allen Law Accident & Injury Lawyers,"112 S Pine Ave, Ocala, FL 34471",(352) 351-3258,https://billallenlaw.com/contact-us/,firm website + FindLaw,to contact,,,,Local firm; employs former insurance adjusters
-Attorney,Dan Newlin Injury Attorneys (Ocala),"7 E Silver Springs Blvd, Suite 550, Ocala, FL 34470",888-733-7601,,FindLaw,to contact,,,,Verify address and phone
-Attorney,Brandon J. Broderick (Ocala),,,https://www.brandonjbroderick.com/florida/personal-injury-lawyer-ocala/car-accident-lawyer,firm website,to contact,,,,Find the local office phone on the website
-Attorney,Anidjar & Levine (serves Ocala),,,https://www.anidjarlevine.com/areas-we-serve/ocala-fl/car-accident-lawyer/,firm website,to contact,,,,May not have a local office
-Attorney,Pam Olsen Law,"1030 SE 17th St, Ocala, FL 34471 (one listing gives 1326 S Pine Ave)",(352) 671-9777,,Justia / directory,to contact,,,,Directory addresses disagree; verify
-Attorney,Robert W. Batsel,"2201 SE 30th Ave #201, Ocala, FL 34471",(352) 622-3252,,Justia,to contact,,,,Verify practice area (PI?)
-Attorney,Glover Law Firm (Ocala),"1531 SE 36th Ave, Ocala, FL 34471",352-484-0775,,City-Data (2015),to contact,,,,Old listing; verify
-Attorney,Bogin Munns & Munns (Ocala),,,https://www.boginmunns.com/,firm website,to contact,,,,Has an Ocala post-accident-care FAQ
-Urgent care,AdventHealth Centra Care Ocala,SW College Rd,,https://centracare.adventhealth.com/urgent-care/ocala,health-system website,to contact,,,,Hospital system: ask for the practice manager or provider-relations rep
-Urgent care,Avecina Medical Urgent Care (Ocala),,,https://www.mymdnow.com/locations/north-central-florida/ocala,clinic website,to contact,,,,
-Urgent care,Michael J. Freeman MD PA,"8750 SW State Rd 200, Ocala, FL 34481",,,Solv listing,to contact,,,,
-Urgent care,Alfredo Jacome MD PA,"2121 SW 22nd Pl, Ocala, FL 34471",,,Solv listing,to contact,,,,
-Imaging,HCA Florida Ocala Imaging Center,"2300 SE 17th St, Bldg 800, Ocala, FL",,https://www.hcafloridahealthcare.com/locations/ocala-imaging-center,health-system website,to contact,,,,MRI/CT; ask how to set up as a referring office
-Imaging,A1 Medical Imaging,"301 SE 17th St, Unit 102, Ocala, FL",(352) 622-7459,,directory,to contact,,,,Open MRI
-Imaging,Timberridge Imaging Center,"9521 SW Highway 200, Ocala, FL",,,MDsave,to contact,,,,Second site: Heathbrook Pavilion 3949 SW College Rd
-Imaging,Radiology Associates of Ocala,"1818 SW 15th Ave, Ocala, FL",,,third-party profile,to contact,,,,Verify
-Imaging,AdventHealth Ocala Medical Imaging,,,https://www.adventhealth.com/locations/hospitals/ocala/services/medical-imaging,hospital website,to contact,,,,
-Primary care,AdventHealth Medical Group Family Medicine,"2230 SW 19th Avenue Rd, Ocala, FL",,https://www.adventhealth.com/find-doctor/doctor/lucas-e-place-do-1497376263,AdventHealth directory,to contact,,,,Several family physicians at this address; ask for the office manager
-Primary care,AdventHealth Family Medicine (Hwy 200),"9401 SW Highway 200, Suite 301, Ocala, FL 34481",,https://www.adventhealth.com/find-doctor/doctor/james-e-lemire-md-1972580397,AdventHealth directory,to contact,,,,
-Primary care,AdventHealth Primary Care (Silver Springs),"2553 E Silver Springs Blvd, Ocala, FL 34470",,https://www.adventhealth.com/find-doctor/doctor/elvira-mercado-md-1215196621,AdventHealth directory,to contact,,,,
-Primary care,AdventHealth Primary Care (SW 11th St),"221 SW 11th St, Ocala, FL 34471",,https://www.adventhealth.com/doctors/sanjiya-arora-md-1225927940,AdventHealth directory,to contact,,,,
-Specialist,Tallahassee Orthopedic Clinic (Ocala),"2118 SW 20th Pl, Ste 102, Ocala, FL",,https://cortico.health/clinics/ocala-fl/tallahassee-orthopedic-clinic-iii-77755/,directory,to contact,,,,Spine and pain; two-way referrals for patients who need an ortho consult
-Specialist,UF Health Physical Medicine & Rehabilitation (Heath Brook),,,https://ufhealth.org/locations/uf-health-physical-medicine-rehabilitation-ocala-heath-brook,health-system website,to contact,,,,Spine program
-Specialist,Orthopaedic Surgery Center of Ocala,,,,directory,to contact,,,,Surgical center: lower priority
+type,name,address,phone,website,source,status,contact_person,last_contact,next_step,notes,email,tags
+Attorney,Morgan & Morgan (Ocala office),,,https://forthepeople.com/ocala/car-accident-lawyers,firm website,to contact,,,,"Large firm, ask for the Ocala office's intake or case manager",,
+Attorney,Meldon Law (Ocala office),"1326 S Pine Ave, Ocala, FL 34471",(352) 629-5700,https://www.meldonlaw.com/ocala-car-accident-attorney/,firm website,to contact,,,,,,
+Attorney,Farah & Farah (Ocala office),,(352) 205-4023,https://farahandfarah.com/ocala/,firm website,to contact,,,,,,
+Attorney,Allen Law Accident & Injury Lawyers,"112 S Pine Ave, Ocala, FL 34471",(352) 351-3258,https://billallenlaw.com/contact-us/,firm website + FindLaw,to contact,,,,"Local firm, employs former insurance adjusters",,
+Attorney,Dan Newlin Injury Attorneys (Ocala),"7 E Silver Springs Blvd, Suite 550, Ocala, FL 34470",888-733-7601,,FindLaw,to contact,,,,Verify address and phone,,
+Attorney,Brandon J. Broderick (Ocala),,,https://www.brandonjbroderick.com/florida/personal-injury-lawyer-ocala/car-accident-lawyer,firm website,to contact,,,,Find the local office phone on the website,,
+Attorney,Anidjar & Levine (serves Ocala),,,https://www.anidjarlevine.com/areas-we-serve/ocala-fl/car-accident-lawyer/,firm website,to contact,,,,May not have a local office,,
+Attorney,Pam Olsen Law,"1030 SE 17th St, Ocala, FL 34471 (one listing gives 1326 S Pine Ave)",(352) 671-9777,,Justia / directory,to contact,,,,"Directory addresses disagree, verify",,
+Attorney,Robert W. Batsel,"2201 SE 30th Ave #201, Ocala, FL 34471",(352) 622-3252,,Justia,to contact,,,,Verify practice area (PI?),,
+Attorney,Glover Law Firm (Ocala),"1531 SE 36th Ave, Ocala, FL 34471",352-484-0775,,City-Data (2015),to contact,,,,"Old listing, verify",,
+Attorney,Bogin Munns & Munns (Ocala),,,https://www.boginmunns.com/,firm website,to contact,,,,Has an Ocala post-accident-care FAQ,,
+Urgent care,AdventHealth Centra Care Ocala,SW College Rd,,https://centracare.adventhealth.com/urgent-care/ocala,health-system website,to contact,,,,Hospital system: ask for the practice manager or provider-relations rep,,
+Urgent care,Avecina Medical Urgent Care (Ocala),,,https://www.mymdnow.com/locations/north-central-florida/ocala,clinic website,to contact,,,,,,
+Urgent care,Michael J. Freeman MD PA,"8750 SW State Rd 200, Ocala, FL 34481",,,Solv listing,to contact,,,,,,
+Urgent care,Alfredo Jacome MD PA,"2121 SW 22nd Pl, Ocala, FL 34471",,,Solv listing,to contact,,,,,,
+Imaging,HCA Florida Ocala Imaging Center,"2300 SE 17th St, Bldg 800, Ocala, FL",,https://www.hcafloridahealthcare.com/locations/ocala-imaging-center,health-system website,to contact,,,,"MRI/CT, ask how to set up as a referring office",,
+Imaging,A1 Medical Imaging,"301 SE 17th St, Unit 102, Ocala, FL",(352) 622-7459,,directory,to contact,,,,Open MRI,,
+Imaging,Timberridge Imaging Center,"9521 SW Highway 200, Ocala, FL",,,MDsave,to contact,,,,Second site: Heathbrook Pavilion 3949 SW College Rd,,
+Imaging,Radiology Associates of Ocala,"1818 SW 15th Ave, Ocala, FL",,,third-party profile,to contact,,,,Verify,,
+Imaging,AdventHealth Ocala Medical Imaging,,,https://www.adventhealth.com/locations/hospitals/ocala/services/medical-imaging,hospital website,to contact,,,,,,
+Primary care,AdventHealth Medical Group Family Medicine,"2230 SW 19th Avenue Rd, Ocala, FL",,https://www.adventhealth.com/find-doctor/doctor/lucas-e-place-do-1497376263,AdventHealth directory,to contact,,,,"Several family physicians at this address, ask for the office manager",,
+Primary care,AdventHealth Family Medicine (Hwy 200),"9401 SW Highway 200, Suite 301, Ocala, FL 34481",,https://www.adventhealth.com/find-doctor/doctor/james-e-lemire-md-1972580397,AdventHealth directory,to contact,,,,,,
+Primary care,AdventHealth Primary Care (Silver Springs),"2553 E Silver Springs Blvd, Ocala, FL 34470",,https://www.adventhealth.com/find-doctor/doctor/elvira-mercado-md-1215196621,AdventHealth directory,to contact,,,,,,
+Primary care,AdventHealth Primary Care (SW 11th St),"221 SW 11th St, Ocala, FL 34471",,https://www.adventhealth.com/doctors/sanjiya-arora-md-1225927940,AdventHealth directory,to contact,,,,,,
+Specialist,Tallahassee Orthopedic Clinic (Ocala),"2118 SW 20th Pl, Ste 102, Ocala, FL",,https://cortico.health/clinics/ocala-fl/tallahassee-orthopedic-clinic-iii-77755/,directory,to contact,,,,"Spine and pain, two-way referrals for patients who need an ortho consult",,
+Specialist,UF Health Physical Medicine & Rehabilitation (Heath Brook),,,https://ufhealth.org/locations/uf-health-physical-medicine-rehabilitation-ocala-heath-brook,health-system website,to contact,,,,Spine program,,
+Specialist,Orthopaedic Surgery Center of Ocala,,,,directory,to contact,,,,Surgical center: lower priority,,
+Attorney,Morgan & Morgan (Ocala office),"1007 E Silver Springs Blvd, Ocala, FL 34470",352-644-2000,https://www.forthepeople.com/office-locations/florida/ocala/,"firm website / Martindale, email from firm pattern",to contact,Alberto H. Oliveri,,,Trial attorney (premises liability),aoliveri@forthepeople.com,"morgan, pattern-email"
+Attorney,Morgan & Morgan (Ocala office),"1007 E Silver Springs Blvd, Ocala, FL 34470",352-644-2000,https://www.forthepeople.com/office-locations/florida/ocala/,"firm website / Martindale, email from firm pattern",to contact,Keith Boykins,,,Attorney (premises liability),kboykins@forthepeople.com,"morgan, pattern-email"
+Attorney,Morgan & Morgan (Ocala office),"1007 E Silver Springs Blvd, Ocala, FL 34470",352-644-2000,https://www.forthepeople.com/office-locations/florida/ocala/,"firm website / Martindale, email from firm pattern",to contact,Raissa Booze,,,Attorney (premises liability),rbooze@forthepeople.com,"morgan, pattern-email"
+Attorney,Morgan & Morgan (Ocala office),"1007 E Silver Springs Blvd, Ocala, FL 34470",352-644-2000,https://www.forthepeople.com/office-locations/florida/ocala/,"firm website / Martindale, email from firm pattern",to contact,Michael J. Smith,,,Partner (car accidents),msmith@forthepeople.com,"morgan, pattern-email"
+Attorney,Morgan & Morgan (Ocala office),"1007 E Silver Springs Blvd, Ocala, FL 34470",352-644-2000,https://www.forthepeople.com/office-locations/florida/ocala/,"firm website / Martindale, email from firm pattern",to contact,Christopher J. Hinckley,,,Attorney (personal injury),chinckley@forthepeople.com,"morgan, pattern-email"
