@@ -183,19 +183,45 @@ function check_csrf() {
 // admin    — everything, plus user management and the audit log
 // provider — the doctor: everything clinical and financial
 // staff    — front desk / case manager: cases, checklist, referrals,
-//            visits, correspondence, documents; can SEE balances but not
-//            post payments, reductions or settlements
+//            visits, correspondence, documents. Sees no financial values
+//            unless an admin opens categories to staff or grants the person
+//            financial access (see fin_scopes)
 // billing  — A/R: financials and correspondence; reads clinical data
 const ROLE_PERMS = [
     'admin'    => ['case.read', 'case.write', 'clinical.write', 'finance.read', 'finance.write', 'contacts.write', 'export', 'users.manage', 'audit.read', 'import'],
     'provider' => ['case.read', 'case.write', 'clinical.write', 'finance.read', 'finance.write', 'contacts.write', 'export'],
-    'staff'    => ['case.read', 'case.write', 'clinical.write', 'finance.read', 'contacts.write'],
+    'staff'    => ['case.read', 'case.write', 'clinical.write', 'contacts.write'],
     'billing'  => ['case.read', 'finance.read', 'finance.write', 'contacts.write', 'export'],
 ];
 
 // Platform operators (users with no practice) run the service: they see
 // practices and subscriptions, never patient data.
 function is_operator(array $user): bool { return $user['practice_id'] === null; }
+
+// ---------- financial visibility ----------
+// Three categories of money data: balances (who owes what, A/R totals),
+// ledger (individual charges/payments/moves) and settlement (offers,
+// final settlement, reduction floor, amount forwarded, check). Admin,
+// provider and billing always see all three; staff see only what the
+// practice admin opened to staff, or everything if granted per person.
+// Hidden values are removed server-side, never just hidden in the page.
+const FIN_SCOPES = ['balances', 'ledger', 'settlement'];
+
+function fin_scopes(array $user): array {
+    if ($user['practice_id'] === null) return [];
+    if ($user['role'] !== 'staff' || !empty($user['finance_access'])) return FIN_SCOPES;
+    $p = current_practice();
+    return $p ? array_values(array_intersect(FIN_SCOPES, explode(',', (string)$p['staff_finance']))) : [];
+}
+
+function fin_can(array $user, string $scope): bool {
+    return in_array($scope, fin_scopes($user), true);
+}
+
+// Strips dollar amounts from alert text for users who can't see balances.
+function redact_money(string $s): string {
+    return trim(preg_replace('/\s*\(?\$[\d,]+(?:\.\d{1,2})?\)?/', '', $s));
+}
 
 function can(array $user, string $perm): bool {
     if (is_operator($user)) return $perm === 'platform.manage';
@@ -222,7 +248,7 @@ function pid(): int {
 function require_user(?string $perm = null, bool $allowPending = false): array {
     if (empty($_SESSION['uid'])) json_response(['error' => 'Not signed in', 'code' => 'auth'], 401);
     if (!$allowPending && empty($_SESSION['mfa_ok'])) json_response(['error' => 'Two-factor verification required', 'code' => 'mfa'], 401);
-    $stmt = pi_db()->prepare('SELECT id, practice_id, email, name, role, active, must_change_password, totp_enabled FROM users WHERE id = ?');
+    $stmt = pi_db()->prepare('SELECT id, practice_id, email, name, role, finance_access, active, must_change_password, totp_enabled FROM users WHERE id = ?');
     $stmt->execute([$_SESSION['uid']]);
     $user = $stmt->fetch();
     if (!$user || !$user['active']) {

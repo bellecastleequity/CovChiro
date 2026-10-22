@@ -330,13 +330,13 @@ function case_alerts(array $case, array $ctx): array {
                 : 'No EMC determination on file — PIP benefits are capped at $2,500 until one is made.'];
     }
 
-    // Charges billed to PIP approaching its limit (PIP pays 80%).
+    // PIP approaching its limit, from what PIP has actually paid (each
+    // carrier's fee schedule differs, so payments aren't estimated).
     if ($pip && $pip['status'] === 'active' && isset($ctx['totals'])) {
         $limit = pip_effective_limit($case, $pip);
-        $billed = $ctx['totals']['by_coverage'][(int)$pip['id']]['charges'] ?? 0;
-        $expected = $billed * PIP_PAYS_PCT;
-        if ($limit > 0 && $expected >= $limit * 0.85) {
-            $alerts[] = ['level' => 'medium', 'text' => 'PIP charges are at ' . round($expected / $limit * 100) . '% of the $' . number_format($limit) . ' limit — when exhausted, move the remainder to the patient balance.'];
+        $paid = $ctx['totals']['by_coverage'][(int)$pip['id']]['paid'] ?? 0;
+        if ($limit > 0 && $paid >= $limit * 0.85) {
+            $alerts[] = ['level' => 'medium', 'text' => 'PIP has paid $' . number_format($paid, 2) . ' of the $' . number_format($limit) . ' limit — when exhausted, move the remainder to the patient balance.'];
         }
     }
 

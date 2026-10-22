@@ -55,6 +55,8 @@ function session_payload(?array $u) {
         $pid = (int)$practice['id'];
         $out['practice'] = practice_summary($practice) + ['activeCases' => active_case_count($pid), 'activeUsers' => active_user_count($pid)];
         $out['user']['perms'] = ROLE_PERMS[$u['role']] ?? [];
+        current_practice($practice);
+        $out['user']['fin'] = fin_scopes($u);
         $q = function (string $sql) use ($pid) { $st = pi_db()->prepare($sql); $st->execute([$pid]); return $st->fetchAll(); };
         $out['lookups'] = [
             'stages' => STAGES, 'benefits' => BENEFITS, 'referralTypes' => REFERRAL_TYPES,

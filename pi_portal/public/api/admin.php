@@ -14,13 +14,14 @@ switch ($action) {
     case 'practice': handle_practice(); break;
     case 'practice_save': handle_practice_save(); break;
     case 'accept_baa': handle_accept_baa(); break;
+    case 'staff_finance': handle_staff_finance(); break;
     case 'audit': handle_audit(); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }
 
 function handle_users() {
     require_user('users.manage');
-    $stmt = pi_db()->prepare('SELECT id, email, name, role, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
+    $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
     $stmt->execute([pid()]);
     json_response(['users' => $stmt->fetchAll(), 'limit' => plan_for(current_practice())['users']]);
 }
@@ -54,8 +55,9 @@ function handle_user_save() {
         $active = !empty($b['active']) ? 1 : 0;
         if ($id === (int)$admin['id'] && ($role !== 'admin' || !$active)) json_response(['error' => "You can't remove your own admin access."], 400);
         if ($active && !$existing['active']) enforce_limit('users');
-        $pdo->prepare('UPDATE users SET name = ?, role = ?, active = ? WHERE id = ? AND practice_id = ?')->execute([$name, $role, $active, $id, pid()]);
-        audit('update', 'user', $id, null, $admin, "role=$role active=$active");
+        $finAccess = $role === 'staff' && !empty($b['finance_access']) ? 1 : 0;
+        $pdo->prepare('UPDATE users SET name = ?, role = ?, active = ?, finance_access = ? WHERE id = ? AND practice_id = ?')->execute([$name, $role, $active, $finAccess, $id, pid()]);
+        audit('update', 'user', $id, null, $admin, "role=$role active=$active finance_access=$finAccess");
         json_response(['ok' => true]);
     }
     enforce_limit('users');
@@ -65,8 +67,8 @@ function handle_user_save() {
     $s->execute([$email]);
     if ($s->fetch()) json_response(['error' => 'That email already has an account.'], 400);
     $pw = temp_password();
-    $pdo->prepare('INSERT INTO users (practice_id, email, name, role, password_hash, must_change_password, created_at) VALUES (?,?,?,?,?,1,?)')
-        ->execute([pid(), $email, $name, $role, password_hash($pw, PASSWORD_ARGON2ID), now_str()]);
+    $pdo->prepare('INSERT INTO users (practice_id, email, name, role, finance_access, password_hash, must_change_password, created_at) VALUES (?,?,?,?,?,?,1,?)')
+        ->execute([pid(), $email, $name, $role, $role === 'staff' && !empty($b['finance_access']) ? 1 : 0, password_hash($pw, PASSWORD_ARGON2ID), now_str()]);
     $newId = (int)$pdo->lastInsertId();
     audit('create', 'user', $newId, null, $admin, "role=$role");
     json_response(['ok' => true, 'tempPassword' => $pw]);
@@ -103,6 +105,7 @@ function handle_practice() {
     $p = current_practice();
     json_response(['practice' => [
         'name' => $p['name'], 'address' => $p['address'], 'phone' => $p['phone'], 'fax' => $p['fax'], 'state' => $p['state'],
+        'staffFinance' => array_values(array_filter(explode(',', (string)$p['staff_finance']))),
         'baaVersion' => $p['baa_version'], 'baaAcceptedAt' => $p['baa_accepted_at'], 'currentBaaVersion' => BAA_VERSION,
     ]]);
 }
@@ -118,6 +121,16 @@ function handle_practice_save() {
         ->execute([$name, str_or_null($b['address'] ?? null, 255), str_or_null($b['phone'] ?? null, 40), str_or_null($b['fax'] ?? null, 40), $state, pid()]);
     audit('update', 'practice', pid(), null, $admin);
     json_response(['ok' => true]);
+}
+
+// Which financial categories the staff role sees practice-wide.
+function handle_staff_finance() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $scopes = array_values(array_intersect(FIN_SCOPES, (array)(json_body()['scopes'] ?? [])));
+    pi_db()->prepare('UPDATE practices SET staff_finance = ? WHERE id = ?')->execute([implode(',', $scopes), pid()]);
+    audit('update', 'practice', pid(), null, $admin, 'staff_finance=' . implode(',', $scopes));
+    json_response(['ok' => true, 'scopes' => $scopes]);
 }
 
 function handle_accept_baa() {

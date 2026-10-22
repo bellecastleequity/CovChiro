@@ -24,6 +24,9 @@ CREATE TABLE practices (
   phone VARCHAR(40) NULL,
   fax VARCHAR(40) NULL,
   state CHAR(2) NOT NULL DEFAULT 'FL',
+  -- Which financial categories the staff role may see (comma list of
+  -- balances, ledger, settlement). Empty = none.
+  staff_finance VARCHAR(60) NOT NULL DEFAULT '',
   plan VARCHAR(20) NOT NULL DEFAULT 'starter',
   subscription_status ENUM('trialing','active','past_due','canceled','comped') NOT NULL DEFAULT 'trialing',
   trial_ends_at DATETIME NULL,
@@ -46,6 +49,8 @@ CREATE TABLE users (
   email VARCHAR(190) NOT NULL UNIQUE,
   name VARCHAR(120) NOT NULL,
   role ENUM('admin','provider','staff','billing') NOT NULL DEFAULT 'staff',
+  -- Admin-granted: this staff member may see all financials.
+  finance_access TINYINT(1) NOT NULL DEFAULT 0,
   password_hash VARCHAR(255) NOT NULL,
   must_change_password TINYINT(1) NOT NULL DEFAULT 1,
   totp_secret_enc TEXT NULL,

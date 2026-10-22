@@ -15,7 +15,10 @@ const money = (n) => (n === null || n === undefined || n === '') ? '—' : (Numb
 const fmtDate = (d) => { if (!d) return '—'; const [y, m, dd] = String(d).slice(0, 10).split('-'); return `${+m}/${+dd}/${y}`; };
 const today = () => new Date().toLocaleDateString('en-CA');
 const daysSince = (d) => d ? Math.round((Date.parse(today()) - Date.parse(String(d).slice(0, 10))) / 86400000) : null;
-const can = (perm) => !!S.user && S.user.perms.includes(perm);
+// 'fin:balances' / 'fin:ledger' / 'fin:settlement' check the financial
+// categories this user may see; 'fin:any' = at least one of them.
+const fin = (scope) => !!S.user && (S.user.fin || []).includes(scope);
+const can = (perm) => !!S.user && (perm.startsWith('fin:') ? (perm === 'fin:any' ? (S.user.fin || []).length > 0 : fin(perm.slice(4))) : S.user.perms.includes(perm));
 const label = (map, key) => (S.lookups?.[map]?.[key]) ?? key ?? '—';
 const contactName = (c) => c ? [c.organization, c.name].filter(Boolean).join(' — ') : '';
 const opt = (value, text, selected) => `<option value="${esc(value)}"${String(selected ?? '') === String(value) ? ' selected' : ''}>${esc(text)}</option>`;
@@ -311,7 +314,7 @@ async function signOut() {
 // ---------- shell & routing ----------
 const NAV = [
   ['dashboard', 'Dashboard', 'case.read'], ['cases', 'Cases', 'case.read'], ['tasks', 'Tasks', 'case.read'],
-  ['ar', 'A/R & settlements', 'finance.read'], ['contacts', 'Contacts', 'case.read'],
+  ['ar', 'A/R & settlements', 'fin:balances'], ['contacts', 'Contacts', 'case.read'],
   ['admin', 'Users', 'users.manage'], ['settings', 'Practice settings', 'users.manage'], ['billing', 'Plan & billing', 'users.manage'],
   ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'],
 ];
@@ -467,7 +470,7 @@ async function pageCases(main, args) {
 function renderCasesTable(rows) {
   const cols = [
     ['patient', 'Patient'], ['stage', 'Stage'], ['benefits', 'Benefits'], ['doi', 'DOI'], ['firstVisit', '1st visit'], ['lastVisit', 'Last visit'],
-    ['attorney', 'Attorney'], ['lastCorrespondence', 'Last contact'], ...(can('finance.read') ? [['balance', 'Balance']] : []), ['checklistDone', 'Checklist'], ['alerts', 'Alerts'],
+    ['attorney', 'Attorney'], ['lastCorrespondence', 'Last contact'], ...(can('fin:balances') ? [['balance', 'Balance']] : []), ['checklistDone', 'Checklist'], ['alerts', 'Alerts'],
   ];
   const { sort, dir } = casesState;
   rows.sort((a, b) => { const x = a[sort] ?? '', y = b[sort] ?? ''; return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y))) * dir; });
@@ -483,7 +486,7 @@ function renderCasesTable(rows) {
       <td class="nowrap">${esc(fmtDate(r.lastVisit))}</td>
       <td>${esc(r.attorney || '—')}</td>
       <td class="nowrap">${esc(fmtDate(r.lastCorrespondence))}</td>
-      ${can('finance.read') ? `<td class="num">${money(r.balance)}</td>` : ''}
+      ${can('fin:balances') ? `<td class="num">${money(r.balance)}</td>` : ''}
       <td class="nowrap">${r.checklistDone}/${r.checklistTotal}</td>
       <td>${r.alerts ? `<span class="badge-count${r.highAlerts ? '' : ' med'}">${r.alerts}</span>` : '<span class="badge-count zero">0</span>'}</td>
     </tr>`).join('')}</tbody></table>`;
@@ -543,7 +546,7 @@ function newCaseModal() {
 // ---------- case page ----------
 const CASE_TABS = [
   ['overview', 'Overview'], ['checklist', 'Checklist'], ['referrals', 'Co-management'], ['visits', 'Visits'], ['outcomes', 'Outcomes'],
-  ['correspondence', 'Correspondence'], ['financials', 'Financials', 'finance.read'], ['documents', 'Documents'], ['tasks', 'Tasks'], ['activity', 'Activity', 'audit.read'],
+  ['correspondence', 'Correspondence'], ['financials', 'Financials', 'fin:any'], ['documents', 'Documents'], ['tasks', 'Tasks'], ['activity', 'Activity', 'audit.read'],
 ];
 
 async function pageCase(main, args) {
@@ -631,8 +634,8 @@ function tabOverview(el, d) {
         <div class="small prewrap">${c.notes ? esc(c.notes) : '<span class="muted">No notes.</span>'}</div></div>
       <div class="card"><div class="card-head"><h2>Letters</h2></div>
         <div class="filters"><button class="btn ghost sm" data-act="letter" data-type="status_request">Status update request</button>
-        <button class="btn ghost sm" data-act="letter" data-type="tx_complete">Treatment complete</button>
-        ${can('finance.read') ? '<button class="btn ghost sm" data-act="letter" data-type="reduction_response">Reduction response</button>' : ''}</div>
+        ${fin('balances') ? '<button class="btn ghost sm" data-act="letter" data-type="tx_complete">Treatment complete</button>' : ''}
+        ${fin('settlement') ? '<button class="btn ghost sm" data-act="letter" data-type="reduction_response">Reduction response</button>' : ''}</div>
         <p class="small muted">Opens a printable letter addressed to the attorney of record. Log it under Correspondence once sent.</p></div>
     </div></div>`;
 }
@@ -862,7 +865,10 @@ const defaultBillTo = () => { const a = (S.caseData.coverages || []).filter((c) 
 const chargeLabel = (it) => `${fmtDate(it.date)} — ${it.memo || 'Charge'} (${money(it.amount)})`;
 
 function tabFinancials(el, d) {
-  const t = d.totals, c = d.case, fw = can('finance.write');
+  const c = d.case, fw = can('finance.write');
+  const showBal = fin('balances'), showLed = fin('ledger'), showSet = fin('settlement');
+  // Without the balances category, totals are withheld by the server.
+  const t = d.totals || { by_coverage: {}, patient_balance: 0, total_balance: 0 };
   const covEdit = can('case.write') || fw;
   const items = d.openItems || [];
   const showAll = el.dataset.all === '1';
@@ -877,7 +883,7 @@ function tabFinancials(el, d) {
       <div class="cov-head"><strong>${esc(covName(cv))}</strong><span class="chip ${statusCls}">${esc(label('coverageStatus', cv.status))}${cv.status_on && cv.status !== 'active' ? ' ' + esc(fmtDate(cv.status_on)) : ''}</span><span class="spacer"></span><span class="small muted">Billing order ${esc(cv.priority)}</span></div>
       <div class="small">${cv.claim_number ? 'Claim # <span class="mono">' + esc(cv.claim_number) + '</span>' : '<span class="muted">No claim # yet</span>'}${cv.policy_number ? ' · Policy/member # <span class="mono">' + esc(cv.policy_number) + '</span>' : ''}${cv.adjuster ? ' · Adjuster ' + esc(cv.adjuster) : ''}</div>
       ${limit}${auth}${cv.status_reason ? `<div class="small muted">${esc(cv.status_reason)}</div>` : ''}
-      <div class="cov-nums small"><span>Billed ${money(b.charges + b.moved_in)}</span><span>Paid ${money(b.paid)}</span><span>Adjusted ${money(b.adjusted)}</span><span>Moved out ${money(b.moved_out)}</span><span><strong>Open ${money(b.balance)}</strong></span></div>
+      ${showBal ? `<div class="cov-nums small"><span>Billed ${money(b.charges + b.moved_in)}</span><span>Paid ${money(b.paid)}</span><span>Adjusted ${money(b.adjusted)}</span><span>Moved out ${money(b.moved_out)}</span><span><strong>Open ${money(b.balance)}</strong></span></div>` : ''}
       ${covEdit ? `<div class="filters mt-sm"><button class="btn ghost sm" data-act="edit-coverage" data-id="${cv.id}">Edit</button>
         ${cv.status === 'active' ? `<button class="btn ghost sm" data-act="cov-status" data-id="${cv.id}" data-status="denied">Mark denied</button>
           ${cv.type !== 'workers_comp' ? `<button class="btn ghost sm" data-act="cov-status" data-id="${cv.id}" data-status="exhausted">Mark exhausted</button>` : ''}
@@ -887,43 +893,45 @@ function tabFinancials(el, d) {
     </div>`;
   }).join('');
 
+  // Actual PIP payments against the limit — each carrier's fee schedule
+  // differs, so nothing is estimated.
   const pct = (() => {
-    if (!pip || pip.status !== 'active') return null;
-    const billed = (t.by_coverage[pip.id] || {}).charges || 0, lim = +c.pip_effective_limit;
-    return lim ? { pct: Math.min(100, Math.round(billed * 0.8 / lim * 100)), expected: billed * 0.8, lim } : null;
+    if (!pip || !showBal) return null;
+    const paid = (t.by_coverage[pip.id] || {}).paid || 0, lim = +c.pip_effective_limit;
+    return lim ? { pct: Math.min(100, Math.round(paid / lim * 100)), paid, lim, left: Math.max(0, lim - paid) } : null;
   })();
 
   el.innerHTML = `
     ${fw ? `<div class="filters"><button class="btn sm" data-act="add-charge">+ Charge</button><button class="btn sm" data-act="add-payment">+ Payment</button>
       <button class="btn ghost sm" data-act="move-balance">Move balance…</button><span class="spacer"></span>
-      <button class="btn ghost sm" data-act="letter" data-type="statement">Print statement</button></div>` : ''}
+      ${showLed ? '<button class="btn ghost sm" data-act="letter" data-type="statement">Print statement</button>' : ''}</div>` : ''}
     <div class="grid-2">
       <div class="card"><div class="card-head"><h2>Insurance</h2><span class="spacer"></span>${covEdit ? '<button class="btn ghost sm" data-act="add-coverage">+ Add insurance</button>' : ''}</div>
         ${covCards || `<div class="empty">No insurance on file. Add PIP, MedPay, health insurance or workers' comp if the patient has it — insurance must be billed before the patient balance.</div>`}
       </div>
       <div>
-        <div class="card"><h2>Balances</h2>
+        ${showBal ? `<div class="card"><h2>Balances</h2>
           ${(d.coverages || []).map((cv) => `<div class="money-row"><span>${esc(covName(cv))}</span><strong>${money((t.by_coverage[cv.id] || {}).balance || 0)}</strong></div>`).join('')}
           ${t.by_coverage[0] ? `<div class="money-row"><span>Insurance (no coverage linked)</span><strong>${money(t.by_coverage[0].balance)}</strong></div>` : ''}
           <div class="money-row"><span>Patient balance (LOP)</span><strong>${money(t.patient_balance)}</strong></div>
           <div class="money-row"><span><strong>Total outstanding</strong></span><strong>${money(t.total_balance)}</strong></div>
           <div class="small muted mt-sm">Charges ${money(t.total_charges)} · insurance paid ${money(t.insurance_paid)} · moved to patient ${money(t.moved_to_patient)}</div>
-          ${pct ? `<div class="small mt">PIP pays 80%: expected ${money(pct.expected)} of ${money(pct.lim)}<div class="bar ${pct.pct >= 100 ? 'over' : pct.pct >= 85 ? 'warn' : ''}"><i data-w="${pct.pct}"></i></div></div>` : ''}
-        </div>
+          ${pct ? `<div class="small mt">PIP has paid ${money(pct.paid)} of ${money(pct.lim)} — ${money(pct.left)} left<div class="bar ${pct.pct >= 100 ? 'over' : pct.pct >= 85 ? 'warn' : ''}"><i data-w="${pct.pct}"></i></div></div>` : ''}
+        </div>` : ''}
         <div class="card"><div class="card-head"><h2>LOP &amp; settlement</h2><span class="spacer"></span>${can('case.write') || fw ? '<button class="btn ghost sm" data-act="edit-lop">Edit</button>' : ''}</div>
           <div class="money-row"><span>LOP signed by patient</span><strong>${esc(fmtDate(c.lop_signed_on))}</strong></div>
           <div class="money-row"><span>Acknowledged by law firm</span><strong>${c.lop_acknowledged_on ? esc(fmtDate(c.lop_acknowledged_on)) : (c.lop_signed_on ? 'Not countersigned' : '—')}</strong></div>
-          <div class="money-row"><span>Balance forwarded to attorney</span><strong>${c.balance_forwarded_on ? esc(fmtDate(c.balance_forwarded_on)) + ' · ' + money(c.balance_forwarded_amount) : '—'}</strong></div>
-          <div class="money-row"><span>${Math.round(S.lookups.reductionFloorPct * 100)}% floor (of patient balance)</span><strong>${money(t.reduction_floor)}</strong></div>
+          <div class="money-row"><span>Balance forwarded to attorney</span><strong>${c.balance_forwarded_on ? esc(fmtDate(c.balance_forwarded_on)) + (showSet ? ' · ' + money(c.balance_forwarded_amount) : '') : '—'}</strong></div>
+          ${showSet ? `<div class="money-row"><span>${Math.round(S.lookups.reductionFloorPct * 100)}% floor (of patient balance)</span><strong>${money(t.reduction_floor)}</strong></div>
           <div class="money-row"><span>Attorney offer</span><strong>${money(c.atty_offer)}${c.atty_offer && t.patient_balance > 0 ? ` <span class="small muted">(${Math.round(c.atty_offer / t.patient_balance * 1000) / 10}%)</span>` : ''}</strong></div>
           <div class="money-row"><span>Final settlement</span><strong>${money(c.final_settlement)}</strong></div>
           <div class="money-row"><span>Date authorized · check received</span><strong>${esc(fmtDate(c.date_authorized))} · ${esc(fmtDate(c.check_received_on))}</strong></div>
-          ${c.atty_offer && +c.atty_offer < t.reduction_floor ? '<div class="notice mt">Offer is below the reduction floor.</div>' : ''}
+          ${c.atty_offer && +c.atty_offer < t.reduction_floor ? '<div class="notice mt">Offer is below the reduction floor.</div>' : ''}` : ''}
           ${fw && t.patient_balance > 0.005 ? '<button class="btn mt" data-act="forward-balance">Forward balance to attorney</button>' : ''}
         </div>
       </div>
     </div>
-    <div class="card mt"><div class="card-head"><h2>Charges by date of service</h2><span class="spacer"></span>
+    ${showLed ? `<div class="card mt"><div class="card-head"><h2>Charges by date of service</h2><span class="spacer"></span>
       <label class="check small"><input type="checkbox" data-act-change="fin-all"${showAll ? ' checked' : ''}> Show paid charges</label></div>
       ${shown.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Billed to</th><th class="num">Charge</th><th class="num">Ins. paid/adj.</th><th class="num">Moved to patient</th><th class="num">Patient paid/adj.</th><th class="num">Open — insurance</th><th class="num">Open — patient</th><th></th></tr></thead><tbody>
       ${shown.map((it) => `<tr><td class="nowrap">${esc(fmtDate(it.date))}</td><td class="small">${esc(it.memo || '')}</td>
@@ -945,7 +953,7 @@ function tabFinancials(el, d) {
           <td class="small muted">${esc(l.updated_by_name || '')}${l.updated_at ? ' · edited ' + esc(fmtDate(l.updated_at)) : ''}</td>
           <td class="nowrap">${fw ? `<button class="btn link small" data-act="edit-ledger" data-id="${l.id}">Edit</button> <button class="btn link small" data-act="archive-child" data-table="ledger" data-id="${l.id}">Remove</button>` : ''}</td></tr>`;
       }).join('')}</tbody></table></div>` : '<div class="empty">No ledger entries.</div>'}
-    </div>`;
+    </div>` : ''}`;
   el.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
   el.querySelector('[data-act-change=fin-all]')?.addEventListener('change', (e) => { el.dataset.all = e.target.checked ? '1' : ''; tabFinancials(el, d); });
 }
@@ -1293,8 +1301,9 @@ async function pageAdmin(main) {
   const r = await attempt(() => api('admin.php?action=users'));
   if (!r) return;
   main.innerHTML = `<div class="page-head"><div><h1>Users</h1><div class="sub">Every user signs in with their own account and two-factor. Never share logins.</div></div><span class="spacer"></span><button class="btn" data-act="add-user">+ User</button></div>
-    <div class="card"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>2FA</th><th>Last sign-in</th><th></th></tr></thead><tbody>
+    <div class="card"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Financials</th><th>Status</th><th>2FA</th><th>Last sign-in</th><th></th></tr></thead><tbody>
     ${r.users.map((u) => `<tr><td><strong>${esc(u.name)}</strong></td><td>${esc(u.email)}</td><td><span class="chip">${esc(u.role)}</span></td>
+      <td class="small">${u.role !== 'staff' ? 'All' : u.finance_access == 1 ? '<span class="chip teal">All (granted)</span>' : '<a href="#/settings">Staff setting</a>'}</td>
       <td>${u.active == 1 ? (u.locked_until && u.locked_until > new Date().toISOString().slice(0, 19).replace('T', ' ') ? '<span class="chip red">Locked</span>' : '<span class="chip teal">Active</span>') : '<span class="chip na">Disabled</span>'}${u.must_change_password == 1 ? ' <span class="chip ochre">Temp password</span>' : ''}</td>
       <td>${u.totp_enabled == 1 ? '✓' : '<span class="muted">not set up</span>'}</td><td class="small">${esc(u.last_login_at || 'never')}</td>
       <td class="nowrap"><button class="btn ghost sm" data-act="edit-user" data-id="${u.id}">Edit</button>
@@ -1304,7 +1313,7 @@ async function pageAdmin(main) {
     </tbody></table></div>
     <h3 class="mt">Roles</h3>
     <dl class="kv small"><dt>admin</dt><dd>Everything, plus users and the audit log.</dd><dt>provider</dt><dd>All clinical and financial work.</dd>
-      <dt>staff</dt><dd>Front desk / case manager: cases, checklist, referrals, visits, correspondence, documents. Sees balances; can't post payments or settlements.</dd>
+      <dt>staff</dt><dd>Front desk / case manager: cases, checklist, referrals, visits, correspondence, documents. Sees financial values only as allowed under Practice settings → Financial visibility, or when granted financial access here. Can't post payments or settlements.</dd>
       <dt>billing</dt><dd>Ledger, settlements, A/R and correspondence. Read-only on clinical records.</dd></dl></div>`;
   main._users = r.users;
 }
@@ -1312,6 +1321,7 @@ async function pageAdmin(main) {
 function userModal(existing) {
   const defs = [{ n: 'name', l: 'Full name', req: true }, ...(existing ? [] : [{ n: 'email', l: 'Email', t: 'email', req: true }]),
     { n: 'role', l: 'Role', t: 'select', blank: false, opts: [['staff', 'Staff'], ['billing', 'Billing'], ['provider', 'Provider'], ['admin', 'Admin']] },
+    { n: 'finance_access', l: 'Grant full financial access (staff role only)', t: 'check' },
     ...(existing ? [{ n: 'active', l: 'Active', t: 'check' }] : [])];
   openModal({ title: existing ? 'Edit user' : 'Add user', body: fieldsHtml(defs, existing || { role: 'staff' }), onOk: async (el) => {
     const r = await api('admin.php?action=user_save', { ...readFields(el, defs), ...(existing ? { id: existing.id } : {}) });
@@ -1353,7 +1363,13 @@ async function pageSettings(main) {
         : `<div class="notice mt">${p.baaVersion ? 'The agreement has been updated since you accepted it.' : 'Not yet accepted.'}</div>
            <label class="check mt"><input type="checkbox" id="baa-accept"> I accept the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> (version ${esc(p.currentBaaVersion)}) on behalf of ${esc(p.name)}.</label>
            <button class="btn mt" data-act="accept-baa">Accept agreement</button>`}
-      <p class="small muted mt"><a href="legal.html#baa" target="_blank" rel="noopener">Read the agreement</a></p></div></div>`;
+      <p class="small muted mt"><a href="legal.html#baa" target="_blank" rel="noopener">Read the agreement</a></p></div></div>
+    <div class="card mt"><h2>Financial visibility for staff</h2>
+      <p class="small mt">Admins, providers and billing always see financials. Choose what the <strong>staff</strong> role (front desk) can see. To open everything to one person, edit them under Users and grant full financial access.</p>
+      ${[['balances', 'Balances', 'What insurance and the patient owe, totals, the A/R report and dashboard A/R'], ['ledger', 'Ledger detail', 'Individual charges, payments and balance moves; the itemized statement'],
+         ['settlement', 'Settlement', 'Attorney offers, final settlement, reduction floor, amount forwarded, check received']]
+        .map(([k, t, dsc]) => `<label class="check mt"><input type="checkbox" data-staff-fin="${k}"${(p.staffFinance || []).includes(k) ? ' checked' : ''}> <span><strong>${t}</strong> <span class="small muted">— ${dsc}</span></span></label>`).join('')}
+      <button class="btn mt" data-act="save-staff-fin">Save visibility</button></div>`;
 }
 
 // ---------- plan & billing ----------
@@ -1432,6 +1448,10 @@ const ACTIONS = {
     const box = document.getElementById('practice-form');
     try { await api('admin.php?action=practice_save', readFields(box, PRACTICE_DEFS)); toast('Saved'); refreshSession(); }
     catch (e) { document.getElementById('practice-err').textContent = e.message; }
+  },
+  'save-staff-fin': async () => {
+    const scopes = [...document.querySelectorAll('[data-staff-fin]:checked')].map((cb) => cb.dataset.staffFin);
+    if (await attempt(() => api('admin.php?action=staff_finance', { scopes }))) toast('Staff financial visibility saved');
   },
   'accept-baa': async () => {
     if (!document.getElementById('baa-accept').checked) { toast('Tick the box to accept.', true); return; }

@@ -158,6 +158,7 @@ function handle_list() {
     $stmt->execute($args);
     $cases = $stmt->fetchAll();
     $ctx = bulk_case_context($pdo, $cases);
+    $bal = fin_can($user, 'balances');
     $rows = [];
     foreach ($cases as $c) {
         $x = $ctx[(int)$c['id']];
@@ -168,7 +169,7 @@ function handle_list() {
             'firstVisit' => $c['first_visit'], 'lastVisit' => $x['lastVisit'], 'lastCorrespondence' => $x['lastCorrespondence'],
             'attorney' => trim(($c['atty_org'] ?? '') . ($c['atty_name'] ? ' — ' . $c['atty_name'] : ''), ' —'),
             'activelyTreating' => (bool)$c['actively_treating'], 'emc' => $c['emc_status'],
-            'balance' => $x['totals']['total_balance'], 'insuranceBalance' => $x['totals']['insurance_balance'], 'patientBalance' => $x['totals']['patient_balance'],
+            'balance' => $bal ? $x['totals']['total_balance'] : null, 'insuranceBalance' => $bal ? $x['totals']['insurance_balance'] : null, 'patientBalance' => $bal ? $x['totals']['patient_balance'] : null,
             'alerts' => count($alerts), 'highAlerts' => count(array_filter($alerts, fn($a) => $a['level'] === 'high')),
             'checklistDone' => count(array_filter($x['checklist'], fn($i) => in_array($i['status'], ['done', 'na'], true))),
             'checklistTotal' => count($x['checklist']),
@@ -219,12 +220,20 @@ function full_case(int $id, array $user): array {
     ];
     $case = decrypt_row($c);
     $case['pip_effective_limit'] = pip_effective_limit($c, first_coverage($coverages, 'pip'));
-    $fin = can($user, 'finance.read');
+    $bal = fin_can($user, 'balances'); $led = fin_can($user, 'ledger'); $set = fin_can($user, 'settlement');
+    if (!$set) {
+        foreach (['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'balance_forwarded_amount'] as $k) $case[$k] = null;
+        unset($totals['reduction_floor']);
+    }
+    $alerts = case_alerts($c, $ctx);
+    if (!$bal) $alerts = array_map(fn($a) => ['level' => $a['level'], 'text' => redact_money($a['text'])], $alerts);
+    if (!$bal) $corr = array_map(fn($r) => str_contains($r['subject'], 'forwarded to attorney') ? ['subject' => 'Patient balance forwarded to attorney'] + $r : $r, $corr);
     return [
         'case' => $case, 'patient' => $patient, 'contacts' => $contacts, 'coverages' => $coverages,
-        'checklist' => $checklist, 'alerts' => case_alerts($c, $ctx),
+        'checklist' => $checklist, 'alerts' => $alerts,
         'referrals' => $referrals, 'visits' => $visits, 'outcomes' => $outcomes,
-        'correspondence' => $corr, 'ledger' => $fin ? $ledger : [], 'openItems' => $fin ? $openItems : [], 'totals' => $fin ? $totals : null,
+        'correspondence' => $corr, 'ledger' => $led ? $ledger : [], 'openItems' => $led ? $openItems : [], 'totals' => $bal ? $totals : null,
+        'fin' => fin_scopes($user),
         'tasks' => $tasks, 'documents' => $docs,
         'stats' => ['visitCount' => count($visitDates), 'lastVisit' => $ctx['lastVisit']],
     ];
@@ -595,7 +604,10 @@ function handle_dashboard() {
     $treating = 0;
     foreach ($cases as $c) {
         $x = $ctx[(int)$c['id']];
-        foreach (case_alerts($c, $x) as $a) $alerts[] = $a + ['caseId' => (int)$c['id'], 'patient' => patient_name($c), 'caseNumber' => $c['case_number']];
+        foreach (case_alerts($c, $x) as $a) {
+            if (!fin_can($user, 'balances')) $a['text'] = redact_money($a['text']);
+            $alerts[] = $a + ['caseId' => (int)$c['id'], 'patient' => patient_name($c), 'caseNumber' => $c['case_number']];
+        }
         $ar['insurance'] += $x['totals']['insurance_balance'];
         $ar['patient'] += $x['totals']['patient_balance'];
         $ar['total'] += $x['totals']['total_balance'];
@@ -620,7 +632,7 @@ function handle_dashboard() {
     json_response([
         'byStage' => $byStage, 'openCases' => count($cases), 'activelyTreating' => $treating,
         'visitsThisWeek' => $visitsThisWeek, 'newThisMonth' => $newThisMonth,
-        'ar' => can($user, 'finance.read') ? array_map(fn($v) => round($v, 2), $ar) : null,
+        'ar' => fin_can($user, 'balances') ? array_map(fn($v) => round($v, 2), $ar) : null,
         'alerts' => array_slice($alerts, 0, 200), 'alertCounts' => array_count_values(array_column($alerts, 'level')),
         'tasks' => $tasks,
     ]);
@@ -628,7 +640,9 @@ function handle_dashboard() {
 
 // ---------- A/R ----------
 function handle_ar_report() {
-    $user = require_user('finance.read');
+    $user = require_user('case.read');
+    if (!fin_can($user, 'balances')) json_response(['error' => 'Financial reports are not available to your account.'], 403);
+    $set = fin_can($user, 'settlement');
     $pdo = pi_db();
     $includeClosed = !empty($_GET['all']);
     $stmt = $pdo->prepare('SELECT c.*, p.first_name, p.last_name, a.organization atty_org, a.name atty_name, a.email atty_email
@@ -650,13 +664,13 @@ function handle_ar_report() {
             'attorney' => trim(($c['atty_org'] ?? '') . ($c['atty_name'] ? ' — ' . $c['atty_name'] : ''), ' —'),
             'attorneyEmail' => $c['atty_email'],
             'insuranceBalance' => $t['insurance_balance'], 'patientBalance' => $t['patient_balance'], 'totalBalance' => $t['total_balance'],
-            'totalCharges' => $t['total_charges'], 'reductionFloor' => $t['reduction_floor'],
-            'attyOffer' => $c['atty_offer'] !== null ? (float)$c['atty_offer'] : null,
-            'offerPct' => ($c['atty_offer'] !== null && $t['patient_balance'] > 0) ? round((float)$c['atty_offer'] / $t['patient_balance'] * 100, 1) : null,
+            'totalCharges' => $t['total_charges'], 'reductionFloor' => $set ? $t['reduction_floor'] : null,
+            'attyOffer' => $set && $c['atty_offer'] !== null ? (float)$c['atty_offer'] : null,
+            'offerPct' => ($set && $c['atty_offer'] !== null && $t['patient_balance'] > 0) ? round((float)$c['atty_offer'] / $t['patient_balance'] * 100, 1) : null,
             'lopSigned' => $c['lop_signed_on'], 'forwardedOn' => $c['balance_forwarded_on'],
-            'forwardedAmount' => $c['balance_forwarded_amount'] !== null ? (float)$c['balance_forwarded_amount'] : null,
-            'finalSettlement' => $c['final_settlement'] !== null ? (float)$c['final_settlement'] : null,
-            'dateAuthorized' => $c['date_authorized'], 'checkReceived' => $c['check_received_on'],
+            'forwardedAmount' => $set && $c['balance_forwarded_amount'] !== null ? (float)$c['balance_forwarded_amount'] : null,
+            'finalSettlement' => $set && $c['final_settlement'] !== null ? (float)$c['final_settlement'] : null,
+            'dateAuthorized' => $set ? $c['date_authorized'] : null, 'checkReceived' => $set ? $c['check_received_on'] : null,
         ];
     }
     if (($_GET['format'] ?? '') === 'csv') {
@@ -680,8 +694,8 @@ function handle_ar_report() {
         'insurance' => round(array_sum(array_column($rows, 'insuranceBalance')), 2),
         'patient' => round(array_sum(array_column($rows, 'patientBalance')), 2),
         'total' => round(array_sum(array_column($rows, 'totalBalance')), 2),
-        'settledCollected' => round(array_sum(array_map(fn($r) => $r['checkReceived'] ? (float)$r['finalSettlement'] : 0, $rows)), 2),
-    ]]);
+        'settledCollected' => $set ? round(array_sum(array_map(fn($r) => $r['checkReceived'] ? (float)$r['finalSettlement'] : 0, $rows)), 2) : null,
+    ], 'settlementVisible' => $set]);
 }
 
 // ---------- letters ----------
@@ -697,7 +711,15 @@ function handle_letter() {
     $money = fn($n) => '$' . number_format((float)$n, 2);
     $patientLine = $h(patient_name($p)) . ($p['dob'] ? ' &nbsp;·&nbsp; DOB ' . $h($p['dob']) : '') . ($c['date_of_injury'] ? ' &nbsp;·&nbsp; DOI ' . $h($c['date_of_injury']) : '');
 
-    if ($type === 'status_request') {
+    $needs = ['tx_complete' => 'balances', 'reduction_response' => 'settlement', 'statement' => 'ledger'];
+    if (isset($needs[$type]) && !fin_can($user, $needs[$type])) json_response(['error' => 'This letter includes financial details not available to your account.'], 403);
+    if ($type === 'status_request' && !fin_can($user, 'balances')) {
+        $title = 'Case status update request';
+        $body = '<p>We are writing to request a status update on the above-referenced case for treatment provided to your client'
+            . ($d['stats']['lastVisit'] ? ' (last date of service ' . $h($d['stats']['lastVisit']) . ')' : '') . '.</p>'
+            . '<p>Please let us know the current status of the case (pre-suit, in litigation, mediation scheduled, settled), any upcoming dates, and whether any additional records or a narrative report are needed from our office.</p>'
+            . '<p>We extend our sincere gratitude for your prompt attention to this inquiry. Upon receipt we will update our records to reflect the information provided.</p>';
+    } elseif ($type === 'status_request') {
         $title = 'Case status update request';
         $body = '<p>We are writing to request a status update on the above-referenced case. Our records show an outstanding balance of <strong>'
             . $money($d['totals']['total_balance'] ?? 0) . '</strong> for treatment provided to your client'
@@ -719,7 +741,6 @@ function handle_letter() {
             . '<p>Our office is able to accept <strong>' . $money($d['totals']['reduction_floor'] ?? 0) . '</strong> (' . round(REDUCTION_FLOOR_PCT * 100) . '% of the balance) in full satisfaction of this account, provided payment is received within 30 days of settlement.</p>';
     } elseif ($type === 'statement') {
         // Itemized patient balance, by date of service, for the attorney.
-        if (!can($user, 'finance.read')) json_response(['error' => 'Your role does not allow this.'], 403);
         $title = 'Itemized statement — patient balance';
         $t = $d['totals'];
         $rowsHtml = '';
