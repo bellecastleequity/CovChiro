@@ -75,6 +75,10 @@ const CHILD_SPECS = [
         'attempted_on' => 'date', 'method' => ['call','text','email','letter'],
         'outcome' => ['no_answer','left_message','spoke_scheduled','spoke_will_call','unable_to_schedule','wrong_number'], 'notes' => 'enc',
     ]],
+    // Estimated bills at outside providers (case value); front desk or billing.
+    'case_estimates' => ['perm_any' => ['case.write', 'finance.write'], 'required' => ['category'], 'fields' => [
+        'referral_id' => 'referral', 'category' => 'str:40', 'description' => 'str:160', 'qty' => 'money', 'unit_cost' => 'money',
+    ]],
     'ledger' => ['perm' => 'finance.write', 'required' => ['entry_date', 'kind', 'bucket', 'amount'], 'fields' => [
         'entry_date' => 'date', 'kind' => ['charge','payment','adjustment','reduction','write_off','transfer'],
         'bucket' => ['insurance','patient'], 'coverage_id' => 'coverage',
@@ -103,10 +107,10 @@ function clean_fields(array $spec, array $in, ?int $caseId = null): array {
             $out[$name] = $code ?: null;
         }
         elseif ($type === 'int') $out[$name] = ($v === null || $v === '') ? null : max(0, (int)$v);
-        elseif ($type === 'coverage' || $type === 'charge') {
+        elseif ($type === 'coverage' || $type === 'charge' || $type === 'referral') {
             $id = ($v === null || $v === '') ? null : (int)$v;
             if ($id) {
-                $stmt = pi_db()->prepare($type === 'coverage' ? 'SELECT id FROM coverages WHERE id = ? AND case_id = ?' : "SELECT id FROM ledger WHERE id = ? AND case_id = ? AND kind = 'charge'");
+                $stmt = pi_db()->prepare($type === 'coverage' ? 'SELECT id FROM coverages WHERE id = ? AND case_id = ?' : ($type === 'referral' ? 'SELECT id FROM referrals WHERE id = ? AND case_id = ?' : "SELECT id FROM ledger WHERE id = ? AND case_id = ? AND kind = 'charge'"));
                 $stmt->execute([$id, (int)$caseId]);
                 if (!$stmt->fetch()) json_response(['error' => "Unknown $name"], 400);
             }
@@ -264,6 +268,7 @@ function full_case(int $id, array $user): array {
         ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null,
         ($seen = array_column(array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'), 'visit_date')) ? max($seen) : null);
     $ctx = [
+        'estimateRows' => $fetch('SELECT * FROM case_estimates WHERE case_id = ? AND archived_at IS NULL ORDER BY id'), 'costs' => practice_costs(),
         'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'visits' => $visits, 'totals' => $totals, 'ledgerRows' => $allLedger, 'attendedDates' => $visitDates, 'outreach' => $outreach, 'coverages' => $coverages, 'openItems' => $openItems,
         'wcVisits' => ['count' => count($attended), 'missing25' => count(array_filter($attended, fn($v) => !$v['dwc25_sent'] && $v['visit_date'] <= $cutoff))],
         'lastVisit' => $visitDates ? max($visitDates) : null,

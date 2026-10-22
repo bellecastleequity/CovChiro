@@ -111,7 +111,7 @@ function handle_practice() {
         'name' => $p['name'], 'address' => $p['address'], 'phone' => $p['phone'], 'fax' => $p['fax'], 'state' => $p['state'], 'ehrName' => $p['ehr_name'],
         'staffFinance' => array_values(array_filter(explode(',', (string)$p['staff_finance']))),
         'notifyRules' => practice_rules($p), 'notifyCriteria' => NOTIFY_CRITERIA, 'mailReady' => mail_ready(),
-        'hasHuddle' => has_feature($p, 'huddle'), 'hasDigest' => has_feature($p, 'email_digest'),
+        'hasHuddle' => has_feature($p, 'huddle'), 'hasDigest' => has_feature($p, 'email_digest'), 'costs' => practice_costs($p),
         'baaVersion' => $p['baa_version'], 'baaAcceptedAt' => $p['baa_accepted_at'], 'currentBaaVersion' => BAA_VERSION,
     ]]);
 }
@@ -184,6 +184,34 @@ function handle_my_notify_save() {
     pi_db()->prepare('UPDATE users SET notify_digest = ?, notify_criteria = ? WHERE id = ?')->execute([!empty($b['digest']) ? 1 : 0, implode(',', $crit), $user['id']]);
     audit('update', 'user', $user['id'], null, $user, 'email notifications', [['f' => 'notify_digest', 't' => 'bool', 'from' => null, 'to' => !empty($b['digest'])]]);
     json_response(['ok' => true]);
+}
+
+// ---- expected costs at outside providers (case value estimates) ----
+function handle_costs_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $b = json_body();
+    $before = practice_costs();
+    $save = [];
+    if (empty($b['reset'])) {
+        foreach (OUTSIDE_COSTS as $k => $d) {
+            $in = $b['costs'][$k] ?? null;
+            if (!is_array($in)) continue;
+            $cost = isset($in['cost']) && $in['cost'] !== '' ? max(0, min(1000000, round((float)$in['cost'], 2))) : (float)$d['cost'];
+            $typ = isset($in['typical']) && $in['typical'] !== '' ? max(0, min(100, round((float)$in['typical'], 1))) : (float)$d['typical'];
+            if ($cost != $d['cost'] || $typ != $d['typical']) $save[$k] = ['cost' => $cost, 'typical' => $typ];
+        }
+    }
+    pi_db()->prepare('UPDATE practices SET cost_estimates = ? WHERE id = ?')->execute([$save ? json_encode($save) : null, pid()]);
+    $p = current_practice(); $p['cost_estimates'] = $save ? json_encode($save) : null;
+    $after = practice_costs($p);
+    $changes = [];
+    foreach ($after as $k => $a) {
+        if ($a['cost'] != $before[$k]['cost']) $changes[] = ['f' => $a['label'] . ' cost', 't' => 'money', 'from' => $before[$k]['cost'], 'to' => $a['cost']];
+        if ($a['typical'] != $before[$k]['typical']) $changes[] = ['f' => $a['label'] . ' typical count', 't' => 'int', 'from' => $before[$k]['typical'], 'to' => $a['typical']];
+    }
+    audit('update', 'practice', pid(), null, $admin, 'outside provider costs', $changes ?: null);
+    json_response(['costs' => $after]);
 }
 
 // ---- the practice's own case steps, and silencing built-in ones ----
@@ -402,6 +430,7 @@ switch ($action) {
     case 'audit': handle_audit(); break;
     case 'audit_csv': handle_audit_csv(); break;
     case 'notify_rules_save': handle_notify_rules_save(); break;
+    case 'costs_save': handle_costs_save(); break;
     case 'steps': handle_steps(); break;
     case 'step_save': handle_step_save(); break;
     case 'step_silence': handle_step_silence(); break;

@@ -1721,7 +1721,7 @@ const LIMIT_DEFS = [
   { n: 'bi_limit', l: "At-fault driver's bodily-injury limit ($)", t: 'money', ph: 'e.g. 25000' },
   { n: 'um_limit', l: "Patient's UM/UIM limit ($)", t: 'money' },
   { n: 'liability_carrier', l: 'At-fault insurer', ph: 'e.g. State Farm' },
-  { n: 'other_medical_estimate', l: "Other providers' bills, estimate ($)", t: 'money', ph: 'ER, imaging, specialists' },
+  { n: 'other_medical_estimate', l: 'Other bills not itemized, lump sum ($)', t: 'money', ph: 'Itemize under Financials → Other providers' },
   { n: 'limits_source', l: 'Where this came from', ph: 'e.g. Attorney call — Jane, Smith Law' },
   { n: 'limits_noted_on', l: 'As of', t: 'date' },
 ];
@@ -1765,12 +1765,59 @@ function caseValueCardHtml(d) {
       <p class="small muted">A settlement usually splits into thirds — attorney's fee, medical bills, the patient. Past about a third, reductions become likely; plan care and other coverage (UM, health insurance, MedPay) with the attorney. Clinical decisions stay with the doctor.</p>
       ${edit ? '<button class="btn ghost sm" data-act="edit-limits">Edit limits</button>' : ''}</div>`;
   }
+  const o = v.outside;
+  const outHtml = o ? `<div class="cv-block"><div class="cv-title">Other providers' bills <span class="small muted">estimated from referrals and your cost list</span></div>
+      <div class="cv-big">${money(o.all)}</div>
+      ${o.lines.length || o.lump ? `<div class="est-lines">${o.lines.map((l) => `<div class="money-row small${l.excluded ? ' muted' : ''}"><span>${esc(l.label)} <span class="muted">· ${+l.qty} ${esc(l.unit)}${+l.qty === 1 ? '' : 's'} × ${money(l.unitCost)}${l.adjusted ? ' · adjusted' : l.referralId ? ' · from referral' : ''}</span></span><strong>${l.excluded ? 'left out' : money(l.amount)}</strong></div>`).join('')}
+        ${o.lump ? `<div class="money-row small"><span>Other bills not itemized</span><strong>${money(o.lump)}</strong></div>` : ''}</div>`
+        : '<p class="small muted">No outside referrals yet. MRI, ortho, neurology, pain management and other referrals add estimated bills here automatically.</p>'}
+      <p class="small muted">Estimates for planning only — actual bills from other facilities will differ.</p>
+      ${edit ? '<button class="btn ghost sm" data-act="edit-estimates">Adjust estimates</button>' : ''}</div>` : '';
   const th = v.threshold;
   const thHtml = th ? `<div class="cv-block"><div class="cv-title">Lawsuit threshold <span class="small muted">${esc(th.state)}</span></div>
       ${th.dollars ? `<div class="cv-big">${th.met ? '✓ Met' : money(th.dollars - th.amount) + ' to go'} <span class="small muted">${money(th.amount)} of ${money(th.dollars)}</span></div>
       <div class="bar ${th.met ? '' : 'warn'}"><i data-w="${Math.min(100, Math.round(th.amount / th.dollars * 100))}"></i></div><p class="small muted">${esc(th.counts)}. Other injury categories can also qualify.</p>` : ''}
       <p class="small">${esc(th.text)}</p></div>` : '';
-  return `<div class="card case-value"><h2>Policy limits &amp; case value</h2>${pipHtml}${limHtml}${thHtml}</div>`;
+  return `<div class="card case-value"><h2>Policy limits &amp; case value</h2>${pipHtml}${limHtml}${outHtml}${thHtml}</div>`;
+}
+
+// Other providers' estimated bills: adjust a referral's line (count or unit
+// cost, or leave it out), or add lines such as injections, ER or surgery.
+function estimatesModal() {
+  const d = S.caseData, o = d.caseValue.outside, costs = S.lookups.outsideCosts;
+  const rows = o.lines.map((l, i) => `<tr data-i="${i}"><td>${esc(l.label)}${l.referralId ? '<div class="small muted">From a referral</div>' : ''}</td>
+      <td><input type="number" min="0" step="0.5" class="est-qty" value="${+l.qty}" aria-label="Count"> <span class="small muted">${esc(l.unit)}s</span></td>
+      <td><input type="number" min="0" step="1" class="est-cost" value="${+l.unitCost}" aria-label="Cost each"></td>
+      <td class="nowrap">${l.referralId ? '<span class="small muted">Set count to 0 to leave out</span>' : `<button type="button" class="btn link small" data-est-remove="${l.id}">Remove</button>`}</td></tr>`).join('');
+  const m = openModal({ title: "Other providers' bills — estimates", wide: true, okText: 'Save estimates', body: `
+    <p class="small">Expected charges at other facilities, used for the policy-limits and case-value math. Referrals add lines automatically from your <a href="#/settings">cost list</a>; change any count or cost for this case.</p>
+    <div class="table-wrap mt"><table class="est-table"><thead><tr><th>Item</th><th>Count</th><th>Cost each ($)</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="empty">No lines yet.</td></tr>'}</tbody></table></div>
+    <h3 class="mt">Add a line</h3>
+    <div class="form-grid mt-sm"><div><label for="est-cat">Item</label><select id="est-cat">${entries(costs).map(([k, c]) => opt(k, `${c.label} — ${money(c.cost)} per ${c.unit}`, 'injection')).join('')}<option value="custom">Other (describe)</option></select></div>
+      <div><label for="est-desc">Description (optional)</label><input id="est-desc" placeholder="e.g. L4-5 epidural, Tampa Pain Center"></div>
+      <div><label for="est-qty">Count</label><input id="est-qty" type="number" min="0" step="0.5" value="1"></div>
+      <div><label for="est-cost">Cost each ($, blank = cost list)</label><input id="est-cost" type="number" min="0" step="1"></div></div>
+    <p class="small muted mt">Estimates for planning only — the treating providers decide what care is needed.</p>`,
+    onOk: async (el) => {
+      const save = (row) => api('cases.php?action=child_save&id=' + d.case.id, { table: 'case_estimates', row });
+      for (const tr of el.querySelectorAll('tr[data-i]')) {
+        const l = o.lines[+tr.dataset.i], qty = +tr.querySelector('.est-qty').value, cost = +tr.querySelector('.est-cost').value;
+        if (qty === +l.qty && cost === +l.unitCost) continue;
+        const listCost = costs[l.category]?.cost;
+        await save({ ...(l.id ? { id: l.id } : {}), ...(l.referralId ? { referral_id: l.referralId } : {}), category: l.category, qty, unit_cost: cost === listCost ? null : cost });
+      }
+      const qty = el.querySelector('#est-qty').value, cat = el.querySelector('#est-cat').value, desc = el.querySelector('#est-desc').value.trim(), cost = el.querySelector('#est-cost').value;
+      // Add the new line only if someone filled in the "Add a line" fields.
+      const touched = el.dataset.addLine === '1' || desc || cost !== '';
+      if (touched && (cat !== 'custom' || desc)) await save({ category: cat, description: desc || null, qty: +qty || 1, unit_cost: cost === '' ? null : +cost });
+      S.caseData = await api('cases.php?action=get&id=' + d.case.id); renderCase(); toast('Estimates saved');
+    } });
+  m.el.querySelectorAll('[data-est-remove]').forEach((b) => b.addEventListener('click', async () => {
+    S.caseData = await api('cases.php?action=child_archive&id=' + d.case.id, { table: 'case_estimates', child_id: +b.dataset.estRemove });
+    m.close(); renderCase(); estimatesModal();
+  }));
+  m.el.querySelector('#est-cat').addEventListener('change', () => { m.el.dataset.addLine = '1'; });
+  m.el.querySelector('#est-qty').addEventListener('input', () => { m.el.dataset.addLine = '1'; });
 }
 
 // ----- LOP, forwarding, settlement -----
@@ -1912,7 +1959,7 @@ const AUDIT_VERBS = {
 const AUDIT_THINGS = {
   case: 'the case', visits: 'a visit', referrals: 'a co-management referral', coverages: 'insurance coverage', outcomes: 'an outcome assessment',
   correspondence: 'a correspondence entry', outreach: 'an outreach attempt', ledger: 'a ledger entry', task: 'task', milestone: 'checklist item', document: 'a document', contact: 'contact',
-  user: 'user', location: 'location', promo_code: 'promo code', practice_step: 'office step', feedback: 'feature suggestion', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
+  user: 'user', location: 'location', promo_code: 'promo code', practice_step: 'office step', case_estimates: "an outside-provider estimate", feedback: 'feature suggestion', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
   audit_log: 'the audit log', huddle: 'the daily huddle', permission: '', platform_practices: 'the practice list', care_guide: 'the referral guide',
 };
 const FIELD_NAMES = {
@@ -1927,7 +1974,7 @@ const FIELD_NAMES = {
   patient_balance: 'Patient balance', injury_type: 'Case type', location_id: 'Location', location_restricted: 'Limited to location', outreach_hold_on: 'Calls paused (attorney notified)', paralegal: 'Paralegal', attempted_on: 'Date', method: 'How', outcome: 'Outcome', plan_visits_per_week: 'Treatment plan (visits/week)', plan_set_on: 'Plan since', notify_digest: 'Daily email digest',
   gap_days: 'Gap days', adherence_pct: 'Adherence threshold %', weekdays_only: 'Weekdays only', criteria: 'Criteria', bi_limit: 'At-fault BI limit', um_limit: 'UM limit', other_medical_estimate: "Other providers' bills (est.)",
   liability_carrier: 'At-fault insurer', limits_source: 'Limits source', limits_noted_on: 'Limits as of', remaining_reported: 'PIP remaining (carrier)', remaining_reported_on: 'Remaining as of', visit_type: 'Visit type', head_injury: 'Head injury',
-  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)', mediation_on: 'Mediation', trial_on: 'Trial', settlement_signed_on: 'Settlement signed', disbursement_expected_on: 'Check expected', jurisdiction: 'State rules', emc_by: 'EMC determined by', emc_on: 'EMC date', tort_option: 'Lawsuit option',
+  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)', qty: 'Count', unit_cost: 'Cost each', referral_id: 'Referral', mediation_on: 'Mediation', trial_on: 'Trial', settlement_signed_on: 'Settlement signed', disbursement_expected_on: 'Check expected', jurisdiction: 'State rules', emc_by: 'EMC determined by', emc_on: 'EMC date', tort_option: 'Lawsuit option',
   lop_factored: 'LOP factored', lop_factor_company: 'Factoring company', lop_factor_price: 'Factoring price', lop_health_coverage: 'Health coverage at treatment', policy_effective_on: 'Policy issued/renewed', demand_sent_on: 'PIP demand sent', badge: 'Website badge shown',
 };
 const humanize = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -2214,6 +2261,13 @@ async function pageSettings(main) {
     <div class="card mt"><div class="card-head"><h2>Locations</h2><span class="spacer"></span>${hasFeature('locations') ? '<button class="btn ghost sm" data-act="location-edit">+ Add location</button>' : ''}</div>
       <p class="small">Run more than one office in this account: each case belongs to a location (its letterhead is used on letters and exports), lists filter by location, and team members can be limited to their own location's patients.</p>
       <div id="locations-list" class="mt">${hasFeature('locations') ? '<div class="empty">Loading…</div>' : `<div class="notice">Multiple locations are part of the ${esc(featureInfo('locations').planName)} plan.</div>`}</div></div>
+    <div class="card mt" id="costs-card"><div class="card-head"><h2>Outside provider costs</h2></div>
+      <p class="small">What other facilities typically charge, used to estimate the other bills on each case from its referrals (an MRI counts once per body region on the referral). Estimates for planning only; each case can adjust its own lines under Financials.</p>
+      <div class="table-wrap mt"><table><thead><tr><th>Item</th><th>Cost each ($)</th><th>Typical count per referral</th></tr></thead><tbody>
+      ${entries(p.costs).map(([k, c]) => `<tr><td>${esc(c.label)} <span class="small muted">per ${esc(c.unit)}</span></td><td><input type="number" min="0" step="1" value="${+c.cost}" data-cost="${k}" data-f="cost" aria-label="${esc(c.label)} cost"></td>
+        <td>${c.ref ? `<input type="number" min="0" step="1" value="${+c.typical}" data-cost="${k}" data-f="typical" aria-label="${esc(c.label)} typical count">` : '<span class="small muted">Added by hand on a case</span>'}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="badge-row mt"><button class="btn" data-act="save-costs">Save cost list</button><button class="btn ghost" data-act="save-costs" data-reset="1">Reset to defaults</button></div></div>
     <div class="card mt" id="steps-card"><div class="card-head"><h2>Case steps &amp; checklist</h2><span class="spacer"></span>${hasFeature('custom_steps') ? '<button class="btn ghost sm" data-act="step-edit">+ Add your own step</button>' : ''}</div>
       <p class="small">Add the steps your office follows (they appear on every matching case's checklist, with due dates and alerts), and silence built-in steps your practice doesn't use. Silencing applies to every case; a single case can still mark a step "not needed".</p>
       <div id="steps-body" class="mt"><div class="empty">Loading…</div></div></div>
@@ -2552,6 +2606,13 @@ const ACTIONS = {
   'outreach-log': outreachLogModal,
   'export-file': exportFileModal,
   'location-edit': (el) => locationModal(el.dataset.id ? +el.dataset.id : null),
+  'edit-estimates': () => estimatesModal(),
+  'save-costs': async (el) => {
+    const box = document.getElementById('costs-card'), costs = {};
+    box.querySelectorAll('[data-cost]').forEach((inp) => { (costs[inp.dataset.cost] = costs[inp.dataset.cost] || {})[inp.dataset.f] = inp.value; });
+    const r = await attempt(() => api('admin.php?action=costs_save', el.dataset.reset ? { reset: true } : { costs }));
+    if (r) { toast(el.dataset.reset ? 'Back to the defaults' : 'Cost list saved'); await refreshSession(); pageSettings(document.getElementById('main')); }
+  },
   'promo-check': () => checkPromo(),
   'step-edit': (el) => stepModal(el.dataset.id ? +el.dataset.id : null),
   'step-remove': async (el) => { if (!(await confirmBox('Remove this step?', 'It disappears from every case\'s checklist. Completions already recorded stay in the activity log.', 'Remove'))) return; if (await attempt(() => api('admin.php?action=step_save', { id: +el.dataset.id, remove: true }))) { toast('Removed'); loadSteps(); } },

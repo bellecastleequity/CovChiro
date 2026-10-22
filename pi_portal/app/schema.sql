@@ -32,6 +32,8 @@ CREATE TABLE practices (
   -- Daily email digest: which criteria are on and their thresholds (JSON;
   -- defaults in app/huddle.php).
   notify_rules TEXT NULL,
+  -- Expected costs at outside providers (JSON overrides of OUTSIDE_COSTS).
+  cost_estimates TEXT NULL,
   plan VARCHAR(20) NOT NULL DEFAULT 'starter',
   subscription_status ENUM('trialing','active','past_due','canceled','comped') NOT NULL DEFAULT 'trialing',
   trial_ends_at DATETIME NULL,
@@ -329,6 +331,24 @@ CREATE TABLE cases (
 -- MedPay, the patient's health insurance, or workers' comp. Each has its
 -- own claim and lifecycle; whatever insurance doesn't cover is moved (by a
 -- person, never automatically) to the patient balance.
+-- Estimated bills from outside providers on a case. A row with referral_id
+-- adjusts that referral's automatic estimate (qty 0 leaves it out); rows
+-- without one are added by hand. unit_cost NULL = the practice's cost list.
+CREATE TABLE case_estimates (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  case_id INT NOT NULL,
+  referral_id INT NULL,
+  category VARCHAR(40) NOT NULL DEFAULT 'custom',
+  description VARCHAR(160) NULL,
+  qty DECIMAL(8,2) NOT NULL DEFAULT 1,
+  unit_cost DECIMAL(10,2) NULL,
+  archived_at DATETIME NULL,
+  created_by INT NULL,
+  created_at DATETIME NOT NULL,
+  FOREIGN KEY (case_id) REFERENCES cases(id),
+  INDEX idx_est_case (case_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE coverages (
   id INT AUTO_INCREMENT PRIMARY KEY,
   case_id INT NOT NULL,
