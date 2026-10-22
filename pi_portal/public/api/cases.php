@@ -396,6 +396,137 @@ function handle_milestone() {
     json_response(full_case($id, $user));
 }
 
+// ---------- patient file export ----------
+// A records-ready summary of the case workup for a records request
+// (insurer, defense counsel, the patient's attorney). Deliberately limited
+// to facts of care: dates, visit types, providers, diagnoses, referrals,
+// reports and outcome scores. Never included: any financial data, policy
+// limits, internal notes (case, visit, referral and outreach notes), tasks,
+// alerts, suggestions, checklist status or care-guide decisions — internal
+// working material that can be misread out of context. Optional sections
+// (missed appointments, correspondence, outreach) are off by default.
+const EXPORT_SECTIONS = ['visits', 'missed', 'referrals', 'findings', 'outcomes', 'correspondence', 'outreach'];
+const EXPORT_DEFAULT = ['visits', 'referrals', 'findings', 'outcomes'];
+
+function export_allowed(array $user): void {
+    if (!can($user, 'export') && !can($user, 'case.write')) json_response(['error' => 'Your role does not allow exporting patient files.'], 403);
+}
+
+function handle_export_file() {
+    $user = require_user('case.read');
+    export_allowed($user);
+    $id = (int)($_GET['id'] ?? 0);
+    $inc = isset($_GET['inc']) ? array_values(array_intersect(explode(',', (string)$_GET['inc']), EXPORT_SECTIONS)) : EXPORT_DEFAULT;
+    $for = str_or_null($_GET['for'] ?? null, 160);
+    $d = full_case($id, $user);
+    $c = $d['case']; $p = $d['patient'];
+    $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $date = fn($s) => $s ? date('m/d/Y', strtotime($s)) : '—';
+    $on = fn($k) => in_array($k, $inc, true);
+    $practice = current_practice();
+    $provider = null;
+    foreach (pi_db()->query('SELECT id, name FROM users WHERE practice_id = ' . (int)pid()) as $u) if ((int)$u['id'] === (int)$c['provider_user_id']) $provider = $u['name'];
+    $atty = $d['contacts']['attorney_contact_id'] ?? null;
+    $visitLabel = ['initial' => 'Initial examination', 'treatment' => 'Treatment', 're_exam' => 'Re-examination', 'maintenance' => 'Maintenance care', 'discharge' => 'Discharge examination', 'no_show' => 'Missed appointment'];
+    $refStatus = ['ordered' => 'Ordered', 'scheduled' => 'Scheduled', 'completed' => 'Completed', 'report_received' => 'Report received', 'no_show' => $on('missed') ? 'Appointment missed' : 'Not completed', 'cancelled' => 'Cancelled'];
+    $sections = [];
+
+    $visits = array_reverse($d['visits']);
+    $attended = array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show');
+    $summary = '<table class="kv"><tr><th>Patient</th><td>' . $h(patient_name($p)) . '</td></tr><tr><th>Date of birth</th><td>' . $h($date($p['dob'])) . '</td></tr>'
+        . '<tr><th>Date of injury</th><td>' . $h($date($c['date_of_injury'])) . ' (' . $h(INJURY_TYPES[$c['injury_type']] ?? $c['injury_type']) . ')</td></tr>'
+        . '<tr><th>Treating provider</th><td>' . $h($provider ?? '—') . '</td></tr>'
+        . ($atty ? '<tr><th>Attorney of record</th><td>' . $h(trim(($atty['name'] ?? '') . ', ' . ($atty['organization'] ?? ''), ', ')) . '</td></tr>' : '')
+        . '<tr><th>Dates of care</th><td>' . $h($date($c['first_visit'])) . ' – ' . $h($date($d['stats']['lastVisit'])) . ' · ' . count($attended) . ' visit' . (count($attended) === 1 ? '' : 's') . '</td></tr>'
+        . ($c['plan_visits_per_week'] ? '<tr><th>Treatment plan</th><td>' . $h(plan_label((float)$c['plan_visits_per_week'])) . ($c['plan_set_on'] ? ' from ' . $h($date($c['plan_set_on'])) : '') . '</td></tr>' : '')
+        . ($c['mmi_date'] ? '<tr><th>Maximum medical improvement</th><td>' . $h($date($c['mmi_date'])) . '</td></tr>' : '')
+        . ($c['mmi_date'] && $c['maintenance_every_days'] && !$c['discharge_date'] ? '<tr><th>Ongoing care</th><td>Maintenance care plan, ' . $h(maintenance_label((int)$c['maintenance_every_days'])) . '</td></tr>' : '')
+        . ($c['discharge_date'] ? '<tr><th>Discharged</th><td>' . $h($date($c['discharge_date'])) . '</td></tr>' : '')
+        . '</table>';
+    $sections[] = ['Summary', $summary];
+
+    if ($on('visits')) {
+        $rows = '';
+        foreach ($visits as $v) {
+            if ($v['visit_type'] === 'no_show' && !$on('missed')) continue;
+            $rows .= '<tr><td>' . $h($date($v['visit_date'])) . '</td><td>' . $h($visitLabel[$v['visit_type']] ?? $v['visit_type']) . '</td><td>' . $h($v['provider_name'] ?? '') . '</td><td>' . $h($v['icd_codes'] ?? '') . '</td></tr>';
+        }
+        $sections[] = ['Visits', $rows ? '<table><thead><tr><th>Date</th><th>Visit</th><th>Provider</th><th>Diagnosis codes (ICD-10)</th></tr></thead><tbody>' . $rows . '</tbody></table>' : '<p>No visits recorded.</p>'];
+    }
+    if ($on('referrals')) {
+        $rows = '';
+        foreach ($d['referrals'] as $r) {
+            if ($r['status'] === 'no_show' && !$on('missed')) $statusText = 'Not completed'; else $statusText = $refStatus[$r['status']] ?? $r['status'];
+            $type = $r['type'] === 'other' && !empty($r['specialty']) ? $r['specialty'] : (REFERRAL_TYPES[$r['type']] ?? $r['type']);
+            $rows .= '<tr><td>' . $h($type) . ($r['body_region'] ? '<br><small>' . $h($r['body_region']) . '</small>' : '') . '</td><td>' . $h(trim(($r['contact_org'] ?? '') . ' ' . ($r['contact_name'] ? '— ' . $r['contact_name'] : ''), ' —') ?: ($r['facility_text'] ?? '')) . '</td>'
+                . '<td>' . $h($date($r['ordered_on'])) . '</td><td>' . $h($date($r['completed_on'])) . '</td><td>' . $h($date($r['report_received_on'])) . '</td><td>' . $h($statusText) . '</td></tr>'
+                . ($on('findings') && !empty($r['findings']) ? '<tr class="sub"><td colspan="6"><strong>Findings / impression:</strong> ' . nl2br($h($r['findings'])) . '</td></tr>' : '');
+        }
+        $sections[] = ['Referrals, imaging & consultations', $rows ? '<table><thead><tr><th>Referral</th><th>Facility / provider</th><th>Ordered</th><th>Completed</th><th>Report</th><th>Status</th></tr></thead><tbody>' . $rows . '</tbody></table>' : '<p>No referrals recorded.</p>'];
+    }
+    if ($on('outcomes')) {
+        $rows = '';
+        foreach ($d['outcomes'] as $o) $rows .= '<tr><td>' . $h($date($o['taken_on'])) . '</td><td>' . $h(OUTCOME_MEASURES[$o['measure']] ?? $o['measure']) . '</td><td>' . $h(rtrim(rtrim((string)$o['score'], '0'), '.')) . '</td></tr>';
+        $sections[] = ['Outcome assessments', $rows ? '<table><thead><tr><th>Date</th><th>Measure</th><th>Score</th></tr></thead><tbody>' . $rows . '</tbody></table>' : '<p>No outcome assessments recorded.</p>'];
+    }
+    if ($on('correspondence')) {
+        $rows = '';
+        foreach ($d['correspondence'] as $r) {
+            // Billing correspondence is financial: left out.
+            if (preg_match('/\$|balance|payment|reduction|statement|invoice|bill/i', (string)$r['subject'])) continue;
+            $rows .= '<tr><td>' . $h($date($r['occurred_on'])) . '</td><td>' . ($r['direction'] === 'in' ? 'Received' : 'Sent') . ' · ' . $h($r['method']) . '</td><td>' . $h(trim(($r['contact_org'] ?? '') . ' ' . ($r['contact_name'] ?? '')) ?: ($r['contact_text'] ?? '')) . '</td><td>' . $h($r['subject']) . '</td></tr>';
+        }
+        $sections[] = ['Correspondence log', $rows ? '<table><thead><tr><th>Date</th><th>Type</th><th>With</th><th>Subject</th></tr></thead><tbody>' . $rows . '</tbody></table>' : '<p>No correspondence recorded.</p>'];
+    }
+    if ($on('outreach')) {
+        $rows = '';
+        foreach (array_reverse($d['outreach']) as $o) $rows .= '<tr><td>' . $h($date($o['attempted_on'])) . '</td><td>' . $h(['call' => 'Telephone', 'text' => 'Text message', 'email' => 'Email', 'letter' => 'Letter'][$o['method']] ?? $o['method']) . '</td><td>' . $h(OUTREACH_OUTCOMES[$o['outcome']] ?? $o['outcome']) . '</td></tr>';
+        $sections[] = ['Scheduling contact log', $rows ? '<table><thead><tr><th>Date</th><th>Method</th><th>Result</th></tr></thead><tbody>' . $rows . '</tbody></table>' : '<p>No scheduling contacts recorded.</p>'];
+    }
+    audit('export', 'case', $id, $id, $user, 'patient file: ' . implode(',', $inc) . ($for ? ' · for ' . $for : ''));
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store');
+    header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'");
+    $addr = nl2br($h($practice['address'] ?? ''));
+    $contactLine = implode(' · ', array_filter([$practice['phone'] ? 'Phone ' . $h($practice['phone']) : null, $practice['fax'] ? 'Fax ' . $h($practice['fax']) : null]));
+    echo '<!doctype html><html><head><meta charset="utf-8"><title>Patient care summary — ' . $h($c['case_number']) . '</title><style>
+        body{font-family:Georgia,serif;max-width:7.5in;margin:0.5in auto;color:#0B2340;line-height:1.45;font-size:11pt}
+        .lh{border-bottom:2px solid #1FA866;padding-bottom:10px;margin-bottom:18px}.lh b{font-size:15pt}
+        h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:22px 0 6px;border-bottom:1px solid #ccd5e0;padding-bottom:3px}
+        table{width:100%;border-collapse:collapse;font-size:10pt}th,td{text-align:left;padding:4px 6px;border-bottom:1px solid #e3e8ef;vertical-align:top}
+        thead th{font-size:9pt;text-transform:uppercase;letter-spacing:.03em;color:#4a5a70}table.kv th{width:30%;font-weight:normal;color:#4a5a70}
+        tr.sub td{background:#f6f8fb;font-size:9.5pt}small{color:#4a5a70}.meta{font-size:9.5pt;color:#4a5a70}
+        .foot{margin-top:30px;font-size:8.5pt;color:#4a5a70;border-top:1px solid #e3e8ef;padding-top:8px}
+        @media print{.noprint{display:none}body{margin:0.4in}h2{break-after:avoid}tr{break-inside:avoid}}
+        </style></head><body>
+        <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#EEF2F7;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.</p>
+        <div class="lh"><b>' . $h($practice['name']) . '</b>' . ($addr ? '<br>' . $addr : '') . ($contactLine ? '<br>' . $contactLine : '') . '</div>
+        <h1>Patient care summary</h1><div class="meta">Our file ' . $h($c['case_number']) . ' · Prepared ' . date('m/d/Y') . ($for ? ' for ' . $h($for) : '') . '</div>';
+    foreach ($sections as [$title, $html]) echo '<h2>' . $h($title) . '</h2>' . $html;
+    echo '<div class="foot">This summary lists dates and events of care coordination recorded by ' . $h($practice['name']) . '. Clinical documentation, including examination and treatment notes, is maintained in the practice\'s electronic health record and is available separately on request. This summary does not include billing information.<br><br>CONFIDENTIAL: contains protected health information. Disclose only as permitted by law and the patient\'s authorization.</div></body></html>';
+    exit;
+}
+
+// Records sent: logged under correspondence; optionally completes the
+// "attorney records request" checklist item.
+function handle_export_log() {
+    require_method('POST');
+    $user = require_user('case.read');
+    export_allowed($user);
+    $id = (int)($_GET['id'] ?? 0);
+    case_or_404($id);
+    $b = json_body();
+    $for = str_or_null($b['for'] ?? null, 160) ?? 'requesting party';
+    insert_row('correspondence', ['case_id' => $id, 'occurred_on' => date('Y-m-d'), 'direction' => 'out', 'method' => enum_or($b['method'] ?? '', ['fax', 'email', 'mail', 'portal'], 'fax'),
+        'contact_text' => mb_substr($for, 0, 160), 'subject' => 'Patient care summary sent (records request)', 'created_by' => $user['id'], 'created_at' => now_str()]);
+    if (!empty($b['records_request'])) {
+        pi_db()->prepare('REPLACE INTO case_milestones (case_id, milestone, completed_on, not_applicable, note, updated_by, updated_at) VALUES (?, ?, ?, 0, ?, ?, ?)')
+            ->execute([$id, 'records_request', date('Y-m-d'), 'Care summary sent to ' . $for, $user['id'], now_str()]);
+    }
+    audit('update', 'case', $id, $id, $user, 'records sent to ' . $for);
+    json_response(full_case($id, $user));
+}
+
 // ---------- patient outreach ----------
 // The attorney/paralegal has been told we can't reach the patient: pause
 // calls (logged as correspondence), or resume them.
@@ -1105,6 +1236,8 @@ switch ($action) {
     case 'mmi': handle_mmi(); break;
     case 'huddle': handle_huddle(); break;
     case 'outreach_hold': handle_outreach_hold(); break;
+    case 'export_file': handle_export_file(); break;
+    case 'export_log': handle_export_log(); break;
     case 'playbook': handle_playbook(); break;
     case 'letter': handle_letter(); break;
     default: json_response(['error' => 'Unknown action'], 400);

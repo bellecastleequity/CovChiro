@@ -720,6 +720,7 @@ function tabOverview(el, d) {
       <div class="card"><div class="card-head"><h2>Letters</h2></div>
         <div class="filters"><button class="btn ghost sm" data-act="letter" data-type="status_request">Status update request</button>
         <button class="btn ghost sm" data-act="letter" data-type="attendance">Scheduling help (attendance)</button>
+        ${can('export') || can('case.write') ? '<button class="btn ghost sm" data-act="export-file">Export patient file</button>' : ''}
         ${fin('balances') ? '<button class="btn ghost sm" data-act="letter" data-type="tx_complete">Treatment complete</button>' : ''}
         ${fin('settlement') ? '<button class="btn ghost sm" data-act="letter" data-type="reduction_response">Reduction response</button>' : ''}</div>
         <p class="small muted">Opens a printable letter addressed to the attorney of record. Log it under Correspondence once sent.</p></div>
@@ -1009,6 +1010,14 @@ async function pagePlaybook(main) {
         <dt>Measure progress</dt><dd>Outcome assessments at intake and every re-exam show improvement and lasting limitations in numbers.</dd>
         <dt>At MMI</dt><dd>If symptoms or impairment remain, ask the treating specialist for a permanency opinion and impairment rating. In Florida auto cases, non-economic damages generally require a permanent injury.</dd>
         <dt>Keep the attorney informed</dt><dd>Attorney on file, letter of protection signed, records and bills sent promptly.</dd>
+      </dl></div>
+    <div class="card mt"><h2>Wording: write for every reader</h2>
+      <p class="small muted mt">Case records can be requested by the insurer or opposing counsel. Keep notes, letters and logs to facts.</p>
+      <dl class="kv mt">
+        <dt>Do</dt><dd>Record what happened and when: "Called 10/20, no answer, left message to call and schedule." "Patient rescheduled to 10/24." "Referred to orthopedics 10/2."</dd>
+        <dt>Avoid</dt><dd>Opinions about motives or effort ("non-compliant", "unmotivated", "refused care", "abandoned treatment"), guesses about the injury ("seems fine", "probably resolved"), and anything about the claim's value or strategy.</dd>
+        <dt>Missed care</dt><dd>Note the facts and the reason the patient gave, if any. Ask the attorney or paralegal to help reach the patient instead of characterising it.</dd>
+        <dt>Internal coaching</dt><dd>Alerts, suggestions, policy-limit warnings and checklists are internal working tools — they're never included in the patient-file export.</dd>
       </dl></div>
     <div class="card mt"><h2>Rules that cost money if missed</h2><dl class="kv">${r.rules.map(([t, x]) => `<dt>${esc(t)}</dt><dd>${esc(x)}</dd>`).join('')}</dl></div>
     <div class="card mt"><h2>Case checklist</h2>${Object.entries(groups).map(([g, items]) => `<h3 class="mt">${esc(g)}</h3>
@@ -2161,6 +2170,29 @@ async function pagePlatform(main) {
 }
 
 // ---------- letters ----------
+// Records-ready summary of the workup (no financials or internal notes).
+function exportFileModal() {
+  const c = S.caseData.case;
+  const opts = [['visits', 'Visits (dates, visit type, provider, diagnosis codes)', true], ['referrals', 'Referrals, imaging & consultations', true],
+    ['findings', 'Report findings / impressions', true], ['outcomes', 'Outcome assessment scores', true],
+    ['missed', 'Missed appointments', false], ['correspondence', 'Correspondence log (non-billing)', false], ['outreach', 'Scheduling contact log', false]];
+  openModal({ title: 'Export patient file', okText: 'Open summary', wide: true, body: `
+    <p class="small">A printable summary of this case's workup to send when records are requested. <strong>Never included:</strong> charges, payments, balances, insurance or policy limits, internal notes, tasks, alerts, suggestions or checklist status.</p>
+    <div class="form-grid mt"><div class="full"><label for="ex-for">Prepared for</label><input id="ex-for" placeholder="e.g. GEICO claims — records request dated 10/20"></div></div>
+    <h3 class="mt">Include</h3>
+    <div class="mt">${opts.map(([k, t, on]) => `<label class="check"><input type="checkbox" data-ex="${k}"${on ? ' checked' : ''}> ${esc(t)}</label>`).join('')}</div>
+    <p class="small muted mt-sm">Optional sections are off by default. Clinical notes stay in your EHR and are sent from there.</p>
+    <label class="check mt"><input type="checkbox" id="ex-log" checked> Log that records were sent (Correspondence) and mark the records request done</label>`,
+    onOk: async (el) => {
+      const inc = [...el.querySelectorAll('[data-ex]:checked')].map((x) => x.dataset.ex);
+      const forWhom = el.querySelector('#ex-for').value.trim();
+      const w = window.open('about:blank', '_blank');   // opened in the click, so it isn't blocked
+      if (el.querySelector('#ex-log').checked) { S.caseData = await api('cases.php?action=export_log&id=' + c.id, { for: forWhom, records_request: true }); renderCase(); }
+      const url = 'api/cases.php?action=export_file&id=' + c.id + '&inc=' + encodeURIComponent(inc.join(',')) + (forWhom ? '&for=' + encodeURIComponent(forWhom) : '');
+      if (w) w.location = url; else location.href = url;
+    } });
+}
+
 function openLetter(type) {
   window.open('api/cases.php?action=letter&type=' + encodeURIComponent(type) + '&id=' + S.caseData.case.id, '_blank', 'noopener');
 }
@@ -2226,6 +2258,7 @@ const ACTIONS = {
   'tip-dismiss': (el) => tipDismissModal(el.dataset.key),
   'guide-visit': (el) => visitModal(null, { visit_type: el.dataset.type }),
   'outreach-log': outreachLogModal,
+  'export-file': exportFileModal,
   'outreach-hold': outreachHoldModal,
   'outreach-resume': async () => {
     const r = await attempt(() => api('cases.php?action=outreach_hold&id=' + S.caseData.case.id, { resume: true }));
