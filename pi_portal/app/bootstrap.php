@@ -109,6 +109,13 @@ function str_or_null($v, int $max = 255) {
     return mb_substr($v, 0, $max);
 }
 
+// An EHR chart / account number as compared: no case, punctuation or
+// leading zeros ("A-1001" = "a1001"). Null when empty.
+function chart_norm(?string $v): ?string {
+    $n = ltrim(preg_replace('/[^a-z0-9]/', '', strtolower((string)$v)), '0');
+    return $n === '' ? null : $n;
+}
+
 function date_or_null($v) {
     $v = trim((string)($v ?? ''));
     if ($v === '') return null;

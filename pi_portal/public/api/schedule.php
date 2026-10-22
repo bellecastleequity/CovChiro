@@ -5,6 +5,7 @@
 //   POST ?action=preview   (multipart file, date)
 //   POST ?action=remap     {token, header, cols, save_as}   spreadsheet columns
 //   POST ?action=words     {token, map: {word: outcome}}    EHR status words
+//   POST ?action=review    {token, rows: {line: {action, case_id}}}  summary by patient
 //   POST ?action=apply     {token, rows: {line: {action, case_id}}}
 //   POST ?action=undo      {id}
 //   POST ?action=settings  {cancel_counts, unknown_as, status_map}
@@ -60,7 +61,11 @@ function sched_build(array $p): array {
     $index = sched_patient_index(pid());
     $a = sched_analyze($rows, $index, $p['date'], $settings, pi_db());
     $out = $a + ['token' => $p['token'], 'fileName' => $p['name'], 'kind' => $p['kind'], 'date' => $p['date'], 'settings' => $settings, 'outcomes' => SCHED_OUTCOMES,
-        'openCases' => array_map(fn($pt) => ['id' => $pt['case_id'], 'label' => $pt['name'] . ' · ' . $pt['case_number']], $index)];
+        'openCases' => array_map(fn($pt) => ['id' => $pt['case_id'], 'label' => $pt['name'] . ' · ' . $pt['case_number'] . ($pt['label'] ? ' · ' . $pt['label'] : ''), 'patient' => $pt['name'], 'patientId' => $pt['patient_id'],
+            'number' => $pt['case_number'], 'caseLabel' => $pt['label'], 'type' => $pt['type'], 'doi' => $pt['doi']], $index)];
+    // What each row would do as things stand (duplicates already skipped).
+    $byLine = array_column(sched_plan($out, [], pi_db()), null, 'line');
+    $out['rows'] = array_map(fn($r) => $byLine[$r['line']], $out['rows']);
     if ($layout) {
         $out['columns'] = ['header' => $layout['header'], 'cols' => (object)$layout['cols'], 'format' => $layout['format'],
             'headings' => $layout['header'] !== null ? array_map(fn($c) => mb_substr($c, 0, 40), $sheet[$layout['header']]) : array_map(fn($i) => 'Column ' . ($i + 1), array_keys($sheet[0] ?? [])),
@@ -145,7 +150,7 @@ function sched_save_settings(array $s, array $user, string $what) {
     $before = sched_settings();
     pi_db()->prepare('UPDATE practices SET schedule_settings = ? WHERE id = ?')->execute([json_encode($s), pid()]);
     $p = current_practice(); $p['schedule_settings'] = json_encode($s); current_practice($p);
-    audit('update', 'practice', pid(), null, $user, $what, audit_diff(['cancel_counts' => 'label', 'unknown_as' => 'label', 'words' => 'int'],
+    audit('update', 'practice', pid(), null, $user, $what, audit_diff(['cancel_counts' => 'label', 'unknown_as' => 'label', 'multi_case' => 'label', 'words' => 'int'],
         $before + ['words' => count($before['status_map'])], $s + ['words' => count($s['status_map'])]));
 }
 
@@ -175,9 +180,43 @@ function handle_settings() {
     $s = sched_settings();
     if (isset($b['cancel_counts']) && in_array($b['cancel_counts'], ['none', 'late', 'all'], true)) $s['cancel_counts'] = $b['cancel_counts'];
     if (isset($b['unknown_as']) && in_array($b['unknown_as'], ['ask', 'attended', 'skip'], true)) $s['unknown_as'] = $b['unknown_as'];
+    if (isset($b['multi_case']) && in_array($b['multi_case'], ['ask', 'all', 'newest'], true)) $s['multi_case'] = $b['multi_case'];
     if (array_key_exists('status_map', $b)) $s['status_map'] = clean_status_map($b['status_map']);
     sched_save_settings($s, $user, 'appointment list settings');
     json_response(['ok' => true, 'settings' => sched_settings()]);
+}
+
+// The plan for the clinic's choices, or a 400 explaining what's missing.
+function sched_final_plan(array $pv, array $choices): array {
+    try { $plan = sched_plan($pv, $choices, pi_db()); } catch (RuntimeException $e) { json_response(['error' => $e->getMessage()], 400); }
+    return $plan;
+}
+
+// The last look before anything is saved: every row, grouped by patient —
+// what was found in the file and what will be logged on which case.
+function handle_review() {
+    require_method('POST');
+    require_user('case.write');
+    require_feature('schedule_import');
+    $b = json_body();
+    $pv = sched_build(sched_pending((string)($b['token'] ?? '')));
+    $plan = sched_final_plan($pv, (array)($b['rows'] ?? []));
+    $patients = [];
+    foreach ($plan as $e) {
+        $k = $e['patient_id'];
+        $patients[$k] ??= ['patient' => $e['patient'], 'patientId' => $k, 'matchedBy' => $e['matchedBy'], 'cases' => $e['cases'], 'items' => [], 'visits' => 0, 'noShows' => 0];
+        $patients[$k]['items'][] = ['line' => $e['line'], 'date' => $e['date'], 'raw' => $e['raw'], 'outcome' => $e['outcome'], 'text' => $e['text'] ?? null, 'action' => $e['action'],
+            'targets' => $e['targets'], 'caseChoice' => $e['case_id'], 'caseWhy' => $e['caseWhy'] ?? null, 'needs' => $e['needs'], 'why' => $e['why'] ?? null, 'linked' => !empty($e['linked'])];
+        if ($e['action'] === 'visit') $patients[$k]['visits'] += count($e['targets']);
+        if ($e['action'] === 'no_show') $patients[$k]['noShows'] += count($e['targets']);
+    }
+    usort($patients, fn($a, $b) => strcasecmp($a['patient'], $b['patient']));
+    foreach ($patients as &$pt) usort($pt['items'], fn($a, $b) => [$a['date'], $a['line']] <=> [$b['date'], $b['line']]);
+    unset($pt);
+    $needs = array_values(array_filter($plan, fn($e) => $e['needs']));
+    json_response(['patients' => $patients, 'needs' => count($needs), 'fileName' => $pv['fileName'], 'outcomes' => $pv['outcomes'], 'unmatchedCount' => $pv['unmatchedCount'],
+        'totals' => ['visits' => array_sum(array_column($patients, 'visits')), 'noShows' => array_sum(array_column($patients, 'noShows')), 'patients' => count(array_filter($patients, fn($x) => $x['visits'] + $x['noShows'] > 0)),
+            'cases' => count(array_unique(array_merge(...array_map(fn($e) => $e['targets'], $plan ?: [['targets' => []]])))), 'skipped' => count(array_filter($plan, fn($e) => $e['action'] === 'skip'))]]);
 }
 
 function handle_apply() {
@@ -187,26 +226,12 @@ function handle_apply() {
     $b = json_body();
     $p = sched_pending((string)($b['token'] ?? ''));
     $prev = sched_build($p);
-    $choices = (array)($b['rows'] ?? []);
-    $allowed = array_column($prev['openCases'], 'id');
+    $plan = sched_final_plan($prev, (array)($b['rows'] ?? []));
+    if ($n = count(array_filter($plan, fn($e) => $e['needs'] === 'status'))) json_response(['error' => "Choose what to do with the $n row(s) that have no status."], 400);
+    if ($n = count(array_filter($plan, fn($e) => $e['needs'] === 'case'))) json_response(['error' => "Choose which case $n row(s) go on — those patients have more than one open case."], 400);
     $pdo = pi_db();
-    // Final list: matched rows with any changes, plus unmatched rows linked by hand.
     $todo = [];
-    foreach ($prev['rows'] as $r) {
-        $c = $choices[$r['line']] ?? [];
-        $action = $c['action'] ?? $r['action'];
-        $caseId = isset($c['case_id']) ? (int)$c['case_id'] : $r['case_id'];
-        if ($action === 'ask') json_response(['error' => 'Choose what to do with the rows that have no status.'], 400);
-        $todo[] = ['line' => $r['line'], 'case_id' => $caseId, 'date' => $r['date'], 'action' => $action];
-    }
-    foreach ($prev['unmatched'] as $r) {
-        $c = $choices[$r['line']] ?? null;
-        if (!$c || empty($c['case_id'])) continue;
-        $todo[] = ['line' => $r['line'], 'case_id' => (int)$c['case_id'], 'date' => $r['date'], 'action' => $c['action'] ?? sched_default_action($r['outcome'], $r['date'], $prev['settings'], date('Y-m-d'))];
-    }
-    $todo = array_values(array_filter($todo, fn($t) => in_array($t['action'], ['visit', 'no_show'], true)));
-    foreach ($todo as $t) if (!in_array($t['case_id'], $allowed, true)) json_response(['error' => 'One of the chosen cases isn\'t an open case you can update.'], 400);
-    foreach ($todo as $t) if ($t['date'] > date('Y-m-d')) json_response(['error' => 'Visits can\'t be logged for future dates.'], 400);
+    foreach ($plan as $e) foreach ($e['targets'] as $cid) $todo[] = ['line' => $e['line'], 'case_id' => $cid, 'date' => $e['date'], 'action' => $e['action']];
 
     $dates = array_column($todo, 'date');
     $pdo->beginTransaction();
@@ -236,6 +261,18 @@ function handle_apply() {
         touch_case($caseId);
     }
     $pdo->prepare('UPDATE schedule_imports SET visits_added = ?, no_shows_added = ? WHERE id = ?')->execute([$added['visit'], $added['no_show'], $importId]);
+    // Learn chart numbers: a patient recognised by name on a row that shows
+    // a chart # gets it saved (if no one else has it), so later uploads
+    // match on it.
+    $learned = 0;
+    $setChart = $pdo->prepare("UPDATE patients SET chart_number = ? WHERE id = ? AND practice_id = ? AND chart_number IS NULL AND NOT EXISTS
+        (SELECT 1 FROM (SELECT id FROM patients WHERE practice_id = ? AND TRIM(LEADING '0' FROM LOWER(REGEXP_REPLACE(chart_number, '[^A-Za-z0-9]', ''))) = ?) x)");
+    foreach ($plan as $e) {
+        if (empty($e['chartInFile']) || empty($e['patient_id']) || !empty($e['ambiguous']) || ($e['matchedBy'] ?? '') === 'chart' || sched_chart($e['chartInFile']) === null) continue;
+        $chart = mb_substr(trim($e['chartInFile']), 0, 40);
+        $setChart->execute([$chart, $e['patient_id'], pid(), pid(), sched_chart($chart)]);
+        $learned += $setChart->rowCount();
+    }
     $pdo->commit();
     foreach ($perCase as $caseId => $acts) audit('schedule_import', 'case', $caseId, $caseId, $user, trim((count($acts['visit'] ?? []) ? count($acts['visit']) . ' visit(s) ' : '') . (count($acts['no_show'] ?? []) ? count($acts['no_show']) . ' no-show(s)' : '')));
     audit('schedule_apply', null, $importId, null, $user, "{$added['visit']} visits, {$added['no_show']} no-shows");
@@ -252,7 +289,7 @@ function handle_apply() {
         $watch[] = ['caseId' => $caseId, 'label' => $label, 'noShows30' => $n];
     }
     usort($watch, fn($a, $b) => $b['noShows30'] <=> $a['noShows30']);
-    json_response(['ok' => true, 'importId' => $importId, 'visitsAdded' => $added['visit'], 'noShowsAdded' => $added['no_show'], 'casesUpdated' => count($perCase), 'noShowCases' => $watch]);
+    json_response(['ok' => true, 'importId' => $importId, 'chartsLearned' => $learned, 'visitsAdded' => $added['visit'], 'noShowsAdded' => $added['no_show'], 'casesUpdated' => count($perCase), 'noShowCases' => $watch]);
 }
 
 // Undo an upload (within 14 days): its visits are archived.
@@ -282,6 +319,7 @@ switch ($_GET['action'] ?? '') {
     case 'remap': handle_remap(); break;
     case 'words': handle_words(); break;
     case 'settings': handle_settings(); break;
+    case 'review': handle_review(); break;
     case 'apply': handle_apply(); break;
     case 'undo': handle_undo(); break;
     default: json_response(['error' => 'Unknown action'], 400);

@@ -508,3 +508,17 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .sched-table tr.attn td{background:var(--warn-tint);}
 .sched-cols{border:1px solid var(--line);border-radius:12px;padding:12px;}
 .sched-words{list-style:none;padding:0;margin:6px 0;}
+.review-list{display:flex;flex-direction:column;gap:14px;}
+.review-patient{border:1px solid var(--line);border-radius:12px;padding:12px 14px;}
+.review-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;}
+.review-head h3{margin:0;}
+.review-table{width:100%;border-collapse:collapse;}
+.review-table th{text-align:left;font-size:0.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:6px 8px;}
+.review-table td{padding:8px;border-top:1px solid var(--line);vertical-align:top;width:50%;}
+.review-table tr.muted td{opacity:.65;}
+.review-src{word-break:break-word;}
+.pt-results{display:flex;flex-direction:column;gap:8px;max-height:280px;overflow:auto;}
+.pt-card{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;}
+.pt-card.on{border-color:var(--green);box-shadow:0 0 0 3px var(--brand-tint);}
+.pt-card > span{display:flex;flex-direction:column;gap:4px;}
+.other-cases{margin-top:6px;}

@@ -235,6 +235,10 @@ CREATE TABLE patients (
   practice_id INT NOT NULL,
   first_name VARCHAR(80) NOT NULL,
   last_name VARCHAR(80) NOT NULL DEFAULT '',
+  -- The patient's chart / account number in the clinic's EHR: one
+  -- patient record per person (they may have several open cases), and the
+  -- surest match for appointment list uploads.
+  chart_number VARCHAR(40) NULL,
   dob_enc TEXT NULL,
   phone_enc TEXT NULL,
   email_enc TEXT NULL,
@@ -242,13 +246,17 @@ CREATE TABLE patients (
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   FOREIGN KEY (practice_id) REFERENCES practices(id),
-  INDEX idx_patients_name (practice_id, last_name, first_name)
+  INDEX idx_patients_name (practice_id, last_name, first_name),
+  INDEX idx_patients_chart (practice_id, chart_number)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE cases (
   id INT AUTO_INCREMENT PRIMARY KEY,
   practice_id INT NOT NULL,
   case_number VARCHAR(20) NOT NULL,
+  -- What the clinic's EHR calls this case (e.g. "Auto 7/20/26"), for
+  -- telling a patient's open cases apart in appointment uploads.
+  ehr_case_label VARCHAR(80) NULL,
   patient_id INT NOT NULL,
   location_id INT NULL,
   -- State whose law applies (app/jurisdictions.php); set from the location

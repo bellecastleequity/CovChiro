@@ -636,12 +636,13 @@ function stageChip(stage) {
 // ---------- new case ----------
 const PATIENT_DEFS = [
   { n: 'first_name', l: 'First name', req: true }, { n: 'last_name', l: 'Last name' },
-  { n: 'dob', l: 'Date of birth', t: 'date' }, { n: 'phone', l: 'Phone', t: 'tel' },
+  { n: 'dob', l: 'Date of birth', t: 'date' }, { n: 'chart_number', l: 'Chart / account # in your EHR', ph: 'Matches appointment uploads exactly' }, { n: 'phone', l: 'Phone', t: 'tel' },
   { n: 'email', l: 'Email', t: 'email' }, { n: 'address', l: 'Address', full: true },
 ];
 const caseDefs = () => [
   { n: 'injury_type', l: 'Case type', t: 'select', blank: false, opts: entries(S.lookups.injuryTypes) },
   { n: 'date_of_injury', l: 'Date of injury (DOI)', t: 'date' },
+  { n: 'ehr_case_label', l: 'Case name in your EHR (optional)', ph: 'e.g. Auto 7/20/26 — tells two open cases apart' },
   { n: 'first_visit', l: 'First visit', t: 'date' },
   { n: 'referral_source', l: 'Referral source', t: 'select', opts: [['attorney', 'Attorney'], ['self', 'Self'], ['provider', 'Another provider'], ['other', 'Other']] },
   { n: 'referred_by_contact_id', l: 'Referred by (contact)', t: 'contact' },
@@ -674,12 +675,27 @@ const CASE_TYPE_CARDS = [
   ['workers_comp', '🏗', "Workers' comp", 'Employer and carrier, authorization and visit limits, status reports'],
   ['other_pi', '✚', 'Other injury', 'Dog bite, assault, product or other liability claim — letter of protection, attorney'],
 ];
-function newCaseModal() {
+// A patient with their cases, for choosing an existing patient.
+function patientCardHtml(pt, chosen) {
+  return `<label class="pt-card${chosen ? ' on' : ''}"><input type="radio" name="existing_patient" value="${pt.id}"${chosen ? ' checked' : ''}>
+    <span><strong>${esc(pt.name)}</strong> <span class="small muted">${[pt.dob ? 'DOB ' + fmtDate(pt.dob) : '', pt.chartNumber ? 'Chart ' + pt.chartNumber : ''].filter(Boolean).map(esc).join(' · ')}</span>
+    <span class="small">${pt.cases.length ? pt.cases.map((c) => `${esc(caseTag(c))} <span class="chip ${c.open ? 'teal' : 'na'}">${esc(label('stages', c.stage))}</span>`).join('<br>') : '<span class="muted">No cases yet</span>'}</span></span></label>`;
+}
+
+// New case: for a new patient, or another case for a patient already on
+// file (one patient record per person; they may have several open cases).
+function newCaseModal(opts = {}) {
+  let chosen = opts.patient || null;   // existing patient card
   const m = openModal({
-    title: 'New PI case', wide: true, okText: 'Create case',
+    title: chosen ? 'New case for ' + chosen.name : 'New PI case', wide: true, okText: 'Create case',
     body: `<h3>What kind of case is this?</h3>
       <div class="case-types" role="radiogroup" aria-label="Case type">${CASE_TYPE_CARDS.map(([k, ic, t, dsc], i) => `<label class="case-type${i === 0 ? ' on' : ''}"><input type="radio" name="new_case_type" value="${k}"${i === 0 ? ' checked' : ''}><span class="ct-ic" aria-hidden="true">${ic}</span><strong>${esc(t)}</strong><span class="small muted">${esc(dsc)}</span></label>`).join('')}</div>
-      <h3 class="mt">Patient</h3>${fieldsHtml(PATIENT_DEFS)}<h3 class="mt">Case details</h3>${fieldsHtml(caseDefs().filter((f) => f.n !== 'injury_type'))}
+      <h3 class="mt">Patient</h3>
+      <div class="interval-toggle" role="radiogroup" aria-label="Patient"><button type="button" role="radio" data-pt-mode="new" class="${chosen ? '' : 'on'}">New patient</button><button type="button" role="radio" data-pt-mode="existing" class="${chosen ? 'on' : ''}">Existing patient — another case</button></div>
+      <div id="pt-new" class="mt"${chosen ? ' hidden' : ''}>${fieldsHtml(PATIENT_DEFS)}<div id="pt-dupes" class="mt-sm"></div></div>
+      <div id="pt-existing" class="mt"${chosen ? '' : ' hidden'}><input type="search" id="pt-search" placeholder="Search by name or chart #" aria-label="Find patient" autocomplete="off">
+        <div id="pt-results" class="pt-results mt-sm">${chosen ? patientCardHtml(chosen, true) : '<p class="small muted">Type at least two letters.</p>'}</div></div>
+      <h3 class="mt">Case details</h3>${fieldsHtml(caseDefs().filter((f) => f.n !== 'injury_type'))}
       <h3 class="mt">Insurance</h3>${fieldsHtml(NEW_COVERAGE_DEFS(), { cov_type: 'pip' })}
       <p class="small muted mt">Bill insurance first if the patient has it. More coverage (e.g. health insurance) can be added under Financials. Need a new attorney or insurer? Add them under Contacts first.</p>`,
     onOk: async (el) => {
@@ -687,11 +703,48 @@ function newCaseModal() {
       const coverage = cv.cov_type ? { type: cv.cov_type, carrier_contact_id: cv.cov_carrier, carrier_text: cv.cov_carrier_text, claim_number: cv.cov_claim,
         policy_number: cv.cov_policy, adjuster: cv.cov_adjuster, authorized_visits: cv.cov_auth } : null;
       const injuryType = el.querySelector('[name=new_case_type]:checked').value;
-      const r = await api('cases.php?action=create', { patient: readFields(el, PATIENT_DEFS), case: { ...readFields(el, caseDefs().filter((f) => f.n !== 'injury_type')), injury_type: injuryType }, coverage });
+      const existing = !el.querySelector('#pt-existing').hidden;
+      const pick = el.querySelector('[name=existing_patient]:checked');
+      if (existing && !pick) throw new Error('Choose the patient, or switch to New patient.');
+      let r;
+      try {
+        r = await api('cases.php?action=create', { ...(existing ? { patient_id: +pick.value } : { patient: readFields(el, PATIENT_DEFS) }), case: { ...readFields(el, caseDefs().filter((f) => f.n !== 'injury_type')), injury_type: injuryType }, coverage });
+      } catch (e) {
+        // The chart # belongs to a patient already on file: offer them.
+        if (e.data?.code === 'existing_patient') { showExisting([e.data.patient], e.data.patient.id); }
+        throw e;
+      }
       toast('Case ' + r.caseNumber + ' created');
       location.hash = '#/case/' + r.id;
     },
   });
+  const box = (id) => m.el.querySelector(id);
+  const setMode = (mode) => {
+    m.el.querySelectorAll('[data-pt-mode]').forEach((b) => b.classList.toggle('on', b.dataset.ptMode === mode));
+    box('#pt-new').hidden = mode !== 'new'; box('#pt-existing').hidden = mode !== 'existing';
+  };
+  const showExisting = (list, pickId) => { setMode('existing'); box('#pt-results').innerHTML = list.map((pt) => patientCardHtml(pt, pt.id === pickId)).join('') || '<p class="small muted">No patients found.</p>'; };
+  m.el.querySelectorAll('[data-pt-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.ptMode)));
+  let timer;
+  box('#pt-search').addEventListener('input', (e) => {
+    clearTimeout(timer);
+    const q = e.target.value.trim();
+    if (q.length < 2) return;
+    timer = setTimeout(async () => { const r = await api('cases.php?action=patient_search&q=' + encodeURIComponent(q)).catch(() => null); if (r) showExisting(r.patients, null); }, 250);
+  });
+  box('#pt-results').addEventListener('change', () => box('#pt-results').querySelectorAll('.pt-card').forEach((c) => c.classList.toggle('on', c.querySelector('input').checked)));
+  // While a new patient is typed in: same chart #, or same name (and DOB), already on file?
+  const dupeCheck = async () => {
+    const v = readFields(box('#pt-new'), PATIENT_DEFS);
+    if (!(v.chart_number || (v.first_name && v.last_name))) { box('#pt-dupes').innerHTML = ''; return; }
+    const qs = new URLSearchParams({ first: v.first_name || '', last: v.last_name || '', dob: v.dob || '', chart: v.chart_number || '' });
+    const r = await api('cases.php?action=patient_search&' + qs).catch(() => null);
+    if (!r) return;
+    box('#pt-dupes').innerHTML = r.patients.length ? `<div class="notice"><strong>Already on file?</strong> ${r.patients.map((pt) => `${esc(pt.name)}${pt.match === 'chart' ? ' (same chart #)' : ''} — ${pt.cases.length} case${pt.cases.length === 1 ? '' : 's'} <button type="button" class="btn ghost sm" data-use-patient="${pt.id}">Add this case to them</button>`).join('<br>')}
+      <div class="small muted mt-sm">One patient record per person keeps their cases together and appointment uploads accurate.</div></div>` : '';
+    box('#pt-dupes').querySelectorAll('[data-use-patient]').forEach((b) => b.addEventListener('click', () => showExisting(r.patients, +b.dataset.usePatient)));
+  };
+  ['first_name', 'last_name', 'dob', 'chart_number'].forEach((n) => box('#pt-new').querySelector(`[name=${n}]`)?.addEventListener('change', dupeCheck));
   m.el.querySelectorAll('[name=new_case_type]').forEach((r) => r.addEventListener('change', (e) => {
     m.el.querySelectorAll('.case-type').forEach((c) => c.classList.toggle('on', c.contains(e.target)));
     m.el.querySelector('[name=cov_type]').value = DEFAULT_COVERAGE[e.target.value] ?? '';
@@ -735,8 +788,10 @@ function renderCase() {
         <span class="chip" title="${esc(d.rules.name + ' rules — ' + S.lookups.supportLabels[d.rules.support])}">${esc(d.rules.code)} rules</span>
         ${d.rules.emcRule && c.injury_type === 'auto' ? `<span class="chip ${c.emc_status === 'yes' ? 'teal' : c.emc_status === 'no' ? 'red' : 'ochre'}">EMC: ${esc(c.emc_status)}</span>` : ''}
         ${c.actively_treating == 1 ? '<span class="chip teal">Actively treating</span>' : ''}
-        <span class="small muted">DOI ${esc(fmtDate(c.date_of_injury))} · ${d.stats.visitCount} visits · last ${esc(fmtDate(d.stats.lastVisit))}${atty ? ' · ' + esc(contactName(atty)) : ''}</span>
-      </div></div>
+        <span class="small muted">DOI ${esc(fmtDate(c.date_of_injury))} · ${d.stats.visitCount} visits · last ${esc(fmtDate(d.stats.lastVisit))}${atty ? ' · ' + esc(contactName(atty)) : ''}${p.chart_number ? ' · chart ' + esc(p.chart_number) : ''}</span>
+      </div>
+      ${(d.otherCases || []).length ? `<div class="other-cases small">Also: ${d.otherCases.map((o) => `<a href="#/case/${o.id}">${esc(caseTag(o))}</a> <span class="chip ${o.open ? 'teal' : 'na'}">${esc(label('stages', o.stage))}</span>`).join(' · ')}</div>` : ''}
+      ${can('case.write') ? '<button class="linklike small" data-act="another-case">+ Another case for this patient</button>' : ''}</div>
       <span class="spacer"></span>
       <div><label for="case-stage">Stage</label><select id="case-stage" data-act-change="stage"${can('case.write') || can('finance.write') ? '' : ' disabled'}>${entries(S.lookups.stages).map(([k, t]) => opt(k, t, c.stage)).join('')}</select></div>
     </div>
@@ -834,7 +889,7 @@ function editCaseModal() {
 
 function editPatientModal() {
   const d = S.caseData;
-  openModal({ title: 'Edit patient', body: fieldsHtml(PATIENT_DEFS, d.patient), onOk: async (el) => {
+  openModal({ title: 'Edit patient', body: fieldsHtml(PATIENT_DEFS, d.patient) + ((d.otherCases || []).length ? `<p class="small muted mt">Changes apply to all of this patient's cases (${d.otherCases.length + 1}).</p>` : ''), onOk: async (el) => {
     S.caseData = await api('cases.php?action=update&id=' + d.case.id, { patient: readFields(el, PATIENT_DEFS) });
     renderCase(); toast('Patient updated');
   } });
@@ -2150,7 +2205,9 @@ async function pageTasks(main, args = []) {
 // ---------- daily appointment list upload ----------
 // Yesterday's appointments from any EHR (spreadsheet or PDF): kept visits
 // and no-shows are logged on the matching injury cases after a preview.
-const schedState = { preview: null, choices: {}, result: null, showCols: false };
+const schedState = { preview: null, choices: {}, result: null, showCols: false, review: null };
+// A case as the clinic knows it: our number, the EHR's name or type, DOI.
+const caseTag = (c) => [c.number, c.label || (c.type ? label('injuryTypes', c.type) : ''), c.doi ? 'DOI ' + fmtDate(c.doi) : ''].filter(Boolean).join(' · ');
 const SCHED_ACTIONS = [['visit', 'Log visit'], ['no_show', 'Log no-show'], ['skip', 'Skip']];
 
 async function pageSchedule(main) {
@@ -2161,7 +2218,7 @@ async function pageSchedule(main) {
   main.innerHTML = `<div class="page-head"><div><h1>Appointment upload</h1><div class="sub">Log yesterday's visits and no-shows on every injury case from your EHR's appointment list — no EHR connection needed.</div></div></div>
     ${st.behind ? `<div class="notice">The appointment list for <strong>${esc(fmtDate(st.expectedDate))}</strong> hasn't been uploaded yet${st.lastDate ? ` (last: ${esc(fmtDate(st.lastDate))})` : ''}.</div>` : ''}
     ${res ? schedResultHtml(res) : ''}
-    ${pv ? schedPreviewHtml(pv) : `<div class="card" id="sched-upload"><h2>Upload an appointment list</h2>
+    ${schedState.review ? schedReviewHtml(schedState.review) : pv ? schedPreviewHtml(pv) : `<div class="card" id="sched-upload"><h2>Upload an appointment list</h2>
       <p class="small">In your EHR, run the daily appointment (or "appointment status") report for the day, export it as a <strong>spreadsheet (CSV or Excel)</strong> or <strong>PDF</strong>, and upload it here. Any EHR works: each row is matched to your open injury cases by patient name (date of birth breaks ties), and the date and status — kept, no-show, cancelled — are read from the row. Your other patients are ignored, and the file isn't kept.</p>
       <div class="form-grid mt"><div><label for="sched-file">Appointment list</label><input type="file" id="sched-file" accept=".csv,.xlsx,.pdf,.txt,.tsv,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
         <div><label for="sched-date">Appointments on <span class="small muted">(used when the file doesn't show the date)</span></label><input type="date" id="sched-date" value="${esc(st.expectedDate)}" max="${esc(today())}"></div></div>
@@ -2176,8 +2233,11 @@ async function pageSchedule(main) {
 function schedPreviewHtml(pv) {
   const ch = schedState.choices;
   const action = (r) => ch[r.line]?.action ?? r.action;
+  const caseOf = (r) => (ch[r.line] && 'case_id' in ch[r.line]) ? ch[r.line].case_id : r.case_id;
   const rows = pv.rows;
-  const count = (a) => rows.filter((r) => action(r) === a).length;
+  const needsCase = (r) => ['visit', 'no_show'].includes(action(r)) && (caseOf(r) === null || caseOf(r) === '');
+  const count = (a) => rows.filter((r) => a === 'ask' ? action(r) === 'ask' || needsCase(r) : action(r) === a).length;
+  const caseSelect = (r) => `<select data-sched-case="${r.line}" aria-label="Which case">${caseOf(r) === null || caseOf(r) === '' ? opt('', 'Choose the case…', '') : ''}${r.cases.map((c) => opt(c.id, (r.ambiguous ? c.patient + ' · ' : '') + caseTag(c), caseOf(r))).join('')}${!r.ambiguous ? opt('all', `All ${r.cases.length} open cases`, caseOf(r)) : ''}</select>`;
   const linked = pv.unmatched.filter((u) => ch[u.line]?.case_id).length;
   const outcome = (o) => o === 'unknown' ? 'No status' : pv.outcomes[o] || o;
   const caseOpts = (sel) => opt('', '— not an injury case —', sel ?? '') + pv.openCases.map((c) => opt(c.id, c.label, sel ?? '')).join('');
@@ -2193,9 +2253,11 @@ function schedPreviewHtml(pv) {
     ${Object.keys(pv.unknownStatuses).length ? `<div class="notice mt-sm" id="sched-words"><strong>Status wording we haven't seen before.</strong> Tell us what each means — it's remembered for every future upload.
       <div class="form-grid mt-sm">${Object.entries(pv.unknownStatuses).map(([w, n]) => `<div><label>“${esc(w)}” <span class="small muted">(${n} row${n === 1 ? '' : 's'})</span></label><select data-word="${esc(w)}">${opt('', 'Choose…')}${entries(pv.outcomes).map(([k, l]) => opt(k, l)).join('')}</select></div>`).join('')}</div>
       <button class="btn sm mt-sm" data-act="sched-words">Save and re-read</button></div>` : ''}
-    ${rows.length ? `${count('ask') ? `<div class="badge-row mt"><span class="small">Rows with no status:</span><button class="btn ghost sm" data-act="sched-bulk" data-v="visit">Mark all as kept</button><button class="btn ghost sm" data-act="sched-bulk" data-v="skip">Skip them</button></div>` : ''}
+    ${rows.length ? `${rows.some((r) => action(r) === 'ask') ? `<div class="badge-row mt"><span class="small">Rows with no status:</span><button class="btn ghost sm" data-act="sched-bulk" data-v="visit">Mark all as kept</button><button class="btn ghost sm" data-act="sched-bulk" data-v="skip">Skip them</button></div>` : ''}
+      ${rows.some(needsCase) ? `<div class="badge-row mt"><span class="small">Patients with more than one open case:</span><button class="btn ghost sm" data-act="sched-bulk-case" data-v="all">Log on all their open cases</button><button class="btn ghost sm" data-act="sched-bulk-case" data-v="newest">Newest case</button></div>` : ''}
       <div class="table-wrap mt"><table class="sched-table"><thead><tr><th>Patient</th><th>Date</th><th>In the file</th><th>Will</th></tr></thead><tbody>
-      ${rows.map((r) => `<tr class="${action(r) === 'ask' ? 'attn' : ''}"><td>${r.cases.length > 1 ? `<select data-sched-case="${r.line}" aria-label="Case">${r.cases.map((c) => opt(c.id, esc(r.patient) + ' · ' + c.number, ch[r.line]?.case_id ?? r.case_id)).join('')}</select>` : `<a href="#/case/${r.case_id}">${esc(r.patient)}</a>`}${r.ambiguous ? '<div class="small err">Two patients share this name — check</div>' : ''}</td>
+      ${rows.map((r) => `<tr class="${action(r) === 'ask' || needsCase(r) ? 'attn' : ''}"><td><a href="#/case/${r.cases[0].id}">${esc(r.patient)}</a>${r.matchedBy !== 'name' ? ` <span class="small muted">by ${esc(r.matchedBy)}</span>` : ''}
+        ${r.cases.length > 1 ? `<div class="mt-sm">${caseSelect(r)}</div>${r.caseWhy && caseOf(r) === r.case_id ? `<div class="small muted">Case picked from the ${esc(r.caseWhy)}</div>` : ''}` : ''}${r.ambiguous ? '<div class="small err">Two patients share this name — choose the right one</div>' : ''}</td>
         <td>${esc(fmtDate(r.date))}</td><td>${esc(r.raw || '—')} <span class="small muted">${esc(outcome(r.outcome))}</span></td>
         <td><select data-sched-action="${r.line}" aria-label="Action">${action(r) === 'ask' ? opt('ask', 'Choose…', 'ask') : ''}${SCHED_ACTIONS.map(([k, l]) => opt(k, l, action(r))).join('')}</select>${r.why && action(r) === r.action ? `<div class="small muted">${esc(r.why)}</div>` : ''}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="empty mt">No rows matched an open injury case. Check the file is the appointment list, or link rows below.</div>'}
@@ -2203,7 +2265,27 @@ function schedPreviewHtml(pv) {
       <div class="table-wrap mt-sm"><table class="sched-table"><thead><tr><th>Row</th><th>Date</th><th>Status</th><th>Link to case</th><th>Will</th></tr></thead><tbody>
       ${pv.unmatched.map((u) => `<tr><td class="small">${esc(u.text)}</td><td>${esc(fmtDate(u.date))}</td><td>${esc(u.raw || '—')}</td><td><select data-sched-link="${u.line}" aria-label="Link to case">${caseOpts(ch[u.line]?.case_id)}</select></td>
         <td>${ch[u.line]?.case_id ? `<select data-sched-action="${u.line}" aria-label="Action">${SCHED_ACTIONS.map(([k, l]) => opt(k, l, ch[u.line]?.action ?? (u.outcome === 'no_show' ? 'no_show' : u.outcome === 'attended' ? 'visit' : 'skip'))).join('')}</select>` : ''}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
-    <div class="badge-row mt"><button class="btn" data-act="sched-apply"${count('ask') ? ' disabled title="Choose what to do with rows that have no status"' : ''}>Log ${count('visit') + count('no_show')} on the cases</button></div></div>`;
+    <div class="badge-row mt"><button class="btn" data-act="sched-review"${count('ask') ? ' disabled title="Choose what to do with the highlighted rows first"' : ''}>Review import</button>${count('ask') ? `<span class="small muted">${count('ask')} highlighted row${count('ask') === 1 ? '' : 's'} need a choice first</span>` : ''}</div></div>`;
+}
+
+// The last look before anything is saved, one section per patient: what
+// was found in the file and what will be logged on which case.
+function schedReviewHtml(rv) {
+  const t = rv.totals;
+  const what = { visit: 'Log visit', no_show: 'Log no-show', skip: 'Skip' };
+  const caseLine = (pt, ids) => ids.map((id) => { const c = pt.cases.find((x) => x.id === id); return c ? caseTag(c) : '#' + id; }).join('; ');
+  const buttons = `<div class="badge-row"><button class="btn" data-act="sched-apply">Import ${t.visits} visit${t.visits === 1 ? '' : 's'} and ${t.noShows} no-show${t.noShows === 1 ? '' : 's'}</button><button class="btn ghost" data-act="sched-back">Back to edit</button></div>`;
+  return `<div class="card" id="sched-review"><div class="card-head"><h2>Review import — ${esc(rv.fileName)}</h2></div>
+    <p>Nothing has been saved yet. ${t.visits} visit${t.visits === 1 ? '' : 's'} and ${t.noShows} no-show${t.noShows === 1 ? '' : 's'} will be logged for ${t.patients} patient${t.patients === 1 ? '' : 's'} (${t.cases} case${t.cases === 1 ? '' : 's'})${t.skipped ? `; ${t.skipped} row${t.skipped === 1 ? '' : 's'} skipped` : ''}${rv.unmatchedCount ? `; ${rv.unmatchedCount} other row${rv.unmatchedCount === 1 ? " in the file isn't an injury case and is" : "s in the file aren't injury cases and are"} ignored` : ''}. Scroll to check each patient, then import.</p>
+    ${buttons}
+    <div class="review-list mt">${rv.patients.map((pt) => `<section class="review-patient">
+      <div class="review-head"><h3>${esc(pt.patient)}</h3><span class="small muted">matched by ${esc(pt.matchedBy)}${pt.cases.length > 1 ? ` · ${pt.cases.length} open cases` : ''}</span><span class="spacer"></span>
+        ${pt.visits ? `<span class="chip teal">${pt.visits} visit${pt.visits === 1 ? '' : 's'}</span>` : ''}${pt.noShows ? `<span class="chip overdue">${pt.noShows} no-show${pt.noShows === 1 ? '' : 's'}</span>` : ''}${!pt.visits && !pt.noShows ? '<span class="chip na">Nothing to log</span>' : ''}</div>
+      <table class="review-table"><thead><tr><th>Found in the file</th><th>Will import</th></tr></thead><tbody>
+      ${pt.items.map((i) => `<tr class="${i.action === 'skip' ? 'muted' : ''}"><td><strong>${esc(fmtDate(i.date))}</strong> · ${esc(i.raw || 'no status')} <span class="small muted">(${esc(i.outcome === 'unknown' ? 'no status' : rv.outcomes[i.outcome] || i.outcome)})</span>${i.text ? `<div class="small muted review-src">Row ${i.line}: ${esc(i.text)}</div>` : ''}</td>
+        <td>${i.action === 'skip' ? `Skip${i.why ? ' — ' + esc(i.why) : ''}` : `<strong>${what[i.action]}</strong> on ${esc(caseLine(pt, i.targets))}${i.caseChoice === 'all' && pt.cases.length > 1 ? ' <span class="small muted">(all open cases)</span>' : ''}${i.linked ? ' <span class="small muted">(linked by hand)</span>' : ''}`}</td></tr>`).join('')}
+      </tbody></table></section>`).join('')}</div>
+    <div class="mt">${buttons}</div></div>`;
 }
 
 function schedColsHtml(cols) {
@@ -2217,6 +2299,7 @@ function schedColsHtml(cols) {
 function schedResultHtml(res) {
   return `<div class="card done-card"><h2>Logged ✓</h2><p>${res.visitsAdded} visit${res.visitsAdded === 1 ? '' : 's'} and ${res.noShowsAdded} no-show${res.noShowsAdded === 1 ? '' : 's'} on ${res.casesUpdated} case${res.casesUpdated === 1 ? '' : 's'}. Gaps in care, treatment-plan adherence and patient outreach are up to date.</p>
     ${res.noShowCases.length ? `<h3 class="mt">Missed visits</h3><ul class="small">${res.noShowCases.map((c) => `<li><a href="#/case/${c.caseId}">${esc(c.label)}</a> — ${c.noShows30} no-show${c.noShows30 === 1 ? '' : 's'} in the last 30 days${c.noShows30 >= 2 ? ' <span class="chip overdue">Follow up</span>' : ''}</li>`).join('')}</ul>` : ''}
+    ${res.chartsLearned ? `<p class="small muted">${res.chartsLearned} chart number${res.chartsLearned === 1 ? '' : 's'} from the file ${res.chartsLearned === 1 ? 'was' : 'were'} saved to patients without one, so they match by chart next time.</p>` : ''}
     <button class="btn ghost sm mt" data-act="sched-done">Upload another</button></div>`;
 }
 
@@ -2224,7 +2307,9 @@ function schedSettingsHtml(st) {
   const s = st.settings;
   return `<div class="card mt" id="sched-settings"><h2>How uploads count</h2>
     <div class="form-grid"><div><label for="ss-cancel">Cancellations</label><select id="ss-cancel">${opt('late', 'Late ones count as missed', s.cancel_counts)}${opt('all', 'All count as missed', s.cancel_counts)}${opt('none', "Don't count", s.cancel_counts)}</select></div>
-      <div><label for="ss-unknown">Rows with no status in the file</label><select id="ss-unknown">${opt('ask', 'Ask each time', s.unknown_as)}${opt('attended', 'Count as kept visits', s.unknown_as)}${opt('skip', 'Skip them', s.unknown_as)}</select></div></div>
+      <div><label for="ss-unknown">Rows with no status in the file</label><select id="ss-unknown">${opt('ask', 'Ask each time', s.unknown_as)}${opt('attended', 'Count as kept visits', s.unknown_as)}${opt('skip', 'Skip them', s.unknown_as)}</select></div>
+      <div><label for="ss-multi">Patient with more than one open case</label><select id="ss-multi">${opt('ask', 'Ask which case', s.multi_case)}${opt('all', 'Log on all their open cases', s.multi_case)}${opt('newest', 'Log on the newest case', s.multi_case)}</select></div></div>
+    <p class="small muted">When the file names the case (your case #, the EHR's case name, or the date of injury), that case is used.</p>
     <p class="small mt">Your EHR's own status words${Object.keys(s.status_map).length ? ':' : ' — none yet. Any wording we don\'t recognise is asked about during an upload and remembered.'}</p>
     ${Object.keys(s.status_map).length ? `<ul class="small sched-words">${Object.entries(s.status_map).map(([w, o]) => `<li><label class="check"><input type="checkbox" data-keep-word="${esc(w)}" data-o="${esc(o)}" checked> “${esc(w)}” → ${esc(st.outcomes[o])}</label></li>`).join('')}</ul><p class="small muted">Untick a word to forget it.</p>` : ''}
     <button class="btn mt-sm" data-act="sched-settings">Save</button></div>`;
@@ -2247,8 +2332,8 @@ document.addEventListener('change', (e) => {
   if (!line) return;
   ch[line] = ch[line] || {};
   if (el.dataset.schedAction) ch[line].action = el.value;
-  else ch[line].case_id = el.value ? +el.value : null;
-  if (el.dataset.schedAction || el.dataset.schedLink) pageSchedule(document.getElementById('main'));
+  else ch[line].case_id = el.value === 'all' ? 'all' : el.value ? +el.value : null;
+  pageSchedule(document.getElementById('main'));
 });
 
 // ---------- A/R ----------
@@ -2828,7 +2913,12 @@ const ACTIONS = {
       adherence_pct: +box.querySelector('#nr-adh').value, weekdays_only: box.querySelector('#nr-weekdays').checked };
     if (await attempt(() => api('admin.php?action=notify_rules_save', body))) toast('Saved');
   },
-  'new-case': newCaseModal,
+  'new-case': () => newCaseModal(),
+  'another-case': async () => {
+    const r = await attempt(() => api('cases.php?action=patient_search&id=' + S.caseData.case.patient_id));
+    const pt = r?.patients[0];
+    if (pt) newCaseModal({ patient: pt });
+  },
   'goto-stage': (el) => { casesState.stage = el.dataset.stage; location.hash = '#/cases'; },
   'open-case': (el) => { S.caseTab = el.dataset.tab || 'overview'; location.hash = '#/case/' + el.dataset.id; },
   'sort-cases': (el) => { casesState.dir = casesState.sort === el.dataset.key ? -casesState.dir : 1; casesState.sort = el.dataset.key; const t = document.getElementById('cases-table'); if (t._rows) renderCasesTable(t._rows); },
@@ -2851,7 +2941,7 @@ const ACTIONS = {
   },
   'promo-check': () => checkPromo(),
   'sched-preview': () => schedPreviewFile(),
-  'sched-cancel': () => { schedState.preview = null; pageSchedule(document.getElementById('main')); },
+  'sched-cancel': () => { schedState.preview = null; schedState.review = null; pageSchedule(document.getElementById('main')); },
   'sched-done': () => { schedState.result = null; pageSchedule(document.getElementById('main')); },
   'sched-cols': () => { schedState.showCols = !schedState.showCols; pageSchedule(document.getElementById('main')); },
   'sched-bulk': (el) => { schedState.preview.rows.forEach((r) => { if ((schedState.choices[r.line]?.action ?? r.action) === 'ask') schedState.choices[r.line] = { ...schedState.choices[r.line], action: el.dataset.v }; }); pageSchedule(document.getElementById('main')); },
@@ -2867,10 +2957,24 @@ const ACTIONS = {
     const r = await attempt(() => api('schedule.php?action=words', { token: schedState.preview.token, map }));
     if (r) { schedState.preview = r; schedState.choices = {}; toast('Saved — remembered for future uploads'); pageSchedule(document.getElementById('main')); }
   },
+  'sched-review': async () => {
+    const r = await attempt(() => api('schedule.php?action=review', { token: schedState.preview.token, rows: schedState.choices }));
+    if (r) { schedState.review = r; pageSchedule(document.getElementById('main')); window.scrollTo(0, 0); }
+  },
+  'sched-back': () => { schedState.review = null; pageSchedule(document.getElementById('main')); },
+  'sched-bulk-case': (el) => {
+    const ch = schedState.choices;
+    schedState.preview.rows.forEach((r) => {
+      const a = ch[r.line]?.action ?? r.action, c = (ch[r.line] && 'case_id' in ch[r.line]) ? ch[r.line].case_id : r.case_id;
+      if (r.ambiguous || !['visit', 'no_show'].includes(a) || (c !== null && c !== '')) return;
+      ch[r.line] = { ...ch[r.line], case_id: el.dataset.v === 'all' ? 'all' : r.cases[0].id };
+    });
+    pageSchedule(document.getElementById('main'));
+  },
   'sched-apply': async () => {
     const pv = schedState.preview;
     const r = await attempt(() => api('schedule.php?action=apply', { token: pv.token, rows: schedState.choices }));
-    if (r) { schedState.preview = null; schedState.choices = {}; schedState.result = r; pageSchedule(document.getElementById('main')); }
+    if (r) { schedState.preview = null; schedState.review = null; schedState.choices = {}; schedState.result = r; pageSchedule(document.getElementById('main')); window.scrollTo(0, 0); }
   },
   'sched-undo': async (el) => {
     if (!(await confirmBox('Undo this upload?', 'The visits and no-shows it logged are removed from the cases (they stay in the activity history).', 'Undo'))) return;
@@ -2878,7 +2982,7 @@ const ACTIONS = {
   },
   'sched-settings': async () => {
     const status_map = {}; document.querySelectorAll('[data-keep-word]:checked').forEach((c) => { status_map[c.dataset.keepWord] = c.dataset.o; });
-    const r = await attempt(() => api('schedule.php?action=settings', { cancel_counts: document.getElementById('ss-cancel').value, unknown_as: document.getElementById('ss-unknown').value, status_map }));
+    const r = await attempt(() => api('schedule.php?action=settings', { cancel_counts: document.getElementById('ss-cancel').value, unknown_as: document.getElementById('ss-unknown').value, multi_case: document.getElementById('ss-multi').value, status_map }));
     if (r) { toast('Saved'); pageSchedule(document.getElementById('main')); }
   },
   'status-settings': () => statusSettingsModal(),

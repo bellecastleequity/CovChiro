@@ -10,7 +10,7 @@ pi_start_session();
 // (contacts.id), user (users.id), coverage / charge (a coverage or charge
 // on the same case), enum => [allowed values].
 const PATIENT_FIELDS = [
-    'first_name' => 'str:80', 'last_name' => 'str:80',
+    'first_name' => 'str:80', 'last_name' => 'str:80', 'chart_number' => 'str:40',
     'dob' => 'enc', 'phone' => 'enc', 'email' => 'enc', 'address' => 'enc',
 ];
 const CASE_FIELDS = [
@@ -26,7 +26,7 @@ const CASE_FIELDS = [
     'balance_forwarded_on' => 'date', 'balance_forwarded_amount' => 'money',
     'actively_treating' => 'bool', 'provider_user_id' => 'user', 'location_id' => 'location', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
     'mmi_date' => 'date', 'maintenance_every_days' => 'int', 'plan_visits_per_week' => 'money', 'plan_set_on' => 'date',
-    'paralegal' => 'str:160', 'case_manager_name' => 'str:160', 'case_manager_email' => 'email',
+    'ehr_case_label' => 'str:80', 'paralegal' => 'str:160', 'case_manager_name' => 'str:160', 'case_manager_email' => 'email',
     'auto_status' => 'bool', 'auto_status_to' => ['attorney', 'case_manager', 'both'], 'auto_status_every' => 'int', 'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
     'limits_source' => 'str:160', 'limits_noted_on' => 'date',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
@@ -204,9 +204,9 @@ function handle_list() {
     [$fsql, $fargs] = case_filters('c');
     if ($fsql) { $where[] = '1=1' . $fsql; array_push($args, ...$fargs); }
     if (($q = trim($_GET['q'] ?? '')) !== '') {
-        $where[] = '(p.first_name LIKE ? OR p.last_name LIKE ? OR CONCAT(p.first_name, " ", p.last_name) LIKE ? OR c.case_number LIKE ?)';
+        $where[] = '(p.first_name LIKE ? OR p.last_name LIKE ? OR CONCAT(p.first_name, " ", p.last_name) LIKE ? OR c.case_number LIKE ? OR p.chart_number = ?)';
         $like = '%' . $q . '%';
-        array_push($args, $like, $like, $like, $like);
+        array_push($args, $like, $like, $like, $like, $q);
     }
     $sql = 'SELECT c.*, p.first_name, p.last_name, a.organization atty_org, a.name atty_name
             FROM cases c JOIN patients p ON p.id = c.patient_id
@@ -306,6 +306,7 @@ function full_case(int $id, array $user): array {
             'tortOptions' => $rules['tort_options'], 'lopDisclosure' => $rules['lop_disclosure'], 'demandLetter' => (bool)$rules['demand_letter'],
             'balanceBilling' => $rules['balance_billing'], 'balanceNote' => $rules['balance_note'], 'summary' => jurisdiction_summary($rules)],
         'checklist' => $checklist, 'guide' => $guide, 'alerts' => $alerts, 'caseValue' => $caseValue, 'statusRequests' => status_info($c),
+        'otherCases' => array_values(array_filter(patient_card((int)$c['patient_id'])['cases'], fn($x) => $x['id'] !== (int)$c['id'])),
         'outreach' => $outreach, 'outreachState' => outreach_state($c, $outreach, $visitDates), 'outreachOutcomes' => OUTREACH_OUTCOMES,
         'tips' => case_tips($c, ['referrals' => $referrals, 'visits' => $visits, 'icd' => array_column($visits, 'icd_codes'), 'guideRows' => $guideRows, 'outcomeDates' => array_unique(array_column($outcomes, 'taken_on'))]),
         'referrals' => $referrals, 'visits' => $visits, 'outcomes' => $outcomes,
@@ -349,6 +350,12 @@ function handle_create() {
     } else {
         $p = clean_fields(PATIENT_FIELDS, $b['patient'] ?? []);
         if (empty($p['first_name'])) json_response(['error' => "Enter the patient's first name."], 400);
+        // One record per person: a chart number already on file means this
+        // is that patient (add the new case to them instead).
+        if (!empty($p['chart_number']) && ($dup = patient_by_chart($p['chart_number']))) {
+            $pdo->rollBack();
+            json_response(['error' => 'Chart # ' . $p['chart_number'] . ' already belongs to ' . trim($dup['first_name'] . ' ' . $dup['last_name']) . '. Add this case to that patient instead.', 'code' => 'existing_patient', 'patient' => patient_card((int)$dup['id'])], 409);
+        }
         $p['last_name'] = $p['last_name'] ?? '';
         $p['practice_id'] = pid();
         $p['created_at'] = $p['updated_at'] = now_str();
@@ -428,6 +435,7 @@ function handle_update() {
         update_row('cases', $id, $cols);
     }
     $pcols = clean_fields(PATIENT_FIELDS, $patientIn);
+    if (!empty($pcols['chart_number']) && ($dup = patient_by_chart($pcols['chart_number'])) && (int)$dup['id'] !== (int)$c['patient_id']) json_response(['error' => 'Chart # ' . $pcols['chart_number'] . ' already belongs to ' . trim($dup['first_name'] . ' ' . $dup['last_name']) . '.'], 409);
     $ps = pi_db()->prepare('SELECT * FROM patients WHERE id = ?'); $ps->execute([$c['patient_id']]);
     $changes = array_merge($changes, array_map(fn($x) => ['f' => 'patient_' . $x['f']] + $x, audit_diff(PATIENT_FIELDS, $ps->fetch(), $pcols)));
     if (array_key_exists('first_name', $pcols) && !$pcols['first_name']) json_response(['error' => "First name can't be blank."], 400);
@@ -987,6 +995,59 @@ function handle_tasks() {
     json_response(['tasks' => load_tasks(implode(' AND ', $where), $args)]);
 }
 
+// ---------- patients with more than one case ----------
+// Chart numbers are compared without case, punctuation or leading zeros
+// ("A-1001" = "a1001"), as EHR exports write them differently.
+const CHART_SQL = "TRIM(LEADING '0' FROM LOWER(REGEXP_REPLACE(chart_number, '[^A-Za-z0-9]', '')))";
+
+function patient_by_chart(string $chart): ?array {
+    if (($n = chart_norm($chart)) === null) return null;
+    $s = pi_db()->prepare('SELECT * FROM patients WHERE practice_id = ? AND ' . CHART_SQL . ' = ? LIMIT 1');
+    $s->execute([pid(), $n]);
+    return $s->fetch() ?: null;
+}
+
+// A patient with their cases (for "existing patient" choices and the
+// other-cases note on a case).
+function patient_card(int $patientId): array {
+    $p = pi_db()->prepare('SELECT id, first_name, last_name, chart_number, dob_enc FROM patients WHERE id = ? AND practice_id = ?');
+    $p->execute([$patientId, pid()]);
+    $p = $p->fetch();
+    $c = pi_db()->prepare('SELECT id, case_number, ehr_case_label, injury_type, date_of_injury, stage, location_id FROM cases WHERE patient_id = ? AND archived_at IS NULL ORDER BY date_of_injury DESC, id DESC');
+    $c->execute([$patientId]);
+    $cases = array_values(array_filter($c->fetchAll(), fn($x) => !restricted_location() || (int)$x['location_id'] === restricted_location()));
+    return ['id' => (int)$p['id'], 'name' => trim($p['first_name'] . ' ' . $p['last_name']), 'chartNumber' => $p['chart_number'], 'dob' => dec($p['dob_enc']),
+        'cases' => array_map(fn($x) => ['id' => (int)$x['id'], 'number' => $x['case_number'], 'label' => $x['ehr_case_label'], 'type' => $x['injury_type'], 'doi' => $x['date_of_injury'], 'stage' => $x['stage'],
+            'open' => in_array($x['stage'], OPEN_STAGES, true)], $cases)];
+}
+
+// Existing patients like the one being entered: same chart number, or the
+// same name (with the date of birth when given), or a name / chart search.
+function handle_patient_search() {
+    require_user('case.read');
+    $pdo = pi_db();
+    $q = trim((string)($_GET['q'] ?? ''));
+    $first = trim((string)($_GET['first'] ?? '')); $last = trim((string)($_GET['last'] ?? ''));
+    $chart = trim((string)($_GET['chart'] ?? '')); $dob = date_or_null($_GET['dob'] ?? null);
+    $ids = [];
+    if (!empty($_GET['id'])) { $s = $pdo->prepare('SELECT id FROM patients WHERE id = ? AND practice_id = ?'); $s->execute([(int)$_GET['id'], pid()]); if ($x = $s->fetchColumn()) $ids[(int)$x] = 'self'; }
+    if ($chart !== '' && ($p = patient_by_chart($chart))) $ids[(int)$p['id']] = 'chart';
+    if ($first !== '' && $last !== '') {
+        $s = $pdo->prepare('SELECT id, dob_enc FROM patients WHERE practice_id = ? AND first_name = ? AND last_name = ? LIMIT 20');
+        $s->execute([pid(), $first, $last]);
+        foreach ($s->fetchAll() as $r) if (!$dob || !$r['dob_enc'] || date_or_null(dec($r['dob_enc'])) === $dob) $ids[(int)$r['id']] ??= 'name';
+    }
+    if (strlen($q) >= 2) {
+        $like = '%' . $q . '%';
+        $s = $pdo->prepare('SELECT id FROM patients WHERE practice_id = ? AND (CONCAT(first_name, " ", last_name) LIKE ? OR CONCAT(last_name, ", ", first_name) LIKE ? OR ' . CHART_SQL . ' = ?) ORDER BY last_name, first_name LIMIT 15');
+        $s->execute([pid(), $like, $like, chart_norm($q) ?? '']);
+        foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $id) $ids[(int)$id] ??= 'search';
+    }
+    $out = [];
+    foreach ($ids as $id => $why) { $card = patient_card($id); if ($card['cases'] || $why !== 'search') $out[] = $card + ['match' => $why]; }
+    json_response(['patients' => $out]);
+}
+
 // ---------- attorney status requests ----------
 // Settings and history for a case's status requests.
 function status_info(array $c): array {
@@ -1432,6 +1493,7 @@ switch ($action) {
     case 'tasks': handle_tasks(); break;
     case 'task_save': handle_task_save(); break;
     case 'task': handle_task(); break;
+    case 'patient_search': handle_patient_search(); break;
     case 'status_send': handle_status_send(); break;
     case 'task_delete': handle_task_delete(); break;
     case 'task_counts': handle_task_counts(); break;
