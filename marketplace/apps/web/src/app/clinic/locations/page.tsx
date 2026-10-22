@@ -1,4 +1,7 @@
 import { env } from "@cm/config";
+import { photoSrc } from "@/lib/photo";
+import { LOCATION_MAX } from "@/lib/resize-image";
+import { ShrinkFileInput } from "@/components/ui/photo-input";
 import { prisma } from "@cm/db";
 import { ATTIRE_OPTIONS, attireList, clinicProfile, MAX_LOCATION_PHOTOS } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
@@ -87,7 +90,7 @@ export default async function Locations() {
                   {l.photoKeys.map((k) => (
                     <div key={k} className="relative">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`/api/files/${k}`} alt="Clinic exterior" className="aspect-[4/3] w-full rounded-xl object-cover ring-1 ring-slate-200" />
+                      <img src={photoSrc(k)} loading="lazy" alt="Clinic exterior" className="aspect-[4/3] w-full rounded-xl object-cover ring-1 ring-slate-200" />
                       <ActionForm action={removeLocationPhotoAction} className="absolute right-1.5 top-1.5" successMessage={false} confirm="Remove this photo?">
                         <input type="hidden" name="locationId" value={l.id} />
                         <input type="hidden" name="key" value={k} />
@@ -100,7 +103,7 @@ export default async function Locations() {
               {l.photoKeys.length < MAX_LOCATION_PHOTOS ? (
                 <ActionForm action={locationPhotosAction} className="flex flex-wrap items-center gap-3" resetOnSuccess>
                   <input type="hidden" name="locationId" value={l.id} />
-                  <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required className="text-sm" />
+                  <ShrinkFileInput kind="photo" plain maxPx={LOCATION_MAX} name="photos" accept="image/jpeg,image/png,image/webp" multiple required className="text-sm" />
                   <SubmitButton size="sm" variant="secondary">Upload photos</SubmitButton>
                 </ActionForm>
               ) : null}

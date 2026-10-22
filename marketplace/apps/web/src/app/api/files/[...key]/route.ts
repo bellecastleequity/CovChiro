@@ -23,10 +23,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ key:
   const st = storageProvider();
   // Photos: ?s=thumb serves the small copy made at upload (or by Admin → Providers → Shrink photos),
   // and the browser keeps them for a day (keys are random, so a new photo is a new address).
-  const wantThumb = photo && req.nextUrl.searchParams.get("s") === "thumb";
+  const picture = photo || (key.startsWith("locations/") && locationPhoto);
+  const wantThumb = picture && req.nextUrl.searchParams.get("s") === "thumb";
   const target = wantThumb && (await st.exists(thumbKey(key))) ? thumbKey(key) : key;
-  const cache = photo ? "private, max-age=86400" : "private, max-age=300";
-  const signed = await st.signedUrl(target, photo ? 60 * 24 : 10);
+  const cache = picture ? "private, max-age=86400" : "private, max-age=300";
+  const signed = await st.signedUrl(target, picture ? 60 * 24 : 10);
   if (signed) return NextResponse.redirect(signed, { headers: { "Cache-Control": cache } });
   const f = await st.read(target);
   if (!f) return new NextResponse("Not found", { status: 404 });

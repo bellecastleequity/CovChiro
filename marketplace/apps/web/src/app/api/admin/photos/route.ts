@@ -4,7 +4,7 @@ import { storageProvider, thumbKey } from "@cm/integrations";
 import { getSession } from "@/lib/session";
 
 /**
- * Admin → Providers → "Shrink photos": headshots and clinic logos uploaded before photos were shrunk
+ * Admin → Providers → "Shrink photos": headshots, clinic logos and clinic location photos uploaded before photos were shrunk
  * in the browser (owner, Oct 2026: >1 minute to load). GET lists the ones without a small copy; POST
  * takes the shrunk photo + thumbnail the admin's browser made and writes them over the same key.
  */
@@ -14,11 +14,12 @@ async function admin() {
 }
 
 async function photoKeys() {
-  const [providers, clinics] = await Promise.all([
+  const [providers, clinics, locations] = await Promise.all([
     prisma.provider.findMany({ where: { photoUrl: { startsWith: "photos/" } }, select: { photoUrl: true } }),
     prisma.clinicOrg.findMany({ where: { logoUrl: { startsWith: "photos/" } }, select: { logoUrl: true } }),
+    prisma.clinicLocation.findMany({ where: { photoKeys: { isEmpty: false } }, select: { photoKeys: true } }),
   ]);
-  return [...new Set([...providers.map((p) => p.photoUrl!), ...clinics.map((c) => c.logoUrl!)])];
+  return [...new Set([...providers.map((p) => p.photoUrl!), ...clinics.map((c) => c.logoUrl!), ...locations.flatMap((l) => l.photoKeys).filter((k) => k.startsWith("locations/"))])];
 }
 
 export async function GET() {
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
   const key = String(fd.get("key") ?? "");
   const photo = fd.get("photo"), thumb = fd.get("thumb");
   if (!(await photoKeys()).includes(key)) return NextResponse.json({ error: "Not a photo on file." }, { status: 400 });
-  if (!(photo instanceof File) || !(thumb instanceof File) || !TYPES.includes(photo.type) || !TYPES.includes(thumb.type) || photo.size > 2 * 1024 * 1024 || thumb.size > 512 * 1024) {
+  if (!(photo instanceof File) || !(thumb instanceof File) || !TYPES.includes(photo.type) || !TYPES.includes(thumb.type) || photo.size > 4 * 1024 * 1024 || thumb.size > 512 * 1024) {
     return NextResponse.json({ error: "Expected a shrunk photo and thumbnail." }, { status: 400 });
   }
   const st = storageProvider();

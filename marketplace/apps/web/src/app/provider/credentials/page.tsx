@@ -1,4 +1,5 @@
 import { ExternalLink, FileText } from "lucide-react";
+import { ShrinkFileInput } from "@/components/ui/photo-input";
 import { credentialPlace, NATIONAL_CREDENTIAL, US_STATES } from "@cm/core";
 import { prisma } from "@cm/db";
 import { providerProfile, getSettings } from "@cm/services";
@@ -68,7 +69,7 @@ export default async function Credentials() {
                   <Field label="License number"><Input name="licenseNumber" required /></Field>
                   <Field label={<>Title (as issued)<InfoTip label="About the title">The credential exactly as your board issues it (for example DC, LMT, PT). Clinics see it next to your name.</InfoTip></>}><Input name="credentialTitle" placeholder={pp.profession.credentialSuffix} /></Field>
                   <Field label="Expires"><Input name="expiresAt" type="date" required /></Field>
-                  <Field label="Copy (optional)"><Input name="document" type="file" accept="application/pdf,image/*" /></Field>
+                  <Field label="Copy (optional)"><ShrinkFileInput kind="document" name="document" accept="application/pdf,image/*" /></Field>
                   <div className="sm:col-span-2 lg:col-span-5"><SubmitButton size="sm">Add / update license</SubmitButton></div>
                 </ActionForm>
                 <p className="mt-2 text-xs text-slate-500">We verify every license with the state board before you can take shifts in that state. Editing a license sends it back for verification.</p>
@@ -120,7 +121,7 @@ export default async function Credentials() {
               <Field label="Expires"><Input name="expiresAt" type="date" required /></Field>
               <Field label={<>Per-occurrence limit ($)<InfoTip label="About per-occurrence">The most your policy pays for a single claim, as shown on your certificate of insurance. Often $1,000,000.</InfoTip></>}><Input name="perOccurrence" inputMode="numeric" placeholder="1,000,000" required /></Field>
               <Field label={<>Aggregate limit ($)<InfoTip label="About aggregate">The most your policy pays for all claims in the policy year. Often $3,000,000.</InfoTip></>}><Input name="aggregate" inputMode="numeric" placeholder="3,000,000" required /></Field>
-              <Field label="Certificate of insurance"><Input name="document" type="file" accept="application/pdf,image/*" required /></Field>
+              <Field label="Certificate of insurance"><ShrinkFileInput kind="document" name="document" accept="application/pdf,image/*" required /></Field>
               <fieldset className="sm:col-span-2 lg:col-span-3">
                 <legend className="mb-1.5 text-sm font-medium text-slate-700">Professions covered<RequiredMark /></legend>
                 <div className="flex flex-wrap gap-4">
@@ -170,7 +171,7 @@ export default async function Credentials() {
                             {k.requiresCertification ? (
                               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                 <input type="hidden" name={`certExisting-${k.id}`} value={h?.certificationUrl ?? ""} />
-                                <Input name={`cert-${k.id}`} type="file" accept="application/pdf,image/*" className="h-9 text-xs" aria-label="Certificate" />
+                                <ShrinkFileInput kind="document" name={`cert-${k.id}`} accept="application/pdf,image/*" className="h-9 text-xs" aria-label="Certificate" />
                                 <Input name={`certExp-${k.id}`} type="date" defaultValue={h?.certificationExpiresAt?.toISOString().slice(0, 10)} className="h-9 text-xs" aria-label="Certificate expires" />
                                 <div className="sm:col-span-2">{h?.certificationStatus ? <StatusBadge status={h.certificationStatus} /> : <Badge tone="amber">Certificate required</Badge>}{k.scopeSensitive ? <Badge className="ml-1">Scope varies by state</Badge> : null}</div>
                               </div>

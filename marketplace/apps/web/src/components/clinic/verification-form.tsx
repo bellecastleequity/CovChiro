@@ -1,4 +1,5 @@
 import { FileText } from "lucide-react";
+import { ShrinkFileInput } from "@/components/ui/photo-input";
 import { US_STATES } from "@cm/core";
 import type { clinicVerify } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
@@ -114,7 +115,7 @@ export function VerificationForm({
               ))}
             </ul>
           ) : null}
-          <input type="file" name="documents" multiple accept="application/pdf,image/png,image/jpeg,image/webp" className="block text-sm" />
+          <ShrinkFileInput kind="document" plain name="documents" multiple accept="application/pdf,image/png,image/jpeg,image/webp" className="block text-sm" />
       <Checkbox name="documentsLater" label={mode === "admin" ? "The clinic will email the documents (upload them on the review page when they arrive)" : "Having trouble uploading? Tick this and email the documents to us instead; we'll attach them for you."} />
         </CardBody>
       </Card>

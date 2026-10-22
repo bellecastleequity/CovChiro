@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { ShrinkFileInput } from "@/components/ui/photo-input";
 import { BedDouble, CheckCircle2 } from "lucide-react";
 import type { stay } from "@cm/services";
 import { stayDetailsAction } from "@/app/clinic/actions";
@@ -92,7 +93,7 @@ export function StayCard({ view, browserKey }: { view: View; browserKey?: string
             <PhiNotice />
           </Field>
           <Field label="Booking confirmation (optional)" hint="PDF or a screenshot, up to 10 MB.">
-            <Input type="file" name="file" accept="application/pdf,image/*" />
+            <ShrinkFileInput kind="document" name="file" accept="application/pdf,image/*" />
           </Field>
           {shift.stayFileKey ? (
             <div className="flex flex-wrap items-center gap-3 text-sm">

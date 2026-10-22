@@ -404,8 +404,9 @@ export const locationPhotosAction = formAction(async (fd) => {
   // Check ownership before storing anything under this location's prefix.
   if (!(await prisma.clinicLocation.count({ where: { id: locationId, clinicOrgId: actor.clinicOrgId! } }))) return "Location not found.";
   const keys: string[] = [];
-  for (const f of fd.getAll("photos")) {
-    const key = await saveUpload(f, `locations/${locationId}`, { images: true });
+  const photos = fd.getAll("photos"), thumbs = fd.getAll("photosThumb");
+  for (const [i, f] of photos.entries()) {
+    const key = await saveUpload(f, `locations/${locationId}`, { images: true, thumb: thumbs.length === photos.length ? thumbs[i] : null });
     if (key) keys.push(key);
   }
   if (!keys.length) return "Choose at least one photo.";

@@ -37,3 +37,6 @@ async function loadImage(file: Blob): Promise<ImageBitmap | HTMLImageElement> {
 
 export const PHOTO_MAX = 1024;
 export const THUMB_MAX = 256;
+/** Photos of documents (licenses, certificates, receipts): large enough to read every line. */
+export const DOC_MAX = 2000;
+export const LOCATION_MAX = 1600;

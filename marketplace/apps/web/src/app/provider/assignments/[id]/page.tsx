@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { photoSrc } from "@/lib/photo";
+import { ShrinkFileInput } from "@/components/ui/photo-input";
 import { ClinicLogo } from "@/components/clinic/clinic-logo";
 import { MapPin, User } from "lucide-react";
 import { prisma } from "@cm/db";
@@ -98,7 +100,7 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
                     {loc.photoKeys.map((k) => (
                       <a key={k} href={`/api/files/${k}`} target="_blank" rel="noreferrer">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`/api/files/${k}`} alt="Clinic exterior" className="aspect-[4/3] w-full rounded-lg object-cover ring-1 ring-slate-200" />
+                        <img src={photoSrc(k)} loading="lazy" alt="Clinic exterior" className="aspect-[4/3] w-full rounded-lg object-cover ring-1 ring-slate-200" />
                       </a>
                     ))}
                   </div>
@@ -144,7 +146,7 @@ export default async function Assignment({ params }: { params: Promise<{ id: str
                   <input type="hidden" name="assignmentId" value={a.id} />
                   <Field label="Amount ($)"><Input name="amount" inputMode="decimal" required /></Field>
                   <Field label="Nights"><Input name="nights" type="number" min={1} defaultValue={1} required /></Field>
-                  <Field label="Receipt"><Input name="receipt" type="file" accept="application/pdf,image/*" required /></Field>
+                  <Field label="Receipt"><ShrinkFileInput kind="document" name="receipt" accept="application/pdf,image/*" required /></Field>
                   <div className="sm:col-span-3"><SubmitButton size="sm">Submit receipt</SubmitButton></div>
                 </ActionForm>
               </CardBody>

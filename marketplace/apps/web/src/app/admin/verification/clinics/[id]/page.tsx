@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ShrinkFileInput } from "@/components/ui/photo-input";
 import { CheckCircle2, CircleAlert, CircleHelp, ExternalLink, FileText, XCircle } from "lucide-react";
 import { clinicVerify } from "@cm/services";
 import { ActionForm, SubmitButton } from "@/components/ui/action-form";
@@ -91,7 +92,7 @@ export default async function ClinicVerificationDetail({ params }: { params: Pro
                 <ActionForm action={clinicVerificationDocsAction} className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-slate-300 p-3">
                   <input type="hidden" name="id" value={row.id} />
                   <input type="hidden" name="clinicOrgId" value={org.id} />
-                  <input type="file" name="documents" multiple required accept="application/pdf,image/png,image/jpeg,image/webp" className="text-sm" />
+                  <ShrinkFileInput kind="document" plain name="documents" multiple required accept="application/pdf,image/png,image/jpeg,image/webp" className="text-sm" />
                   <SubmitButton size="sm" variant="outline">Add documents the clinic sent</SubmitButton>
                 </ActionForm>
               ) : null}
