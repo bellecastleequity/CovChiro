@@ -11,6 +11,7 @@ header('Cache-Control: no-store, max-age=0');
 // Headers set here are dropped if the built-in server serves the file
 // itself (return false), so static files are served from here too.
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+if (rtrim($path, '/') === '/start') { header('Location: /app.html#signup', true, 302); exit; }  // as in .htaccess
 $file = realpath(dirname(__DIR__) . '/public' . ($path === '/' ? '/index.html' : $path));
 if (!$file || strpos($file, realpath(dirname(__DIR__) . '/public')) !== 0 || !is_file($file)) { http_response_code(404); exit; }
 if (substr($file, -4) === '.php') return false;

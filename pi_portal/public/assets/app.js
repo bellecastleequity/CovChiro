@@ -176,7 +176,7 @@ async function showSignup() {
         <div class="promo-row"><input id="su-promo" value="${esc(promo)}" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="button" class="btn ghost" data-act="promo-check">Apply</button></div>
         <div class="small" id="su-promo-msg" aria-live="polite"></div></div>
     </div>
-    <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice, and understand that InjuryCase is an educational tool — clinical decisions remain with our treating providers.</label>
+    <label class="check mt agree"><input type="checkbox" id="su-accept"><span>I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice, and understand that InjuryCase is an educational tool — clinical decisions remain with our treating providers.</span></label>
     <div class="err" data-role="err"></div>
     <button class="btn" type="submit">Create practice account</button>
     <p class="auth-switch">Already have an account? <a href="#" data-act="show-login">Sign in</a></p>

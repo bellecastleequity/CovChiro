@@ -482,7 +482,13 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 @media (max-width:860px){.app-disclaimer{margin:0 16px 20px;}}
 
 /* Promo code on signup */
-.promo-row{display:flex;gap:8px;}
+.promo-row{display:flex;gap:8px;align-items:stretch;}
+.promo-row input{flex:1;min-width:0;}
+.auth-card .promo-row .btn{width:auto;flex:none;margin-top:0;padding:8px 16px;}
+/* The agreement is one sentence with links; keep it flowing as text beside the box. */
+label.check.agree{align-items:flex-start;line-height:1.45;}
+label.check.agree input{flex:none;width:auto;margin-top:3px;}
+label.check.agree span{flex:1;min-width:0;}
 .promo-row input{flex:1;text-transform:uppercase;}
 .promo-ok{color:var(--green-dark);font-weight:600;margin-top:4px;}
 .promo-bad{color:var(--red);margin-top:4px;}
