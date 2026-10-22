@@ -14,6 +14,8 @@ const OUT = process.argv[2];
   const get = async (u) => (await p.request.get(B + 'api/' + u, { headers: { 'User-Agent': ua } })).json();
   await post('auth.php?action=signup', { practice_name: 'Bayside Spine & Injury', name: 'Dr. Alex Morgan', email: 'alex@bayside-demo.test', password: 'Bayside-Demo-Pass-26', plan: 'practice', accept: true });
   const s = await post('auth.php?action=mfa_setup_start', {}); await post('auth.php?action=mfa_setup_confirm', { code: totp(s.secret) });
+  // walkthrough_shoot.js signs in to the same demo clinic with this.
+  require('fs').mkdirSync(require('path').join(__dirname, '.build'), { recursive: true }); require('fs').writeFileSync(require('path').join(__dirname, '.build', 'demo_mfa.txt'), s.secret);
   await post('admin.php?action=practice_save', { name: 'Bayside Spine & Injury', address: '1200 Harbor Blvd, Suite 4\nTampa, FL 33602', phone: '(813) 555-0142', fax: '(813) 555-0143', state: 'FL', ehr_name: 'ChiroTouch' });
   const contact = async (type, organization, name) => (await post('contacts.php?action=save', { type, organization, name, phone: '(813) 555-01' + Math.floor(10 + Math.random() * 89) })).contact.id;
   const atty1 = await contact('attorney', 'Hartwell & Pierce, P.A.', 'Dana Hartwell'), atty2 = await contact('attorney', 'Coastal Injury Law Group', 'Marcus Lee'), atty3 = await contact('attorney', 'Sun City Trial Attorneys', 'Priya Shah');

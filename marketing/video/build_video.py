@@ -13,6 +13,9 @@ Each scene lasts max(its default length, its clip + a short tail), so a new
 voice or a reworded line never cuts off. Output: "InjuryCase sales video.mp4".
 Needs node + Playwright (Chromium) and ffmpeg.
   python3 build_video.py [--fps 30] [--out "InjuryCase sales video.mp4"]
+  python3 build_video.py --scenes walkthrough.json   # the long walkthrough
+A scene file can name its own "html", "vo_dir" and "out"; scenes that start a
+"chapter" are listed with timestamps in "<out> chapters.txt" for YouTube.
 """
 import argparse, json, os, shutil, subprocess, sys, glob
 
@@ -24,22 +27,24 @@ def dur(path):
     return float(subprocess.check_output(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]).decode().strip())
 
 
-def find(base):
+def find(base, vo='vo'):
     for e in EXTS:
-        p = os.path.join(HERE, 'vo', base + e)
+        p = os.path.join(HERE, vo, base + e)
         if os.path.exists(p):
             return p
     return None
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument('--fps', type=int, default=30); ap.add_argument('--out', default='InjuryCase sales video.mp4')
+    ap = argparse.ArgumentParser(); ap.add_argument('--fps', type=int, default=30); ap.add_argument('--out'); ap.add_argument('--scenes', default='scenes.json')
     ap.add_argument('--work', default=os.path.join(HERE, '.build'))
     a = ap.parse_args()
-    cfg = json.load(open(os.path.join(HERE, 'scenes.json')))
+    cfg = json.load(open(os.path.join(HERE, a.scenes)))
+    vo, html = cfg.get('vo_dir', 'vo'), cfg.get('html', 'video.html')
+    a.out = a.out or cfg.get('out', 'InjuryCase sales video.mp4')
     lead, tail = cfg.get('lead_in_seconds', 0.4), cfg.get('tail_seconds', 0.9)
-    full = find('full')
-    clips = [None if full else find(s['id']) for s in cfg['scenes']]
+    full = find('full', vo)
+    clips = [None if full else find(s['id'], vo) for s in cfg['scenes']]
     durations = []
     for s, c in zip(cfg['scenes'], clips):
         d = s['min'] if not c else max(s['min'], round(lead + dur(c) + tail, 2))
@@ -50,7 +55,7 @@ def main():
     json.dump(durations, open(os.path.join(HERE, 'timeline.json'), 'w'))
     frames = os.path.join(a.work, 'frames')
     shutil.rmtree(frames, ignore_errors=True)
-    subprocess.check_call(['node', os.path.join(HERE, 'render.js'), HERE, str(a.fps), '', os.path.join(HERE, 'timeline.json'), frames])
+    subprocess.check_call(['node', os.path.join(HERE, 'render.js'), HERE, str(a.fps), '', os.path.join(HERE, 'timeline.json'), frames, html])
     silent = os.path.join(a.work, 'video_only.mp4')
     subprocess.check_call(['ffmpeg', '-loglevel', 'error', '-y', '-framerate', str(a.fps), '-i', os.path.join(frames, '%05d.jpg'),
                            '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-pix_fmt', 'yuv420p', silent])
@@ -81,6 +86,14 @@ def main():
         subprocess.check_call(['ffmpeg', '-loglevel', 'error', '-y', '-i', silent, *inputs, '-filter_complex', fc_shift(fc, 1),
                                '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', '-t', str(total), out])
     print(f'wrote {a.out} ({total:.1f}s)')
+    if any('chapter' in s for s in cfg['scenes']):
+        lines, t = [], 0.0
+        for s, d in zip(cfg['scenes'], durations):
+            if 'chapter' in s:
+                lines.append(f'{int(t // 60)}:{int(t % 60):02d} {s["chapter"]}')
+            t += d
+        open(os.path.join(HERE, os.path.splitext(a.out)[0] + ' chapters.txt'), 'w').write('\n'.join(lines) + '\n')
+        print('\n'.join(lines))
 
 
 def fc_shift(fc, n):

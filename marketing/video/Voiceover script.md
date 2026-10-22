@@ -47,3 +47,13 @@ The video fits itself to the voice. Each scene lasts its default length or as lo
 
 1. With the app running locally, `node seed_and_shoot.js shots` seeds a fictional demo clinic (every name is made up) and captures the screens.
 2. Edit wording or layout in `video.html` (each element's `data-in` is seconds after its scene starts), then `python3 build_video.py`.
+
+## Full walkthrough (6–8 minutes)
+
+`InjuryCase full walkthrough.mp4` follows one fictional patient, Maya Collins, from intake to a closed, paid case, in seven chapters: intake, the first weeks of care, keeping patients on track, the end of care, getting paid, running your office, and pricing. Use it for the website's "Watch the demo", replies to interested clinics, and after trial sign-up. The overview video above stays the one for cold outreach.
+
+- **Script:** every line is in `walkthrough.json` (same format as `scenes.json`; a scene with a `"chapter"` starts a chapter).
+- **Chapters:** each build writes `InjuryCase full walkthrough chapters.txt`, ready to paste into a YouTube description.
+- **Voice:** `python3 tts_gemini.py --scenes walkthrough.json` (clips go to `vo_walkthrough/`; redo one line with `--only w19-mmi`).
+- **Video:** `python3 build_video.py --scenes walkthrough.json`. Scenes stretch to fit their voice clips, as with the overview.
+- **Screens:** with the app running locally, run `node seed_and_shoot.js shots` (seeds the demo clinic), then `node walkthrough_shoot.js shots_walk`. It opens Maya's case through the real New case form and moves it through every stage. The layout is in `walkthrough.html`.

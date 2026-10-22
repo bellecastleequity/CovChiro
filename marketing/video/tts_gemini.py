@@ -3,13 +3,14 @@
 
 Works with a plain Gemini API key (GEMINI_API_KEY, never commit it), unlike
 Google Cloud TTS which needs its own key. Reads the lines from scenes.json and
-writes one WAV per scene to vo/<scene id>.wav. Voice and delivery come from the
-"gemini" block in scenes.json.
+writes one WAV per scene to vo/<scene id>.wav (or the scene file's "vo_dir").
+Voice and delivery come from the scene file's "gemini" block.
 
   python3 tts_gemini.py                      # all scenes
   python3 tts_gemini.py --voice Kore         # try another voice
   python3 tts_gemini.py --only 04-playbook   # redo one scene
   python3 tts_gemini.py --sample Charon,Kore,Puck,Algieba   # one line per voice, to compare
+  python3 tts_gemini.py --scenes walkthrough.json           # the long walkthrough
 Then run build_video.py.
 """
 import argparse, base64, json, os, sys, time, urllib.request, urllib.error, wave
@@ -50,26 +51,27 @@ def save(pcm, path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--voice'); ap.add_argument('--only'); ap.add_argument('--sample', metavar='VOICES')
+    ap.add_argument('--voice'); ap.add_argument('--only'); ap.add_argument('--sample', metavar='VOICES'); ap.add_argument('--scenes', default='scenes.json')
     a = ap.parse_args()
-    cfg = json.load(open(os.path.join(HERE, 'scenes.json')))
+    cfg = json.load(open(os.path.join(HERE, a.scenes)))
+    vo = os.path.join(HERE, cfg.get('vo_dir', 'vo'))
     g = cfg.get('gemini', {})
     model, style = g.get('model', 'gemini-2.5-flash-preview-tts'), g.get('style', '')
     if a.sample:
-        os.makedirs(os.path.join(HERE, 'vo', 'samples'), exist_ok=True)
+        os.makedirs(os.path.join(vo, 'samples'), exist_ok=True)
         line = cfg['scenes'][1]['text']
         for v in a.sample.split(','):
-            save(synth(line, v.strip(), model, style), os.path.join(HERE, 'vo', 'samples', v.strip() + '.wav'))
+            save(synth(line, v.strip(), model, style), os.path.join(vo, 'samples', v.strip() + '.wav'))
         return
     voice = a.voice or g.get('voice', 'Charon')
-    os.makedirs(os.path.join(HERE, 'vo'), exist_ok=True)
+    os.makedirs(vo, exist_ok=True)
     for sc in cfg['scenes']:
         if a.only and sc['id'] != a.only:
             continue
         for ext in ('.mp3', '.m4a'):  # build_video.py takes the first match, so clear stale clips
-            if os.path.exists(os.path.join(HERE, 'vo', sc['id'] + ext)):
-                os.remove(os.path.join(HERE, 'vo', sc['id'] + ext))
-        save(synth(sc['text'], voice, model, style), os.path.join(HERE, 'vo', sc['id'] + '.wav'))
+            if os.path.exists(os.path.join(vo, sc['id'] + ext)):
+                os.remove(os.path.join(vo, sc['id'] + ext))
+        save(synth(sc['text'], voice, model, style), os.path.join(vo, sc['id'] + '.wav'))
 
 
 if __name__ == '__main__':
