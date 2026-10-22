@@ -32,7 +32,7 @@ const BENEFITS = [
 ];
 
 const REFERRAL_TYPES = [
-    'mri' => 'MRI', 'xray' => 'X-ray', 'ct' => 'CT', 'emc' => 'EMC determination (MD/DO)',
+    'mri' => 'MRI', 'xray' => 'X-ray', 'ct' => 'CT', 'emg' => 'EMG / nerve conduction study', 'emc' => 'EMC determination (MD/DO)',
     'ortho' => 'Orthopedic consult', 'neuro' => 'Neurology consult', 'pain_mgmt' => 'Pain management',
     'surgical' => 'Surgical consult', 'pt' => 'Physical therapy', 'other' => 'Other',
 ];
@@ -91,13 +91,10 @@ const CHECKLIST = [
     'initial_adl'             => ['label' => 'Initial ADL survey completed',        'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ALL_CASES],
     'adl_entered'             => ['label' => 'ADL uploaded & entered in chart',     'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ALL_CASES],
     'prior_records_received'  => ['label' => 'Prior medical records received',      'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 14, 'cases' => ALL_CASES],
-    // Co-management (completed from the Referrals tab)
-    'mri_ordered'             => ['label' => 'MRI ordered',                         'group' => 'Imaging & co-management', 'anchor' => 'first_visit', 'days' => 10, 'cases' => ALL_CASES, 'source' => 'referral', 'types' => ['mri', 'ct'], 'field' => 'ordered_on'],
-    'mri_report'              => ['label' => 'MRI report received & in chart',      'group' => 'Imaging & co-management', 'anchor' => 'first_visit', 'days' => 21, 'cases' => ALL_CASES, 'source' => 'referral', 'types' => ['mri', 'ct'], 'field' => 'report_received_on'],
+    // Co-management (completed from the Referrals tab). MRI, ortho, pain
+    // management and neurology referrals are timed by the care guide below.
     'emc_referral'            => ['label' => 'Sent for EMC determination',          'group' => 'Imaging & co-management', 'anchor' => 'first_visit', 'days' => 21, 'cases' => ['auto'], 'source' => 'referral', 'types' => ['emc'], 'field' => 'ordered_on'],
     'emc_report'              => ['label' => 'EMC report received & in chart',      'group' => 'Imaging & co-management', 'anchor' => 'first_visit', 'days' => 35, 'cases' => ['auto'], 'source' => 'referral', 'types' => ['emc'], 'field' => 'report_received_on'],
-    'consult_referral'        => ['label' => 'Sent for ortho/neuro/pain consult',   'group' => 'Imaging & co-management', 'anchor' => 'first_visit', 'days' => 45, 'cases' => ALL_CASES, 'source' => 'referral', 'types' => ['ortho', 'neuro', 'pain_mgmt', 'surgical'], 'field' => 'ordered_on'],
-    'consult_report'          => ['label' => 'Consult report received & in chart',  'group' => 'Imaging & co-management', 'anchor' => 'first_visit', 'days' => 60, 'cases' => ALL_CASES, 'source' => 'referral', 'types' => ['ortho', 'neuro', 'pain_mgmt', 'surgical'], 'field' => 'report_received_on'],
     // Discharge
     'final_adl'               => ['label' => 'Final ADL survey completed',          'group' => 'At discharge', 'anchor' => 'discharge_date', 'days' => 0, 'cases' => ALL_CASES],
     'tx_complete_letter'      => ['label' => 'Treatment complete letter sent',      'group' => 'At discharge', 'anchor' => 'discharge_date', 'days' => 7, 'cases' => LIABILITY_CASES],
@@ -253,6 +250,119 @@ function pip_effective_limit(array $case, ?array $pip): float {
     return $case['emc_status'] === 'yes' ? $limit : min($limit, PIP_NO_EMC_CAP);
 }
 
+// ---------- Care guide ----------
+// Referral timing for clinics new to PI cases: what to refer, when, and
+// why, shown as "Next steps" on each case and raised as alerts. A step is
+// done once a referral of its type exists (a cancelled one doesn't count);
+// more than one (a second MRI, another ortho opinion) can always be added.
+// The clinic can mark a step "not needed" with a reason, or snooze it.
+define('PAIN_MGMT_CONSIDER_WEEKS', 12);
+define('PAIN_MGMT_REFER_WEEKS', 16);
+// ICD-10 codes (from uploaded EHR ledgers) that point to a head injury:
+// intracranial injury / concussion, unspecified head injury,
+// post-concussional syndrome, post-traumatic headache.
+const HEAD_INJURY_ICD = ['S06', 'S09.9', 'F07.81', 'G44.3'];
+const CARE_GUIDE = [
+    'mri' => [
+        'title' => 'MRI referral', 'types' => ['mri'],
+        'when' => 'Visit #1 — write the MRI script at the first visit.',
+        'why' => "The MRI is the objective evidence of disc, ligament and soft-tissue injury. Ordering it at the first visit documents the injury close to the accident, and the orthopedic consult and the attorney both rely on it. Order one per region if more than one area is injured (e.g. neck and low back).",
+    ],
+    'ortho' => [
+        'title' => 'Orthopedic referral', 'types' => ['ortho'],
+        'when' => 'After the MRI is completed.',
+        'why' => "Once the MRI shows what's injured, an orthopedic specialist reviews it with an exam and confirms the diagnosis and whether more than conservative care (injections, surgery) is needed. Their opinion carries weight with insurers and attorneys.",
+    ],
+    'pain_mgmt' => [
+        'title' => 'Pain management referral', 'types' => ['pain_mgmt'],
+        'when' => 'Consider after 12–16 weeks of conservative care without full resolution.',
+        'why' => "If the patient still isn't fully better after 12–16 weeks of conservative care (adjustments, therapy), a pain-management physician can evaluate for injections or other procedures. Documenting that conservative care came first supports medical necessity.",
+    ],
+    'neuro' => [
+        'title' => 'Neurology referral', 'types' => ['neuro'],
+        'when' => 'Any time after the first visit if there was a head injury.',
+        'why' => "Hitting the head, losing consciousness, or symptoms like headaches, dizziness, memory or concentration problems, or light sensitivity should be evaluated by a neurologist. Concussion symptoms are easy to miss and can show up later, so this can be referred at any point in care.",
+    ],
+];
+
+// $guideRows: case_guide rows; $headCodes: head-injury ICD codes found on
+// the case's visits. Each step: key, title, when, why, status, text, due,
+// referrals (its referrals, newest first). Status: done | now | consider |
+// ask | upcoming | waiting | na | dismissed | snoozed.
+function care_guide(array $case, array $referrals, array $guideRows = [], array $headCodes = []): array {
+    $today = date('Y-m-d');
+    $set = [];
+    foreach ($guideRows as $g) $set[$g['step']] = $g;
+    $fv = $case['first_visit'] ?? null;
+    $live = fn(array $r) => empty($r['archived_at']) && $r['status'] !== 'cancelled';
+    $ofType = fn(array $types) => array_values(array_filter($referrals, fn($r) => $live($r) && in_array($r['type'], $types, true)));
+    $mris = $ofType(['mri']);
+    $mriDone = null;
+    foreach ($mris as $r) {
+        $d = $r['completed_on'] ?: (in_array($r['status'], ['completed', 'report_received'], true) ? ($r['report_received_on'] ?: $r['ordered_on']) : null);
+        if ($d && (!$mriDone || $d < $mriDone)) $mriDone = $d;
+    }
+    $steps = [];
+    foreach (CARE_GUIDE as $key => $def) {
+        $refs = $ofType($def['types']);
+        usort($refs, fn($a, $b) => strcmp((string)($b['ordered_on'] ?? $b['created_at']), (string)($a['ordered_on'] ?? $a['created_at'])));
+        $due = null;
+        $status = 'upcoming';
+        $text = '';
+        if ($refs) {
+            $status = 'done';
+            $first = end($refs);
+            $text = 'Referred' . ($first['ordered_on'] ? ' ' . us_date($first['ordered_on']) : '') . (count($refs) > 1 ? ' · ' . count($refs) . ' referrals' : '');
+        } elseif ($key === 'mri') {
+            if ($fv) { $status = 'now'; $due = $fv; $text = 'Due at visit #1 (' . us_date($fv) . ')'; }
+            else $text = 'Write the script at the first visit';
+        } elseif ($key === 'ortho') {
+            if ($mriDone) { $status = 'now'; $due = $mriDone; $text = 'MRI completed ' . us_date($mriDone) . ' — refer to ortho'; }
+            else { $status = 'waiting'; $text = $mris ? 'Waiting for the MRI to be completed' : 'Order the MRI first'; }
+        } elseif ($key === 'pain_mgmt') {
+            $disch = $case['discharge_date'] ?? null;
+            if (!$fv) $text = 'Counts from the first visit';
+            else {
+                $consider = add_days($fv, PAIN_MGMT_CONSIDER_WEEKS * 7);
+                $refer = add_days($fv, PAIN_MGMT_REFER_WEEKS * 7);
+                $week = intdiv(days_between($fv, $disch && $disch < $today ? $disch : $today), 7) + 1;
+                if ($disch && $disch < $consider) { $status = 'na'; $text = 'Discharged before week ' . PAIN_MGMT_CONSIDER_WEEKS; }
+                elseif ($today < $consider) { $text = 'Week ' . $week . ' of care — consider from ' . us_date($consider) . ' (week ' . PAIN_MGMT_CONSIDER_WEEKS . ')'; $due = $consider; }
+                elseif ($today < $refer) { $status = 'consider'; $due = $consider; $text = 'Week ' . $week . ' of care — if the patient isn\'t fully resolved, refer to pain management'; }
+                else { $status = 'now'; $due = $refer; $text = 'Week ' . $week . ' of care — past ' . PAIN_MGMT_REFER_WEEKS . ' weeks without a pain-management referral'; }
+            }
+        } elseif ($key === 'neuro') {
+            $hi = $case['head_injury'] ?? 'unknown';
+            if ($hi === 'no') { $status = 'na'; $text = 'No head injury recorded'; }
+            elseif ($hi === 'yes') { $status = $fv ? 'now' : 'upcoming'; $due = $fv; $text = 'Head injury recorded — refer to neurology'; }
+            elseif ($headCodes) { $status = 'consider'; $text = 'Diagnosis codes suggest a head injury (' . implode(', ', $headCodes) . ') — confirm and refer'; }
+            else { $status = 'ask'; $text = 'Did the patient hit their head, lose consciousness, or have concussion symptoms?'; }
+        }
+        // The clinic's own call overrides a suggestion (never a done step).
+        $g = $set[$key] ?? null;
+        if ($g && $status !== 'done') {
+            if ($g['status'] === 'dismissed') { $status = 'dismissed'; $text = 'Marked not needed' . ($g['reason'] ? ': ' . $g['reason'] : ''); }
+            elseif ($g['status'] === 'snoozed' && $g['until'] && $g['until'] > $today && in_array($status, ['now', 'consider', 'ask'], true)) { $status = 'snoozed'; $text = 'Reminder set for ' . us_date($g['until']) . ($g['reason'] ? ' — ' . $g['reason'] : ''); }
+        }
+        $steps[] = ['key' => $key, 'title' => $def['title'], 'when' => $def['when'], 'why' => $def['why'], 'types' => $def['types'],
+            'status' => $status, 'text' => $text, 'due' => $due,
+            'referrals' => array_map(fn($r) => ['id' => (int)$r['id'], 'type' => $r['type'], 'status' => $r['status'], 'body_region' => $r['body_region'] ?? null,
+                'ordered_on' => $r['ordered_on'], 'completed_on' => $r['completed_on'], 'report_received_on' => $r['report_received_on']], $refs)];
+    }
+    return $steps;
+}
+
+function us_date(?string $d): string { return $d ? date('n/j/Y', strtotime($d)) : ''; }
+
+// Head-injury ICD codes among a case's visits' diagnosis codes.
+function head_injury_codes(array $icdStrings): array {
+    $found = [];
+    foreach ($icdStrings as $s) foreach (preg_split('/[\s,;]+/', strtoupper((string)$s)) as $code) {
+        foreach (HEAD_INJURY_ICD as $p) if ($code !== '' && str_starts_with($code, $p)) $found[$code] = true;
+    }
+    return array_slice(array_keys($found), 0, 4);
+}
+
 // ---------- Checklist ----------
 // Returns each item that applies to the case type with its status: done |
 // na | overdue | due | upcoming | waiting ('waiting' = its anchor date,
@@ -377,6 +487,15 @@ function case_alerts(array $case, array $ctx): array {
         if ($item['status'] === 'overdue') $alerts[] = ['level' => 'medium', 'text' => 'Overdue: ' . $item['label'] . ' (due ' . $item['due'] . ')'];
     }
 
+    // Care guide: referrals due or worth considering, while in care.
+    if ($treatingPhase) {
+        foreach ($ctx['guide'] ?? [] as $g) {
+            if ($g['status'] === 'now') $alerts[] = ['level' => 'medium', 'text' => $g['title'] . ' due: ' . $g['text'] . '.'];
+            elseif ($g['status'] === 'consider') $alerts[] = ['level' => 'low', 'text' => 'Consider a ' . strtolower($g['title']) . ': ' . $g['text'] . '.'];
+            elseif ($g['status'] === 'ask' && $case['first_visit']) $alerts[] = ['level' => 'low', 'text' => 'Head injury? Ask the patient and record it on the case — it decides whether a neurology referral is needed.'];
+        }
+    }
+
     foreach ($ctx['referrals'] ?? [] as $r) {
         if (!empty($r['archived_at'])) continue;
         $label = REFERRAL_TYPES[$r['type']] ?? $r['type'];
@@ -431,12 +550,14 @@ function case_alerts(array $case, array $ctx): array {
 function bulk_case_context(PDO $pdo, array $cases): array {
     $ids = array_map(fn($c) => (int)$c['id'], $cases);
     $ctx = [];
-    foreach ($ids as $id) $ctx[$id] = ['milestones' => [], 'referrals' => [], 'coverages' => [], 'openFollowUps' => [], 'lastVisit' => null,
+    foreach ($ids as $id) $ctx[$id] = ['milestones' => [], 'referrals' => [], 'guideRows' => [], 'icd' => [], 'coverages' => [], 'openFollowUps' => [], 'lastVisit' => null,
         'lastCorrespondence' => null, 'lastOutcome' => null, 'wcVisits' => ['count' => 0, 'missing25' => 0]];
     if (!$ids) return $ctx;
     $in = implode(',', $ids);
     foreach ($pdo->query("SELECT * FROM case_milestones WHERE case_id IN ($in)") as $r) $ctx[$r['case_id']]['milestones'][] = $r;
     foreach ($pdo->query("SELECT * FROM referrals WHERE archived_at IS NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['referrals'][] = $r;
+    foreach ($pdo->query("SELECT * FROM case_guide WHERE case_id IN ($in)") as $r) $ctx[$r['case_id']]['guideRows'][] = $r;
+    foreach ($pdo->query("SELECT case_id, icd_codes FROM visits WHERE archived_at IS NULL AND icd_codes IS NOT NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['icd'][] = $r['icd_codes'];
     foreach ($pdo->query("SELECT cv.*, k.organization carrier_org FROM coverages cv LEFT JOIN contacts k ON k.id = cv.carrier_contact_id WHERE cv.archived_at IS NULL AND cv.case_id IN ($in) ORDER BY cv.priority, cv.id") as $r) $ctx[$r['case_id']]['coverages'][] = $r;
     foreach ($pdo->query("SELECT case_id, MAX(visit_date) d FROM visits WHERE archived_at IS NULL AND visit_type <> 'no_show' AND case_id IN ($in) GROUP BY case_id") as $r) $ctx[$r['case_id']]['lastVisit'] = $r['d'];
     $cutoff = add_days(date('Y-m-d'), -WC_DWC25_DAYS);
@@ -452,6 +573,7 @@ function bulk_case_context(PDO $pdo, array $cases): array {
         $ctx[$id]['totals'] = ledger_totals($ledger[$id] ?? []);
         $ctx[$id]['openItems'] = ledger_open_items($ledger[$id] ?? []);
         $ctx[$id]['checklist'] = case_checklist($c, $ctx[$id]['milestones'], $ctx[$id]['referrals']);
+        $ctx[$id]['guide'] = care_guide($c, $ctx[$id]['referrals'], $ctx[$id]['guideRows'], head_injury_codes($ctx[$id]['icd']));
     }
     return $ctx;
 }

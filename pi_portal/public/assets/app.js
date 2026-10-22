@@ -314,7 +314,7 @@ async function signOut() {
 // ---------- shell & routing ----------
 const NAV = [
   ['dashboard', 'Dashboard', 'case.read'], ['cases', 'Cases', 'case.read'], ['tasks', 'Tasks', 'case.read'],
-  ['ar', 'A/R & settlements', 'fin:balances'], ['contacts', 'Contacts', 'case.read'],
+  ['ar', 'A/R & settlements', 'fin:balances'], ['contacts', 'Contacts', 'case.read'], ['playbook', 'PI playbook', 'case.read'],
   ['admin', 'Users', 'users.manage'], ['settings', 'Practice settings', 'users.manage'], ['billing', 'Plan & billing', 'users.manage'],
   ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'],
 ];
@@ -370,7 +370,7 @@ function route() {
   main.innerHTML = '<div class="empty">Loading…</div>';
   window.scrollTo(0, 0);
   const pages = { dashboard: pageDashboard, cases: pageCases, case: pageCase, tasks: pageTasks, ar: pageAR, contacts: pageContacts, admin: pageAdmin, audit: pageAudit,
-    settings: pageSettings, billing: pageBilling, platform: pagePlatform };
+    settings: pageSettings, billing: pageBilling, platform: pagePlatform, playbook: pagePlaybook };
   (pages[page] || (S.user.operator ? pagePlatform : pageDashboard))(main, parts.slice(1));
   if (!S.user.operator) refreshTaskBadge();
 }
@@ -525,8 +525,10 @@ const caseDefs = () => [
   { n: 'referred_by_text', l: 'Referred by (other)', ph: 'e.g. friend, Google' },
   { n: 'attorney_contact_id', l: 'Attorney', t: 'contact', ctype: ['attorney'] },
   { n: 'provider_user_id', l: 'Treating provider', t: 'user' },
+  { n: 'head_injury', l: 'Head injury? (hit head, lost consciousness, concussion symptoms)', t: 'select', blank: false, opts: HEAD_INJURY_OPTS },
 ];
 
+const HEAD_INJURY_OPTS = [['unknown', 'Not asked yet'], ['yes', 'Yes'], ['no', 'No']];
 // Insurance on the new-case form: the usual first payer for the case type.
 const NEW_COVERAGE_DEFS = () => [
   { n: 'cov_type', l: 'Insurance', t: 'select', blank: 'None — patient balance / LOP', opts: entries(S.lookups.coverageTypes) },
@@ -626,7 +628,7 @@ function tabOverview(el, d) {
   const row = (t, v) => `<dt>${esc(t)}</dt><dd>${v === null || v === undefined || v === '' ? '<span class="muted">—</span>' : esc(v)}</dd>`;
   const contactRow = (t, ct) => `<dt>${esc(t)}</dt><dd>${ct ? esc(contactName(ct)) + (ct.phone ? `<div class="small muted">☎ ${esc(ct.phone)}${ct.fax ? ' · fax ' + esc(ct.fax) : ''}</div>` : '') + (ct.email ? `<div class="small"><a href="mailto:${esc(ct.email)}">${esc(ct.email)}</a></div>` : '') : '<span class="muted">—</span>'}</dd>`;
   const provider = (S.lookups.providers || []).find((u) => +u.id === +c.provider_user_id);
-  el.innerHTML = `<div class="grid-2">
+  el.innerHTML = `${guideCardHtml(d)}<div class="grid-2">
     <div class="card"><div class="card-head"><h2>Case</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-case">Edit</button>' : ''}</div>
       <dl class="kv">
         ${row('Case type', label('injuryTypes', c.injury_type))}
@@ -638,6 +640,7 @@ function tabOverview(el, d) {
         ${row('Bills go to', label('benefits', c.benefits))}${c.injury_type === 'auto' ? row('EMC determination', c.emc_status) : ''}
         ${row('LOP signed', c.lop_signed_on ? fmtDate(c.lop_signed_on) + (c.lop_acknowledged_on ? ' · firm acknowledged ' + fmtDate(c.lop_acknowledged_on) : ' · not countersigned') : '')}
         ${row('Actively treating', c.actively_treating == 1 ? 'Yes' : 'No')}
+        ${row('Head injury', Object.fromEntries(HEAD_INJURY_OPTS)[c.head_injury])}
       </dl></div>
     <div>
       <div class="card"><div class="card-head"><h2>Patient</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-patient">Edit</button>' : ''}</div>
@@ -713,11 +716,101 @@ function tabChecklist(el, d) {
   }));
 }
 
+
+// --- care guide: referral next steps ---
+// Plain-language prompts for clinics new to PI: what to refer, when, why.
+const GUIDE_CHIPS = {
+  done: ['done', 'Done'], now: ['overdue', 'Due now'], consider: ['due', 'Consider'], ask: ['due', 'Question'], upcoming: ['upcoming', 'Coming up'],
+  waiting: ['waiting', 'Waiting'], na: ['na', 'Not needed'], dismissed: ['na', 'Not needed'], snoozed: ['upcoming', 'Reminder set'],
+};
+const GUIDE_REASONS = {
+  mri: ['Patient declined', 'MRI already done elsewhere — records requested', 'Not clinically indicated'],
+  ortho: ['Patient declined', 'MRI was normal', 'Already under orthopedic care', 'Not clinically indicated'],
+  pain_mgmt: ['Fully resolved', 'Improving — continuing conservative care', 'Patient declined', 'Already under pain management'],
+  neuro: ['No head injury', 'Patient declined', 'Already seeing a neurologist'],
+};
+const REF_STEPS = [['ordered', 'Ordered'], ['scheduled', 'Scheduled'], ['completed', 'Completed'], ['report_received', 'Report in']];
+function refProgressHtml(r) {
+  const at = REF_STEPS.findIndex(([k]) => k === r.status);
+  return `<div class="ref-progress"><button class="linklike small" data-act="edit-referral" data-id="${r.id}">${esc(label('referralTypes', r.type))}${r.body_region ? ' · ' + esc(r.body_region) : ''}</button>
+    ${r.status === 'no_show' ? '<span class="chip overdue">No-show — reschedule</span>' : `<ol class="steps">${REF_STEPS.map(([, t], i) => `<li class="${i <= at ? 'on' : ''}">${t}</li>`).join('')}</ol>`}</div>`;
+}
+function guideCardHtml(d) {
+  if (!d.guide) return '';
+  const w = can('case.write'), cw = can('clinical.write');
+  const open = d.guide.filter((g) => ['now', 'consider', 'ask'].includes(g.status)).length;
+  return `<div class="card guide"><div class="card-head"><h2>Next steps: referrals</h2>
+      <span class="small muted">${open ? `${open} need${open === 1 ? 's' : ''} attention` : 'On track'}</span><span class="spacer"></span><a class="small" href="#/playbook">How PI cases work</a></div>
+    <ol class="guide-steps">${d.guide.map((g) => {
+      const [cls, txt] = GUIDE_CHIPS[g.status];
+      const act = [];
+      if (g.status === 'ask' && w) act.push(`<button class="btn sm" data-act="head-injury" data-v="yes">Yes, head injury</button><button class="btn ghost sm" data-act="head-injury" data-v="no">No head injury</button>`);
+      if (['now', 'consider', 'upcoming', 'waiting', 'ask'].includes(g.status) && cw && !(g.status === 'ask')) act.push(`<button class="btn sm${g.status === 'now' || g.status === 'consider' ? '' : ' ghost'}" data-act="guide-refer" data-type="${g.types[0]}">Add ${esc(label('referralTypes', g.types[0]))} referral</button>`);
+      if (g.status === 'done' && cw) act.push(`<button class="btn ghost sm" data-act="guide-refer" data-type="${g.types[0]}">+ Another</button>`);
+      if (['now', 'consider', 'ask'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-snooze" data-step="${g.key}">Remind me later</button>`);
+      if (['now', 'consider', 'upcoming', 'waiting', 'ask'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-dismiss" data-step="${g.key}">Not needed…</button>`);
+      if (['dismissed', 'snoozed'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-clear" data-step="${g.key}">Undo</button>`);
+      if (g.key === 'neuro' && g.status === 'na' && d.case.head_injury === 'no' && w) act.push(`<button class="btn ghost sm" data-act="head-injury" data-v="unknown">Change answer</button>`);
+      if (['now', 'consider'].includes(g.status)) act.push(`<button class="btn ghost sm" data-act="task-from-alert" data-case="${d.case.id}" data-text="${esc(g.title + ': ' + g.text)}">+ Task</button>`);
+      return `<li class="gs-${esc(g.status)}"><div class="gs-head"><span class="chip ${cls}">${txt}</span> <strong>${esc(g.title)}</strong> <span class="small muted">${esc(g.when)}</span></div>
+        <div class="gs-body">${g.text ? `<div>${esc(g.text)}</div>` : ''}
+          ${g.referrals.map(refProgressHtml).join('')}
+          <details class="small"><summary>Why this matters</summary><p class="muted">${esc(g.why)}</p></details>
+          ${act.length ? `<div class="filters gs-actions">${act.join('')}</div>` : ''}</div></li>`;
+    }).join('')}</ol>
+    <p class="small muted">Need something else — a second MRI, another opinion, EMG, dental/TMJ? Add it any time on the <button class="linklike" data-act="case-tab" data-tab="referrals">Co-management</button> tab.</p></div>`;
+}
+
+async function guideStep(step, body) {
+  const r = await api('cases.php?action=guide_step&id=' + S.caseData.case.id, { step, ...body });
+  S.caseData = r; renderCase();
+}
+function guideDismissModal(step) {
+  const g = S.caseData.guide.find((x) => x.key === step);
+  const reasons = GUIDE_REASONS[step] || [];
+  openModal({ title: `${g.title}: not needed`, okText: 'Save',
+    body: `<p class="small">Record why, so anyone reviewing the case later understands the decision.</p>
+      <div class="mt">${reasons.map((r, i) => `<label class="check"><input type="radio" name="gd-reason" value="${esc(r)}"${i === 0 ? ' checked' : ''}> ${esc(r)}</label>`).join('')}
+      <label class="check"><input type="radio" name="gd-reason" value=""> Other:</label><input id="gd-other" placeholder="Reason" maxlength="255"></div>`,
+    onOk: async (el) => {
+      const pick = el.querySelector('[name=gd-reason]:checked')?.value;
+      const reason = pick || el.querySelector('#gd-other').value.trim();
+      if (!reason) throw new Error('Pick or type a reason.');
+      await guideStep(step, { status: 'dismissed', reason }); toast('Saved');
+    } });
+}
+function guideSnoozeModal(step) {
+  const g = S.caseData.guide.find((x) => x.key === step);
+  const defs = [{ n: 'until', l: 'Remind me on', t: 'date', req: true }, { n: 'reason', l: 'Note (optional)', ph: 'e.g. re-check at the 30-day re-exam' }];
+  const inDays = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toLocaleDateString('en-CA'); };
+  const m = openModal({ title: `${g.title}: remind me later`, okText: 'Set reminder',
+    body: `<div class="filters">${[[7, '1 week'], [14, '2 weeks'], [28, '4 weeks']].map(([n, t]) => `<button class="btn ghost sm" data-days="${n}">${t}</button>`).join('')}</div>${fieldsHtml(defs, { until: inDays(14) })}`,
+    onOk: async (el) => { await guideStep(step, { status: 'snoozed', ...readFields(el, defs) }); toast('Reminder set'); } });
+  m.el.querySelectorAll('[data-days]').forEach((b) => b.addEventListener('click', () => { m.el.querySelector('[name=until]').value = inDays(+b.dataset.days); }));
+}
+
+// ---------- PI playbook ----------
+async function pagePlaybook(main) {
+  const r = await attempt(() => api('cases.php?action=playbook'));
+  if (!r) return;
+  const groups = {};
+  r.checklist.forEach((i) => (groups[i.group] = groups[i.group] || []).push(i));
+  const types = (cs) => cs.length === 3 ? 'All cases' : cs.map((c) => label('injuryTypes', c)).join(', ');
+  main.innerHTML = `<div class="page-head"><div><h1>PI playbook</h1><div class="sub">How a personal injury case runs, and the timelines ${esc(S.brand.name)} keeps you on. Every case shows these as next steps, checklist items and alerts.</div></div></div>
+    <div class="card"><h2>Referral timeline</h2>
+      <ol class="playbook-steps">${r.guide.map((g) => `<li><strong>${esc(g.title)}</strong> — <span>${esc(g.when)}</span><p class="small muted">${esc(g.why)}</p></li>`).join('')}</ol>
+      <p class="small muted">More than one of any referral is normal (an MRI per region, a second ortho opinion). Add others — EMG, X-ray, physical therapy, dental/TMJ — whenever the patient needs them.</p></div>
+    <div class="card mt"><h2>Rules that cost money if missed</h2><dl class="kv">${r.rules.map(([t, x]) => `<dt>${esc(t)}</dt><dd>${esc(x)}</dd>`).join('')}</dl></div>
+    <div class="card mt"><h2>Case checklist</h2>${Object.entries(groups).map(([g, items]) => `<h3 class="mt">${esc(g)}</h3>
+      <table><thead><tr><th>Item</th><th>When</th><th>Applies to</th></tr></thead><tbody>${items.map((i) => `<tr><td>${esc(i.label)}</td><td class="small">${esc(i.when)}</td><td class="small muted">${esc(types(i.cases))}</td></tr>`).join('')}</tbody></table>`).join('')}</div>`;
+}
+
 // --- referrals / co-management ---
 const REF_STATUS = [['ordered', 'Ordered'], ['scheduled', 'Scheduled'], ['completed', 'Completed'], ['report_received', 'Report received'], ['no_show', 'No-show'], ['cancelled', 'Cancelled']];
 const refDefs = () => [
   { n: 'direction', l: 'Direction', t: 'select', blank: false, opts: [['out', 'Outgoing — we referred'], ['in', 'Incoming — referred to us / co-managing']] },
   { n: 'type', l: 'Type', t: 'select', req: true, opts: entries(S.lookups.referralTypes) },
+  { n: 'specialty', l: 'Specialty (for “Other”)', ph: 'e.g. Dental / TMJ, ENT, vestibular therapy' },
   { n: 'contact_id', l: 'Facility / provider', t: 'contact', ctype: ['imaging', 'pain_mgmt', 'ortho', 'neuro', 'md', 'hospital', 'pt', 'other'] },
   { n: 'facility_text', l: 'Facility (if not in contacts)' },
   { n: 'body_region', l: 'Body region', ph: 'e.g. C-spine, L-spine, R shoulder' },
@@ -732,23 +825,23 @@ function tabReferrals(el, d) {
   el.innerHTML = `<div class="card"><div class="card-head"><h2>Imaging, EMC &amp; co-management</h2><span class="spacer"></span>${can('clinical.write') ? '<button class="btn sm" data-act="add-referral">+ Add referral</button>' : ''}</div>
     ${d.referrals.length ? `<div class="table-wrap"><table><thead><tr><th>Type</th><th>Facility / provider</th><th>Status</th><th>Ordered</th><th>Appt</th><th>Completed</th><th>Report</th><th>Findings</th><th></th></tr></thead><tbody>
     ${d.referrals.map((r) => `<tr class="click" data-act="edit-referral" data-id="${r.id}">
-      <td><strong>${esc(label('referralTypes', r.type))}</strong>${r.direction === 'in' ? ' <span class="chip">incoming</span>' : ''}${r.body_region ? `<div class="small muted">${esc(r.body_region)}</div>` : ''}</td>
+      <td><strong>${esc(r.type === 'other' && r.specialty ? r.specialty : label('referralTypes', r.type))}</strong>${r.direction === 'in' ? ' <span class="chip">incoming</span>' : ''}${r.body_region ? `<div class="small muted">${esc(r.body_region)}</div>` : ''}</td>
       <td>${esc([r.contact_org, r.contact_name].filter(Boolean).join(' — ') || r.facility_text || '—')}</td>
       <td><span class="chip ${r.status === 'report_received' ? 'done' : r.status === 'no_show' ? 'overdue' : r.status === 'cancelled' ? 'na' : 'due'}">${esc(Object.fromEntries(REF_STATUS)[r.status])}</span></td>
       <td class="nowrap">${esc(fmtDate(r.ordered_on))}</td><td class="nowrap">${esc(fmtDate(r.scheduled_on))}</td><td class="nowrap">${esc(fmtDate(r.completed_on))}</td>
       <td class="nowrap">${esc(fmtDate(r.report_received_on))}${r.entered_in_chart == 1 ? ' ✓' : ''}</td>
       <td class="small">${esc((r.findings || '').slice(0, 120))}</td>
       <td>${can('clinical.write') ? `<button class="btn link small" data-act="archive-child" data-table="referrals" data-id="${r.id}">Remove</button>` : ''}</td></tr>`).join('')}
-    </tbody></table></div>` : '<div class="empty">No referrals yet. Add the MRI order, EMC referral and any ortho/neuro/pain consults here.</div>'}
+    </tbody></table></div>` : '<div class="empty">No referrals yet. The Overview tab shows which referrals are due and when.</div>'}
   </div>`;
 }
 
-function referralModal(existing) {
+function referralModal(existing, prefill = {}) {
   if (!can('clinical.write')) return;
   const defs = refDefs();
   openModal({
     title: existing ? 'Edit referral' : 'Add referral', wide: true,
-    body: fieldsHtml(defs, existing || { direction: 'out', status: 'ordered', ordered_on: today() }) + (existing ? '' : '<p class="small muted">Tip: for an EMC referral, set the case\'s EMC determination on the Overview tab once the MD/DO report arrives.</p>'),
+    body: fieldsHtml(defs, existing || { direction: 'out', status: 'ordered', ordered_on: today(), ...prefill }) + (existing ? '' : '<p class="small muted">Tip: for an EMC referral, set the case\'s EMC determination on the Overview tab once the MD/DO report arrives.</p>'),
     onOk: async (el) => saveChild('referrals', { ...readFields(el, defs), ...(existing ? { id: existing.id } : {}) }),
   });
 }
@@ -1437,7 +1530,7 @@ const AUDIT_THINGS = {
   case: 'the case', visits: 'a visit', referrals: 'a co-management referral', coverages: 'insurance coverage', outcomes: 'an outcome assessment',
   correspondence: 'a correspondence entry', ledger: 'a ledger entry', task: 'task', milestone: 'checklist item', document: 'a document', contact: 'contact',
   user: 'user', practice: 'practice settings', ehr_format: 'EHR spreadsheet layout', dashboard: 'the dashboard', ar_report: 'the A/R report',
-  audit_log: 'the audit log', permission: '', platform_practices: 'the practice list',
+  audit_log: 'the audit log', permission: '', platform_practices: 'the practice list', care_guide: 'the referral guide',
 };
 const FIELD_NAMES = {
   provider_user_id: 'Provider', attorney_contact_id: 'Attorney', referred_by_contact_id: 'Referred by', referred_by_text: 'Referred by', contact_id: 'Contact',
@@ -1448,7 +1541,8 @@ const FIELD_NAMES = {
   dob: 'Date of birth', patient_dob: 'Date of birth', patient_first_name: 'First name', patient_last_name: 'Last name', patient_phone: 'Phone', patient_email: 'Email',
   patient_address: 'Address', cpt_codes: 'CPT codes', dwc25_sent: 'DWC-25 sent', staff_finance: 'Staff can see', finance_access: 'Full financial access',
   ehr_name: 'EHR', benefit_limit: 'Benefit limit', entry_date: 'Date', kind: 'Type', bucket: 'Owed by', status_on: 'Status date', insurance_balance: 'Insurance balance',
-  patient_balance: 'Patient balance', injury_type: 'Case type', visit_type: 'Visit type',
+  patient_balance: 'Patient balance', injury_type: 'Case type', visit_type: 'Visit type', head_injury: 'Head injury',
+  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral',
 };
 const humanize = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 function auditValue(c, v) {
@@ -1828,6 +1922,14 @@ const ACTIONS = {
   'case-tab': (el) => { S.caseTab = el.dataset.tab; renderCase(); },
   'edit-case': editCaseModal, 'edit-patient': editPatientModal, 'edit-notes': editNotesModal,
   'add-referral': () => referralModal(null),
+  'guide-refer': (el) => referralModal(null, { type: el.dataset.type }),
+  'guide-dismiss': (el) => guideDismissModal(el.dataset.step),
+  'guide-snooze': (el) => guideSnoozeModal(el.dataset.step),
+  'guide-clear': (el) => attempt(() => guideStep(el.dataset.step, { status: 'clear' })),
+  'head-injury': async (el) => {
+    const r = await attempt(() => api('cases.php?action=update&id=' + S.caseData.case.id, { case: { head_injury: el.dataset.v } }));
+    if (r) { S.caseData = r; renderCase(); toast('Saved'); }
+  },
   'edit-referral': (el) => referralModal(S.caseData.referrals.find((r) => r.id == el.dataset.id)),
   'add-visit': () => visitModal(null),
   'edit-visit': (el) => visitModal(S.caseData.visits.find((r) => r.id == el.dataset.id)),

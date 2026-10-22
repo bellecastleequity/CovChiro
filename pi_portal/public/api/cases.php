@@ -22,7 +22,7 @@ const CASE_FIELDS = [
     'attorney_contact_id' => 'contact', 'emc_status' => ['pending','yes','no'],
     'lop_signed_on' => 'date', 'lop_acknowledged_on' => 'date',
     'balance_forwarded_on' => 'date', 'balance_forwarded_amount' => 'money',
-    'actively_treating' => 'bool', 'provider_user_id' => 'user', 'notes' => 'enc',
+    'actively_treating' => 'bool', 'provider_user_id' => 'user', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
 ];
 // These need finance.write instead of case.write. Billing can also move a
@@ -31,7 +31,7 @@ const FINANCE_CASE_FIELDS = ['atty_offer', 'final_settlement', 'date_authorized'
 
 const CHILD_SPECS = [
     'referrals' => ['perm' => 'clinical.write', 'required' => ['type'], 'fields' => [
-        'direction' => ['out','in'], 'type' => ['mri','xray','ct','emc','ortho','neuro','pain_mgmt','surgical','pt','other'],
+        'direction' => ['out','in'], 'type' => ['mri','xray','ct','emg','emc','ortho','neuro','pain_mgmt','surgical','pt','other'], 'specialty' => 'str:80',
         'contact_id' => 'contact', 'facility_text' => 'str:160', 'body_region' => 'str:120',
         'status' => ['ordered','scheduled','completed','report_received','no_show','cancelled'],
         'ordered_on' => 'date', 'scheduled_on' => 'date', 'completed_on' => 'date', 'report_received_on' => 'date',
@@ -212,8 +212,9 @@ function full_case(int $id, array $user): array {
     $visitDates = array_column($attended, 'visit_date');
     $cutoff = add_days(date('Y-m-d'), -WC_DWC25_DAYS);
     $checklist = case_checklist($c, $milestones, $referrals);
+    $guide = care_guide($c, $referrals, $fetch('SELECT * FROM case_guide WHERE case_id = ?'), head_injury_codes(array_column($visits, 'icd_codes')));
     $ctx = [
-        'checklist' => $checklist, 'referrals' => $referrals, 'totals' => $totals, 'coverages' => $coverages, 'openItems' => $openItems,
+        'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'totals' => $totals, 'coverages' => $coverages, 'openItems' => $openItems,
         'wcVisits' => ['count' => count($attended), 'missing25' => count(array_filter($attended, fn($v) => !$v['dwc25_sent'] && $v['visit_date'] <= $cutoff))],
         'lastVisit' => $visitDates ? max($visitDates) : null,
         'lastCorrespondence' => $corr ? $corr[0]['occurred_on'] : null,
@@ -232,7 +233,7 @@ function full_case(int $id, array $user): array {
     if (!$bal) $corr = array_map(fn($r) => str_contains($r['subject'], 'forwarded to attorney') ? ['subject' => 'Patient balance forwarded to attorney'] + $r : $r, $corr);
     return [
         'case' => $case, 'patient' => $patient, 'contacts' => $contacts, 'coverages' => $coverages,
-        'checklist' => $checklist, 'alerts' => $alerts,
+        'checklist' => $checklist, 'guide' => $guide, 'alerts' => $alerts,
         'referrals' => $referrals, 'visits' => $visits, 'outcomes' => $outcomes,
         'correspondence' => $corr, 'ledger' => $led ? $ledger : [], 'openItems' => $led ? $openItems : [], 'totals' => $bal ? $totals : null,
         'fin' => fin_scopes($user),
@@ -370,6 +371,54 @@ function handle_milestone() {
     audit('update', 'milestone', $key, $id, $user, null, audit_diff(['completed_on' => 'date', 'not_applicable' => 'bool'], $before,
         ['completed_on' => date_or_null($b['completed_on'] ?? null), 'not_applicable' => !empty($b['not_applicable']) ? 1 : 0]));
     json_response(full_case($id, $user));
+}
+
+// ---------- care guide ----------
+// The clinic's call on a suggested referral: not needed (with a reason),
+// remind me later, or back to the suggestion.
+function handle_guide_step() {
+    require_method('POST');
+    $user = require_user('case.write');
+    $id = (int)($_GET['id'] ?? 0);
+    case_or_404($id);
+    $b = json_body();
+    $step = (string)($b['step'] ?? '');
+    if (!isset(CARE_GUIDE[$step])) json_response(['error' => 'Unknown step'], 400);
+    $what = (string)($b['status'] ?? '');
+    $reason = str_or_null($b['reason'] ?? null, 255);
+    $pdo = pi_db();
+    if ($what === 'clear') {
+        $pdo->prepare('DELETE FROM case_guide WHERE case_id = ? AND step = ?')->execute([$id, $step]);
+    } elseif ($what === 'dismissed') {
+        if (!$reason) json_response(['error' => 'Say why it isn\'t needed — it helps if the case is reviewed later.'], 400);
+        $pdo->prepare('REPLACE INTO case_guide (case_id, step, status, until, reason, updated_by, updated_at) VALUES (?, ?, \'dismissed\', NULL, ?, ?, ?)')->execute([$id, $step, $reason, $user['id'], now_str()]);
+    } elseif ($what === 'snoozed') {
+        $until = date_or_null($b['until'] ?? null) ?? add_days(date('Y-m-d'), max(1, min(120, (int)($b['days'] ?? 14))));
+        if ($until <= date('Y-m-d')) json_response(['error' => 'Pick a date in the future.'], 400);
+        $pdo->prepare('REPLACE INTO case_guide (case_id, step, status, until, reason, updated_by, updated_at) VALUES (?, ?, \'snoozed\', ?, ?, ?, ?)')->execute([$id, $step, $until, $reason, $user['id'], now_str()]);
+    } else json_response(['error' => 'Unknown choice'], 400);
+    audit('update', 'care_guide', $step, $id, $user, $reason, [['f' => 'guide_' . $step, 't' => 'enum', 'from' => null, 'to' => $what === 'clear' ? 'suggested again' : ($what === 'snoozed' ? 'remind on ' . $until : 'not needed')]]);
+    json_response(full_case($id, $user));
+}
+
+// The PI playbook: every timeline the app follows, in plain language.
+function handle_playbook() {
+    require_user('case.read');
+    $checklist = [];
+    foreach (CHECKLIST as $key => $d) $checklist[] = ['label' => $d['label'], 'group' => $d['group'], 'cases' => $d['cases'],
+        'when' => $d['anchor'] === null ? 'When it happens' : ($d['days'] === 0 ? 'Same day as the ' : $d['days'] . ' day' . ($d['days'] === 1 ? '' : 's') . ' after the ') . ($d['anchor'] === null ? '' : str_replace('_', ' ', $d['anchor']))];
+    json_response(['guide' => array_map(fn($k, $d) => ['key' => $k] + $d, array_keys(CARE_GUIDE), CARE_GUIDE), 'checklist' => $checklist,
+        'rules' => [
+            ['PIP 14-day rule (auto)', 'The patient must be seen within ' . PIP_INITIAL_CARE_DAYS . ' days of the accident or PIP medical benefits are lost.'],
+            ['EMC determination (auto)', 'Without an Emergency Medical Condition finding from an MD/DO, PIP pays at most $' . number_format(PIP_NO_EMC_CAP) . ' instead of $' . number_format(PIP_DEFAULT_LIMIT) . '.'],
+            ['PIP pays 80%', 'The 20% PIP doesn\'t pay, and anything denied or past the limit, is moved to the patient balance by a person — backed by a signed letter of protection.'],
+            ['Gaps in care', 'No visit for more than ' . TREATMENT_GAP_DAYS . ' days weakens the claim; the app flags it.'],
+            ['Outcome assessments', 'Re-measure every ' . OUTCOME_INTERVAL_DAYS . ' days to document progress.'],
+            ['Reports', 'Chase imaging and consult reports ' . REPORT_CHASE_DAYS . ' days after the appointment and enter them in the chart.'],
+            ['Attorney updates', 'In demand or litigation, ask for a status update at least every ' . STALE_CORRESPONDENCE_DAYS . ' days.'],
+            ["Workers' comp", 'Chiropractic care is limited to ' . WC_CHIRO_MAX_VISITS . ' visits or 8 weeks unless the carrier authorizes more; send a DWC-25 within ' . WC_DWC25_DAYS . ' days of each visit.'],
+            ['At settlement', 'Forward the patient balance to the attorney with an itemized statement.'],
+        ]]);
 }
 
 // ---------- child rows ----------
@@ -928,6 +977,8 @@ switch ($action) {
     case 'task_delete': handle_task_delete(); break;
     case 'task_counts': handle_task_counts(); break;
     case 'activity': handle_activity(); break;
+    case 'guide_step': handle_guide_step(); break;
+    case 'playbook': handle_playbook(); break;
     case 'letter': handle_letter(); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }

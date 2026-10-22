@@ -275,3 +275,25 @@ table.audit td{vertical-align:top;}
 @media (max-width:640px){.activity li{grid-template-columns:1fr;gap:2px;}}
 [hidden]{display:none !important;}
 .check input[type=radio]{width:auto;flex:0 0 auto;margin-top:3px;accent-color:var(--green);}
+
+/* ---------- care guide ---------- */
+.card.guide{margin-bottom:16px;}
+.guide-steps{list-style:none;counter-reset:gs;}
+.guide-steps > li{position:relative;padding:12px 0 12px 34px;border-bottom:1px solid var(--bg-2);counter-increment:gs;}
+.guide-steps > li:last-child{border-bottom:none;}
+.guide-steps > li::before{content:counter(gs);position:absolute;left:0;top:12px;width:22px;height:22px;border-radius:50%;background:var(--bg-2);color:var(--navy);font-size:0.75rem;font-weight:700;display:flex;align-items:center;justify-content:center;}
+.guide-steps > li.gs-done::before{content:"✓";background:var(--green);}
+.guide-steps > li.gs-now::before{background:var(--navy);color:#fff;}
+.guide-steps > li.gs-consider::before,.guide-steps > li.gs-ask::before{background:transparent;box-shadow:inset 0 0 0 2px var(--navy);}
+.guide-steps > li.gs-na,.guide-steps > li.gs-dismissed{opacity:0.7;}
+.gs-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 8px;}
+.gs-body{margin-top:4px;font-size:0.88rem;}
+.gs-body details{margin-top:4px;}
+.gs-body details p{margin-top:4px;max-width:70ch;}
+.gs-actions{margin-top:8px;margin-bottom:0;}
+.ref-progress{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:6px;}
+.steps{list-style:none;display:flex;gap:4px;flex-wrap:wrap;}
+.steps li{font-size:0.72rem;padding:1px 8px;border-radius:999px;background:var(--bg-2);color:var(--muted);}
+.steps li.on{background:var(--brand-tint);color:var(--navy);font-weight:600;}
+.playbook-steps{padding-left:20px;display:grid;gap:10px;margin-top:8px;}
+.playbook-steps p{margin-top:2px;max-width:80ch;}

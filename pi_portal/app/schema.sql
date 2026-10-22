@@ -142,6 +142,9 @@ CREATE TABLE cases (
   date_authorized DATE NULL,
   check_received_on DATE NULL,
   notes_enc TEXT NULL,
+  -- Head injury (hit head, loss of consciousness, concussion symptoms):
+  -- decides whether the care guide suggests a neurology referral.
+  head_injury ENUM('unknown','yes','no') NOT NULL DEFAULT 'unknown',
   -- Set once the case's financials come from uploaded EHR ledgers.
   ehr_system VARCHAR(80) NULL,
   ehr_synced_at DATETIME NULL,
@@ -208,7 +211,9 @@ CREATE TABLE referrals (
   id INT AUTO_INCREMENT PRIMARY KEY,
   case_id INT NOT NULL,
   direction ENUM('out','in') NOT NULL DEFAULT 'out',
-  type ENUM('mri','xray','ct','emc','ortho','neuro','pain_mgmt','surgical','pt','other') NOT NULL,
+  type ENUM('mri','xray','ct','emg','emc','ortho','neuro','pain_mgmt','surgical','pt','other') NOT NULL,
+  -- What kind of specialist, for type 'other' (e.g. Dental / TMJ, ENT).
+  specialty VARCHAR(80) NULL,
   contact_id INT NULL,
   facility_text VARCHAR(160) NULL,
   body_region VARCHAR(120) NULL,
@@ -336,6 +341,20 @@ CREATE TABLE ehr_imports (
   uploaded_at DATETIME NOT NULL,
   FOREIGN KEY (case_id) REFERENCES cases(id),
   INDEX idx_ehr_case (case_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- The care guide's referral steps a clinic has set aside for a case:
+-- "not needed" (with a reason) or "remind me later" (until a date).
+CREATE TABLE case_guide (
+  case_id INT NOT NULL,
+  step VARCHAR(20) NOT NULL,
+  status ENUM('dismissed','snoozed') NOT NULL,
+  until DATE NULL,
+  reason VARCHAR(255) NULL,
+  updated_by INT NULL,
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY (case_id, step),
+  FOREIGN KEY (case_id) REFERENCES cases(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- A saved spreadsheet layout for one EHR's ledger export: which column
