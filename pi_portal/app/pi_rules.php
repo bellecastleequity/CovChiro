@@ -1103,7 +1103,29 @@ function case_alerts(array $case, array $ctx): array {
     if ($case['stage'] === 'settled' && !$case['balance_forwarded_on'] && ($ctx['totals']['patient_balance'] ?? 0) > 0) {
         $alerts[] = ['level' => 'medium', 'text' => 'Case settled — forward the patient balance to the attorney.'];
     }
-    if ($case['stage'] === 'settled' && !$case['check_received_on'] && $case['date_authorized'] && days_between($case['date_authorized'], $today) > 30) {
+    // Case status dates from the attorney's office.
+    $med = $case['mediation_on'] ?? null; $trial = $case['trial_on'] ?? null;
+    $signed = $case['settlement_signed_on'] ?? null; $expect = $case['disbursement_expected_on'] ?? null;
+    $preSettle = in_array($case['stage'], ['tx_complete', 'demand', 'litigation', 'mediation', 'negotiating'], true);
+    if ($med && $preSettle) {
+        $d = days_between($today, $med);
+        if ($d >= 0 && $d <= 14) $alerts[] = ['level' => 'medium', 'text' => 'Mediation ' . ($d === 0 ? 'today' : 'on ' . us_date($med)) . ' — confirm the attorney has the current itemized bill and records.'];
+        elseif ($d < 0 && $d >= -60 && !$signed) $alerts[] = ['level' => 'medium', 'text' => 'Mediation was ' . us_date($med) . ' — ask the attorney for the outcome and update the case stage.'];
+    }
+    if ($trial && $preSettle) {
+        $d = days_between($today, $trial);
+        if ($d >= 0 && $d <= 21) $alerts[] = ['level' => 'medium', 'text' => 'Trial ' . ($d === 0 ? 'today' : 'on ' . us_date($trial)) . ' — confirm with the attorney whether records, bills or provider testimony are needed.'];
+        elseif ($d < 0 && $d >= -60 && !$signed) $alerts[] = ['level' => 'low', 'text' => 'Trial date ' . us_date($trial) . ' has passed — ask the attorney for the outcome.'];
+    }
+    if ($signed && $preSettle) $alerts[] = ['level' => 'low', 'text' => 'Settlement signed ' . us_date($signed) . ' — move the case to "Settled — awaiting check" (stage).'];
+    $awaiting = !$case['check_received_on'] && in_array($case['stage'], ['settled', 'negotiating'], true);
+    if ($awaiting && $expect) {
+        if ($expect < $today) $alerts[] = ['level' => 'high', 'text' => 'Settlement check expected from the attorney by ' . us_date($expect) . ' — not received yet; call the attorney\'s office.'];
+        elseif (days_between($today, $expect) <= 7) $alerts[] = ['level' => 'low', 'text' => 'Settlement check expected from the attorney by ' . us_date($expect) . '.'];
+    } elseif ($awaiting && $signed && $case['stage'] === 'settled') {
+        $alerts[] = ['level' => 'low', 'text' => 'Settlement signed ' . us_date($signed) . ' — ask the attorney when they expect to mail / disburse the check.'];
+    }
+    if ($case['stage'] === 'settled' && !$case['check_received_on'] && !$expect && $case['date_authorized'] && days_between($case['date_authorized'], $today) > 30) {
         $alerts[] = ['level' => 'high', 'text' => 'Reduction authorized ' . $case['date_authorized'] . ' — check still not received.'];
     }
 

@@ -773,6 +773,8 @@ function tabOverview(el, d) {
         ${c.injury_type === 'auto' && d.rules.tortOptions ? row('Lawsuit option', c.tort_option === 'unknown' ? 'Not asked yet' : d.rules.tortOptions[c.tort_option]) : ''}
         ${row('State rules', d.rules.name + ' · ' + S.lookups.supportLabels[d.rules.support])}
         ${row('LOP signed', c.lop_signed_on ? fmtDate(c.lop_signed_on) + (c.lop_acknowledged_on ? ' · firm acknowledged ' + fmtDate(c.lop_acknowledged_on) : ' · not countersigned') : '')}
+        ${c.mediation_on || c.trial_on ? row('Mediation · trial', (fmtDate(c.mediation_on) || '—') + ' · ' + (fmtDate(c.trial_on) || '—')) : ''}
+        ${c.settlement_signed_on || c.disbursement_expected_on ? row('Settlement', (c.settlement_signed_on ? 'signed ' + fmtDate(c.settlement_signed_on) : '') + (c.disbursement_expected_on ? (c.settlement_signed_on ? ' · ' : '') + 'check expected ' + fmtDate(c.disbursement_expected_on) : '')) : ''}
         ${row('Actively treating', c.actively_treating == 1 ? 'Yes' : 'No')}
         ${row('Treatment plan', c.plan_visits_per_week ? `${+c.plan_visits_per_week}x/week${c.plan_set_on ? ' since ' + fmtDate(c.plan_set_on) : ''}` : '')}
         ${row('Head injury', Object.fromEntries(HEAD_INJURY_OPTS)[c.head_injury])}
@@ -803,6 +805,8 @@ function editCaseModal() {
     ...(d.rules.tortOptions && c.injury_type === 'auto' ? [{ n: 'tort_option', l: "Lawsuit (tort) option on the patient's policy", t: 'select', blank: false, opts: [['unknown', 'Not asked yet'], ...entries(d.rules.tortOptions)] }] : []),
     { n: 'plan_visits_per_week', l: 'Treatment plan: visits per week', t: 'select', blank: 'Not set', opts: [['1', '1x/week'], ['1.5', '1–2x/week'], ['2', '2x/week'], ['2.5', '2–3x/week'], ['3', '3x/week'], ['4', '4x/week'], ['5', '5x/week']] },
     { n: 'plan_set_on', l: 'Plan in effect since', t: 'date' },
+    { n: 'mediation_on', l: 'Mediation date', t: 'date' }, { n: 'trial_on', l: 'Trial date', t: 'date' },
+    { n: 'settlement_signed_on', l: 'Settlement signed on', t: 'date' }, { n: 'disbursement_expected_on', l: 'Attorney expects to mail / disburse by', t: 'date' },
     { n: 'actively_treating', l: 'Actively treating', t: 'check' }];
   openModal({
     title: 'Edit case', wide: true, body: fieldsHtml(defs, { ...c, plan_visits_per_week: c.plan_visits_per_week ? String(+c.plan_visits_per_week) : '', plan_set_on: c.plan_set_on || (c.plan_visits_per_week ? '' : today()) }),
@@ -1338,6 +1342,8 @@ function tabFinancials(el, d) {
           <div class="money-row"><span>Acknowledged by law firm</span><strong>${c.lop_acknowledged_on ? esc(fmtDate(c.lop_acknowledged_on)) : (c.lop_signed_on ? 'Not countersigned' : '—')}</strong></div>
           ${d.rules.lopDisclosure && c.lop_signed_on ? `<div class="money-row"><span>Disclosure facts (§768.0427)</span><strong>${c.lop_factored === 'unknown' ? 'Not recorded' : (c.lop_factored === 'yes' ? 'Factored' + (c.lop_factor_company ? ' to ' + esc(c.lop_factor_company) : '') + (c.lop_factor_price ? ' for ' + money(c.lop_factor_price) : '') : 'Not factored')} · health coverage: ${esc({ unknown: 'not recorded', yes: 'yes', no: 'no' }[c.lop_health_coverage] || 'not recorded')}</strong></div>` : ''}
           ${d.rules.balanceBilling !== 'allowed' ? `<div class="notice mt">${esc(d.rules.balanceNote || 'This state limits billing the patient above the fee schedule.')}</div>` : ''}
+          <div class="money-row"><span>Mediation · trial</span><strong>${esc(fmtDate(c.mediation_on) || '—')} · ${esc(fmtDate(c.trial_on) || '—')}</strong></div>
+          <div class="money-row"><span>Settlement signed · check expected</span><strong>${esc(fmtDate(c.settlement_signed_on) || '—')} · ${c.disbursement_expected_on ? `<span class="${!c.check_received_on && c.disbursement_expected_on < today() ? 'trend-up' : ''}">${esc(fmtDate(c.disbursement_expected_on))}</span>` : '—'}</strong></div>
           <div class="money-row"><span>Balance forwarded to attorney</span><strong>${c.balance_forwarded_on ? esc(fmtDate(c.balance_forwarded_on)) + (showSet ? ' · ' + money(c.balance_forwarded_amount) : '') : '—'}</strong></div>
           ${showSet ? `<div class="money-row"><span>${Math.round(S.lookups.reductionFloorPct * 100)}% floor (of patient balance)</span><strong>${money(t.reduction_floor)}</strong></div>
           <div class="money-row"><span>Attorney offer</span><strong>${money(c.atty_offer)}${c.atty_offer && t.patient_balance > 0 ? ` <span class="small muted">(${Math.round(c.atty_offer / t.patient_balance * 1000) / 10}%)</span>` : ''}</strong></div>
@@ -1772,6 +1778,8 @@ function lopModal() {
   const c = S.caseData.case;
   const defs = [
     ...(can('case.write') ? [{ n: 'lop_signed_on', l: 'LOP signed by patient on', t: 'date' }, { n: 'lop_acknowledged_on', l: 'Acknowledged by law firm on (blank if not countersigned)', t: 'date' }] : []),
+    ...(can('case.write') || can('finance.write') ? [{ n: 'mediation_on', l: 'Mediation date', t: 'date' }, { n: 'trial_on', l: 'Trial date', t: 'date' },
+      { n: 'settlement_signed_on', l: 'Settlement signed on', t: 'date' }, { n: 'disbursement_expected_on', l: 'Attorney expects to mail / disburse by', t: 'date' }] : []),
     ...(can('case.write') && S.caseData.rules.lopDisclosure ? [
       { n: 'lop_factored', l: 'Account sold to a factoring company? (§768.0427)', t: 'select', blank: false, opts: [['unknown', 'Not recorded'], ['no', 'No'], ['yes', 'Yes']] },
       { n: 'lop_factor_company', l: 'Factoring company (if sold)' }, { n: 'lop_factor_price', l: 'Sale price ($, if sold)', t: 'money' },
@@ -1919,7 +1927,7 @@ const FIELD_NAMES = {
   patient_balance: 'Patient balance', injury_type: 'Case type', location_id: 'Location', location_restricted: 'Limited to location', outreach_hold_on: 'Calls paused (attorney notified)', paralegal: 'Paralegal', attempted_on: 'Date', method: 'How', outcome: 'Outcome', plan_visits_per_week: 'Treatment plan (visits/week)', plan_set_on: 'Plan since', notify_digest: 'Daily email digest',
   gap_days: 'Gap days', adherence_pct: 'Adherence threshold %', weekdays_only: 'Weekdays only', criteria: 'Criteria', bi_limit: 'At-fault BI limit', um_limit: 'UM limit', other_medical_estimate: "Other providers' bills (est.)",
   liability_carrier: 'At-fault insurer', limits_source: 'Limits source', limits_noted_on: 'Limits as of', remaining_reported: 'PIP remaining (carrier)', remaining_reported_on: 'Remaining as of', visit_type: 'Visit type', head_injury: 'Head injury',
-  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)', jurisdiction: 'State rules', emc_by: 'EMC determined by', emc_on: 'EMC date', tort_option: 'Lawsuit option',
+  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)', mediation_on: 'Mediation', trial_on: 'Trial', settlement_signed_on: 'Settlement signed', disbursement_expected_on: 'Check expected', jurisdiction: 'State rules', emc_by: 'EMC determined by', emc_on: 'EMC date', tort_option: 'Lawsuit option',
   lop_factored: 'LOP factored', lop_factor_company: 'Factoring company', lop_factor_price: 'Factoring price', lop_health_coverage: 'Health coverage at treatment', policy_effective_on: 'Policy issued/renewed', demand_sent_on: 'PIP demand sent', badge: 'Website badge shown',
 };
 const humanize = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -2011,13 +2019,23 @@ async function pageTasks(main) {
 
 // ---------- A/R ----------
 let arState = { all: false, sort: 'patient', dir: 1 };
+// The next date to watch on a case: an overdue expected check first, then the
+// soonest upcoming mediation, trial or expected check.
+function nextCaseDate(x) {
+  const t = today();
+  if (x.disbursementExpected && !x.checkReceived && x.disbursementExpected < t) return { label: 'Check overdue', date: x.disbursementExpected };
+  const up = [['Mediation', x.mediationOn], ['Trial', x.trialOn], ['Check expected', x.checkReceived ? null : x.disbursementExpected]].filter(([, d]) => d && d >= t).sort((a, b) => a[1].localeCompare(b[1]));
+  return up.length ? { label: up[0][0], date: up[0][1] } : null;
+}
+
 async function pageAR(main) {
   const r = await attempt(() => api('cases.php?action=ar_report' + (arState.all ? '&all=1' : '') + locQS()));
   if (!r) return;
   const rows = r.rows;
   const { sort, dir } = arState;
   rows.sort((a, b) => { const x = a[sort] ?? '', y = b[sort] ?? ''; return (typeof x === 'number' || typeof y === 'number' ? (+x || 0) - (+y || 0) : String(x).localeCompare(String(y))) * dir; });
-  const cols = [['patient', 'Patient'], ['benefits', 'Benefits'], ['stage', 'Status'], ['lastVisit', 'Last visit'], ['lastCorrespondence', 'Last contact'], ['attorney', 'Attorney'],
+  rows.forEach((x) => { x.nextDate = nextCaseDate(x)?.date || null; });
+  const cols = [['patient', 'Patient'], ['benefits', 'Benefits'], ['stage', 'Status'], ['nextDate', 'Next date'], ['lastVisit', 'Last visit'], ['lastCorrespondence', 'Last contact'], ['attorney', 'Attorney'],
     ['insuranceBalance', 'Insurance', 1], ['patientBalance', 'Patient/LOP', 1], ['totalBalance', 'Total', 1], ['forwardedOn', 'Forwarded'], ['reductionFloor', Math.round(S.lookups.reductionFloorPct * 100) + '% floor', 1], ['attyOffer', 'Offer', 1], ['finalSettlement', 'Settled', 1], ['checkReceived', 'Check rec\'d']];
   main.innerHTML = `${phiBanner}<div class="page-head"><div><h1>A/R &amp; settlements</h1><div class="sub">${rows.length} cases with a balance</div></div><span class="spacer"></span>
       <label class="check small"><input type="checkbox" id="ar-all"${arState.all ? ' checked' : ''}> Include closed</label>
@@ -2032,6 +2050,7 @@ async function pageAR(main) {
       <tbody>${rows.map((x) => `<tr class="click" data-act="open-case" data-id="${x.id}" data-tab="financials">
         <td><strong>${esc(x.patient)}</strong><div class="small muted mono">${esc(x.caseNumber)}</div></td>
         <td>${x.benefits ? esc(label('benefits', x.benefits)) : '—'}</td><td>${stageChip(x.stage)}</td>
+        <td class="nowrap small">${(() => { const n = nextCaseDate(x); return n ? `<span class="${n.date < today() ? 'trend-up' : ''}">${esc(n.label)} ${esc(fmtDate(n.date))}</span>` : '—'; })()}</td>
         <td class="nowrap">${esc(fmtDate(x.lastVisit))}</td>
         <td class="nowrap">${x.lastCorrespondence ? `<span class="${daysSince(x.lastCorrespondence) > 30 ? 'trend-up' : ''}">${esc(fmtDate(x.lastCorrespondence))}</span>` : '<span class="trend-up">never</span>'}</td>
         <td class="small">${esc(x.attorney || '—')}</td>
@@ -2039,7 +2058,7 @@ async function pageAR(main) {
         <td class="nowrap small">${x.forwardedOn ? esc(fmtDate(x.forwardedOn)) : (x.lopSigned ? 'LOP ' + esc(fmtDate(x.lopSigned)) : '—')}</td>
         <td class="num">${money(x.reductionFloor)}</td><td class="num">${x.attyOffer !== null ? money(x.attyOffer) + `<div class="small muted">${x.offerPct}%</div>` : '—'}</td>
         <td class="num">${money(x.finalSettlement)}</td><td class="nowrap">${esc(fmtDate(x.checkReceived))}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="6">Totals</td><td class="num">${money(r.totals.insurance)}</td><td class="num">${money(r.totals.patient)}</td><td class="num">${money(r.totals.total)}</td><td colspan="5"></td></tr></tfoot></table></div></div>`;
+      <tfoot><tr><td colspan="7">Totals</td><td class="num">${money(r.totals.insurance)}</td><td class="num">${money(r.totals.patient)}</td><td class="num">${money(r.totals.total)}</td><td colspan="5"></td></tr></tfoot></table></div></div>`;
   main.querySelector('#ar-all').addEventListener('change', (e) => { arState.all = e.target.checked; pageAR(main); });
 }
 

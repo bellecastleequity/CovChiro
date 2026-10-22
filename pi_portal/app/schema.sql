@@ -273,6 +273,12 @@ CREATE TABLE cases (
   atty_offer DECIMAL(10,2) NULL,
   final_settlement DECIMAL(10,2) NULL,
   date_authorized DATE NULL,
+  -- Case status dates from the attorney: mediation, trial, settlement
+  -- signed, and when the attorney expects to mail / disburse the check.
+  mediation_on DATE NULL,
+  trial_on DATE NULL,
+  settlement_signed_on DATE NULL,
+  disbursement_expected_on DATE NULL,
   check_received_on DATE NULL,
   notes_enc TEXT NULL,
   -- Head injury (hit head, loss of consciousness, concussion symptoms):

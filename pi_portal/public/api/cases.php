@@ -29,12 +29,15 @@ const CASE_FIELDS = [
     'paralegal' => 'str:160', 'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
     'limits_source' => 'str:160', 'limits_noted_on' => 'date',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
+    'mediation_on' => 'date', 'trial_on' => 'date', 'settlement_signed_on' => 'date', 'disbursement_expected_on' => 'date',
 ];
 // These need finance.write instead of case.write. Billing can also move a
 // case through the legal / settlement stages.
 // Policy limits: front desk hears them on the attorney call, billing from
 // the adjuster — either may record them.
 const LIMIT_CASE_FIELDS = ['liability_carrier', 'bi_limit', 'um_limit', 'other_medical_estimate', 'limits_source', 'limits_noted_on'];
+// Case status dates heard from the attorney's office: front desk or billing.
+const STATUS_DATE_FIELDS = ['mediation_on', 'trial_on', 'settlement_signed_on', 'disbursement_expected_on'];
 const FINANCE_CASE_FIELDS = ['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'balance_forwarded_on', 'balance_forwarded_amount'];
 
 const CHILD_SPECS = [
@@ -389,7 +392,9 @@ function handle_update() {
     $limitsIn = array_intersect_key($caseIn, array_flip(LIMIT_CASE_FIELDS));
     if ($limitsIn && !can($user, 'case.write') && !can($user, 'finance.write')) json_response(['error' => 'Your role does not allow editing policy limits.'], 403);
     $financeOnly = array_intersect_key($caseIn, array_flip(FINANCE_CASE_FIELDS));
-    $general = array_diff_key($caseIn, array_flip(array_merge(FINANCE_CASE_FIELDS, LIMIT_CASE_FIELDS)));
+    $datesIn = array_intersect_key($caseIn, array_flip(STATUS_DATE_FIELDS));
+    if ($datesIn && !can($user, 'case.write') && !can($user, 'finance.write')) json_response(['error' => 'Your role does not allow editing case dates.'], 403);
+    $general = array_diff_key($caseIn, array_flip(array_merge(FINANCE_CASE_FIELDS, LIMIT_CASE_FIELDS, STATUS_DATE_FIELDS)));
     // Billing may move a case between the post-treatment stages without
     // general case-edit rights.
     if (isset($general['stage']) && !can($user, 'case.write') && can($user, 'finance.write')
@@ -1151,6 +1156,7 @@ function handle_ar_report() {
             'lopSigned' => $c['lop_signed_on'], 'forwardedOn' => $c['balance_forwarded_on'],
             'forwardedAmount' => $set && $c['balance_forwarded_amount'] !== null ? (float)$c['balance_forwarded_amount'] : null,
             'finalSettlement' => $set && $c['final_settlement'] !== null ? (float)$c['final_settlement'] : null,
+            'mediationOn' => $c['mediation_on'], 'trialOn' => $c['trial_on'], 'settlementSignedOn' => $c['settlement_signed_on'], 'disbursementExpected' => $c['disbursement_expected_on'],
             'dateAuthorized' => $set ? $c['date_authorized'] : null, 'checkReceived' => $set ? $c['check_received_on'] : null,
         ];
     }
@@ -1161,12 +1167,12 @@ function handle_ar_report() {
         header('Content-Disposition: attachment; filename="pi-ar-' . date('Y-m-d') . '.csv"');
         header('Cache-Control: no-store');
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['Case #', 'Patient', 'Benefits', 'Stage', 'Last visit', 'Last correspondence', 'Insurer', 'Attorney', 'Insurance balance', 'Patient balance', 'Total outstanding', 'LOP signed', 'Forwarded to attorney', 'Amount forwarded', '80% floor', 'Atty offer', 'Offer %', 'Final settlement', 'Date authorized', 'Check received']);
+        fputcsv($out, ['Case #', 'Patient', 'Benefits', 'Stage', 'Last visit', 'Last correspondence', 'Insurer', 'Attorney', 'Insurance balance', 'Patient balance', 'Total outstanding', 'LOP signed', 'Forwarded to attorney', 'Amount forwarded', '80% floor', 'Atty offer', 'Offer %', 'Final settlement', 'Date authorized', 'Check received', 'Mediation', 'Trial', 'Settlement signed', 'Check expected']);
         foreach ($rows as $r) {
             // Neutralise spreadsheet formula injection in text cells.
             $safe = fn($v) => is_string($v) && preg_match('/^[=+\-@]/', $v) ? "'" . $v : $v;
             fputcsv($out, array_map($safe, [$r['caseNumber'], $r['patient'], BENEFITS[$r['benefits']] ?? '', STAGES[$r['stage']], $r['lastVisit'], $r['lastCorrespondence'], $r['insurer'], $r['attorney'],
-                $r['insuranceBalance'], $r['patientBalance'], $r['totalBalance'], $r['lopSigned'], $r['forwardedOn'], $r['forwardedAmount'], $r['reductionFloor'], $r['attyOffer'], $r['offerPct'], $r['finalSettlement'], $r['dateAuthorized'], $r['checkReceived']]));
+                $r['insuranceBalance'], $r['patientBalance'], $r['totalBalance'], $r['lopSigned'], $r['forwardedOn'], $r['forwardedAmount'], $r['reductionFloor'], $r['attyOffer'], $r['offerPct'], $r['finalSettlement'], $r['dateAuthorized'], $r['checkReceived'], $r['mediationOn'], $r['trialOn'], $r['settlementSignedOn'], $r['disbursementExpected']]));
         }
         exit;
     }
