@@ -24,10 +24,15 @@ const CASE_FIELDS = [
     'balance_forwarded_on' => 'date', 'balance_forwarded_amount' => 'money',
     'actively_treating' => 'bool', 'provider_user_id' => 'user', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
     'mmi_date' => 'date', 'maintenance_every_days' => 'int',
+    'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
+    'limits_source' => 'str:160', 'limits_noted_on' => 'date',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
 ];
 // These need finance.write instead of case.write. Billing can also move a
 // case through the legal / settlement stages.
+// Policy limits: front desk hears them on the attorney call, billing from
+// the adjuster — either may record them.
+const LIMIT_CASE_FIELDS = ['liability_carrier', 'bi_limit', 'um_limit', 'other_medical_estimate', 'limits_source', 'limits_noted_on'];
 const FINANCE_CASE_FIELDS = ['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'balance_forwarded_on', 'balance_forwarded_amount'];
 
 const CHILD_SPECS = [
@@ -48,7 +53,7 @@ const CHILD_SPECS = [
         'carrier_contact_id' => 'contact', 'carrier_text' => 'str:160', 'adjuster' => 'str:160',
         'claim_number' => 'enc', 'policy_number' => 'enc',
         'status' => ['active','denied','exhausted','closed'], 'status_on' => 'date', 'status_reason' => 'str:255',
-        'benefit_limit' => 'money', 'authorized_visits' => 'int', 'authorized_through' => 'date', 'notes' => 'enc',
+        'benefit_limit' => 'money', 'remaining_reported' => 'money', 'remaining_reported_on' => 'date', 'authorized_visits' => 'int', 'authorized_through' => 'date', 'notes' => 'enc',
     ]],
     'outcomes' => ['perm' => 'clinical.write', 'required' => ['measure', 'score', 'taken_on'], 'fields' => [
         'measure' => ['bournemouth_neck','bournemouth_back','oswestry','ndi','hdi','shoulder','knee','adl'],
@@ -218,7 +223,7 @@ function full_case(int $id, array $user): array {
         ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null,
         ($seen = array_column(array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'), 'visit_date')) ? max($seen) : null);
     $ctx = [
-        'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'totals' => $totals, 'coverages' => $coverages, 'openItems' => $openItems,
+        'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'totals' => $totals, 'ledgerRows' => $allLedger, 'coverages' => $coverages, 'openItems' => $openItems,
         'wcVisits' => ['count' => count($attended), 'missing25' => count(array_filter($attended, fn($v) => !$v['dwc25_sent'] && $v['visit_date'] <= $cutoff))],
         'lastVisit' => $visitDates ? max($visitDates) : null,
         'lastCorrespondence' => $corr ? $corr[0]['occurred_on'] : null,
@@ -233,11 +238,15 @@ function full_case(int $id, array $user): array {
         unset($totals['reduction_floor']);
     }
     $alerts = case_alerts($c, $ctx);
-    if (!$bal) $alerts = array_map(fn($a) => ['level' => $a['level'], 'text' => redact_money($a['text'])], $alerts);
+    // Alerts built on money (bills vs. policy limits) are left out entirely
+    // for people who can't see balances; others have amounts removed.
+    if (!$bal) $alerts = array_values(array_map(fn($a) => ['level' => $a['level'], 'text' => redact_money($a['text'])], array_filter($alerts, fn($a) => empty($a['fin']))));
+    else $alerts = array_map(fn($a) => ['level' => $a['level'], 'text' => $a['text']], $alerts);
+    $caseValue = $bal ? case_value($c, $ctx) : null;
     if (!$bal) $corr = array_map(fn($r) => str_contains($r['subject'], 'forwarded to attorney') ? ['subject' => 'Patient balance forwarded to attorney'] + $r : $r, $corr);
     return [
         'case' => $case, 'patient' => $patient, 'contacts' => $contacts, 'coverages' => $coverages,
-        'checklist' => $checklist, 'guide' => $guide, 'alerts' => $alerts,
+        'checklist' => $checklist, 'guide' => $guide, 'alerts' => $alerts, 'caseValue' => $caseValue,
         'tips' => case_tips($c, ['referrals' => $referrals, 'visits' => $visits, 'icd' => array_column($visits, 'icd_codes'), 'guideRows' => $guideRows, 'outcomeDates' => array_unique(array_column($outcomes, 'taken_on'))]),
         'referrals' => $referrals, 'visits' => $visits, 'outcomes' => $outcomes,
         'correspondence' => $corr, 'ledger' => $led ? $ledger : [], 'openItems' => $led ? $openItems : [], 'totals' => $bal ? $totals : null,
@@ -325,8 +334,10 @@ function handle_update() {
     $caseIn = $b['case'] ?? [];
     $patientIn = $b['patient'] ?? [];
 
+    $limitsIn = array_intersect_key($caseIn, array_flip(LIMIT_CASE_FIELDS));
+    if ($limitsIn && !can($user, 'case.write') && !can($user, 'finance.write')) json_response(['error' => 'Your role does not allow editing policy limits.'], 403);
     $financeOnly = array_intersect_key($caseIn, array_flip(FINANCE_CASE_FIELDS));
-    $general = array_diff_key($caseIn, array_flip(FINANCE_CASE_FIELDS));
+    $general = array_diff_key($caseIn, array_flip(array_merge(FINANCE_CASE_FIELDS, LIMIT_CASE_FIELDS)));
     // Billing may move a case between the post-treatment stages without
     // general case-edit rights.
     if (isset($general['stage']) && !can($user, 'case.write') && can($user, 'finance.write')
@@ -824,6 +835,8 @@ function handle_dashboard() {
     foreach ($cases as $c) {
         $x = $ctx[(int)$c['id']];
         foreach (case_alerts($c, $x) as $a) {
+            if (!empty($a['fin']) && !fin_can($user, 'balances')) continue;
+            unset($a['fin']);
             if (!fin_can($user, 'balances')) $a['text'] = redact_money($a['text']);
             $alerts[] = $a + ['caseId' => (int)$c['id'], 'patient' => patient_name($c), 'caseNumber' => $c['case_number']];
         }

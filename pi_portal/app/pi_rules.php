@@ -73,6 +73,16 @@ define('REPORT_CHASE_DAYS', 7);
 // Insurance charges still unpaid after this many days get flagged — the
 // prompt to follow up with the carrier or move them to the patient balance.
 define('INSURANCE_FOLLOWUP_DAYS', 45);
+// Medical bills vs. the liability limits. A settlement usually splits
+// roughly into thirds — attorney's fee, medical bills, the patient — so
+// bills past about a third of the limits usually mean reductions. Soft
+// warnings at a third, half and three quarters.
+define('LIMITS_NOTICE_SHARE', 1 / 3);
+define('LIMITS_WARN_SHARE', 0.5);
+define('LIMITS_HIGH_SHARE', 0.75);
+// PIP remaining (as reported by the carrier, less our payments since) under
+// this amount gets a warning.
+define('PIP_LOW_REMAINING', 1500.00);
 
 // Checklist. 'cases' limits an item to certain case types; 'anchor' is the
 // date the deadline counts from and 'days' how long after it the item is due.
@@ -83,7 +93,7 @@ const ALL_CASES = ['auto', 'slip_fall', 'workers_comp'];
 const LIABILITY_CASES = ['auto', 'slip_fall'];
 const CHECKLIST = [
     // Within 48 hours of the first visit
-    'attorney_contacted'      => ['label' => 'Called attorney',                     'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => LIABILITY_CASES],
+    'attorney_contacted'      => ['label' => 'Called attorney (ask for the policy limits)',                     'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => LIABILITY_CASES],
     'lor_received'            => ['label' => 'Letter of representation received',   'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => LIABILITY_CASES],
     'aob_signed'              => ['label' => 'PIP application / assignment of benefits signed', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto']],
     'lop_signed'              => ['label' => 'Letter of protection signed by patient', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['slip_fall'], 'source' => 'case', 'field' => 'lop_signed_on'],
@@ -569,11 +579,64 @@ function case_tips(array $case, array $ctx): array {
         $add('no_attorney', 'evaluation', 'No attorney on file', 'Confirm whether the patient is represented and add the attorney under Overview → Edit — they receive the records, bills and status letters.',
             "Represented cases resolve more reliably, and the office needs the attorney's details for the letter of protection, records requests and payment at settlement.");
     }
+    if ($liability && $inCare && !empty($case['attorney_contact_id']) && empty($case['bi_limit']) && empty($case['um_limit'])) {
+        $add('limits', 'evaluation', 'Ask the attorney for the policy limits', "Record the at-fault driver's bodily-injury limit (and the patient's UM coverage) under Financials → Policy limits. The attorney usually knows by the first call.",
+            "Knowing what coverage will pay the claim lets you plan care and billing so the bills stay in proportion to what the case can settle for — and spot early when other coverage (UM, health insurance, MedPay) will be needed.");
+    } elseif ($liability && $inCare && !empty($case['bi_limit']) && (float)$case['bi_limit'] <= 25000 && empty($case['um_limit'])) {
+        $add('low_limits', 'evaluation', 'Low policy limits — check for other coverage', 'The at-fault limit is $' . number_format((float)$case['bi_limit']) . '. Ask the attorney whether the patient has uninsured/underinsured motorist (UM) coverage, and bill health insurance or MedPay if available.',
+            "With low limits, other coverage is often what makes the difference between being paid in full and taking a large reduction.");
+    }
     if ($inCare && $fv && days_between($fv, $today) > 21 && count($ctx['outcomeDates'] ?? []) < 2) {
         $add('outcomes', 'evaluation', 'Track outcome scores over time', (count($ctx['outcomeDates'] ?? []) ? 'Only one set of outcome assessments so far.' : 'No outcome assessments recorded yet.') . ' Record ADL/Oswestry/neck-disability scores at intake and every re-exam.',
             "Scores measured over time show both progress and lasting limitations in numbers — the clearest way to show how the injury affects daily life.");
     }
     return $tips;
+}
+
+// ---------- Case value: bills vs. coverage ----------
+// PIP left and the medical bills against the liability limits. Uses our
+// own charges plus the estimate of other providers' bills; projects when
+// the next threshold is reached at the recent pace of charges.
+function case_value(array $case, array $ctx): array {
+    $today = date('Y-m-d');
+    $rows = $ctx['ledgerRows'] ?? [];
+    $totals = $ctx['totals'] ?? ledger_totals($rows);
+    $coverages = $ctx['coverages'] ?? [];
+    $pip = first_coverage($coverages, 'pip');
+    $out = ['pip' => null, 'limits' => null];
+    if ($pip) {
+        $limit = pip_effective_limit($case, $pip);
+        $paid = $totals['by_coverage'][(int)$pip['id']]['paid'] ?? 0.0;
+        $rem = ['limit' => $limit, 'paidByCarrierToUs' => round($paid, 2), 'remaining' => round(max(0, $limit - $paid), 2), 'source' => 'ours'];
+        if ($pip['remaining_reported'] !== null && $pip['remaining_reported'] !== '') {
+            $since = 0.0;
+            foreach ($rows as $r) if ($r['kind'] === 'payment' && (int)$r['coverage_id'] === (int)$pip['id'] && $pip['remaining_reported_on'] && $r['entry_date'] > $pip['remaining_reported_on']) $since += (float)$r['amount'];
+            $rem = ['limit' => $limit, 'reported' => (float)$pip['remaining_reported'], 'reportedOn' => $pip['remaining_reported_on'], 'paidSince' => round($since, 2),
+                'remaining' => round(max(0, (float)$pip['remaining_reported'] - $since), 2), 'source' => 'carrier'];
+        }
+        $rem['status'] = $pip['status'];
+        $out['pip'] = $rem;
+    }
+    $pool = (float)($case['bi_limit'] ?? 0) + (float)($case['um_limit'] ?? 0);
+    if ($pool > 0) {
+        $ours = (float)$totals['total_charges'];
+        $other = (float)($case['other_medical_estimate'] ?? 0);
+        $medical = $ours + $other;
+        $share = $medical / $pool;
+        // Recent pace: our charges per week over the last 4 weeks.
+        $recent = 0.0;
+        foreach ($rows as $r) if ($r['kind'] === 'charge' && $r['entry_date'] > add_days($today, -28)) $recent += (float)$r['amount'];
+        $perWeek = round($recent / 4, 2);
+        $next = null;
+        foreach ([LIMITS_NOTICE_SHARE, LIMITS_WARN_SHARE, LIMITS_HIGH_SHARE, 1.0] as $th) if ($share < $th) { $next = $th; break; }
+        $reach = null;
+        if ($next !== null && $perWeek > 0) $reach = ['share' => $next, 'date' => add_days($today, (int)ceil(($next * $pool - $medical) / $perWeek * 7))];
+        $out['limits'] = ['pool' => $pool, 'bi' => $case['bi_limit'] !== null ? (float)$case['bi_limit'] : null, 'um' => $case['um_limit'] !== null ? (float)$case['um_limit'] : null,
+            'ours' => round($ours, 2), 'other' => round($other, 2), 'medical' => round($medical, 2), 'share' => round($share, 4),
+            'perWeek' => $perWeek, 'next' => $reach, 'thresholds' => [LIMITS_NOTICE_SHARE, LIMITS_WARN_SHARE, LIMITS_HIGH_SHARE],
+            'source' => $case['limits_source'], 'notedOn' => $case['limits_noted_on'], 'carrier' => $case['liability_carrier']];
+    }
+    return $out;
 }
 
 // ---------- Checklist ----------
@@ -662,6 +725,26 @@ function case_alerts(array $case, array $ctx): array {
         $paid = $ctx['totals']['by_coverage'][(int)$pip['id']]['paid'] ?? 0;
         if ($limit > 0 && $paid >= $limit * 0.85) {
             $alerts[] = ['level' => 'medium', 'text' => 'PIP has paid $' . number_format($paid, 2) . ' of the $' . number_format($limit) . ' limit — when exhausted, move the remainder to the patient balance.'];
+        }
+    }
+
+    // Bills vs. coverage (soft warnings; money-based, so hidden from people
+    // who can't see balances).
+    if (isset($ctx['totals'])) {
+        $cv = case_value($case, $ctx);
+        $p = $cv['pip'];
+        if ($p && $p['status'] === 'active' && $p['source'] === 'carrier' && $p['remaining'] < PIP_LOW_REMAINING) {
+            $alerts[] = ['level' => 'medium', 'fin' => true, 'text' => 'PIP nearly exhausted: about $' . number_format($p['remaining'], 2) . ' left (carrier reported $' . number_format($p['reported'], 2) . ' on ' . us_date($p['reportedOn']) . ', less payments since). Plan for the balance moving to the patient/LOP.'];
+        }
+        $l = $cv['limits'];
+        if ($l && in_array($case['stage'], ['intake', 'treating', 'tx_complete'], true)) {
+            $pct = (int)round($l['share'] * 100);
+            $lim = '$' . number_format($l['pool']);
+            $bills = '$' . number_format($l['medical'], 2);
+            if ($l['share'] >= 1) $alerts[] = ['level' => 'high', 'fin' => true, 'text' => "Medical bills ($bills) exceed the $lim policy limits — expect a large reduction. Review the care plan and other coverage (UM, health insurance) with the attorney."];
+            elseif ($l['share'] >= LIMITS_HIGH_SHARE) $alerts[] = ['level' => 'medium', 'fin' => true, 'text' => "Medical bills are at $pct% of the $lim policy limits ($bills). Talk with the attorney before continuing at this pace."];
+            elseif ($l['share'] >= LIMITS_WARN_SHARE) $alerts[] = ['level' => 'medium', 'fin' => true, 'text' => "Medical bills are at $pct% of the $lim policy limits ($bills) — past half. Review the care plan with the attorney; a reduction is likely."];
+            elseif ($l['share'] >= LIMITS_NOTICE_SHARE) $alerts[] = ['level' => 'low', 'fin' => true, 'text' => "Medical bills are at $pct% of the $lim policy limits ($bills). Past about a third, reductions become likely once the attorney's fee and the patient's share come out."];
         }
     }
 
@@ -793,6 +876,7 @@ function bulk_case_context(PDO $pdo, array $cases): array {
     foreach ($cases as $c) {
         $id = (int)$c['id'];
         $ctx[$id]['totals'] = ledger_totals($ledger[$id] ?? []);
+        $ctx[$id]['ledgerRows'] = $ledger[$id] ?? [];
         $ctx[$id]['openItems'] = ledger_open_items($ledger[$id] ?? []);
         $ctx[$id]['checklist'] = case_checklist($c, $ctx[$id]['milestones'], $ctx[$id]['referrals']);
         $ctx[$id]['guide'] = care_guide($c, $ctx[$id]['referrals'], $ctx[$id]['guideRows'], head_injury_codes($ctx[$id]['icd']), $ctx[$id]['lastExam'] ?? null, $ctx[$id]['lastVisit'] ?? null);

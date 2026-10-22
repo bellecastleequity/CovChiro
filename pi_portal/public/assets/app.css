@@ -387,3 +387,24 @@ table.audit td{vertical-align:top;}
 .alerts .dot.cat-gaps{background:var(--amber);}
 .alerts .dot.cat-spec{background:var(--blue);}
 .alerts .dot.cat-eval{background:var(--violet);}
+
+/* ---------- policy limits & case value ---------- */
+.card.case-value{border-top:3px solid var(--violet);}
+.cv-block{padding:10px 0;border-bottom:1px dashed var(--line);}
+.cv-block:last-child{border-bottom:none;}
+.cv-title{font-weight:600;font-size:0.9rem;}
+.cv-title .small{font-weight:400;}
+.cv-big{font-size:1.5rem;font-weight:700;letter-spacing:-0.02em;margin:2px 0 4px;font-variant-numeric:tabular-nums;}
+.limit-meter{position:relative;height:12px;border-radius:6px;background:var(--bg-2);overflow:hidden;margin-top:6px;}
+.limit-meter > i{position:absolute;left:0;top:0;bottom:0;background:var(--green);border-radius:6px;}
+.limit-meter.note > i{background:var(--blue);}
+.limit-meter.warn > i{background:var(--amber);}
+.limit-meter.over > i{background:var(--red);}
+.limit-meter > b{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:rgba(11,35,64,0.35);}
+.limit-scale{position:relative;height:16px;margin:2px 0 8px;}
+.limit-scale span{position:absolute;transform:translateX(-50%);}
+.limit-scale span:nth-child(1){left:0;transform:none;}
+.limit-scale span:nth-child(2){left:33.3%;}
+.limit-scale span:nth-child(3){left:50%;}
+.limit-scale span:nth-child(4){left:75%;}
+.limit-scale span:nth-child(5){left:auto;right:0;transform:none;}

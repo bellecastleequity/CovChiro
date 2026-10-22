@@ -160,6 +160,17 @@ CREATE TABLE cases (
   -- final discharge.
   mmi_date DATE NULL,
   maintenance_every_days SMALLINT NULL,
+  -- Liability coverage that will pay the claim (often learned on the
+  -- attorney call): the at-fault party's bodily-injury limit, the patient's
+  -- uninsured/underinsured motorist limit, and an estimate of other
+  -- providers' bills (ER, imaging, specialists). Used to keep the medical
+  -- bills proportionate to what the case can pay.
+  liability_carrier VARCHAR(160) NULL,
+  bi_limit DECIMAL(10,2) NULL,
+  um_limit DECIMAL(10,2) NULL,
+  other_medical_estimate DECIMAL(10,2) NULL,
+  limits_source VARCHAR(160) NULL,
+  limits_noted_on DATE NULL,
   -- Set once the case's financials come from uploaded EHR ledgers.
   ehr_system VARCHAR(80) NULL,
   ehr_synced_at DATETIME NULL,
@@ -194,6 +205,10 @@ CREATE TABLE coverages (
   status_on DATE NULL,
   status_reason VARCHAR(255) NULL,
   benefit_limit DECIMAL(10,2) NULL,
+  -- What the carrier says is left (PIP is shared with every provider, so
+  -- the adjuster's figure beats our own payments), and as of when.
+  remaining_reported DECIMAL(10,2) NULL,
+  remaining_reported_on DATE NULL,
   authorized_visits INT NULL,
   authorized_through DATE NULL,
   notes_enc TEXT NULL,

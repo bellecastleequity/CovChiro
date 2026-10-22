@@ -1,0 +1,2 @@
+ALTER TABLE cases ADD COLUMN liability_carrier VARCHAR(160) NULL AFTER maintenance_every_days, ADD COLUMN bi_limit DECIMAL(10,2) NULL AFTER liability_carrier, ADD COLUMN um_limit DECIMAL(10,2) NULL AFTER bi_limit, ADD COLUMN other_medical_estimate DECIMAL(10,2) NULL AFTER um_limit, ADD COLUMN limits_source VARCHAR(160) NULL AFTER other_medical_estimate, ADD COLUMN limits_noted_on DATE NULL AFTER limits_source;
+ALTER TABLE coverages ADD COLUMN remaining_reported DECIMAL(10,2) NULL AFTER benefit_limit, ADD COLUMN remaining_reported_on DATE NULL AFTER remaining_reported

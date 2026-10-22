@@ -648,6 +648,8 @@ function tabOverview(el, d) {
         ${row('Referral source', c.referral_source)}${contactRow('Referred by', k.referred_by_contact_id)}${c.referred_by_text ? row('Referred by (note)', c.referred_by_text) : ''}
         ${contactRow('Attorney', k.attorney_contact_id)}
         <dt>Insurance</dt><dd>${(d.coverages || []).length ? d.coverages.map((cv) => `<div>${esc(label('coverageTypes', cv.type))}${cv.carrier_org || cv.carrier_text ? ' — ' + esc(cv.carrier_org || cv.carrier_text) : ''} <span class="chip ${cv.status === 'active' ? 'teal' : 'na'}">${esc(label('coverageStatus', cv.status))}</span>${cv.claim_number ? `<div class="small muted">Claim # ${esc(cv.claim_number)}</div>` : ''}</div>`).join('') : '<span class="muted">None — patient balance / LOP</span>'}</dd>
+        <dt>Policy limits</dt><dd>${c.bi_limit || c.um_limit ? `${c.bi_limit ? 'At-fault BI ' + esc(money(c.bi_limit)) : ''}${c.bi_limit && c.um_limit ? ' · ' : ''}${c.um_limit ? 'UM ' + esc(money(c.um_limit)) : ''}${c.limits_source ? `<div class="small muted">${esc(c.limits_source)}${c.limits_noted_on ? ' · ' + esc(fmtDate(c.limits_noted_on)) : ''}</div>` : ''}` : '<span class="muted">Not known yet — ask the attorney</span>'}
+          ${can('case.write') || can('finance.write') ? ' <button class="linklike small" data-act="edit-limits">Edit</button>' : ''}</dd>
         ${row('Bills go to', label('benefits', c.benefits))}${c.injury_type === 'auto' ? row('EMC determination', c.emc_status) : ''}
         ${row('LOP signed', c.lop_signed_on ? fmtDate(c.lop_signed_on) + (c.lop_acknowledged_on ? ' · firm acknowledged ' + fmtDate(c.lop_acknowledged_on) : ' · not countersigned') : '')}
         ${row('Actively treating', c.actively_treating == 1 ? 'Yes' : 'No')}
@@ -1132,6 +1134,7 @@ function tabFinancials(el, d) {
           <div class="small muted mt-sm">Charges ${money(t.total_charges)} · insurance paid ${money(t.insurance_paid)} · moved to patient ${money(t.moved_to_patient)}</div>
           ${pct ? `<div class="small mt">PIP has paid ${money(pct.paid)} of ${money(pct.lim)} — ${money(pct.left)} left<div class="bar ${pct.pct >= 100 ? 'over' : pct.pct >= 85 ? 'warn' : ''}"><i data-w="${pct.pct}"></i></div></div>` : ''}
         </div>` : ''}
+        ${caseValueCardHtml(d)}
         <div class="card"><div class="card-head"><h2>LOP &amp; settlement</h2><span class="spacer"></span>${can('case.write') || fw ? '<button class="btn ghost sm" data-act="edit-lop">Edit</button>' : ''}</div>
           <div class="money-row"><span>LOP signed by patient</span><strong>${esc(fmtDate(c.lop_signed_on))}</strong></div>
           <div class="money-row"><span>Acknowledged by law firm</span><strong>${c.lop_acknowledged_on ? esc(fmtDate(c.lop_acknowledged_on)) : (c.lop_signed_on ? 'Not countersigned' : '—')}</strong></div>
@@ -1169,6 +1172,8 @@ function tabFinancials(el, d) {
       }).join('')}</tbody></table></div>` : '<div class="empty">No ledger entries.</div>'}
     </div>` : ''}`;
   el.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
+  el.querySelectorAll('.limit-meter > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
+  el.querySelectorAll('.limit-meter > b[data-w]').forEach((b) => { b.style.left = b.dataset.w + '%'; });
   el.querySelector('[data-act-change=fin-all]')?.addEventListener('change', (e) => { el.dataset.all = e.target.checked ? '1' : ''; tabFinancials(el, d); });
 }
 
@@ -1181,6 +1186,8 @@ const coverageDefs = () => [
   { n: 'claim_number', l: 'Claim #' }, { n: 'policy_number', l: 'Policy / member #' },
   { n: 'adjuster', l: 'Adjuster', ph: 'Name, phone' },
   { n: 'benefit_limit', l: 'Benefit limit ($) — PIP is usually 10,000', t: 'money' },
+  { n: 'remaining_reported', l: 'Remaining per carrier ($) — from the adjuster / PIP payout log', t: 'money' },
+  { n: 'remaining_reported_on', l: 'Remaining as of', t: 'date' },
   { n: 'authorized_visits', l: "Authorized visits (workers' comp)", t: 'number' },
   { n: 'authorized_through', l: "Authorized through (workers' comp)", t: 'date' },
   { n: 'notes', l: 'Notes', t: 'textarea' },
@@ -1499,6 +1506,51 @@ function ehrUploadModal() {
   showFile();
 }
 
+// ----- policy limits & case value -----
+// Keeps the bills in proportion to what the case can pay: PIP left, and
+// medical bills against the liability limits, with soft thresholds.
+const LIMIT_DEFS = [
+  { n: 'bi_limit', l: "At-fault driver's bodily-injury limit ($)", t: 'money', ph: 'e.g. 25000' },
+  { n: 'um_limit', l: "Patient's UM/UIM limit ($)", t: 'money' },
+  { n: 'liability_carrier', l: 'At-fault insurer', ph: 'e.g. State Farm' },
+  { n: 'other_medical_estimate', l: "Other providers' bills, estimate ($)", t: 'money', ph: 'ER, imaging, specialists' },
+  { n: 'limits_source', l: 'Where this came from', ph: 'e.g. Attorney call — Jane, Smith Law' },
+  { n: 'limits_noted_on', l: 'As of', t: 'date' },
+];
+function limitsModal() {
+  const c = S.caseData.case;
+  openModal({ title: 'Policy limits', wide: true, okText: 'Save',
+    body: `<p class="small">The attorney usually knows the at-fault driver's limits by the first call. These are the money that will pay the claim — medical bills, the attorney's fee and the patient's recovery all come out of them.</p>${fieldsHtml(LIMIT_DEFS, { limits_noted_on: today(), ...Object.fromEntries(LIMIT_DEFS.map((f) => [f.n, c[f.n] ?? (f.n === 'limits_noted_on' ? today() : '')])) })}`,
+    onOk: async (el) => { S.caseData = await api('cases.php?action=update&id=' + c.id, { case: readFields(el, LIMIT_DEFS) }); renderCase(); toast('Policy limits saved'); } });
+}
+function caseValueCardHtml(d) {
+  const v = d.caseValue;
+  if (!v) return '';
+  const edit = can('case.write') || can('finance.write');
+  const p = v.pip, l = v.limits;
+  const pipHtml = p ? `<div class="cv-block"><div class="cv-title">PIP remaining <span class="small muted">${p.source === 'carrier' ? `carrier reported ${money(p.reported)} on ${esc(fmtDate(p.reportedOn))}${p.paidSince ? `, less ${money(p.paidSince)} paid to us since` : ''}` : `limit ${money(p.limit)} less PIP paid to us — other providers draw on PIP too; ask the adjuster for the real figure`}</span></div>
+      <div class="cv-big">${money(p.remaining)}</div>
+      <div class="bar ${p.remaining < 1500 ? 'over' : p.remaining < p.limit * 0.3 ? 'warn' : ''}"><i data-w="${p.limit ? Math.max(0, Math.min(100, Math.round(p.remaining / p.limit * 100))) : 0}"></i></div></div>` : '';
+  let limHtml;
+  if (!l) limHtml = `<div class="cv-block"><div class="cv-title">Medical bills vs. policy limits</div><p class="small muted">Policy limits not recorded yet. Ask the attorney for the at-fault driver's bodily-injury limit and the patient's UM coverage.</p>${edit ? '<button class="btn sm" data-act="edit-limits">Add policy limits</button>' : ''}</div>`;
+  else {
+    const pct = Math.round(l.share * 100);
+    const lvl = l.share >= 0.75 ? 'over' : l.share >= 0.5 ? 'warn' : l.share >= 1 / 3 ? 'note' : '';
+    const nextText = l.next ? `At the recent pace (~${money(l.perWeek)}/week of our charges), bills reach ${Math.round(l.next.share * 100)}% of the limits around <strong>${esc(fmtDate(l.next.date))}</strong>.` : l.perWeek ? '' : 'No new charges in the last four weeks.';
+    limHtml = `<div class="cv-block"><div class="cv-title">Medical bills vs. policy limits <span class="small muted">${l.bi ? 'BI ' + money(l.bi) : ''}${l.bi && l.um ? ' + ' : ''}${l.um ? 'UM ' + money(l.um) : ''}${l.carrier ? ' · ' + esc(l.carrier) : ''}${l.source ? ' · ' + esc(l.source) : ''}</span></div>
+      <div class="cv-big">${pct}% <span class="small muted">of ${money(l.pool)}</span></div>
+      <div class="limit-meter ${lvl}"><i data-w="${Math.min(100, pct)}"></i>${l.thresholds.map((t) => `<b data-w="${Math.round(t * 100)}" title="${Math.round(t * 100)}%"></b>`).join('')}</div>
+      <div class="limit-scale small muted"><span>0</span><span>⅓</span><span>½</span><span>¾</span><span>Limits</span></div>
+      <div class="money-row small"><span>Our charges</span><strong>${money(l.ours)}</strong></div>
+      <div class="money-row small"><span>Other providers (estimate)</span><strong>${l.other ? money(l.other) : '—'}</strong></div>
+      <div class="money-row small"><span><strong>Total medical bills</strong></span><strong>${money(l.medical)}</strong></div>
+      <p class="small mt-sm">${nextText}</p>
+      <p class="small muted">A settlement usually splits into thirds — attorney's fee, medical bills, the patient. Past about a third, reductions become likely; plan care and other coverage (UM, health insurance, MedPay) with the attorney. Clinical decisions stay with the doctor.</p>
+      ${edit ? '<button class="btn ghost sm" data-act="edit-limits">Edit limits</button>' : ''}</div>`;
+  }
+  return `<div class="card case-value"><h2>Policy limits &amp; case value</h2>${pipHtml}${limHtml}</div>`;
+}
+
 // ----- LOP, forwarding, settlement -----
 function lopModal() {
   const c = S.caseData.case;
@@ -1644,7 +1696,8 @@ const FIELD_NAMES = {
   dob: 'Date of birth', patient_dob: 'Date of birth', patient_first_name: 'First name', patient_last_name: 'Last name', patient_phone: 'Phone', patient_email: 'Email',
   patient_address: 'Address', cpt_codes: 'CPT codes', dwc25_sent: 'DWC-25 sent', staff_finance: 'Staff can see', finance_access: 'Full financial access',
   ehr_name: 'EHR', benefit_limit: 'Benefit limit', entry_date: 'Date', kind: 'Type', bucket: 'Owed by', status_on: 'Status date', insurance_balance: 'Insurance balance',
-  patient_balance: 'Patient balance', injury_type: 'Case type', visit_type: 'Visit type', head_injury: 'Head injury',
+  patient_balance: 'Patient balance', injury_type: 'Case type', bi_limit: 'At-fault BI limit', um_limit: 'UM limit', other_medical_estimate: "Other providers' bills (est.)",
+  liability_carrier: 'At-fault insurer', limits_source: 'Limits source', limits_noted_on: 'Limits as of', remaining_reported: 'PIP remaining (carrier)', remaining_reported_on: 'Remaining as of', visit_type: 'Visit type', head_injury: 'Head injury',
   guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)',
 };
 const humanize = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -2071,7 +2124,7 @@ const ACTIONS = {
   'add-payment': (el) => paymentModal(el.dataset.charge ? +el.dataset.charge : null),
   'move-balance': (el) => moveModal({ fromValue: el.dataset.from || null, chargeId: el.dataset.charge ? +el.dataset.charge : null }),
   'edit-ledger': (el) => ledgerEditModal(S.caseData.ledger.find((l) => l.id == el.dataset.id)),
-  'edit-lop': lopModal, 'forward-balance': forwardModal, 'ehr-upload': ehrUploadModal,
+  'edit-lop': lopModal, 'edit-limits': limitsModal, 'forward-balance': forwardModal, 'ehr-upload': ehrUploadModal,
   'archive-child': (el) => archiveChild(el.dataset.table, +el.dataset.id),
   'upload-doc': uploadDoc,
   'archive-doc': async (el) => {
