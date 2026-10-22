@@ -193,6 +193,9 @@ function handle_signup() {
     $pdo->commit();
 
     $u = load_user($userId);
+    // Credit the outreach email that brought them, if any (and stop its sequence).
+    require_once __DIR__ . '/../../app/marketing.php';
+    mkt_mark_converted($practiceId, preg_match('/^[a-f0-9]{32}$/', (string)($b['ref'] ?? '')) ? $b['ref'] : null, $email);
     audit('signup', 'practice', $practiceId, null, $u, "plan=$plan baa=" . BAA_VERSION . ($promo ? ' promo=' . $promo['code'] : ''));
     session_regenerate_id(true);
     $_SESSION['uid'] = $userId;

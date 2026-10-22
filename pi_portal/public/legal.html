@@ -125,7 +125,10 @@
   <h3 id="respondents">3. Attorneys and case managers who reply to status requests</h3>
   <p>When a practice asks an attorney or case manager for a case status update, we send them an email on the practice's behalf. If they use the secure reply page, we record their reply, the name and email they enter, and the date, time and IP address of the visit, and add the reply to the practice's case records. We use this information only to deliver it to that practice and keep the audit trail, and we don't use it for marketing. Questions about a particular request should go to the practice that sent it.</p>
 
-  <h3>4. Website visitors</h3>
+  <h3 id="prospects">4. Practices we contact about InjuryCase</h3>
+  <p>To introduce InjuryCase to healthcare practices, we use business information that is publicly available: practice names, addresses and phone numbers from the federal NPI Registry, and contact details and services that practices publish on their own websites. We use AI services (Google Gemini and OpenAI) to find a practice's website, check whether it treats auto-accident patients, and identify the published business email to write to; no patient information is ever involved. Our emails are sent through SendGrid and record whether a link was clicked. Every email includes a one-click unsubscribe; once you unsubscribe (or reply asking us to stop) we never email that address again, and we keep the address only on our do-not-email list so that it stays that way. To ask what we hold about your practice or have it deleted, email <a href="mailto:support@injurycase.com">support@injurycase.com</a>.</p>
+
+  <h3>4a. Website visitors</h3>
   <p>Our marketing website does not use advertising or analytics trackers or third-party scripts. Our servers keep standard technical logs (such as IP address and pages requested) for security and reliability.</p>
 
   <h3 id="cookies">5. Cookies</h3>
@@ -204,6 +207,8 @@
       <tr><td>Amazon Web Services, Inc.</td><td>Hosting, database storage, encrypted backups, monitoring and DNS</td><td>All Service data, including PHI (covered by the AWS Business Associate Addendum)</td><td>United States</td></tr>
       <tr><td>Amazon Web Services, Inc. (Simple Email Service)</td><td>Sending account, alert and status-request emails</td><td>Recipient email addresses and email text. Emails are designed to contain no patient details.</td><td>United States</td></tr>
       <tr><td>Stripe, Inc.</td><td>Subscription billing and payment processing</td><td>Practice name, account owner email, plan and payment details. No PHI.</td><td>United States</td></tr>
+      <tr><td>Twilio SendGrid</td><td>Sending introductory emails to practices that aren't customers (marketing only)</td><td>Prospect practices' published business email addresses and email text. No customer data or PHI.</td><td>United States</td></tr>
+      <tr><td>Google (Gemini API) and OpenAI</td><td>Researching prospect practices from public information (marketing only)</td><td>Public business information about prospect practices. No customer data or PHI.</td><td>United States</td></tr>
     </tbody></table></div>
   <p class="small muted">We will update this list and notify customers by email at least 30 days before adding a subprocessor that will process PHI. <mark class="ph">[Confirm the list matches your production setup before launch.]</mark></p>
 

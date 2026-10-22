@@ -190,6 +190,23 @@ safeguards and signed agreements that no code can provide.
   `php app/cli/purge_practice.php --practice=ID` — dry run with counts;
   `php app/cli/purge_practice.php --practice=ID --confirm` — permanent deletion of every row and encrypted document file for that practice (add `--early` for a practice's own written request inside the 12 months). A record with counts only (no patient data) stays in the audit log. Encrypted backups expire within 35 days.
 
+## Marketing: automatic outreach to clinics (operator console → Marketing)
+
+Finds practices that treat auto-accident patients and emails them a 3-step sequence, with no approval step (`app/marketing.php`).
+
+1. **Discover** (`app/cli/marketing_discover.php`, nightly): the free federal **NPI Registry** — chiropractors, orthopedists, physical therapists, pain management, nurse practitioners, nursing facilities (choose in settings) — walked nationwide by ZIP prefix, one prospect per practice phone number, optional state filter.
+2. **Research** (`marketing_research.php`, every 10 minutes): **Gemini** (free tier, with Google Search) finds the website and whether the practice treats auto-accident / PIP / personal-injury patients; the site's own pages (respecting robots.txt) confirm it. Contact: business emails published on the site; the low-cost **OpenAI** model (default `gpt-4o-mini`) picks the best one and a contact name only when that isn't clear. An address is used only if it appears on the practice's site (never guessed) and its domain accepts mail. Daily AI-call budgets in settings.
+3. **Send** (`marketing_send.php`, every 5 minutes) through **SendGrid**: only **8am–noon in the practice's own time zone** (configurable; weekdays by default) — anything not sent by noon waits for the next day. Daily cap with warm-up (20 the first day, +10 a day by default). Email 1: the video (YouTube link, thumbnail), better patient outcomes / attorney relationships / less stressed staff, "free trial, no credit card, no strings attached". Follow-ups after 4 and 10 business days. Stops on unsubscribe, bounce, spam report, signup (credited via the trial link, or the same email) or "they replied".
+4. **Unsubscribe:** a link in every email (`unsubscribe.html`) plus `List-Unsubscribe` / one-click POST headers (Gmail/Yahoo requirement); honored immediately and permanently (`mkt_suppressions`), with SendGrid's event webhook adding bounces, drops, spam reports and unsubscribes. Existing customers are never emailed. Sending refuses to run without a postal address (CAN-SPAM).
+
+**Setup** — in `app/secrets.php`: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `SENDGRID_API_KEY`, `MKT_WEBHOOK_SECRET` (any long random string; optional `SENDGRID_WEBHOOK_PUBLIC_KEY` to verify SendGrid's signed webhook). In SendGrid: authenticate a sending domain (SPF/DKIM — ideally a separate domain such as getinjurycase.com, with DMARC), and point the Event Webhook (Bounced, Dropped, Spam reports, Unsubscribes) at `https://injurycase.com/api/m.php?a=sendgrid&k=<MKT_WEBHOOK_SECRET>`. In the console: from address, reply-to, postal address, YouTube link, then switch on Prospecting and Sending. Use *Preview* and *Send test* first. **Then install the jobs** (add to `/etc/cron.d/injurycase`, or the list in `deploy/aws/setup.sh` / `update.sh`):
+
+    15 2 * * *   apache php /var/www/injurycase/app/cli/marketing_discover.php >> /var/www/injurycase/storage/logs/marketing.log 2>&1
+    */10 * * * * apache php /var/www/injurycase/app/cli/marketing_research.php >> /var/www/injurycase/storage/logs/marketing.log 2>&1
+    */5 * * * *  apache php /var/www/injurycase/app/cli/marketing_send.php >> /var/www/injurycase/storage/logs/marketing.log 2>&1
+
+Outreach never uses the app's own email (Amazon SES), whose terms don't allow unsolicited mail.
+
 ## Install
 
 Requirements: PHP 8.1+ with `pdo_mysql`, `sodium`, `fileinfo` and `curl`; MySQL 8 or MariaDB 10.6+; Apache with `mod_rewrite`/`mod_headers` (or the nginx equivalent); and HTTPS.

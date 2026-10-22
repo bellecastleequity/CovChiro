@@ -46,3 +46,15 @@ define('STRIPE_PRICES', [
 // Public URL of the app (no trailing slash), used for Stripe return links.
 define('APP_URL', 'https://injurycase.com');
 define('SUPPORT_EMAIL', 'support@injurycase.com');
+
+// ========== MARKETING: automatic outreach to clinics (operator console → Marketing) ==========
+// Free AI model (Google AI Studio key) for finding practice websites and checking fit.
+// define('GEMINI_API_KEY', '...');
+// Low-cost OpenAI model for picking contact details when a site isn't clear.
+// define('OPENAI_API_KEY', 'sk-...');
+// SendGrid sends the outreach emails (never the app's own Amazon SES account).
+// define('SENDGRID_API_KEY', 'SG....');
+// Long random string; SendGrid's Event Webhook posts to /api/m.php?a=sendgrid&k=<this>.
+// define('MKT_WEBHOOK_SECRET', '...');
+// Optional: verify SendGrid's signed event webhook (the public key from SendGrid).
+// define('SENDGRID_WEBHOOK_PUBLIC_KEY', 'MFkwEwYH...');

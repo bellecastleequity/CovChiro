@@ -6,8 +6,10 @@
 //   GET  m.php?a=info&t=TOKEN                    unsubscribe page details
 //   POST m.php?a=u&t=TOKEN                       unsubscribe (the page's button,
 //                                                and one-click List-Unsubscribe)
-//   POST m.php?a=hook  (X-Webhook-Secret)        bounces / complaints from the
-//                                                sending service: {email, type}
+//   POST m.php?a=sendgrid&k=SECRET               SendGrid event webhook (bounces,
+//                                                drops, spam reports, unsubscribes)
+//   POST m.php?a=hook  (X-Webhook-Secret)        bounces / complaints from any
+//                                                other sending service: {email, type}
 require_once __DIR__ . '/../../app/bootstrap.php';
 require_once __DIR__ . '/../../app/marketing.php';
 header('X-Robots-Tag: noindex, nofollow');
@@ -42,6 +44,15 @@ if ($a === 'u') {
     if (!$p) json_response(['error' => 'This unsubscribe link isn\'t valid. Reply to the email with "unsubscribe" and we\'ll remove you.'], 404);
     mkt_unsubscribe($p);
     json_response(['ok' => true]);
+}
+
+if ($a === 'sendgrid') {
+    require_method('POST');
+    $secret = mkt_secret('MKT_WEBHOOK_SECRET');
+    $raw = (string)file_get_contents('php://input');
+    if ($secret === '' || !hash_equals($secret, (string)($_GET['k'] ?? '')) || !mkt_sendgrid_signature_ok($raw)) json_response(['error' => 'Forbidden'], 403);
+    $events = json_decode($raw, true);
+    json_response(['ok' => true, 'handled' => is_array($events) ? mkt_sendgrid_events($events) : 0]);
 }
 
 if ($a === 'hook') {

@@ -163,6 +163,8 @@ async function showSignup() {
   try { const r = await api('auth.php?action=plans'); plans = r.plans; trialDays = r.trialDays; } catch { /* plans list is optional */ }
   const hq = new URLSearchParams(location.hash.split('?')[1] || '');
   const wanted = hq.get('plan'), promo = hq.get('promo') || '';
+  // From an outreach email: remembered so the signup is credited to it.
+  if (/^[a-f0-9]{32}$/.test(hq.get('ref') || '')) { try { sessionStorage.setItem('ic_ref', hq.get('ref')); } catch { /* private mode */ } }
   authCard(`<form data-form="signup">
     <h3>Start your ${trialDays}-day free trial</h3>
     <p>No card needed. Set up your practice, then invite your team.</p>
@@ -296,7 +298,7 @@ document.addEventListener('submit', async (e) => {
       s = await api('auth.php?action=signup', {
         practice_name: form.querySelector('#su-practice').value, name: form.querySelector('#su-name').value,
         email: form.querySelector('#su-email').value, password: form.querySelector('#su-pw').value,
-        plan: form.querySelector('#su-plan').value, promo: form.querySelector('#su-promo').value.trim(), accept: true,
+        plan: form.querySelector('#su-plan').value, promo: form.querySelector('#su-promo').value.trim(), accept: true, ref: (() => { try { return sessionStorage.getItem('ic_ref') || ''; } catch { return ''; } })(),
       });
       history.replaceState(null, '', location.pathname);
     } else if (kind === 'mfasetup') s = await api('auth.php?action=mfa_setup_confirm', { code: form.querySelector('#mf-code').value });
@@ -344,7 +346,7 @@ const NAV = [
   ['dashboard', 'Dashboard', 'case.read'], ['huddle', 'Daily huddle', 'case.read'], ['cases', 'Cases', 'case.read'], ['tasks', 'Tasks', 'case.read'],
   ['schedule', 'Appointment upload', 'case.write'], ['ar', 'A/R & settlements', 'fin:balances'], ['contacts', 'Contacts', 'case.read'], ['playbook', 'PI playbook', 'case.read'],
   ['admin', 'Users', 'users.manage'], ['settings', 'Practice settings', 'users.manage'], ['billing', 'Plan & billing', 'users.manage'],
-  ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'],
+  ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'], ['marketing', 'Marketing', 'platform.manage'],
 ];
 
 // ---------- locations & providers ----------
@@ -430,7 +432,7 @@ function route() {
   main.innerHTML = '<div class="empty">Loading…</div>';
   window.scrollTo(0, 0);
   const pages = { dashboard: pageDashboard, cases: pageCases, case: pageCase, tasks: pageTasks, ar: pageAR, contacts: pageContacts, admin: pageAdmin, audit: pageAudit,
-    settings: pageSettings, billing: pageBilling, platform: pagePlatform, playbook: pagePlaybook, huddle: pageHuddle, schedule: pageSchedule };
+    settings: pageSettings, billing: pageBilling, platform: pagePlatform, playbook: pagePlaybook, huddle: pageHuddle, schedule: pageSchedule, marketing: pageMarketing };
   (pages[page] || (S.user.operator ? pagePlatform : pageDashboard))(main, parts.slice(1));
   if (!S.user.operator) refreshTaskBadge();
 }
@@ -2809,6 +2811,124 @@ async function pagePlatform(main) {
   }));
 }
 
+// ---------- marketing (operator): automatic outreach to clinics ----------
+const mktState = { status: '', specialty: '', q: '', page: 0 };
+const MKT_STATUS = { new: 'Waiting for research', qualified: 'Qualified', not_fit: 'Not a fit', no_email: 'No email found', ready: 'Queued', in_sequence: 'In sequence', done: 'Sequence finished',
+  unsubscribed: 'Unsubscribed', bounced: 'Bounced', converted: 'Started a trial', paused: 'Paused', error: 'Error' };
+
+async function pageMarketing(main) {
+  const r = await attempt(() => api('platform.php?action=mkt_overview'));
+  if (!r) return;
+  pageMarketing.data = r;
+  const s = r.settings, f = r.funnel, st = r.byStatus;
+  const tile = (k, v, cls = '') => `<div class="tile ${cls}"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;
+  const check = (ok, text) => `<li class="${ok ? 'ok' : 'todo'}">${ok ? '✓' : '○'} ${text}</li>`;
+  const chk = (id, on, label) => `<label class="check"><input type="checkbox" id="${id}"${on ? ' checked' : ''}> ${esc(label)}</label>`;
+  const num = (id, label, v, extra = '') => `<div><label for="${id}">${esc(label)}</label><input type="number" id="${id}" value="${esc(v)}" ${extra}></div>`;
+  const txt = (id, label, v, ph = '') => `<div><label for="${id}">${esc(label)}</label><input id="${id}" value="${esc(v)}" placeholder="${esc(ph)}"></div>`;
+  main.innerHTML = `<div class="page-head"><div><h1>Marketing</h1><div class="sub">Automatic prospecting and outreach to practices that treat auto-accident patients.</div></div><span class="spacer"></span>
+      <button class="btn ghost" data-act="mkt-add">+ Add a prospect</button></div>
+    ${r.blocker ? `<div class="notice">${esc(r.blocker)}</div>` : '<div class="notice ok"><strong>Sending is on.</strong> Emails go out ' + esc(s.window_start) + ':00–' + esc(s.window_end) + ':00 in each practice\'s time zone' + (s.weekdays_only ? ', weekdays' : '') + '.</div>'}
+    <div class="tiles">${tile('Prospects found', f.total)}${tile('Qualified with email', (st.ready || 0) + (st.in_sequence || 0) + (st.done || 0) + (st.converted || 0) + (st.unsubscribed || 0) + (st.bounced || 0))}
+      ${tile('Sent today', r.sentToday + ' / ' + r.capToday, 'accent')}${tile('Due now', r.queuedNow)}${tile('Clicked', f.clicked)}${tile('Trials started', f.converted)}${tile('Unsubscribed', f.unsubscribed)}</div>
+    <div class="grid-2 mt">
+      <div class="card"><h2>Setup</h2><ul class="mkt-check">
+        ${check(r.keys.gemini, 'Free AI model key (GEMINI_API_KEY) — finds websites and checks fit')}
+        ${check(r.keys.openai, 'OpenAI key (OPENAI_API_KEY) — contact details when unclear (low-cost model)')}
+        ${check(r.keys.sendgrid, 'SendGrid key (SENDGRID_API_KEY) — sends the emails')}
+        ${check(r.keys.webhook, 'SendGrid event webhook secret (MKT_WEBHOOK_SECRET) — bounces, spam reports and unsubscribes')}
+        ${check(!!s.from_email, 'From address (on a domain verified in SendGrid)')}${check(!!s.postal_address, 'Postal mailing address (required in every email)')}${check(!!s.video_url, 'YouTube link to the sales video')}
+        ${check(s.discover, 'Prospecting switched on')}${check(s.enabled, 'Sending switched on')}</ul>
+        <p class="small muted mt-sm">SendGrid → Settings → Mail Settings → Event Webhook: post <em>Bounced, Dropped, Spam reports, Unsubscribes</em> to<br><span class="mono">${esc(r.webhookUrl)}</span></p>
+        <p class="small muted">Today's AI use: Gemini ${r.ai.gemini?.calls || 0} / ${s.gemini_daily} calls · OpenAI ${r.ai.openai?.calls || 0} / ${s.openai_daily} calls (${r.ai.openai?.tokens || 0} tokens). Discovery: ${r.discovery.done} of ${r.discovery.segments} ZIP segments searched.</p></div>
+      <div class="card"><h2>Emails</h2><p class="small">A 3-email sequence: the introduction with the video, a short follow-up after ${esc(s.follow_up_days[0] ?? 4)} business days, and a last note after ${esc(s.follow_up_days[1] ?? 10)}. It stops when someone unsubscribes, bounces, starts a trial, or you mark a reply.</p>
+        <div class="badge-row mt-sm">${[1, 2, 3].map((n) => `<a class="btn ghost sm" href="api/platform.php?action=mkt_preview&step=${n}" target="_blank" rel="noopener">Preview email ${n}</a>`).join('')}</div>
+        <div class="form-grid mt"><div><label for="mkt-test-to">Send a test to</label><input id="mkt-test-to" type="email" value="${esc(S.user.email)}"></div><div><label for="mkt-test-step">Email</label><select id="mkt-test-step">${opt(1, 'Introduction')}${opt(2, 'Follow-up')}${opt(3, 'Last note')}</select></div></div>
+        <button class="btn ghost sm mt-sm" data-act="mkt-test">Send test</button>
+        <p class="small muted mt">Last 14 days: ${r.days.map((d) => `${esc(fmtDate(d.d))} ${+d.sent}`).join(' · ') || 'nothing sent yet'}</p></div></div>
+    <div class="card mt" id="mkt-settings"><h2>Settings</h2>
+      <div class="badge-row">${chk('ms-discover', s.discover, 'Prospecting on (find & research practices)')}${chk('ms-enabled', s.enabled, 'Sending on (no approval needed)')}${chk('ms-weekdays', s.weekdays_only, 'Weekdays only')}</div>
+      <h3 class="mt">Who to look for</h3><div class="assignee-list">${entries(r.specialties).map(([k, l]) => `<label class="check"><input type="checkbox" data-ms-sp="${k}"${s.specialties.includes(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>
+      <div class="form-grid mt">${txt('ms-states', 'States (comma-separated, blank = all)', s.states.join(', '), 'e.g. FL, GA, TX')}
+        ${num('ms-ws', 'Send window starts (hour, their time)', s.window_start, 'min="0" max="23"')}${num('ms-we', 'Send window ends (hour)', s.window_end, 'min="1" max="24"')}
+        ${num('ms-cap', 'Daily send cap', s.daily_cap, 'min="1"')}${num('ms-wu', 'Warm-up: first day', s.warmup_start, 'min="1"')}${num('ms-ws2', 'Warm-up: add per day', s.warmup_step, 'min="0"')}
+        ${txt('ms-fu', 'Follow-ups (business days after the first email)', s.follow_up_days.join(', '), '4, 10')}
+        ${txt('ms-fromname', 'From name', s.from_name)}${txt('ms-from', 'From address', s.from_email, 'hello@getinjurycase.com')}${txt('ms-reply', 'Replies go to', s.reply_to, 'you@injurycase.com')}
+        <div class="full"><label for="ms-postal">Postal mailing address (shown in every email)</label><input id="ms-postal" value="${esc(s.postal_address)}" placeholder="123 Main St, Suite 100, Tampa, FL 33602"></div>
+        ${txt('ms-video', 'YouTube video link', s.video_url, 'https://youtu.be/…')}${txt('ms-promo', 'Promo code on the trial link (optional)', s.promo)}
+        ${txt('ms-gm', 'Free model (Gemini)', s.gemini_model)}${txt('ms-om', 'Low-cost model (OpenAI)', s.openai_model)}
+        ${num('ms-gd', 'Gemini calls per day', s.gemini_daily, 'min="0"')}${num('ms-od', 'OpenAI calls per day', s.openai_daily, 'min="0"')}${num('ms-dd', 'New prospects per day', s.discover_daily, 'min="0"')}</div>
+      <button class="btn mt" data-act="mkt-save">Save settings</button></div>
+    <div class="card mt"><div class="card-head"><h2>Prospects</h2><span class="spacer"></span><button class="btn ghost sm" data-act="mkt-suppress">Do-not-email list (${r.suppressions})</button></div>
+      <div class="filters"><input type="search" id="mkt-q" placeholder="Search name, email, city" value="${esc(mktState.q)}">
+        <select id="mkt-status">${opt('', 'Any status', mktState.status)}${entries(MKT_STATUS).map(([k, l]) => opt(k, `${l} (${st[k] || 0})`, mktState.status)).join('')}</select>
+        <select id="mkt-sp">${opt('', 'Any specialty', mktState.specialty)}${entries(r.specialties).map(([k, l]) => opt(k, l, mktState.specialty)).join('')}</select></div>
+      <div id="mkt-list" class="mt-sm"><div class="empty">Loading…</div></div></div>`;
+  const reload = () => { mktState.page = 0; loadMktProspects(); };
+  main.querySelector('#mkt-q').addEventListener('change', (e) => { mktState.q = e.target.value; reload(); });
+  main.querySelector('#mkt-status').addEventListener('change', (e) => { mktState.status = e.target.value; reload(); });
+  main.querySelector('#mkt-sp').addEventListener('change', (e) => { mktState.specialty = e.target.value; reload(); });
+  loadMktProspects();
+}
+
+async function loadMktProspects() {
+  const qs = new URLSearchParams({ status: mktState.status, specialty: mktState.specialty, q: mktState.q, page: mktState.page });
+  const r = await attempt(() => api('platform.php?action=mkt_prospects&' + qs));
+  const box = document.getElementById('mkt-list');
+  if (!r || !box) return;
+  box.innerHTML = r.prospects.length ? `<div class="table-wrap"><table><thead><tr><th>Practice</th><th>Contact</th><th>Where</th><th>Status</th><th class="num">Fit</th><th>Emails</th><th>Next</th></tr></thead><tbody>
+    ${r.prospects.map((p) => `<tr><td><button class="linklike" data-act="mkt-open" data-id="${p.id}">${esc(p.name)}</button><div class="small muted">${esc(pageMarketing.data.specialties[p.specialty] || p.specialty)}</div></td>
+      <td class="small">${esc(p.contact_name || '')}${p.email ? `<div class="mono">${esc(p.email)}</div>` : ''}</td><td class="small">${esc([p.city, p.state].filter(Boolean).join(', '))}</td>
+      <td><span class="chip ${p.status === 'converted' ? 'teal' : ['unsubscribed', 'bounced', 'error'].includes(p.status) ? 'red' : ['ready', 'in_sequence'].includes(p.status) ? 'ochre' : 'na'}">${esc(MKT_STATUS[p.status] || p.status)}</span>${p.clicked_at ? ' <span class="chip teal">clicked</span>' : ''}</td>
+      <td class="num">${p.fit_score ?? '—'}</td><td class="num">${p.step}</td><td class="small">${p.next_send_at ? esc(fmtDate(p.next_send_at)) : '—'}</td></tr>`).join('')}</tbody></table></div>
+    <div class="badge-row mt-sm">${mktState.page ? '<button class="btn ghost sm" data-act="mkt-page" data-d="-1">← Newer</button>' : ''}${r.more ? '<button class="btn ghost sm" data-act="mkt-page" data-d="1">Older →</button>' : ''}</div>`
+    : '<div class="empty">No prospects here yet. They appear as prospecting runs (nightly discovery, research every 10 minutes).</div>';
+}
+
+async function mktOpen(id) {
+  const r = await attempt(() => api('platform.php?action=mkt_prospect&id=' + id));
+  if (!r) return;
+  const p = r.prospect;
+  const row = (k, v) => v ? `<dt>${esc(k)}</dt><dd>${v}</dd>` : '';
+  const m = openModal({ title: p.name, wide: true, okText: 'Close', body: `<dl class="kv">
+      ${row('Status', esc(MKT_STATUS[p.status] || p.status) + (p.error ? ` <span class="small err">${esc(p.error)}</span>` : ''))}${row('Specialty', esc(pageMarketing.data.specialties[p.specialty] || p.specialty))}
+      ${row('Contact', esc([p.contact_name, p.contact_role].filter(Boolean).join(' — ')))}${row('Email', p.email ? `<span class="mono">${esc(p.email)}</span> <span class="small muted">(${esc(p.email_source || '')})</span>` : '')}
+      ${row('Website', p.website ? `<a href="${esc(p.website)}" target="_blank" rel="noopener noreferrer">${esc(p.website)}</a>` : '')}${row('Phone', esc(p.phone))}${row('Address', esc([p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')))}
+      ${row('Fit', p.fit_score !== null ? esc(p.fit_score) + (p.fit_evidence ? `<div class="small muted">“${esc(p.fit_evidence)}”</div>` : '') : '')}${row('NPI', esc(p.npi))}${row('Next email', p.next_send_at ? esc(fmtDate(p.next_send_at)) : '')}</dl>
+    <h3 class="mt">Emails</h3>${r.sends.length ? `<ul class="small">${r.sends.map((x) => `<li>${esc(fmtDate(x.sent_at))} · #${x.step} “${esc(x.subject)}” ${x.ok == 1 ? '✓' : '<span class="err">failed: ' + esc(x.error || '') + '</span>'}</li>`).join('')}</ul>` : '<p class="small muted">None sent yet.</p>'}
+    ${r.events.length ? `<h3 class="mt">Activity</h3><ul class="small">${r.events.map((e) => `<li>${esc(fmtDate(e.at))} · ${esc(e.kind)}${e.detail ? ' — ' + esc(e.detail) : ''}</li>`).join('')}</ul>` : ''}
+    <div class="badge-row mt">${['ready', 'in_sequence'].includes(p.status) ? '<button class="btn ghost sm" data-mkt-do="pause">Pause</button>' : ''}${['paused', 'error'].includes(p.status) && p.email ? '<button class="btn ghost sm" data-mkt-do="resume">Resume</button>' : ''}
+      ${['in_sequence', 'ready'].includes(p.status) ? '<button class="btn ghost sm" data-mkt-do="replied">They replied — stop emails</button>' : ''}${!['unsubscribed', 'converted'].includes(p.status) ? '<button class="btn ghost sm" data-mkt-do="unsubscribe">Unsubscribe</button>' : ''}
+      ${['not_fit', 'no_email', 'error'].includes(p.status) ? '<button class="btn ghost sm" data-mkt-do="research">Research again</button>' : ''}<a class="btn ghost sm" href="api/platform.php?action=mkt_preview&id=${p.id}&step=${Math.min(3, (p.step || 0) + 1)}" target="_blank" rel="noopener">Preview their next email</a></div>` });
+  m.el.querySelectorAll('[data-mkt-do]').forEach((b) => b.addEventListener('click', async () => {
+    if (await attempt(() => api('platform.php?action=mkt_action', { id: p.id, do: b.dataset.mktDo }))) { m.close(); toast('Done'); loadMktProspects(); }
+  }));
+}
+
+async function mktSuppressModal() {
+  const r = await attempt(() => api('platform.php?action=mkt_suppress'));
+  if (!r) return;
+  openModal({ title: 'Do-not-email list', okText: 'Add', body: `<p class="small">Unsubscribes, bounces and spam reports are added automatically and can't be removed. Add an address, or a whole domain like <span class="mono">@bigclinic.com</span>, to never email it.</p>
+      <div class="form-grid mt"><div class="full"><label for="sup-e">Email or @domain</label><input id="sup-e"></div></div>
+      <div class="table-wrap mt"><table class="small"><thead><tr><th>Address</th><th>Why</th><th>Added</th></tr></thead><tbody>${r.suppressions.map((x) => `<tr><td class="mono">${esc(x.email)}</td><td>${esc(x.reason)}</td><td>${esc(fmtDate(x.created_at))}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Empty.</td></tr>'}</tbody></table></div>`,
+    onOk: async (el) => { await api('platform.php?action=mkt_suppress', { email: el.querySelector('#sup-e').value }); toast('Added'); pageMarketing(document.getElementById('main')); } });
+}
+
+function mktAddModal() {
+  const defs = [{ n: 'name', l: 'Practice', req: true }, { n: 'email', l: 'Email', t: 'email', req: true }, { n: 'contact_name', l: 'Contact name' },
+    { n: 'specialty', l: 'Specialty', t: 'select', blank: false, opts: entries(pageMarketing.data.specialties) }, { n: 'city', l: 'City' }, { n: 'state', l: 'State (2 letters)' }, { n: 'website', l: 'Website' }];
+  openModal({ title: 'Add a prospect', okText: 'Add to the queue', body: `<p class="small">They'll get the email sequence in the next send window (unless they've unsubscribed before).</p>${fieldsHtml(defs)}`,
+    onOk: async (el) => { await api('platform.php?action=mkt_add', readFields(el, defs)); toast('Added to the queue'); pageMarketing(document.getElementById('main')); } });
+}
+
+function mktSettingsPayload() {
+  const v = (id) => document.getElementById(id).value, c = (id) => document.getElementById(id).checked;
+  return { discover: c('ms-discover'), enabled: c('ms-enabled'), weekdays_only: c('ms-weekdays'), specialties: [...document.querySelectorAll('[data-ms-sp]:checked')].map((x) => x.dataset.msSp),
+    states: v('ms-states').split(/[\s,]+/).filter(Boolean), window_start: +v('ms-ws'), window_end: +v('ms-we'), daily_cap: +v('ms-cap'), warmup_start: +v('ms-wu'), warmup_step: +v('ms-ws2'),
+    follow_up_days: v('ms-fu').split(/[\s,]+/).filter(Boolean).map(Number), from_name: v('ms-fromname'), from_email: v('ms-from'), reply_to: v('ms-reply'), postal_address: v('ms-postal'),
+    video_url: v('ms-video'), promo: v('ms-promo'), gemini_model: v('ms-gm'), openai_model: v('ms-om'), gemini_daily: +v('ms-gd'), openai_daily: +v('ms-od'), discover_daily: +v('ms-dd') };
+}
+
 // ---------- promo codes (operator) ----------
 async function promoSectionHtml() {
   const r = await attempt(() => api('platform.php?action=promos'));
@@ -2941,6 +3061,19 @@ const ACTIONS = {
     if (r) { toast(el.dataset.reset ? 'Back to the defaults' : 'Cost list saved'); await refreshSession(); pageSettings(document.getElementById('main')); }
   },
   'promo-check': () => checkPromo(),
+  'mkt-save': async () => {
+    const body = mktSettingsPayload();
+    if (body.enabled && !pageMarketing.data.settings.enabled && !(await confirmBox('Turn on automatic sending?', 'Emails will go out to qualified practices every weekday morning without approval, up to the daily cap (starting with the warm-up amount).', 'Turn on'))) return;
+    const r = await attempt(() => api('platform.php?action=mkt_settings', body));
+    if (r) { toast(r.blocker && body.enabled ? 'Saved — ' + r.blocker : 'Saved'); pageMarketing(document.getElementById('main')); }
+  },
+  'mkt-test': async () => {
+    if (await attempt(() => api('platform.php?action=mkt_test', { to: document.getElementById('mkt-test-to').value, step: +document.getElementById('mkt-test-step').value }))) toast('Test sent');
+  },
+  'mkt-open': (el) => mktOpen(+el.dataset.id),
+  'mkt-page': (el) => { mktState.page = Math.max(0, mktState.page + +el.dataset.d); loadMktProspects(); },
+  'mkt-suppress': () => mktSuppressModal(),
+  'mkt-add': () => mktAddModal(),
   'sched-preview': () => schedPreviewFile(),
   'sched-cancel': () => { schedState.preview = null; schedState.review = null; pageSchedule(document.getElementById('main')); },
   'sched-done': () => { schedState.result = null; pageSchedule(document.getElementById('main')); },

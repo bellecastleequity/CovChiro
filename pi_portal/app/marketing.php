@@ -90,10 +90,39 @@ function mkt_send_blocker(array $s): ?string {
     if (!$s['enabled']) return 'Sending is switched off.';
     if (trim($s['postal_address']) === '') return 'Add your postal mailing address (required by law in every marketing email).';
     if ($s['from_email'] === '') return 'Add the address emails come from.';
-    if (!mkt_smtp()) return 'The marketing mail account (MKT_SMTP_HOST) isn\'t set up in secrets.php.';
+    if (mkt_secret('SENDGRID_API_KEY') === '' && !mkt_smtp()) return 'SendGrid isn\'t set up: add SENDGRID_API_KEY to secrets.php.';
     return null;
 }
 
+// Outreach goes through SendGrid (SENDGRID_API_KEY) — kept separate from
+// the app's own email (trial reminders, alerts, sent through Amazon SES)
+// so outreach can never affect their delivery. SendGrid's own click,
+// open and subscription tracking are turned off: links and unsubscribes
+// are handled here. Returns ['ok', 'error', 'permanent'].
+function mkt_deliver(string $to, string $subject, string $text, string $html, array $opts, array $meta): array {
+    $key = mkt_secret('SENDGRID_API_KEY');
+    if ($key === '') return send_mail_html(mkt_smtp(), $to, $subject, $text, $html, $opts);
+    $headers = [];
+    foreach ($opts['headers'] ?? [] as $h) { [$k, $v] = array_map('trim', explode(':', $h, 2)); if (!in_array(strtolower($k), ['precedence', 'feedback-id'], true)) $headers[$k] = $v; }
+    $body = [
+        'personalizations' => [['to' => [['email' => $to]], 'custom_args' => array_map('strval', $meta)]],
+        'from' => ['email' => $opts['from'], 'name' => $opts['from_name']],
+        'reply_to' => ['email' => $opts['reply_to'] ?? $opts['from']],
+        'subject' => $subject,
+        'content' => [['type' => 'text/plain', 'value' => $text], ['type' => 'text/html', 'value' => $html]],
+        'headers' => (object)$headers,
+        'categories' => ['outreach', 'step' . ($meta['step'] ?? 1)],
+        'tracking_settings' => ['click_tracking' => ['enable' => false, 'enable_text' => false], 'open_tracking' => ['enable' => false], 'subscription_tracking' => ['enable' => false]],
+    ];
+    $r = mkt_http('POST', mkt_base('MKT_SENDGRID_BASE', 'https://api.sendgrid.com/') . 'v3/mail/send', $body, ['Authorization: Bearer ' . $key], 30);
+    if ($r['code'] === 202) return ['ok' => true, 'error' => null, 'permanent' => false];
+    $e0 = json_decode($r['body'], true)['errors'][0] ?? [];
+    $err = $e0['message'] ?? ('SendGrid ' . $r['code']);
+    // 400 about the recipient = that address can't be used; 401/403/429/5xx = try later.
+    return ['ok' => false, 'error' => mb_substr($err, 0, 250), 'permanent' => $r['code'] === 400 && (str_contains((string)($e0['field'] ?? ''), 'to') || preg_match('/address|email/i', $err))];
+}
+
+// Optional fallback: a plain SMTP account for outreach instead of SendGrid.
 // The marketing SMTP account — kept separate from the app's own email
 // (trial reminders, alerts) so outreach can never affect their delivery.
 function mkt_smtp(): ?array {
@@ -252,7 +281,7 @@ function mkt_host(string $url): string { return strtolower(preg_replace('/^www\.
 function mkt_robots_ok(string $url): bool {
     $p = parse_url($url);
     if (empty($p['host'])) return false;
-    $r = mkt_http('GET', ($p['scheme'] ?? 'https') . '://' . $p['host'] . '/robots.txt', null, [], 10);
+    $r = mkt_http('GET', ($p['scheme'] ?? 'https') . '://' . $p['host'] . (isset($p['port']) ? ':' . $p['port'] : '') . '/robots.txt', null, [], 10);
     if ($r['code'] !== 200) return true;
     $applies = false; $path = $p['path'] ?? '/';
     foreach (preg_split('/\R/', $r['body']) as $line) {
@@ -456,27 +485,27 @@ function mkt_send_due(array $s, int $max, ?int $now = null): array {
     $due = $pdo->query("SELECT * FROM mkt_prospects WHERE status IN ('ready','in_sequence') AND email IS NOT NULL AND next_send_at <= '" . date('Y-m-d H:i:s', $now ?? time()) . "' ORDER BY next_send_at, id LIMIT 2000")->fetchAll();
     $sent = 0; $failed = 0; $waiting = 0;
     foreach ($due as $p) {
+        if (mkt_suppressed($p['email'])) { mkt_set((int)$p['id'], ['status' => 'unsubscribed', 'next_send_at' => null]); continue; }
         if (!mkt_in_window($p['state'], $s, $now)) { $waiting++; continue; }   // waits for its window (tomorrow, if today's has passed)
         if ($sent + $failed >= $max) { $waiting++; continue; }
-        if (mkt_suppressed($p['email'])) { mkt_set((int)$p['id'], ['status' => 'unsubscribed', 'next_send_at' => null]); continue; }
-        $r = mkt_send_one($p, (int)$p['step'] + 1, $s);
+        $r = mkt_send_one($p, (int)$p['step'] + 1, $s, null, $now);
         $r['ok'] ? $sent++ : $failed++;
     }
     return [$sent, $failed, $waiting];
 }
 
-function mkt_send_one(array $p, int $step, array $s, ?string $to = null): array {
+function mkt_send_one(array $p, int $step, array $s, ?string $to = null, ?int $now = null): array {
     [$subject, $html, $text] = mkt_render($p, $step, $s);
     $u = mkt_links($p);
-    $res = send_mail_html(mkt_smtp(), $to ?? $p['email'], $subject, $text, $html, [
+    $res = mkt_deliver($to ?? $p['email'], $subject, $text, $html, [
         'from' => $s['from_email'], 'from_name' => $s['from_name'], 'reply_to' => $s['reply_to'] ?: $s['from_email'],
         'headers' => ['List-Unsubscribe: <' . $u['unsub_post'] . '>, <mailto:' . ($s['reply_to'] ?: $s['from_email']) . '?subject=unsubscribe>', 'List-Unsubscribe-Post: List-Unsubscribe=One-Click',
-            'Precedence: bulk', 'X-Auto-Response-Suppress: OOF, AutoReply', 'Feedback-ID: s' . $step . ':outreach:injurycase']]);
+            'Precedence: bulk', 'X-Auto-Response-Suppress: OOF, AutoReply', 'Feedback-ID: s' . $step . ':outreach:injurycase']], ['prospect' => $p['id'], 'step' => $step, 'test' => $to !== null ? 1 : 0]);
     if ($to !== null) return $res;    // a test send
     pi_db()->prepare('INSERT INTO mkt_sends (prospect_id, step, email, subject, ok, error, sent_at) VALUES (?,?,?,?,?,?,?)')->execute([$p['id'], $step, $p['email'], $subject, $res['ok'] ? 1 : 0, $res['error'], now_str()]);
     if ($res['ok']) {
         $more = $step <= count($s['follow_up_days']);
-        $next = $more ? mkt_add_business_days(date('Y-m-d'), $s['follow_up_days'][$step - 1] - ($step > 1 ? $s['follow_up_days'][$step - 2] : 0)) . ' 00:00:00' : null;
+        $next = $more ? mkt_add_business_days(date('Y-m-d', $now ?? time()), $s['follow_up_days'][$step - 1] - ($step > 1 ? $s['follow_up_days'][$step - 2] : 0)) . ' 00:00:00' : null;
         mkt_set((int)$p['id'], ['step' => $step, 'last_sent_at' => now_str(), 'status' => $more ? 'in_sequence' : 'done', 'next_send_at' => $next, 'attempts' => 0, 'error' => null]);
     } elseif ($res['permanent']) {
         mkt_suppress($p['email'], 'bounce');
@@ -509,6 +538,44 @@ function mkt_prospect_by_token(string $t): ?array {
     $s = pi_db()->prepare('SELECT * FROM mkt_prospects WHERE token = ?');
     $s->execute([$t]);
     return $s->fetch() ?: null;
+}
+
+// SendGrid event webhook: bounces, drops, spam reports and unsubscribes
+// stop all email to that address for good. Returns how many were acted on.
+function mkt_sendgrid_events(array $events): int {
+    $n = 0;
+    foreach ($events as $e) {
+        $email = strtolower(trim((string)($e['email'] ?? '')));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || !empty($e['test']) && $e['test'] === '1') continue;
+        $ev = (string)($e['event'] ?? '');
+        $reason = match (true) {
+            $ev === 'bounce' && ($e['type'] ?? 'bounce') !== 'blocked' => 'bounce',
+            $ev === 'dropped' && preg_match('/bounce|invalid/i', (string)($e['reason'] ?? '')) => 'bounce',
+            $ev === 'spamreport', $ev === 'dropped' && preg_match('/spam/i', (string)($e['reason'] ?? '')) => 'complaint',
+            in_array($ev, ['unsubscribe', 'group_unsubscribe'], true), $ev === 'dropped' && preg_match('/unsubscrib/i', (string)($e['reason'] ?? '')) => 'unsubscribe',
+            default => null,
+        };
+        if (!$reason) continue;
+        mkt_suppress($email, $reason);
+        $s = pi_db()->prepare('SELECT * FROM mkt_prospects WHERE email = ?'); $s->execute([$email]);
+        foreach ($s->fetchAll() as $row) {
+            if ($reason === 'bounce') { mkt_set((int)$row['id'], ['status' => $row['status'] === 'converted' ? 'converted' : 'bounced', 'next_send_at' => null]); mkt_log((int)$row['id'], 'bounce', 'sendgrid ' . $ev); }
+            else mkt_unsubscribe($row, $reason);
+        }
+        $n++;
+    }
+    return $n;
+}
+
+// SendGrid's signed event webhook (optional): ECDSA over timestamp + body.
+function mkt_sendgrid_signature_ok(string $body): bool {
+    $pub = mkt_secret('SENDGRID_WEBHOOK_PUBLIC_KEY');
+    if ($pub === '') return true;
+    $sig = base64_decode((string)($_SERVER['HTTP_X_TWILIO_EMAIL_EVENT_WEBHOOK_SIGNATURE'] ?? ''), true);
+    $ts = (string)($_SERVER['HTTP_X_TWILIO_EMAIL_EVENT_WEBHOOK_TIMESTAMP'] ?? '');
+    if (!$sig || $ts === '') return false;
+    $pem = "-----BEGIN PUBLIC KEY-----\n" . chunk_split($pub, 64, "\n") . "-----END PUBLIC KEY-----\n";
+    return openssl_verify($ts . $body, $sig, $pem, OPENSSL_ALGO_SHA256) === 1;
 }
 
 // A new practice that came from outreach (signup link, or the same email).
@@ -563,7 +630,7 @@ function mkt_render(array $p, int $step, array $s): array {
         $body = $p_($h($hi) . ',')
             . $p_('Auto-accident cases are some of the most rewarding patients a ' . $h($sp['one']) . ' sees — and the most paperwork-heavy. Missed PIP deadlines, gaps in care, attorneys waiting on updates and a front desk juggling spreadsheets all cost patients and practices.')
             . $p_('<strong>InjuryCase</strong> keeps every injury case on track, from the first visit to the final check:')
-            . ($video ? '<a href="' . $h($u['video']) . '" style="display:block;margin:6px 0 18px;text-decoration:none"><img src="' . $img . '/video-thumb.png" width="536" alt="Watch the 2-minute InjuryCase tour" style="display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:12px"></a>' : '')
+            . ($video ? '<a href="' . $h($u['video']) . '" style="display:block;margin:6px 0 18px;text-decoration:none"><img src="' . $img . '/video-thumb.jpg" width="536" alt="Watch the 2-minute InjuryCase tour" style="display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:12px"></a>' : '')
             . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
             . $benefit('&#10084;', 'Better patient outcomes', 'Gaps in care, missed visits and overdue referrals are flagged every morning, so patients finish their treatment plans and get the care their recovery depends on.')
             . $benefit('&#9878;', 'Better attorney relationships', 'Status updates, treatment-complete and reduction letters in one click — and automatic status requests — so attorneys always have what they need.')
