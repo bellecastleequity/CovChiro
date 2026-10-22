@@ -74,3 +74,7 @@ Same voice and timing, with layouts rebuilt for each frame:
 - **Feed, 4:5 (1080×1350):** `InjuryCase ad 30s 4x5.mp4`, `InjuryCase ad 15s 4x5.mp4`.
 - Layouts: `ad30_9x16.html`, `ad30_4x5.html`, `ad15_9x16.html`, `ad15_4x5.html`. Build one with, e.g., `python3 build_video.py --scenes ad30.json --html ad30_9x16.html --out "InjuryCase ad 30s 9x16.mp4" --work .build/ad30_9x16`.
 - These end on a "Start free trial" button graphic instead of the QR code. On Instagram the ad's own call-to-action button (e.g. "Sign Up") does the linking.
+
+## QR code
+
+Every QR code in the videos (`assets/qr.svg`) opens **https://injurycase.com/start**, which the site redirects to the free-trial sign-up (`/app.html#signup`). The redirect is one line in `pi_portal/public/.htaccess`: point it somewhere else (a promotion, a landing page) and every QR already posted follows, with no re-rendering. To check a video's code after a rebuild, scan the end card with a phone camera.
