@@ -68,8 +68,9 @@ Finish with the commands the script prints: create your operator login and your
 own (comped) clinic, then import your spreadsheets.
 
 ## 4. Stripe
-Edit `/var/www/injurycase/app/secrets.php` and uncomment the Stripe lines (Price
-IDs for $39 / $59 / $79). Set the webhook to
+Edit `/var/www/injurycase/app/secrets.php` and uncomment the Stripe lines (monthly
+Price IDs for $39 / $59 / $79 and annual ones for $390 / $590 / $790). For trial
+reminder emails, also fill in the SES SMTP lines (see the main README). Set the webhook to
 `https://<domain>/api/billing.php?action=webhook`, then run `systemctl reload php-fpm`.
 See the main README for details.
 

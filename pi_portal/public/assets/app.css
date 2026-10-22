@@ -366,3 +366,10 @@ table.audit td{vertical-align:top;}
 .pipe:hover{border-color:var(--line);box-shadow:var(--shadow);}
 .auth-wrap{background:radial-gradient(900px 420px at 20% -10%, rgba(31,168,102,0.18), transparent 70%),radial-gradient(800px 400px at 90% 0%, rgba(47,111,222,0.14), transparent 70%),var(--bg);}
 .plan-card ul li::before{color:var(--green);}
+/* ---------- billing period toggle ---------- */
+.interval-toggle{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px;margin:4px 0 14px;}
+.interval-toggle button{border:0;background:none;font:600 0.86rem var(--sans);color:var(--muted);padding:6px 14px;border-radius:999px;cursor:pointer;display:inline-flex;gap:6px;align-items:center;}
+.interval-toggle button.on{background:var(--navy);color:#fff;}
+.interval-toggle button:disabled{opacity:0.5;cursor:default;}
+.interval-toggle .save{font-size:0.7rem;background:var(--amber-tint);color:var(--amber-ink);padding:1px 7px;border-radius:999px;}
+.interval-toggle button.on .save{background:var(--green);color:var(--navy);}

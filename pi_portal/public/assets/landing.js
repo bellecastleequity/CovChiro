@@ -5,18 +5,31 @@
 (() => {
   document.getElementById('year').textContent = new Date().getFullYear();
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  fetch('api/auth.php?action=plans', { credentials: 'same-origin' }).then((r) => r.json()).then((d) => {
-    document.getElementById('trial-days').textContent = d.trialDays;
+  let data = null, interval = 'monthly';
+  const render = () => {
+    const d = data;
     const keys = Object.keys(d.plans);
+    const annual = interval === 'annual';
     document.getElementById('pricing-cards').innerHTML = keys.map((k, i) => {
       const p = d.plans[k];
       const featured = i === 1;
       return `<div class="price-card${featured ? ' featured' : ''}">${featured ? '<span class="badge">Most popular</span>' : ''}
         <h3>${esc(p.name)}</h3><p class="muted">${esc(p.blurb)}</p>
-        <div class="amount">$${esc(p.price)}<span>/month</span></div>
+        <div class="amount">$${esc(annual ? p.annual_price : p.price)}<span>/${annual ? 'year' : 'month'}</span></div>
+        <p class="per">${annual ? `$${(p.annual_price / 12).toFixed(2)}/month · save $${p.price * 12 - p.annual_price}` : `or $${esc(p.annual_price)}/year — 2 months free`}</p>
         <ul><li>${p.active_cases ? esc(p.active_cases) + ' open cases' : 'Unlimited open cases'}</li><li>${p.users ? esc(p.users) + ' team members' : 'Unlimited team members'}</li>
           <li>Unlimited closed cases</li><li>Every feature included</li><li>BAA &amp; two-factor security</li></ul>
         <a class="btn${featured ? '' : ' ghost'}" href="app.html#signup?plan=${encodeURIComponent(k)}">Start free trial</a></div>`;
     }).join('');
+  };
+  document.querySelectorAll('[data-interval]').forEach((b) => b.addEventListener('click', () => {
+    interval = b.dataset.interval;
+    document.querySelectorAll('[data-interval]').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
+    if (data) render();
+  }));
+  fetch('api/auth.php?action=plans', { credentials: 'same-origin' }).then((r) => r.json()).then((d) => {
+    document.getElementById('trial-days').textContent = d.trialDays;
+    data = d;
+    render();
   }).catch(() => { /* pricing is optional on the page */ });
 })();

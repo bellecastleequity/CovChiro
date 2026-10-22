@@ -158,7 +158,7 @@ async function showSignup() {
       <div><label for="su-name">Your name</label><input id="su-name" required autocomplete="name"></div>
       <div><label for="su-email">Work email</label><input id="su-email" type="email" required autocomplete="email"></div>
       <div><label for="su-pw">Password (12+ characters)</label><input id="su-pw" type="password" required autocomplete="new-password"></div>
-      <div><label for="su-plan">Plan after trial</label><select id="su-plan">${entries(plans).map(([k, p]) => opt(k, `${p.name} — $${p.price}/mo`, wanted || 'solo')).join('')}</select></div>
+      <div><label for="su-plan">Plan after trial</label><select id="su-plan">${entries(plans).map(([k, p]) => opt(k, `${p.name} — $${p.price}/mo or $${p.annual_price}/yr`, wanted || 'solo')).join('')}</select></div>
     </div>
     <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice.</label>
     <div class="err" data-role="err"></div>
@@ -1863,27 +1863,44 @@ async function loadEhrFormats() {
 }
 
 // ---------- plan & billing ----------
+const billingInterval = { value: '' };
 async function pageBilling(main) {
   const r = await attempt(() => api('billing.php?action=status'));
   if (!r) return;
   const p = r.practice;
   if (location.hash.includes('done=1')) { toast('Thanks! Your subscription is being activated.'); history.replaceState(null, '', '#/billing'); setTimeout(refreshSession, 2500); }
-  const statusText = { trialing: p.access === 'full' ? `Free trial — ${p.trialDaysLeft} days left` : 'Free trial ended', active: 'Active', past_due: 'Payment past due', canceled: 'Canceled', comped: 'Complimentary' }[p.status];
+  const freeUntil = p.status === 'active' && p.subscribed && p.trialEndsAt && p.trialEndsAt.slice(0, 10) > today() ? p.trialEndsAt.slice(0, 10) : null;
+  const statusText = { trialing: p.access === 'full' ? `Free trial — ${p.trialDaysLeft} days left` : 'Free trial ended',
+    active: freeUntil ? `Subscribed (${p.interval}) — free until ${fmtDate(freeUntil)}` : `Active · billed ${p.interval === 'annual' ? 'yearly' : 'monthly'}`,
+    past_due: 'Payment past due', canceled: 'Canceled', comped: 'Complimentary' }[p.status];
+  const interval = billingInterval.value || (p.interval === 'annual' ? 'annual' : 'monthly');
+  const anyAnnual = Object.values(r.plans).some((pl) => pl.availableAnnual);
   const usage = (n, max) => `${n}${max ? ' of ' + max : ''}`;
   const pct = (n, max) => max ? Math.min(100, Math.round(n / max * 100)) : 0;
-  main.innerHTML = `<div class="page-head"><div><h1>Plan &amp; billing</h1><div class="sub">${esc(p.planName)} plan · ${esc(statusText)}${p.currentPeriodEnd && p.status === 'active' ? ' · renews ' + esc(fmtDate(p.currentPeriodEnd)) : ''}</div></div><span class="spacer"></span>
+  main.innerHTML = `<div class="page-head"><div><h1>Plan &amp; billing</h1><div class="sub">${esc(p.planName)} plan · ${esc(statusText)}${p.currentPeriodEnd && p.status === 'active' ? (freeUntil ? ' · first charge ' : ' · renews ') + esc(fmtDate(p.currentPeriodEnd)) : ''}</div></div><span class="spacer"></span>
       ${r.hasCustomer ? '<button class="btn ghost" data-act="billing-portal">Manage billing &amp; invoices</button>' : ''}</div>
     <div class="tiles">
       <div class="tile"><div class="k">Open cases</div><div class="v">${usage(p.activeCases, p.limits.activeCases)}</div>${p.limits.activeCases ? `<div class="bar ${pct(p.activeCases, p.limits.activeCases) >= 90 ? 'warn' : ''}"><i data-w="${pct(p.activeCases, p.limits.activeCases)}"></i></div>` : ''}</div>
       <div class="tile"><div class="k">Users</div><div class="v">${usage(p.activeUsers, p.limits.users)}</div>${p.limits.users ? `<div class="bar"><i data-w="${pct(p.activeUsers, p.limits.users)}"></i></div>` : ''}</div>
     </div>
     ${!r.billingReady ? '<div class="notice">Online billing isn\'t switched on yet for this installation.</div>' : ''}
+    ${p.status === 'trialing' && p.access === 'full' ? `<div class="notice ok">${r.firstCharge ? `Subscribing now keeps the rest of your free trial — your card is first charged on <strong>${esc(fmtDate(r.firstCharge))}</strong>.` : 'Your trial ends within two days, so billing starts when you subscribe.'} Cancel any time before then and you won't be charged.</div>` : ''}
+    <div class="interval-toggle" role="radiogroup" aria-label="Billing period">
+      <button role="radio" data-act="billing-interval" data-v="monthly" class="${interval === 'monthly' ? 'on' : ''}" aria-checked="${interval === 'monthly'}">Monthly</button>
+      <button role="radio" data-act="billing-interval" data-v="annual" class="${interval === 'annual' ? 'on' : ''}" aria-checked="${interval === 'annual'}"${anyAnnual || !r.billingReady ? '' : ' disabled title="Annual billing isn\'t set up yet"'}>Annual <span class="save">2 months free</span></button>
+    </div>
     <div class="plans">${entries(r.plans).map(([k, pl]) => {
-      const current = k === p.plan && ['active', 'past_due', 'comped'].includes(p.status);
-      return `<div class="plan-card${current ? ' current' : ''}"><h3>${esc(pl.name)}</h3><div class="price">$${pl.price}<span>/month</span></div>
+      const current = k === p.plan && ['active', 'past_due', 'comped'].includes(p.status) && (p.status === 'comped' || p.interval === interval);
+      const annual = interval === 'annual';
+      const avail = annual ? pl.availableAnnual : pl.available;
+      const subscribed = p.subscribed && ['active', 'past_due'].includes(p.status);
+      return `<div class="plan-card${current ? ' current' : ''}"><h3>${esc(pl.name)}</h3>
+        <div class="price">$${annual ? pl.annual_price : pl.price}<span>/${annual ? 'year' : 'month'}</span></div>
+        <p class="small ${annual ? '' : 'muted'}">${annual ? `$${(pl.annual_price / 12).toFixed(2)}/month · save $${pl.price * 12 - pl.annual_price} a year` : `or $${pl.annual_price}/year with annual billing`}</p>
         <p class="small muted">${esc(pl.blurb)}</p>
         <ul class="small"><li>${pl.active_cases ? pl.active_cases + ' open cases' : 'Unlimited open cases'}</li><li>${pl.users ? pl.users + ' users' : 'Unlimited users'}</li><li>All features, unlimited closed cases</li></ul>
-        ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : `<button class="btn${k === p.plan ? '' : ' ghost'}" data-act="checkout" data-plan="${k}"${pl.available ? '' : ' disabled'}>${r.hasCustomer && p.status === 'active' ? 'Switch' : 'Subscribe'}</button>`}</div>`;
+        ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : subscribed ? '<button class="btn ghost" data-act="billing-portal">Switch in Manage billing</button>'
+          : `<button class="btn${k === p.plan ? '' : ' ghost'}" data-act="checkout" data-plan="${k}" data-interval="${interval}"${avail ? '' : ' disabled'}>${p.status === 'trialing' && r.firstCharge ? 'Add card — keep free days' : 'Subscribe'}</button>`}</div>`;
     }).join('')}</div>
     <p class="small muted mt">Payments are processed by Stripe; ${esc(S.brand.name)} never sees your card. Closed and dropped cases don't count toward your limit. If you cancel, your records stay readable and exportable.</p>`;
   main.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
@@ -1947,8 +1964,9 @@ const ACTIONS = {
     if (!document.getElementById('baa-accept').checked) { toast('Tick the box to accept.', true); return; }
     if (await attempt(() => api('admin.php?action=accept_baa', { accept: true }))) { toast('Agreement accepted'); await refreshSession(); route(); }
   },
+  'billing-interval': (el) => { billingInterval.value = el.dataset.v; pageBilling(document.getElementById('main')); },
   'checkout': async (el) => {
-    const r = await attempt(() => api('billing.php?action=checkout', { plan: el.dataset.plan }));
+    const r = await attempt(() => api('billing.php?action=checkout', { plan: el.dataset.plan, interval: el.dataset.interval || 'monthly' }));
     if (r?.url) location.href = r.url;
   },
   'billing-portal': async () => {

@@ -35,12 +35,22 @@ CREATE TABLE practices (
   current_period_end DATETIME NULL,
   stripe_customer_id VARCHAR(64) NULL,
   stripe_subscription_id VARCHAR(64) NULL,
+  billing_interval ENUM('monthly','annual') NOT NULL DEFAULT 'monthly',
   -- Who accepted the Business Associate Agreement and Terms, which version, when.
   baa_version VARCHAR(20) NULL,
   baa_accepted_at DATETIME NULL,
   baa_accepted_by INT NULL,
   created_at DATETIME NOT NULL,
   INDEX idx_practices_stripe (stripe_customer_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Trial reminder emails already sent, so each goes out once.
+CREATE TABLE trial_notices (
+  practice_id INT NOT NULL,
+  kind VARCHAR(20) NOT NULL,
+  sent_at DATETIME NOT NULL,
+  PRIMARY KEY (practice_id, kind),
+  FOREIGN KEY (practice_id) REFERENCES practices(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- practice_id NULL = a platform operator (you, running the service):

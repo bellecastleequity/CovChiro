@@ -7,8 +7,12 @@
 if (!defined('BRAND_NAME')) define('BRAND_NAME', 'InjuryCase');
 if (!defined('BRAND_TAGLINE')) define('BRAND_TAGLINE', 'Personal injury case management for providers');
 if (!defined('SUPPORT_EMAIL')) define('SUPPORT_EMAIL', 'support@injurycase.com');
+if (!defined('APP_URL')) define('APP_URL', 'https://injurycase.com');
 
 define('TRIAL_DAYS', 14);
+// Annual billing: pay for 10 months, get 12 ("2 months free").
+define('ANNUAL_MONTHS_CHARGED', 10);
+const BILLING_INTERVALS = ['monthly', 'annual'];
 // Bump when the Business Associate Agreement or Terms text changes; the
 // practice owner is asked to accept the new version.
 define('BAA_VERSION', '2026-10');
@@ -18,6 +22,30 @@ const PLANS = [
     'practice' => ['name' => 'Practice', 'price' => 59, 'active_cases' => 300,  'users' => 10,   'blurb' => 'A busy PI clinic'],
     'group'    => ['name' => 'Group',    'price' => 79, 'active_cases' => null, 'users' => null, 'blurb' => 'Multiple doctors or locations'],
 ];
+
+// Plans as shown to customers, with the annual price.
+function plans_public(): array {
+    $out = [];
+    foreach (PLANS as $k => $p) $out[$k] = $p + ['annual_price' => $p['price'] * ANNUAL_MONTHS_CHARGED];
+    return $out;
+}
+
+// The Stripe Price for a plan and interval. STRIPE_PRICES maps each plan to
+// ['monthly' => 'price_...', 'annual' => 'price_...'] (a plain string is a
+// monthly price, from before annual billing).
+function stripe_price_id(string $plan, string $interval): ?string {
+    if (!defined('STRIPE_PRICES')) return null;
+    $v = STRIPE_PRICES[$plan] ?? null;
+    if (is_string($v)) return $interval === 'monthly' && $v !== '' ? $v : null;
+    return !empty($v[$interval]) ? $v[$interval] : null;
+}
+
+// [plan, interval] for a Stripe Price id, or null.
+function plan_for_price(?string $priceId): ?array {
+    if (!$priceId || !defined('STRIPE_PRICES')) return null;
+    foreach (array_keys(PLANS) as $plan) foreach (BILLING_INTERVALS as $i) if (stripe_price_id($plan, $i) === $priceId) return [$plan, $i];
+    return null;
+}
 
 function plan_for(array $practice): array {
     return PLANS[$practice['plan']] ?? PLANS['solo'];
@@ -43,7 +71,8 @@ function practice_summary(array $p): array {
         'status' => $p['subscription_status'], 'access' => practice_access($p), 'trialDaysLeft' => $daysLeft,
         'currentPeriodEnd' => $p['current_period_end'], 'baaCurrent' => $p['baa_version'] === BAA_VERSION,
         'limits' => ['activeCases' => $plan['active_cases'], 'users' => $plan['users']],
-        'ehrName' => $p['ehr_name'] ?? null,
+        'ehrName' => $p['ehr_name'] ?? null, 'interval' => $p['billing_interval'] ?? 'monthly',
+        'trialEndsAt' => $p['trial_ends_at'], 'subscribed' => !empty($p['stripe_subscription_id']),
     ];
 }
 

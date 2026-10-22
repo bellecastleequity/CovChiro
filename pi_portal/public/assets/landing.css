@@ -168,3 +168,11 @@ h1,h2,h3{letter-spacing:-0.025em;line-height:1.15;}
 .features article:nth-child(6n+5) .ic{background:rgba(14,159,154,0.13);color:#0A6F6B;}
 .features article:nth-child(6n+6) .ic{background:rgba(214,69,80,0.12);color:#A3222E;}
 .features article:hover{border-color:rgba(47,111,222,0.35);}
+
+/* ---------- billing period toggle ---------- */
+.interval-toggle{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px;margin:0 0 26px;}
+.interval-toggle button{border:0;background:none;font:600 0.92rem var(--sans);color:var(--muted);padding:8px 18px;border-radius:999px;cursor:pointer;display:inline-flex;gap:8px;align-items:center;}
+.interval-toggle button.on{background:var(--navy);color:#fff;}
+.interval-toggle .save{font-size:0.72rem;background:rgba(232,155,28,0.18);color:#8A5300;padding:2px 8px;border-radius:999px;}
+.interval-toggle button.on .save{background:var(--green);color:var(--navy);}
+.price-card .per{font-size:0.86rem;color:var(--muted);margin:-6px 0 4px;}

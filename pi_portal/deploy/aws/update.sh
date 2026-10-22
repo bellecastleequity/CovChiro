@@ -14,5 +14,8 @@ chown -R root:apache "$APP" && chown -R apache:apache "$APP/storage"
 find "$APP" -path "$APP/storage" -prune -o -type f -exec chmod 640 {} +
 find "$APP" -path "$APP/storage" -prune -o -type d -exec chmod 750 {} +
 sudo -u apache php "$APP/app/cli/migrate.php"
+# Daily jobs (kept in step with setup.sh).
+echo "17 14 * * * apache php $APP/app/cli/trial_reminders.php >> $APP/storage/logs/cron.log 2>&1" > /etc/cron.d/injurycase
+chmod 644 /etc/cron.d/injurycase
 systemctl reload php-fpm httpd
 echo "Updated."

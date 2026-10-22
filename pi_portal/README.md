@@ -24,7 +24,12 @@ Check trademark and domain availability before launch.
 - **Plans** (`PLANS` in `app/saas.php`): Solo $39 (75 open cases, 3 users),
   Practice $59 (300 open, 10 users), Group $79 (unlimited). Limits count
   *open* cases only. Closed cases are free.
-- **Trial.** 14 days, no card required. When the trial ends or a subscription
+- **Monthly or annual.** Annual is 10× the monthly price, i.e. 2 months
+  free: $390 / $590 / $790 a year.
+- **Trial.** 14 days, no card required. Subscribing during the trial keeps
+  the remaining free days: the card is first charged when the trial would
+  have ended. Admins get reminder emails 3 days and 1 day before the end and
+  the day after (account details only). When the trial ends or a subscription
   is canceled, the practice goes **read-only**: it can still view and export
   everything (they're its medical records, and the BAA requires returning
   them) but can't change anything until it subscribes.
@@ -148,8 +153,11 @@ pi_portal/
 6. Other practices sign up themselves at `/app.html#signup`.
 
 ### Stripe
-1. In Stripe, create a Product with a monthly Price for each plan. Put the
-   Price IDs in `STRIPE_PRICES`, along with `STRIPE_SECRET_KEY` and `APP_URL`.
+1. In Stripe, create a Product for each plan with two recurring Prices:
+   monthly ($39 / $59 / $79) and yearly ($390 / $590 / $790). Put the Price
+   IDs in `STRIPE_PRICES` (`'solo' => ['monthly' => ..., 'annual' => ...]`),
+   along with `STRIPE_SECRET_KEY` and `APP_URL`. Plans without an annual
+   Price simply don't offer annual billing.
 2. Add a webhook to `https://<app>/api/billing.php?action=webhook` for
    `checkout.session.completed` and `customer.subscription.created/updated/deleted`.
    Put its signing secret in `STRIPE_WEBHOOK_SECRET`.
@@ -157,6 +165,16 @@ pi_portal/
    Stripe's settings.
 
 Without Stripe keys, everything else works and the Billing page says billing isn't set up.
+
+### Email (trial reminders)
+`app/cli/trial_reminders.php` runs daily from cron (setup.sh / update.sh
+install `/etc/cron.d/injurycase`). To turn sending on, verify your domain in
+Amazon SES (add the DKIM records it gives you), create SES SMTP credentials,
+and set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` in
+`secrets.php`. A new SES account starts in the sandbox, so request production
+access before relying on it. Run `php app/cli/trial_reminders.php --dry-run`
+to see who would be emailed. The emails carry account details only, never
+patient information.
 
 ### Importing a practice's spreadsheets
 Export the Google Sheets as CSV, then:

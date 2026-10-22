@@ -26,8 +26,22 @@ define('PI_ENCRYPTION_KEY', 'paste-base64-key-here');
 // page just says billing isn't set up (handy for development).
 define('STRIPE_SECRET_KEY', 'sk_test_...');
 define('STRIPE_WEBHOOK_SECRET', 'whsec_...');
-// One recurring Price per plan in app/saas.php.
-define('STRIPE_PRICES', ['solo' => 'price_...', 'practice' => 'price_...', 'group' => 'price_...']);
+// Two recurring Prices per plan in app/saas.php: monthly, and annual at
+// 10x the monthly price ("2 months free").
+define('STRIPE_PRICES', [
+    'solo' => ['monthly' => 'price_...', 'annual' => 'price_...'],
+    'practice' => ['monthly' => 'price_...', 'annual' => 'price_...'],
+    'group' => ['monthly' => 'price_...', 'annual' => 'price_...'],
+]);
+
+// ========== EMAIL (trial reminders) ==========
+// SMTP, e.g. Amazon SES. Account emails only — never patient data. Leave
+// out to send nothing.
+// define('SMTP_HOST', 'email-smtp.us-east-1.amazonaws.com');
+// define('SMTP_PORT', 587);
+// define('SMTP_USER', '...');
+// define('SMTP_PASS', '...');
+// define('MAIL_FROM', 'hello@injurycase.com');
 
 // Public URL of the app (no trailing slash), used for Stripe return links.
 define('APP_URL', 'https://injurycase.com');

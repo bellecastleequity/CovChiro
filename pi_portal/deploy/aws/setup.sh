@@ -79,10 +79,25 @@ define('SUPPORT_EMAIL', '$ADMIN_EMAIL');
 // Stripe — fill in when ready (see README), then: systemctl reload php-fpm
 // define('STRIPE_SECRET_KEY', 'sk_live_...');
 // define('STRIPE_WEBHOOK_SECRET', 'whsec_...');
-// define('STRIPE_PRICES', ['solo' => 'price_...', 'practice' => 'price_...', 'group' => 'price_...']);
+// define('STRIPE_PRICES', [
+//   'solo' => ['monthly' => 'price_...', 'annual' => 'price_...'],
+//   'practice' => ['monthly' => 'price_...', 'annual' => 'price_...'],
+//   'group' => ['monthly' => 'price_...', 'annual' => 'price_...'],
+// ]);
+// Email (trial reminders) — Amazon SES SMTP credentials (see README)
+// define('SMTP_HOST', 'email-smtp.us-east-1.amazonaws.com');
+// define('SMTP_PORT', 587);
+// define('SMTP_USER', '...');
+// define('SMTP_PASS', '...');
+// define('MAIL_FROM', 'hello@$DOMAIN');
 EOF
 fi
 chown root:apache "$APP/app/secrets.php"; chmod 640 "$APP/app/secrets.php"
+
+say "Daily jobs"
+# Trial reminder emails (sends nothing until email is configured).
+echo "17 14 * * * apache php $APP/app/cli/trial_reminders.php >> $APP/storage/logs/cron.log 2>&1" > /etc/cron.d/injurycase
+chmod 644 /etc/cron.d/injurycase
 
 say "Database schema"
 MYSQL=(mysql --ssl-ca="$RDS_CA" --ssl-verify-server-cert -h "$DB_HOST" -u "$DB_USER" "-p$DB_PASS" injurycase)
