@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { photoSrc } from "@/lib/photo";
 import Link from "next/link";
 import { Ban, Car, Heart, MessageSquare, Radar, Star, Zap } from "lucide-react";
 import { env } from "@cm/config";
@@ -35,7 +36,7 @@ function CandidateCard({ c, shiftId, applicant }: { c: Cand; shiftId: string; ap
   return (
     <div className="rounded-2xl border border-slate-200 p-4">
       <div className="flex items-start gap-3">
-        {c.photoUrl ? <img src={`/api/files/${c.photoUrl}`} alt="" className="size-12 rounded-full object-cover" /> : <div className="grid size-12 place-items-center rounded-full bg-brand-50 font-semibold text-brand-700">{c.displayName.replace(/^Dr\.?\s*/, "").slice(0, 1)}</div>}
+        {c.photoUrl ? <img src={photoSrc(c.photoUrl)} alt="" className="size-12 rounded-full object-cover" /> : <div className="grid size-12 place-items-center rounded-full bg-brand-50 font-semibold text-brand-700">{c.displayName.replace(/^Dr\.?\s*/, "").slice(0, 1)}</div>}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Link href={`/clinic/providers/${c.providerId}`} className="font-semibold hover:text-brand-700">{c.displayName}, {c.credentialTitle}</Link>
@@ -439,7 +440,7 @@ export default async function ClinicShift({ params, searchParams }: { params: Pr
               <CardHeader title="Your provider" action={<StatusBadge status={live.status} />} />
               <CardBody className="space-y-3">
                 <div className="flex items-center gap-3">
-                  {live.provider.photoUrl ? <img src={`/api/files/${live.provider.photoUrl}`} alt="" className="size-12 rounded-full object-cover" /> : null}
+                  {live.provider.photoUrl ? <img src={photoSrc(live.provider.photoUrl)} alt="" className="size-12 rounded-full object-cover" /> : null}
                   <div>
                     <div className="font-semibold">{live.provider.displayName}</div>
                     <div className="text-sm text-slate-500">{live.provider.homeCity}, {live.provider.homeState} · {live.driveMinutes} min drive</div>

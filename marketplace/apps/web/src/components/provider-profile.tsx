@@ -1,4 +1,5 @@
 import { Award, BadgeCheck, Briefcase, CalendarCheck, Clock, GraduationCap, Heart, Languages, Link2, MapPin, Shield, ShieldCheck, Star, Zap } from "lucide-react";
+import { photoSrc } from "@/lib/photo";
 import type { Badge as BadgeT } from "@cm/core";
 import { providerPublicProfile } from "@cm/services";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -41,7 +42,7 @@ export function ProviderProfileView({ p }: { p: Awaited<ReturnType<typeof provid
       <Card>
         <CardBody className="flex flex-col gap-5 py-6 sm:flex-row sm:items-center">
           {p.photoUrl ? (
-            <img src={`/api/files/${p.photoUrl}`} alt={`${p.displayName} headshot`} className="size-28 rounded-2xl object-cover ring-4 ring-brand-50" />
+            <img src={photoSrc(p.photoUrl)} alt={`${p.displayName} headshot`} className="size-28 rounded-2xl object-cover ring-4 ring-brand-50" />
           ) : (
             <div className="grid size-28 place-items-center rounded-2xl bg-brand-50 text-3xl font-semibold text-brand-700">{p.displayName.replace(/^Dr\.?\s*/, "").slice(0, 1)}</div>
           )}

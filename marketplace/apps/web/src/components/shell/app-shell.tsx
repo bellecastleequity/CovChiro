@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { photoSrc } from "@/lib/photo";
 import { ArrowLeftRight, Bell, PlusCircle, LifeBuoy, LogOut, MailWarning, Siren } from "lucide-react";
 import { clinicHelp } from "@/lib/help/clinic";
 import { providerHelp } from "@/lib/help/provider";
@@ -49,7 +50,7 @@ export async function AppShell({ items, root, userId, userName, userPhoto, subti
         </div>
         <div className="border-t border-slate-100 px-3 pt-3">
           <div className="flex items-center gap-2">
-            {userPhoto ? <img src={`/api/files/${userPhoto}`} alt="" className="size-7 shrink-0 rounded-full object-cover" /> : null}
+            {userPhoto ? <img src={photoSrc(userPhoto)} alt="" className="size-7 shrink-0 rounded-full object-cover" /> : null}
             <div className="truncate text-sm font-medium text-slate-900">{userName}</div>
           </div>
           {subtitle ? <div className="truncate text-xs text-slate-500">{subtitle}</div> : null}

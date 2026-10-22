@@ -449,7 +449,7 @@ export const clinicLogoAction = formAction(async (fd) => {
     revalidatePath("/clinic", "layout");
     return "Logo removed.";
   }
-  const key = await saveUpload(fd.get("logo"), `photos/clinic-logos/${actor.clinicOrgId}`, { required: true, images: true });
+  const key = await saveUpload(fd.get("logo"), `photos/clinic-logos/${actor.clinicOrgId}`, { required: true, images: true, thumb: fd.get("logoThumb") });
   await setClinicLogo(actor, key);
   revalidatePath("/clinic", "layout");
   return "Logo saved. Providers see it next to your clinic's name.";

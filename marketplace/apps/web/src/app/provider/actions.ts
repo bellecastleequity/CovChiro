@@ -231,7 +231,7 @@ export const profileAction = formAction(async (fd) => {
     linkedinUrl: optStr(fd, "linkedinUrl"),
     yearsInPractice: Object.fromEntries([...fd.keys()].filter((k) => k.startsWith("years-") && str(fd, k)).map((k) => [k.slice(6), Number(str(fd, k))])),
   });
-  const photo = await saveUpload(fd.get("photo"), `photos/${actor.providerId}`, { images: true });
+  const photo = await saveUpload(fd.get("photo"), `photos/${actor.providerId}`, { images: true, thumb: fd.get("photoThumb") });
   if (photo) await setProviderPhoto(actor, photo);
   revalidatePath("/provider", "layout");
   return "Profile saved.";

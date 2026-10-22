@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { env } from "@cm/config";
@@ -17,7 +17,14 @@ export interface Storage {
   /** Signed URL (GCS) or null when the caller should stream via read(). */
   signedUrl(key: string, minutes?: number): Promise<string | null>;
   remove(key: string): Promise<void>;
+  /** Write (or overwrite) an exact key: photo thumbnails (<key>.thumb) and shrunk photos. */
+  putAt(key: string, data: Buffer, contentType: string): Promise<void>;
+  exists(key: string): Promise<boolean>;
 }
+
+/** Small copy of a photo shown in lists and headers (stored next to the photo). */
+export const thumbKey = (key: string) => `${key}.thumb`;
+const safeKey = (key: string) => !key.includes("..") && /^[a-z0-9/_.-]+$/i.test(key);
 
 const EXT: Record<string, string> = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 export const ALLOWED_UPLOAD_TYPES = Object.keys(EXT);
@@ -51,6 +58,19 @@ class LocalStorage implements Storage {
     const file = path.join(this.root, key);
     await rm(file, { force: true });
     await rm(file + ".type", { force: true });
+    await rm(file + ".thumb", { force: true });
+    await rm(file + ".thumb.type", { force: true });
+  }
+  async putAt(key: string, data: Buffer, contentType: string) {
+    if (!safeKey(key)) throw new Error("Bad storage key");
+    const file = path.join(this.root, key);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, data);
+    await writeFile(file + ".type", contentType);
+  }
+  async exists(key: string) {
+    if (!safeKey(key)) return false;
+    return stat(path.join(this.root, key)).then(() => true, () => false);
   }
 }
 
@@ -83,6 +103,15 @@ class GcsStorage implements Storage {
   }
   async remove(key: string) {
     await (await this.bucketP).file(key).delete({ ignoreNotFound: true });
+    await (await this.bucketP).file(thumbKey(key)).delete({ ignoreNotFound: true });
+  }
+  async putAt(key: string, data: Buffer, contentType: string) {
+    if (!safeKey(key)) throw new Error("Bad storage key");
+    await (await this.bucketP).file(key).save(data, { contentType, resumable: false, private: true });
+  }
+  async exists(key: string) {
+    const [ok] = await (await this.bucketP).file(key).exists();
+    return !!ok;
   }
 }
 

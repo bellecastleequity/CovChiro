@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { storageProvider } from "@cm/integrations";
+import { storageProvider, thumbKey } from "@cm/integrations";
 import { canViewLocationPhoto, stay } from "@cm/services";
 import { getSession } from "@/lib/session";
 
@@ -8,7 +8,7 @@ import { getSession } from "@/lib/session";
  * see their own documents; any signed-in user can see provider photos;
  * clinic location photos are for that clinic and providers booked there.
  */
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ key: string[] }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ key: string[] }> }) {
   const key = (await params).key.join("/");
   const s = await getSession();
   if (!s) return new NextResponse("Unauthorized", { status: 401 });
@@ -21,9 +21,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ key
   const stayFile = !clinicDoc && !!s.actor.providerId && key.startsWith("clinics/") && key.includes("/stays/") && (await stay.canViewStayFile(s.actor, key));
   if (!isAdmin && !own && !clinicDoc && !photo && !locationPhoto && !stayFile) return new NextResponse("Not found", { status: 404 });
   const st = storageProvider();
-  const signed = await st.signedUrl(key, 10);
-  if (signed) return NextResponse.redirect(signed);
-  const f = await st.read(key);
+  // Photos: ?s=thumb serves the small copy made at upload (or by Admin → Providers → Shrink photos),
+  // and the browser keeps them for a day (keys are random, so a new photo is a new address).
+  const wantThumb = photo && req.nextUrl.searchParams.get("s") === "thumb";
+  const target = wantThumb && (await st.exists(thumbKey(key))) ? thumbKey(key) : key;
+  const cache = photo ? "private, max-age=86400" : "private, max-age=300";
+  const signed = await st.signedUrl(target, photo ? 60 * 24 : 10);
+  if (signed) return NextResponse.redirect(signed, { headers: { "Cache-Control": cache } });
+  const f = await st.read(target);
   if (!f) return new NextResponse("Not found", { status: 404 });
-  return new NextResponse(new Uint8Array(f.data), { headers: { "Content-Type": f.contentType, "Cache-Control": "private, max-age=300", "Content-Disposition": "inline" } });
+  return new NextResponse(new Uint8Array(f.data), { headers: { "Content-Type": f.contentType, "Cache-Control": cache, "Content-Disposition": "inline" } });
 }

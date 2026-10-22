@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { ShrinkPhotos } from "@/components/admin/shrink-photos";
+import { photoSrc } from "@/lib/photo";
 import { prisma } from "@cm/db";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { buttonClass } from "@/components/ui/button";
@@ -24,6 +26,7 @@ export default async function Providers({ searchParams }: { searchParams: Promis
   return (
     <>
       <PageHeader title="Providers" />
+      <div className="mb-4"><ShrinkPhotos /></div>
       <form className="mb-4 flex gap-2"><Input name="q" defaultValue={q} placeholder="Name or email" className="w-64" /><button className={buttonClass("outline")}>Search</button></form>
       <Card>
         <Table>
@@ -37,7 +40,7 @@ export default async function Providers({ searchParams }: { searchParams: Promis
                   <Td>
                     <div className="flex items-center gap-3">
                       {p.photoUrl ? (
-                        <img src={`/api/files/${p.photoUrl}`} alt="" loading="lazy" className="size-9 shrink-0 rounded-full object-cover ring-1 ring-slate-200" />
+                        <img src={photoSrc(p.photoUrl)} alt="" loading="lazy" className="size-9 shrink-0 rounded-full object-cover ring-1 ring-slate-200" />
                       ) : (
                         <div aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700">{initials(p.displayName)}</div>
                       )}

@@ -1,4 +1,5 @@
 import { textingEnabled } from "@cm/integrations";
+import { PhotoInput } from "@/components/ui/photo-input";
 import Link from "next/link";
 import { AGREEMENT_VERSION, latestSignedAgreement, clinicProfile, phones } from "@cm/services";
 import { formatUsPhone, maskPhone, PHONE_PRIVACY_NOTE } from "@cm/core";
@@ -58,7 +59,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               {owner ? (
                 <ActionForm action={clinicLogoAction} className="flex flex-1 flex-wrap items-end gap-3" resetOnSuccess>
                   <Field label={org.logoUrl ? "Replace logo" : "Upload logo"} className="min-w-56 flex-1">
-                    <Input type="file" name="logo" accept="image/jpeg,image/png,image/webp" />
+                    <PhotoInput name="logo" keepPng accept="image/jpeg,image/png,image/webp" />
                   </Field>
                   <SubmitButton>Save logo</SubmitButton>
                   {org.logoUrl ? <Checkbox name="remove" label="Remove my logo" /> : null}

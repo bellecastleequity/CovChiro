@@ -1,4 +1,5 @@
 import { GroundFloor } from "@/components/referrals/refer-page";
+import { photoSrc } from "@/lib/photo";
 import Link from "next/link";
 import { greetingName } from "@cm/core";
 import { providerSetupItems } from "@/lib/setup";
@@ -61,7 +62,7 @@ export default async function ProviderHome({ searchParams }: { searchParams: Pro
       <PageHeader
         eyebrow={
           <span className="flex items-center gap-2">
-            {provider.photoUrl ? <img src={`/api/files/${provider.photoUrl}`} alt="" className="size-8 rounded-full object-cover ring-2 ring-white" /> : null}
+            {provider.photoUrl ? <img src={photoSrc(provider.photoUrl)} alt="" className="size-8 rounded-full object-cover ring-2 ring-white" /> : null}
             <span>Hi, {greetingName(user.name, provider.professions.map((p) => p.professionCode)) || firstName(user.name)}</span>
           </span>
         } title="Your coverage hub" description={<>You can take: <CanTake canTake={canTake} /></>} actions={<LinkButton href="/provider/shifts">Find shifts <ArrowRight className="size-4" /></LinkButton>} />
