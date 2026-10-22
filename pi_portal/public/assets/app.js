@@ -728,6 +728,7 @@ const GUIDE_REASONS = {
   ortho: ['Patient declined', 'MRI was normal', 'Already under orthopedic care', 'Not clinically indicated'],
   pain_mgmt: ['Fully resolved', 'Improving — continuing conservative care', 'Patient declined', 'Already under pain management'],
   neuro: ['No head injury', 'Patient declined', 'Already seeing a neurologist'],
+  emc: ['PIP not involved', 'Determined elsewhere — records requested', 'Patient declined'],
 };
 const REF_STEPS = [['ordered', 'Ordered'], ['scheduled', 'Scheduled'], ['completed', 'Completed'], ['report_received', 'Report in']];
 function refProgressHtml(r) {
@@ -739,16 +740,22 @@ function guideCardHtml(d) {
   if (!d.guide) return '';
   const w = can('case.write'), cw = can('clinical.write');
   const open = d.guide.filter((g) => ['now', 'consider', 'ask'].includes(g.status)).length;
-  return `<div class="card guide"><div class="card-head"><h2>Next steps: referrals</h2>
+  return `<div class="card guide"><div class="card-head"><h2>Next steps</h2>
       <span class="small muted">${open ? `${open} need${open === 1 ? 's' : ''} attention` : 'On track'}</span><span class="spacer"></span><a class="small" href="#/playbook">How PI cases work</a></div>
     <ol class="guide-steps">${d.guide.map((g) => {
       const [cls, txt] = GUIDE_CHIPS[g.status];
       const act = [];
+      const openish = ['now', 'consider', 'upcoming', 'waiting', 'ask'].includes(g.status);
       if (g.status === 'ask' && w) act.push(`<button class="btn sm" data-act="head-injury" data-v="yes">Yes, head injury</button><button class="btn ghost sm" data-act="head-injury" data-v="no">No head injury</button>`);
-      if (['now', 'consider', 'upcoming', 'waiting', 'ask'].includes(g.status) && cw && !(g.status === 'ask')) act.push(`<button class="btn sm${g.status === 'now' || g.status === 'consider' ? '' : ' ghost'}" data-act="guide-refer" data-type="${g.types[0]}">Add ${esc(label('referralTypes', g.types[0]))} referral</button>`);
-      if (g.status === 'done' && cw) act.push(`<button class="btn ghost sm" data-act="guide-refer" data-type="${g.types[0]}">+ Another</button>`);
+      if (g.kind === 'referral' && openish && g.status !== 'ask' && cw) act.push(`<button class="btn sm${g.status === 'now' || g.status === 'consider' ? '' : ' ghost'}" data-act="guide-refer" data-type="${g.types[0]}">Add ${esc(label('referralTypes', g.types[0]))} referral</button>`);
+      if (g.kind === 'referral' && g.status === 'done' && cw) act.push(`<button class="btn ghost sm" data-act="guide-refer" data-type="${g.types[0]}">+ Another</button>`);
+      if (g.kind === 'emc' && (openish || (g.status === 'done' && d.case.emc_status === 'pending'))) {
+        if (w) act.push(`<span class="small muted">${g.status === 'done' ? 'Result:' : 'Done in house:'}</span><button class="btn sm${g.status === 'done' ? ' ghost' : ''}" data-act="emc-result" data-v="yes">EMC exists</button><button class="btn ghost sm" data-act="emc-result" data-v="no">No EMC</button>`);
+        if (openish && cw) act.push(`<button class="btn ghost sm" data-act="guide-refer" data-type="emc">Refer out for EMC</button>`);
+      }
+      if (g.kind === 'visit' && openish && cw) act.push(`<button class="btn sm${g.status === 'now' ? '' : ' ghost'}" data-act="guide-visit" data-type="${g.visitType}">${g.visitType === 'discharge' ? 'Log discharge visit (MMI)' : 'Log re-exam'}</button>`);
       if (['now', 'consider', 'ask'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-snooze" data-step="${g.key}">Remind me later</button>`);
-      if (['now', 'consider', 'upcoming', 'waiting', 'ask'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-dismiss" data-step="${g.key}">Not needed…</button>`);
+      if (openish && g.kind !== 'visit' && w) act.push(`<button class="btn ghost sm" data-act="guide-dismiss" data-step="${g.key}">Not needed…</button>`);
       if (['dismissed', 'snoozed'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-clear" data-step="${g.key}">Undo</button>`);
       if (g.key === 'neuro' && g.status === 'na' && d.case.head_injury === 'no' && w) act.push(`<button class="btn ghost sm" data-act="head-injury" data-v="unknown">Change answer</button>`);
       if (['now', 'consider'].includes(g.status)) act.push(`<button class="btn ghost sm" data-act="task-from-alert" data-case="${d.case.id}" data-text="${esc(g.title + ': ' + g.text)}">+ Task</button>`);
@@ -797,8 +804,8 @@ async function pagePlaybook(main) {
   r.checklist.forEach((i) => (groups[i.group] = groups[i.group] || []).push(i));
   const types = (cs) => cs.length === 3 ? 'All cases' : cs.map((c) => label('injuryTypes', c)).join(', ');
   main.innerHTML = `<div class="page-head"><div><h1>PI playbook</h1><div class="sub">How a personal injury case runs, and the timelines ${esc(S.brand.name)} keeps you on. Every case shows these as next steps, checklist items and alerts.</div></div></div>
-    <div class="card"><h2>Referral timeline</h2>
-      <ol class="playbook-steps">${r.guide.map((g) => `<li><strong>${esc(g.title)}</strong> — <span>${esc(g.when)}</span><p class="small muted">${esc(g.why)}</p></li>`).join('')}</ol>
+    <div class="card"><h2>Care timeline</h2>
+      <ol class="playbook-steps">${r.guide.map((g) => `<li><strong>${esc(g.title)}</strong>${g.cases.length < 3 ? ` <span class="chip">${esc(g.cases.map((c) => label('injuryTypes', c)).join(', '))} only</span>` : ''} — <span>${esc(g.when)}</span><p class="small muted">${esc(g.why)}</p></li>`).join('')}</ol>
       <p class="small muted">More than one of any referral is normal (an MRI per region, a second ortho opinion). Add others — EMG, X-ray, physical therapy, dental/TMJ — whenever the patient needs them.</p></div>
     <div class="card mt"><h2>Rules that cost money if missed</h2><dl class="kv">${r.rules.map(([t, x]) => `<dt>${esc(t)}</dt><dd>${esc(x)}</dd>`).join('')}</dl></div>
     <div class="card mt"><h2>Case checklist</h2>${Object.entries(groups).map(([g, items]) => `<h3 class="mt">${esc(g)}</h3>
@@ -847,7 +854,7 @@ function referralModal(existing, prefill = {}) {
 }
 
 // --- visits ---
-const VISIT_TYPES = [['initial', 'Initial exam'], ['treatment', 'Treatment'], ['re_exam', 'Re-exam'], ['discharge', 'Discharge'], ['no_show', 'No-show']];
+const VISIT_TYPES = [['initial', 'Initial exam'], ['treatment', 'Treatment'], ['re_exam', 'Re-exam'], ['discharge', 'Discharge (MMI)'], ['no_show', 'No-show']];
 const visitDefs = () => [
   { n: 'visit_date', l: 'Date of service', t: 'date', req: true },
   { n: 'visit_type', l: 'Visit type', t: 'select', blank: false, opts: VISIT_TYPES },
@@ -871,14 +878,14 @@ function tabVisits(el, d) {
   </div>`;
 }
 
-function visitModal(existing) {
+function visitModal(existing, prefill = {}) {
   if (!can('clinical.write')) return;
   const defs = visitDefs();
   const chargeDefs = [{ n: 'charge_amount', l: 'Charge ($)', t: 'money' }, { n: 'charge_to', l: 'Bill to', t: 'select', blank: false, opts: holderOpts({ activeOnly: true }) }];
   const showCharge = !existing && can('finance.write');
   openModal({
     title: existing ? 'Edit visit' : 'Log visit', wide: true,
-    body: fieldsHtml(defs, existing || { visit_date: today(), visit_type: S.caseData.stats.visitCount ? 'treatment' : 'initial', provider_user_id: S.caseData.case.provider_user_id || '' })
+    body: fieldsHtml(defs, existing || { visit_date: today(), visit_type: S.caseData.stats.visitCount ? 'treatment' : 'initial', provider_user_id: S.caseData.case.provider_user_id || '', ...prefill })
       + (showCharge ? '<h3 class="mt">Charge (optional)</h3>' + fieldsHtml(chargeDefs, { charge_to: defaultBillTo() }) : ''),
     onOk: async (el) => {
       const row = { ...readFields(el, defs), ...(existing ? { id: existing.id } : {}) };
@@ -1542,7 +1549,7 @@ const FIELD_NAMES = {
   patient_address: 'Address', cpt_codes: 'CPT codes', dwc25_sent: 'DWC-25 sent', staff_finance: 'Staff can see', finance_access: 'Full financial access',
   ehr_name: 'EHR', benefit_limit: 'Benefit limit', entry_date: 'Date', kind: 'Type', bucket: 'Owed by', status_on: 'Status date', insurance_balance: 'Insurance balance',
   patient_balance: 'Patient balance', injury_type: 'Case type', visit_type: 'Visit type', head_injury: 'Head injury',
-  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral',
+  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', guide_discharge: 'Discharge at MMI',
 };
 const humanize = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 function auditValue(c, v) {
@@ -1923,6 +1930,11 @@ const ACTIONS = {
   'edit-case': editCaseModal, 'edit-patient': editPatientModal, 'edit-notes': editNotesModal,
   'add-referral': () => referralModal(null),
   'guide-refer': (el) => referralModal(null, { type: el.dataset.type }),
+  'guide-visit': (el) => visitModal(null, { visit_type: el.dataset.type }),
+  'emc-result': async (el) => {
+    const r = await attempt(() => api('cases.php?action=update&id=' + S.caseData.case.id, { case: { emc_status: el.dataset.v } }));
+    if (r) { S.caseData = r; renderCase(); toast('EMC determination recorded'); }
+  },
   'guide-dismiss': (el) => guideDismissModal(el.dataset.step),
   'guide-snooze': (el) => guideSnoozeModal(el.dataset.step),
   'guide-clear': (el) => attempt(() => guideStep(el.dataset.step, { status: 'clear' })),

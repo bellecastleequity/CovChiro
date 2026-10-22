@@ -212,7 +212,8 @@ function full_case(int $id, array $user): array {
     $visitDates = array_column($attended, 'visit_date');
     $cutoff = add_days(date('Y-m-d'), -WC_DWC25_DAYS);
     $checklist = case_checklist($c, $milestones, $referrals);
-    $guide = care_guide($c, $referrals, $fetch('SELECT * FROM case_guide WHERE case_id = ?'), head_injury_codes(array_column($visits, 'icd_codes')));
+    $guide = care_guide($c, $referrals, $fetch('SELECT * FROM case_guide WHERE case_id = ?'), head_injury_codes(array_column($visits, 'icd_codes')),
+        ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null);
     $ctx = [
         'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'totals' => $totals, 'coverages' => $coverages, 'openItems' => $openItems,
         'wcVisits' => ['count' => count($attended), 'missing25' => count(array_filter($attended, fn($v) => !$v['dwc25_sent'] && $v['visit_date'] <= $cutoff))],
@@ -413,9 +414,12 @@ function handle_playbook() {
             ['EMC determination (auto)', 'Without an Emergency Medical Condition finding from an MD/DO, PIP pays at most $' . number_format(PIP_NO_EMC_CAP) . ' instead of $' . number_format(PIP_DEFAULT_LIMIT) . '.'],
             ['PIP pays 80%', 'The 20% PIP doesn\'t pay, and anything denied or past the limit, is moved to the patient balance by a person — backed by a signed letter of protection.'],
             ['Gaps in care', 'No visit for more than ' . TREATMENT_GAP_DAYS . ' days weakens the claim; the app flags it.'],
-            ['Outcome assessments', 'Re-measure every ' . OUTCOME_INTERVAL_DAYS . ' days to document progress.'],
+            ['Re-exams & outcome assessments', 'Re-examine every ' . RE_EXAM_INTERVAL_DAYS . ' days and repeat the outcome assessments at each re-exam.'],
+            ['X-rays', 'Only when clinically indicated — no prompt.'],
+            ['Discharge', 'At maximum medical improvement (MMI); the discharge checklist counts from the discharge date.'],
+            ['Narrative report', 'Only when the attorney requests one.'],
             ['Reports', 'Chase imaging and consult reports ' . REPORT_CHASE_DAYS . ' days after the appointment and enter them in the chart.'],
-            ['Attorney updates', 'In demand or litigation, ask for a status update at least every ' . STALE_CORRESPONDENCE_DAYS . ' days.'],
+            ['Attorney updates', 'Call the attorney within 48 hours of the first visit. Once the case is in demand or litigation, ask for a status update at least every ' . STALE_CORRESPONDENCE_DAYS . ' days.'],
             ["Workers' comp", 'Chiropractic care is limited to ' . WC_CHIRO_MAX_VISITS . ' visits or 8 weeks unless the carrier authorizes more; send a DWC-25 within ' . WC_DWC25_DAYS . ' days of each visit.'],
             ['At settlement', 'Forward the patient balance to the attorney with an itemized statement.'],
         ]]);
