@@ -213,7 +213,8 @@ function full_case(int $id, array $user): array {
     $visitDates = array_column($attended, 'visit_date');
     $cutoff = add_days(date('Y-m-d'), -WC_DWC25_DAYS);
     $checklist = case_checklist($c, $milestones, $referrals);
-    $guide = care_guide($c, $referrals, $fetch('SELECT * FROM case_guide WHERE case_id = ?'), head_injury_codes(array_column($visits, 'icd_codes')),
+    $guideRows = $fetch('SELECT * FROM case_guide WHERE case_id = ?');
+    $guide = care_guide($c, $referrals, $guideRows, head_injury_codes(array_column($visits, 'icd_codes')),
         ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null,
         ($seen = array_column(array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'), 'visit_date')) ? max($seen) : null);
     $ctx = [
@@ -237,6 +238,7 @@ function full_case(int $id, array $user): array {
     return [
         'case' => $case, 'patient' => $patient, 'contacts' => $contacts, 'coverages' => $coverages,
         'checklist' => $checklist, 'guide' => $guide, 'alerts' => $alerts,
+        'tips' => case_tips($c, ['referrals' => $referrals, 'visits' => $visits, 'icd' => array_column($visits, 'icd_codes'), 'guideRows' => $guideRows, 'outcomeDates' => array_unique(array_column($outcomes, 'taken_on'))]),
         'referrals' => $referrals, 'visits' => $visits, 'outcomes' => $outcomes,
         'correspondence' => $corr, 'ledger' => $led ? $ledger : [], 'openItems' => $led ? $openItems : [], 'totals' => $bal ? $totals : null,
         'fin' => fin_scopes($user),
@@ -421,7 +423,10 @@ function handle_guide_step() {
     case_or_404($id);
     $b = json_body();
     $step = (string)($b['step'] ?? '');
-    if (!isset(CARE_GUIDE[$step])) json_response(['error' => 'Unknown step'], 400);
+    // Guide steps, or case suggestions ('tip_<key>', dismiss only).
+    $isTip = str_starts_with($step, 'tip_') && preg_match('/^tip_[a-z_]{2,16}$/', $step);
+    if (!isset(CARE_GUIDE[$step]) && !$isTip) json_response(['error' => 'Unknown step'], 400);
+    if ($isTip && ($b['status'] ?? '') === 'snoozed') json_response(['error' => 'Suggestions can be marked not applicable.'], 400);
     $what = (string)($b['status'] ?? '');
     $reason = str_or_null($b['reason'] ?? null, 255);
     $pdo = pi_db();
@@ -830,6 +835,9 @@ function handle_dashboard() {
     }
     $rank = ['high' => 0, 'medium' => 1, 'low' => 2];
     usort($alerts, fn($a, $b) => $rank[$a['level']] <=> $rank[$b['level']]);
+    // Suggestions to strengthen cases, across the practice.
+    $tips = [];
+    foreach ($cases as $c) foreach (case_tips($c, $ctx[(int)$c['id']]) as $t) $tips[] = ['caseId' => (int)$c['id'], 'patient' => patient_name($c), 'caseNumber' => $c['case_number'], 'key' => $t['key'], 'category' => $t['category'], 'title' => $t['title']];
 
     // Mine (or anyone's) and due within a week.
     $tasks = load_tasks('t.done_at IS NULL AND (t.due_on IS NULL OR t.due_on <= ?) AND (EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?) OR NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id))',
@@ -848,6 +856,7 @@ function handle_dashboard() {
         'ar' => fin_can($user, 'balances') ? array_map(fn($v) => round($v, 2), $ar) : null,
         'alerts' => array_slice($alerts, 0, 200), 'alertCounts' => array_count_values(array_column($alerts, 'level')),
         'tasks' => $tasks,
+        'tips' => array_slice($tips, 0, 200), 'tipCounts' => array_count_values(array_column($tips, 'category')), 'tipCategories' => TIP_CATEGORIES,
     ]);
 }
 

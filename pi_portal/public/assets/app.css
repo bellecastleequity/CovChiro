@@ -373,3 +373,17 @@ table.audit td{vertical-align:top;}
 .interval-toggle button:disabled{opacity:0.5;cursor:default;}
 .interval-toggle .save{font-size:0.7rem;background:var(--amber-tint);color:var(--amber-ink);padding:1px 7px;border-radius:999px;}
 .interval-toggle button.on .save{background:var(--green);color:var(--navy);}
+
+/* ---------- case suggestions ---------- */
+.card.tips{border-top:3px solid var(--blue);margin-bottom:16px;}
+.tip-list{list-style:none;display:grid;gap:10px;}
+.tip-list > li{border:1px solid var(--line);border-left:4px solid var(--slate);border-radius:8px;padding:10px 12px;display:grid;gap:4px;}
+.tip-list > li.cat-gaps{border-left-color:var(--amber);}
+.tip-list > li.cat-spec{border-left-color:var(--blue);}
+.tip-list > li.cat-eval{border-left-color:var(--violet);}
+.chip.cat-gaps{background:var(--amber-tint);color:var(--amber-ink);}
+.chip.cat-spec{background:var(--blue-tint);color:var(--blue-ink);}
+.chip.cat-eval{background:var(--violet-tint);color:var(--violet);}
+.alerts .dot.cat-gaps{background:var(--amber);}
+.alerts .dot.cat-spec{background:var(--blue);}
+.alerts .dot.cat-eval{background:var(--violet);}

@@ -410,8 +410,8 @@ async function pageDashboard(main) {
         <span class="spacer"></span>
         <select id="alert-level" aria-label="Filter alerts"><option value="">All</option><option value="high">Urgent only</option><option value="medium">Urgent + important</option></select></div>
         <ul class="alerts" id="dash-alerts"></ul></div>
-      <div class="card"><div class="card-head"><h2>My tasks (next 7 days)</h2><span class="spacer"></span><a class="small" href="#/tasks">All tasks</a><button class="btn ghost sm" data-act="new-task">+ Task</button></div>
-        ${taskListHtml(d.tasks, true, 'Nothing assigned to you this week.')}</div>
+      <div>${dashTipsHtml(d)}<div class="card"><div class="card-head"><h2>My tasks (next 7 days)</h2><span class="spacer"></span><a class="small" href="#/tasks">All tasks</a><button class="btn ghost sm" data-act="new-task">+ Task</button></div>
+        ${taskListHtml(d.tasks, true, 'Nothing assigned to you this week.')}</div></div>
     </div>`;
   let showAll = false;
   const renderAlerts = () => {
@@ -440,6 +440,16 @@ const taskCache = new Map();
 function assigneeText(t) {
   return t.assignees.length ? t.assignees.map((a) => a.id == S.user.id ? 'You' : a.name).join(', ') : 'Anyone';
 }
+// Suggestions across the practice: where care or documentation could be stronger.
+function dashTipsHtml(d) {
+  if (!d.tips || !d.tips.length) return '';
+  const counts = d.tipCounts || {};
+  return `<div class="card tips"><div class="card-head"><h2>Suggestions to strengthen cases</h2></div>
+    <div class="filters">${Object.entries(TIP_CATS).map(([k, [t, cls]]) => `<span class="chip ${cls}">${esc(t)}: ${counts[k] || 0}</span>`).join('')}</div>
+    <ul class="alerts">${d.tips.slice(0, 8).map((t) => `<li><span class="dot ${TIP_CATS[t.category][1]}"></span><div><a href="#/case/${t.caseId}" class="who">${esc(t.patient)}</a> <span class="muted small mono">${esc(t.caseNumber)}</span><div class="small">${esc(t.title)}</div></div></li>`).join('')}</ul>
+    ${d.tips.length > 8 ? `<p class="small muted">${d.tips.length - 8} more — open a case to see its suggestions.</p>` : ''}</div>`;
+}
+
 function taskListHtml(tasks, showCase, empty = 'No open tasks.') {
   if (!tasks.length) return `<div class="empty">${esc(empty)}</div>`;
   tasks.forEach((t) => taskCache.set(t.id, t));
@@ -628,7 +638,7 @@ function tabOverview(el, d) {
   const row = (t, v) => `<dt>${esc(t)}</dt><dd>${v === null || v === undefined || v === '' ? '<span class="muted">—</span>' : esc(v)}</dd>`;
   const contactRow = (t, ct) => `<dt>${esc(t)}</dt><dd>${ct ? esc(contactName(ct)) + (ct.phone ? `<div class="small muted">☎ ${esc(ct.phone)}${ct.fax ? ' · fax ' + esc(ct.fax) : ''}</div>` : '') + (ct.email ? `<div class="small"><a href="mailto:${esc(ct.email)}">${esc(ct.email)}</a></div>` : '') : '<span class="muted">—</span>'}</dd>`;
   const provider = (S.lookups.providers || []).find((u) => +u.id === +c.provider_user_id);
-  el.innerHTML = `${guideCardHtml(d)}<div class="grid-2">
+  el.innerHTML = `${guideCardHtml(d)}${tipsCardHtml(d)}<div class="grid-2">
     <div class="card"><div class="card-head"><h2>Case</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-case">Edit</button>' : ''}</div>
       <dl class="kv">
         ${row('Case type', label('injuryTypes', c.injury_type))}
@@ -805,6 +815,43 @@ function mmiModal(plan) {
   m.el.querySelectorAll('[name=mmi-plan]').forEach((r) => r.addEventListener('change', () => { m.el.querySelector('#mmi-freq-box').hidden = m.el.querySelector('[name=mmi-plan]:checked').value === 'discharge'; }));
 }
 
+// --- case suggestions: better outcomes, complete documentation ---
+const TIP_CATS = { gaps: ['Consistent care', 'cat-gaps'], specialists: ['Specialist care', 'cat-spec'], evaluation: ['Evaluation & documentation', 'cat-eval'] };
+const TIP_REASONS = {
+  gaps: ['Reason documented in the chart', 'Not applicable'],
+  specialists: ['Not clinically indicated', 'Patient declined', 'Already arranged elsewhere'],
+  evaluation: ['Done', 'Not applicable'],
+};
+function tipsCardHtml(d) {
+  if (!d.tips || !d.tips.length) return '';
+  const w = can('case.write'), cw = can('clinical.write');
+  return `<div class="card tips"><div class="card-head"><h2>Suggestions</h2><span class="small muted">Ways to help the patient get the care they need and document the injury fully — if clinically indicated</span></div>
+    <ul class="tip-list">${d.tips.map((t) => {
+      const [catName, catCls] = TIP_CATS[t.category];
+      const act = [];
+      if (t.action?.referral && cw) act.push(`<button class="btn sm" data-act="guide-refer" data-type="${esc(t.action.referral)}" data-region="${esc(t.action.region || '')}">Add ${esc(label('referralTypes', t.action.referral))} referral</button>`);
+      act.push(`<button class="btn ghost sm" data-act="task-from-alert" data-case="${d.case.id}" data-text="${esc(t.title)}">+ Task</button>`);
+      if (w) act.push(`<button class="btn ghost sm" data-act="tip-dismiss" data-key="${esc(t.key)}">Not applicable…</button>`);
+      return `<li class="${catCls}"><div><span class="chip ${catCls}">${esc(catName)}</span> <strong>${esc(t.title)}</strong></div>
+        <div class="small">${esc(t.text)}</div>
+        <details class="small"><summary>Why it matters</summary><p class="muted">${esc(t.why)}</p></details>
+        <div class="filters gs-actions">${act.join('')}</div></li>`;
+    }).join('')}</ul></div>`;
+}
+function tipDismissModal(key) {
+  const t = S.caseData.tips.find((x) => x.key === key);
+  const reasons = TIP_REASONS[t.category] || ['Not applicable'];
+  openModal({ title: 'Not applicable', okText: 'Save',
+    body: `<p class="small"><strong>${esc(t.title)}</strong></p><p class="small muted">Record why, for anyone reviewing the case later.</p>
+      <div class="mt">${reasons.map((r, i) => `<label class="check"><input type="radio" name="td-reason" value="${esc(r)}"${i === 0 ? ' checked' : ''}> ${esc(r)}</label>`).join('')}
+      <label class="check"><input type="radio" name="td-reason" value=""> Other:</label><input id="td-other" placeholder="Reason" maxlength="255"></div>`,
+    onOk: async (el) => {
+      const reason = el.querySelector('[name=td-reason]:checked')?.value || el.querySelector('#td-other').value.trim();
+      if (!reason) throw new Error('Pick or type a reason.');
+      await guideStep('tip_' + key, { status: 'dismissed', reason }); toast('Saved');
+    } });
+}
+
 async function guideStep(step, body) {
   const r = await api('cases.php?action=guide_step&id=' + S.caseData.case.id, { step, ...body });
   S.caseData = r; renderCase();
@@ -844,6 +891,18 @@ async function pagePlaybook(main) {
     <div class="card"><h2>Care timeline</h2>
       <ol class="playbook-steps">${r.guide.map((g) => `<li><strong>${esc(g.title)}</strong>${g.cases.length < 3 ? ` <span class="chip">${esc(g.cases.map((c) => label('injuryTypes', c)).join(', '))} only</span>` : ''} — <span>${esc(g.when)}</span><p class="small muted">${esc(g.why)}</p></li>`).join('')}</ol>
       <p class="small muted">More than one of any referral is normal (an MRI per region, a second ortho opinion). Add others — EMG, X-ray, physical therapy, dental/TMJ — whenever the patient needs them.</p></div>
+    <div class="card mt"><h2>Best outcomes, well-documented cases</h2>
+      <p class="small muted mt">The app turns these into suggestions on each case. All of them are "when clinically indicated" — the doctor decides.</p>
+      <dl class="kv mt">
+        <dt>No gaps in care</dt><dd>Keep the patient on the care plan. Call after any missed visit. If a gap happens, document the reason — unexplained gaps are the most common way a claim is discounted.</dd>
+        <dt>Start early</dt><dd>Treat as soon after the injury as possible, and get records of any ER or urgent care visit in between.</dd>
+        <dt>Every injured area evaluated</dt><dd>Image each injured region (neck, mid back, low back, shoulder, knee), not just the worst one.</dd>
+        <dt>Objective testing</dt><dd>MRI for structural injury; EMG/NCV when there's radiating pain, numbness or tingling; neuropsychological testing for lasting concussion symptoms.</dd>
+        <dt>Specialist involvement</dt><dd>Positive MRI findings → orthopedic evaluation. Follow through on what specialists recommend (injections, pain management, surgical consult).</dd>
+        <dt>Measure progress</dt><dd>Outcome assessments at intake and every re-exam show improvement and lasting limitations in numbers.</dd>
+        <dt>At MMI</dt><dd>If symptoms or impairment remain, ask the treating specialist for a permanency opinion and impairment rating. In Florida auto cases, non-economic damages generally require a permanent injury.</dd>
+        <dt>Keep the attorney informed</dt><dd>Attorney on file, letter of protection signed, records and bills sent promptly.</dd>
+      </dl></div>
     <div class="card mt"><h2>Rules that cost money if missed</h2><dl class="kv">${r.rules.map(([t, x]) => `<dt>${esc(t)}</dt><dd>${esc(x)}</dd>`).join('')}</dl></div>
     <div class="card mt"><h2>Case checklist</h2>${Object.entries(groups).map(([g, items]) => `<h3 class="mt">${esc(g)}</h3>
       <table><thead><tr><th>Item</th><th>When</th><th>Applies to</th></tr></thead><tbody>${items.map((i) => `<tr><td>${esc(i.label)}</td><td class="small">${esc(i.when)}</td><td class="small muted">${esc(types(i.cases))}</td></tr>`).join('')}</tbody></table>`).join('')}</div>`;
@@ -1984,7 +2043,8 @@ const ACTIONS = {
   'case-tab': (el) => { S.caseTab = el.dataset.tab; renderCase(); },
   'edit-case': editCaseModal, 'edit-patient': editPatientModal, 'edit-notes': editNotesModal,
   'add-referral': () => referralModal(null),
-  'guide-refer': (el) => referralModal(null, { type: el.dataset.type }),
+  'guide-refer': (el) => referralModal(null, { type: el.dataset.type, ...(el.dataset.region ? { body_region: el.dataset.region } : {}) }),
+  'tip-dismiss': (el) => tipDismissModal(el.dataset.key),
   'guide-visit': (el) => visitModal(null, { visit_type: el.dataset.type }),
   'mmi': (el) => mmiModal(el.dataset.plan),
   'emc-result': async (el) => {

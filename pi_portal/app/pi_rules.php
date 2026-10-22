@@ -436,6 +436,146 @@ function head_injury_codes(array $icdStrings): array {
     return array_slice(array_keys($found), 0, 4);
 }
 
+// ---------- Case suggestions ----------
+// Coaching beyond the required timeline: ways to get the patient the care
+// they need and to document the injury completely, built from what's on
+// the case (visits, referral findings, diagnosis codes). Every suggestion
+// is "if clinically indicated" — the doctor decides; a suggestion can be
+// marked not applicable (kept in case_guide as 'tip_<key>').
+const TIP_CATEGORIES = ['gaps' => 'Consistent care', 'specialists' => 'Specialist care', 'evaluation' => 'Evaluation & documentation'];
+const TIP_GAP_DAYS = 14;
+// ICD-10 prefixes by body region, and for nerve involvement.
+const ICD_REGIONS = [
+    'cervical' => ['S13', 'S14', 'M50', 'M54.2', 'M54.12', 'M53.1'],
+    'thoracic' => ['S23', 'S24', 'M54.6', 'M54.14'],
+    'lumbar' => ['S33', 'S34', 'S39.012', 'M51', 'M54.5', 'M54.16', 'M54.17'],
+    'shoulder' => ['S43', 'S46', 'M75', 'M25.51'],
+    'knee' => ['S83', 'S86', 'M23', 'M25.56'],
+];
+const ICD_RADICULAR = ['M54.1', 'M50.1', 'M51.1', 'M79.2'];
+const REGION_WORDS = [
+    'cervical' => '/c-?spine|cervical|neck|\bc[1-7]\b/i', 'thoracic' => '/t-?spine|thoracic|mid[- ]?back|\bt\d{1,2}\b/i',
+    'lumbar' => '/l-?spine|lumbar|low(er)?[- ]?back|\bl[1-5]\b|\bs1\b/i', 'shoulder' => '/shoulder/i', 'knee' => '/knee/i',
+];
+const REGION_LABELS = ['cervical' => 'neck (cervical)', 'thoracic' => 'mid back (thoracic)', 'lumbar' => 'low back (lumbar)', 'shoulder' => 'shoulder', 'knee' => 'knee'];
+
+function icd_list(array $icdStrings): array {
+    $codes = [];
+    foreach ($icdStrings as $s) foreach (preg_split('/[\s,;]+/', strtoupper((string)$s)) as $c) if ($c !== '') $codes[$c] = true;
+    return array_keys($codes);
+}
+function icd_matches(array $codes, array $prefixes): bool {
+    foreach ($codes as $c) foreach ($prefixes as $p) if (str_starts_with($c, $p)) return true;
+    return false;
+}
+
+// $ctx: referrals (raw or decrypted rows), visits ([visit_date, visit_type]
+// rows), icd (strings), guideRows. Returns suggestions: key, category,
+// title, text, why, action (null | ['referral' => type, 'region' => ...]).
+function case_tips(array $case, array $ctx): array {
+    $today = date('Y-m-d');
+    if (!in_array($case['stage'], OPEN_STAGES, true)) return [];
+    $dismissed = [];
+    foreach ($ctx['guideRows'] ?? [] as $g) if (str_starts_with($g['step'], 'tip_')) $dismissed[substr($g['step'], 4)] = true;
+    $refs = array_values(array_filter($ctx['referrals'] ?? [], fn($r) => empty($r['archived_at']) && $r['status'] !== 'cancelled'));
+    $has = fn(array $types) => (bool)array_filter($refs, fn($r) => in_array($r['type'], $types, true));
+    $findings = function (array $types) use ($refs): string {
+        $t = '';
+        foreach ($refs as $r) if (in_array($r['type'], $types, true)) $t .= ' ' . (array_key_exists('findings', $r) ? $r['findings'] : dec($r['findings_enc'] ?? null));
+        return strtolower($t);
+    };
+    $visits = $ctx['visits'] ?? [];
+    $attended = array_values(array_unique(array_map(fn($v) => $v['visit_date'], array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'))));
+    sort($attended);
+    $codes = icd_list($ctx['icd'] ?? []);
+    $inCare = in_array($case['stage'], ['intake', 'treating'], true) && !($case['mmi_date'] ?? null);
+    $fv = $case['first_visit'] ?? null;
+    $tips = [];
+    $add = function (string $key, string $cat, string $title, string $text, string $why, ?array $action = null) use (&$tips, $dismissed) {
+        if (!isset($dismissed[$key])) $tips[] = compact('key', 'title', 'text', 'why', 'action') + ['category' => $cat];
+    };
+
+    // ---- consistent care ----
+    $gaps = [];
+    for ($i = 1; $i < count($attended); $i++) {
+        $d = days_between($attended[$i - 1], $attended[$i]);
+        if ($d > TIP_GAP_DAYS) $gaps[] = [$d, $attended[$i - 1], $attended[$i]];
+    }
+    if ($gaps) {
+        usort($gaps, fn($a, $b) => $b[0] <=> $a[0]);
+        [$d, $from, $to] = $gaps[0];
+        $add('gaps', 'gaps', 'Explain the gap' . (count($gaps) > 1 ? 's' : '') . ' in care',
+            'There ' . (count($gaps) > 1 ? 'are ' . count($gaps) . ' gaps' : 'is a gap') . ' of more than ' . TIP_GAP_DAYS . ' days between visits (longest: ' . $d . ' days, ' . us_date($from) . ' – ' . us_date($to) . '). Make sure the chart says why (illness, travel, work, transportation).',
+            "Unexplained gaps are the first thing an adjuster uses to argue the injury had resolved. A documented reason keeps the treatment record continuous.");
+    }
+    if ($inCare && $fv && days_between($fv, $today) >= 28) {
+        $recent = count(array_filter($attended, fn($d) => $d > add_days($today, -14)));
+        $before = count(array_filter($attended, fn($d) => $d > add_days($today, -28) && $d <= add_days($today, -14)));
+        if ($before >= 4 && $recent * 2 <= $before) $add('freq_drop', 'gaps', 'Visit frequency has dropped',
+            "$recent visit" . ($recent === 1 ? '' : 's') . " in the last two weeks, down from $before the two weeks before. Call the patient, find out what's getting in the way, and reschedule to the care plan.",
+            "Following the care plan is what gets the patient better, and an attendance record that tapers off without a clinical reason reads as recovery.");
+    }
+    $noShows = count(array_filter($visits, fn($v) => $v['visit_type'] === 'no_show' && $v['visit_date'] > add_days($today, -30)));
+    if ($inCare && $noShows >= 2) $add('no_shows', 'gaps', 'Repeated no-shows', "$noShows missed appointments in the last 30 days. Reach out, note the reason in the chart, and help with scheduling or transportation if that's the barrier.",
+        "Missed visits slow recovery and create gaps; a documented reason shows the missed care wasn't because the patient felt better.");
+    if ($inCare && $fv && !empty($case['date_of_injury']) && ($late = days_between($case['date_of_injury'], $fv)) > 7) {
+        $add('late_start', 'gaps', 'Treatment started ' . $late . ' days after the injury', 'Document why care started then, and request records of any ER, urgent care or primary-care visit in between.',
+            "A delay between the accident and first treatment is often used to suggest the injury was minor or unrelated. Earlier medical visits close that gap.");
+    }
+
+    // ---- specialist care ----
+    $mriText = $findings(['mri', 'ct']);
+    $positive = '/hernia|protru|extru|bulg|tear|stenosis|impinge|compress|fractur|radicul|nerve root|annular|spondylolisth|effusion/';
+    if ($mriText && preg_match($positive, $mriText, $m) && !$has(['ortho', 'pain_mgmt', 'surgical', 'neuro'])) {
+        $add('mri_positive', 'specialists', 'MRI findings support a specialist referral', 'The MRI report notes ' . $m[0] . '… findings. If clinically indicated, refer to orthopedics (or pain management) for evaluation.',
+            "Objective MRI findings plus a specialist's evaluation give the clearest picture of the injury and what care it needs — and carry the most weight with insurers.", ['referral' => 'ortho']);
+    }
+    $nerveWords = '/radicul|nerve root|foramin|impinge|numb|tingl|paresthes|sciatic/';
+    if ((icd_matches($codes, ICD_RADICULAR) || preg_match($nerveWords, $mriText . ' ' . $findings(['ortho', 'neuro']))) && !$has(['emg'])) {
+        $add('emg', 'specialists', 'Consider EMG / nerve conduction testing', 'Diagnosis codes or reports point to nerve involvement (radiculopathy). If clinically indicated, an EMG/NCV study objectively documents it.',
+            "Radiating pain, numbness or tingling is subjective until tested. An EMG/NCV confirms nerve involvement and guides treatment.", ['referral' => 'emg']);
+    }
+    $imaged = [];
+    foreach ($refs as $r) if (in_array($r['type'], ['mri', 'ct', 'xray'], true)) foreach (REGION_WORDS as $reg => $rx) if (preg_match($rx, (string)($r['body_region'] ?? ''))) $imaged[$reg] = true;
+    $mris = array_filter($refs, fn($r) => in_array($r['type'], ['mri', 'ct'], true));
+    if ($mris) {
+        $missing = [];
+        foreach (['cervical', 'thoracic', 'lumbar'] as $reg) if (icd_matches($codes, ICD_REGIONS[$reg]) && !isset($imaged[$reg])) $missing[] = $reg;
+        if ($missing) $add('regions', 'specialists', 'Injured region without imaging', 'Diagnosis codes include the ' . implode(' and ', array_map(fn($r) => REGION_LABELS[$r], $missing)) . ', but no MRI on the case covers ' . (count($missing) > 1 ? 'them' : 'it') . '. If clinically indicated, image each injured region.',
+            "Each injured area needs its own objective evaluation; an area that was never imaged is hard to support later.", ['referral' => 'mri', 'region' => REGION_LABELS[$missing[0]]]);
+    }
+    foreach (['shoulder', 'knee'] as $reg) {
+        $mentioned = (bool)array_filter($refs, fn($r) => preg_match(REGION_WORDS[$reg], (string)($r['body_region'] ?? '') . ' ' . (string)($r['specialty'] ?? '')));
+        if (icd_matches($codes, ICD_REGIONS[$reg]) && !$mentioned) $add('limb_' . $reg, 'specialists', ucfirst($reg) . ' injury not yet evaluated', 'A ' . $reg . ' injury is coded, but no imaging or referral mentions the ' . $reg . '. If clinically indicated, order imaging or an orthopedic evaluation of the ' . $reg . '.',
+            "Extremity injuries are often overshadowed by the spine. Evaluating them early gets the patient the right care and documents the full extent of the injury.", ['referral' => 'ortho', 'region' => $reg]);
+    }
+    $consult = $findings(['ortho', 'neuro', 'surgical']);
+    if ($consult && preg_match('/inject|epidural|\besi\b|facet|radiofrequency|\brfa\b|nerve block|surg/', $consult, $m) && !$has(['pain_mgmt', 'surgical'])) {
+        $add('consult_rec', 'specialists', "Follow through on the specialist's recommendation", 'A consult report recommends ' . (str_starts_with($m[0], 'surg') ? 'a surgical evaluation' : 'interventional care (' . $m[0] . ')') . ', but there is no pain-management or surgical referral yet.',
+            "When a specialist recommends the next level of care, following through promptly helps the patient and shows the recommended care was pursued.", ['referral' => str_starts_with($m[0], 'surg') ? 'surgical' : 'pain_mgmt']);
+    }
+    if (($case['head_injury'] ?? '') === 'yes' && $fv && days_between($fv, $today) > 42 && $inCare && !$has(['other'])) {
+        $add('concussion', 'specialists', 'Lingering concussion symptoms?', 'Six weeks into care with a head injury. If headaches, dizziness, memory or concentration problems persist, ask the neurologist about neuropsychological testing or vestibular therapy.',
+            "Post-concussion symptoms that last are under-diagnosed. Formal testing documents cognitive effects that an exam alone can miss.", ['referral' => 'other']);
+    }
+
+    // ---- evaluation & documentation ----
+    $liability = in_array($case['injury_type'], LIABILITY_CASES, true);
+    if ($liability && ($case['mmi_date'] ?? null)) {
+        $add('permanency', 'evaluation', 'Permanency opinion at MMI', 'If the patient has lasting symptoms or impairment at MMI, ask the treating specialist (orthopedic or pain management) for a permanency opinion and impairment rating.',
+            ($case['injury_type'] === 'auto' ? "In Florida auto cases, pain-and-suffering damages generally require a permanent injury established within reasonable medical probability (§627.737). " : '') . "A physician's permanency opinion and impairment rating document the long-term effect of the injury, including future care needs.");
+    }
+    if ($liability && $inCare && $fv && days_between($fv, $today) > 7 && empty($case['attorney_contact_id'])) {
+        $add('no_attorney', 'evaluation', 'No attorney on file', 'Confirm whether the patient is represented and add the attorney under Overview → Edit — they receive the records, bills and status letters.',
+            "Represented cases resolve more reliably, and the office needs the attorney's details for the letter of protection, records requests and payment at settlement.");
+    }
+    if ($inCare && $fv && days_between($fv, $today) > 21 && count($ctx['outcomeDates'] ?? []) < 2) {
+        $add('outcomes', 'evaluation', 'Track outcome scores over time', (count($ctx['outcomeDates'] ?? []) ? 'Only one set of outcome assessments so far.' : 'No outcome assessments recorded yet.') . ' Record ADL/Oswestry/neck-disability scores at intake and every re-exam.',
+            "Scores measured over time show both progress and lasting limitations in numbers — the clearest way to show how the injury affects daily life.");
+    }
+    return $tips;
+}
+
 // ---------- Checklist ----------
 // Returns each item that applies to the case type with its status: done |
 // na | overdue | due | upcoming | waiting ('waiting' = its anchor date,
@@ -646,6 +786,8 @@ function bulk_case_context(PDO $pdo, array $cases): array {
     }
     foreach ($pdo->query("SELECT case_id, MAX(occurred_on) d FROM correspondence WHERE archived_at IS NULL AND case_id IN ($in) GROUP BY case_id") as $r) $ctx[$r['case_id']]['lastCorrespondence'] = $r['d'];
     foreach ($pdo->query("SELECT case_id, MAX(taken_on) d FROM outcomes WHERE archived_at IS NULL AND case_id IN ($in) GROUP BY case_id") as $r) $ctx[$r['case_id']]['lastOutcome'] = $r['d'];
+    foreach ($pdo->query("SELECT DISTINCT case_id, taken_on FROM outcomes WHERE archived_at IS NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['outcomeDates'][] = $r['taken_on'];
+    foreach ($pdo->query("SELECT case_id, visit_date, visit_type FROM visits WHERE archived_at IS NULL AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['visits'][] = $r;
     foreach ($pdo->query("SELECT case_id, follow_up_on, subject FROM correspondence WHERE archived_at IS NULL AND follow_up_on IS NOT NULL AND follow_up_done = 0 AND case_id IN ($in)") as $r) $ctx[$r['case_id']]['openFollowUps'][] = $r;
     $ledger = ledger_rows_by_case($pdo, $ids);
     foreach ($cases as $c) {
