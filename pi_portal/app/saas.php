@@ -116,6 +116,20 @@ function plan_for(array $practice): array {
     return PLANS[$practice['plan']] ?? PLANS['solo'];
 }
 
+// The plan whose limits apply right now: a free trial (and a comped
+// account) is the top plan, whatever plan was picked for afterwards. Once
+// the practice subscribes, its subscribed plan applies.
+function effective_plan_key(array $practice): string {
+    $top = PLAN_ORDER[count(PLAN_ORDER) - 1];
+    if ($practice['subscription_status'] === 'comped') return $top;
+    if ($practice['subscription_status'] === 'trialing' && practice_access($practice) === 'full') return $top;
+    return isset(PLANS[$practice['plan']]) ? $practice['plan'] : PLAN_ORDER[0];
+}
+
+function effective_plan(array $practice): array {
+    return PLANS[effective_plan_key($practice)];
+}
+
 // 'full' or 'read_only'. A practice whose trial ended or subscription was
 // canceled keeps READ access to its records — they're the practice's
 // medical records and the BAA obliges us to return them — but can't add
@@ -130,12 +144,13 @@ function practice_access(array $p): string {
 
 function practice_summary(array $p): array {
     $plan = plan_for($p);
+    $eff = effective_plan($p);
     $daysLeft = $p['subscription_status'] === 'trialing' && $p['trial_ends_at'] ? max(0, (int)ceil((strtotime($p['trial_ends_at']) - time()) / 86400)) : null;
     return [
         'id' => (int)$p['id'], 'name' => $p['name'], 'plan' => $p['plan'], 'planName' => $plan['name'],
         'status' => $p['subscription_status'], 'access' => practice_access($p), 'trialDaysLeft' => $daysLeft,
         'currentPeriodEnd' => $p['current_period_end'], 'baaCurrent' => $p['baa_version'] === BAA_VERSION,
-        'limits' => ['activeCases' => $plan['active_cases'], 'users' => $plan['users']],
+        'limits' => ['activeCases' => $eff['active_cases'], 'users' => $eff['users']], 'effectivePlan' => effective_plan_key($p), 'effectivePlanName' => $eff['name'],
         'ehrName' => $p['ehr_name'] ?? null, 'interval' => $p['billing_interval'] ?? 'monthly',
         'trialEndsAt' => $p['trial_ends_at'], 'subscribed' => !empty($p['stripe_subscription_id']),
         'features' => practice_features($p), 'featureCatalog' => feature_catalog(),
@@ -159,7 +174,7 @@ function active_user_count(int $practiceId): int {
 
 function enforce_limit(string $what) {
     $p = current_practice();
-    $plan = plan_for($p);
+    $plan = effective_plan($p);
     if ($what === 'cases' && $plan['active_cases'] !== null && active_case_count((int)$p['id']) >= $plan['active_cases']) {
         json_response(['error' => "Your {$plan['name']} plan includes {$plan['active_cases']} open cases. Close finished cases or upgrade under Billing.", 'code' => 'limit'], 402);
     }

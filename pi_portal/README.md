@@ -29,13 +29,24 @@ Check trademark and domain availability before launch.
   the lowest plan that includes it in `FEATURES` (`app/saas.php`); higher
   plans include it too, and unlisted features are in every plan. Today:
   **Daily huddle** on Gold and up, **daily email digest** and **multiple locations** on Platinum.
-  Free trials and complimentary accounts get every feature, and the trial
-  banner names what the chosen plan won't keep. Enforcement is server-side
+  Free trials and complimentary accounts are the top tier (Platinum) —
+  every feature and Platinum's limits (`effective_plan()`) — and the trial
+  banner names what the chosen plan won't keep. Subscribing to a lower plan
+  applies that plan's features and limits as soon as Stripe confirms. Enforcement is server-side
   (`require_feature()` / `has_feature()`, including the email job). The
   pricing page, plan cards, upgrade prompts and nav locks all read the same
   list. To tier a future feature: add it to `FEATURES` and call
   `require_feature('key')` in its endpoints (and check `hasFeature('key')`
   in the UI).
+- **Changing plans.** Subscribed practices switch plan or billing period on
+  Plan & billing (`billing.php?action=change_plan`), with an estimate of the
+  prorated difference on each button. Upgrades are invoiced for the
+  difference immediately with `payment_behavior=pending_if_incomplete`, so
+  Stripe applies the new price only once the payment succeeds; the practice
+  is updated in the same request (or by the webhook when a declined payment
+  is completed later via the invoice link). Downgrades apply at once and the
+  unused amount is credited to the next bill. During kept free-trial days
+  nothing is charged.
 - **Monthly or annual.** Annual is 10× the monthly price, i.e. 2 months
   free: $390 / $590 / $790 a year.
 - **Trial.** 14 days, no card required. Subscribing during the trial keeps

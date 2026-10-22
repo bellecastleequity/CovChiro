@@ -22,7 +22,7 @@ function handle_users() {
     require_user('users.manage');
     $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, notify_digest, location_id, location_restricted, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
     $stmt->execute([pid()]);
-    json_response(['users' => $stmt->fetchAll(), 'limit' => plan_for(current_practice())['users']]);
+    json_response(['users' => $stmt->fetchAll(), 'limit' => effective_plan(current_practice())['users']]);
 }
 
 // A readable one-time password the admin hands over in person or by

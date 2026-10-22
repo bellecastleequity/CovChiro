@@ -57,7 +57,7 @@ async function api(path, body, { passive = false } = {}) {
     lockOut(data.error);
     throw new Error(data.error);
   }
-  if (!res.ok) throw new Error(data?.error || 'Request failed');
+  if (!res.ok) { const err = new Error(data?.error || 'Request failed'); err.data = data; err.status = res.status; throw err; }
   return data;
 }
 
@@ -383,7 +383,11 @@ function bannerHtml() {
 
 async function refreshSession() {
   const s = await attempt(() => api('auth.php?action=session'));
-  if (s && s.step === 'signed_in') { S.practice = s.practice; S.lookups = s.lookups; const b = document.getElementById('banner'); if (b) b.innerHTML = bannerHtml(); }
+  if (s && s.step === 'signed_in') {
+    S.practice = s.practice; S.lookups = s.lookups; const b = document.getElementById('banner'); if (b) b.innerHTML = bannerHtml();
+    // A plan change takes effect at once, so drop the plan tags on nav items it unlocked.
+    document.querySelectorAll('.sidebar a[data-nav]').forEach((a) => { const f = NAV_FEATURE[a.dataset.nav]; if (f && hasFeature(f)) a.querySelector('.nav-lock')?.remove(); });
+  }
 }
 
 async function startShell() {
@@ -2384,6 +2388,7 @@ const billingInterval = { value: '' };
 async function pageBilling(main) {
   const r = await attempt(() => api('billing.php?action=status'));
   if (!r) return;
+  changePlan.status = r;
   const p = r.practice;
   if (location.hash.includes('done=1')) { toast('Thanks! Your subscription is being activated.'); history.replaceState(null, '', '#/billing'); setTimeout(refreshSession, 2500); }
   const freeUntil = p.status === 'active' && p.subscribed && p.trialEndsAt && p.trialEndsAt.slice(0, 10) > today() ? p.trialEndsAt.slice(0, 10) : null;
@@ -2402,6 +2407,7 @@ async function pageBilling(main) {
     </div>
     ${!r.billingReady ? '<div class="notice">Online billing isn\'t switched on yet for this installation.</div>' : ''}
     ${p.promo && !['active', 'past_due', 'comped'].includes(p.status) ? `<div class="notice ok">Promo code <strong class="mono">${esc(p.promo.code)}</strong>: ${esc(p.promo.summary)}${p.promo.plans ? ' (' + esc(p.promo.plans.map((k) => r.plans[k]?.name || k).join(' or ') + ' plan') + ')' : ''} — applied automatically at checkout.</div>` : ''}
+    ${p.status === 'trialing' && p.access === 'full' ? `<div class="notice ok">Your free trial includes everything in ${esc(r.plans[PLAN_TOP(r)].name)} — unlimited cases and users and every feature. When you subscribe, the plan you choose applies straight away. You can change plans any time; upgrades are charged only the difference and start the moment the payment goes through.</div>` : ''}
     ${p.status === 'trialing' && p.access === 'full' ? `<div class="notice ok">${r.firstCharge ? `Subscribing now keeps the rest of your free trial — your card is first charged on <strong>${esc(fmtDate(r.firstCharge))}</strong>.` : 'Your trial ends within two days, so billing starts when you subscribe.'} Cancel any time before then and you won't be charged.</div>` : ''}
     <div class="interval-toggle" role="radiogroup" aria-label="Billing period">
       <button role="radio" data-act="billing-interval" data-v="monthly" class="${interval === 'monthly' ? 'on' : ''}" aria-checked="${interval === 'monthly'}">Monthly</button>
@@ -2418,11 +2424,40 @@ async function pageBilling(main) {
         <p class="small muted">${esc(pl.blurb)}</p>
         <ul class="small"><li>${pl.active_cases ? pl.active_cases + ' open cases' : 'Unlimited open cases'}</li><li>${pl.users ? pl.users + ' users' : 'Unlimited users'}</li><li>Unlimited closed cases</li>
           ${(pl.features || []).map((f) => `<li class="${f.included ? '' : 'no'}">${esc(f.name)}</li>`).join('')}</ul>
-        ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : subscribed ? '<button class="btn ghost" data-act="billing-portal">Switch in Manage billing</button>'
+        ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : subscribed ? changePlanButton(r, k, interval)
           : `<button class="btn${k === p.plan ? '' : ' ghost'}" data-act="checkout" data-plan="${k}" data-interval="${interval}"${avail ? '' : ' disabled'}>${p.status === 'trialing' && r.firstCharge ? 'Add card — keep free days' : 'Subscribe'}</button>`}</div>`;
     }).join('')}</div>
     <p class="small muted mt">Payments are processed by Stripe; ${esc(S.brand.name)} never sees your card. Closed and dropped cases don't count toward your limit. If you cancel, your records stay readable and exportable.</p>`;
   main.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
+}
+
+const PLAN_TOP = (r) => Object.keys(r.plans).at(-1);
+
+// Switching a live subscription: upgrades pay the prorated difference now
+// and take effect the moment the payment is confirmed.
+function changePlanButton(r, plan, interval) {
+  const o = r.changePreview?.options?.[plan]?.[interval];
+  if (!o) return '<button class="btn ghost" data-act="billing-portal">Switch in Manage billing</button>';
+  if (!o.available) return '<button class="btn ghost" disabled>Not available</button>';
+  const label = r.changePreview.inTrial ? (o.upgrade ? 'Upgrade — free during your trial' : 'Switch — free during your trial')
+    : o.upgrade ? `Upgrade — about ${money(o.today)} today` : `Switch${o.credit ? ` — about ${money(o.credit)} credit` : ''}`;
+  return `<button class="btn${o.upgrade ? '' : ' ghost'}" data-act="change-plan" data-plan="${plan}" data-interval="${interval}">${esc(label)}</button>`;
+}
+
+async function changePlan(el) {
+  const r = changePlan.status, plan = el.dataset.plan, interval = el.dataset.interval, pl = r.plans[plan], o = r.changePreview.options[plan][interval];
+  const what = `${pl.name} (${interval === 'annual' ? 'billed yearly' : 'billed monthly'})`;
+  const text = r.changePreview.inTrial ? `You'll move to ${what} now. Nothing is charged until your free trial ends.`
+    : o.upgrade ? `You'll be charged the prorated difference for the rest of this billing period — about ${money(o.today)} — to your card on file. ${pl.name} features and limits start the moment the payment is confirmed.`
+    : `You'll move to ${what} now. Features and limits change immediately, and the unused part of this period (about ${money(o.credit)}) is credited to your next bill.`;
+  if (!(await confirmBox('Change to ' + what + '?', text, o.upgrade && !r.changePreview.inTrial ? 'Pay and upgrade' : 'Change plan'))) return;
+  try {
+    await api('billing.php?action=change_plan', { plan, interval });
+    toast('You\'re now on ' + pl.name); await refreshSession(); pageBilling(document.getElementById('main'));
+  } catch (e) {
+    if (e.data?.payUrl) { if (await confirmBox('Payment needed', e.message, 'Complete payment')) window.open(e.data.payUrl, '_blank', 'noopener'); }
+    else toast(e.message, true);
+  }
 }
 
 // ---------- operator console ----------
@@ -2618,6 +2653,7 @@ const ACTIONS = {
     if (r) { toast(el.dataset.reset ? 'Back to the defaults' : 'Cost list saved'); await refreshSession(); pageSettings(document.getElementById('main')); }
   },
   'promo-check': () => checkPromo(),
+  'change-plan': (el) => changePlan(el),
   'step-edit': (el) => stepModal(el.dataset.id ? +el.dataset.id : null),
   'step-remove': async (el) => { if (!(await confirmBox('Remove this step?', 'It disappears from every case\'s checklist. Completions already recorded stay in the activity log.', 'Remove'))) return; if (await attempt(() => api('admin.php?action=step_save', { id: +el.dataset.id, remove: true }))) { toast('Removed'); loadSteps(); } },
   'step-silence': async (el) => { if (await attempt(() => api('admin.php?action=step_silence', { key: el.dataset.key, silenced: el.dataset.on === '1' }))) { toast(el.dataset.on === '1' ? 'Silenced for every case' : 'Turned back on'); loadSteps(); } },
