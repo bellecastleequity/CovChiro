@@ -41,7 +41,7 @@ The video fits itself to the voice. Each scene lasts its default length or as lo
 
 **Your own recording:** save one file per scene as `vo/01-open.mp3` … `vo/11-cta.mp3` (any of .mp3/.wav/.m4a), or a single take as `vo/full.mp3` timed to the table above, then run `build_video.py`.
 
-**Music:** drop a licensed track in as `music.mp3`; it's mixed quietly under the voice and fades out at the end.
+**Music:** `music.mp3` is a royalty-free track generated with vidIQ ("light corporate presentation": soft piano, warm pads, ~95 BPM), crossfaded into an 8½-minute bed so the walkthrough never loops abruptly. It's mixed about 18 dB under the voice, fades in and out, and is used by both videos. Swap in any other licensed track under the same name. To change only the music, run `build_video.py --remix` (add `--scenes walkthrough.json --work .build/walk` for the walkthrough); it reuses the rendered picture and redoes the audio in seconds.
 
 ## Rebuilding the screens
 

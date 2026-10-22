@@ -7,7 +7,7 @@ Voice options (any one):
   vo/full.mp3|.wav|.m4a        one recording of the whole script, timed to the
                                default cut (see "Voiceover script.md")
   nothing                      silent, captioned cut
-Optional: music.mp3 — a licensed music bed, mixed quietly under the voice.
+Optional: music.mp3 — a music bed (royalty-free or licensed), mixed quietly under the voice.
 
 Each scene lasts max(its default length, its clip + a short tail), so a new
 voice or a reworded line never cuts off. Output: "InjuryCase sales video.mp4".
@@ -37,6 +37,7 @@ def find(base, vo='vo'):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('--fps', type=int, default=30); ap.add_argument('--out'); ap.add_argument('--scenes', default='scenes.json')
+    ap.add_argument('--remix', action='store_true', help='reuse the last rendered picture; only redo the audio (voice timing must be unchanged)')
     ap.add_argument('--work', default=os.path.join(HERE, '.build'))
     a = ap.parse_args()
     cfg = json.load(open(os.path.join(HERE, a.scenes)))
@@ -54,10 +55,15 @@ def main():
     os.makedirs(a.work, exist_ok=True)
     json.dump(durations, open(os.path.join(HERE, 'timeline.json'), 'w'))
     frames = os.path.join(a.work, 'frames')
-    shutil.rmtree(frames, ignore_errors=True)
-    subprocess.check_call(['node', os.path.join(HERE, 'render.js'), HERE, str(a.fps), '', os.path.join(HERE, 'timeline.json'), frames, html])
     silent = os.path.join(a.work, 'video_only.mp4')
-    subprocess.check_call(['ffmpeg', '-loglevel', 'error', '-y', '-framerate', str(a.fps), '-i', os.path.join(frames, '%05d.jpg'),
+    if a.remix and not os.path.exists(silent):
+        sys.exit('--remix needs a previous full build in ' + a.work)
+    if a.remix and abs(dur(silent) - total) > 0.5:
+        sys.exit(f'--remix: the voice timing changed ({dur(silent):.1f}s rendered vs {total:.1f}s now); run a full build')
+    if not a.remix:
+        shutil.rmtree(frames, ignore_errors=True)
+        subprocess.check_call(['node', os.path.join(HERE, 'render.js'), HERE, str(a.fps), '', os.path.join(HERE, 'timeline.json'), frames, html])
+        subprocess.check_call(['ffmpeg', '-loglevel', 'error', '-y', '-framerate', str(a.fps), '-i', os.path.join(frames, '%05d.jpg'),
                            '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-pix_fmt', 'yuv420p', silent])
     # Audio: each clip placed at its scene start (+ lead-in), or the full track; optional music bed.
     inputs, filters, mix = [], [], []
@@ -76,7 +82,7 @@ def main():
     if os.path.exists(music):
         i = len(inputs) // 2
         inputs += ['-stream_loop', '-1', '-i', music]
-        filters.append(f'[{i}:a]aresample=48000,volume={0.12 if mix else 0.35},afade=t=out:st={max(0, total - 3)}:d=3[m]'); mix.append('[m]')
+        filters.append(f'[{i}:a]aresample=48000,volume={0.12 if mix else 0.35},afade=t=in:d=2,afade=t=out:st={max(0, total - 4)}:d=4[m]'); mix.append('[m]')
     out = os.path.join(HERE, a.out)
     if not mix:
         subprocess.check_call(['ffmpeg', '-loglevel', 'error', '-y', '-i', silent, '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-shortest',
