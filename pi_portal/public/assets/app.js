@@ -342,7 +342,7 @@ async function signOut() {
 // ---------- shell & routing ----------
 const NAV = [
   ['dashboard', 'Dashboard', 'case.read'], ['huddle', 'Daily huddle', 'case.read'], ['cases', 'Cases', 'case.read'], ['tasks', 'Tasks', 'case.read'],
-  ['ar', 'A/R & settlements', 'fin:balances'], ['contacts', 'Contacts', 'case.read'], ['playbook', 'PI playbook', 'case.read'],
+  ['schedule', 'Appointment upload', 'case.write'], ['ar', 'A/R & settlements', 'fin:balances'], ['contacts', 'Contacts', 'case.read'], ['playbook', 'PI playbook', 'case.read'],
   ['admin', 'Users', 'users.manage'], ['settings', 'Practice settings', 'users.manage'], ['billing', 'Plan & billing', 'users.manage'],
   ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'],
 ];
@@ -364,7 +364,7 @@ function setLocFilter(v) { try { localStorage.setItem('ic.loc', v); } catch { /*
 const locQS = () => { const l = locFilter(); return l ? '&location=' + encodeURIComponent(l) : ''; };
 
 // Nav items that are plan features.
-const NAV_FEATURE = { huddle: 'huddle' };
+const NAV_FEATURE = { huddle: 'huddle', schedule: 'schedule_import' };
 
 // Trial / subscription / BAA notices shown above every page.
 function bannerHtml() {
@@ -430,7 +430,7 @@ function route() {
   main.innerHTML = '<div class="empty">Loading…</div>';
   window.scrollTo(0, 0);
   const pages = { dashboard: pageDashboard, cases: pageCases, case: pageCase, tasks: pageTasks, ar: pageAR, contacts: pageContacts, admin: pageAdmin, audit: pageAudit,
-    settings: pageSettings, billing: pageBilling, platform: pagePlatform, playbook: pagePlaybook, huddle: pageHuddle };
+    settings: pageSettings, billing: pageBilling, platform: pagePlatform, playbook: pagePlaybook, huddle: pageHuddle, schedule: pageSchedule };
   (pages[page] || (S.user.operator ? pagePlatform : pageDashboard))(main, parts.slice(1));
   if (!S.user.operator) refreshTaskBadge();
 }
@@ -443,10 +443,16 @@ const clinicalNote = () => `${esc(S.brand.name)} is an educational tool. Its pro
 async function pageDashboard(main) {
   const d = await attempt(() => api('cases.php?action=dashboard' + locQS()));
   if (!d) return;
+  // Reminder once a practice uses appointment uploads and yesterday's is missing.
+  if (hasFeature('schedule_import') && can('case.write')) api('schedule.php?action=status', undefined, { passive: true }).then((st) => {
+    const box = document.getElementById('sched-reminder');
+    if (box && st.behind) box.innerHTML = `<div class="notice">The appointment list for <strong>${esc(fmtDate(st.expectedDate))}</strong> hasn't been uploaded yet, so visits and no-shows since then aren't logged. <a href="#/schedule">Upload it</a></div>`;
+  }).catch(() => {});
   const ac = d.alertCounts || {};
   main.innerHTML = `${phiBanner}
     <div class="page-head"><div><h1>Dashboard</h1><div class="sub">${esc(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}</div></div>
       <span class="spacer"></span>${can('case.write') ? '<button class="btn" data-act="new-case">+ New case</button>' : ''}</div>
+    <div id="sched-reminder"></div>
     <div class="tiles">
       <div class="tile accent"><div class="k">Open cases</div><div class="v">${d.openCases}</div></div>
       <div class="tile"><div class="k">Actively treating</div><div class="v">${d.activelyTreating}</div></div>
@@ -2141,6 +2147,110 @@ async function pageTasks(main, args = []) {
   main.querySelector('#task-status').addEventListener('change', (e) => { st.status = e.target.value; pageTasks(main); });
 }
 
+// ---------- daily appointment list upload ----------
+// Yesterday's appointments from any EHR (spreadsheet or PDF): kept visits
+// and no-shows are logged on the matching injury cases after a preview.
+const schedState = { preview: null, choices: {}, result: null, showCols: false };
+const SCHED_ACTIONS = [['visit', 'Log visit'], ['no_show', 'Log no-show'], ['skip', 'Skip']];
+
+async function pageSchedule(main) {
+  if (!hasFeature('schedule_import')) { main.innerHTML = `<div class="page-head"><div><h1>Appointment upload</h1></div></div>${upgradeCardHtml('schedule_import')}`; return; }
+  const st = await attempt(() => api('schedule.php?action=status'));
+  if (!st) return;
+  const pv = schedState.preview, res = schedState.result;
+  main.innerHTML = `<div class="page-head"><div><h1>Appointment upload</h1><div class="sub">Log yesterday's visits and no-shows on every injury case from your EHR's appointment list — no EHR connection needed.</div></div></div>
+    ${st.behind ? `<div class="notice">The appointment list for <strong>${esc(fmtDate(st.expectedDate))}</strong> hasn't been uploaded yet${st.lastDate ? ` (last: ${esc(fmtDate(st.lastDate))})` : ''}.</div>` : ''}
+    ${res ? schedResultHtml(res) : ''}
+    ${pv ? schedPreviewHtml(pv) : `<div class="card" id="sched-upload"><h2>Upload an appointment list</h2>
+      <p class="small">In your EHR, run the daily appointment (or "appointment status") report for the day, export it as a <strong>spreadsheet (CSV or Excel)</strong> or <strong>PDF</strong>, and upload it here. Any EHR works: each row is matched to your open injury cases by patient name (date of birth breaks ties), and the date and status — kept, no-show, cancelled — are read from the row. Your other patients are ignored, and the file isn't kept.</p>
+      <div class="form-grid mt"><div><label for="sched-file">Appointment list</label><input type="file" id="sched-file" accept=".csv,.xlsx,.pdf,.txt,.tsv,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
+        <div><label for="sched-date">Appointments on <span class="small muted">(used when the file doesn't show the date)</span></label><input type="date" id="sched-date" value="${esc(st.expectedDate)}" max="${esc(today())}"></div></div>
+      <button class="btn mt" data-act="sched-preview">Preview</button></div>`}
+    ${can('users.manage') ? schedSettingsHtml(st) : ''}
+    <div class="card mt"><h2>Recent uploads</h2>${st.history.length ? `<div class="table-wrap"><table><thead><tr><th>Uploaded</th><th>Appointments</th><th>Visits</th><th>No-shows</th><th>Matched / other rows</th><th></th></tr></thead><tbody>
+      ${st.history.map((h) => `<tr class="${h.undone_at ? 'muted' : ''}"><td>${esc(fmtDate(h.uploaded_at))}<div class="small muted">${esc(h.uploaded_by || '')} · ${esc(h.file_kind.toUpperCase())}</div></td>
+        <td>${esc(fmtDate(h.first_date))}${h.last_date !== h.first_date ? ' – ' + esc(fmtDate(h.last_date)) : ''}</td><td>${+h.visits_added}</td><td>${+h.no_shows_added}</td><td>${+h.rows_matched} / ${+h.rows_unmatched}</td>
+        <td>${h.undone_at ? '<span class="chip na">Undone</span>' : `<button class="btn ghost sm" data-act="sched-undo" data-id="${h.id}">Undo</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No uploads yet.</div>'}</div>`;
+}
+
+function schedPreviewHtml(pv) {
+  const ch = schedState.choices;
+  const action = (r) => ch[r.line]?.action ?? r.action;
+  const rows = pv.rows;
+  const count = (a) => rows.filter((r) => action(r) === a).length;
+  const linked = pv.unmatched.filter((u) => ch[u.line]?.case_id).length;
+  const outcome = (o) => o === 'unknown' ? 'No status' : pv.outcomes[o] || o;
+  const caseOpts = (sel) => opt('', '— not an injury case —', sel ?? '') + pv.openCases.map((c) => opt(c.id, c.label, sel ?? '')).join('');
+  const cols = pv.columns;
+  return `<div class="card" id="sched-preview"><div class="card-head"><h2>Preview — ${esc(pv.fileName)}</h2><span class="spacer"></span><button class="btn ghost sm" data-act="sched-cancel">Choose another file</button></div>
+    ${pv.alreadyUploaded ? `<div class="notice">This exact file was already uploaded on ${esc(fmtDate(pv.alreadyUploaded))}. Visits already logged are skipped, so applying again is safe.</div>` : ''}
+    ${pv.truncated ? '<div class="notice">Only the first 5,000 rows were read — upload one day at a time.</div>' : ''}
+    <div class="sched-sum mt-sm"><span class="chip teal">${count('visit')} visit${count('visit') === 1 ? '' : 's'} to log</span><span class="chip overdue">${count('no_show')} no-show${count('no_show') === 1 ? '' : 's'}</span>
+      <span class="chip na">${count('skip')} skipped</span>${count('ask') ? `<span class="chip due">${count('ask')} need a decision</span>` : ''}<span class="chip na">${pv.unmatchedCount} other row${pv.unmatchedCount === 1 ? '' : 's'}${linked ? ` (${linked} linked)` : ''}</span></div>
+    ${!pv.dateFromFile && rows.length ? `<p class="small mt-sm">The file doesn't show appointment dates, so these are logged for <strong>${esc(fmtDate(pv.date))}</strong>.</p>` : ''}
+    ${cols ? `<p class="small mt-sm">Columns read: ${Object.entries(cols.fields).filter(([k]) => cols.cols[k] !== undefined).map(([k, l]) => `${esc(l)} = <strong>${esc(cols.headings[cols.cols[k]] || '?')}</strong>`).join(' · ') || '<em>none recognised — reading each row as text</em>'}${cols.format ? ` <span class="muted">(saved layout: ${esc(cols.format)})</span>` : ''}
+      <button class="linklike" data-act="sched-cols">${schedState.showCols ? 'Hide' : 'Change columns'}</button></p>${schedState.showCols ? schedColsHtml(cols) : ''}` : ''}
+    ${Object.keys(pv.unknownStatuses).length ? `<div class="notice mt-sm" id="sched-words"><strong>Status wording we haven't seen before.</strong> Tell us what each means — it's remembered for every future upload.
+      <div class="form-grid mt-sm">${Object.entries(pv.unknownStatuses).map(([w, n]) => `<div><label>“${esc(w)}” <span class="small muted">(${n} row${n === 1 ? '' : 's'})</span></label><select data-word="${esc(w)}">${opt('', 'Choose…')}${entries(pv.outcomes).map(([k, l]) => opt(k, l)).join('')}</select></div>`).join('')}</div>
+      <button class="btn sm mt-sm" data-act="sched-words">Save and re-read</button></div>` : ''}
+    ${rows.length ? `${count('ask') ? `<div class="badge-row mt"><span class="small">Rows with no status:</span><button class="btn ghost sm" data-act="sched-bulk" data-v="visit">Mark all as kept</button><button class="btn ghost sm" data-act="sched-bulk" data-v="skip">Skip them</button></div>` : ''}
+      <div class="table-wrap mt"><table class="sched-table"><thead><tr><th>Patient</th><th>Date</th><th>In the file</th><th>Will</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr class="${action(r) === 'ask' ? 'attn' : ''}"><td>${r.cases.length > 1 ? `<select data-sched-case="${r.line}" aria-label="Case">${r.cases.map((c) => opt(c.id, esc(r.patient) + ' · ' + c.number, ch[r.line]?.case_id ?? r.case_id)).join('')}</select>` : `<a href="#/case/${r.case_id}">${esc(r.patient)}</a>`}${r.ambiguous ? '<div class="small err">Two patients share this name — check</div>' : ''}</td>
+        <td>${esc(fmtDate(r.date))}</td><td>${esc(r.raw || '—')} <span class="small muted">${esc(outcome(r.outcome))}</span></td>
+        <td><select data-sched-action="${r.line}" aria-label="Action">${action(r) === 'ask' ? opt('ask', 'Choose…', 'ask') : ''}${SCHED_ACTIONS.map(([k, l]) => opt(k, l, action(r))).join('')}</select>${r.why && action(r) === r.action ? `<div class="small muted">${esc(r.why)}</div>` : ''}</td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty mt">No rows matched an open injury case. Check the file is the appointment list, or link rows below.</div>'}
+    ${pv.unmatched.length ? `<details class="mt"><summary>${pv.unmatchedCount} row${pv.unmatchedCount === 1 ? '' : 's'} didn't match an open injury case <span class="small muted">— usually your other patients; link one if it's an injury case under a different name</span></summary>
+      <div class="table-wrap mt-sm"><table class="sched-table"><thead><tr><th>Row</th><th>Date</th><th>Status</th><th>Link to case</th><th>Will</th></tr></thead><tbody>
+      ${pv.unmatched.map((u) => `<tr><td class="small">${esc(u.text)}</td><td>${esc(fmtDate(u.date))}</td><td>${esc(u.raw || '—')}</td><td><select data-sched-link="${u.line}" aria-label="Link to case">${caseOpts(ch[u.line]?.case_id)}</select></td>
+        <td>${ch[u.line]?.case_id ? `<select data-sched-action="${u.line}" aria-label="Action">${SCHED_ACTIONS.map(([k, l]) => opt(k, l, ch[u.line]?.action ?? (u.outcome === 'no_show' ? 'no_show' : u.outcome === 'attended' ? 'visit' : 'skip'))).join('')}</select>` : ''}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
+    <div class="badge-row mt"><button class="btn" data-act="sched-apply"${count('ask') ? ' disabled title="Choose what to do with rows that have no status"' : ''}>Log ${count('visit') + count('no_show')} on the cases</button></div></div>`;
+}
+
+function schedColsHtml(cols) {
+  const choose = (f) => `<select data-sched-col="${f}">${opt('', '— not in this file —', cols.cols[f] ?? '')}${cols.headings.map((h, i) => opt(i, `${String.fromCharCode(65 + (i % 26))} · ${h || '(blank)'}`, cols.cols[f] ?? '')).join('')}</select>`;
+  return `<div class="sched-cols mt-sm"><div class="form-grid">${Object.entries(cols.fields).map(([f, l]) => `<div><label>${esc(l)}</label>${choose(f)}</div>`).join('')}</div>
+    ${cols.sample.length ? `<div class="table-wrap mt-sm"><table class="small"><thead><tr>${cols.headings.slice(0, 14).map((h, i) => `<th>${String.fromCharCode(65 + i)} · ${esc(h)}</th>`).join('')}</tr></thead><tbody>${cols.sample.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
+    <div class="form-grid mt-sm"><div><label for="sched-fmt">Remember this layout as <span class="small muted">(e.g. your EHR's name — optional)</span></label><input id="sched-fmt" value="${esc(cols.format || S.practice?.ehrName || '')}" maxlength="80"></div></div>
+    <button class="btn sm mt-sm" data-act="sched-remap">Re-read with these columns</button></div>`;
+}
+
+function schedResultHtml(res) {
+  return `<div class="card done-card"><h2>Logged ✓</h2><p>${res.visitsAdded} visit${res.visitsAdded === 1 ? '' : 's'} and ${res.noShowsAdded} no-show${res.noShowsAdded === 1 ? '' : 's'} on ${res.casesUpdated} case${res.casesUpdated === 1 ? '' : 's'}. Gaps in care, treatment-plan adherence and patient outreach are up to date.</p>
+    ${res.noShowCases.length ? `<h3 class="mt">Missed visits</h3><ul class="small">${res.noShowCases.map((c) => `<li><a href="#/case/${c.caseId}">${esc(c.label)}</a> — ${c.noShows30} no-show${c.noShows30 === 1 ? '' : 's'} in the last 30 days${c.noShows30 >= 2 ? ' <span class="chip overdue">Follow up</span>' : ''}</li>`).join('')}</ul>` : ''}
+    <button class="btn ghost sm mt" data-act="sched-done">Upload another</button></div>`;
+}
+
+function schedSettingsHtml(st) {
+  const s = st.settings;
+  return `<div class="card mt" id="sched-settings"><h2>How uploads count</h2>
+    <div class="form-grid"><div><label for="ss-cancel">Cancellations</label><select id="ss-cancel">${opt('late', 'Late ones count as missed', s.cancel_counts)}${opt('all', 'All count as missed', s.cancel_counts)}${opt('none', "Don't count", s.cancel_counts)}</select></div>
+      <div><label for="ss-unknown">Rows with no status in the file</label><select id="ss-unknown">${opt('ask', 'Ask each time', s.unknown_as)}${opt('attended', 'Count as kept visits', s.unknown_as)}${opt('skip', 'Skip them', s.unknown_as)}</select></div></div>
+    <p class="small mt">Your EHR's own status words${Object.keys(s.status_map).length ? ':' : ' — none yet. Any wording we don\'t recognise is asked about during an upload and remembered.'}</p>
+    ${Object.keys(s.status_map).length ? `<ul class="small sched-words">${Object.entries(s.status_map).map(([w, o]) => `<li><label class="check"><input type="checkbox" data-keep-word="${esc(w)}" data-o="${esc(o)}" checked> “${esc(w)}” → ${esc(st.outcomes[o])}</label></li>`).join('')}</ul><p class="small muted">Untick a word to forget it.</p>` : ''}
+    <button class="btn mt-sm" data-act="sched-settings">Save</button></div>`;
+}
+
+async function schedPreviewFile() {
+  const f = document.getElementById('sched-file').files[0];
+  if (!f) return toast('Choose the appointment list file first.', true);
+  const fd = new FormData(); fd.append('file', f); fd.append('date', document.getElementById('sched-date').value);
+  const r = await attempt(() => api('schedule.php?action=preview', fd));
+  if (r) { schedState.preview = r; schedState.choices = {}; schedState.result = null; schedState.showCols = false; pageSchedule(document.getElementById('main')); }
+}
+
+// Choices on the preview are kept as they change (selects only).
+document.addEventListener('change', (e) => {
+  const el = e.target;
+  if (!schedState.preview || !el.closest?.('#sched-preview')) return;
+  const ch = schedState.choices;
+  let line = el.dataset.schedAction || el.dataset.schedCase || el.dataset.schedLink;
+  if (!line) return;
+  ch[line] = ch[line] || {};
+  if (el.dataset.schedAction) ch[line].action = el.value;
+  else ch[line].case_id = el.value ? +el.value : null;
+  if (el.dataset.schedAction || el.dataset.schedLink) pageSchedule(document.getElementById('main'));
+});
+
 // ---------- A/R ----------
 let arState = { all: false, sort: 'patient', dir: 1 };
 // The next date to watch on a case: an overdue expected check first, then the
@@ -2740,6 +2850,37 @@ const ACTIONS = {
     if (r) { toast(el.dataset.reset ? 'Back to the defaults' : 'Cost list saved'); await refreshSession(); pageSettings(document.getElementById('main')); }
   },
   'promo-check': () => checkPromo(),
+  'sched-preview': () => schedPreviewFile(),
+  'sched-cancel': () => { schedState.preview = null; pageSchedule(document.getElementById('main')); },
+  'sched-done': () => { schedState.result = null; pageSchedule(document.getElementById('main')); },
+  'sched-cols': () => { schedState.showCols = !schedState.showCols; pageSchedule(document.getElementById('main')); },
+  'sched-bulk': (el) => { schedState.preview.rows.forEach((r) => { if ((schedState.choices[r.line]?.action ?? r.action) === 'ask') schedState.choices[r.line] = { ...schedState.choices[r.line], action: el.dataset.v }; }); pageSchedule(document.getElementById('main')); },
+  'sched-remap': async () => {
+    const cols = {}; document.querySelectorAll('[data-sched-col]').forEach((s) => { if (s.value !== '') cols[s.dataset.schedCol] = +s.value; });
+    const pv = schedState.preview;
+    const r = await attempt(() => api('schedule.php?action=remap', { token: pv.token, header: pv.columns.header, cols, save_as: document.getElementById('sched-fmt').value }));
+    if (r) { schedState.preview = r; schedState.choices = {}; schedState.showCols = false; toast('Re-read'); pageSchedule(document.getElementById('main')); }
+  },
+  'sched-words': async () => {
+    const map = {}; document.querySelectorAll('#sched-words [data-word]').forEach((s) => { if (s.value) map[s.dataset.word] = s.value; });
+    if (!Object.keys(map).length) return toast('Choose what at least one status means.', true);
+    const r = await attempt(() => api('schedule.php?action=words', { token: schedState.preview.token, map }));
+    if (r) { schedState.preview = r; schedState.choices = {}; toast('Saved — remembered for future uploads'); pageSchedule(document.getElementById('main')); }
+  },
+  'sched-apply': async () => {
+    const pv = schedState.preview;
+    const r = await attempt(() => api('schedule.php?action=apply', { token: pv.token, rows: schedState.choices }));
+    if (r) { schedState.preview = null; schedState.choices = {}; schedState.result = r; pageSchedule(document.getElementById('main')); }
+  },
+  'sched-undo': async (el) => {
+    if (!(await confirmBox('Undo this upload?', 'The visits and no-shows it logged are removed from the cases (they stay in the activity history).', 'Undo'))) return;
+    if (await attempt(() => api('schedule.php?action=undo', { id: +el.dataset.id }))) { toast('Upload undone'); pageSchedule(document.getElementById('main')); }
+  },
+  'sched-settings': async () => {
+    const status_map = {}; document.querySelectorAll('[data-keep-word]:checked').forEach((c) => { status_map[c.dataset.keepWord] = c.dataset.o; });
+    const r = await attempt(() => api('schedule.php?action=settings', { cancel_counts: document.getElementById('ss-cancel').value, unknown_as: document.getElementById('ss-unknown').value, status_map }));
+    if (r) { toast('Saved'); pageSchedule(document.getElementById('main')); }
+  },
   'status-settings': () => statusSettingsModal(),
   'status-send': async () => {
     const sr = S.caseData.statusRequests;

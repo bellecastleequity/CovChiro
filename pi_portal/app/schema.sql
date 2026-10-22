@@ -41,6 +41,10 @@ CREATE TABLE practices (
   -- and whether the reply page shows the balance (JSON; defaults in
   -- app/status_requests.php).
   status_request_rules TEXT NULL,
+  -- Daily appointment list uploads: how cancellations and rows without a
+  -- status count, and the EHR's own status words (JSON; defaults in
+  -- app/schedule_import.php).
+  schedule_settings TEXT NULL,
   plan VARCHAR(20) NOT NULL DEFAULT 'starter',
   subscription_status ENUM('trialing','active','past_due','canceled','comped') NOT NULL DEFAULT 'trialing',
   trial_ends_at DATETIME NULL,
@@ -462,6 +466,26 @@ CREATE TABLE outreach (
   INDEX idx_outreach_case (case_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Each daily appointment list applied (the file itself isn't kept).
+CREATE TABLE schedule_imports (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NOT NULL,
+  file_kind ENUM('csv','xlsx','pdf') NOT NULL,
+  file_sha256 CHAR(64) NOT NULL,
+  first_date DATE NULL,
+  last_date DATE NULL,
+  visits_added INT NOT NULL DEFAULT 0,
+  no_shows_added INT NOT NULL DEFAULT 0,
+  rows_matched INT NOT NULL DEFAULT 0,
+  rows_unmatched INT NOT NULL DEFAULT 0,
+  uploaded_by INT NULL,
+  uploaded_at DATETIME NOT NULL,
+  undone_at DATETIME NULL,
+  undone_by INT NULL,
+  FOREIGN KEY (practice_id) REFERENCES practices(id),
+  INDEX idx_sched_practice (practice_id, uploaded_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE visits (
   id INT AUTO_INCREMENT PRIMARY KEY,
   case_id INT NOT NULL,
@@ -473,7 +497,9 @@ CREATE TABLE visits (
   icd_codes VARCHAR(500) NULL,
   -- Workers' comp: DWC-25 status form sent to the carrier for this visit.
   dwc25_sent TINYINT(1) NOT NULL DEFAULT 0,
-  source ENUM('manual','ehr') NOT NULL DEFAULT 'manual',
+  source ENUM('manual','ehr','schedule') NOT NULL DEFAULT 'manual',
+  -- The appointment list upload that logged it (so an upload can be undone).
+  schedule_import_id INT NULL,
   notes_enc TEXT NULL,
   archived_at DATETIME NULL,
   created_by INT NULL,
@@ -616,7 +642,7 @@ CREATE TABLE ehr_formats (
   id INT AUTO_INCREMENT PRIMARY KEY,
   practice_id INT NOT NULL,
   name VARCHAR(80) NOT NULL,
-  layout ENUM('lines','transactions') NOT NULL,
+  layout ENUM('lines','transactions','schedule') NOT NULL,
   signature CHAR(64) NOT NULL,
   mapping TEXT NOT NULL,
   created_by INT NULL,

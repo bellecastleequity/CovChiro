@@ -41,6 +41,8 @@ const FEATURES = [
         'blurb' => "Email the right people when a task is marked urgent, goes late (with a reminder every few days) or is completed — no patient details in the email."],
     'auto_status' => ['name' => 'Automatic attorney status requests', 'plan' => 'practice',
         'blurb' => "Email the attorney or case manager every 30 days (or your interval) for a case and payment status update, with a secure one-minute reply form that updates the case for you."],
+    'schedule_import' => ['name' => 'Daily appointment list upload', 'plan' => 'practice',
+        'blurb' => "Upload yesterday's appointment list from any EHR (spreadsheet or PDF) and visits and no-shows are logged on every injury case automatically — so gaps in care and missed visits are flagged without double entry."],
     'email_digest' => ['name' => 'Daily email digest', 'plan' => 'group',
         'blurb' => "A morning email to each team member with counts of what needs attention under the criteria they choose — no patient details in the email."],
     'locations' => ['name' => 'Multiple locations', 'plan' => 'group',
