@@ -36,12 +36,12 @@ def find(base, vo='vo'):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument('--fps', type=int, default=30); ap.add_argument('--out'); ap.add_argument('--scenes', default='scenes.json')
+    ap = argparse.ArgumentParser(); ap.add_argument('--fps', type=int, default=30); ap.add_argument('--out'); ap.add_argument('--scenes', default='scenes.json'); ap.add_argument('--html', help='another layout for the same script, e.g. a vertical cut')
     ap.add_argument('--remix', action='store_true', help='reuse the last rendered picture; only redo the audio (voice timing must be unchanged)')
     ap.add_argument('--work', default=os.path.join(HERE, '.build'))
     a = ap.parse_args()
     cfg = json.load(open(os.path.join(HERE, a.scenes)))
-    vo, html = cfg.get('vo_dir', 'vo'), cfg.get('html', 'video.html')
+    vo, html = cfg.get('vo_dir', 'vo'), a.html or cfg.get('html', 'video.html')
     a.out = a.out or cfg.get('out', 'InjuryCase sales video.mp4')
     lead, tail = cfg.get('lead_in_seconds', 0.4), cfg.get('tail_seconds', 0.9)
     full = find('full', vo)

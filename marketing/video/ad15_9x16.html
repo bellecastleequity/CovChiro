@@ -1,0 +1,134 @@
+<!doctype html><html><head><meta charset="utf-8"><title>InjuryCase ad15_9x16.html</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--navy:#0B2340;--navy2:#163C66;--green:#1FA866;--green2:#127A49;--mist:#EEF2F7;--blue:#2F6FDE;--violet:#6E56CF;--amber:#E89B1C;--teal:#0E9F9A;--muted:rgba(11,35,64,.68)}
+html,body{width:1920px;height:1080px;overflow:hidden;font-family:Inter,"Segoe UI",Arial,sans-serif;background:var(--navy)}
+.scene{position:absolute;inset:0;opacity:0}
+.dark{background:radial-gradient(1200px 700px at 75% 20%,#17406b 0%,var(--navy) 60%)}
+.light{background:linear-gradient(135deg,#F6F8FB 0%,#E8EEF6 100%)}
+.a{opacity:0;will-change:transform,opacity}
+h1{font-size:76px;line-height:1.05;letter-spacing:-.02em;font-weight:800}
+h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:var(--navy)}
+.lead{font-size:28px;line-height:1.45;color:var(--muted)}
+.white{color:#fff}.hl{color:var(--green)}
+.eyebrow{font-size:18px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--green);display:flex;align-items:center;gap:12px}
+.eyebrow::before{content:"";width:34px;height:4px;border-radius:2px;background:var(--green)}
+.copy{position:absolute;left:110px;top:0;bottom:0;width:560px;display:flex;flex-direction:column;justify-content:center;gap:26px}
+.frame{position:absolute;right:90px;top:180px;width:1080px;height:713px;border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 40px 90px rgba(11,35,64,.28),0 0 0 1px rgba(11,35,64,.08)}
+.frame .bar{height:38px;background:#E9EEF5;display:flex;align-items:center;gap:8px;padding:0 16px}
+.frame .bar i{width:12px;height:12px;border-radius:50%;background:#C8D2DF}
+.frame .bar span{margin-left:14px;font-size:14px;color:#6B7A90;background:#fff;border-radius:6px;padding:4px 14px}
+.frame .view{position:absolute;top:38px;left:0;right:0;bottom:0;overflow:hidden}
+.frame img{position:absolute;left:0;top:0;width:100%}
+.card{position:absolute;background:#fff;border-radius:18px;box-shadow:0 30px 70px rgba(11,35,64,.22),0 0 0 1px rgba(11,35,64,.06);overflow:hidden}
+.card img{display:block;width:100%}
+.pts{display:flex;flex-direction:column;gap:14px}
+.pt{font-size:24px;color:var(--navy);display:flex;gap:14px;align-items:flex-start;line-height:1.35}
+.pt b{flex:none;width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;font-size:17px;display:grid;place-items:center;margin-top:2px}
+.note{font-size:17px;color:var(--muted);border-left:3px solid #C8D2DF;padding-left:12px;line-height:1.4}
+.problem{font-size:64px;font-weight:800;color:#fff;letter-spacing:-.015em}
+.problem s{text-decoration-color:var(--amber);text-decoration-thickness:6px}
+.price{position:absolute;top:330px;width:440px;height:470px;background:#fff;border-radius:22px;padding:42px;box-shadow:0 30px 70px rgba(11,35,64,.18),0 0 0 1px rgba(11,35,64,.07)}
+.price h3{font-size:34px;color:var(--navy)}.price .blurb{font-size:20px;color:var(--muted);margin-top:6px}
+.price .amt{font-size:84px;font-weight:800;color:var(--navy);margin-top:26px;letter-spacing:-.02em}.price .amt span{font-size:26px;font-weight:500;color:var(--muted)}
+.price ul{list-style:none;margin-top:22px;display:flex;flex-direction:column;gap:12px;font-size:21px;color:var(--navy)}
+.price li::before{content:"✓  ";color:var(--green);font-weight:800}
+.price.feat{border:3px solid var(--green);transform-origin:50% 50%}
+.price .tag{position:absolute;top:-18px;left:40px;background:var(--green);color:#fff;font-size:16px;font-weight:700;padding:6px 14px;border-radius:999px}
+.badge{display:flex;align-items:center;gap:20px;background:#fff;border-radius:18px;padding:24px 28px;box-shadow:0 16px 40px rgba(11,35,64,.12);width:640px}
+.badge .ic{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;font-size:30px;flex:none}
+.badge b{font-size:28px;color:var(--navy);display:block}.badge small{font-size:20px;color:var(--muted)}
+.btn{display:inline-block;background:var(--green);color:#fff;font-size:36px;font-weight:800;padding:26px 54px;border-radius:16px;box-shadow:0 18px 40px rgba(31,168,102,.4)}
+.btn.ghost{background:transparent;border:3px solid rgba(255,255,255,.6);box-shadow:none;font-size:30px;padding:20px 40px}
+.pill{position:absolute;background:var(--navy);color:#fff;font-size:22px;font-weight:700;padding:14px 22px;border-radius:14px;box-shadow:0 18px 40px rgba(11,35,64,.35)}
+.pill i{font-style:normal;color:#7FE0B0}
+.foot{position:absolute;left:0;right:0;bottom:34px;text-align:center;font-size:15px;color:rgba(11,35,64,.55)}
+.dark .foot{color:rgba(255,255,255,.55)}
+.progress{position:absolute;left:0;bottom:0;height:6px;background:var(--green);z-index:9}
+
+.big{font-size:96px;line-height:1.02;font-weight:800;letter-spacing:-.025em}
+.duo{position:absolute;top:250px;left:130px;right:130px;display:flex;gap:60px}
+.duo>div{flex:1;border-radius:28px;padding:60px 56px;min-height:480px;display:flex;flex-direction:column;justify-content:center;gap:24px}
+.duo .q{font-size:30px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.duo .t{font-size:72px;font-weight:800;line-height:1.04;letter-spacing:-.02em}
+.d1{background:#fff;color:var(--navy)}.d1 .q{color:var(--green2)}
+.d2{background:var(--green);color:#fff}.d2 .q{color:#DFF7EA}
+.chk{display:flex;flex-direction:column;gap:22px;margin-top:10px}
+.chk div{font-size:40px;font-weight:700;color:var(--navy);display:flex;gap:18px;align-items:center}
+.chk b{width:52px;height:52px;border-radius:50%;background:#FDE8E8;color:#D64545;display:grid;place-items:center;font-size:30px;flex:none}
+.tiles3{position:absolute;left:110px;right:110px;top:380px;display:flex;gap:44px}
+.tiles3>div{flex:1;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 30px 70px rgba(11,35,64,.18),0 0 0 1px rgba(11,35,64,.06)}
+.tiles3 .im{height:420px;overflow:hidden;background:#F6F8FB}.tiles3 img{width:100%;display:block}
+.tiles3 .lb{font-size:34px;font-weight:800;color:var(--navy);padding:24px 30px}
+.url{font-size:92px;font-weight:800;color:#fff;letter-spacing:-.02em}
+
+html,body{width:1080px;height:1920px}
+.stack{position:absolute;left:70px;right:70px;display:flex;flex-direction:column;gap:22px}
+.big{font-size:100px}
+.vcard{position:absolute;left:60px;right:60px;border-radius:26px;padding:44px 48px;display:flex;flex-direction:column;gap:14px}
+.vcard .q{font-size:28px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.vcard .t{font-size:70px;font-weight:800;line-height:1.05;letter-spacing:-.02em}
+.frame{width:auto;height:auto}
+.vt{position:absolute;left:60px;right:60px;display:flex;flex-direction:column;gap:24px}
+.vt>div{display:flex;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 24px 60px rgba(11,35,64,.16),0 0 0 1px rgba(11,35,64,.06);height:250px}
+.vt .im{width:56%;overflow:hidden;background:#F6F8FB}.vt img{width:100%;display:block}
+.vt .lb{flex:1;display:flex;align-items:center;padding:0 34px;font-size:40px;font-weight:800;color:var(--navy);line-height:1.15}
+.cta-btn{display:inline-block;background:var(--green);color:#fff;font-size:44px;font-weight:800;padding:30px 60px;border-radius:18px;box-shadow:0 18px 40px rgba(31,168,102,.4);align-self:flex-start}
+.foot{bottom:460px;padding:0 60px}
+
+</style></head><body>
+<!-- 1080x1920 layout of ad15.json; narration and timing live there. -->
+<section class="scene dark" data-id="a15-1-hook">
+<div class="vcard a" data-in="0.15" data-fx="left" style="top:380px;background:#fff;color:var(--navy)"><div class="q" style="color:var(--green2)">New to PI?</div><div class="t">Start with a playbook.</div></div>
+<div class="vcard a" data-in="1.4" data-fx="right" style="top:820px;background:var(--green);color:#fff"><div class="q" style="color:#DFF7EA">Experienced clinic?</div><div class="t">Stop losing money to missed steps.</div></div>
+</section>
+<section class="scene dark" data-id="a15-2-promise">
+<div class="stack" style="top:260px"><img class="a" data-in="0.1" data-fx="up" src="assets/logo-horizontal-dark.svg" style="height:70px;align-self:flex-start">
+<div class="big white a" data-in="0.4" data-fx="up">Every PI case, <span class="hl">on track.</span></div>
+<p class="lead a" data-in="1.0" data-fx="up" style="color:rgba(255,255,255,.8);font-size:34px">From the first visit to the final check.</p></div>
+<div class="frame a" data-in="0.2" data-fx="up" style="left:60px;right:60px;top:780px;height:680px"><div class="bar"><i></i><i></i><i></i><span>injurycase.com/app</span></div><div class="view"><img src="shots_walk/dashboard.png" data-kb="0.2,1.25,1.5,20,35"></div></div>
+</section>
+<section class="scene dark" data-id="a15-3-cta">
+<div class="stack" style="top:590px;gap:40px"><img class="a" data-in="0.1" data-fx="up" src="assets/logo-horizontal-dark.svg" style="height:90px;align-self:flex-start">
+<div class="big white a" data-in="0.3" data-fx="up">Start your <span class="hl">free trial.</span></div>
+<div class="url a" data-in="0.6" data-fx="up" style="font-size:96px">injurycase.com</div>
+<p class="a" data-in="0.9" data-fx="up" style="font-size:36px;color:rgba(255,255,255,.85);font-weight:600;line-height:1.4">14 days free · No credit card<br>Plans from $39/month</p>
+<span class="cta-btn a" data-in="1.2" data-fx="pop">Start free trial →</span></div>
+<p class="foot">Clinical decisions rest with the treating provider. Demo data shown is fictional.</p>
+</section>
+
+<div class="progress" id="prog"></div>
+<script>
+// Scene durations come from timeline.json (written by build_video.py to fit
+// each scene's voiceover); these defaults are the silent-cut timings.
+const DEFAULTS = [3, 3, 3, 3, 3, 3];
+let DUR = DEFAULTS.slice(), START = [], T = 0;
+function applyTimeline(durations) {
+  DUR = durations && durations.length === DEFAULTS.length ? durations : DEFAULTS.slice();
+  START = []; T = 0; for (const d of DUR) { START.push(T); T += d; }
+  window.TOTAL = T;
+}
+const ease = (x) => x < 0 ? 0 : x > 1 ? 1 : 1 - Math.pow(1 - x, 3);
+function render(t) {
+  document.querySelectorAll('.scene').forEach((s, i) => {
+    const a = START[i], b = START[i] + DUR[i] + (i < DUR.length - 1 ? 0.2 : 0);
+    const fadeIn = i === 0 ? 1 : ease((t - a) / 0.3), fadeOut = i === DUR.length - 1 ? 1 : 1 - ease((t - (b - 0.3)) / 0.3);
+    s.style.opacity = t < a || t > b ? 0 : Math.min(fadeIn, fadeOut);
+    s.style.visibility = t < a - 0.1 || t > b + 0.1 ? 'hidden' : 'visible';
+    const lt = t - a;
+    s.querySelectorAll('.a').forEach((el) => {
+      const p = ease((lt - +el.dataset.in) / 0.7), fx = el.dataset.fx, d = 1 - p;
+      el.style.opacity = p;
+      el.style.transform = fx === 'up' ? `translateY(${d * 40}px)` : fx === 'left' ? `translateX(${-d * 60}px)` : fx === 'right' ? `translateX(${d * 80}px)` : fx === 'zoom' ? `scale(${0.9 + 0.1 * p})` : fx === 'pop' ? `scale(${0.8 + 0.2 * p})` : '';
+    });
+    s.querySelectorAll('[data-kb]').forEach((img) => {
+      const [k0, s0, s1, fx, fy] = img.dataset.kb.split(',').map(Number);
+      const k = Math.min(1, Math.max(0, (lt - k0) / Math.max(1, DUR[i] - k0)));
+      const e = k * k * (3 - 2 * k);
+      img.style.transformOrigin = `${fx}% ${fy}%`;
+      img.style.transform = `scale(${s0 + (s1 - s0) * e})`;
+    });
+  });
+  document.getElementById('prog').style.width = (t / T * 100) + '%';
+}
+window.render = render; window.applyTimeline = applyTimeline; applyTimeline(null); render(0);
+</script></body></html>

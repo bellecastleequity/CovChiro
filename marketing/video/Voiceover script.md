@@ -66,3 +66,11 @@ The video fits itself to the voice. Each scene lasts its default length or as lo
 - `"total_seconds"` locks the exact length: the end card absorbs any spare time, and the build stops if the voice runs over.
 - `"trim_silence"` trims each clip's own pauses for tighter timing, and `"music_volume"` sets the music a little louder than in the long videos.
 - Rebuild: `python3 tts_gemini.py --scenes ad30.json`, then `python3 build_video.py --scenes ad30.json --work .build/ad30` (same for `ad15`).
+
+### Instagram sizes
+
+Same voice and timing, with layouts rebuilt for each frame:
+- **Reels & Stories, 9:16 (1080×1920):** `InjuryCase ad 30s 9x16.mp4`, `InjuryCase ad 15s 9x16.mp4`. Text and key visuals stay out of the top ~250px and bottom ~420px, where Instagram's own buttons and captions sit.
+- **Feed, 4:5 (1080×1350):** `InjuryCase ad 30s 4x5.mp4`, `InjuryCase ad 15s 4x5.mp4`.
+- Layouts: `ad30_9x16.html`, `ad30_4x5.html`, `ad15_9x16.html`, `ad15_4x5.html`. Build one with, e.g., `python3 build_video.py --scenes ad30.json --html ad30_9x16.html --out "InjuryCase ad 30s 9x16.mp4" --work .build/ad30_9x16`.
+- These end on a "Start free trial" button graphic instead of the QR code. On Instagram the ad's own call-to-action button (e.g. "Sign Up") does the linking.
