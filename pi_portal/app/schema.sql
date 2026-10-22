@@ -43,8 +43,14 @@ CREATE TABLE practices (
   baa_version VARCHAR(20) NULL,
   baa_accepted_at DATETIME NULL,
   baa_accepted_by INT NULL,
+  -- Public "Certified" website badge (app/badge.php): random token for the
+  -- embed/verify links, switched on by an admin.
+  badge_token CHAR(24) NULL,
+  badge_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  badge_enabled_at DATETIME NULL,
   created_at DATETIME NOT NULL,
-  INDEX idx_practices_stripe (stripe_customer_id)
+  INDEX idx_practices_stripe (stripe_customer_id),
+  UNIQUE INDEX idx_practices_badge (badge_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Feature suggestions from practice users (no patient information).

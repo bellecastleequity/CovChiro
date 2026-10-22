@@ -12,7 +12,7 @@ Parameters:
     Description: The site's domain without www (e.g. injurycase.com). Point its A record, and www, at the ElasticIP output.
   AdminEmail:
     Type: String
-    Description: Email for Let's Encrypt certificate notices and backup alarms.
+    Description: Email for Let's Encrypt certificate notices and uptime/backup alerts (confirm the AWS subscription email).
   InstanceType:
     Type: String
     Default: t4g.small
@@ -29,6 +29,10 @@ Parameters:
   AmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+
+Conditions:
+  # Route 53 health-check metrics are only published in us-east-1.
+  InUsEast1: !Equals [!Ref 'AWS::Region', us-east-1]
 
 Resources:
   # ---------------- Network ----------------
@@ -249,6 +253,72 @@ Resources:
         SelectionName: injurycase-web
         IamRoleArn: !GetAtt BackupRole.Arn
         Resources: [!Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${WebServer}']
+
+  # ---------------- Uptime monitoring ----------------
+  # Email alerts to AdminEmail (confirm the subscription email AWS sends).
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'injurycase-alerts-${AWS::StackName}'
+      Subscription: [{ Protocol: email, Endpoint: !Ref AdminEmail }]
+  # Hardware/host problem: AWS moves the server to healthy hardware.
+  SystemCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: InjuryCase server failed the AWS system status check - recovering automatically
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed_System
+      Dimensions: [{ Name: InstanceId, Value: !Ref WebServer }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions: [!Sub 'arn:${AWS::Partition}:automate:${AWS::Region}:ec2:recover', !Ref AlertTopic]
+  # Operating-system problem: reboot.
+  InstanceCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: InjuryCase server failed its instance status check - rebooting automatically
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed_Instance
+      Dimensions: [{ Name: InstanceId, Value: !Ref WebServer }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions: [!Sub 'arn:${AWS::Partition}:automate:${AWS::Region}:ec2:reboot', !Ref AlertTopic]
+  # The site itself, checked over HTTPS from several AWS locations every
+  # 30 seconds: api/health.php answers "ok" only when the database is reachable.
+  SiteHealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Condition: InUsEast1
+    Properties:
+      HealthCheckConfig:
+        Type: HTTPS_STR_MATCH
+        FullyQualifiedDomainName: !Ref DomainName
+        ResourcePath: /api/health.php
+        SearchString: ok
+        RequestInterval: 30
+        FailureThreshold: 3
+      HealthCheckTags: [{ Key: Name, Value: injurycase-site }]
+  SiteDownAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: InUsEast1
+    Properties:
+      AlarmDescription: InjuryCase website is not responding (api/health.php)
+      Namespace: AWS/Route53
+      MetricName: HealthCheckStatus
+      Dimensions: [{ Name: HealthCheckId, Value: !Ref SiteHealthCheck }]
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
 
 Outputs:
   ElasticIP:

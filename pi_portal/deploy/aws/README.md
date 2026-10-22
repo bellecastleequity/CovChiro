@@ -11,7 +11,16 @@ Internet ──443──▶ EC2 (Amazon Linux 2023, Apache + PHP 8.3, Let's Encr
                                             35-day automated backups, deletion protection)
 Secrets Manager: DB credentials + app encryption key
 AWS Backup: daily server-disk snapshots, kept 35 days
+Monitoring: Route 53 health check on /api/health.php every 30 s (us-east-1),
+            EC2 status-check alarms that auto-recover/reboot, email alerts via SNS
 ```
+
+After the stack is created, **confirm the "AWS Notification - Subscription
+Confirmation" email** sent to AdminEmail, or no alerts will arrive. The website
+health check (about $0.75/month) is only created when the stack is in us-east-1;
+in another region, point any external monitor (e.g. UptimeRobot) at
+`https://<domain>/api/health.php`, which answers `ok` when the app and database are up.
+The footer badge "24/7 uptime monitoring" relies on this being in place.
 
 **Rough monthly cost** (us-east-1, single-AZ, on-demand, before taxes; check
 the AWS Pricing Calculator): t4g.small EC2 + 30 GB disk ≈ $15, db.t4g.micro

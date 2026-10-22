@@ -1819,7 +1819,7 @@ const AUDIT_VERBS = {
   ehr_preview: 'previewed an EHR ledger upload', login: 'signed in', logout: 'signed out', login_password_ok: 'entered their password', login_failed: 'failed to sign in',
   login_locked: 'tried to sign in to a locked account', mfa_failed: 'entered a wrong two-factor code', mfa_enrolled: 'set up two-factor sign-in',
   password_changed: 'changed their password', session_timeout: 'was signed out after inactivity', access_denied: 'was refused access to', reset_password: 'issued a new one-time password for',
-  reset_mfa: 'reset two-factor for', reset_unlock: 'unlocked', accept_baa: 'accepted the Business Associate Agreement', signup: 'signed the practice up',
+  reset_mfa: 'reset two-factor for', reset_unlock: 'unlocked', reset_badge: 'issued new website badge links for', accept_baa: 'accepted the Business Associate Agreement', signup: 'signed the practice up',
   billing_checkout: 'started a plan checkout', billing_portal: 'opened billing', platform_update: 'changed the plan for',
 };
 const AUDIT_THINGS = {
@@ -1840,7 +1840,7 @@ const FIELD_NAMES = {
   patient_balance: 'Patient balance', injury_type: 'Case type', location_id: 'Location', location_restricted: 'Limited to location', outreach_hold_on: 'Calls paused (attorney notified)', paralegal: 'Paralegal', attempted_on: 'Date', method: 'How', outcome: 'Outcome', plan_visits_per_week: 'Treatment plan (visits/week)', plan_set_on: 'Plan since', notify_digest: 'Daily email digest',
   gap_days: 'Gap days', adherence_pct: 'Adherence threshold %', weekdays_only: 'Weekdays only', criteria: 'Criteria', bi_limit: 'At-fault BI limit', um_limit: 'UM limit', other_medical_estimate: "Other providers' bills (est.)",
   liability_carrier: 'At-fault insurer', limits_source: 'Limits source', limits_noted_on: 'Limits as of', remaining_reported: 'PIP remaining (carrier)', remaining_reported_on: 'Remaining as of', visit_type: 'Visit type', head_injury: 'Head injury',
-  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)',
+  guide_mri: 'MRI referral', guide_ortho: 'Ortho referral', guide_pain_mgmt: 'Pain management referral', guide_neuro: 'Neurology referral', guide_emc: 'EMC determination', guide_reexam: 'Re-exam', mmi_date: 'MMI', maintenance_every_days: 'Maintenance every (days)', badge: 'Website badge shown',
 };
 const humanize = (s) => String(s).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 function auditValue(c, v) {
@@ -2115,11 +2115,41 @@ async function pageSettings(main) {
     <div class="card mt"><div class="card-head"><h2>Locations</h2><span class="spacer"></span>${hasFeature('locations') ? '<button class="btn ghost sm" data-act="location-edit">+ Add location</button>' : ''}</div>
       <p class="small">Run more than one office in this account: each case belongs to a location (its letterhead is used on letters and exports), lists filter by location, and team members can be limited to their own location's patients.</p>
       <div id="locations-list" class="mt">${hasFeature('locations') ? '<div class="empty">Loading…</div>' : `<div class="notice">Multiple locations are part of the ${esc(featureInfo('locations').planName)} plan.</div>`}</div></div>
+    <div class="card mt" id="badge-card"><div class="card-head"><h2>${esc(S.brand.name)} Certified badge</h2></div>
+      <p class="small">Put a badge on your website to show patients, attorneys and referral partners that your practice manages PI cases on secure, HIPAA-ready software. It links to a live verification page and turns itself off if your account lapses.</p>
+      <div id="badge-body" class="mt"><div class="empty">Loading…</div></div></div>
     <div class="card mt"><h2>EHR ledger layouts</h2>
       <p class="small mt">When someone uploads a ledger spreadsheet in a new layout, they match up its columns once and it's saved here. Later uploads in the same layout are read automatically.</p>
       <div id="ehr-formats" class="mt"><div class="empty">Loading…</div></div></div>`;
   loadEhrFormats();
   loadLocations();
+  loadBadge();
+}
+
+const BADGE_STYLES = [['light', 'Light'], ['dark', 'Dark'], ['seal', 'Round seal']];
+async function loadBadge(data) {
+  const box = document.getElementById('badge-body');
+  if (!box) return;
+  const b = data || (await attempt(() => api('admin.php?action=badge')))?.badge;
+  if (!b) return;
+  loadBadge.data = b;
+  const style = loadBadge.style || 'light';
+  const preview = (st) => 'api/badge.php?' + b.urls.image.split('?')[1] + (st === 'light' ? '' : '&style=' + st);
+  const file = (st, ext) => `assets/badges/injurycase-certified-${st}.${ext}`;
+  const blocked = b.items.filter((i) => i.key !== 'enabled' && !i.met);
+  box.innerHTML = `<ul class="badge-checks">${b.items.map((i) => `<li class="${i.met ? 'ok' : ''}"><span aria-hidden="true">${i.met ? '✓' : '○'}</span> ${esc(i.label)}</li>`).join('')}</ul>
+    ${b.certified ? `<div class="notice ok mt">Your badge is live${b.enabledAt ? ` — certified since ${esc(fmtDate(b.enabledAt))}` : ''}.</div>`
+      : b.enabled && blocked.length ? '<div class="notice mt">The badge is switched on but shows as <strong>not verified</strong> until the items above are complete.</div>' : ''}
+    <div class="badge-row mt"><button class="btn${b.enabled ? ' ghost' : ''} sm" data-act="badge-toggle">${b.enabled ? 'Turn badge off' : 'Turn badge on'}</button>
+      <a class="btn ghost sm" href="${esc(b.urls.verify)}" target="_blank" rel="noopener">Open verification page</a></div>
+    <div class="badge-tabs mt" role="tablist">${BADGE_STYLES.map(([k, t]) => `<button class="chip${k === style ? ' on' : ''}" role="tab" aria-selected="${k === style}" data-act="badge-style" data-style="${k}">${t}</button>`).join('')}</div>
+    <div class="badge-preview${style === 'dark' ? ' on-dark' : ''} mt"><img src="${esc(preview(style))}" alt="Badge preview" width="${style === 'seal' ? 160 : 240}" height="${style === 'seal' ? 160 : 72}"></div>
+    <label class="mt" for="badge-code">Embed code — paste into your website (Wix, Squarespace, WordPress: an "HTML" or "Embed" block)</label>
+    <textarea id="badge-code" class="mono small" rows="3" readonly>${esc(b.urls.embed[style])}</textarea>
+    <div class="badge-row mt"><button class="btn sm" data-act="badge-copy">Copy code</button>
+      ${b.certified ? `<a class="btn ghost sm" href="${file(style, 'png')}" download>Download PNG</a><a class="btn ghost sm" href="${file(style, 'svg')}" download>Download SVG</a>` : ''}
+      <span class="spacer"></span><button class="btn ghost sm" data-act="badge-reset" title="Use if the code was copied somewhere it shouldn't be">New links</button></div>
+    <p class="small muted mt">Downloaded images are for print and social posts; online, use the embed code so the badge stays verifiable. By showing the badge you agree to the <a href="legal.html#badge" target="_blank" rel="noopener">badge terms</a>.</p>`;
 }
 
 async function loadLocations() {
@@ -2355,6 +2385,18 @@ const ACTIONS = {
   'outreach-log': outreachLogModal,
   'export-file': exportFileModal,
   'location-edit': (el) => locationModal(el.dataset.id ? +el.dataset.id : null),
+  'badge-style': (el) => { loadBadge.style = el.dataset.style; loadBadge(loadBadge.data); },
+  'badge-toggle': async () => { const r = await attempt(() => api('admin.php?action=badge_save', { enabled: !loadBadge.data.enabled })); if (r) { toast(r.badge.enabled ? 'Badge turned on' : 'Badge turned off'); loadBadge(r.badge); } },
+  'badge-copy': async () => {
+    const ta = document.getElementById('badge-code');
+    try { await navigator.clipboard.writeText(ta.value); } catch { ta.select(); document.execCommand('copy'); }
+    toast('Embed code copied');
+  },
+  'badge-reset': async () => {
+    if (!(await confirmBox('Create new badge links?', 'Badges already on your website will show "not verified" until you paste the new code.', 'Create new links'))) return;
+    const r = await attempt(() => api('admin.php?action=badge_reset', {}));
+    if (r) { toast('New links created — update your website'); loadBadge(r.badge); }
+  },
   'suggest': suggestModal,
   'op-feedback': (el) => feedbackUpdateModal(+el.dataset.id),
   'outreach-hold': outreachHoldModal,

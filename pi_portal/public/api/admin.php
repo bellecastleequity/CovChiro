@@ -4,6 +4,7 @@
 // always limited to the admin's own practice.
 define('PI_ALLOW_WHEN_LAPSED', true);
 require_once __DIR__ . '/../../app/bootstrap.php';
+require_once __DIR__ . '/../../app/badge.php';
 pi_start_session();
 
 // Home location (must belong to the practice) and whether access is
@@ -185,6 +186,41 @@ function handle_my_notify_save() {
     json_response(['ok' => true]);
 }
 
+// ---- "InjuryCase Certified" website badge ----
+function badge_payload(array $p): array {
+    $st = badge_status($p);
+    return ['certified' => $st['certified'], 'enabled' => !empty($p['badge_enabled']), 'enabledAt' => $p['badge_enabled_at'],
+        'items' => array_map(fn($i) => ['key' => $i[0], 'label' => $i[1], 'met' => $i[2]], $st['items']),
+        'urls' => badge_urls(badge_token_for($p))];
+}
+
+function handle_badge() {
+    require_user('users.manage');
+    json_response(['badge' => badge_payload(current_practice())]);
+}
+
+function handle_badge_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $p = current_practice();
+    $on = !empty(json_body()['enabled']);
+    $at = $on ? ($p['badge_enabled_at'] ?: date('Y-m-d H:i:s')) : $p['badge_enabled_at'];
+    pi_db()->prepare('UPDATE practices SET badge_enabled = ?, badge_enabled_at = ? WHERE id = ?')->execute([$on ? 1 : 0, $at, pid()]);
+    audit('update', 'practice', pid(), null, $admin, 'Website badge', [['f' => 'badge', 't' => 'bool', 'from' => !empty($p['badge_enabled']), 'to' => $on]]);
+    json_response(['badge' => badge_payload(['badge_enabled' => $on ? 1 : 0, 'badge_enabled_at' => $at] + $p)]);
+}
+
+// New links: badges already placed with the old code stop verifying.
+function handle_badge_reset() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $p = current_practice();
+    $t = bin2hex(random_bytes(12));
+    pi_db()->prepare('UPDATE practices SET badge_token = ? WHERE id = ?')->execute([$t, pid()]);
+    audit('reset_badge', 'practice', pid(), null, $admin, 'Website badge');
+    json_response(['badge' => badge_payload(['badge_token' => $t] + $p)]);
+}
+
 // ---- locations (Platinum plan) ----
 function handle_locations() {
     require_user('users.manage');
@@ -301,6 +337,9 @@ switch ($action) {
     case 'audit': handle_audit(); break;
     case 'audit_csv': handle_audit_csv(); break;
     case 'notify_rules_save': handle_notify_rules_save(); break;
+    case 'badge': handle_badge(); break;
+    case 'badge_save': handle_badge_save(); break;
+    case 'badge_reset': handle_badge_reset(); break;
     case 'locations': handle_locations(); break;
     case 'location_save': handle_location_save(); break;
     case 'my_notify': handle_my_notify(); break;
