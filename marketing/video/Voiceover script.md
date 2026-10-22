@@ -27,7 +27,13 @@ The video (`InjuryCase sales video.mp4`, 1:41, 1080p) is built to play muted, wi
 
 The video fits itself to the voice. Each scene lasts its default length or as long as its voiceover clip needs, whichever is longer, so rewording a line or changing voices never cuts anything off. The lines live in `scenes.json`.
 
-**Google Cloud Text-to-Speech (recommended)**
+**Gemini voice (what the current video uses)**
+1. Needs only `GEMINI_API_KEY` (already set in this Claude environment; on your computer: `export GEMINI_API_KEY=...`).
+2. `python3 tts_gemini.py` writes one clip per scene to `vo/`. The voice (`Charon`) and the delivery note ("warm, confident, professional narrator…") are in the `gemini` block of `scenes.json`.
+3. Compare voices with `python3 tts_gemini.py --sample Charon,Kore,Algieba,Sulafat` (writes `vo/samples/`), switch with `--voice Kore`, redo one line with `--only 04-playbook`.
+4. `python3 build_video.py` renders the video with the voice mixed in.
+
+**Google Cloud Text-to-Speech (alternative)**
 1. In Google Cloud, enable the Text-to-Speech API and create an API key restricted to it.
 2. Add it as the `GOOGLE_TTS_API_KEY` secret (in this Claude environment: environment settings → Network secrets or environment variables; on your computer: `export GOOGLE_TTS_API_KEY=...`).
 3. `python3 tts_google.py` writes one clip per scene to `vo/`. Try voices with `--voice` (e.g. `en-US-Neural2-D`, `en-US-Studio-Q`, or a Chirp 3 HD voice) and list them with `--list en-US`; redo one line with `--only 04-playbook`.
