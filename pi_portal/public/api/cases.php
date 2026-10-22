@@ -392,6 +392,7 @@ function handle_milestone() {
 // ---------- daily huddle ----------
 function handle_huddle() {
     $user = require_user('case.read');
+    require_feature('huddle');
     require_once __DIR__ . '/../../app/huddle.php';
     $h = build_huddle(pi_db(), $user, pid());
     audit('view', 'huddle', null, null, $user);

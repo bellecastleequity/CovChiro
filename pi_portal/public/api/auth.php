@@ -13,7 +13,7 @@ switch ($action) {
     case 'ping': handle_ping(); break;
     case 'login': handle_login(); break;
     case 'signup': handle_signup(); break;
-    case 'plans': json_response(['plans' => plans_public(), 'trialDays' => TRIAL_DAYS, 'annualMonthsCharged' => ANNUAL_MONTHS_CHARGED, 'brand' => BRAND_NAME]); break;
+    case 'plans': json_response(['plans' => plans_public(), 'coreFeatures' => CORE_FEATURES, 'trialDays' => TRIAL_DAYS, 'annualMonthsCharged' => ANNUAL_MONTHS_CHARGED, 'brand' => BRAND_NAME]); break;
     case 'change_password': handle_change_password(); break;
     case 'mfa_setup_start': handle_mfa_setup_start(); break;
     case 'mfa_setup_confirm': handle_mfa_setup_confirm(); break;

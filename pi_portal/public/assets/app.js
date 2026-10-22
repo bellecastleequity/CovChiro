@@ -19,6 +19,17 @@ const daysSince = (d) => d ? Math.round((Date.parse(today()) - Date.parse(String
 // categories this user may see; 'fin:any' = at least one of them.
 const fin = (scope) => !!S.user && (S.user.fin || []).includes(scope);
 const can = (perm) => !!S.user && (perm.startsWith('fin:') ? (perm === 'fin:any' ? (S.user.fin || []).length > 0 : fin(perm.slice(4))) : S.user.perms.includes(perm));
+// Plan features (app/saas.php FEATURES): trials and comped accounts get them all.
+const hasFeature = (f) => !!S.practice && (S.practice.features || []).includes(f);
+const featureInfo = (f) => S.practice?.featureCatalog?.[f] || { name: f, planName: '' };
+function upgradeCardHtml(f) {
+  const fi = featureInfo(f);
+  const top = !!fi.topTier;
+  return `<div class="card upgrade"><span class="chip legal">${esc(fi.planName)} plan${top ? '' : ' & up'}</span><h2 class="mt-sm">${esc(fi.name)}</h2>
+    <p class="mt-sm">${esc(fi.blurb || '')}</p>
+    <p class="small muted mt-sm">Included in the ${esc(fi.planName)} plan${top ? '' : ' and above'}. Your practice is on ${esc(S.practice?.planName || '')}.</p>
+    ${can('users.manage') ? '<a class="btn mt" href="#/billing">See plans</a>' : '<p class="small mt">Ask your practice admin about upgrading.</p>'}</div>`;
+}
 const label = (map, key) => (S.lookups?.[map]?.[key]) ?? key ?? '—';
 const contactName = (c) => c ? [c.organization, c.name].filter(Boolean).join(' — ') : '';
 const opt = (value, text, selected) => `<option value="${esc(value)}"${String(selected ?? '') === String(value) ? ' selected' : ''}>${esc(text)}</option>`;
@@ -319,6 +330,9 @@ const NAV = [
   ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'],
 ];
 
+// Nav items that are plan features.
+const NAV_FEATURE = { huddle: 'huddle' };
+
 // Trial / subscription / BAA notices shown above every page.
 function bannerHtml() {
   const p = S.practice;
@@ -328,7 +342,10 @@ function bannerHtml() {
   if (p.access === 'read_only') return `<div class="banner danger">Your ${p.status === 'trialing' ? 'free trial has ended' : 'subscription has ended'}. Records are read-only.${cta}</div>`;
   if (p.status === 'past_due') return `<div class="banner warn">Your last payment didn't go through.${admin ? ' <a href="#/billing">Update billing</a>' : ''}</div>`;
   if (admin && !p.baaCurrent) return `<div class="banner warn">Please review and accept the current Business Associate Agreement. <a href="#/settings">Practice settings</a></div>`;
-  if (p.status === 'trialing') return `<div class="banner info">${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? '' : 's'} left in your free trial.${admin ? ' <a href="#/billing">Choose a plan</a>' : ''}</div>`;
+  if (p.status === 'trialing') {
+    const extras = (p.trialExtras || []).map((f) => featureInfo(f));
+    return `<div class="banner info">${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? '' : 's'} left in your free trial.${extras.length ? ` Your trial includes every feature — ${esc(extras.map((x) => `${x.name} (${x.planName})`).join(', '))} ${extras.length === 1 ? 'needs' : 'need'} a higher plan than ${esc(p.planName)} after the trial.` : ''}${admin ? ' <a href="#/billing">Choose a plan</a>' : ''}</div>`;
+  }
   return '';
 }
 
@@ -342,10 +359,10 @@ async function startShell() {
   $app.innerHTML = `<div class="shell">
     <nav class="sidebar" aria-label="Main">
       <div class="brand"><img src="assets/logo-horizontal-dark.svg" alt="${esc(S.brand.name)}"><small>${esc(operator ? 'Operator console' : S.practice.name)}</small></div>
-      ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}</a>`).join('')}
+      ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}${NAV_FEATURE[k] && !operator && !hasFeature(NAV_FEATURE[k]) ? ` <span class="nav-lock" title="${esc(featureInfo(NAV_FEATURE[k]).planName)} plan">${esc(featureInfo(NAV_FEATURE[k]).planName)}</span>` : ''}</a>`).join('')}
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>
-        ${operator ? '' : '<button class="btn ghost sm" data-act="my-notify">Email notifications</button>'}
+        ${operator || !hasFeature('email_digest') ? '' : '<button class="btn ghost sm" data-act="my-notify">Email notifications</button>'}
         <button class="btn ghost sm" data-act="sign-out">Sign out</button></div>
     </nav>
     <div class="main-col"><div id="banner">${bannerHtml()}</div><main class="main" id="main"></main></div>
@@ -470,6 +487,7 @@ function taskListHtml(tasks, showCase, empty = 'No open tasks.') {
 // The morning team-meeting sheet: everything outstanding, grouped, with
 // space to note who takes each item. Prints cleanly.
 async function pageHuddle(main) {
+  if (!hasFeature('huddle')) { main.innerHTML = `<div class="page-head"><div><h1>Daily huddle</h1></div></div>${upgradeCardHtml('huddle')}`; return; }
   const r = await attempt(() => api('cases.php?action=huddle'));
   if (!r) return;
   const secs = Object.entries(r.sections);
@@ -1928,7 +1946,7 @@ function userModal(existing) {
   const defs = [{ n: 'name', l: 'Full name', req: true }, ...(existing ? [] : [{ n: 'email', l: 'Email', t: 'email', req: true }]),
     { n: 'role', l: 'Role', t: 'select', blank: false, opts: [['staff', 'Staff'], ['billing', 'Billing'], ['provider', 'Provider'], ['admin', 'Admin']] },
     { n: 'finance_access', l: 'Grant full financial access (staff role only)', t: 'check' },
-    { n: 'notify_digest', l: 'Daily email digest', t: 'check' },
+    ...(hasFeature('email_digest') ? [{ n: 'notify_digest', l: 'Daily email digest', t: 'check' }] : []),
     ...(existing ? [{ n: 'active', l: 'Active', t: 'check' }] : [])];
   openModal({ title: existing ? 'Edit user' : 'Add user', body: fieldsHtml(defs, existing || { role: 'staff', notify_digest: 0 }), onOk: async (el) => {
     const r = await api('admin.php?action=user_save', { ...readFields(el, defs), ...(existing ? { id: existing.id } : {}) });
@@ -2000,6 +2018,8 @@ async function pageSettings(main) {
         .map(([k, t, dsc]) => `<label class="check mt"><input type="checkbox" data-staff-fin="${k}"${(p.staffFinance || []).includes(k) ? ' checked' : ''}> <span><strong>${t}</strong> <span class="small muted">— ${dsc}</span></span></label>`).join('')}
       <button class="btn mt" data-act="save-staff-fin">Save visibility</button></div>
     <div class="card mt" id="notify-rules"><h2>Daily huddle &amp; email digest</h2>
+      ${p.hasHuddle ? '' : `<div class="notice">The Daily huddle is part of the ${esc(featureInfo('huddle').planName)} plan and up; the thresholds below still set the gap and treatment-plan alerts on every case.</div>`}
+      ${p.hasDigest ? '' : `<div class="notice">The daily email digest is part of the ${esc(featureInfo('email_digest').planName)} plan.</div>`}
       <p class="small mt">What the Daily huddle and the morning email watch for. Each person chooses whether to get the email (and which of these) under <em>Email notifications</em>; the email has counts and a link only — never patient names.</p>
       ${p.mailReady ? '' : '<div class="notice">Email sending isn\'t set up on this server yet, so digests won\'t go out until it is (see the deployment guide).</div>'}
       <div class="assignee-list mt">${Object.entries(p.notifyCriteria).map(([k, t]) => `<label class="check"><input type="checkbox" data-crit="${k}"${p.notifyRules.criteria.includes(k) ? ' checked' : ''}> ${esc(t)}</label>`).join('')}</div>
@@ -2060,7 +2080,8 @@ async function pageBilling(main) {
         <div class="price">$${annual ? pl.annual_price : pl.price}<span>/${annual ? 'year' : 'month'}</span></div>
         <p class="small ${annual ? '' : 'muted'}">${annual ? `$${(pl.annual_price / 12).toFixed(2)}/month · save $${pl.price * 12 - pl.annual_price} a year` : `or $${pl.annual_price}/year with annual billing`}</p>
         <p class="small muted">${esc(pl.blurb)}</p>
-        <ul class="small"><li>${pl.active_cases ? pl.active_cases + ' open cases' : 'Unlimited open cases'}</li><li>${pl.users ? pl.users + ' users' : 'Unlimited users'}</li><li>All features, unlimited closed cases</li></ul>
+        <ul class="small"><li>${pl.active_cases ? pl.active_cases + ' open cases' : 'Unlimited open cases'}</li><li>${pl.users ? pl.users + ' users' : 'Unlimited users'}</li><li>Unlimited closed cases</li>
+          ${(pl.features || []).map((f) => `<li class="${f.included ? '' : 'no'}">${esc(f.name)}</li>`).join('')}</ul>
         ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : subscribed ? '<button class="btn ghost" data-act="billing-portal">Switch in Manage billing</button>'
           : `<button class="btn${k === p.plan ? '' : ' ghost'}" data-act="checkout" data-plan="${k}" data-interval="${interval}"${avail ? '' : ' disabled'}>${p.status === 'trialing' && r.firstCharge ? 'Add card — keep free days' : 'Subscribe'}</button>`}</div>`;
     }).join('')}</div>

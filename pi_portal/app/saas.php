@@ -23,11 +23,68 @@ const PLANS = [
     'group'    => ['name' => 'Group',    'price' => 79, 'active_cases' => null, 'users' => null, 'blurb' => 'Multiple doctors or locations'],
 ];
 
-// Plans as shown to customers, with the annual price.
+// ---------- features by plan ----------
+// Plans are ordered tiers; each feature names the lowest plan that
+// includes it, and every higher plan includes it too. To put a new
+// feature on a tier, add it here and check has_feature() / require_feature()
+// where it's used — the pricing pages, plan cards, upgrade prompts and
+// enforcement all read this list. Features not listed are in every plan.
+const PLAN_ORDER = ['solo', 'practice', 'group'];
+const FEATURES = [
+    'huddle' => ['name' => 'Daily huddle sheet', 'plan' => 'practice',
+        'blurb' => "A printable morning team-meeting sheet of everything outstanding: tasks, gaps in care, patients behind plan, referrals due, insurance and attorney items."],
+    'email_digest' => ['name' => 'Daily email digest', 'plan' => 'group',
+        'blurb' => "A morning email to each team member with counts of what needs attention under the criteria they choose — no patient details in the email."],
+];
+// Shown on every plan card (in all plans).
+const CORE_FEATURES = ['Case tracking & referral guide', 'Case suggestions & policy-limit warnings', 'EHR ledger uploads (any EHR)', 'Tasks, activity & audit log'];
+
+function plan_rank(string $plan): int {
+    $i = array_search($plan, PLAN_ORDER, true);
+    return $i === false ? 0 : $i;
+}
+
+// The lowest plan that includes a feature ('solo' for unlisted features).
+function feature_plan(string $feature): string {
+    return FEATURES[$feature]['plan'] ?? PLAN_ORDER[0];
+}
+
+function plan_has_feature(string $plan, string $feature): bool {
+    return plan_rank($plan) >= plan_rank(feature_plan($feature));
+}
+
+// Free trials include every feature, so clinics see the whole product;
+// complimentary accounts also get everything. Otherwise it's the plan.
+function has_feature(?array $practice, string $feature): bool {
+    if (!$practice) return false;
+    if (in_array($practice['subscription_status'], ['trialing', 'comped'], true)) return true;
+    return plan_has_feature((string)$practice['plan'], $feature);
+}
+
+function practice_features(array $practice): array {
+    return array_values(array_filter(array_keys(FEATURES), fn($f) => has_feature($practice, $f)));
+}
+
+// Ends the request with an upgrade message when the practice's plan
+// doesn't include the feature.
+function require_feature(string $feature): void {
+    if (has_feature(current_practice(), $feature)) return;
+    $plan = PLANS[feature_plan($feature)]['name'];
+    json_response(['error' => FEATURES[$feature]['name'] . ' is included in the ' . $plan . ' plan' . (feature_plan($feature) !== PLAN_ORDER[count(PLAN_ORDER) - 1] ? ' and up' : '') . '. Upgrade under Plan & billing.',
+        'code' => 'upgrade', 'feature' => $feature, 'plan' => feature_plan($feature)], 403);
+}
+
+// Plans as shown to customers, with the annual price and which tiered
+// features each includes.
 function plans_public(): array {
     $out = [];
-    foreach (PLANS as $k => $p) $out[$k] = $p + ['annual_price' => $p['price'] * ANNUAL_MONTHS_CHARGED];
+    foreach (PLANS as $k => $p) $out[$k] = $p + ['annual_price' => $p['price'] * ANNUAL_MONTHS_CHARGED,
+        'features' => array_map(fn($f, $d) => ['key' => $f, 'name' => $d['name'], 'included' => plan_has_feature($k, $f)], array_keys(FEATURES), FEATURES)];
     return $out;
+}
+
+function feature_catalog(): array {
+    return array_map(fn($d) => $d + ['planName' => PLANS[$d['plan']]['name'], 'topTier' => $d['plan'] === PLAN_ORDER[count(PLAN_ORDER) - 1]], FEATURES);
 }
 
 // The Stripe Price for a plan and interval. STRIPE_PRICES maps each plan to
@@ -73,6 +130,9 @@ function practice_summary(array $p): array {
         'limits' => ['activeCases' => $plan['active_cases'], 'users' => $plan['users']],
         'ehrName' => $p['ehr_name'] ?? null, 'interval' => $p['billing_interval'] ?? 'monthly',
         'trialEndsAt' => $p['trial_ends_at'], 'subscribed' => !empty($p['stripe_subscription_id']),
+        'features' => practice_features($p), 'featureCatalog' => feature_catalog(),
+        // Features the trial includes that the chosen plan won't keep.
+        'trialExtras' => $p['subscription_status'] === 'trialing' ? array_values(array_filter(array_keys(FEATURES), fn($f) => !plan_has_feature((string)$p['plan'], $f))) : [],
     ];
 }
 

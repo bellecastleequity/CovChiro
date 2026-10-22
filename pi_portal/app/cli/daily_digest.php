@@ -19,6 +19,7 @@ $weekend = (int)date('N') >= 6;
 $sent = 0;
 foreach ($pdo->query('SELECT * FROM practices ORDER BY id')->fetchAll() as $p) {
     if (practice_access($p) !== 'full') continue;   // lapsed practices aren't emailed
+    if (!has_feature($p, 'email_digest')) continue;  // a plan feature (app/saas.php)
     current_practice($p);
     $rules = practice_rules($p);
     if ($weekend && $rules['weekdays_only'] && !$force) continue;

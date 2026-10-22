@@ -18,7 +18,8 @@
         <div class="amount">$${esc(annual ? p.annual_price : p.price)}<span>/${annual ? 'year' : 'month'}</span></div>
         <p class="per">${annual ? `$${(p.annual_price / 12).toFixed(2)}/month · save $${p.price * 12 - p.annual_price}` : `or $${esc(p.annual_price)}/year — 2 months free`}</p>
         <ul><li>${p.active_cases ? esc(p.active_cases) + ' open cases' : 'Unlimited open cases'}</li><li>${p.users ? esc(p.users) + ' team members' : 'Unlimited team members'}</li>
-          <li>Unlimited closed cases</li><li>Every feature included</li><li>BAA &amp; two-factor security</li></ul>
+          <li>Unlimited closed cases</li>${(d.coreFeatures || []).map((f) => `<li>${esc(f)}</li>`).join('')}<li>BAA &amp; two-factor security</li>
+          ${(p.features || []).map((f) => `<li class="${f.included ? 'plus' : 'no'}">${esc(f.name)}</li>`).join('')}</ul>
         <a class="btn${featured ? '' : ' ghost'}" href="app.html#signup?plan=${encodeURIComponent(k)}">Start free trial</a></div>`;
     }).join('');
   };

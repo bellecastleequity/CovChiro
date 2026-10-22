@@ -96,6 +96,7 @@ function handle_practice() {
         'name' => $p['name'], 'address' => $p['address'], 'phone' => $p['phone'], 'fax' => $p['fax'], 'state' => $p['state'], 'ehrName' => $p['ehr_name'],
         'staffFinance' => array_values(array_filter(explode(',', (string)$p['staff_finance']))),
         'notifyRules' => practice_rules($p), 'notifyCriteria' => NOTIFY_CRITERIA, 'mailReady' => mail_ready(),
+        'hasHuddle' => has_feature($p, 'huddle'), 'hasDigest' => has_feature($p, 'email_digest'),
         'baaVersion' => $p['baa_version'], 'baaAcceptedAt' => $p['baa_accepted_at'], 'currentBaaVersion' => BAA_VERSION,
     ]]);
 }
@@ -150,6 +151,7 @@ function handle_notify_rules_save() {
 // criteria. Admins can switch it for others from the Users page.
 function handle_my_notify() {
     $user = require_user();
+    require_feature('email_digest');
     $s = pi_db()->prepare('SELECT notify_digest, notify_criteria FROM users WHERE id = ?');
     $s->execute([$user['id']]);
     $u = $s->fetch();
@@ -161,6 +163,7 @@ function handle_my_notify() {
 function handle_my_notify_save() {
     require_method('POST');
     $user = require_user();
+    require_feature('email_digest');
     $b = json_body();
     $crit = array_values(array_intersect((array)($b['criteria'] ?? []), array_keys(NOTIFY_CRITERIA)));
     pi_db()->prepare('UPDATE users SET notify_digest = ?, notify_criteria = ? WHERE id = ?')->execute([!empty($b['digest']) ? 1 : 0, implode(',', $crit), $user['id']]);

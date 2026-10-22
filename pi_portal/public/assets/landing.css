@@ -176,3 +176,6 @@ h1,h2,h3{letter-spacing:-0.025em;line-height:1.15;}
 .interval-toggle .save{font-size:0.72rem;background:rgba(232,155,28,0.18);color:#8A5300;padding:2px 8px;border-radius:999px;}
 .interval-toggle button.on .save{background:var(--green);color:var(--navy);}
 .price-card .per{font-size:0.86rem;color:var(--muted);margin:-6px 0 4px;}
+.price-card li.plus{font-weight:600;}
+.price-card li.no{color:var(--muted);text-decoration:line-through;text-decoration-color:rgba(11,35,64,0.3);}
+.price-card li.no::before{content:"–";color:var(--muted);}
