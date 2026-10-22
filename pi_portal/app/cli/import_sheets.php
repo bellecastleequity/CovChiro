@@ -24,7 +24,7 @@ if (!($practiceRow = $ps->fetch())) exit("No practice with id {$opts['practice']
 current_practice($practiceRow);
 echo "Importing into: {$practiceRow['name']} (id {$practiceRow['id']})\n";
 $importUser = ['id' => null, 'email' => 'import'];
-$stats = ['cases' => 0, 'contacts' => 0, 'referrals' => 0, 'ledger' => 0, 'milestones' => 0, 'skipped' => 0];
+$stats = ['cases' => 0, 'contacts' => 0, 'coverages' => 0, 'referrals' => 0, 'ledger' => 0, 'milestones' => 0, 'skipped' => 0];
 
 // ---------- parsing helpers ----------
 // First date found anywhere in the string, as Y-m-d; null when there isn't
@@ -141,7 +141,9 @@ if (!$dry) $pdo->beginTransaction();
 // ================= A/R sheet =================
 if (!empty($opts['ar'])) {
     $stageMap = ['pending in litigation' => 'litigation', 'in demand/pre-suit' => 'demand', 'mediation scheduled' => 'mediation', 'settled' => 'settled'];
-    $benefitsMap = ['PIP' => 'pip', 'BENEX' => 'benex', 'DENIED' => 'denied', 'LOP' => 'lop', 'MEDPAY' => 'medpay'];
+    // Sheet "Benefits" column -> the insurance coverage behind the balance:
+    // [coverage type, status]. LOP / blank = no insurance on file.
+    $coverageMap = ['PIP' => ['pip', 'active'], 'BENEX' => ['pip', 'exhausted'], 'DENIED' => ['pip', 'denied'], 'MEDPAY' => ['medpay', 'active']];
     foreach (read_csv($opts['ar']) as $i => $r) {
         $r = array_pad($r, 23, '');
         $rawName = trim($r[1]);
@@ -167,8 +169,7 @@ if (!empty($opts['ar'])) {
         $checkReceived = trim($r[22]);
         $case = [
             'stage' => $stage, 'injury_type' => 'auto', 'date_of_injury' => $doi,
-            'benefits' => $benefitsMap[strtoupper(trim($r[3]))] ?? null,
-            'attorney_contact_id' => $attyId > 0 ? $attyId : null, 'insurer_contact_id' => $insId > 0 ? $insId : null,
+            'attorney_contact_id' => $attyId > 0 ? $attyId : null,
             'actively_treating' => 0, 'referral_source' => $attyId ? 'attorney' : null,
             'atty_offer' => money_cell($r[16]) ?: null,
             'final_settlement' => money_cell($r[19]) ?: null,
@@ -178,6 +179,22 @@ if (!empty($opts['ar'])) {
         if ($checkReceived !== '' && !$case['check_received_on']) $notes[] = 'Check received: ' . $checkReceived;
         $case['notes'] = implode("\n", $notes);
         $caseId = create_case($pdo, $name, $case, $dry, $stats);
+        $cov = $coverageMap[strtoupper(trim($r[3]))] ?? null;
+        // An insurance balance with no coverage named still came from PIP.
+        if (!$cov && money_cell($r[6]) > 0) $cov = ['pip', strtoupper(trim($r[3])) === 'LOP' ? 'exhausted' : 'active'];
+        $coverageId = null;
+        if ($cov) {
+            $stats['coverages']++;
+            if (!$dry) {
+                $pdo->prepare('INSERT INTO coverages (case_id, type, priority, carrier_contact_id, status, benefit_limit, created_at, updated_at) VALUES (?,?,1,?,?,?,?,?)')
+                    ->execute([$caseId, $cov[0], $insId > 0 ? $insId : null, $cov[1], $cov[0] === 'pip' ? PIP_DEFAULT_LIMIT : null, now_str(), now_str()]);
+                $coverageId = (int)$pdo->lastInsertId();
+            }
+        }
+        if (!$dry) {
+            $cs = $pdo->prepare('SELECT * FROM coverages WHERE case_id = ?'); $cs->execute([$caseId]);
+            $pdo->prepare('UPDATE cases SET benefits = ? WHERE id = ?')->execute([derive_benefits($cs->fetchAll(), 'auto'), $caseId]);
+        }
 
         if ($lastVisit = parse_date_loose($r[4])) {
             add_row($pdo, 'visits', ['case_id' => $caseId, 'visit_date' => $lastVisit, 'visit_type' => 'treatment', 'notes' => 'Last visit on record (imported from A/R sheet).'], $dry);
@@ -187,7 +204,8 @@ if (!empty($opts['ar'])) {
         foreach (['insurance' => money_cell($r[6]), 'patient' => money_cell($r[5])] as $bucket => $amt) {
             if ($amt <= 0) continue;
             $stats['ledger']++;
-            add_row($pdo, 'ledger', ['case_id' => $caseId, 'entry_date' => $lastVisit ?? date('Y-m-d'), 'kind' => 'charge', 'bucket' => $bucket, 'amount' => $amt, 'memo' => 'Opening balance imported from A/R sheet'], $dry);
+            add_row($pdo, 'ledger', ['case_id' => $caseId, 'entry_date' => $lastVisit ?? date('Y-m-d'), 'kind' => 'charge', 'bucket' => $bucket,
+                'coverage_id' => $bucket === 'insurance' ? $coverageId : null, 'amount' => $amt, 'memo' => 'Opening balance imported from A/R sheet'], $dry);
         }
         if ($corr = parse_date_loose($r[10])) {
             $method = strtolower(trim($r[12])) ?: 'fax';

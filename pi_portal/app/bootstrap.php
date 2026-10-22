@@ -283,7 +283,7 @@ function case_or_404(int $id): array {
 // the case they belong to, and through it the practice, so an id from one
 // case — or one practice — can never be used to read or edit another's.
 function child_or_404(string $table, int $id, ?int $caseId = null): array {
-    static $tables = ['referrals', 'visits', 'outcomes', 'correspondence', 'ledger', 'tasks', 'documents'];
+    static $tables = ['referrals', 'visits', 'outcomes', 'correspondence', 'ledger', 'tasks', 'documents', 'coverages'];
     if (!in_array($table, $tables, true)) throw new InvalidArgumentException('bad table');
     if ($table === 'tasks') {
         $sql = 'SELECT * FROM tasks WHERE id = ? AND practice_id = ?';

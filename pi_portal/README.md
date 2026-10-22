@@ -48,7 +48,9 @@ Check trademark and domain availability before launch.
 | **Visits** | Dates of service, type (initial, treatment, re-exam, discharge, no-show), CPT codes, notes, and an optional charge posted to the ledger. The first visit moves an intake case to Treating. A discharge visit moves it to Treatment complete. |
 | **Outcomes** | Bournemouth (neck/back), Oswestry, NDI, HDI, shoulder, knee, ADL, with first-vs-latest change. |
 | **Correspondence** | Every fax/email/call with attorneys, adjusters and providers, with follow-up dates. Includes printable letters: case status request, treatment complete, and reduction response. |
-| **Financials** | A ledger split into insurance (PIP/MedPay) and patient/LOP buckets, a PIP-limit meter (80% payout, $2,500 cap without EMC), and settlement tracking: attorney offer, 80% floor, final settlement, date authorized, check received. |
+| **Case types** | Auto accident, slip & fall, workers' comp. Each has its own checklist and alerts. |
+| **Insurance & money flow** | Each case lists its insurance in billing order (PIP, MedPay, health insurance, workers' comp), each with a claim #, adjuster, limits/authorizations and a status (active, denied, exhausted or closed). Charges are billed to a coverage or the patient balance. Whatever insurance doesn't cover (the 20% PIP doesn't pay, denials, everything after exhaustion) is moved to the **patient balance** by a person. The app prompts but never moves money on its own. Moves work in both directions, so a late payment can be applied to the original date of service. Every ledger entry stays editable, and edits are audited. |
+| **LOP & settlement** | LOP signed by the patient (and whether the law firm acknowledged it). At settlement, "Forward balance to attorney" records the date and amount and prints an itemized statement by date of service. Reductions apply to the patient balance only, against the 80% floor. |
 | **A/R & settlements** | The A/R sheet as a live report with totals and CSV export. |
 | **Documents** | LORs, records, imaging/EMC/consult reports and narratives, encrypted on disk. |
 | **Contacts** | Attorneys, insurers, imaging centers, co-managing providers. |
@@ -58,6 +60,8 @@ Check trademark and domain availability before launch.
 - Initial care within **14 days** of the accident (§627.736(1)(a)), flagged for new intakes and late first visits.
 - No **EMC determination** means PIP medical benefits are capped at **$2,500**.
 - Charges approaching the PIP limit.
+- Workers' comp: authorized visits used or nearly used, authorization expired, the 18-visit / 8-week chiropractic limit (§440.13, verify), and DWC-25 status forms not sent.
+- Money: insurance charges unpaid after 45 days, PIP ended with no signed LOP, and a settled case whose balance hasn't been forwarded.
 - Plus: imaging/consult reports not received, referrals not scheduled, no-shows, gaps in care over 14 days, outcome tools due every 30 days, no attorney status update in 30 days on demand/litigation cases, follow-ups due, and settlement checks not received 30 days after authorization.
 
 All of these thresholds are constants at the top of `app/pi_rules.php`.

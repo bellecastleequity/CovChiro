@@ -58,6 +58,7 @@ function session_payload(?array $u) {
         $q = function (string $sql) use ($pid) { $st = pi_db()->prepare($sql); $st->execute([$pid]); return $st->fetchAll(); };
         $out['lookups'] = [
             'stages' => STAGES, 'benefits' => BENEFITS, 'referralTypes' => REFERRAL_TYPES,
+            'injuryTypes' => INJURY_TYPES, 'coverageTypes' => COVERAGE_TYPES, 'coverageStatus' => COVERAGE_STATUS,
             'outcomeMeasures' => OUTCOME_MEASURES, 'reductionFloorPct' => REDUCTION_FLOOR_PCT,
             'providers' => $q("SELECT id, name FROM users WHERE practice_id = ? AND active = 1 AND role IN ('provider','admin') ORDER BY name"),
             'users' => $q('SELECT id, name FROM users WHERE practice_id = ? AND active = 1 ORDER BY name'),

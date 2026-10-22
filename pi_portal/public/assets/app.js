@@ -496,38 +496,47 @@ function stageChip(stage) {
 }
 
 // ---------- new case ----------
-const benefitOpts = () => entries(S.lookups.benefits);
 const PATIENT_DEFS = [
   { n: 'first_name', l: 'First name', req: true }, { n: 'last_name', l: 'Last name' },
   { n: 'dob', l: 'Date of birth', t: 'date' }, { n: 'phone', l: 'Phone', t: 'tel' },
   { n: 'email', l: 'Email', t: 'email' }, { n: 'address', l: 'Address', full: true },
 ];
 const caseDefs = () => [
-  { n: 'injury_type', l: 'Injury type', t: 'select', blank: false, opts: [['auto', 'Auto accident'], ['slip_fall', 'Slip & fall'], ['work', 'Work injury'], ['other', 'Other']] },
+  { n: 'injury_type', l: 'Case type', t: 'select', blank: false, opts: entries(S.lookups.injuryTypes) },
   { n: 'date_of_injury', l: 'Date of injury (DOI)', t: 'date' },
   { n: 'first_visit', l: 'First visit', t: 'date' },
-  { n: 'benefits', l: 'Benefits', t: 'select', opts: benefitOpts() },
   { n: 'referral_source', l: 'Referral source', t: 'select', opts: [['attorney', 'Attorney'], ['self', 'Self'], ['provider', 'Another provider'], ['other', 'Other']] },
   { n: 'referred_by_contact_id', l: 'Referred by (contact)', t: 'contact' },
   { n: 'referred_by_text', l: 'Referred by (other)', ph: 'e.g. friend, Google' },
   { n: 'attorney_contact_id', l: 'Attorney', t: 'contact', ctype: ['attorney'] },
-  { n: 'insurer_contact_id', l: 'Insurance company', t: 'contact', ctype: ['insurer'] },
-  { n: 'adjuster', l: 'Adjuster' },
-  { n: 'claim_number', l: 'Claim #' }, { n: 'policy_number', l: 'Policy #' },
   { n: 'provider_user_id', l: 'Treating provider', t: 'user' },
 ];
 
+// Insurance on the new-case form: the usual first payer for the case type.
+const NEW_COVERAGE_DEFS = () => [
+  { n: 'cov_type', l: 'Insurance', t: 'select', blank: 'None — patient balance / LOP', opts: entries(S.lookups.coverageTypes) },
+  { n: 'cov_carrier', l: 'Carrier (from contacts)', t: 'contact', ctype: ['insurer'] },
+  { n: 'cov_carrier_text', l: 'Carrier (if not in contacts)' },
+  { n: 'cov_claim', l: 'Claim #' }, { n: 'cov_policy', l: 'Policy / member #' }, { n: 'cov_adjuster', l: 'Adjuster' },
+  { n: 'cov_auth', l: "Authorized visits (workers' comp)", t: 'number' },
+];
+const DEFAULT_COVERAGE = { auto: 'pip', slip_fall: '', workers_comp: 'workers_comp' };
 function newCaseModal() {
   const m = openModal({
     title: 'New PI case', wide: true, okText: 'Create case',
-    body: `<h3>Patient</h3>${fieldsHtml(PATIENT_DEFS)}<h3 class="mt">Case</h3>${fieldsHtml(caseDefs(), { injury_type: 'auto', benefits: 'pip' })}
-      <p class="small muted mt">Need a new attorney or insurer? Add them under Contacts first, or edit the case afterwards.</p>`,
+    body: `<h3>Patient</h3>${fieldsHtml(PATIENT_DEFS)}<h3 class="mt">Case</h3>${fieldsHtml(caseDefs(), { injury_type: 'auto' })}
+      <h3 class="mt">Insurance</h3>${fieldsHtml(NEW_COVERAGE_DEFS(), { cov_type: 'pip' })}
+      <p class="small muted mt">Bill insurance first if the patient has it. More coverage (e.g. health insurance) can be added under Financials. Need a new attorney or insurer? Add them under Contacts first.</p>`,
     onOk: async (el) => {
-      const r = await api('cases.php?action=create', { patient: readFields(el, PATIENT_DEFS), case: readFields(el, caseDefs()) });
+      const cv = readFields(el, NEW_COVERAGE_DEFS());
+      const coverage = cv.cov_type ? { type: cv.cov_type, carrier_contact_id: cv.cov_carrier, carrier_text: cv.cov_carrier_text, claim_number: cv.cov_claim,
+        policy_number: cv.cov_policy, adjuster: cv.cov_adjuster, authorized_visits: cv.cov_auth } : null;
+      const r = await api('cases.php?action=create', { patient: readFields(el, PATIENT_DEFS), case: readFields(el, caseDefs()), coverage });
       toast('Case ' + r.caseNumber + ' created');
       location.hash = '#/case/' + r.id;
     },
   });
+  m.el.querySelector('[name=injury_type]').addEventListener('change', (e) => { m.el.querySelector('[name=cov_type]').value = DEFAULT_COVERAGE[e.target.value] ?? ''; });
   return m;
 }
 
@@ -605,14 +614,14 @@ function tabOverview(el, d) {
   el.innerHTML = `<div class="grid-2">
     <div class="card"><div class="card-head"><h2>Case</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-case">Edit</button>' : ''}</div>
       <dl class="kv">
-        ${row('Injury type', { auto: 'Auto accident', slip_fall: 'Slip & fall', work: 'Work injury', other: 'Other' }[c.injury_type])}
+        ${row('Case type', label('injuryTypes', c.injury_type))}
         ${row('Date of injury', fmtDate(c.date_of_injury))}${row('First visit', fmtDate(c.first_visit))}${row('Discharged', fmtDate(c.discharge_date))}
         ${row('Treating provider', provider?.name)}
         ${row('Referral source', c.referral_source)}${contactRow('Referred by', k.referred_by_contact_id)}${c.referred_by_text ? row('Referred by (note)', c.referred_by_text) : ''}
-        ${contactRow('Attorney', k.attorney_contact_id)}${contactRow('Insurance', k.insurer_contact_id)}
-        ${row('Adjuster', c.adjuster)}${row('Claim #', c.claim_number)}${row('Policy #', c.policy_number)}
-        ${row('Benefits', label('benefits', c.benefits))}${row('EMC determination', c.emc_status)}
-        ${row('PIP limit', money(c.pip_limit) + (c.emc_status !== 'yes' ? ` (effective ${money(c.pip_effective_limit)} without EMC)` : ''))}
+        ${contactRow('Attorney', k.attorney_contact_id)}
+        <dt>Insurance</dt><dd>${(d.coverages || []).length ? d.coverages.map((cv) => `<div>${esc(label('coverageTypes', cv.type))}${cv.carrier_org || cv.carrier_text ? ' — ' + esc(cv.carrier_org || cv.carrier_text) : ''} <span class="chip ${cv.status === 'active' ? 'teal' : 'na'}">${esc(label('coverageStatus', cv.status))}</span>${cv.claim_number ? `<div class="small muted">Claim # ${esc(cv.claim_number)}</div>` : ''}</div>`).join('') : '<span class="muted">None — patient balance / LOP</span>'}</dd>
+        ${row('Bills go to', label('benefits', c.benefits))}${c.injury_type === 'auto' ? row('EMC determination', c.emc_status) : ''}
+        ${row('LOP signed', c.lop_signed_on ? fmtDate(c.lop_signed_on) + (c.lop_acknowledged_on ? ' · firm acknowledged ' + fmtDate(c.lop_acknowledged_on) : ' · not countersigned') : '')}
         ${row('Actively treating', c.actively_treating == 1 ? 'Yes' : 'No')}
       </dl></div>
     <div>
@@ -632,12 +641,11 @@ function editCaseModal() {
   const d = S.caseData, c = d.case;
   const defs = [...caseDefs(), { n: 'discharge_date', l: 'Discharge date', t: 'date' },
     { n: 'emc_status', l: 'EMC determination', t: 'select', blank: false, opts: [['pending', 'Pending'], ['yes', 'Yes — EMC exists'], ['no', 'No EMC']] },
-    { n: 'pip_limit', l: 'PIP limit', t: 'money' }, { n: 'actively_treating', l: 'Actively treating', t: 'check' }];
+    { n: 'actively_treating', l: 'Actively treating', t: 'check' }];
   openModal({
     title: 'Edit case', wide: true, body: fieldsHtml(defs, c),
     onOk: async (el) => {
       const vals = readFields(el, defs);
-      if (!can('finance.write')) { delete vals.pip_limit; delete vals.benefits; }
       S.caseData = await api('cases.php?action=update&id=' + c.id, { case: vals });
       renderCase(); toast('Case updated');
     },
@@ -736,6 +744,7 @@ const visitDefs = () => [
   { n: 'visit_date', l: 'Date of service', t: 'date', req: true },
   { n: 'visit_type', l: 'Visit type', t: 'select', blank: false, opts: VISIT_TYPES },
   { n: 'provider_user_id', l: 'Provider', t: 'user' }, { n: 'cpt_codes', l: 'CPT codes', ph: '98941, 97140, 97110' },
+  ...(S.caseData?.case.injury_type === 'workers_comp' ? [{ n: 'dwc25_sent', l: 'DWC-25 sent to carrier', t: 'check' }] : []),
   { n: 'notes', l: 'Visit note', t: 'textarea' },
 ];
 function tabVisits(el, d) {
@@ -744,10 +753,10 @@ function tabVisits(el, d) {
   el.innerHTML = `<div class="card"><div class="card-head"><h2>Visits</h2>
       <span class="small muted">${d.stats.visitCount} attended${counts.no_show ? ` · ${counts.no_show} no-show${counts.no_show > 1 ? 's' : ''}` : ''}</span>
       <span class="spacer"></span>${can('clinical.write') ? '<button class="btn sm" data-act="add-visit">+ Log visit</button>' : ''}</div>
-    ${d.visits.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Provider</th><th>CPT</th><th>Note</th><th></th></tr></thead><tbody>
+    ${d.visits.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Provider</th><th>CPT</th>${d.case.injury_type === 'workers_comp' ? '<th>DWC-25</th>' : ''}<th>Note</th><th></th></tr></thead><tbody>
     ${d.visits.map((v) => `<tr class="click" data-act="edit-visit" data-id="${v.id}"><td class="nowrap">${esc(fmtDate(v.visit_date))}</td>
       <td><span class="chip ${v.visit_type === 'no_show' ? 'overdue' : v.visit_type === 'discharge' ? 'teal' : ''}">${esc(Object.fromEntries(VISIT_TYPES)[v.visit_type])}</span></td>
-      <td>${esc(v.provider_name || '—')}</td><td class="mono small">${esc(v.cpt_codes || '')}</td><td class="small">${esc((v.notes || '').slice(0, 140))}</td>
+      <td>${esc(v.provider_name || '—')}</td><td class="mono small">${esc(v.cpt_codes || '')}</td>${d.case.injury_type === 'workers_comp' ? `<td>${v.visit_type === 'no_show' ? '—' : v.dwc25_sent == 1 ? '<span class="chip done">Sent</span>' : '<span class="chip due">Not sent</span>'}</td>` : ''}<td class="small">${esc((v.notes || '').slice(0, 140))}</td>
       <td>${can('clinical.write') ? `<button class="btn link small" data-act="archive-child" data-table="visits" data-id="${v.id}">Remove</button>` : ''}</td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">No visits logged yet.</div>'}
     <p class="small muted mt">Logging the first visit moves an intake case to Treating; logging a Discharge visit sets the discharge date and moves it to Treatment complete.</p>
@@ -757,15 +766,15 @@ function tabVisits(el, d) {
 function visitModal(existing) {
   if (!can('clinical.write')) return;
   const defs = visitDefs();
-  const chargeDefs = [{ n: 'charge_amount', l: 'Post charge to ledger ($)', t: 'money' }, { n: 'charge_bucket', l: 'Bill to', t: 'select', blank: false, opts: [['insurance', 'Insurance (PIP/MedPay)'], ['patient', 'Patient / LOP']] }];
+  const chargeDefs = [{ n: 'charge_amount', l: 'Charge ($)', t: 'money' }, { n: 'charge_to', l: 'Bill to', t: 'select', blank: false, opts: holderOpts({ activeOnly: true }) }];
   const showCharge = !existing && can('finance.write');
   openModal({
     title: existing ? 'Edit visit' : 'Log visit', wide: true,
     body: fieldsHtml(defs, existing || { visit_date: today(), visit_type: S.caseData.stats.visitCount ? 'treatment' : 'initial', provider_user_id: S.caseData.case.provider_user_id || '' })
-      + (showCharge ? '<h3 class="mt">Charge (optional)</h3>' + fieldsHtml(chargeDefs, { charge_bucket: ['lop', 'benex', 'denied'].includes(S.caseData.case.benefits) ? 'patient' : 'insurance' }) : ''),
+      + (showCharge ? '<h3 class="mt">Charge (optional)</h3>' + fieldsHtml(chargeDefs, { charge_to: defaultBillTo() }) : ''),
     onOk: async (el) => {
       const row = { ...readFields(el, defs), ...(existing ? { id: existing.id } : {}) };
-      const extra = showCharge ? (() => { const c = readFields(el, chargeDefs); return c.charge_amount ? { charge: { amount: c.charge_amount, bucket: c.charge_bucket } } : {}; })() : {};
+      const extra = showCharge ? (() => { const c = readFields(el, chargeDefs); return c.charge_amount ? { charge: { amount: c.charge_amount, to: c.charge_to } } : {}; })() : {};
       await saveChild('visits', row, extra);
     },
   });
@@ -830,65 +839,296 @@ function corrModal(existing) {
 }
 
 // --- financials ---
-const LEDGER_KINDS = [['charge', 'Charge'], ['payment', 'Payment'], ['adjustment', 'Adjustment'], ['reduction', 'Reduction (attorney)'], ['write_off', 'Write-off']];
-const ledgerDefs = [
-  { n: 'entry_date', l: 'Date', t: 'date', req: true }, { n: 'kind', l: 'Type', t: 'select', blank: false, opts: LEDGER_KINDS },
-  { n: 'bucket', l: 'Bucket', t: 'select', blank: false, opts: [['insurance', 'Insurance (PIP/MedPay)'], ['patient', 'Patient / attorney (LOP)']] },
-  { n: 'amount', l: 'Amount ($)', t: 'money', req: true }, { n: 'reference', l: 'Reference', ph: 'Check #, EOB #, claim line' }, { n: 'memo', l: 'Memo' },
-];
+// Money model: a charge is billed to an insurance coverage or the patient
+// balance. Payments/adjustments reduce whoever holds it; a "move" shifts an
+// amount between insurance and the patient balance (either direction).
+// The app suggests moves but never makes them on its own, and every entry
+// stays editable — payments routinely arrive weeks or months late.
+const LEDGER_KINDS = [['charge', 'Charge'], ['payment', 'Payment'], ['adjustment', 'Adjustment'], ['reduction', 'Reduction (attorney)'], ['write_off', 'Write-off'], ['transfer', 'Move balance']];
+const MOVE_REASONS = ['20% PIP coinsurance', 'PIP denied', 'PIP exhausted', 'Not covered by insurance', 'Late insurance payment received', 'Correction'];
+const covById = (id) => (S.caseData.coverages || []).find((c) => +c.id === +id);
+const covName = (cv) => cv ? label('coverageTypes', cv.type) + (cv.carrier_org || cv.carrier_text ? ' — ' + (cv.carrier_org || cv.carrier_text) : '') : 'Insurance';
+const holderName = (bucket, covId) => bucket === 'patient' ? 'Patient balance' : covName(covById(covId));
+const holderValue = (bucket, covId) => bucket === 'patient' ? 'patient' : String(covId || '');
+const parseHolder = (v) => v === 'patient' ? { bucket: 'patient', coverage_id: null } : { bucket: 'insurance', coverage_id: v ? +v : null };
+function holderOpts({ patient = true, activeOnly = false, exclude = null } = {}) {
+  const out = (S.caseData.coverages || []).filter((c) => (!activeOnly || c.status === 'active') && String(c.id) !== exclude)
+    .map((c) => [String(c.id), covName(c) + (c.status !== 'active' ? ` (${label('coverageStatus', c.status).toLowerCase()})` : '')]);
+  if (patient && exclude !== 'patient') out.push(['patient', 'Patient balance (LOP)']);
+  return out;
+}
+// Where new charges go by default: the first active insurance, else the patient.
+const defaultBillTo = () => { const a = (S.caseData.coverages || []).filter((c) => c.status === 'active'); return a.length ? String(a[0].id) : 'patient'; };
+const chargeLabel = (it) => `${fmtDate(it.date)} — ${it.memo || 'Charge'} (${money(it.amount)})`;
+
 function tabFinancials(el, d) {
-  const t = d.totals, c = d.case;
-  const limit = +c.pip_effective_limit, expectedPip = t.insurance_charges * 0.8;
-  const pct = limit ? Math.min(100, Math.round(expectedPip / limit * 100)) : 0;
-  const offerPct = c.atty_offer && t.total_balance > 0 ? Math.round(c.atty_offer / t.total_balance * 1000) / 10 : null;
-  const finalPct = c.final_settlement && t.total_balance > 0 ? Math.round(c.final_settlement / t.total_balance * 1000) / 10 : null;
-  const editable = can('finance.write');
-  el.innerHTML = `<div class="grid-2">
-    <div class="card"><div class="card-head"><h2>Ledger</h2><span class="spacer"></span>${editable ? '<button class="btn sm" data-act="add-ledger">+ Entry</button>' : ''}</div>
-      ${d.ledger.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Bucket</th><th>Ref / memo</th><th class="num">Amount</th><th></th></tr></thead><tbody>
-      ${d.ledger.map((l) => `<tr><td class="nowrap">${esc(fmtDate(l.entry_date))}</td><td>${esc(Object.fromEntries(LEDGER_KINDS)[l.kind])}</td><td>${l.bucket === 'insurance' ? 'Insurance' : 'Patient/LOP'}</td>
-        <td class="small">${esc([l.reference, l.memo].filter(Boolean).join(' · '))}</td>
-        <td class="num">${l.kind === 'charge' ? money(l.amount) : '(' + money(l.amount) + ')'}</td>
-        <td>${editable ? `<button class="btn link small" data-act="archive-child" data-table="ledger" data-id="${l.id}">Remove</button>` : ''}</td></tr>`).join('')}
-      </tbody></table></div>` : '<div class="empty">No ledger entries.</div>'}
+  const t = d.totals, c = d.case, fw = can('finance.write');
+  const covEdit = can('case.write') || fw;
+  const items = d.openItems || [];
+  const showAll = el.dataset.all === '1';
+  const shown = showAll ? items : items.filter((i) => i.ins_open > 0.005 || i.pat_open > 0.005);
+  const pip = (d.coverages || []).find((cv) => cv.type === 'pip');
+  const covCards = (d.coverages || []).map((cv) => {
+    const b = t.by_coverage[cv.id] || { charges: 0, paid: 0, adjusted: 0, moved_out: 0, moved_in: 0, balance: 0 };
+    const statusCls = cv.status === 'active' ? 'teal' : cv.status === 'closed' ? 'na' : 'overdue';
+    const limit = cv.type === 'pip' ? `<div class="small">Limit ${money(cv.benefit_limit ?? 10000)}${c.emc_status !== 'yes' ? ` · ${money(c.pip_effective_limit)} without EMC` : ''}</div>` : '';
+    const auth = cv.type === 'workers_comp' ? `<div class="small">Authorized: ${cv.authorized_visits ? esc(cv.authorized_visits) + ' visits' : 'visits not set'}${cv.authorized_through ? ' through ' + esc(fmtDate(cv.authorized_through)) : ''}</div>` : '';
+    return `<div class="cov">
+      <div class="cov-head"><strong>${esc(covName(cv))}</strong><span class="chip ${statusCls}">${esc(label('coverageStatus', cv.status))}${cv.status_on && cv.status !== 'active' ? ' ' + esc(fmtDate(cv.status_on)) : ''}</span><span class="spacer"></span><span class="small muted">Billing order ${esc(cv.priority)}</span></div>
+      <div class="small">${cv.claim_number ? 'Claim # <span class="mono">' + esc(cv.claim_number) + '</span>' : '<span class="muted">No claim # yet</span>'}${cv.policy_number ? ' · Policy/member # <span class="mono">' + esc(cv.policy_number) + '</span>' : ''}${cv.adjuster ? ' · Adjuster ' + esc(cv.adjuster) : ''}</div>
+      ${limit}${auth}${cv.status_reason ? `<div class="small muted">${esc(cv.status_reason)}</div>` : ''}
+      <div class="cov-nums small"><span>Billed ${money(b.charges + b.moved_in)}</span><span>Paid ${money(b.paid)}</span><span>Adjusted ${money(b.adjusted)}</span><span>Moved out ${money(b.moved_out)}</span><span><strong>Open ${money(b.balance)}</strong></span></div>
+      ${covEdit ? `<div class="filters mt-sm"><button class="btn ghost sm" data-act="edit-coverage" data-id="${cv.id}">Edit</button>
+        ${cv.status === 'active' ? `<button class="btn ghost sm" data-act="cov-status" data-id="${cv.id}" data-status="denied">Mark denied</button>
+          ${cv.type !== 'workers_comp' ? `<button class="btn ghost sm" data-act="cov-status" data-id="${cv.id}" data-status="exhausted">Mark exhausted</button>` : ''}
+          <button class="btn ghost sm" data-act="cov-status" data-id="${cv.id}" data-status="closed">Close</button>`
+        : `<button class="btn ghost sm" data-act="cov-status" data-id="${cv.id}" data-status="active">Reactivate</button>`}
+        ${fw && b.balance > 0.005 ? `<button class="btn ghost sm" data-act="move-balance" data-from="${cv.id}">Move balance…</button>` : ''}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const pct = (() => {
+    if (!pip || pip.status !== 'active') return null;
+    const billed = (t.by_coverage[pip.id] || {}).charges || 0, lim = +c.pip_effective_limit;
+    return lim ? { pct: Math.min(100, Math.round(billed * 0.8 / lim * 100)), expected: billed * 0.8, lim } : null;
+  })();
+
+  el.innerHTML = `
+    ${fw ? `<div class="filters"><button class="btn sm" data-act="add-charge">+ Charge</button><button class="btn sm" data-act="add-payment">+ Payment</button>
+      <button class="btn ghost sm" data-act="move-balance">Move balance…</button><span class="spacer"></span>
+      <button class="btn ghost sm" data-act="letter" data-type="statement">Print statement</button></div>` : ''}
+    <div class="grid-2">
+      <div class="card"><div class="card-head"><h2>Insurance</h2><span class="spacer"></span>${covEdit ? '<button class="btn ghost sm" data-act="add-coverage">+ Add insurance</button>' : ''}</div>
+        ${covCards || `<div class="empty">No insurance on file. Add PIP, MedPay, health insurance or workers' comp if the patient has it — insurance must be billed before the patient balance.</div>`}
+      </div>
+      <div>
+        <div class="card"><h2>Balances</h2>
+          ${(d.coverages || []).map((cv) => `<div class="money-row"><span>${esc(covName(cv))}</span><strong>${money((t.by_coverage[cv.id] || {}).balance || 0)}</strong></div>`).join('')}
+          ${t.by_coverage[0] ? `<div class="money-row"><span>Insurance (no coverage linked)</span><strong>${money(t.by_coverage[0].balance)}</strong></div>` : ''}
+          <div class="money-row"><span>Patient balance (LOP)</span><strong>${money(t.patient_balance)}</strong></div>
+          <div class="money-row"><span><strong>Total outstanding</strong></span><strong>${money(t.total_balance)}</strong></div>
+          <div class="small muted mt-sm">Charges ${money(t.total_charges)} · insurance paid ${money(t.insurance_paid)} · moved to patient ${money(t.moved_to_patient)}</div>
+          ${pct ? `<div class="small mt">PIP pays 80%: expected ${money(pct.expected)} of ${money(pct.lim)}<div class="bar ${pct.pct >= 100 ? 'over' : pct.pct >= 85 ? 'warn' : ''}"><i data-w="${pct.pct}"></i></div></div>` : ''}
+        </div>
+        <div class="card"><div class="card-head"><h2>LOP &amp; settlement</h2><span class="spacer"></span>${can('case.write') || fw ? '<button class="btn ghost sm" data-act="edit-lop">Edit</button>' : ''}</div>
+          <div class="money-row"><span>LOP signed by patient</span><strong>${esc(fmtDate(c.lop_signed_on))}</strong></div>
+          <div class="money-row"><span>Acknowledged by law firm</span><strong>${c.lop_acknowledged_on ? esc(fmtDate(c.lop_acknowledged_on)) : (c.lop_signed_on ? 'Not countersigned' : '—')}</strong></div>
+          <div class="money-row"><span>Balance forwarded to attorney</span><strong>${c.balance_forwarded_on ? esc(fmtDate(c.balance_forwarded_on)) + ' · ' + money(c.balance_forwarded_amount) : '—'}</strong></div>
+          <div class="money-row"><span>${Math.round(S.lookups.reductionFloorPct * 100)}% floor (of patient balance)</span><strong>${money(t.reduction_floor)}</strong></div>
+          <div class="money-row"><span>Attorney offer</span><strong>${money(c.atty_offer)}${c.atty_offer && t.patient_balance > 0 ? ` <span class="small muted">(${Math.round(c.atty_offer / t.patient_balance * 1000) / 10}%)</span>` : ''}</strong></div>
+          <div class="money-row"><span>Final settlement</span><strong>${money(c.final_settlement)}</strong></div>
+          <div class="money-row"><span>Date authorized · check received</span><strong>${esc(fmtDate(c.date_authorized))} · ${esc(fmtDate(c.check_received_on))}</strong></div>
+          ${c.atty_offer && +c.atty_offer < t.reduction_floor ? '<div class="notice mt">Offer is below the reduction floor.</div>' : ''}
+          ${fw && t.patient_balance > 0.005 ? '<button class="btn mt" data-act="forward-balance">Forward balance to attorney</button>' : ''}
+        </div>
+      </div>
     </div>
-    <div>
-      <div class="card"><h2>Balances</h2>
-        <div class="money-row"><span>Insurance charges</span><strong>${money(t.insurance_charges)}</strong></div>
-        <div class="money-row"><span>Insurance payments &amp; credits</span><strong>(${money(t.insurance_credits)})</strong></div>
-        <div class="money-row"><span>Insurance balance</span><strong>${money(t.insurance_balance)}</strong></div>
-        <div class="money-row"><span>Patient / LOP balance</span><strong>${money(t.patient_balance)}</strong></div>
-        <div class="money-row"><span><strong>Total outstanding</strong></span><strong>${money(t.total_balance)}</strong></div>
-        ${c.benefits === 'pip' || c.benefits === 'benex' ? `<div class="small mt">PIP pays 80% of charges: expected ${money(expectedPip)} of ${money(limit)} limit${c.emc_status !== 'yes' ? ' (no EMC — $2,500 cap)' : ''}
-          <div class="bar ${pct >= 100 ? 'over' : pct >= 85 ? 'warn' : ''}"><i data-w="${pct}"></i></div></div>` : ''}
-      </div>
-      <div class="card"><div class="card-head"><h2>Settlement / reduction</h2><span class="spacer"></span>${editable ? '<button class="btn ghost sm" data-act="edit-settlement">Edit</button>' : ''}</div>
-        <div class="money-row"><span>${Math.round(S.lookups.reductionFloorPct * 100)}% floor</span><strong>${money(t.reduction_floor)}</strong></div>
-        <div class="money-row"><span>Attorney offer</span><strong>${money(c.atty_offer)}${offerPct !== null ? ` <span class="small muted">(${offerPct}%)</span>` : ''}</strong></div>
-        <div class="money-row"><span>Final settlement</span><strong>${money(c.final_settlement)}${finalPct !== null ? ` <span class="small muted">(${finalPct}%)</span>` : ''}</strong></div>
-        <div class="money-row"><span>Date authorized</span><strong>${esc(fmtDate(c.date_authorized))}</strong></div>
-        <div class="money-row"><span>Check received</span><strong>${esc(fmtDate(c.check_received_on))}</strong></div>
-        ${c.atty_offer && t.reduction_floor && +c.atty_offer < t.reduction_floor ? '<div class="notice">Offer is below the reduction floor.</div>' : ''}
-        <p class="small muted mt">When the check arrives, post it as a Payment and the agreed reduction as a Reduction so the balance closes to $0.</p>
-      </div>
-    </div></div>`;
-  // Width via CSSOM (allowed under the CSP; inline style attributes are not).
+    <div class="card mt"><div class="card-head"><h2>Charges by date of service</h2><span class="spacer"></span>
+      <label class="check small"><input type="checkbox" data-act-change="fin-all"${showAll ? ' checked' : ''}> Show paid charges</label></div>
+      ${shown.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Billed to</th><th class="num">Charge</th><th class="num">Ins. paid/adj.</th><th class="num">Moved to patient</th><th class="num">Patient paid/adj.</th><th class="num">Open — insurance</th><th class="num">Open — patient</th><th></th></tr></thead><tbody>
+      ${shown.map((it) => `<tr><td class="nowrap">${esc(fmtDate(it.date))}</td><td class="small">${esc(it.memo || '')}</td>
+        <td class="small">${esc(holderName(it.billed_to, it.billed_coverage_id))}${it.coverage_id && it.coverage_id !== it.billed_coverage_id ? ' → ' + esc(covName(covById(it.coverage_id))) : ''}</td>
+        <td class="num">${money(it.amount)}</td><td class="num">${it.ins_paid + it.ins_adjusted ? money(it.ins_paid + it.ins_adjusted) : '—'}</td>
+        <td class="num">${it.moved_to_patient ? money(it.moved_to_patient) : '—'}</td><td class="num">${it.pat_paid + it.pat_reduced ? money(it.pat_paid + it.pat_reduced) : '—'}</td>
+        <td class="num">${it.ins_open > 0.005 ? '<strong>' + money(it.ins_open) + '</strong>' : '—'}</td><td class="num">${it.pat_open > 0.005 ? '<strong>' + money(it.pat_open) + '</strong>' : '—'}</td>
+        <td>${fw ? `<div class="row-acts"><button class="btn ghost sm" data-act="add-payment" data-charge="${it.id}">Payment</button><button class="btn ghost sm" data-act="move-balance" data-charge="${it.id}">Move</button></div>` : ''}</td></tr>`).join('')}
+      </tbody></table></div>` : `<div class="empty">${items.length ? 'Every charge is paid. Tick "Show paid charges" to see them.' : 'No charges yet. Log a visit with a charge, or add one with "+ Charge".'}</div>`}
+    </div>
+    <div class="card mt"><div class="card-head"><h2>Ledger history</h2><span class="small muted">Every entry stays editable — changes are recorded in the case's Activity.</span></div>
+      ${d.ledger.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Who owes / moved</th><th>For</th><th>Ref / memo</th><th class="num">Amount</th><th>Last change</th><th></th></tr></thead><tbody>
+      ${d.ledger.map((l) => {
+        const charge = l.applies_to_id ? items.find((i) => i.id === +l.applies_to_id) : null;
+        const who = l.kind === 'transfer' ? `${esc(holderName(l.bucket, l.coverage_id))} → ${esc(holderName(l.to_bucket, l.to_coverage_id))}` : esc(holderName(l.bucket, l.coverage_id));
+        return `<tr><td class="nowrap">${esc(fmtDate(l.entry_date))}</td><td>${esc(Object.fromEntries(LEDGER_KINDS)[l.kind])}</td><td class="small">${who}</td>
+          <td class="small">${charge ? 'DOS ' + esc(fmtDate(charge.date)) : '—'}</td><td class="small">${esc([l.reference, l.memo].filter(Boolean).join(' · '))}</td>
+          <td class="num">${l.kind === 'charge' || l.kind === 'transfer' ? money(l.amount) : '(' + money(l.amount) + ')'}</td>
+          <td class="small muted">${esc(l.updated_by_name || '')}${l.updated_at ? ' · edited ' + esc(fmtDate(l.updated_at)) : ''}</td>
+          <td class="nowrap">${fw ? `<button class="btn link small" data-act="edit-ledger" data-id="${l.id}">Edit</button> <button class="btn link small" data-act="archive-child" data-table="ledger" data-id="${l.id}">Remove</button>` : ''}</td></tr>`;
+      }).join('')}</tbody></table></div>` : '<div class="empty">No ledger entries.</div>'}
+    </div>`;
   el.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
+  el.querySelector('[data-act-change=fin-all]')?.addEventListener('change', (e) => { el.dataset.all = e.target.checked ? '1' : ''; tabFinancials(el, d); });
 }
 
-function ledgerModal() {
-  openModal({ title: 'Ledger entry', body: fieldsHtml(ledgerDefs, { entry_date: today(), kind: 'payment', bucket: 'insurance' }) + '<p class="small muted">Always enter a positive amount — Charge adds to the balance, every other type subtracts.</p>',
-    onOk: async (el) => saveChild('ledger', readFields(el, ledgerDefs)) });
+// ----- insurance coverage -----
+const coverageDefs = () => [
+  { n: 'type', l: 'Insurance type', t: 'select', req: true, blank: false, opts: entries(S.lookups.coverageTypes) },
+  { n: 'priority', l: 'Billing order (1 = bill first)', t: 'number' },
+  { n: 'carrier_contact_id', l: 'Carrier (from contacts)', t: 'contact', ctype: ['insurer'] },
+  { n: 'carrier_text', l: 'Carrier (if not in contacts)', ph: 'e.g. Florida Blue' },
+  { n: 'claim_number', l: 'Claim #' }, { n: 'policy_number', l: 'Policy / member #' },
+  { n: 'adjuster', l: 'Adjuster', ph: 'Name, phone' },
+  { n: 'benefit_limit', l: 'Benefit limit ($) — PIP is usually 10,000', t: 'money' },
+  { n: 'authorized_visits', l: "Authorized visits (workers' comp)", t: 'number' },
+  { n: 'authorized_through', l: "Authorized through (workers' comp)", t: 'date' },
+  { n: 'notes', l: 'Notes', t: 'textarea' },
+];
+function coverageModal(existing) {
+  const defs = coverageDefs();
+  const first = { type: S.caseData.case.injury_type === 'workers_comp' ? 'workers_comp' : (S.caseData.coverages || []).length ? 'health' : 'pip' };
+  openModal({ title: existing ? 'Edit insurance' : 'Add insurance', wide: true, body: fieldsHtml(defs, existing || first),
+    onOk: async (el) => saveChild('coverages', { ...readFields(el, defs), ...(existing ? { id: existing.id } : {}) }) });
 }
 
-function settlementModal() {
-  const c = S.caseData.case;
-  const defs = [{ n: 'atty_offer', l: 'Attorney offer ($)', t: 'money' }, { n: 'final_settlement', l: 'Final settlement ($)', t: 'money' },
-    { n: 'date_authorized', l: 'Date authorized', t: 'date' }, { n: 'check_received_on', l: 'Check received on', t: 'date' }];
-  openModal({ title: 'Settlement / reduction', body: fieldsHtml(defs, c), onOk: async (el) => {
-    S.caseData = await api('cases.php?action=update&id=' + c.id, { case: readFields(el, defs) });
-    renderCase(); toast('Saved');
+// Marking coverage denied/exhausted closes it, then offers (never forces)
+// to move what's still open with that carrier to the patient balance.
+function coverageStatusModal(cv, status) {
+  const ph = { denied: 'e.g. late notice, IME cut-off, no coverage', exhausted: 'e.g. $10,000 paid', closed: 'e.g. claim closed', active: 'e.g. denial overturned' }[status];
+  const defs = [{ n: 'status_on', l: 'Effective date', t: 'date', req: true }, { n: 'status_reason', l: 'Reason', ph, full: true }];
+  openModal({
+    title: `${status === 'active' ? 'Reactivate' : 'Mark ' + label('coverageStatus', status).toLowerCase()}: ${covName(cv)}`,
+    body: fieldsHtml(defs, { status_on: today(), status_reason: status === 'active' ? '' : cv.status_reason || '' }),
+    okText: 'Save',
+    onOk: async (el) => {
+      await saveChild('coverages', { id: cv.id, status, ...readFields(el, defs) });
+      const open = (S.caseData.openItems || []).filter((i) => i.coverage_id === cv.id && i.ins_open > 0.005);
+      if (status !== 'active' && open.length) {
+        const reason = status === 'denied' ? `${label('coverageTypes', cv.type)} denied` : status === 'exhausted' ? `${label('coverageTypes', cv.type)} exhausted` : 'Not covered by insurance';
+        moveModal({ fromValue: String(cv.id), reason, title: `${money(open.reduce((s, i) => s + i.ins_open, 0))} is still open with ${covName(cv)}` });
+      }
+    },
+  });
+}
+
+// ----- moving balances -----
+// Lists what is open with the source (one coverage, or the patient
+// balance), lets the user tick/adjust amounts, and moves them. "Keep open"
+// leaves everything where it is.
+function moveModal({ fromValue = null, chargeId = null, amount = null, reason = '', title = 'Move balance' } = {}) {
+  const d = S.caseData;
+  const items = d.openItems || [];
+  let from = fromValue;
+  if (!from && chargeId) { const it = items.find((i) => i.id === chargeId); from = it && it.ins_open > 0.005 ? String(it.coverage_id || '') : 'patient'; }
+  if (!from) from = holderOpts({ patient: false }).length ? holderOpts({ patient: false })[0][0] : 'patient';
+  const doMove = async (el) => {
+    const src = el.querySelector('#mv-from').value;
+    const sel = [...el.querySelectorAll('[data-mv]:checked')].map((cb) => {
+      const key = cb.dataset.mv, amt = +el.querySelector(`[data-mv-amt="${key}"]`).value;
+      return { from: src === 'patient' ? 'patient' : 'insurance', coverage_id: src === 'patient' ? null : +src, applies_to_id: key === 'none' ? null : +key, amount: amt };
+    }).filter((x) => x.amount > 0);
+    if (!sel.length) throw new Error('Tick at least one line with an amount.');
+    S.caseData = await api('cases.php?action=move_balance&id=' + d.case.id, { to: el.querySelector('#mv-to').value, date: el.querySelector('#mv-date').value, reason: el.querySelector('#mv-reason').value, items: sel });
+    renderCase(); toast('Moved ' + money(sel.reduce((sum, x) => sum + x.amount, 0)));
+  };
+  const m = openModal({ title, wide: true, okText: 'Move selected', cancelText: 'Keep open', onOk: doMove, body: `
+    <div class="form-grid">
+      <div><label for="mv-from">Move from</label><select id="mv-from">${holderOpts({}).map(([v, t]) => opt(v, t, from)).join('')}</select></div>
+      <div><label for="mv-to">Move to</label><select id="mv-to"></select></div>
+      <div><label for="mv-date">Date</label><input type="date" id="mv-date" value="${today()}"></div>
+      <div><label for="mv-reason">Reason</label><input id="mv-reason" list="mv-reasons" value="${esc(reason)}"><datalist id="mv-reasons">${MOVE_REASONS.map((r) => `<option value="${esc(r)}">`).join('')}</datalist></div>
+    </div>
+    <div class="notice mt hidden" id="mv-wc">Florida generally doesn't allow billing an injured worker for workers' comp care. Consider an appeal or a write-off instead of moving this to the patient balance.</div>
+    <div id="mv-list" class="mt"></div>` });
+  const el = m.el;
+  const render = () => {
+    const src = el.querySelector('#mv-from').value;
+    const srcCov = src === 'patient' ? null : covById(src);
+    const toSel = el.querySelector('#mv-to');
+    const keep = toSel.value;
+    toSel.innerHTML = holderOpts({ exclude: src }).map(([v, t]) => opt(v, t, keep || (src === 'patient' ? '' : 'patient'))).join('');
+    const open = items.filter((i) => src === 'patient' ? i.pat_open > 0.005 : (i.coverage_id === +src && i.ins_open > 0.005));
+    const total = src === 'patient' ? d.totals.patient_balance : ((d.totals.by_coverage[src] || {}).balance || 0);
+    const unapplied = Math.round((total - open.reduce((s, i) => s + (src === 'patient' ? i.pat_open : i.ins_open), 0)) * 100) / 100;
+    el.querySelector('#mv-list').innerHTML = open.length || unapplied > 0.005 ? `<table><thead><tr><th></th><th>Date of service</th><th>Description</th><th class="num">Open</th><th class="num">Amount to move</th></tr></thead><tbody>
+      ${open.map((i) => { const amt = src === 'patient' ? i.pat_open : i.ins_open; const pre = chargeId ? i.id === chargeId : true;
+        return `<tr><td><input type="checkbox" data-mv="${i.id}"${pre ? ' checked' : ''} aria-label="Select"></td><td class="nowrap">${esc(fmtDate(i.date))}</td><td class="small">${esc(i.memo || '')}</td>
+          <td class="num">${money(amt)}</td><td class="num"><input type="number" step="0.01" min="0" max="${amt}" value="${chargeId && i.id === chargeId && amount ? amount : amt}" data-mv-amt="${i.id}" class="amt"></td></tr>`; }).join('')}
+      ${unapplied > 0.005 && !chargeId ? `<tr><td><input type="checkbox" data-mv="none" checked aria-label="Select"></td><td colspan="2" class="small">Balance not tied to a date of service</td><td class="num">${money(unapplied)}</td>
+          <td class="num"><input type="number" step="0.01" min="0" value="${unapplied}" data-mv-amt="none" class="amt"></td></tr>` : ''}
+      </tbody></table>` : `<div class="empty">Nothing is open with ${esc(srcCov ? covName(srcCov) : 'the patient balance')}.</div>`;
+    const wcWarn = () => el.querySelector('#mv-wc').classList.toggle('hidden', !(srcCov && srcCov.type === 'workers_comp' && toSel.value === 'patient'));
+    wcWarn(); toSel.onchange = wcWarn;
+  };
+  el.querySelector('#mv-from').addEventListener('change', () => { el.querySelector('#mv-to').value = ''; render(); });
+  render();
+}
+
+// ----- payments & charges -----
+function paymentModal(chargeId) {
+  const d = S.caseData, items = d.openItems || [];
+  const it = chargeId ? items.find((i) => i.id === chargeId) : null;
+  const payer = it ? (it.ins_open > 0.005 ? String(it.coverage_id || '') : 'patient') : defaultBillTo();
+  const defs = [
+    { n: 'entry_date', l: 'Date received', t: 'date', req: true },
+    { n: 'kind', l: 'Type', t: 'select', blank: false, opts: LEDGER_KINDS.filter(([k]) => !['charge', 'transfer'].includes(k)) },
+    { n: 'holder', l: 'From', t: 'select', blank: false, opts: holderOpts({}).map(([v, t]) => [v, v === 'patient' ? 'Patient / attorney (patient balance)' : t]) },
+    { n: 'amount', l: 'Amount ($)', t: 'money', req: true },
+    { n: 'applies_to_id', l: 'Apply to date of service', t: 'select', blank: '— not tied to a date of service —', opts: items.map((i) => [String(i.id), chargeLabel(i)]), full: true },
+    { n: 'reference', l: 'Check / EOB #' }, { n: 'memo', l: 'Memo' },
+  ];
+  openModal({ title: 'Post payment', wide: true, body: fieldsHtml(defs, { entry_date: today(), kind: 'payment', holder: payer, applies_to_id: it ? String(it.id) : '' })
+      + '<p class="small muted">Late payments are fine — date it when it arrived and apply it to the original date of service.</p>',
+    onOk: async (el) => {
+      const v = readFields(el, defs); const h = parseHolder(v.holder); delete v.holder;
+      await saveChild('ledger', { ...v, ...h });
+      // Suggest, never force: if insurance paid less than billed, offer to move the rest.
+      if (h.bucket === 'insurance' && v.applies_to_id && v.kind === 'payment') {
+        const now = (S.caseData.openItems || []).find((i) => i.id === +v.applies_to_id);
+        if (now && now.ins_open > 0.005 && now.coverage_id === h.coverage_id) {
+          moveModal({ fromValue: String(h.coverage_id), chargeId: now.id, amount: now.ins_open, reason: covById(h.coverage_id)?.type === 'pip' ? '20% PIP coinsurance' : 'Not covered by insurance',
+            title: `${covName(covById(h.coverage_id))} paid ${money(v.amount)} — ${money(now.ins_open)} is still open on ${fmtDate(now.date)}` });
+        }
+      }
+    } });
+}
+
+function chargeModal() {
+  const defs = [{ n: 'entry_date', l: 'Date of service', t: 'date', req: true }, { n: 'amount', l: 'Amount ($)', t: 'money', req: true },
+    { n: 'holder', l: 'Bill to', t: 'select', blank: false, opts: holderOpts({ activeOnly: true }) }, { n: 'memo', l: 'Description', ph: 'e.g. CPT 98941, 97140' }, { n: 'reference', l: 'Reference' }];
+  openModal({ title: 'Add charge', body: fieldsHtml(defs, { entry_date: today(), holder: defaultBillTo() }), onOk: async (el) => {
+    const v = readFields(el, defs); const h = parseHolder(v.holder); delete v.holder;
+    await saveChild('ledger', { ...v, ...h, kind: 'charge' });
   } });
+}
+
+// Any ledger entry can be corrected at any time (amount, date, who it's
+// from, which date of service it applies to).
+function ledgerEditModal(row) {
+  const items = S.caseData.openItems || [];
+  const isTransfer = row.kind === 'transfer', isCharge = row.kind === 'charge';
+  const defs = [
+    { n: 'entry_date', l: isCharge ? 'Date of service' : 'Date', t: 'date', req: true },
+    { n: 'kind', l: 'Type', t: 'select', blank: false, opts: isTransfer ? [['transfer', 'Move balance']] : LEDGER_KINDS.filter(([k]) => k !== 'transfer' && (isCharge ? k === 'charge' : k !== 'charge')) },
+    { n: 'holder', l: isCharge ? 'Billed to' : isTransfer ? 'Moved from' : 'From', t: 'select', blank: false, opts: holderOpts({}) },
+    ...(isTransfer ? [{ n: 'to_holder', l: 'Moved to', t: 'select', blank: false, opts: holderOpts({}) }] : []),
+    { n: 'amount', l: 'Amount ($)', t: 'money', req: true },
+    ...(isCharge ? [] : [{ n: 'applies_to_id', l: 'Applies to date of service', t: 'select', blank: '— not tied to a date of service —', opts: items.map((i) => [String(i.id), chargeLabel(i)]), full: true }]),
+    { n: 'reference', l: 'Reference' }, { n: 'memo', l: 'Memo' },
+  ];
+  openModal({ title: 'Edit ledger entry', wide: true,
+    body: fieldsHtml(defs, { ...row, holder: holderValue(row.bucket, row.coverage_id), to_holder: holderValue(row.to_bucket, row.to_coverage_id), applies_to_id: row.applies_to_id ? String(row.applies_to_id) : '' }),
+    onOk: async (el) => {
+      const v = readFields(el, defs); const h = parseHolder(v.holder); delete v.holder;
+      if (isTransfer) { const to = parseHolder(v.to_holder); delete v.to_holder; v.to_bucket = to.bucket; v.to_coverage_id = to.coverage_id; }
+      await saveChild('ledger', { id: row.id, ...v, ...h });
+    } });
+}
+
+// ----- LOP, forwarding, settlement -----
+function lopModal() {
+  const c = S.caseData.case;
+  const defs = [
+    ...(can('case.write') ? [{ n: 'lop_signed_on', l: 'LOP signed by patient on', t: 'date' }, { n: 'lop_acknowledged_on', l: 'Acknowledged by law firm on (blank if not countersigned)', t: 'date' }] : []),
+    ...(can('finance.write') ? [{ n: 'balance_forwarded_on', l: 'Balance forwarded to attorney on', t: 'date' }, { n: 'balance_forwarded_amount', l: 'Amount forwarded ($)', t: 'money' },
+      { n: 'atty_offer', l: 'Attorney offer ($)', t: 'money' }, { n: 'final_settlement', l: 'Final settlement ($)', t: 'money' },
+      { n: 'date_authorized', l: 'Reduction authorized on', t: 'date' }, { n: 'check_received_on', l: 'Check received on', t: 'date' }] : []),
+  ];
+  openModal({ title: 'LOP & settlement', wide: true, body: fieldsHtml(defs, c) + '<p class="small muted mt">When the check arrives, post it as a Payment from the patient balance and the agreed reduction as a Reduction, so the balance closes to $0.</p>',
+    onOk: async (el) => { S.caseData = await api('cases.php?action=update&id=' + c.id, { case: readFields(el, defs) }); renderCase(); toast('Saved'); } });
+}
+
+function forwardModal() {
+  const d = S.caseData;
+  const defs = [{ n: 'date', l: 'Date sent', t: 'date', req: true }, { n: 'amount', l: 'Patient balance forwarded ($)', t: 'money', req: true },
+    { n: 'method', l: 'Sent by', t: 'select', blank: false, opts: [['fax', 'Fax'], ['email', 'Email'], ['mail', 'Mail'], ['portal', 'Portal']] }];
+  const atty = d.contacts.attorney_contact_id;
+  openModal({ title: 'Forward patient balance to attorney', okText: 'Record & print statement',
+    body: (atty ? `<p class="small">To <strong>${esc(contactName(atty))}</strong>${atty.fax ? ' · fax ' + esc(atty.fax) : ''}${atty.email ? ' · ' + esc(atty.email) : ''}</p>` : '<div class="notice">No attorney on this case yet — add one on the Overview tab so the statement is addressed correctly.</div>')
+      + fieldsHtml(defs, { date: today(), amount: d.totals.patient_balance, method: 'fax' }),
+    onOk: async (el) => {
+      S.caseData = await api('cases.php?action=forward_balance&id=' + d.case.id, readFields(el, defs));
+      renderCase(); toast('Recorded — logged under Correspondence'); openLetter('statement');
+    } });
 }
 
 // --- documents ---
@@ -983,7 +1223,7 @@ async function pageAR(main) {
   const { sort, dir } = arState;
   rows.sort((a, b) => { const x = a[sort] ?? '', y = b[sort] ?? ''; return (typeof x === 'number' || typeof y === 'number' ? (+x || 0) - (+y || 0) : String(x).localeCompare(String(y))) * dir; });
   const cols = [['patient', 'Patient'], ['benefits', 'Benefits'], ['stage', 'Status'], ['lastVisit', 'Last visit'], ['lastCorrespondence', 'Last contact'], ['attorney', 'Attorney'],
-    ['insuranceBalance', 'Insurance', 1], ['patientBalance', 'Patient/LOP', 1], ['totalBalance', 'Total', 1], ['reductionFloor', Math.round(S.lookups.reductionFloorPct * 100) + '% floor', 1], ['attyOffer', 'Offer', 1], ['finalSettlement', 'Settled', 1], ['checkReceived', 'Check rec\'d']];
+    ['insuranceBalance', 'Insurance', 1], ['patientBalance', 'Patient/LOP', 1], ['totalBalance', 'Total', 1], ['forwardedOn', 'Forwarded'], ['reductionFloor', Math.round(S.lookups.reductionFloorPct * 100) + '% floor', 1], ['attyOffer', 'Offer', 1], ['finalSettlement', 'Settled', 1], ['checkReceived', 'Check rec\'d']];
   main.innerHTML = `${phiBanner}<div class="page-head"><div><h1>A/R &amp; settlements</h1><div class="sub">${rows.length} cases with a balance</div></div><span class="spacer"></span>
       <label class="check small"><input type="checkbox" id="ar-all"${arState.all ? ' checked' : ''}> Include closed</label>
       ${can('export') ? '<a class="btn ghost" href="api/cases.php?action=ar_report&format=csv' + (arState.all ? '&all=1' : '') + '">Export CSV</a>' : ''}</div>
@@ -1001,9 +1241,10 @@ async function pageAR(main) {
         <td class="nowrap">${x.lastCorrespondence ? `<span class="${daysSince(x.lastCorrespondence) > 30 ? 'trend-up' : ''}">${esc(fmtDate(x.lastCorrespondence))}</span>` : '<span class="trend-up">never</span>'}</td>
         <td class="small">${esc(x.attorney || '—')}</td>
         <td class="num">${money(x.insuranceBalance)}</td><td class="num">${money(x.patientBalance)}</td><td class="num"><strong>${money(x.totalBalance)}</strong></td>
+        <td class="nowrap small">${x.forwardedOn ? esc(fmtDate(x.forwardedOn)) : (x.lopSigned ? 'LOP ' + esc(fmtDate(x.lopSigned)) : '—')}</td>
         <td class="num">${money(x.reductionFloor)}</td><td class="num">${x.attyOffer !== null ? money(x.attyOffer) + `<div class="small muted">${x.offerPct}%</div>` : '—'}</td>
         <td class="num">${money(x.finalSettlement)}</td><td class="nowrap">${esc(fmtDate(x.checkReceived))}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="6">Totals</td><td class="num">${money(r.totals.insurance)}</td><td class="num">${money(r.totals.patient)}</td><td class="num">${money(r.totals.total)}</td><td colspan="4"></td></tr></tfoot></table></div></div>`;
+      <tfoot><tr><td colspan="6">Totals</td><td class="num">${money(r.totals.insurance)}</td><td class="num">${money(r.totals.patient)}</td><td class="num">${money(r.totals.total)}</td><td colspan="5"></td></tr></tfoot></table></div></div>`;
   main.querySelector('#ar-all').addEventListener('change', (e) => { arState.all = e.target.checked; pageAR(main); });
 }
 
@@ -1221,7 +1462,14 @@ const ACTIONS = {
   'add-outcome': outcomeModal,
   'add-corr': () => corrModal(null),
   'edit-corr': (el) => corrModal(S.caseData.correspondence.find((r) => r.id == el.dataset.id)),
-  'add-ledger': ledgerModal, 'edit-settlement': settlementModal,
+  'add-coverage': () => coverageModal(null),
+  'edit-coverage': (el) => coverageModal(covById(el.dataset.id)),
+  'cov-status': (el) => coverageStatusModal(covById(el.dataset.id), el.dataset.status),
+  'add-charge': chargeModal,
+  'add-payment': (el) => paymentModal(el.dataset.charge ? +el.dataset.charge : null),
+  'move-balance': (el) => moveModal({ fromValue: el.dataset.from || null, chargeId: el.dataset.charge ? +el.dataset.charge : null }),
+  'edit-ledger': (el) => ledgerEditModal(S.caseData.ledger.find((l) => l.id == el.dataset.id)),
+  'edit-lop': lopModal, 'forward-balance': forwardModal,
   'archive-child': (el) => archiveChild(el.dataset.table, +el.dataset.id),
   'upload-doc': uploadDoc,
   'archive-doc': async (el) => {

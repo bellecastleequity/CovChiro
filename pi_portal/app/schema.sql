@@ -109,7 +109,7 @@ CREATE TABLE cases (
   case_number VARCHAR(20) NOT NULL,
   patient_id INT NOT NULL,
   stage ENUM('intake','treating','tx_complete','demand','litigation','mediation','negotiating','settled','closed','dropped') NOT NULL DEFAULT 'intake',
-  injury_type ENUM('auto','slip_fall','work','other') NOT NULL DEFAULT 'auto',
+  injury_type ENUM('auto','slip_fall','workers_comp') NOT NULL DEFAULT 'auto',
   date_of_injury DATE NULL,
   first_visit DATE NULL,
   discharge_date DATE NULL,
@@ -117,15 +117,19 @@ CREATE TABLE cases (
   referred_by_contact_id INT NULL,
   referred_by_text VARCHAR(160) NULL,
   attorney_contact_id INT NULL,
-  insurer_contact_id INT NULL,
-  adjuster VARCHAR(160) NULL,
-  claim_number_enc TEXT NULL,
-  policy_number_enc TEXT NULL,
-  benefits ENUM('pip','benex','lop','medpay','denied','health','other') NULL,
-  pip_limit DECIMAL(10,2) NOT NULL DEFAULT 10000.00,
+  -- Summary of where the case's bills go, kept in sync from `coverages`
+  -- (for list filters and reports): pip / benex (PIP exhausted) / denied /
+  -- medpay / health / wc / lop (no insurance: patient balance only).
+  benefits ENUM('pip','benex','denied','medpay','health','wc','lop') NULL,
   emc_status ENUM('pending','yes','no') NOT NULL DEFAULT 'pending',
   actively_treating TINYINT(1) NOT NULL DEFAULT 1,
   provider_user_id INT NULL,
+  -- Letter of protection: the patient balance is held until settlement and
+  -- then forwarded to the attorney. Law firms don't always countersign.
+  lop_signed_on DATE NULL,
+  lop_acknowledged_on DATE NULL,
+  balance_forwarded_on DATE NULL,
+  balance_forwarded_amount DECIMAL(10,2) NULL,
   atty_offer DECIMAL(10,2) NULL,
   final_settlement DECIMAL(10,2) NULL,
   date_authorized DATE NULL,
@@ -137,12 +141,41 @@ CREATE TABLE cases (
   FOREIGN KEY (practice_id) REFERENCES practices(id),
   FOREIGN KEY (patient_id) REFERENCES patients(id),
   FOREIGN KEY (attorney_contact_id) REFERENCES contacts(id),
-  FOREIGN KEY (insurer_contact_id) REFERENCES contacts(id),
   FOREIGN KEY (referred_by_contact_id) REFERENCES contacts(id),
   FOREIGN KEY (provider_user_id) REFERENCES users(id),
   UNIQUE KEY uq_case_number (practice_id, case_number),
   INDEX idx_cases_stage (practice_id, stage),
   INDEX idx_cases_attorney (attorney_contact_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Insurance billed on a case, in billing order (priority 1 first): PIP,
+-- MedPay, the patient's health insurance, or workers' comp. Each has its
+-- own claim and lifecycle; whatever insurance doesn't cover is moved (by a
+-- person, never automatically) to the patient balance.
+CREATE TABLE coverages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  case_id INT NOT NULL,
+  type ENUM('pip','medpay','health','workers_comp') NOT NULL,
+  priority TINYINT NOT NULL DEFAULT 1,
+  carrier_contact_id INT NULL,
+  carrier_text VARCHAR(160) NULL,
+  adjuster VARCHAR(160) NULL,
+  claim_number_enc TEXT NULL,
+  policy_number_enc TEXT NULL,
+  status ENUM('active','denied','exhausted','closed') NOT NULL DEFAULT 'active',
+  status_on DATE NULL,
+  status_reason VARCHAR(255) NULL,
+  benefit_limit DECIMAL(10,2) NULL,
+  authorized_visits INT NULL,
+  authorized_through DATE NULL,
+  notes_enc TEXT NULL,
+  archived_at DATETIME NULL,
+  created_by INT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  FOREIGN KEY (case_id) REFERENCES cases(id),
+  FOREIGN KEY (carrier_contact_id) REFERENCES contacts(id),
+  INDEX idx_cov_case (case_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Administrative checklist items (LOR, prior records, ADL surveys, letters).
@@ -193,6 +226,8 @@ CREATE TABLE visits (
   visit_type ENUM('initial','treatment','re_exam','discharge','no_show') NOT NULL DEFAULT 'treatment',
   provider_user_id INT NULL,
   cpt_codes VARCHAR(255) NULL,
+  -- Workers' comp: DWC-25 status form sent to the carrier for this visit.
+  dwc25_sent TINYINT(1) NOT NULL DEFAULT 0,
   notes_enc TEXT NULL,
   archived_at DATETIME NULL,
   created_by INT NULL,
@@ -235,23 +270,41 @@ CREATE TABLE correspondence (
   INDEX idx_corr_case (case_id, occurred_on)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Every dollar on a case. Balances are always derived from this table,
--- split into two buckets: what insurance (PIP/MedPay) owes, and what the
--- patient / attorney (LOP, post-PIP balance) owes.
+-- Every dollar on a case. Balances are always derived from this table.
+-- bucket = who owes it: insurance (with coverage_id) or the patient balance.
+--   charge                         adds to its bucket
+--   payment/adjustment/reduction/write_off   subtract from its bucket
+--   transfer                       moves `amount` from bucket/coverage_id to
+--                                  to_bucket/to_coverage_id (e.g. the 20% PIP
+--                                  doesn't pay, a denial, or back again when a
+--                                  late payment arrives)
+-- applies_to_id links a payment/transfer to the charge (date of service) it
+-- belongs to, so each charge shows what is still open. Nothing is locked:
+-- every row stays editable, and edits are audited.
 CREATE TABLE ledger (
   id INT AUTO_INCREMENT PRIMARY KEY,
   case_id INT NOT NULL,
   entry_date DATE NOT NULL,
-  kind ENUM('charge','payment','adjustment','reduction','write_off') NOT NULL,
+  kind ENUM('charge','payment','adjustment','reduction','write_off','transfer') NOT NULL,
   bucket ENUM('insurance','patient') NOT NULL,
+  coverage_id INT NULL,
+  to_bucket ENUM('insurance','patient') NULL,
+  to_coverage_id INT NULL,
+  applies_to_id INT NULL,
+  visit_id INT NULL,
   amount DECIMAL(10,2) NOT NULL,
   reference VARCHAR(120) NULL,
   memo VARCHAR(255) NULL,
   archived_at DATETIME NULL,
   created_by INT NULL,
   created_at DATETIME NOT NULL,
+  updated_by INT NULL,
+  updated_at DATETIME NULL,
   FOREIGN KEY (case_id) REFERENCES cases(id),
-  INDEX idx_ledger_case (case_id)
+  FOREIGN KEY (coverage_id) REFERENCES coverages(id),
+  FOREIGN KEY (to_coverage_id) REFERENCES coverages(id),
+  INDEX idx_ledger_case (case_id),
+  INDEX idx_ledger_applies (applies_to_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE tasks (

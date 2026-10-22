@@ -17,7 +17,8 @@ switch ($action) {
 function handle_list() {
     require_user('case.read');
     $stmt = pi_db()->prepare('SELECT k.*,
-            (SELECT COUNT(*) FROM cases c WHERE c.archived_at IS NULL AND (c.attorney_contact_id = k.id OR c.insurer_contact_id = k.id)) case_count,
+            ((SELECT COUNT(*) FROM cases c WHERE c.archived_at IS NULL AND c.attorney_contact_id = k.id)
+             + (SELECT COUNT(*) FROM coverages cv WHERE cv.archived_at IS NULL AND cv.carrier_contact_id = k.id)) case_count,
             (SELECT COUNT(*) FROM referrals r WHERE r.archived_at IS NULL AND r.contact_id = k.id) referral_count
         FROM contacts k WHERE k.practice_id = ? AND k.archived_at IS NULL ORDER BY k.type, k.organization, k.name');
     $stmt->execute([pid()]);

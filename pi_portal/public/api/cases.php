@@ -6,28 +6,28 @@ require_once __DIR__ . '/../../app/bootstrap.php';
 pi_start_session();
 
 // ---------- field specs ----------
-// Type codes: str:N, date, money, bool, enc (encrypted text), contact
-// (contacts.id), user (users.id), enum => [allowed values].
+// Type codes: str:N, date, money, bool, int, enc (encrypted text), contact
+// (contacts.id), user (users.id), coverage / charge (a coverage or charge
+// on the same case), enum => [allowed values].
 const PATIENT_FIELDS = [
     'first_name' => 'str:80', 'last_name' => 'str:80',
     'dob' => 'enc', 'phone' => 'enc', 'email' => 'enc', 'address' => 'enc',
 ];
 const CASE_FIELDS = [
     'stage' => ['intake','treating','tx_complete','demand','litigation','mediation','negotiating','settled','closed','dropped'],
-    'injury_type' => ['auto','slip_fall','work','other'],
+    'injury_type' => ['auto','slip_fall','workers_comp'],
     'date_of_injury' => 'date', 'first_visit' => 'date', 'discharge_date' => 'date',
     'referral_source' => ['attorney','self','provider','other'],
     'referred_by_contact_id' => 'contact', 'referred_by_text' => 'str:160',
-    'attorney_contact_id' => 'contact', 'insurer_contact_id' => 'contact',
-    'adjuster' => 'str:160', 'claim_number' => 'enc', 'policy_number' => 'enc',
-    'benefits' => ['pip','benex','lop','medpay','denied','health','other'],
-    'pip_limit' => 'money', 'emc_status' => ['pending','yes','no'],
+    'attorney_contact_id' => 'contact', 'emc_status' => ['pending','yes','no'],
+    'lop_signed_on' => 'date', 'lop_acknowledged_on' => 'date',
+    'balance_forwarded_on' => 'date', 'balance_forwarded_amount' => 'money',
     'actively_treating' => 'bool', 'provider_user_id' => 'user', 'notes' => 'enc',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
 ];
 // These need finance.write instead of case.write. Billing can also move a
 // case through the legal / settlement stages.
-const FINANCE_CASE_FIELDS = ['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'pip_limit', 'benefits'];
+const FINANCE_CASE_FIELDS = ['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'balance_forwarded_on', 'balance_forwarded_amount'];
 
 const CHILD_SPECS = [
     'referrals' => ['perm' => 'clinical.write', 'required' => ['type'], 'fields' => [
@@ -39,7 +39,15 @@ const CHILD_SPECS = [
     ]],
     'visits' => ['perm' => 'clinical.write', 'required' => ['visit_date'], 'fields' => [
         'visit_date' => 'date', 'visit_type' => ['initial','treatment','re_exam','discharge','no_show'],
-        'provider_user_id' => 'user', 'cpt_codes' => 'str:255', 'notes' => 'enc',
+        'provider_user_id' => 'user', 'cpt_codes' => 'str:255', 'dwc25_sent' => 'bool', 'notes' => 'enc',
+    ]],
+    // Front desk enters insurance at intake; billing updates it later.
+    'coverages' => ['perm_any' => ['case.write', 'finance.write'], 'required' => ['type'], 'fields' => [
+        'type' => ['pip','medpay','health','workers_comp'], 'priority' => 'int',
+        'carrier_contact_id' => 'contact', 'carrier_text' => 'str:160', 'adjuster' => 'str:160',
+        'claim_number' => 'enc', 'policy_number' => 'enc',
+        'status' => ['active','denied','exhausted','closed'], 'status_on' => 'date', 'status_reason' => 'str:255',
+        'benefit_limit' => 'money', 'authorized_visits' => 'int', 'authorized_through' => 'date', 'notes' => 'enc',
     ]],
     'outcomes' => ['perm' => 'clinical.write', 'required' => ['measure', 'score', 'taken_on'], 'fields' => [
         'measure' => ['bournemouth_neck','bournemouth_back','oswestry','ndi','hdi','shoulder','knee','adl'],
@@ -51,14 +59,16 @@ const CHILD_SPECS = [
         'follow_up_on' => 'date', 'follow_up_done' => 'bool',
     ]],
     'ledger' => ['perm' => 'finance.write', 'required' => ['entry_date', 'kind', 'bucket', 'amount'], 'fields' => [
-        'entry_date' => 'date', 'kind' => ['charge','payment','adjustment','reduction','write_off'],
-        'bucket' => ['insurance','patient'], 'amount' => 'money', 'reference' => 'str:120', 'memo' => 'str:255',
+        'entry_date' => 'date', 'kind' => ['charge','payment','adjustment','reduction','write_off','transfer'],
+        'bucket' => ['insurance','patient'], 'coverage_id' => 'coverage',
+        'to_bucket' => ['insurance','patient'], 'to_coverage_id' => 'coverage', 'applies_to_id' => 'charge',
+        'amount' => 'money', 'reference' => 'str:120', 'memo' => 'str:255',
     ]],
 ];
 
 // Turns request input into column => value for the keys present in $in.
 // Encrypted fields map "notes" -> "notes_enc".
-function clean_fields(array $spec, array $in): array {
+function clean_fields(array $spec, array $in, ?int $caseId = null): array {
     $out = [];
     foreach ($spec as $name => $type) {
         if (!array_key_exists($name, $in)) continue;
@@ -70,6 +80,16 @@ function clean_fields(array $spec, array $in): array {
         } elseif ($type === 'date') $out[$name] = date_or_null($v);
         elseif ($type === 'money') $out[$name] = money_or_null($v);
         elseif ($type === 'bool') $out[$name] = $v ? 1 : 0;
+        elseif ($type === 'int') $out[$name] = ($v === null || $v === '') ? null : max(0, (int)$v);
+        elseif ($type === 'coverage' || $type === 'charge') {
+            $id = ($v === null || $v === '') ? null : (int)$v;
+            if ($id) {
+                $stmt = pi_db()->prepare($type === 'coverage' ? 'SELECT id FROM coverages WHERE id = ? AND case_id = ?' : "SELECT id FROM ledger WHERE id = ? AND case_id = ? AND kind = 'charge'");
+                $stmt->execute([$id, (int)$caseId]);
+                if (!$stmt->fetch()) json_response(['error' => "Unknown $name"], 400);
+            }
+            $out[$name] = $id;
+        }
         elseif ($type === 'enc') $out[$name . '_enc'] = enc(str_or_null($v, 20000));
         elseif ($type === 'contact' || $type === 'user') {
             $id = ($v === null || $v === '') ? null : (int)$v;
@@ -171,34 +191,52 @@ function full_case(int $id, array $user): array {
     $visits = array_map('decrypt_row', $fetch('SELECT v.*, u.name provider_name FROM visits v LEFT JOIN users u ON u.id = v.provider_user_id WHERE v.case_id = ? AND v.archived_at IS NULL ORDER BY v.visit_date DESC'));
     $outcomes = $fetch('SELECT * FROM outcomes WHERE case_id = ? AND archived_at IS NULL ORDER BY taken_on');
     $corr = array_map('decrypt_row', $fetch('SELECT r.*, k.organization contact_org, k.name contact_name FROM correspondence r LEFT JOIN contacts k ON k.id = r.contact_id WHERE r.case_id = ? AND r.archived_at IS NULL ORDER BY r.occurred_on DESC, r.id DESC'));
-    $ledger = can($user, 'finance.read') ? $fetch('SELECT * FROM ledger WHERE case_id = ? AND archived_at IS NULL ORDER BY entry_date, id') : [];
+    $ledger = $fetch("SELECT l.*, u.name updated_by_name FROM ledger l LEFT JOIN users u ON u.id = COALESCE(l.updated_by, l.created_by) WHERE l.case_id = ? AND l.archived_at IS NULL ORDER BY l.entry_date, l.id");
     $tasks = $fetch('SELECT t.*, u.name assigned_name FROM tasks t LEFT JOIN users u ON u.id = t.assigned_user_id WHERE t.case_id = ? ORDER BY t.done_at IS NOT NULL, t.due_on');
     $docs = $fetch('SELECT d.id, d.category, d.original_name, d.mime_type, d.size_bytes, d.uploaded_at, u.name uploaded_by_name FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by WHERE d.case_id = ? AND d.archived_at IS NULL ORDER BY d.uploaded_at DESC');
+    $coverages = array_map('decrypt_row', $fetch('SELECT cv.*, k.organization carrier_org, k.name carrier_name, k.phone carrier_phone, k.fax carrier_fax FROM coverages cv LEFT JOIN contacts k ON k.id = cv.carrier_contact_id WHERE cv.case_id = ? AND cv.archived_at IS NULL ORDER BY cv.priority, cv.id'));
     $contacts = [];
-    foreach (['attorney_contact_id', 'insurer_contact_id', 'referred_by_contact_id'] as $k) {
+    foreach (['attorney_contact_id', 'referred_by_contact_id'] as $k) {
         if ($c[$k]) { $s = $pdo->prepare('SELECT * FROM contacts WHERE id = ? AND practice_id = ?'); $s->execute([$c[$k], pid()]); $contacts[$k] = $s->fetch() ?: null; }
     }
 
-    $totals = ledger_totals($ledger);
-    $visitDates = array_column(array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'), 'visit_date');
+    // Balances are computed from the whole ledger even for roles that can't
+    // see the entries, so alerts stay accurate.
+    $allLedger = $fetch('SELECT * FROM ledger WHERE case_id = ? AND archived_at IS NULL ORDER BY entry_date, id');
+    $totals = ledger_totals($allLedger);
+    $openItems = ledger_open_items($allLedger);
+    $attended = array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show');
+    $visitDates = array_column($attended, 'visit_date');
+    $cutoff = add_days(date('Y-m-d'), -WC_DWC25_DAYS);
     $checklist = case_checklist($c, $milestones, $referrals);
     $ctx = [
-        'checklist' => $checklist, 'referrals' => $referrals, 'totals' => $totals,
+        'checklist' => $checklist, 'referrals' => $referrals, 'totals' => $totals, 'coverages' => $coverages, 'openItems' => $openItems,
+        'wcVisits' => ['count' => count($attended), 'missing25' => count(array_filter($attended, fn($v) => !$v['dwc25_sent'] && $v['visit_date'] <= $cutoff))],
         'lastVisit' => $visitDates ? max($visitDates) : null,
         'lastCorrespondence' => $corr ? $corr[0]['occurred_on'] : null,
         'lastOutcome' => $outcomes ? max(array_column($outcomes, 'taken_on')) : null,
         'openFollowUps' => array_filter($corr, fn($r) => $r['follow_up_on'] && !$r['follow_up_done']),
     ];
     $case = decrypt_row($c);
-    $case['pip_effective_limit'] = pip_effective_limit($c);
+    $case['pip_effective_limit'] = pip_effective_limit($c, first_coverage($coverages, 'pip'));
+    $fin = can($user, 'finance.read');
     return [
-        'case' => $case, 'patient' => $patient, 'contacts' => $contacts,
+        'case' => $case, 'patient' => $patient, 'contacts' => $contacts, 'coverages' => $coverages,
         'checklist' => $checklist, 'alerts' => case_alerts($c, $ctx),
         'referrals' => $referrals, 'visits' => $visits, 'outcomes' => $outcomes,
-        'correspondence' => $corr, 'ledger' => $ledger, 'totals' => can($user, 'finance.read') ? $totals : null,
+        'correspondence' => $corr, 'ledger' => $fin ? $ledger : [], 'openItems' => $fin ? $openItems : [], 'totals' => $fin ? $totals : null,
         'tasks' => $tasks, 'documents' => $docs,
         'stats' => ['visitCount' => count($visitDates), 'lastVisit' => $ctx['lastVisit']],
     ];
+}
+
+// Keeps cases.benefits (the summary used by list filters and reports) in
+// step with the case's coverages.
+function sync_benefits(int $caseId) {
+    $c = case_or_404($caseId);
+    $s = pi_db()->prepare('SELECT * FROM coverages WHERE case_id = ? AND archived_at IS NULL ORDER BY priority, id');
+    $s->execute([$caseId]);
+    pi_db()->prepare('UPDATE cases SET benefits = ? WHERE id = ?')->execute([derive_benefits($s->fetchAll(), $c['injury_type']), $caseId]);
 }
 
 function handle_get() {
@@ -235,10 +273,18 @@ function handle_create() {
     $cols['patient_id'] = $patientId;
     $cols['case_number'] = next_case_number($pdo);
     $cols['created_at'] = $cols['updated_at'] = now_str();
-    foreach (['stage' => 'intake', 'injury_type' => 'auto', 'emc_status' => 'pending', 'pip_limit' => 10000, 'actively_treating' => 1] as $k => $def) {
+    foreach (['stage' => 'intake', 'injury_type' => 'auto', 'emc_status' => 'pending', 'actively_treating' => 1] as $k => $def) {
         if (!isset($cols[$k])) $cols[$k] = $def;
     }
     $id = insert_row('cases', $cols);
+    // Insurance entered on the new-case form.
+    if (!empty($b['coverage']['type'])) {
+        $cv = clean_fields(CHILD_SPECS['coverages']['fields'], $b['coverage'], $id);
+        $cv += ['case_id' => $id, 'priority' => 1, 'status' => 'active', 'created_by' => $user['id'], 'created_at' => now_str(), 'updated_at' => now_str()];
+        if ($cv['type'] === 'pip' && !isset($cv['benefit_limit'])) $cv['benefit_limit'] = PIP_DEFAULT_LIMIT;
+        insert_row('coverages', $cv);
+    }
+    sync_benefits($id);
     $pdo->commit();
     audit('create', 'case', $id, $id, $user);
     json_response(['id' => $id, 'caseNumber' => $cols['case_number']]);
@@ -287,6 +333,7 @@ function handle_update() {
         $pcols['updated_at'] = now_str();
         update_row('patients', (int)$c['patient_id'], $pcols);
     }
+    if (array_key_exists('injury_type', $cols)) sync_benefits($id);
     audit('update', 'case', $id, $id, $user, field_names(array_merge($cols, $pcols)));
     json_response(full_case($id, $user));
 }
@@ -308,48 +355,89 @@ function handle_milestone() {
 }
 
 // ---------- child rows ----------
+function can_child(array $user, array $spec): bool {
+    foreach ($spec['perm_any'] ?? [$spec['perm']] as $p) if (can($user, $p)) return true;
+    return false;
+}
+
+// Makes a ledger row internally consistent (who owes it, where a transfer
+// goes) before it's saved. $row is the full row after the edit.
+function normalize_ledger(array $row): array {
+    if ($row['bucket'] === 'patient') $row['coverage_id'] = null;
+    if ($row['kind'] === 'transfer') {
+        if (empty($row['to_bucket'])) json_response(['error' => 'Choose where the balance moves to.'], 400);
+        if ($row['to_bucket'] === 'patient') $row['to_coverage_id'] = null;
+        elseif (empty($row['to_coverage_id'])) json_response(['error' => 'Choose which insurance the balance moves to.'], 400);
+        if ($row['bucket'] === $row['to_bucket'] && (int)$row['coverage_id'] === (int)$row['to_coverage_id']) json_response(['error' => 'A move needs a different destination.'], 400);
+    } else {
+        $row['to_bucket'] = null; $row['to_coverage_id'] = null;
+    }
+    if ($row['kind'] === 'charge') $row['applies_to_id'] = null;
+    if (!isset($row['amount']) || $row['amount'] <= 0) json_response(['error' => 'Enter a positive amount — the entry type decides whether it adds or subtracts.'], 400);
+    return $row;
+}
+
 function handle_child_save() {
     require_method('POST');
     $user = require_user('case.read');
     $caseId = (int)($_GET['id'] ?? 0);
-    case_or_404($caseId);
+    $case = case_or_404($caseId);
     $b = json_body();
     $table = (string)($b['table'] ?? '');
     $spec = CHILD_SPECS[$table] ?? json_response(['error' => 'Unknown record type'], 400);
-    if (!can($user, $spec['perm'])) json_response(['error' => 'Your role does not allow this.'], 403);
-    $cols = clean_fields($spec['fields'], $b['row'] ?? []);
+    if (!can_child($user, $spec)) json_response(['error' => 'Your role does not allow this.'], 403);
+    $cols = clean_fields($spec['fields'], $b['row'] ?? [], $caseId);
     $childId = (int)($b['row']['id'] ?? 0);
-    if ($table === 'ledger' && isset($cols['amount']) && $cols['amount'] <= 0) json_response(['error' => 'Enter a positive amount — the entry type decides whether it adds or subtracts.'], 400);
 
     if ($childId) {
-        child_or_404($table, $childId, $caseId);
+        $existing = child_or_404($table, $childId, $caseId);
+        if ($table === 'ledger') {
+            // Payments often arrive weeks or months late, so ledger rows are
+            // never locked: any field can be corrected, and the edit is audited.
+            $merged = normalize_ledger(array_merge($existing, $cols));
+            $cols = array_intersect_key($merged, array_flip(['entry_date', 'kind', 'bucket', 'coverage_id', 'to_bucket', 'to_coverage_id', 'applies_to_id', 'amount', 'reference', 'memo']));
+            if (($cols['applies_to_id'] ?? null) === $childId) json_response(['error' => "An entry can't apply to itself."], 400);
+            $cols += ['updated_by' => $user['id'], 'updated_at' => now_str()];
+        }
+        if (in_array($table, ['referrals', 'coverages'], true)) $cols['updated_at'] = now_str();
         update_row($table, $childId, $cols);
         audit('update', $table, $childId, $caseId, $user, field_names($cols));
     } else {
         foreach ($spec['required'] as $r) {
             if (!isset($cols[$r]) || $cols[$r] === null || $cols[$r] === '') json_response(['error' => 'Missing ' . str_replace('_', ' ', $r)], 400);
         }
+        if ($table === 'ledger') $cols = normalize_ledger($cols + ['coverage_id' => null, 'to_bucket' => null, 'to_coverage_id' => null, 'applies_to_id' => null]);
+        if ($table === 'coverages') {
+            $n = pi_db()->prepare('SELECT COUNT(*) FROM coverages WHERE case_id = ? AND archived_at IS NULL');
+            $n->execute([$caseId]);
+            $cols += ['priority' => (int)$n->fetchColumn() + 1, 'status' => 'active'];
+            if ($cols['type'] === 'pip' && !isset($cols['benefit_limit'])) $cols['benefit_limit'] = PIP_DEFAULT_LIMIT;
+        }
         $cols['case_id'] = $caseId;
         $cols['created_by'] = $user['id'];
         $cols['created_at'] = now_str();
-        if ($table === 'referrals') $cols['updated_at'] = now_str();
+        if (in_array($table, ['referrals', 'coverages'], true)) $cols['updated_at'] = now_str();
         $childId = insert_row($table, $cols);
         audit('create', $table, $childId, $caseId, $user);
-        // A visit can post its charge to the ledger in the same step.
+        // A visit can post its charge in the same step, billed to a chosen
+        // coverage or straight to the patient balance.
         if ($table === 'visits' && !empty($b['charge']['amount']) && can($user, 'finance.write')) {
             $amount = money_or_null($b['charge']['amount']);
+            $target = (string)($b['charge']['to'] ?? 'patient');
+            $coverageId = $target === 'patient' ? null : (clean_fields(['c' => 'coverage'], ['c' => $target], $caseId)['c'] ?? null);
             if ($amount > 0) {
                 $lid = insert_row('ledger', [
                     'case_id' => $caseId, 'entry_date' => $cols['visit_date'], 'kind' => 'charge',
-                    'bucket' => enum_or($b['charge']['bucket'] ?? '', ['insurance', 'patient'], 'insurance'),
-                    'amount' => $amount, 'reference' => 'Visit #' . $childId, 'memo' => 'DOS ' . $cols['visit_date'],
+                    'bucket' => $coverageId ? 'insurance' : 'patient', 'coverage_id' => $coverageId, 'visit_id' => $childId,
+                    'amount' => $amount, 'reference' => 'Visit #' . $childId,
+                    'memo' => !empty($cols['cpt_codes']) ? 'CPT ' . $cols['cpt_codes'] : 'Office visit',
                     'created_by' => $user['id'], 'created_at' => now_str(),
                 ]);
                 audit('create', 'ledger', $lid, $caseId, $user);
             }
         }
     }
-    if ($table === 'referrals') pi_db()->prepare('UPDATE referrals SET updated_at = ? WHERE id = ?')->execute([now_str(), $childId]);
+    if ($table === 'coverages') sync_benefits($caseId);
     // First visit logged on an intake case starts the treating stage.
     if ($table === 'visits') {
         $c = case_or_404($caseId);
@@ -365,6 +453,65 @@ function handle_child_save() {
     json_response(full_case($caseId, $user));
 }
 
+// Moves money between insurance and the patient balance — the 20% PIP
+// doesn't pay, a denial, exhaustion, or back to insurance when a late
+// payment arrives. Always a deliberate action by a person; one transfer
+// row per charge, so each date of service keeps an accurate open balance.
+function handle_move_balance() {
+    require_method('POST');
+    $user = require_user('finance.write');
+    $caseId = (int)($_GET['id'] ?? 0);
+    case_or_404($caseId);
+    $b = json_body();
+    $date = date_or_null($b['date'] ?? date('Y-m-d')) ?? date('Y-m-d');
+    $reason = str_or_null($b['reason'] ?? null, 255);
+    $to = (string)($b['to'] ?? 'patient');
+    $toCoverage = $to === 'patient' ? null : clean_fields(['c' => 'coverage'], ['c' => $to], $caseId)['c'];
+    $items = is_array($b['items'] ?? null) ? $b['items'] : [];
+    if (!$items) json_response(['error' => 'Nothing selected to move.'], 400);
+    $pdo = pi_db();
+    $pdo->beginTransaction();
+    $n = 0;
+    foreach ($items as $it) {
+        $from = ($it['from'] ?? '') === 'patient' ? 'patient' : 'insurance';
+        $row = normalize_ledger(clean_fields(CHILD_SPECS['ledger']['fields'], [
+            'coverage_id' => $from === 'insurance' ? ($it['coverage_id'] ?? null) : null,
+            'applies_to_id' => $it['applies_to_id'] ?? null, 'amount' => $it['amount'] ?? null,
+        ], $caseId) + ['kind' => 'transfer', 'bucket' => $from, 'to_bucket' => $toCoverage ? 'insurance' : 'patient', 'to_coverage_id' => $toCoverage]);
+        $row += ['case_id' => $caseId, 'entry_date' => $date, 'memo' => $reason, 'created_by' => $user['id'], 'created_at' => now_str()];
+        $lid = insert_row('ledger', $row);
+        audit('create', 'ledger', $lid, $caseId, $user, 'transfer');
+        $n++;
+    }
+    $pdo->commit();
+    touch_case($caseId);
+    json_response(full_case($caseId, $user) + ['moved' => $n]);
+}
+
+// Records that the patient balance was sent to the attorney (at
+// settlement), logs it as correspondence, and returns the case; the page
+// then opens the itemized statement to print or fax.
+function handle_forward_balance() {
+    require_method('POST');
+    $user = require_user('finance.write');
+    $caseId = (int)($_GET['id'] ?? 0);
+    $c = case_or_404($caseId);
+    $b = json_body();
+    $s = pi_db()->prepare('SELECT * FROM ledger WHERE case_id = ? AND archived_at IS NULL');
+    $s->execute([$caseId]);
+    $amount = money_or_null($b['amount'] ?? null) ?? ledger_totals($s->fetchAll())['patient_balance'];
+    $date = date_or_null($b['date'] ?? date('Y-m-d')) ?? date('Y-m-d');
+    update_row('cases', $caseId, ['balance_forwarded_on' => $date, 'balance_forwarded_amount' => $amount, 'updated_at' => now_str()]);
+    insert_row('correspondence', [
+        'case_id' => $caseId, 'occurred_on' => $date, 'direction' => 'out',
+        'method' => enum_or($b['method'] ?? '', ['fax', 'email', 'mail', 'portal'], 'fax'),
+        'contact_id' => $c['attorney_contact_id'], 'subject' => 'Patient balance forwarded to attorney: $' . number_format($amount, 2),
+        'created_by' => $user['id'], 'created_at' => now_str(),
+    ]);
+    audit('forward_balance', 'case', $caseId, $caseId, $user);
+    json_response(full_case($caseId, $user));
+}
+
 function handle_child_archive() {
     require_method('POST');
     $user = require_user('case.read');
@@ -372,11 +519,12 @@ function handle_child_archive() {
     $b = json_body();
     $table = (string)($b['table'] ?? '');
     $spec = CHILD_SPECS[$table] ?? json_response(['error' => 'Unknown record type'], 400);
-    if (!can($user, $spec['perm'])) json_response(['error' => 'Your role does not allow this.'], 403);
+    if (!can_child($user, $spec)) json_response(['error' => 'Your role does not allow this.'], 403);
     $childId = (int)($b['child_id'] ?? 0);
     child_or_404($table, $childId, $caseId);
     pi_db()->prepare("UPDATE $table SET archived_at = ? WHERE id = ?")->execute([now_str(), $childId]);
     touch_case($caseId);
+    if ($table === 'coverages') sync_benefits($caseId);
     audit('archive', $table, $childId, $caseId, $user);
     json_response(full_case($caseId, $user));
 }
@@ -483,9 +631,9 @@ function handle_ar_report() {
     $user = require_user('finance.read');
     $pdo = pi_db();
     $includeClosed = !empty($_GET['all']);
-    $stmt = $pdo->prepare('SELECT c.*, p.first_name, p.last_name, a.organization atty_org, a.name atty_name, a.email atty_email, i.organization ins_org
+    $stmt = $pdo->prepare('SELECT c.*, p.first_name, p.last_name, a.organization atty_org, a.name atty_name, a.email atty_email
         FROM cases c JOIN patients p ON p.id = c.patient_id
-        LEFT JOIN contacts a ON a.id = c.attorney_contact_id LEFT JOIN contacts i ON i.id = c.insurer_contact_id
+        LEFT JOIN contacts a ON a.id = c.attorney_contact_id
         WHERE c.practice_id = ? AND c.archived_at IS NULL' . ($includeClosed ? '' : " AND c.stage NOT IN ('closed','dropped')") . ' ORDER BY p.last_name, p.first_name');
     $stmt->execute([pid()]);
     $cases = $stmt->fetchAll();
@@ -498,12 +646,15 @@ function handle_ar_report() {
         $rows[] = [
             'id' => (int)$c['id'], 'caseNumber' => $c['case_number'], 'patient' => patient_name($c), 'benefits' => $c['benefits'],
             'stage' => $c['stage'], 'lastVisit' => $x['lastVisit'], 'lastCorrespondence' => $x['lastCorrespondence'],
-            'insurer' => $c['ins_org'], 'attorney' => trim(($c['atty_org'] ?? '') . ($c['atty_name'] ? ' — ' . $c['atty_name'] : ''), ' —'),
+            'insurer' => implode(', ', array_unique(array_filter(array_map(fn($cv) => $cv['carrier_org'] ?: $cv['carrier_text'], $x['coverages'])))) ?: null,
+            'attorney' => trim(($c['atty_org'] ?? '') . ($c['atty_name'] ? ' — ' . $c['atty_name'] : ''), ' —'),
             'attorneyEmail' => $c['atty_email'],
             'insuranceBalance' => $t['insurance_balance'], 'patientBalance' => $t['patient_balance'], 'totalBalance' => $t['total_balance'],
             'totalCharges' => $t['total_charges'], 'reductionFloor' => $t['reduction_floor'],
             'attyOffer' => $c['atty_offer'] !== null ? (float)$c['atty_offer'] : null,
-            'offerPct' => ($c['atty_offer'] !== null && $t['total_balance'] > 0) ? round((float)$c['atty_offer'] / $t['total_balance'] * 100, 1) : null,
+            'offerPct' => ($c['atty_offer'] !== null && $t['patient_balance'] > 0) ? round((float)$c['atty_offer'] / $t['patient_balance'] * 100, 1) : null,
+            'lopSigned' => $c['lop_signed_on'], 'forwardedOn' => $c['balance_forwarded_on'],
+            'forwardedAmount' => $c['balance_forwarded_amount'] !== null ? (float)$c['balance_forwarded_amount'] : null,
             'finalSettlement' => $c['final_settlement'] !== null ? (float)$c['final_settlement'] : null,
             'dateAuthorized' => $c['date_authorized'], 'checkReceived' => $c['check_received_on'],
         ];
@@ -515,12 +666,12 @@ function handle_ar_report() {
         header('Content-Disposition: attachment; filename="pi-ar-' . date('Y-m-d') . '.csv"');
         header('Cache-Control: no-store');
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['Case #', 'Patient', 'Benefits', 'Stage', 'Last visit', 'Last correspondence', 'Insurer', 'Attorney', 'Insurance balance', 'Patient balance', 'Total outstanding', '80% floor', 'Atty offer', 'Offer %', 'Final settlement', 'Date authorized', 'Check received']);
+        fputcsv($out, ['Case #', 'Patient', 'Benefits', 'Stage', 'Last visit', 'Last correspondence', 'Insurer', 'Attorney', 'Insurance balance', 'Patient balance', 'Total outstanding', 'LOP signed', 'Forwarded to attorney', 'Amount forwarded', '80% floor', 'Atty offer', 'Offer %', 'Final settlement', 'Date authorized', 'Check received']);
         foreach ($rows as $r) {
             // Neutralise spreadsheet formula injection in text cells.
             $safe = fn($v) => is_string($v) && preg_match('/^[=+\-@]/', $v) ? "'" . $v : $v;
             fputcsv($out, array_map($safe, [$r['caseNumber'], $r['patient'], BENEFITS[$r['benefits']] ?? '', STAGES[$r['stage']], $r['lastVisit'], $r['lastCorrespondence'], $r['insurer'], $r['attorney'],
-                $r['insuranceBalance'], $r['patientBalance'], $r['totalBalance'], $r['reductionFloor'], $r['attyOffer'], $r['offerPct'], $r['finalSettlement'], $r['dateAuthorized'], $r['checkReceived']]));
+                $r['insuranceBalance'], $r['patientBalance'], $r['totalBalance'], $r['lopSigned'], $r['forwardedOn'], $r['forwardedAmount'], $r['reductionFloor'], $r['attyOffer'], $r['offerPct'], $r['finalSettlement'], $r['dateAuthorized'], $r['checkReceived']]));
         }
         exit;
     }
@@ -562,10 +713,32 @@ function handle_letter() {
             . '<p>Itemized billing and records are available on request. Please confirm whether a final narrative report is required, and keep us informed of the case status.</p>';
     } elseif ($type === 'reduction_response') {
         $title = 'Reduction request response';
-        $body = '<p>Thank you for your reduction request on the above-referenced case. The current outstanding balance is <strong>'
-            . $money($d['totals']['total_balance'] ?? 0) . '</strong>.</p>'
+        $body = '<p>Thank you for your reduction request on the above-referenced case. The patient balance on this account is <strong>'
+            . $money($d['totals']['patient_balance'] ?? 0) . '</strong>.</p>'
             . ($c['atty_offer'] !== null ? '<p>Your offer of ' . $money($c['atty_offer']) . ' has been received and is under review.</p>' : '')
             . '<p>Our office is able to accept <strong>' . $money($d['totals']['reduction_floor'] ?? 0) . '</strong> (' . round(REDUCTION_FLOOR_PCT * 100) . '% of the balance) in full satisfaction of this account, provided payment is received within 30 days of settlement.</p>';
+    } elseif ($type === 'statement') {
+        // Itemized patient balance, by date of service, for the attorney.
+        if (!can($user, 'finance.read')) json_response(['error' => 'Your role does not allow this.'], 403);
+        $title = 'Itemized statement — patient balance';
+        $t = $d['totals'];
+        $rowsHtml = '';
+        foreach ($d['openItems'] as $it) {
+            $insPart = $it['ins_paid'] + $it['ins_adjusted'];
+            $rowsHtml .= '<tr><td>' . $h($it['date']) . '</td><td>' . $h($it['memo'] ?: 'Services') . '</td><td class="n">' . $money($it['amount']) . '</td><td class="n">'
+                . ($insPart > 0 ? '(' . $money($insPart) . ')' : '—') . '</td><td class="n">' . ($it['pat_paid'] + $it['pat_reduced'] > 0 ? '(' . $money($it['pat_paid'] + $it['pat_reduced']) . ')' : '—')
+                . '</td><td class="n">' . $money($it['pat_open']) . '</td></tr>';
+        }
+        $itemized = array_sum(array_column($d['openItems'], 'pat_open'));
+        $other = round($t['patient_balance'] - $itemized, 2);
+        if (abs($other) > 0.005) {
+            $rowsHtml .= '<tr><td></td><td>Other adjustments not tied to a date of service</td><td></td><td></td><td></td><td class="n">' . $money($other) . '</td></tr>';
+        }
+        $body = '<p>Enclosed is the itemized statement for treatment provided to your client'
+            . ($c['lop_signed_on'] ? ' under the letter of protection signed ' . $h($c['lop_signed_on']) : '') . '. Insurance payments have been applied; the remaining patient balance is due from the settlement proceeds.</p>'
+            . '<table class="it"><thead><tr><th>Date of service</th><th>Description</th><th class="n">Charge</th><th class="n">Insurance paid/adj.</th><th class="n">Patient paid/adj.</th><th class="n">Patient balance</th></tr></thead><tbody>'
+            . $rowsHtml . '</tbody><tfoot><tr><td colspan="5">Total patient balance due</td><td class="n">' . $money($t['patient_balance']) . '</td></tr></tfoot></table>'
+            . '<p>Please remit payment to our office upon settlement, referencing our file number above. Contact us with any questions about this account.</p>';
     } else {
         json_response(['error' => 'Unknown letter type'], 400);
     }
@@ -582,6 +755,8 @@ function handle_letter() {
         .lh{border-bottom:2px solid #1FA866;padding-bottom:10px;margin-bottom:24px}.lh b{font-size:15pt;color:#0B2340}
         .re{margin:18px 0;padding:10px 12px;background:#EEF2F7;border-left:3px solid #1FA866}
         .conf{margin-top:40px;font-size:9pt;color:#0B2340;opacity:.75;border-top:1px solid #EEF2F7;padding-top:8px}
+        table.it{width:100%;border-collapse:collapse;font-size:10pt;margin:14px 0}table.it th,table.it td{padding:5px 6px;border-bottom:1px solid #EEF2F7;text-align:left}
+        table.it .n{text-align:right;white-space:nowrap}table.it tfoot td{font-weight:bold;border-top:2px solid #0B2340}
         @media print{.noprint{display:none}body{margin:0.5in}}
         </style></head><body>
         <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#EEF2F7;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.</p>
@@ -605,6 +780,8 @@ switch ($action) {
     case 'milestone': handle_milestone(); break;
     case 'child_save': handle_child_save(); break;
     case 'child_archive': handle_child_archive(); break;
+    case 'move_balance': handle_move_balance(); break;
+    case 'forward_balance': handle_forward_balance(); break;
     case 'dashboard': handle_dashboard(); break;
     case 'ar_report': handle_ar_report(); break;
     case 'tasks': handle_tasks(); break;
