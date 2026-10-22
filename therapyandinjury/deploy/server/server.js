@@ -14,6 +14,7 @@
  *   - serves static files with caching, ETags, gzip/brotli, and byte ranges (video on iPhone/Safari)
  *   - adds security headers to every response; compresses and ETags rendered pages
  *   - POST /api/appointment (and the old .php URL): appointment requests by email
+ *   - /api/outreach/*: referral-partner email campaigns (SendGrid events, unsubscribe, the send timer)
  *   - /_admin: password-protected updater + content editor; GET /_health: version check
  */
 const fs = require('fs');
@@ -25,6 +26,7 @@ const { pathToFileURL } = require('url');
 
 const appointment = require('./appointment.js');
 const leads = require('./leads.js');
+const outreach = require('./outreach.js');
 
 // Anonymous call-button taps for the lead reports (POST /api/event): no IP or phone is stored; this
 // per-IP counter (memory only) just keeps one visitor from inflating the numbers.
@@ -37,6 +39,48 @@ function eventAllowed(ip) {
   return true;
 }
 const admin = require('./admin.js');
+
+function readLimited(req, max) {
+  return new Promise((resolve, reject) => {
+    const chunks = []; let size = 0;
+    req.on('data', (c) => { size += c.length; if (size > max) { req.removeAllListeners('data'); req.resume(); reject(Object.assign(new Error('too large'), { status: 413 })); } else chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+const unsubPage = (title, body, form = '') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title></head><body style="margin:0;font:17px/1.5 system-ui,sans-serif;color:#0b2d5b;background:#f4f6f8"><main style="max-width:520px;margin:60px auto;padding:28px;background:#fff;border-radius:12px;border:1px solid #dfe4ea"><h1 style="font-size:22px;margin:0 0 10px">${title}</h1><p>${body}</p>${form}</main></body></html>`;
+
+/** Referral-partner email: SendGrid's event webhook, the unsubscribe page, and the cron/timer that sends. */
+async function outreachRoute(req, res, url, root, origin, send) {
+  const html = (status, page) => send(res, status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' }, page);
+  const json = (status, body) => send(res, status, { 'content-type': 'application/json', 'cache-control': 'no-store' }, JSON.stringify(body));
+  if (url.pathname === '/api/outreach/unsubscribe') {
+    const t = url.searchParams.get('t') || '';
+    if (!outreach.contactFromToken(root, t)) return html(404, unsubPage('Link not recognized', 'This unsubscribe link is incomplete. Reply to our email with "unsubscribe" and we\'ll remove you.'));
+    // A GET only shows the button: mail-security scanners open links, and must not unsubscribe anyone.
+    // POST comes from the button or from the mail app's one-click unsubscribe (RFC 8058).
+    if (req.method === 'POST') {
+      await readLimited(req, 4096).catch(() => null);
+      outreach.unsubscribe(root, t);
+      return html(200, unsubPage('You\'re unsubscribed', 'Therapy &amp; Injury won\'t email you again. Thank you, and sorry for the interruption.'));
+    }
+    return html(200, unsubPage('Unsubscribe from Therapy &amp; Injury emails', 'Click the button to stop all emails from us.', `<form method="post"><button style="font:inherit;font-weight:700;border:0;border-radius:999px;padding:10px 22px;background:#19ccbe;color:#0b2d5b;cursor:pointer">Unsubscribe</button></form>`));
+  }
+  if (!outreach.tokenOk(root, url.searchParams.get('k') || '')) return json(404, { ok: false });
+  if (url.pathname === '/api/outreach/events') {
+    if (req.method !== 'POST') return json(405, { ok: false });
+    let raw;
+    try { raw = await readLimited(req, 5 * 1024 * 1024); } catch { return json(413, { ok: false }); }
+    if (!outreach.verifySignature(root, req, raw)) return json(403, { ok: false, error: 'signature' });
+    let events;
+    try { events = JSON.parse(raw.toString('utf8')); } catch { return json(400, { ok: false }); }
+    const n = outreach.handleEvents(root, events);
+    return json(200, { ok: true, recorded: n });
+  }
+  if (url.pathname === '/api/outreach/tick') return json(200, { ok: true, ...(await outreach.tick(root, origin)) });
+  return json(404, { ok: false });
+}
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -294,6 +338,7 @@ function start({ root, releaseDir, version, degraded = null }) {
         }
         return send(res, 204, { 'cache-control': 'no-store' }, '');
       }
+      if (url.pathname.startsWith('/api/outreach/')) return await outreachRoute(req, res, url, root, canonical.origin, send);
       if (url.pathname === '/_admin' || url.pathname.startsWith('/_admin/')) return await admin.handle(req, res, url, ctx, send);
 
       const asset = serveAsset(req, res, url);
@@ -313,6 +358,12 @@ function start({ root, releaseDir, version, degraded = null }) {
       else res.end();
     }
   });
+  // Outreach emails go out every 5 minutes while the app is running (and from the cPanel cron job,
+  // since Passenger stops an idle app).
+  const sendDue = () => outreach.tick(root, canonical.origin).then((r) => { if (r.sent || r.failed) console.log('[outreach] sent', r.sent, 'failed', r.failed); }).catch((e) => console.error('[outreach]', e.message));
+  setTimeout(sendDue, 60000).unref();
+  setInterval(sendDue, 5 * 60000).unref();
+
   server.listen(process.env.PORT || 3000, () => {
     console.log(`[server] therapyandinjury.com ${version}${degraded ? ` (fallback; ${degraded} failed)` : ''} listening on ${process.env.PORT || 3000}`);
   });

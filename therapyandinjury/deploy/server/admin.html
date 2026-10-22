@@ -42,9 +42,13 @@ tr.detail td{background:#fafbfc}
 .card{background:var(--gray);border-radius:10px;padding:12px 14px}.card b{display:block;font-size:26px}.card span{font-size:13px;color:var(--slate)}
 nav.tabs .n{background:#ff4d5e;color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:5px}
 .num{text-align:right;font-variant-numeric:tabular-nums}
+.step{border:1px solid var(--line);border-radius:10px;padding:14px;margin-top:12px;background:#fafbfc}
+.step .row label{flex:1}.notice{background:var(--ph);border-radius:10px;padding:10px 14px;color:#5c4500;font-size:14px}
+.checks{display:flex;gap:6px 16px;flex-wrap:wrap}
+.pv p{color:#1b2a3d}.pv li{color:#1b2a3d}
 </style></head><body>
 <header><b>Therapy &amp; Injury</b><span class="sub">Website admin</span>
-<nav class="tabs" role="tablist"><button role="tab" data-tab="leads" aria-selected="false">Leads<span class="n" id="newcount" hidden></span></button><button role="tab" data-tab="reports" aria-selected="false" data-owner>Reports</button><button role="tab" data-tab="content" aria-selected="true" data-owner>Content</button><button role="tab" data-tab="updates" aria-selected="false" data-owner>Updates</button><button role="tab" data-tab="team" aria-selected="false" data-owner>Team</button></nav><span class="sub" id="who"></span></header>
+<nav class="tabs" role="tablist"><button role="tab" data-tab="leads" aria-selected="false">Leads<span class="n" id="newcount" hidden></span></button><button role="tab" data-tab="reports" aria-selected="false" data-owner>Reports</button><button role="tab" data-tab="outreach" aria-selected="false" data-owner>Outreach</button><button role="tab" data-tab="content" aria-selected="true" data-owner>Content</button><button role="tab" data-tab="updates" aria-selected="false" data-owner>Updates</button><button role="tab" data-tab="team" aria-selected="false" data-owner>Team</button></nav><span class="sub" id="who"></span></header>
 
 <main id="tab-leads" class="wide" hidden>
   <section>
@@ -60,7 +64,7 @@ nav.tabs .n{background:#ff4d5e;color:#fff;border-radius:999px;font-size:11px;pad
     <div class="grid" style="margin-top:10px">
       <label>Name<input type="text" id="pf-name"></label><label>Phone<input type="tel" id="pf-phone"></label>
       <label>Location<select id="pf-branch"></select></label><label>Language<select id="pf-lang"><option value="en">English</option><option value="es">Español</option><option value="ht">Kreyòl</option></select></label>
-      <label>How did you hear about us?<select id="pf-heard"></select></label><label>Campaign (optional, e.g. the ad they mention)<input type="text" id="pf-campaign"></label>
+      <label>How did you hear about us?<select id="pf-heard"></select></label><label id="pf-refwrap" hidden>Referred by (office)<select id="pf-ref"></select></label><label>Campaign (optional, e.g. the ad they mention)<input type="text" id="pf-campaign"></label>
       <label>Accident date (optional)<input type="date" id="pf-acc"></label><label>Status<select id="pf-status"></select></label>
     </div>
     <label style="margin-top:10px">Note (optional)<textarea id="pf-note" style="min-height:60px"></textarea></label>
@@ -77,9 +81,19 @@ nav.tabs .n{background:#ff4d5e;color:#fff;border-radius:999px;font-size:11px;pad
   <section><h2>By campaign</h2><p class="hint">Campaign = the <code>utm_campaign</code> in the ad's link (see marketing/utm-links.md). Cost per lead and per new patient use the spend you enter for that campaign.</p><div id="r-campaign"></div></section>
   <section><h2>By language</h2><div id="r-lang"></div></section>
   <section><h2>By location</h2><div id="r-branch"></div></section>
+  <section><h2>By referring office</h2><p class="hint">Phone leads where the front desk picked the office under "Referred by". Offices come from Outreach → Contacts.</p><div id="r-referrer"></div></section>
   <section><h2>Ad spend</h2><p class="hint">Monthly spend per campaign (from Meta Ads Manager, Google Ads, etc.). Enter 0 to remove an entry.</p>
     <div class="row" style="margin-top:10px"><label>Month<input type="month" id="sp-month"></label><label>Campaign<input type="text" id="sp-campaign" list="sp-list"></label><datalist id="sp-list"></datalist><label>Amount ($)<input type="number" id="sp-amount" min="0" step="0.01"></label><button id="sp-save" style="align-self:end">Save spend</button></div>
     <div id="sp-table" style="margin-top:12px"></div></section>
+</main>
+
+<main id="tab-outreach" class="wide" hidden>
+  <section>
+    <div class="row" style="justify-content:space-between"><div><h2>Referral-partner outreach</h2><p>Email campaigns to attorneys, urgent care, hospitals, primary care and imaging centers, sent through SendGrid. Running campaigns send on their own, on weekdays inside your send window.</p></div><div class="row"><button class="ghost" id="o-run">Send what's due now</button></div></div>
+    <div class="cards" id="o-cards" style="margin-top:14px"></div>
+    <div class="pills" id="o-pills" style="margin-top:14px"><button data-o="contacts" aria-pressed="true">Contacts</button><button data-o="campaigns" aria-pressed="false">Campaigns</button><button data-o="activity" aria-pressed="false">Sent emails</button><button data-o="settings" aria-pressed="false">Settings</button></div>
+  </section>
+  <div id="o-body"></div>
 </main>
 
 <main id="tab-team" hidden>
@@ -126,7 +140,7 @@ const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), 
 const setPath = (o, p, v) => { const ks = p.split('.'); let a = o; ks.slice(0, -1).forEach((k) => { if (a[k] == null || typeof a[k] !== 'object') a[k] = {}; a = a[k]; }); a[ks.at(-1)] = v; };
 
 // ---------- tabs ----------
-const TABS = ['leads', 'reports', 'content', 'updates', 'team'];
+const TABS = ['leads', 'reports', 'outreach', 'content', 'updates', 'team'];
 function showTab(t) {
   document.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', x.dataset.tab === t));
   TABS.forEach((x) => { $('#tab-' + x).hidden = x !== t; });
@@ -136,6 +150,7 @@ function showTab(t) {
   if (t === 'leads') loadLeads().catch((e) => msg(e.message, false));
   if (t === 'reports') loadReport().catch((e) => msg(e.message, false));
   if (t === 'team') loadUsers().catch((e) => msg(e.message, false));
+  if (t === 'outreach') loadOutreach().catch((e) => msg(e.message, false));
 }
 document.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => showTab(b.dataset.tab));
 
@@ -358,7 +373,10 @@ $('#rollback').onclick = () => { if (confirm('Switch back to the previous versio
 $('#restart').onclick = () => act(() => api('restart', { method: 'POST' }), 'Restart requested');
 
 // ---------- leads ----------
-let ME = null, LEADS = [], openId = null;
+let ME = null, LEADS = [], openId = null, PARTNERS = [];
+const isReferral = (h) => /referral$/i.test(h || '');
+const partnerOptions = (sel) => '<option value="">(not sure / not listed)</option>' + PARTNERS.map((p) => '<option value="' + p.id + '"' + (p.id === sel ? ' selected' : '') + '>' + esc(p.org) + '</option>').join('');
+async function loadPartners() { try { PARTNERS = (await api('partners', { method: 'GET', headers: {} })).partners; } catch { PARTNERS = []; } $('#pf-ref').innerHTML = partnerOptions(''); }
 const STATUS_LABEL = { new: 'New', contacted: 'Contacted', booked: 'Booked', showed: 'Showed', patient: 'Became a patient', notfit: 'Not a fit', noanswer: 'No answer' };
 const LANG_LABEL = { en: 'English', es: 'Español', ht: 'Kreyòl' };
 const OPEN = ['new', 'contacted', 'booked', 'noanswer'];
@@ -395,13 +413,15 @@ function renderLeads() {
       + '<td><button class="ghost small" data-open="' + l.id + '">' + (openId === l.id ? 'Close' : 'Details') + (l.notes && l.notes.length ? ' · ' + l.notes.length : '') + '</button></td></tr>';
     if (openId !== l.id) return main;
     const a = l.attr || {};
-    const facts = [['Preferred time', l.preferredTime], ['Accident date', l.accidentDate], ['How they heard', l.howHeard], ['Landing page', a.l], ['Page with the form', a.p], ['Came from site', a.r], ['Ad / content', a.t], ['Search term', a.k], ['Source · medium', [a.s, a.m].filter(Boolean).join(' · ')], ['First seen', a.at && new Date(a.at).toLocaleString()]].filter(([, v]) => v);
+    const facts = [['Preferred time', l.preferredTime], ['Accident date', l.accidentDate], ['How they heard', l.howHeard], ['Referred by', l.referrer && l.referrer.org], ['Landing page', a.l], ['Page with the form', a.p], ['Came from site', a.r], ['Ad / content', a.t], ['Search term', a.k], ['Source · medium', [a.s, a.m].filter(Boolean).join(' · ')], ['First seen', a.at && new Date(a.at).toLocaleString()]].filter(([, v]) => v);
     return main + '<tr class="detail"><td colspan="7" style="padding:14px 16px"><div class="grid"><div><dl class="kv">' + facts.map(([k, v]) => '<dt>' + k + '</dt><dd>' + esc(v) + '</dd>').join('') + '</dl>'
+      + (l.kind === 'phone' && isReferral(l.howHeard) && PARTNERS.length ? '<label style="margin-top:10px">Referred by (office)<select data-ref="' + l.id + '">' + partnerOptions(l.referrer && l.referrer.id) + '</select></label>' : '')
       + '<h3>History</h3>' + l.history.map((h) => '<div class="sm">' + new Date(h.at).toLocaleString() + ' · ' + esc(STATUS_LABEL[h.status] || h.status) + ' · ' + esc(h.by) + '</div>').join('') + '</div>'
       + '<div><h3 style="margin-top:0">Notes</h3>' + (l.notes || []).map((n) => '<p style="color:var(--navy)">' + esc(n.text) + '<br><span class="sm">' + esc(n.by) + ' · ' + new Date(n.at).toLocaleString() + '</span></p>').join('')
       + '<textarea id="note-' + l.id + '" style="min-height:60px" placeholder="e.g. Left voicemail; booked Tue 2 pm"></textarea><div class="row" style="margin-top:8px"><button class="small" data-note="' + l.id + '">Add note</button>' + (ME.role === 'owner' ? '<button class="ghost small" data-del="' + l.id + '">Delete lead</button>' : '') + '</div></div></div></td></tr>';
   }).join('') || '<tr><td colspan="7" style="padding:16px">No leads here yet.</td></tr>';
   document.querySelectorAll('[data-st]').forEach((s) => s.onchange = () => changeLead({ id: s.dataset.st, status: s.value }, 'Status saved'));
+  document.querySelectorAll('[data-ref]').forEach((s) => s.onchange = () => changeLead({ id: s.dataset.ref, referrerId: s.value }, 'Referring office saved'));
   document.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => { openId = openId === b.dataset.open ? null : b.dataset.open; renderLeads(); });
   document.querySelectorAll('[data-note]').forEach((b) => b.onclick = () => { const t = $('#note-' + b.dataset.note).value.trim(); if (t) changeLead({ id: b.dataset.note, note: t }, 'Note added'); });
   document.querySelectorAll('[data-del]').forEach((b) => b.onclick = () => { if (confirm('Delete this lead for good?')) changeLead({ id: b.dataset.del, remove: true }, 'Lead deleted'); });
@@ -411,13 +431,14 @@ async function changeLead(body, done) {
 }
 ['lrange', 'lstatus'].forEach((id) => $('#' + id).onchange = () => (id === 'lrange' ? loadLeads() : renderLeads()));
 $('#lsearch').oninput = () => renderLeads();
-$('#addlead').onclick = () => { $('#phoneform').hidden = false; $('#pf-name').focus(); };
+$('#addlead').onclick = () => { $('#phoneform').hidden = false; $('#pf-name').focus(); loadPartners(); };
+$('#pf-heard').onchange = () => { $('#pf-refwrap').hidden = !isReferral($('#pf-heard').value) || !PARTNERS.length; };
 $('#pf-cancel').onclick = () => { $('#phoneform').hidden = true; };
 $('#pf-save').onclick = async () => {
-  const body = { name: $('#pf-name').value, phone: $('#pf-phone').value, branch: $('#pf-branch').value, lang: $('#pf-lang').value, howHeard: $('#pf-heard').value, campaign: $('#pf-campaign').value, accidentDate: $('#pf-acc').value, status: $('#pf-status').value, note: $('#pf-note').value };
+  const body = { name: $('#pf-name').value, phone: $('#pf-phone').value, branch: $('#pf-branch').value, lang: $('#pf-lang').value, howHeard: $('#pf-heard').value, campaign: $('#pf-campaign').value, accidentDate: $('#pf-acc').value, status: $('#pf-status').value, note: $('#pf-note').value, referrerId: isReferral($('#pf-heard').value) ? $('#pf-ref').value : '' };
   try {
     await api('leads/add', { method: 'POST', body: JSON.stringify(body) });
-    ['pf-name', 'pf-phone', 'pf-campaign', 'pf-acc', 'pf-note'].forEach((id) => { $('#' + id).value = ''; });
+    ['pf-name', 'pf-phone', 'pf-campaign', 'pf-acc', 'pf-note', 'pf-ref'].forEach((id) => { $('#' + id).value = ''; });
     $('#phoneform').hidden = true; msg('Phone lead saved', true); await loadLeads();
   } catch (e) { msg(e.message, false); }
 };
@@ -447,6 +468,7 @@ async function loadReport() {
   $('#r-channel').innerHTML = rtable(r.groups.channel);
   $('#r-campaign').innerHTML = rtable(r.groups.campaign, true);
   $('#r-lang').innerHTML = rtable(Object.fromEntries(Object.entries(r.groups.lang).map(([k, v]) => [LANG_LABEL[k] || k, v])));
+  $('#r-referrer').innerHTML = rtable(r.groups.referrer || {});
   $('#r-branch').innerHTML = rtable(Object.fromEntries(Object.entries(r.groups.branch).map(([k, v]) => [cityOf(k), v])));
   $('#sp-list').innerHTML = Object.keys(r.groups.campaign).filter((c) => !c.startsWith('(')).map((c) => '<option value="' + esc(c) + '">').join('');
   const sp = Object.entries(r.spend).sort();
@@ -456,6 +478,191 @@ $('#rgo').onclick = () => loadReport().catch((e) => msg(e.message, false));
 $('#sp-save').onclick = async () => {
   try { await api('spend', { method: 'POST', body: JSON.stringify({ month: $('#sp-month').value, campaign: $('#sp-campaign').value, amount: $('#sp-amount').value }) }); msg('Spend saved', true); await loadReport(); } catch (e) { msg(e.message, false); }
 };
+
+// ---------- outreach ----------
+let O = null, oView = 'contacts', oEdit = null, cEdit = null;
+const O_STATUS_CLASS = { active: 'teal', replied: 'green', partner: 'green', notinterested: '', unsubscribed: 'amber', bounced: 'red', dnc: 'red' };
+const MSG_CLASS = { sent: '', delivered: 'teal', bounced: 'red', dropped: 'red', failed: 'red' };
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '—');
+const pct = (a, b) => (b ? Math.round((a / b) * 100) + '%' : '—');
+async function loadOutreach() {
+  O = await api('outreach', { method: 'GET', headers: {} });
+  const s = O.settings, q = O.queue, act = O.campaigns.filter((c) => c.status === 'active');
+  const sent = O.campaigns.reduce((a, c) => a + c.stats.sent, 0), opened = O.campaigns.reduce((a, c) => a + c.stats.opened, 0), clicked = O.campaigns.reduce((a, c) => a + c.stats.clicked, 0);
+  const reached = new Set(O.messages.filter((m) => !m.test && m.sentAt).map((m) => m.contactId)).size || 1;
+  const refL = O.contacts.reduce((a, c) => a + c.referrals.leads, 0), refP = O.contacts.reduce((a, c) => a + c.referrals.patients, 0);
+  const why = !O.sendgrid.keySet ? 'No SendGrid key (Settings)' : !s.fromEmail ? 'No sender email (Settings)' : s.paused ? 'Paused (Settings)' : !act.length ? 'No campaign running' : q.inWindow ? 'Sending now' : 'Outside send window';
+  $('#o-cards').innerHTML = [['Contacts', O.contacts.length], ['Campaigns running', act.length], ['Emails sent', sent], ['Opened (people)', pct(opened, reached)], ['Clicked (people)', pct(clicked, reached)], ['Replied / partners', O.contacts.filter((c) => ['replied', 'partner'].includes(c.status)).length], ['Referred leads', refL], ['Referred patients', refP], ['Today', q.sentToday + ' of ' + s.dailyCap], ['Due now', q.dueNow], ['Sender', why]]
+    .map(([k, v]) => '<div class="card"><b style="' + (typeof v === 'string' && v.length > 8 ? 'font-size:16px' : '') + '">' + esc(v) + '</b><span>' + k + '</span></div>').join('');
+  renderO();
+}
+document.querySelectorAll('[data-o]').forEach((b) => b.onclick = () => { oView = b.dataset.o; oEdit = cEdit = null; document.querySelectorAll('[data-o]').forEach((x) => x.setAttribute('aria-pressed', x === b)); renderO(); });
+$('#o-run').onclick = async () => { try { const r = await api('outreach/run', { method: 'POST' }); msg(r.skipped ? 'Not sent: ' + r.skipped : r.sent + ' sent' + (r.failed ? ', ' + r.failed + ' failed (see Sent emails)' : '') + (r.sent || r.failed ? '' : ' (nothing due, or outside the send window)'), !r.failed); await loadOutreach(); } catch (e) { msg(e.message, false); } };
+function renderO() {
+  const el = $('#o-body');
+  if (oView === 'contacts') el.innerHTML = cEdit ? contactForm() : contactsView();
+  else if (oView === 'campaigns') el.innerHTML = oEdit ? campaignForm() : campaignsView();
+  else if (oView === 'activity') el.innerHTML = activityView();
+  else el.innerHTML = settingsView();
+  wireO();
+}
+function typeOpts(sel) { return Object.entries(O.types).map(([k, v]) => '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + esc(v) + '</option>').join(''); }
+function contactsView() {
+  return '<section><div class="row" style="justify-content:space-between"><div class="row"><select id="oc-type" style="width:auto"><option value="">All types</option>' + typeOpts(window.ocType || '') + '</select>'
+    + '<select id="oc-st" style="width:auto"><option value="">All statuses</option>' + Object.entries(O.statuses).map(([k, v]) => '<option value="' + k + '"' + (k === window.ocSt ? ' selected' : '') + '>' + v + '</option>').join('') + '</select>'
+    + '<input type="text" id="oc-q" placeholder="Search office, name or email" value="' + esc(window.ocQ || '') + '" style="max-width:260px"></div>'
+    + '<div class="row"><button id="oc-add">+ Contact</button><label class="btn ghost" style="flex-direction:row;cursor:pointer">Import CSV<input type="file" id="oc-file" accept=".csv,text/csv" hidden></label></div></div>'
+    + '<p class="hint" style="margin-top:8px">Only public business contacts of offices and firms. Contacts without an email can still be tracked (calls, visits, referrals). Import takes <code>marketing/referral-outreach/contacts.csv</code> or any sheet with columns like type, name, email, phone.</p></section>'
+    + '<section style="padding:0;overflow:auto"><table class="lt-table"><thead><tr><th style="padding-left:16px">Office · person</th><th>Type</th><th>Email · phone</th><th>Status</th><th class="num">Emails</th><th class="num">Opened</th><th class="num">Clicked</th><th>Last email</th><th class="num">Referrals</th><th></th></tr></thead><tbody id="oc-rows"></tbody></table></section>';
+}
+function contactRows() {
+  const t = $('#oc-type').value, st = $('#oc-st').value, q = $('#oc-q').value.trim().toLowerCase();
+  window.ocType = t; window.ocSt = st; window.ocQ = q;
+  const rows = O.contacts.filter((c) => (!t || c.type === t) && (!st || c.status === st) && (!q || [c.org, c.name, c.email].some((x) => (x || '').toLowerCase().includes(q)))).sort((a, b) => (a.org || a.name).localeCompare(b.org || b.name));
+  $('#oc-rows').innerHTML = rows.map((c) => '<tr><td style="padding-left:16px"><b>' + esc(c.org || c.name) + '</b>' + (c.org && c.name ? '<div class="sm">' + esc(c.name) + (c.title ? ', ' + esc(c.title) : '') + '</div>' : '') + (c.tags && c.tags.length ? '<div class="sm">' + c.tags.map((x) => '#' + esc(x)).join(' ') + '</div>' : '') + '</td>'
+    + '<td class="sm">' + esc(O.types[c.type] || c.type) + '</td>'
+    + '<td>' + (c.email ? esc(c.email) : '<span class="badge amber">no email</span>') + '<div class="sm">' + esc(c.phone || '') + '</div></td>'
+    + '<td><span class="badge ' + (O_STATUS_CLASS[c.status] || '') + '">' + esc(O.statuses[c.status] || c.status) + '</span>' + (c.enrolled.length ? '<div class="sm">in ' + c.enrolled.map((id) => esc((O.campaigns.find((x) => x.id === id) || {}).name || '')).join(', ') + '</div>' : '') + '</td>'
+    + '<td class="num">' + c.mail.sent + '</td><td class="num">' + c.mail.opened + '</td><td class="num">' + c.mail.clicked + '</td><td class="sm">' + shortDate(c.mail.last) + '</td>'
+    + '<td class="num">' + (c.referrals.leads ? c.referrals.leads + (c.referrals.patients ? ' · ' + c.referrals.patients + ' pt' : '') : '—') + '</td>'
+    + '<td><button class="ghost small" data-ce="' + c.id + '">Open</button></td></tr>').join('') || '<tr><td colspan="10" style="padding:16px">No contacts yet. Import the starter list or add one.</td></tr>';
+  document.querySelectorAll('[data-ce]').forEach((b) => b.onclick = () => { cEdit = O.contacts.find((c) => c.id === b.dataset.ce); renderO(); });
+}
+function contactForm() {
+  const c = cEdit.id ? cEdit : { type: 'attorney', status: 'active', tags: [] };
+  const f = (k, l, t = 'text') => '<label>' + l + '<input type="' + t + '" id="cf-' + k + '" value="' + esc(c[k] || '') + '"></label>';
+  const msgs = c.id ? O.messages.filter((m) => m.contactId === c.id) : [];
+  return '<section><h2>' + (c.id ? esc(c.org || c.name) : 'New contact') + '</h2><div class="grid" style="margin-top:10px">'
+    + f('org', 'Office / firm') + f('name', 'Person (e.g. Dr. Ana Ruiz, or the office manager)') + f('title', 'Title') + f('email', 'Email (business)') + f('phone', 'Phone', 'tel') + f('website', 'Website') + f('address', 'Address') + f('city', 'City')
+    + '<label>Type<select id="cf-type">' + typeOpts(c.type) + '</select></label>'
+    + '<label>Status<select id="cf-status">' + Object.entries(O.statuses).map(([k, v]) => '<option value="' + k + '"' + (k === c.status ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></label>'
+    + '<label>Tags (comma-separated, e.g. ocala, spanish)<input type="text" id="cf-tags" value="' + esc((c.tags || []).join(', ')) + '"></label></div>'
+    + (c.suppressed ? '<p class="notice" style="margin-top:10px">This address ' + esc(c.suppressed) + '. It will not be emailed again.</p>' : '')
+    + '<p class="hint" style="margin-top:8px">Set <b>Replied</b> when they answer (it stops their emails), <b>Active partner</b> once they refer patients, <b>Do not contact</b> if they ask.</p>'
+    + '<label style="margin-top:10px">Add a note (calls, visits, who you spoke to)<textarea id="cf-note" style="min-height:60px"></textarea></label>'
+    + '<div class="row" style="margin-top:10px"><button id="cf-save">Save</button><button class="ghost" id="cf-back">Back</button>' + (c.id ? '<button class="ghost" id="cf-del">Delete contact</button>' : '') + '</div></section>'
+    + (c.id ? '<section><h2>History</h2>' + ((c.notes || []).map((n) => '<p style="color:var(--navy)">' + esc(n.text) + '<br><span class="sm">' + esc(n.by) + ' · ' + new Date(n.at).toLocaleString() + '</span></p>').join('') || '<p>No notes yet.</p>')
+      + (msgs.length ? '<h3>Emails</h3><table>' + msgs.map((m) => '<tr><td class="sm">' + fmt(m.sentAt) + '</td><td>' + esc(m.subject) + '</td><td><span class="badge ' + (MSG_CLASS[m.status] || '') + '">' + esc(m.status) + '</span></td><td class="sm">' + (m.opens ? 'opened' : '') + (m.clicks ? ' · clicked' : '') + '</td></tr>').join('') + '</table>' : '')
+      + ((c.history || []).length ? '<h3>Status changes</h3>' + c.history.map((h) => '<div class="sm">' + new Date(h.at).toLocaleString() + ' · ' + esc(O.statuses[h.status] || h.status) + ' · ' + esc(h.by) + '</div>').join('') : '') + '</section>' : '');
+}
+function campaignsView() {
+  return '<section><div class="row" style="justify-content:space-between"><div><h2>Campaigns</h2><p class="notice" style="margin-top:8px">Florida law: never offer or give anything of value for referrals (no gifts, meals tied to referrals, discounts or fees: §817.505, §456.054). Talk about fast scheduling, records and languages, as the starter emails do.</p></div><button id="cp-new">+ Campaign</button></div></section>'
+    + O.campaigns.map((c) => {
+      const s = c.stats;
+      return '<section><div class="row" style="justify-content:space-between"><div><h2>' + esc(c.name) + ' <span class="badge ' + (c.status === 'active' ? 'green' : c.status === 'paused' ? 'amber' : '') + '">' + (c.status === 'active' ? 'running' : c.status) + '</span></h2><p class="sm">For: ' + (c.types.map((t) => esc(O.types[t])).join(', ') || 'any type') + (c.tag ? ' · tag #' + esc(c.tag) : '') + ' · ' + c.steps.length + ' email' + (c.steps.length === 1 ? '' : 's') + ' (days ' + c.steps.map((x) => x.day).join(', ') + ')</p></div>'
+        + '<div class="row">' + (c.status === 'active' ? '<button class="ghost small" data-cs="' + c.id + '" data-to="paused">Pause</button>' : '<button class="small" data-cs="' + c.id + '" data-to="active">' + (c.status === 'paused' ? 'Resume' : 'Start') + '</button>') + '<button class="ghost small" data-cpe="' + c.id + '">Edit</button></div></div>'
+        + '<div class="cards" style="margin-top:10px">' + [['Enrolled', s.enrolled], ['Waiting / in progress', s.waiting + ' / ' + s.inProgress], ['Finished', s.finished], ['Sent', s.sent], ['Delivered', s.delivered], ['Opened', s.opened], ['Clicked', s.clicked], ['Replied', s.replied], ['Bounced', s.bounced], ['Unsubscribed', s.unsubscribed], ['Referred leads', s.referralLeads], ['Referred patients', s.referralPatients]].map(([k, v]) => '<div class="card"><b style="font-size:20px">' + v + '</b><span>' + k + '</span></div>').join('') + '</div></section>';
+    }).join('');
+}
+function campaignForm() {
+  const c = oEdit;
+  return '<section><h2>' + (c.id ? 'Edit campaign' : 'New campaign') + '</h2><div class="grid" style="margin-top:10px"><label>Name<input type="text" id="cp-name" value="' + esc(c.name || '') + '"></label><label>Only contacts with this tag (optional)<input type="text" id="cp-tag" value="' + esc(c.tag || '') + '"></label></div>'
+    + '<h3>Who gets it</h3><div class="checks">' + Object.entries(O.types).map(([k, v]) => '<label class="inline"><input type="checkbox" class="cp-type" value="' + k + '"' + ((c.types || []).includes(k) ? ' checked' : '') + '> ' + esc(v) + '</label>').join('') + '</div>'
+    + '<p class="hint" style="margin-top:8px">Fill-ins: <code>{first_name}</code> <code>{name}</code> <code>{org}</code> <code>{city}</code> <code>{sender_name}</code> <code>{sender_title}</code> <code>{practice_phone}</code>. A blank line starts a new paragraph; lines starting with "- " become a list. Links to therapyandinjury.com are tagged so visits show in Reports. The mailing address and unsubscribe link are added at the bottom of every email.</p>'
+    + '<div id="cp-steps">' + (c.steps || []).map((st, i) => '<div class="step" data-i="' + i + '"><div class="row"><b>Email ' + (i + 1) + '</b><label style="flex:0 0 160px">Send on day<input type="number" class="st-day" min="0" max="365" value="' + st.day + '"></label><span class="hint">' + (i === 0 ? 'day 0 = as soon as they are enrolled' : 'days after the first email') + '</span><button class="ghost small st-del" style="margin-left:auto">Remove</button></div>'
+      + '<label style="margin-top:8px">Subject<input type="text" class="st-subj" value="' + esc(st.subject) + '"></label><label style="margin-top:8px">Message<textarea class="st-body" style="min-height:220px">' + esc(st.body) + '</textarea></label>'
+      + '<div class="row" style="margin-top:8px"><button class="ghost small st-pv">Preview</button><button class="ghost small st-test">Send me a test</button></div><div class="st-out" style="margin-top:8px"></div></div>').join('') + '</div>'
+    + '<div class="row" style="margin-top:12px"><button class="ghost small" id="cp-add">+ Add email</button></div>'
+    + '<div class="row" style="margin-top:16px"><button id="cp-save">Save campaign</button><button class="ghost" id="cp-back">Back</button>' + (c.id ? '<button class="ghost" id="cp-del">Delete</button>' : '') + '</div></section>';
+}
+function collectSteps() {
+  return [...document.querySelectorAll('#cp-steps .step')].map((d) => ({ day: Number($('.st-day', d).value), subject: $('.st-subj', d).value, body: $('.st-body', d).value }));
+}
+function activityView() {
+  const camp = (id) => (O.campaigns.find((c) => c.id === id) || {}).name || (id ? '—' : 'test');
+  const who = (id) => { const c = O.contacts.find((x) => x.id === id); return c ? c.org || c.name : ''; };
+  return '<section><h2>Sent emails</h2><p class="hint">Latest 300. Opens are approximate: some mail apps (Apple Mail) and office security filters open every email automatically, so a click or a reply is the better signal. Statuses update when SendGrid reports back (Settings → event webhook).</p></section>'
+    + '<section style="padding:0;overflow:auto"><table class="lt-table"><thead><tr><th style="padding-left:16px">Sent</th><th>To</th><th>Campaign</th><th>Subject</th><th>Status</th><th class="num">Opens</th><th class="num">Clicks</th></tr></thead><tbody>'
+    + (O.messages.map((m) => '<tr><td style="padding-left:16px" class="sm">' + fmt(m.sentAt) + '</td><td><b>' + esc(who(m.contactId) || m.to) + '</b><div class="sm">' + esc(m.to) + '</div></td><td class="sm">' + esc(camp(m.campaignId)) + (m.test ? ' (test)' : ' · email ' + (m.step + 1)) + '</td><td>' + esc(m.subject) + (m.error ? '<div class="sm" style="color:var(--red)">' + esc(m.error) + '</div>' : '') + '</td><td><span class="badge ' + (MSG_CLASS[m.status] || '') + '">' + esc(m.status) + '</span>' + (m.unsubscribed ? ' <span class="badge amber">unsubscribed</span>' : '') + (m.spam ? ' <span class="badge red">spam report</span>' : '') + '</td><td class="num">' + (m.opens || 0) + '</td><td class="num">' + (m.clicks || 0) + '</td></tr>').join('') || '<tr><td colspan="7" style="padding:16px">Nothing sent yet.</td></tr>')
+    + '</tbody></table></section>';
+}
+function settingsView() {
+  const s = O.settings, g = O.sendgrid;
+  const f = (k, l, hint = '') => '<label>' + l + (hint ? '<span class="hint" style="font-weight:400">' + hint + '</span>' : '') + '<input type="text" id="os-' + k + '" value="' + esc(s[k] ?? '') + '"></label>';
+  return '<section><h2>Sender</h2><div class="grid" style="margin-top:10px">'
+    + f('fromEmail', 'From email', 'An address at a domain you verified in SendGrid, e.g. outreach@therapyandinjury.com') + f('fromName', 'From name', 'e.g. Dr. Smith, Therapy & Injury') + f('replyTo', 'Replies go to', 'An inbox someone reads every day') + f('testEmail', 'Send tests to')
+    + f('senderName', 'Your name (signature)') + f('senderTitle', 'Your title (signature)') + f('practicePhone', 'Phone in the signature') + f('physicalAddress', 'Mailing address (required by law in every email)') + '</div>'
+    + '<h3>When to send</h3><div class="row"><div class="checks">' + DAYS.map((d, i) => '<label class="inline"><input type="checkbox" class="os-day" value="' + i + '"' + (s.sendDays.includes(i) ? ' checked' : '') + '> ' + d + '</label>').join('') + '</div>'
+    + '<label>From<input type="time" id="os-sendStart" value="' + s.sendStart + '"></label><label>Until<input type="time" id="os-sendEnd" value="' + s.sendEnd + '"></label><label>Most emails per day<input type="number" id="os-dailyCap" min="1" max="500" value="' + s.dailyCap + '"></label></div>'
+    + '<p class="hint">Eastern time. Start low (20–40 a day) while the domain builds a sending reputation.</p>'
+    + '<label class="inline" style="margin-top:10px"><input type="checkbox" id="os-paused"' + (s.paused ? ' checked' : '') + '> Pause all sending</label>'
+    + '<div class="row" style="margin-top:12px"><button id="os-save">Save settings</button></div></section>'
+    + '<section><h2>SendGrid</h2><dl class="kv" style="margin-top:8px"><dt>API key</dt><dd>' + (g.keySet ? 'saved' + (g.keyFromEnv ? ' (SENDGRID_API_KEY environment variable)' : '') : '<span style="color:var(--red)">not set</span>') + '</dd><dt>Event webhook signature</dt><dd>' + (g.webhookKeySet ? 'checked' : 'not set (the secret link below still protects it)') + '</dd></dl>'
+    + '<div class="grid" style="margin-top:10px"><label>API key<span class="hint" style="font-weight:400">SendGrid → Settings → API Keys → Create (Restricted: Mail Send). Kept on the server; never shown again.</span><input type="password" id="os-key" autocomplete="off" placeholder="SG.…"></label>'
+    + '<label>Event webhook verification key (optional)<span class="hint" style="font-weight:400">SendGrid → Mail Settings → Event Webhook → enable Signed Event Webhook, then copy the verification key.</span><textarea id="os-wk" style="min-height:60px" placeholder="MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE…"></textarea></label></div>'
+    + '<div class="row" style="margin-top:10px"><button id="os-keysave">Save keys</button>' + (g.keySet && !g.keyFromEnv ? '<button class="ghost" id="os-keyclear">Remove API key</button>' : '') + '</div>'
+    + '<h3>Event webhook URL</h3><p class="hint">SendGrid → Mail Settings → Event Webhook → HTTP Post URL. Tick: Delivered, Opened, Clicked, Bounced, Dropped, Deferred, Spam reports, Unsubscribes.</p><input type="text" readonly value="' + esc(O.hooks.events) + '" onclick="this.select()">'
+    + '<h3>Cron job (keeps sending when the site is quiet)</h3><p class="hint">cPanel → Cron Jobs → Add: Common setting "Every 15 minutes", command:</p><input type="text" readonly value="' + esc('curl -fsS "' + O.hooks.tick + '" >/dev/null') + '" onclick="this.select()">'
+    + '<div class="row" style="margin-top:10px"><button class="ghost small" id="os-newtoken">Make new secret links</button><span class="hint">Do this if a link leaks, then update SendGrid and the cron job.</span></div></section>';
+}
+function wireO() {
+  const on = (id, fn) => { const el = $('#' + id); if (el) el.onclick = fn; };
+  const run = async (fn, done) => { try { const r = await fn(); msg(done, true); await loadOutreach(); return r; } catch (e) { msg(e.message, false); } };
+  if (oView === 'contacts' && !cEdit) {
+    ['oc-type', 'oc-st'].forEach((id) => $('#' + id).onchange = contactRows); $('#oc-q').oninput = contactRows; contactRows();
+    on('oc-add', () => { cEdit = {}; renderO(); });
+    $('#oc-file').onchange = async () => {
+      const f = $('#oc-file').files[0]; if (!f) return;
+      try { const r = await api('outreach/import', { method: 'POST', body: await f.text(), headers: { 'content-type': 'text/csv' } }); msg(r.added + ' added, ' + r.updated + ' updated' + (r.skipped ? ', ' + r.skipped + ' skipped' : '') + (r.problems.length ? '. ' + r.problems.join(' · ') : ''), !r.problems.length); await loadOutreach(); }
+      catch (e) { msg(e.message, false); }
+    };
+  }
+  if (oView === 'contacts' && cEdit) {
+    on('cf-back', () => { cEdit = null; renderO(); });
+    on('cf-save', async () => {
+      const body = { id: cEdit.id, note: $('#cf-note').value, type: $('#cf-type').value, status: $('#cf-status').value, tags: $('#cf-tags').value };
+      ['org', 'name', 'title', 'email', 'phone', 'website', 'address', 'city'].forEach((k) => { body[k] = $('#cf-' + k).value; });
+      const r = await run(() => api('outreach/contact', { method: 'POST', body: JSON.stringify(body) }), 'Contact saved');
+      if (r) { cEdit = O.contacts.find((c) => c.id === r.contact.id) || null; renderO(); }
+    });
+    on('cf-del', async () => { if (confirm('Delete this contact and its campaign progress? Sent-email history stays.')) { await run(() => api('outreach/contact', { method: 'POST', body: JSON.stringify({ id: cEdit.id, remove: true }) }), 'Contact deleted'); cEdit = null; renderO(); } });
+  }
+  if (oView === 'campaigns' && !oEdit) {
+    on('cp-new', () => { oEdit = { types: [], steps: [{ day: 0, subject: '', body: 'Hi {first_name},\n\n\n\nThank you,\n{sender_name}\n{sender_title}\nTherapy & Injury · {practice_phone} · therapyandinjury.com' }] }; renderO(); });
+    document.querySelectorAll('[data-cpe]').forEach((b) => b.onclick = () => { oEdit = JSON.parse(JSON.stringify(O.campaigns.find((c) => c.id === b.dataset.cpe))); renderO(); });
+    document.querySelectorAll('[data-cs]').forEach((b) => b.onclick = () => {
+      const c = O.campaigns.find((x) => x.id === b.dataset.cs);
+      if (b.dataset.to === 'active' && !confirm('Start "' + c.name + '"? Matching contacts with an email are enrolled now, and the first emails go out in the next send window (up to your daily limit).')) return;
+      run(() => api('outreach/campaign', { method: 'POST', body: JSON.stringify({ id: c.id, status: b.dataset.to }) }), b.dataset.to === 'active' ? 'Campaign running' : 'Campaign paused');
+    });
+  }
+  if (oView === 'campaigns' && oEdit) {
+    const keep = () => { oEdit.name = $('#cp-name').value; oEdit.tag = $('#cp-tag').value; oEdit.types = [...document.querySelectorAll('.cp-type:checked')].map((x) => x.value); oEdit.steps = collectSteps(); };
+    on('cp-back', () => { oEdit = null; renderO(); });
+    on('cp-add', () => { keep(); const last = oEdit.steps.at(-1); oEdit.steps.push({ day: last ? last.day + 7 : 0, subject: '', body: '' }); renderO(); });
+    document.querySelectorAll('.st-del').forEach((b) => b.onclick = () => { keep(); oEdit.steps.splice(Number(b.closest('.step').dataset.i), 1); renderO(); });
+    document.querySelectorAll('.st-pv').forEach((b) => b.onclick = async () => {
+      const d = b.closest('.step'), out = $('.st-out', d);
+      try {
+        const r = await api('outreach/preview', { method: 'POST', body: JSON.stringify({ campaignId: oEdit.id, subject: $('.st-subj', d).value, body: $('.st-body', d).value }) });
+        const doc = new DOMParser().parseFromString(r.html, 'text/html');
+        doc.querySelectorAll('a').forEach((a) => { a.target = '_blank'; a.rel = 'noopener'; });
+        out.innerHTML = '<div class="pv" style="border:1px solid var(--line);border-radius:10px;background:#fff;padding:6px 0"><div class="sm" style="padding:6px 16px;border-bottom:1px solid var(--line)"><b>Subject:</b> ' + esc(r.subject) + ' <span class="hint">(sample contact: Dr. Jane Sample, Sample Law Group)</span></div>' + doc.body.innerHTML + '</div>';
+      } catch (e) { msg(e.message, false); }
+    });
+    document.querySelectorAll('.st-test').forEach((b) => b.onclick = async () => {
+      const d = b.closest('.step');
+      try { const r = await api('outreach/test', { method: 'POST', body: JSON.stringify({ campaignId: oEdit.id, step: { subject: $('.st-subj', d).value, body: $('.st-body', d).value } }) }); msg('Test sent to ' + r.to, true); } catch (e) { msg(e.message, false); }
+    });
+    on('cp-save', async () => {
+      keep();
+      const r = await run(() => api('outreach/campaign', { method: 'POST', body: JSON.stringify({ id: oEdit.id, name: oEdit.name, tag: oEdit.tag, types: oEdit.types, steps: oEdit.steps }) }), 'Campaign saved');
+      if (r) { oEdit = null; renderO(); }
+    });
+    on('cp-del', async () => { if (confirm('Delete this campaign?')) { await run(() => api('outreach/campaign', { method: 'POST', body: JSON.stringify({ id: oEdit.id, remove: true }) }), 'Campaign deleted'); oEdit = null; renderO(); } });
+  }
+  if (oView === 'settings') {
+    on('os-save', () => {
+      const body = { sendDays: [...document.querySelectorAll('.os-day:checked')].map((x) => Number(x.value)), sendStart: $('#os-sendStart').value, sendEnd: $('#os-sendEnd').value, dailyCap: Number($('#os-dailyCap').value), paused: $('#os-paused').checked };
+      ['fromEmail', 'fromName', 'replyTo', 'testEmail', 'senderName', 'senderTitle', 'practicePhone', 'physicalAddress'].forEach((k) => { body[k] = $('#os-' + k).value; });
+      run(() => api('outreach/settings', { method: 'POST', body: JSON.stringify(body) }), 'Settings saved');
+    });
+    on('os-keysave', () => run(() => api('outreach/secrets', { method: 'POST', body: JSON.stringify({ sendgridKey: $('#os-key').value, webhookKey: $('#os-wk').value || undefined }) }), 'Keys saved'));
+    on('os-keyclear', () => { if (confirm('Remove the saved SendGrid key? Sending stops until a new one is saved.')) run(() => api('outreach/secrets', { method: 'POST', body: JSON.stringify({ clearSendgridKey: true }) }), 'API key removed'); });
+    on('os-newtoken', () => { if (confirm('Make new secret links? The old webhook URL and cron command stop working.')) run(() => api('outreach/secrets', { method: 'POST', body: JSON.stringify({ newHookToken: true }) }), 'New links made: update SendGrid and the cron job'); });
+  }
+}
 
 // ---------- team ----------
 async function loadUsers() {
@@ -472,6 +679,7 @@ $('#u-save').onclick = async () => {
   ME = await api('me', { method: 'GET', headers: {} });
   $('#who').textContent = ME.role === 'owner' ? 'Owner' : 'Signed in: ' + (ME.name || ME.user);
   $('#pf-branch').innerHTML = ME.branches.map((b) => '<option value="' + esc(b.slug) + '"' + (b.open ? '' : ' disabled') + '>' + esc(b.city) + (b.open ? '' : ' (soon)') + '</option>').join('');
+  loadPartners();
   $('#pf-heard').innerHTML = ME.howHeard.map((h) => '<option>' + esc(h) + '</option>').join('');
   $('#pf-status').innerHTML = ME.statuses.map((s) => '<option value="' + s + '"' + (s === 'contacted' ? ' selected' : '') + '>' + STATUS_LABEL[s] + '</option>').join('');
   if (ME.role !== 'owner') {

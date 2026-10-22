@@ -15,6 +15,8 @@
  * Roles: the owner signs in with ADMIN_PASSWORD (any username) and can do everything. Front-desk
  * logins (made by the owner under Team) sign in with their own username and password and only see
  * the Leads tab.
+ *
+ * Outreach (owner): referral-partner contacts and SendGrid email campaigns (outreach.js).
  */
 const fs = require('fs');
 const path = require('path');
@@ -22,6 +24,7 @@ const crypto = require('crypto');
 
 const PAGE = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8');
 const leads = require('./leads.js');
+const outreach = require('./outreach.js');
 const KEEP_BACKUPS = 15;
 const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -168,6 +171,8 @@ async function handle(req, res, url, ctx, send) {
     try {
       if (route === '/_admin/api/leads/match') return json(200, { ok: true, ...leads.matchPatients(ctx.root, (await readRaw(req, 20 * 1024 * 1024)).toString('utf8'), by) });
       const body = JSON.parse((await readRaw(req, 64 * 1024)).toString('utf8') || '{}');
+      // "Referred by": the office is looked up in the outreach contacts, never taken from the browser.
+      if ('referrerId' in body) body.referrer = body.referrerId ? outreach.partnerById(ctx.root, String(body.referrerId)) : null;
       if (route === '/_admin/api/leads/add') return json(200, { ok: true, lead: leads.addPhoneLead(ctx.root, body, by) });
       if (route === '/_admin/api/leads/update') {
         if (body.remove && who.role !== 'owner') return json(403, { ok: false, error: 'Only the owner can delete a lead' });
@@ -179,11 +184,34 @@ async function handle(req, res, url, ctx, send) {
       return json(e.status || 400, { ok: false, error: e.message });
     }
   }
+  if (req.method === 'GET' && route === '/_admin/api/partners') return json(200, { ok: true, partners: outreach.partnerList(ctx.root) });
   if (req.method === 'GET' && route === '/_admin' && who.role !== 'owner') return send(res, 200, { ...base, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'" }, PAGE);
   // Everything else is the owner's.
   if (who.role !== 'owner') return json(403, { ok: false, error: 'This login can only use the Leads tab.' });
 
   if (req.method === 'GET' && route === '/_admin/api/report') return json(200, { ok: true, ...leads.report(ctx.root, url.searchParams.get('from') || '', url.searchParams.get('to') || '') });
+  const origin = new URL(ctx.siteInfo.domain || 'https://therapyandinjury.com').origin;
+  if (req.method === 'GET' && route === '/_admin/api/outreach') return json(200, { ok: true, ...outreach.overview(ctx.root, leads.listLeads(ctx.root, '', ''), origin) });
+  if (route.startsWith('/_admin/api/outreach/')) {
+    if (req.method !== 'POST' || req.headers['x-admin-action'] !== '1') return json(400, { ok: false, error: 'Bad request' });
+    try {
+      const raw = (await readRaw(req, 5 * 1024 * 1024)).toString('utf8');
+      const act = route.slice('/_admin/api/outreach/'.length);
+      if (act === 'import') return json(200, { ok: true, ...outreach.importContacts(ctx.root, leads.parseCsv(raw.replace(/^\uFEFF/, '')), 'Owner') });
+      const body = JSON.parse(raw || '{}');
+      if (act === 'contact') return json(200, { ok: true, contact: outreach.saveContact(ctx.root, body, 'Owner') });
+      if (act === 'campaign') return json(200, { ok: true, campaign: outreach.saveCampaign(ctx.root, body) });
+      if (act === 'settings') return json(200, { ok: true, settings: outreach.saveSettings(ctx.root, body) });
+      if (act === 'secrets') return json(200, { ok: outreach.saveSecrets(ctx.root, body) });
+      if (act === 'preview') return json(200, { ok: true, ...outreach.preview(ctx.root, body, origin) });
+      if (act === 'test') return json(200, { ok: true, ...(await outreach.sendTest(ctx.root, body, origin)) });
+      if (act === 'run') return json(200, { ok: true, ...(await outreach.tick(ctx.root, origin)) });
+      return json(404, { ok: false, error: 'Unknown action' });
+    } catch (e) {
+      console.error('[outreach]', e.message);
+      return json(e.status || 400, { ok: false, error: e.message });
+    }
+  }
   if (req.method === 'GET' && route === '/_admin/api/users') return json(200, { ok: true, users: leads.listUsers(ctx.root) });
 
   if (req.method === 'GET' && route === '/_admin') return send(res, 200, { ...base, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https://i.ytimg.com; frame-ancestors 'none'" }, PAGE);

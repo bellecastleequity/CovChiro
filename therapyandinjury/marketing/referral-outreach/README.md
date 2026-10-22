@@ -8,13 +8,19 @@ It is not contact with accident victims; those people are reached only through p
 - The listings came from firm websites and directories (FindLaw, Justia, Solv, MDsave, AdventHealth). Some are years old. **Confirm each phone number and address on the first call.**
 - To grow the list, use Google Maps ("personal injury attorney Ocala", "urgent care Ocala", "MRI Ocala"), the [Florida Bar directory](https://www.floridabar.org/directories/find-mbr/) and the Ocala/Marion Chamber member directory.
 
+## Sending from the website (Outreach tab)
+The emails below are also built into the website: `/_admin` → **Outreach** imports `contacts.csv`, sends the
+sequences through SendGrid on a schedule, and tracks opens, clicks, replies, unsubscribes, and which offices
+send patients. Setup steps: `deploy/DEPLOY.md` → "Referral-partner outreach". Keep using this file for
+calls and visits, or move to the Outreach contact notes.
+
 ## Rules (read first)
 
 1. **Never give anything of value for a referral.** That includes cash, gifts, gift cards, meals tied to referrals, free or discounted care for their clients, "marketing fees", or splitting fees. It is a crime under Florida's Patient Brokering Act (§817.505). It is also grounds for discipline under §456.054 (kickbacks), and it can void PIP claims. A modest lunch-and-learn where you present, with nothing tied to referral volume, is customary. Ask your health-care attorney about anything beyond that.
 2. **Referrals must be the patient's choice.** Partners may tell people about you. Nobody may steer, pressure, or contact crash victims for you.
 3. **Never discuss a patient** with a partner unless you have that patient's signed authorization. The only exception is another treating provider's treatment needs, which HIPAA allows. Attorneys get records only with the patient's signed authorization (see the Notice of Privacy Practices).
 4. **Email (CAN-SPAM).** Send one-to-one emails from a real person. Include the practice's physical address and a line like "Reply 'no thanks' and I won't email again." Honor opt-outs immediately. Never buy email lists.
-5. **Don't use the lead system for partners.** Leads are patients (PHI). Partner contacts live in `contacts.csv`. When a patient says an attorney sent them, the front desk picks **How did you hear about us? → Attorney referral** in /_admin → Leads.
+5. **Don't use the lead system for partners.** Leads are patients (PHI). Partner contacts live in Outreach → Contacts (or `contacts.csv`). When a patient says an office sent them, the front desk picks the matching **How did you hear about us?** answer (Attorney, Doctor / clinic, Urgent care, Hospital / ER, or Imaging center referral) in /_admin → Leads, and picks the office under **Referred by**.
 
 ## What to say (the value to a partner)
 

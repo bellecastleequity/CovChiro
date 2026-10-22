@@ -18,7 +18,8 @@ const crypto = require('crypto');
 
 const STATUSES = ['new', 'contacted', 'booked', 'showed', 'patient', 'notfit', 'noanswer'];
 const STAGE = { new: 0, noanswer: 0, notfit: 0, contacted: 1, booked: 2, showed: 3, patient: 4 };
-const HOW_HEARD = ['Facebook / Instagram ad', 'YouTube', 'Google search', 'Google ad', 'Radio', 'Attorney referral', 'Friend or family', 'Drove by / signage', 'Website', 'Spanish ad', 'Creole ad', 'Returning patient', 'Other'];
+const HOW_HEARD = ['Facebook / Instagram ad', 'YouTube', 'Google search', 'Google ad', 'Radio', 'Attorney referral', 'Doctor / clinic referral', 'Urgent care referral', 'Hospital / ER referral', 'Imaging center referral', 'Friend or family', 'Drove by / signage', 'Website', 'Spanish ad', 'Creole ad', 'Returning patient', 'Other'];
+const REFERRAL = /referral$/i; // the "… referral" answers above can name the referring office
 const KEEP_BACKUPS = 14;
 
 const clean = (v, max = 120) => String(v ?? '').replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f]+/g, ' ').trim().slice(0, max);
@@ -96,6 +97,12 @@ function update(root, fn) {
   }
 }
 
+/** { id, org, type } of a referring office (from the Outreach contacts), or null. */
+function cleanReferrer(r) {
+  if (!r || typeof r !== 'object' || !/^[a-f0-9]{16}$/.test(String(r.id || ''))) return null;
+  return { id: r.id, org: clean(r.org, 160), type: clean(r.type, 20) };
+}
+
 /** Visitor source as captured by the site (first-party, no IDs): cleaned and size-limited. */
 function cleanAttr(raw) {
   let a = {};
@@ -152,6 +159,7 @@ function addPhoneLead(root, body, by) {
     lang: ['es', 'ht'].includes(body.lang) ? body.lang : 'en', name, phone,
     accidentDate: /^\d{4}-\d{2}-\d{2}$/.test(body.accidentDate || '') ? body.accidentDate : '',
     howHeard: HOW_HEARD.includes(body.howHeard) ? body.howHeard : 'Other', campaign: clean(body.campaign, 100),
+    referrer: REFERRAL.test(body.howHeard || '') ? cleanReferrer(body.referrer) : null,
     status: STATUSES.includes(body.status) ? body.status : 'contacted',
     history: [{ status: 'new', by, at: now }], notes: body.note ? [{ by, at: now, text: clean(body.note, 1000) }] : [],
   };
@@ -173,6 +181,7 @@ function changeLead(root, body, by) {
     if (body.note) l.notes.push({ by, at: now, text: clean(body.note, 1000) });
     for (const k of ['name', 'phone', 'preferredTime']) if (typeof body[k] === 'string') l[k] = clean(body[k], k === 'preferredTime' ? 120 : 100);
     if (typeof body.howHeard === 'string' && HOW_HEARD.includes(body.howHeard)) l.howHeard = body.howHeard;
+    if ('referrer' in body) l.referrer = cleanReferrer(body.referrer);
     if (body.remove === true) { db.leads = db.leads.filter((x) => x.id !== l.id); return { removed: true }; }
     return l;
   });
@@ -208,7 +217,7 @@ const inRange = (iso, from, to) => (!from || iso.slice(0, 10) >= from) && (!to |
 function report(root, from, to) {
   const db = read(root);
   const leads = db.leads.filter((l) => inRange(l.createdAt, from, to) && l.type !== 'notify');
-  const groups = { channel: {}, campaign: {}, lang: {}, branch: {} };
+  const groups = { channel: {}, campaign: {}, lang: {}, branch: {}, referrer: {} };
   const blank = () => ({ leads: 0, web: 0, phone: 0, contacted: 0, booked: 0, showed: 0, patients: 0, calls: 0, spend: 0 });
   const add = (g, key, l) => {
     const r = (groups[g][key] ||= blank());
@@ -221,6 +230,7 @@ function report(root, from, to) {
     add('campaign', l.kind === 'phone' ? l.campaign || '(phone, no campaign)' : l.attr?.c || '(no campaign)', l);
     add('lang', l.lang || 'en', l);
     add('branch', l.branch || '—', l);
+    if (l.referrer?.org) add('referrer', l.referrer.org, l);
   }
   for (const [k, n] of Object.entries(db.events)) {
     const [day, , ch, camp, , lang] = k.split('|');
@@ -248,9 +258,9 @@ function listLeads(root, from, to) {
 
 const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 function exportCsv(root, from, to) {
-  const rows = [['Received', 'Kind', 'Status', 'Name', 'Phone', 'Location', 'Language', 'Channel', 'Campaign', 'Ad / content', 'Landing page', 'Preferred time', 'Accident date', 'How heard', 'Notes']];
+  const rows = [['Received', 'Kind', 'Status', 'Name', 'Phone', 'Location', 'Language', 'Channel', 'Campaign', 'Ad / content', 'Landing page', 'Preferred time', 'Accident date', 'How heard', 'Referred by', 'Notes']];
   for (const l of listLeads(root, from, to)) {
-    rows.push([l.createdAt, l.kind, l.status, l.name, l.phone, l.branch, l.lang, l.channel, l.kind === 'phone' ? l.campaign : l.attr?.c, l.attr?.t, l.attr?.l, l.preferredTime, l.accidentDate, l.howHeard, (l.notes || []).map((n) => `${n.at.slice(0, 10)} ${n.by}: ${n.text}`).join(' | ')]);
+    rows.push([l.createdAt, l.kind, l.status, l.name, l.phone, l.branch, l.lang, l.channel, l.kind === 'phone' ? l.campaign : l.attr?.c, l.attr?.t, l.attr?.l, l.preferredTime, l.accidentDate, l.howHeard, l.referrer?.org, (l.notes || []).map((n) => `${n.at.slice(0, 10)} ${n.by}: ${n.text}`).join(' | ')]);
   }
   return rows.map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
 }
@@ -337,4 +347,4 @@ function saveUser(root, body) {
 function removeUser(root, username) { writeUsers(root, readUsers(root).filter((u) => u.username !== String(username).toLowerCase())); }
 const listUsers = (root) => readUsers(root).map(({ username, name, role, createdAt }) => ({ username, name, role, createdAt }));
 
-module.exports = { STATUSES, HOW_HEARD, addWebLead, addPhoneLead, changeLead, addEvent, setSpend, report, listLeads, exportCsv, matchPatients, checkUser, saveUser, removeUser, listUsers, channel };
+module.exports = { STATUSES, HOW_HEARD, addWebLead, addPhoneLead, changeLead, addEvent, setSpend, report, listLeads, exportCsv, matchPatients, parseCsv, checkUser, saveUser, removeUser, listUsers, channel };
