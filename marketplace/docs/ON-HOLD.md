@@ -11,6 +11,7 @@ Last release delivered: **f5a40f5** (business number + Texts inbox, website-firs
 - [ ] Settings → Growth: set "Google Maps website lookups per month" to match the free allowance in Google Cloud billing (default 1,000).
 - [ ] AWS texting: follow `docs/aws-sms-setup.md`; `AWS_SMS_ORIGINATION` = `+18555526837` once the number can text from AWS.
 - [ ] (855) 55-COVER is at **NumberBarn**: set call forwarding; later port it to AWS (Connect / End User Messaging) with a support case + letter of authorization. Confirm with AWS whether one toll-free number can carry both Connect voice and texting.
+  - AWS Connect support answered (Oct 23 2026): a toll-free number ported into Amazon Connect gets voice (inbound + outbound) only, never texting; only numbers obtained in AWS End User Messaging SMS can carry texts and be imported into Connect; no portability check is needed for U.S. toll-free; the LOA template is shared once we decide to port (ideally 30 days before go-live). Still open (End User Messaging team, formerly Pinpoint): can (855) 552-6837 be ported INTO End User Messaging with SMS + voice, verified as toll-free, then imported into Connect? If yes, one number does both; if no, decide between voice on 55-COVER + a separate AWS texting number, or a new AWS number for both. Don't port until that's answered.
 - [ ] After a few days, read the Prospecting page's "emails found on clinics' own websites (last 7 days)" to replace the 4–7× savings estimate with real numbers.
 
 ## 2. Features to build next week (Cowork)
