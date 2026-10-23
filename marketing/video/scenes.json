@@ -6,6 +6,11 @@
     "speakingRate": 1.0,
     "pitch": 0.0
   },
+  "gemini": {
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "style": "Read this as a warm, confident, professional narrator for a short software product video, at a natural unhurried pace"
+  },
   "lead_in_seconds": 0.4,
   "tail_seconds": 0.9,
   "scenes": [

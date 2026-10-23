@@ -1,11 +1,14 @@
-// Renders video.html frame by frame. node render.js <dir> <fps> [preview times] [timeline.json] [frames dir]
+// Renders video.html frame by frame. node render.js <dir> <fps> [preview times] [timeline.json] [frames dir] [page.html]
 const { chromium } = require('playwright'); const path = require('path'); const fs = require('fs');
 (async () => {
   const dir = process.argv[2], fps = +(process.argv[3] || 30), only = process.argv[4];
   const tl = process.argv[5] && fs.existsSync(process.argv[5]) ? JSON.parse(fs.readFileSync(process.argv[5], 'utf8')) : null;
-  const out = process.argv[6] || path.join(dir, 'frames');
+  const out = process.argv[6] || path.join(dir, 'frames'), page = process.argv[7] || 'video.html';
   const br = await chromium.launch(); const p = await br.newPage({ viewport: { width: 1920, height: 1080 } });
-  await p.goto('file://' + path.join(dir, 'video.html')); await p.waitForTimeout(800);
+  await p.goto('file://' + path.join(dir, page)); await p.waitForTimeout(800);
+  // Pages can set their own frame size (e.g. 1080x1920 for Reels) on <body>.
+  const [w, h] = await p.evaluate(() => [document.body.offsetWidth, document.body.offsetHeight]);
+  if (w !== 1920 || h !== 1080) { await p.setViewportSize({ width: w, height: h }); await p.waitForTimeout(300); }
   await p.evaluate((tl) => applyTimeline(tl), tl);
   const T = await p.evaluate(() => window.TOTAL);
   if (only) { for (const t of only.split(',').map(Number)) { await p.evaluate((t) => render(t), t); await p.screenshot({ path: path.join(dir, `preview_${t}.jpg`), type: 'jpeg', quality: 90 }); } await br.close(); return; }

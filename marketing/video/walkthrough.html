@@ -1,0 +1,255 @@
+<!doctype html><html><head><meta charset="utf-8"><title>InjuryCase walkthrough</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--navy:#0F1733;--navy2:#1B2552;--green:#2B3FD6;--green2:#1F2DA6;--mist:#F4F6FB;--blue:#2F6FDE;--violet:#6E56CF;--amber:#E89B1C;--teal:#0E9F9A;--muted:rgba(15,23,51,.68)}
+html,body{width:1920px;height:1080px;overflow:hidden;font-family:Inter,"Segoe UI",Arial,sans-serif;background:var(--navy)}
+.scene{position:absolute;inset:0;opacity:0}
+.dark{background:radial-gradient(1200px 700px at 75% 20%,#1E2A78 0%,var(--navy) 60%)}
+.light{background:linear-gradient(135deg,#F7F8FE 0%,#E6E9FA 100%)}
+.a{opacity:0;will-change:transform,opacity}
+h1{font-size:76px;line-height:1.05;letter-spacing:-.02em;font-weight:800}
+h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:var(--navy)}
+.lead{font-size:28px;line-height:1.45;color:var(--muted)}
+.white{color:#fff}.hl{color:var(--green)}.dark .hl,.dark .eyebrow{color:#5EEAD4}.dark .eyebrow::before{background:#5EEAD4}
+.eyebrow{font-size:18px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--green);display:flex;align-items:center;gap:12px}
+.eyebrow::before{content:"";width:34px;height:4px;border-radius:2px;background:var(--green)}
+.copy{position:absolute;left:110px;top:0;bottom:0;width:560px;display:flex;flex-direction:column;justify-content:center;gap:26px}
+.frame{position:absolute;right:90px;top:180px;width:1080px;height:713px;border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 40px 90px rgba(15,23,51,.28),0 0 0 1px rgba(15,23,51,.08)}
+.frame .bar{height:38px;background:#E9EEF5;display:flex;align-items:center;gap:8px;padding:0 16px}
+.frame .bar i{width:12px;height:12px;border-radius:50%;background:#C8D2DF}
+.frame .bar span{margin-left:14px;font-size:14px;color:#6B7A90;background:#fff;border-radius:6px;padding:4px 14px}
+.frame .view{position:absolute;top:38px;left:0;right:0;bottom:0;overflow:hidden}
+.frame img{position:absolute;left:0;top:0;width:100%}
+.card{position:absolute;background:#fff;border-radius:18px;box-shadow:0 30px 70px rgba(15,23,51,.22),0 0 0 1px rgba(15,23,51,.06);overflow:hidden}
+.card img{display:block;width:100%}
+.pts{display:flex;flex-direction:column;gap:14px}
+.pt{font-size:24px;color:var(--navy);display:flex;gap:14px;align-items:flex-start;line-height:1.35}
+.pt b{flex:none;width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;font-size:17px;display:grid;place-items:center;margin-top:2px}
+.note{font-size:17px;color:var(--muted);border-left:3px solid #C8D2DF;padding-left:12px;line-height:1.4}
+.problem{font-size:64px;font-weight:800;color:#fff;letter-spacing:-.015em}
+.problem s{text-decoration-color:var(--amber);text-decoration-thickness:6px}
+.price{position:absolute;top:330px;width:440px;height:470px;background:#fff;border-radius:22px;padding:42px;box-shadow:0 30px 70px rgba(15,23,51,.18),0 0 0 1px rgba(15,23,51,.07)}
+.price h3{font-size:34px;color:var(--navy)}.price .blurb{font-size:20px;color:var(--muted);margin-top:6px}
+.price .amt{font-size:84px;font-weight:800;color:var(--navy);margin-top:26px;letter-spacing:-.02em}.price .amt span{font-size:26px;font-weight:500;color:var(--muted)}
+.price ul{list-style:none;margin-top:22px;display:flex;flex-direction:column;gap:12px;font-size:21px;color:var(--navy)}
+.price li::before{content:"✓  ";color:var(--green);font-weight:800}
+.price.feat{border:3px solid var(--green);transform-origin:50% 50%}
+.price .tag{position:absolute;top:-18px;left:40px;background:var(--green);color:#fff;font-size:16px;font-weight:700;padding:6px 14px;border-radius:999px}
+.badge{display:flex;align-items:center;gap:20px;background:#fff;border-radius:18px;padding:24px 28px;box-shadow:0 16px 40px rgba(15,23,51,.12);width:640px}
+.badge .ic{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;font-size:30px;flex:none}
+.badge b{font-size:28px;color:var(--navy);display:block}.badge small{font-size:20px;color:var(--muted)}
+.btn{display:inline-block;background:var(--green);color:#fff;font-size:36px;font-weight:800;padding:26px 54px;border-radius:16px;box-shadow:0 18px 40px rgba(43,63,214,.4)}
+.btn.ghost{background:transparent;border:3px solid rgba(255,255,255,.6);box-shadow:none;font-size:30px;padding:20px 40px}
+.pill{position:absolute;background:var(--navy);color:#fff;font-size:22px;font-weight:700;padding:14px 22px;border-radius:14px;box-shadow:0 18px 40px rgba(15,23,51,.35)}
+.pill i{font-style:normal;color:#5EEAD4}
+.foot{position:absolute;left:0;right:0;bottom:34px;text-align:center;font-size:15px;color:rgba(15,23,51,.55)}
+.dark .foot{color:rgba(255,255,255,.55)}
+.hipaa{display:inline-flex;align-items:center;gap:14px;background:rgba(43,63,214,.14);border:2px solid rgba(94,234,212,.55);color:#fff;font-size:26px;font-weight:700;padding:14px 28px;border-radius:999px}
+.hipaa svg{width:32px;height:32px;flex:none}
+.hipaa span{color:rgba(255,255,255,.75);font-weight:500}
+.corner{position:absolute;right:90px;top:62px;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #C9CFF5;color:var(--navy);font-size:19px;font-weight:700;padding:10px 18px;border-radius:999px;box-shadow:0 8px 22px rgba(15,23,51,.10)}
+.corner svg{width:24px;height:24px}
+.corner span{color:var(--muted);font-weight:500}
+.progress{position:absolute;left:0;bottom:0;height:6px;background:var(--green);z-index:9}
+
+.chap{position:absolute;left:110px;top:64px;font-size:17px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(15,23,51,.5)}
+.chap b{color:var(--green2)}
+.dark .chap{color:rgba(255,255,255,.55)}.dark .chap b{color:#5EEAD4}
+.frame .view img.pan{transform-origin:0 0}
+.card.fixed{display:block}.card.fixed .clip{position:relative;overflow:hidden}
+.card.fixed .clip img{position:absolute;left:0;top:0;width:100%}
+.paper{position:absolute;background:#fff;border-radius:6px;box-shadow:0 40px 90px rgba(15,23,51,.28),0 0 0 1px rgba(15,23,51,.06);overflow:hidden}
+.paper img{display:block;width:100%}
+.chlist{display:grid;grid-template-columns:1fr 1fr;gap:22px 60px;margin-top:20px}
+.chlist div{font-size:34px;font-weight:700;color:#fff;display:flex;gap:22px;align-items:center}
+.chlist b{width:58px;height:58px;border-radius:50%;background:var(--green);display:grid;place-items:center;font-size:26px;flex:none}
+.story{position:absolute;right:170px;top:250px;width:640px;background:#fff;border-radius:22px;padding:44px;box-shadow:0 30px 70px rgba(0,0,0,.3)}
+.story h3{font-size:44px;color:var(--navy)}.story .tag{display:inline-block;background:#E3E7FC;color:var(--green2);font-weight:700;font-size:18px;padding:6px 14px;border-radius:999px;margin-top:10px}
+.story ul{list-style:none;margin-top:26px;display:flex;flex-direction:column;gap:16px;font-size:25px;color:var(--navy)}
+.story li span{color:var(--muted);display:block;font-size:18px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+</style></head><body>
+<!-- Generated scene layout for the full walkthrough; narration lives in walkthrough.json. -->
+<section class="scene dark" data-id="w01-open">
+<div class="a" data-in="0.3" data-fx="zoom" style="position:absolute;left:0;right:0;top:300px;text-align:center"><img src="assets/logo-horizontal-dark.svg" style="height:110px"></div>
+<h1 class="a white" data-in="1.2" data-fx="up" style="position:absolute;left:0;right:0;top:480px;text-align:center">The full <span class="hl">walkthrough</span></h1>
+<p class="a lead" data-in="2.2" data-fx="up" style="position:absolute;left:0;right:0;top:600px;text-align:center;color:rgba(255,255,255,.75)">One personal injury case, from the first call to the final check.</p>
+<div class="a" data-in="3.2" data-fx="up" style="position:absolute;left:0;right:0;top:700px;text-align:center"><span class="hipaa"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#2B3FD6"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready <span>· BAA signed with every practice · Encrypted · Two-factor sign-in</span></span></div>
+</section>
+<section class="scene dark" data-id="w02-chapters"><div class="chap">Introduction</div>
+<div style="position:absolute;left:180px;top:200px;right:180px"><div class="eyebrow a" data-in="0.3" data-fx="up">In this video</div><div class="chlist"><div class="a" data-in="0.8" data-fx="left"><b>1</b>Intake</div><div class="a" data-in="1.4" data-fx="left"><b>2</b>The first weeks of care</div><div class="a" data-in="2.0" data-fx="left"><b>3</b>Keeping patients on track</div><div class="a" data-in="2.6" data-fx="left"><b>4</b>The end of care</div><div class="a" data-in="3.2" data-fx="left"><b>5</b>Getting paid</div><div class="a" data-in="3.8" data-fx="left"><b>6</b>Running your office</div><div class="a" data-in="4.4" data-fx="left"><b>7</b>Pricing and free trial</div></div></div>
+</section>
+<section class="scene dark" data-id="w03-meet"><div class="chap"><b>Chapter 1</b> · Intake</div>
+<div style="position:absolute;left:150px;top:300px;width:760px;display:flex;flex-direction:column;gap:26px"><div class="eyebrow a" data-in="0.3" data-fx="up">Our patient</div>
+<h1 class="a white" data-in="0.6" data-fx="up">Meet <span class="hl">Maya</span>.</h1><p class="lead a" data-in="1.4" data-fx="up" style="color:rgba(255,255,255,.75)">Rear-ended at a stoplight two days ago. Her attorney's office calls to book her first visit.</p></div>
+<div class="story a" data-in="1.0" data-fx="left"><h3>Maya Collins</h3><div class="tag">Auto accident · PIP</div><ul>
+<li><span>Injury</span>Neck and low-back pain after a rear-end collision</li><li><span>Attorney</span>Hartwell &amp; Pierce, P.A.</li><li><span>Insurance</span>PIP — Sunshine Mutual Insurance</li></ul></div>
+<p class="foot">Fictional patient — every name in this video is made up.</p>
+</section>
+<section class="scene light" data-id="w04-casetype"><div class="chap"><b>Chapter 1</b> · Intake</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">New case</div><h2 class="a" data-in="0.6" data-fx="up">Pick the case type.</h2><p class="lead a" data-in="1.2" data-fx="up">Auto accident, slip &amp; fall, workers’ comp or other injury — it sets the deadlines, letters and checklist.</p></div><div class="card fixed a" data-in="0.6" data-fx="up" style="right:150px;top:150px;width:820px"><div class="clip" style="height:780px"><img src="shots_walk/form.png" class="pan" data-pan="0,0,0"></div></div>
+</section>
+<section class="scene light" data-id="w05-form"><div class="chap"><b>Chapter 1</b> · Intake</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">New case</div><h2 class="a" data-in="0.6" data-fx="up">Enter the basics once.</h2><p class="lead a" data-in="1.2" data-fx="up">Patient, date of injury, attorney, PIP carrier — and a head-injury question that shapes the referral plan.</p></div><div class="card fixed a" data-in="0.6" data-fx="up" style="right:150px;top:150px;width:820px"><div class="clip" style="height:780px"><img src="shots_walk/form.png" class="pan" data-pan="1.0,0,1"></div></div>
+</section>
+<section class="scene light" data-id="w06-newcase"><div class="chap"><b>Chapter 1</b> · Intake</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Case created</div><h2 class="a" data-in="0.6" data-fx="up">Next steps from day one.</h2><p class="lead a" data-in="1.2" data-fx="up">The MRI script at visit 1, and the EMC determination due by the end of week one.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Maya Collins · PI-26-0014</span></div><div class="view"><img src="shots_walk/newcase.png" data-kb="0.5,1,1.45,45,22"></div></div><div class="pill a" data-in="3.5" data-fx="pop" style="right:150px;top:760px"><i>●</i> MRI and EMC flagged on the first visit</div>
+</section>
+<section class="scene light" data-id="w07-checklist"><div class="chap"><b>Chapter 1</b> · Intake</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Checklist</div><h2 class="a" data-in="0.6" data-fx="up">Paperwork that protects the claim.</h2><p class="lead a" data-in="1.2" data-fx="up">Policy-limits call, letter of representation, PIP application and prior records — each with a due date and an alert.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Maya Collins · PI-26-0014 · Checklist</span></div><div class="view"><img src="shots_walk/checklist.png" data-kb="0.5,1,1.35,20,40"></div></div>
+</section>
+<section class="scene light" data-id="w08-guide"><div class="chap"><b>Chapter 2</b> · The first weeks of care</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">PI playbook</div><h2 class="a" data-in="0.6" data-fx="up">What’s next, on every case.</h2><p class="lead a" data-in="1.2" data-fx="up">MRI done. EMC done. Now the orthopedic referral, because the MRI report is in.</p></div><div class="card a" data-in="0.6" data-fx="up" style="right:110px;top:150px;width:990px"><img src="shots_walk/guide.png" data-kb="0.6,1,1.15,0,30"></div><div class="pill a" data-in="3.0" data-fx="pop" style="right:160px;top:860px"><i>●</i> Due now: orthopedic referral</div>
+</section>
+<section class="scene light" data-id="w09-why"><div class="chap"><b>Chapter 2</b> · The first weeks of care</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">PI playbook</div><h2 class="a" data-in="0.6" data-fx="up">Guidance that teaches your team.</h2><p class="lead a" data-in="1.2" data-fx="up">Every step explains why it matters.</p><p class="note a" data-in="2.4" data-fx="up">Educational guidance only — the treating provider makes every clinical decision, and any step can be marked “not needed”.</p></div><div class="card fixed a" data-in="0.6" data-fx="up" style="right:110px;top:120px;width:990px"><div class="clip" style="height:820px"><img src="shots_walk/why.png" class="pan" data-pan="0.8,0,0.42"></div></div>
+</section>
+<section class="scene light" data-id="w10-comanagement"><div class="chap"><b>Chapter 2</b> · The first weeks of care</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Co-management</div><h2 class="a" data-in="0.6" data-fx="up">Every referral, tracked.</h2><p class="lead a" data-in="1.2" data-fx="up">Ordered → scheduled → completed → report received → entered in the chart.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Maya Collins · PI-26-0014 · Co-management</span></div><div class="view"><img src="shots_walk/comanage.png" data-kb="0.5,1,1.5,0,25"></div></div>
+</section>
+<section class="scene light" data-id="w11-limits"><div class="chap"><b>Chapter 2</b> · The first weeks of care</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Policy limits</div><h2 class="a" data-in="0.6" data-fx="up">Record the limits — and the source.</h2><p class="lead a" data-in="1.2" data-fx="up">Whoever hears them, front desk or billing, notes the amounts, who said so and when.</p></div><div class="card a" data-in="0.6" data-fx="up" style="right:200px;top:140px;width:800px"><img src="shots_walk/limits.png" data-kb="0.6,1,1.06,0,40"></div><div class="pill a" data-in="2.8" data-fx="pop" style="right:240px;top:880px">BI $50,000 · UM $25,000 · <i>Attorney call</i></div>
+</section>
+<section class="scene light" data-id="w12-visits"><div class="chap"><b>Chapter 2</b> · The first weeks of care</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Visits</div><h2 class="a" data-in="0.6" data-fx="up">Visits, re-exams and the care plan.</h2><p class="lead a" data-in="1.2" data-fx="up">A re-exam every 30 days, with the plan frequency alongside — so you see when a patient falls behind.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Maya Collins · PI-26-0014 · Visits</span></div><div class="view"><img src="shots_walk/visits.png" data-kb="0.5,1,1.4,0,30"></div></div>
+</section>
+<section class="scene light" data-id="w13-outcomes"><div class="chap"><b>Chapter 2</b> · The first weeks of care</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Outcomes</div><h2 class="a" data-in="0.6" data-fx="up">Show measurable progress.</h2><p class="lead a" data-in="1.2" data-fx="up">Neck Disability Index and Oswestry scores at every re-exam.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Maya Collins · PI-26-0014 · Outcomes</span></div><div class="view"><img src="shots_walk/outcomes.png" data-kb="0.5,1,1.6,0,30"></div></div><div class="pill a" data-in="3.0" data-fx="pop" style="right:200px;top:780px">NDI <i>48 → 30</i> · Oswestry <i>42 → 28</i></div>
+</section>
+<section class="scene light" data-id="w14-gap"><div class="chap"><b>Chapter 3</b> · Keeping patients on track</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Gap in care</div><h2 class="a" data-in="0.6" data-fx="up">Missed visits, caught early.</h2><p class="lead a" data-in="1.2" data-fx="up">Outreach steps for the front desk, with every call and text logged.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Maya Collins · PI-26-0014</span></div><div class="view"><img src="shots_walk/gap.png" data-kb="0.5,1,1.2,45,25"></div></div><div class="card a" data-in="2.4" data-fx="up" style="right:60px;top:640px;width:1060px"><img src="shots_walk/outreach.png"></div>
+</section>
+<section class="scene light" data-id="w15-attendance"><div class="chap"><b>Chapter 3</b> · Keeping patients on track</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Attorney letter</div><h2 class="a" data-in="0.6" data-fx="up">Ask the attorney for help — neutrally.</h2><p class="lead a" data-in="1.2" data-fx="up">Dates seen, attempts made, a request to call the office. No judgments about the patient.</p><p class="note a" data-in="2.4" data-fx="up">Letters like this can end up in the claim file, so the wording stays factual.</p></div><div class="paper a" data-in="0.5" data-fx="up" style="right:200px;top:110px;width:860px"><img src="shots_walk/attendance.png"></div>
+</section>
+<section class="scene light" data-id="w16-dashboard"><div class="chap"><b>Chapter 3</b> · Keeping patients on track</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Dashboard</div><h2 class="a" data-in="0.6" data-fx="up">Everything, ranked by urgency.</h2><p class="lead a" data-in="1.2" data-fx="up">Gaps in care, overdue referrals, PIP billing deadlines and settlements waiting on a check.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Dashboard</span></div><div class="view"><img src="shots_walk/dashboard.png" data-kb="0.5,1,1.45,30,60"></div></div>
+</section>
+<section class="scene light" data-id="w17-huddle"><div class="chap"><b>Chapter 3</b> · Keeping patients on track</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Daily huddle</div><h2 class="a" data-in="0.6" data-fx="up">A ten-minute morning huddle.</h2><p class="lead a" data-in="1.2" data-fx="up">One printable sheet with an owner for every item. (Gold and Platinum)</p><p class="note a" data-in="2.4" data-fx="up">Platinum: a morning email digest with counts and a link — never patient details.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Daily huddle</span></div><div class="view"><img src="shots_walk/huddle.png" class="pan" data-pan="0.8,0,0.55"></div></div>
+</section>
+<section class="scene light" data-id="w18-tasks"><div class="chap"><b>Chapter 3</b> · Keeping patients on track</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Tasks</div><h2 class="a" data-in="0.6" data-fx="up">Tasks with owners and due dates.</h2><p class="lead a" data-in="1.2" data-fx="up">Assign anything to anyone, with a priority — it lands on their list and the huddle.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Tasks</span></div><div class="view"><img src="shots_walk/tasks.png" data-kb="0.5,1,1.9,20,10"></div></div>
+</section>
+<section class="scene light" data-id="w19-mmi"><div class="chap"><b>Chapter 4</b> · The end of care</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">MMI</div><h2 class="a" data-in="0.6" data-fx="up">Reached MMI? Two clicks.</h2><p class="lead a" data-in="1.2" data-fx="up">Discharge, or a maintenance plan — and the case moves to Treatment complete.</p></div><div class="card a" data-in="0.6" data-fx="up" style="right:170px;top:260px;width:900px"><img src="shots_walk/mmi.png"></div>
+</section>
+<section class="scene light" data-id="w20-txletter"><div class="chap"><b>Chapter 4</b> · The end of care</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Attorney letter</div><h2 class="a" data-in="0.6" data-fx="up">The treatment-complete letter, drafted.</h2><p class="lead a" data-in="1.2" data-fx="up">Dates of service, visit count, total charges and the balance — on your letterhead.</p></div><div class="paper a" data-in="0.5" data-fx="up" style="right:200px;top:110px;width:860px"><img src="shots_walk/txletter.png"></div>
+</section>
+<section class="scene light" data-id="w21-correspondence"><div class="chap"><b>Chapter 4</b> · The end of care</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Correspondence</div><h2 class="a" data-in="0.6" data-fx="up">Every attorney contact, logged.</h2><p class="lead a" data-in="1.2" data-fx="up">Calls, faxes and emails in one place — and a reminder when an attorney goes quiet.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Maya Collins · PI-26-0014 · Correspondence</span></div><div class="view"><img src="shots_walk/correspondence.png" data-kb="0.5,1,1.5,0,30"></div></div>
+</section>
+<section class="scene light" data-id="w22-value"><div class="chap"><b>Chapter 5</b> · Getting paid</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Case value</div><h2 class="a" data-in="0.6" data-fx="up">See what the case is worth.</h2><p class="lead a" data-in="1.2" data-fx="up">PIP remaining, medical bills against the policy limits, and soft warnings at ⅓, ½ and ¾.</p></div><div class="card fixed a" data-in="0.6" data-fx="up" style="right:200px;top:120px;width:700px"><div class="clip" style="height:840px"><img src="shots_walk/value.png" class="pan" data-pan="0.8,0,0.1"></div></div>
+</section>
+<section class="scene light" data-id="w23-ledger"><div class="chap"><b>Chapter 5</b> · Getting paid</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Ledger</div><h2 class="a" data-in="0.6" data-fx="up">One ledger per case.</h2><p class="lead a" data-in="1.2" data-fx="up">Charges, payments and adjustments, split between PIP and the patient (LOP) balance.</p><p class="note a" data-in="2.4" data-fx="up">Upload ledgers straight from your EHR.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Maya Collins · PI-26-0014 · Financials</span></div><div class="view"><img src="shots_walk/ledger.png" class="pan" data-pan="0.8,0,0.4"></div></div>
+</section>
+<section class="scene light" data-id="w24-ar"><div class="chap"><b>Chapter 5</b> · Getting paid</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">A/R &amp; settlements</div><h2 class="a" data-in="0.6" data-fx="up">Know where your money is.</h2><p class="lead a" data-in="1.2" data-fx="up">Outstanding balances across every case, by stage.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>A/R & settlements</span></div><div class="view"><img src="shots_walk/ar.png" data-kb="0.5,1,1.4,40,15"></div></div>
+</section>
+<section class="scene light" data-id="w25-reduction"><div class="chap"><b>Chapter 5</b> · Getting paid</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Reduction request</div><h2 class="a" data-in="0.6" data-fx="up">Answer reductions in one click.</h2><p class="lead a" data-in="1.2" data-fx="up">Record the attorney’s offer. The letter states your balance and what your office can accept.</p></div><div class="paper a" data-in="0.5" data-fx="up" style="right:200px;top:110px;width:860px"><img src="shots_walk/reduction.png"></div><div class="pill a" data-in="3.0" data-fx="pop" style="right:260px;top:820px">Accept <i>$1,784</i> — 80% of the balance</div>
+</section>
+<section class="scene light" data-id="w26-settled"><div class="chap"><b>Chapter 5</b> · Getting paid</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Settled</div><h2 class="a" data-in="0.6" data-fx="up">Settled. Check received. Closed.</h2><p class="lead a" data-in="1.2" data-fx="up">Start to finish, nothing slipped through the cracks.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Maya Collins · PI-26-0014</span></div><div class="view"><img src="shots_walk/closed.png" data-kb="0.5,1,1.15,50,0"></div></div><div class="pill a" data-in="2.5" data-fx="pop" style="right:150px;top:240px"><i>✓</i> Closed / paid</div>
+</section>
+<section class="scene light" data-id="w27-steps"><div class="chap"><b>Chapter 6</b> · Running your office</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Custom steps</div><h2 class="a" data-in="0.6" data-fx="up">Your office’s own steps.</h2><p class="lead a" data-in="1.2" data-fx="up">Platinum: add steps with due dates, alerts and huddle items.</p><p class="note a" data-in="2.4" data-fx="up">Any plan: switch off built-in steps your office doesn’t use.</p></div><div class="card a" data-in="0.6" data-fx="up" style="right:80px;top:300px;width:1120px"><img src="shots_walk/steps.png"></div>
+</section>
+<section class="scene light" data-id="w28-team"><div class="chap"><b>Chapter 6</b> · Running your office</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Team</div><h2 class="a" data-in="0.6" data-fx="up">A login and role for everyone.</h2><p class="lead a" data-in="1.2" data-fx="up">Front desk, billing, provider or admin — and you choose which financial details the front desk sees.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Users</span></div><div class="view"><img src="shots_walk/team.png" data-kb="0.5,1,1.35,60,20"></div></div><div class="card a" data-in="2.6" data-fx="up" style="right:60px;top:700px;width:1000px"><img src="shots_walk/finvis.png"></div>
+</section>
+<section class="scene light" data-id="w29-audit"><div class="chap"><b>Chapter 6</b> · Running your office</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">Audit log</div><h2 class="a" data-in="0.6" data-fx="up">Who did what, and when.</h2><p class="lead a" data-in="1.2" data-fx="up">Every view and every change is recorded.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>Audit log</span></div><div class="view"><img src="shots_walk/audit.png" data-kb="0.5,1,1.5,40,25"></div></div>
+</section>
+<section class="scene light" data-id="w30-states"><div class="chap"><b>Chapter 6</b> · Running your office</div>
+<div class="copy"><div class="eyebrow a" data-in="0.3" data-fx="up">State rules</div><h2 class="a" data-in="0.6" data-fx="up">Built for your state.</h2><p class="lead a" data-in="1.2" data-fx="up">Florida-built, configured for 27 states plus D.C.: PIP, no-fault, threshold and lien rules.</p><p class="note a" data-in="2.4" data-fx="up">Rules outside Florida are configured from published sources; confirm with local counsel.</p></div><div class="frame a" data-in="0.4" data-fx="right"><div class="bar"><i></i><i></i><i></i><span>PI playbook</span></div><div class="view"><img src="shots/playbook.png" data-kb="0.5,1,1.2,40,30"></div></div><div class="card a" data-in="2.6" data-fx="up" style="right:40px;top:640px;width:1100px"><img src="shots/state_ny.png"></div>
+</section>
+<section class="scene dark" data-id="w31-security"><div class="chap"><b>Chapter 6</b> · Running your office</div>
+<div style="position:absolute;left:150px;top:180px;width:700px;display:flex;flex-direction:column;gap:26px">
+    <div class="eyebrow a" data-in="0.3" data-fx="up">HIPAA &amp; security</div>
+    <h2 class="a white" data-in="0.6" data-fx="up" style="color:#fff">HIPAA-ready, from day one.</h2>
+    <p class="lead a" data-in="1.2" data-fx="up" style="color:rgba(255,255,255,.75)">A Business Associate Agreement signed with every practice, and the HIPAA Security Rule's technical safeguards built in.</p>
+    <div class="a" data-in="4.0" data-fx="up" style="display:flex;flex-wrap:wrap;gap:12px">
+      <span class="hipaa" style="font-size:20px;padding:10px 18px">Unique logins</span><span class="hipaa" style="font-size:20px;padding:10px 18px">Role-based access</span><span class="hipaa" style="font-size:20px;padding:10px 18px">Auto sign-out</span><span class="hipaa" style="font-size:20px;padding:10px 18px">Full audit trail</span></div></div>
+  <div style="position:absolute;right:150px;top:170px;display:flex;flex-direction:column;gap:20px">
+    <div class="badge a" data-in="1.4" data-fx="left"><div class="ic" style="background:#E3E7FC">🛡</div><div><b>Business Associate Agreement</b><small>Signed with every practice, every plan</small></div></div>
+    <div class="badge a" data-in="1.9" data-fx="left"><div class="ic" style="background:#FDF1DC">🔑</div><div><b>Two-factor sign-in</b><small>Required for every user</small></div></div>
+    <div class="badge a" data-in="2.4" data-fx="left"><div class="ic" style="background:#E2ECFC">🔒</div><div><b>256-bit encryption at rest</b><small>Plus TLS on every connection</small></div></div>
+    <div class="badge a" data-in="2.9" data-fx="left"><div class="ic" style="background:#DDF3F2">💾</div><div><b>Daily encrypted backups</b><small>Every access logged in the audit trail</small></div></div>
+  </div>
+</section>
+<section class="scene light" data-id="w32-pricing"><div class="chap"><b>Chapter 7</b> · Pricing and free trial</div>
+
+  <div class="a" data-in="0.3" data-fx="up" style="position:absolute;left:0;right:0;top:120px;text-align:center"><div class="eyebrow" style="justify-content:center">Simple pricing</div><h2 style="margin-top:18px">Start free. Pick a plan when you're ready.</h2></div>
+  <div class="price a" data-in="0.9" data-fx="up" style="left:230px"><h3>Silver</h3><p class="blurb">One doctor and front desk</p><div class="amt">$39<span>/month</span></div><ul><li>75 open cases · 3 users</li><li>Case guide & alerts</li><li>Attorney letters</li></ul></div>
+  <div class="price feat a" data-in="1.3" data-fx="up" style="left:740px"><div class="tag">Most popular</div><h3>Gold</h3><p class="blurb">A busy PI clinic</p><div class="amt">$59<span>/month</span></div><ul><li>300 open cases · 10 users</li><li>Daily huddle sheet</li><li>Everything in Silver</li></ul></div>
+  <div class="price a" data-in="1.7" data-fx="up" style="left:1250px"><h3>Platinum</h3><p class="blurb">Multiple doctors or locations — under your own brand</p><div class="amt">$79<span>/month</span></div><ul><li>Unlimited cases & users</li><li>2 locations included (+$29 each)</li><li>White label: your logo &amp; colors</li><li>Custom case steps</li></ul></div>
+  <div class="a" data-in="2.6" data-fx="up" style="position:absolute;left:0;right:0;top:860px;text-align:center;font-size:30px;font-weight:700;color:var(--green2)">14-day free trial · No credit card · 2 months free on annual plans</div>
+  <div class="a" data-in="3.0" data-fx="up" style="position:absolute;left:0;right:0;top:920px;text-align:center;font-size:24px;color:var(--navy)">Every plan: HIPAA safeguards, two-factor sign-in, encryption and a signed BAA</div>
+
+</section>
+<section class="scene dark" data-id="w33-import"><div class="chap"><b>Chapter 7</b> · Pricing and free trial</div>
+<div style="position:absolute;left:180px;top:330px;width:1500px;display:flex;flex-direction:column;gap:30px"><div class="eyebrow a" data-in="0.3" data-fx="up">Switching is easy</div>
+<h1 class="a white" data-in="0.6" data-fx="up">Moving from spreadsheets?</h1><p class="lead a" data-in="1.4" data-fx="up" style="color:rgba(255,255,255,.8);font-size:34px">Send us your tracking and A/R sheets — <span class="hl">we’ll import them for you.</span></p></div>
+</section>
+<section class="scene dark" data-id="w34-cta">
+
+  <div style="position:absolute;left:150px;top:200px;width:1000px;display:flex;flex-direction:column;gap:34px">
+    <img class="a" data-in="0.3" data-fx="up" src="assets/logo-horizontal-dark.svg" style="height:70px;align-self:flex-start">
+    <h1 class="a white" data-in="0.7" data-fx="up">Put every PI case<br>on track — <span class="hl">this week</span>.</h1>
+    <div class="a" data-in="1.6" data-fx="up" style="display:flex;gap:22px;align-items:center"><span class="btn">Start your free trial</span><span class="btn ghost">Book a live demo</span></div>
+    <p class="a" data-in="2.4" data-fx="up" style="font-size:30px;color:rgba(255,255,255,.85)"><b style="color:#fff">injurycase.com</b> &nbsp;·&nbsp; Demos: support@injurycase.com</p>
+    <div class="a" data-in="2.9" data-fx="up"><span class="hipaa"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#2B3FD6"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready <span>· Business Associate Agreement included</span></span></div>
+  </div>
+  <div class="a" data-in="2.0" data-fx="zoom" style="position:absolute;right:190px;top:260px;background:#fff;border-radius:24px;padding:26px;text-align:center;width:380px">
+    <img src="assets/qr.svg" style="width:328px;height:328px;display:block"><div style="font-size:22px;font-weight:700;color:var(--navy);margin-top:14px">Scan to start free</div></div>
+  <p class="foot">InjuryCase is an educational and organizational tool; clinical decisions rest with the treating provider. Demo data shown is fictional.</p>
+
+</section>
+
+<div class="progress" id="prog"></div>
+<template id="corner"><div class="corner"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 19.5 5v6c0 4.9-3.2 8.6-7.5 10.5C7.7 19.6 4.5 15.9 4.5 11V5L12 2.5Z" fill="#2B3FD6"/><path d="m8.5 12 2.4 2.4 4.6-4.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>HIPAA-ready <span>· BAA included</span></div></template>
+<script>document.querySelectorAll('.scene.light').forEach((sc) => sc.appendChild(document.getElementById('corner').content.cloneNode(true)));</script>
+<script>
+// Scene durations come from timeline.json (written by build_video.py to fit
+// each scene's voiceover); these defaults are the scene minimums in walkthrough.json.
+const DEFAULTS = [7, 9, 7, 8, 9, 8, 9, 9, 8, 8, 8, 8, 8, 9, 9, 9, 9, 7, 9, 9, 9, 9, 9, 8, 9, 9, 10, 9, 7, 9, 9, 9, 7, 11];
+let DUR = DEFAULTS.slice(), START = [], T = 0;
+function applyTimeline(durations) {
+  DUR = durations && durations.length === DEFAULTS.length ? durations : DEFAULTS.slice();
+  START = []; T = 0; for (const d of DUR) { START.push(T); T += d; }
+  window.TOTAL = T;
+}
+const ease = (x) => x < 0 ? 0 : x > 1 ? 1 : 1 - Math.pow(1 - x, 3);
+function render(t) {
+  document.querySelectorAll('.scene').forEach((s, i) => {
+    const a = START[i], b = START[i] + DUR[i] + (i < DUR.length - 1 ? 0.2 : 0);
+    const fadeIn = i === 0 ? 1 : ease((t - a) / 0.5), fadeOut = i === DUR.length - 1 ? 1 : 1 - ease((t - (b - 0.5)) / 0.5);
+    s.style.opacity = t < a || t > b ? 0 : Math.min(fadeIn, fadeOut);
+    s.style.visibility = t < a - 0.1 || t > b + 0.1 ? 'hidden' : 'visible';
+    const lt = t - a;
+    s.querySelectorAll('.a').forEach((el) => {
+      const p = ease((lt - +el.dataset.in) / 0.7), fx = el.dataset.fx, d = 1 - p;
+      el.style.opacity = p;
+      el.style.transform = fx === 'up' ? `translateY(${d * 40}px)` : fx === 'left' ? `translateX(${-d * 60}px)` : fx === 'right' ? `translateX(${d * 80}px)` : fx === 'zoom' ? `scale(${0.9 + 0.1 * p})` : fx === 'pop' ? `scale(${0.8 + 0.2 * p})` : '';
+    });
+    s.querySelectorAll('[data-kb]').forEach((img) => {
+      const [k0, s0, s1, fx, fy] = img.dataset.kb.split(',').map(Number);
+      const k = Math.min(1, Math.max(0, (lt - k0) / Math.max(1, DUR[i] - k0)));
+      const e = k * k * (3 - 2 * k);
+      img.style.transformOrigin = `${fx}% ${fy}%`;
+      img.style.transform = `scale(${s0 + (s1 - s0) * e})`;
+    });
+    s.querySelectorAll('[data-pan]').forEach((img) => {
+      const [p0, f0, f1] = img.dataset.pan.split(',').map(Number);
+      const k = Math.min(1, Math.max(0, (lt - p0) / Math.max(1, DUR[i] - p0 - 0.8)));
+      const e = k * k * (3 - 2 * k), box = img.parentElement.clientHeight;
+      const over = Math.max(0, img.naturalHeight / img.naturalWidth * img.clientWidth - box);
+      img.style.transform = `translateY(${-over * (f0 + (f1 - f0) * e)}px)`;
+    });
+  });
+  document.getElementById('prog').style.width = (t / T * 100) + '%';
+}
+window.render = render; window.applyTimeline = applyTimeline; applyTimeline(null); render(0);
+</script></body></html>

@@ -1,6 +1,6 @@
 <!doctype html><html><head><meta charset="utf-8"><style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--navy:#0F1733;--navy2:#1B2552;--indigo:#2B3FD6;--indigo2:#1F2DA6;--mint:#5EEAD4;--mist:#F4F6FB;--blue:#2F6FDE;--violet:#6E56CF;--amber:#E89B1C;--teal:#0E9F9A;--muted:rgba(15,23,51,.68)}
+:root{--navy:#0F1733;--navy2:#1B2552;--green:#2B3FD6;--green2:#1F2DA6;--mist:#F4F6FB;--blue:#2F6FDE;--violet:#6E56CF;--amber:#E89B1C;--teal:#0E9F9A;--muted:rgba(15,23,51,.68)}
 html,body{width:1920px;height:1080px;overflow:hidden;font-family:Inter,"Segoe UI",Arial,sans-serif;background:var(--navy)}
 .scene{position:absolute;inset:0;opacity:0}
 .dark{background:radial-gradient(1200px 700px at 75% 20%,#1E2A78 0%,var(--navy) 60%)}
@@ -9,9 +9,9 @@ html,body{width:1920px;height:1080px;overflow:hidden;font-family:Inter,"Segoe UI
 h1{font-size:76px;line-height:1.05;letter-spacing:-.02em;font-weight:800}
 h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:var(--navy)}
 .lead{font-size:28px;line-height:1.45;color:var(--muted)}
-.white{color:#fff}.hl{color:var(--indigo)}.dark .hl,.dark .eyebrow{color:var(--mint)}.dark .eyebrow::before{background:var(--mint)}
-.eyebrow{font-size:18px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--indigo);display:flex;align-items:center;gap:12px}
-.eyebrow::before{content:"";width:34px;height:4px;border-radius:2px;background:var(--indigo)}
+.white{color:#fff}.hl{color:var(--green)}.dark .hl,.dark .eyebrow{color:#5EEAD4}.dark .eyebrow::before{background:#5EEAD4}
+.eyebrow{font-size:18px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--green);display:flex;align-items:center;gap:12px}
+.eyebrow::before{content:"";width:34px;height:4px;border-radius:2px;background:var(--green)}
 .copy{position:absolute;left:110px;top:0;bottom:0;width:560px;display:flex;flex-direction:column;justify-content:center;gap:26px}
 .frame{position:absolute;right:90px;top:180px;width:1080px;height:713px;border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 40px 90px rgba(15,23,51,.28),0 0 0 1px rgba(15,23,51,.08)}
 .frame .bar{height:38px;background:#E9EEF5;display:flex;align-items:center;gap:8px;padding:0 16px}
@@ -23,7 +23,7 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
 .card img{display:block;width:100%}
 .pts{display:flex;flex-direction:column;gap:14px}
 .pt{font-size:24px;color:var(--navy);display:flex;gap:14px;align-items:flex-start;line-height:1.35}
-.pt b{flex:none;width:30px;height:30px;border-radius:50%;background:var(--indigo);color:#fff;font-size:17px;display:grid;place-items:center;margin-top:2px}
+.pt b{flex:none;width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;font-size:17px;display:grid;place-items:center;margin-top:2px}
 .note{font-size:17px;color:var(--muted);border-left:3px solid #C8D2DF;padding-left:12px;line-height:1.4}
 .problem{font-size:64px;font-weight:800;color:#fff;letter-spacing:-.015em}
 .problem s{text-decoration-color:var(--amber);text-decoration-thickness:6px}
@@ -31,25 +31,25 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
 .price h3{font-size:34px;color:var(--navy)}.price .blurb{font-size:20px;color:var(--muted);margin-top:6px}
 .price .amt{font-size:84px;font-weight:800;color:var(--navy);margin-top:26px;letter-spacing:-.02em}.price .amt span{font-size:26px;font-weight:500;color:var(--muted)}
 .price ul{list-style:none;margin-top:22px;display:flex;flex-direction:column;gap:12px;font-size:21px;color:var(--navy)}
-.price li::before{content:"✓  ";color:var(--indigo);font-weight:800}
-.price.feat{border:3px solid var(--indigo);transform-origin:50% 50%}
-.price .tag{position:absolute;top:-18px;left:40px;background:var(--indigo);color:#fff;font-size:16px;font-weight:700;padding:6px 14px;border-radius:999px}
+.price li::before{content:"✓  ";color:var(--green);font-weight:800}
+.price.feat{border:3px solid var(--green);transform-origin:50% 50%}
+.price .tag{position:absolute;top:-18px;left:40px;background:var(--green);color:#fff;font-size:16px;font-weight:700;padding:6px 14px;border-radius:999px}
 .badge{display:flex;align-items:center;gap:20px;background:#fff;border-radius:18px;padding:24px 28px;box-shadow:0 16px 40px rgba(15,23,51,.12);width:640px}
 .badge .ic{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;font-size:30px;flex:none}
 .badge b{font-size:28px;color:var(--navy);display:block}.badge small{font-size:20px;color:var(--muted)}
-.btn{display:inline-block;background:var(--indigo);color:#fff;font-size:36px;font-weight:800;padding:26px 54px;border-radius:16px;box-shadow:0 18px 40px rgba(43,63,214,.4)}
+.btn{display:inline-block;background:var(--green);color:#fff;font-size:36px;font-weight:800;padding:26px 54px;border-radius:16px;box-shadow:0 18px 40px rgba(43,63,214,.4)}
 .btn.ghost{background:transparent;border:3px solid rgba(255,255,255,.6);box-shadow:none;font-size:30px;padding:20px 40px}
 .pill{position:absolute;background:var(--navy);color:#fff;font-size:22px;font-weight:700;padding:14px 22px;border-radius:14px;box-shadow:0 18px 40px rgba(15,23,51,.35)}
 .pill i{font-style:normal;color:#5EEAD4}
 .foot{position:absolute;left:0;right:0;bottom:34px;text-align:center;font-size:15px;color:rgba(15,23,51,.55)}
 .dark .foot{color:rgba(255,255,255,.55)}
-.hipaa{display:inline-flex;align-items:center;gap:14px;background:rgba(43,63,214,.14);border:2px solid rgba(127,224,176,.55);color:#fff;font-size:26px;font-weight:700;padding:14px 28px;border-radius:999px}
+.hipaa{display:inline-flex;align-items:center;gap:14px;background:rgba(43,63,214,.14);border:2px solid rgba(94,234,212,.55);color:#fff;font-size:26px;font-weight:700;padding:14px 28px;border-radius:999px}
 .hipaa svg{width:32px;height:32px;flex:none}
 .hipaa span{color:rgba(255,255,255,.75);font-weight:500}
 .corner{position:absolute;right:90px;top:62px;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #C9CFF5;color:var(--navy);font-size:19px;font-weight:700;padding:10px 18px;border-radius:999px;box-shadow:0 8px 22px rgba(15,23,51,.10)}
 .corner svg{width:24px;height:24px}
 .corner span{color:var(--muted);font-weight:500}
-.progress{position:absolute;left:0;bottom:0;height:6px;background:var(--indigo);z-index:9}
+.progress{position:absolute;left:0;bottom:0;height:6px;background:var(--green);z-index:9}
 </style></head><body>
 
 <!-- 1. open -->
@@ -68,7 +68,7 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
     <div class="problem a" data-in="2.0" data-fx="left">A missed deadline that costs a case thousands.</div>
     <div class="problem a" data-in="3.2" data-fx="left">Attorneys waiting on updates.</div>
     <div class="problem a" data-in="4.4" data-fx="left">Patients slipping through the cracks.</div>
-    <div class="a" data-in="6.0" data-fx="up" style="font-size:44px;font-weight:800;color:var(--mint);margin-top:20px">There's a better way to run your PI cases.</div>
+    <div class="a" data-in="6.0" data-fx="up" style="font-size:44px;font-weight:800;color:#5EEAD4;margin-top:20px">There's a better way to run your PI cases.</div>
   </div>
 </section>
 
@@ -153,8 +153,8 @@ h2{font-size:58px;line-height:1.08;letter-spacing:-.015em;font-weight:800;color:
   <div class="a" data-in="0.3" data-fx="up" style="position:absolute;left:0;right:0;top:120px;text-align:center"><div class="eyebrow" style="justify-content:center">Simple pricing</div><h2 style="margin-top:18px">Start free. Pick a plan when you're ready.</h2></div>
   <div class="price a" data-in="0.9" data-fx="up" style="left:230px"><h3>Silver</h3><p class="blurb">One doctor and front desk</p><div class="amt">$39<span>/month</span></div><ul><li>75 open cases · 3 users</li><li>Case guide & alerts</li><li>Attorney letters</li></ul></div>
   <div class="price feat a" data-in="1.3" data-fx="up" style="left:740px"><div class="tag">Most popular</div><h3>Gold</h3><p class="blurb">A busy PI clinic</p><div class="amt">$59<span>/month</span></div><ul><li>300 open cases · 10 users</li><li>Daily huddle sheet</li><li>Everything in Silver</li></ul></div>
-  <div class="price a" data-in="1.7" data-fx="up" style="left:1250px"><h3>Platinum</h3><p class="blurb">Multiple doctors or locations — under your own brand</p><div class="amt">$79<span>/month</span></div><ul><li>Unlimited cases & users</li><li>Email digest · locations</li><li>White label: your logo &amp; colors</li><li>Everything in Gold</li></ul></div>
-  <div class="a" data-in="2.6" data-fx="up" style="position:absolute;left:0;right:0;top:860px;text-align:center;font-size:30px;font-weight:700;color:var(--indigo2)">14-day free trial · No credit card · 2 months free on annual plans</div>
+  <div class="price a" data-in="1.7" data-fx="up" style="left:1250px"><h3>Platinum</h3><p class="blurb">Multiple doctors or locations — under your own brand</p><div class="amt">$79<span>/month</span></div><ul><li>Unlimited cases & users</li><li>2 locations included (+$29 each)</li><li>White label: your logo &amp; colors</li><li>Everything in Gold</li></ul></div>
+  <div class="a" data-in="2.6" data-fx="up" style="position:absolute;left:0;right:0;top:860px;text-align:center;font-size:30px;font-weight:700;color:var(--green2)">14-day free trial · No credit card · 2 months free on annual plans</div>
   <div class="a" data-in="3.0" data-fx="up" style="position:absolute;left:0;right:0;top:920px;text-align:center;font-size:24px;color:var(--navy)">Every plan: HIPAA safeguards, two-factor sign-in, encryption and a signed BAA</div>
 </section>
 

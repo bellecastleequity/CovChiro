@@ -1,0 +1,55 @@
+{
+  "html": "walkthrough.html",
+  "vo_dir": "vo_walkthrough",
+  "out": "InjuryCase full walkthrough.mp4",
+  "gemini": {
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "style": "Read this as a warm, confident, professional narrator for a software product walkthrough video, at a natural unhurried pace"
+  },
+  "lead_in_seconds": 0.5,
+  "tail_seconds": 0.8,
+  "scenes": [
+    {"id": "w01-open", "chapter": "Introduction", "min": 7, "text": "This is a full walkthrough of InjuryCase, HIPAA-ready case management for personal injury clinics. We'll follow one patient from the first phone call to the final check, and show how your team stays on top of every step along the way."},
+    {"id": "w02-chapters", "min": 9, "text": "We'll cover intake, the first weeks of care, keeping patients on track, the end of care, getting paid, and the tools that run your office. Use the chapters to jump straight to any part."},
+
+    {"id": "w03-meet", "chapter": "Intake", "min": 7, "text": "Meet Maya Collins. Two days ago she was rear-ended at a stoplight, and her attorney's office calls to set up her first visit. Like every name in this video, she's fictional."},
+    {"id": "w04-casetype", "min": 8, "text": "Your front desk clicks New case and picks the case type: auto accident, slip and fall, workers' comp, or another injury. That one choice decides which deadlines, letters and checklist items apply."},
+    {"id": "w05-form", "min": 9, "text": "Then they enter the basics: the patient, the date of injury, the referring attorney and the PIP carrier. If the patient hit their head, that's noted here too, because it changes the referrals the case may need."},
+    {"id": "w06-newcase", "min": 8, "text": "Save, and the case is ready. The next steps are already laid out: the MRI script at the first visit, and the EMC determination due by the end of week one."},
+    {"id": "w07-checklist", "min": 9, "text": "The checklist covers the paperwork that protects the claim: call the attorney and ask for the policy limits, get the letter of representation, the PIP application and prior records. Each item has a due date, and overdue items raise an alert."},
+
+    {"id": "w08-guide", "chapter": "The first weeks of care", "min": 9, "text": "A few weeks in, here's Maya's case. The MRI is done, EMC was determined in week one, and the playbook shows what's next: an orthopedic referral, now that the MRI report is in."},
+    {"id": "w09-why", "min": 8, "text": "Every step explains why it matters, so new staff learn your PI process as they go. It's guidance only. Your doctors always make the clinical calls, and any step can be marked not needed."},
+    {"id": "w10-comanagement", "min": 8, "text": "The Co-management tab tracks every referral from ordered, to scheduled, to completed and report received, including whether the findings made it into the chart."},
+    {"id": "w11-limits", "min": 8, "text": "When the attorney shares the policy limits, anyone on the team can record them, along with where the number came from. That powers the case value view you'll see later."},
+    {"id": "w12-visits", "min": 8, "text": "Visits are logged as they happen, with a re-exam every thirty days and the treatment plan frequency right alongside, so you can see if a patient is falling behind."},
+    {"id": "w13-outcomes", "min": 8, "text": "Outcome surveys, like the Neck Disability Index and the Oswestry, are recorded at each re-exam, so you can show the attorney measurable progress."},
+
+    {"id": "w14-gap", "chapter": "Keeping patients on track", "min": 9, "text": "Then Maya misses a week, then two. InjuryCase flags the gap in care, and walks your front desk through outreach: a call, a text, and a logged attempt each time."},
+    {"id": "w15-attendance", "min": 9, "text": "If she still can't be reached, one click creates a scheduling assistance letter to her attorney. The wording is neutral and factual, because letters like this can end up in the claim file."},
+    {"id": "w16-dashboard", "min": 9, "text": "All of this rolls up to the dashboard: every open case ranked by urgency, with Maya's gap in care right alongside overdue referrals and PIP billing deadlines."},
+    {"id": "w17-huddle", "min": 9, "text": "Each morning, print the daily huddle sheet and run a ten-minute team meeting, with an owner for every item. On Platinum, each person can also get a morning email digest, with counts and a link, but never patient details."},
+    {"id": "w18-tasks", "min": 7, "text": "Anything can become a task. Assign it, set a due date and priority, and it shows up on that person's list."},
+
+    {"id": "w19-mmi", "chapter": "The end of care", "min": 9, "text": "Maya comes back and finishes her treatment plan. At her final re-exam, her doctor decides she's reached maximum medical improvement. Mark MMI, choose discharge or a maintenance plan, and the case moves to treatment complete."},
+    {"id": "w20-txletter", "min": 9, "text": "The treatment complete letter is drafted for you on your letterhead, with the dates of service, the visit count, total charges and the balance. Print it, send it, and log it."},
+    {"id": "w21-correspondence", "min": 9, "text": "Every call, fax and email with the attorney is logged on the case. If the attorney goes quiet, the dashboard reminds you to ask for a status update, and that letter is one click too."},
+
+    {"id": "w22-value", "chapter": "Getting paid", "min": 9, "text": "Now the money. The case value view shows PIP used and remaining, and total medical bills against the policy limits, with soft warnings before a big reduction surprises you."},
+    {"id": "w23-ledger", "min": 9, "text": "Charges, payments and adjustments live in one ledger per case, split between the PIP carrier and the patient balance. You can also upload the ledger straight from your EHR."},
+    {"id": "w24-ar", "min": 8, "text": "The A R and settlements report shows what's outstanding across every case, by stage, so you always know where your money is."},
+    {"id": "w25-reduction", "min": 9, "text": "When the case settles and the attorney asks for a reduction, record their offer. The reduction response letter states your balance, and the amount your office can accept."},
+    {"id": "w26-settled", "min": 9, "text": "Once the reduction is authorized, the case waits in Settled until the check arrives. Record the check, and Maya's case is closed and paid. Start to finish, nothing slipped through the cracks."},
+
+    {"id": "w27-steps", "chapter": "Running your office", "min": 10, "text": "Every office does things a little differently. On the Platinum plan, add your own case steps, like a welcome call or progress photos, with due dates, alerts and huddle items. On any plan, you can switch off built-in steps your office doesn't use."},
+    {"id": "w28-team", "min": 9, "text": "Give each person their own login and role: front desk, billing, provider or admin. You decide exactly which financial details the front desk can see."},
+    {"id": "w29-audit", "min": 7, "text": "Every view and every change is recorded in the audit log, so you always know who did what, and when."},
+    {"id": "w30-states", "min": 9, "text": "InjuryCase was built in Florida and is configured for twenty-seven states plus D.C. Each case follows its state's PIP, no-fault, threshold and lien rules, and the playbook explains what's different."},
+    {"id": "w31-security", "min": 9, "text": "And it's HIPAA-ready from day one. We sign a Business Associate Agreement with every practice, and the Security Rule's technical safeguards are built in: two-factor sign-in, encryption, role-based access, automatic sign-out, a complete audit trail, and daily encrypted backups."},
+
+    {"id": "w32-pricing", "chapter": "Pricing and free trial", "min": 9, "text": "Plans start at thirty-nine dollars a month for Silver. Gold adds the daily huddle for a busy clinic, and Platinum adds multiple locations, the email digest and custom steps. Every plan has the same HIPAA safeguards and a signed BAA."},
+    {"id": "w33-import", "min": 7, "text": "Moving from spreadsheets? Send us your tracking and A R sheets, and we'll import them for you."},
+    {"id": "w34-cta", "min": 11, "text": "Start your fourteen-day free trial at injurycase.com. No credit card required. Or email support at injurycase.com to book a live demo. Thanks for watching."}
+  ]
+}

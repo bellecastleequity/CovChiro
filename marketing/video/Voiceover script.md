@@ -1,6 +1,6 @@
 # InjuryCase sales video — voiceover script
 
-The video (`InjuryCase sales video.mp4`, 1:48, 1080p) is built to play muted, with every point on screen. HIPAA readiness is shown from the first scene: a badge on the opening, a corner badge on every product screen, a full HIPAA & security scene, the pricing line and the closing call to action. To add a voice, record these lines to match the timecodes (about 140 words a minute — calm and confident), then send the audio file and it will be merged into the video. A doctor's own voice works best with clinic owners.
+The video (`InjuryCase sales video.mp4`, 2:32, 1080p) is built to play muted, with every point on screen. HIPAA readiness is shown from the first scene: a badge on the opening, a corner badge on every product screen, a full HIPAA & security scene, the pricing line and the closing call to action. It is narrated with the Gemini voice (see "Switching the voice" below); timecodes shift slightly to fit the voice. A doctor's own recording also works and often lands best with clinic owners.
 
 | Time | On screen | Voiceover |
 |---|---|---|
@@ -27,7 +27,13 @@ The video (`InjuryCase sales video.mp4`, 1:48, 1080p) is built to play muted, wi
 
 The video fits itself to the voice. Each scene lasts its default length or as long as its voiceover clip needs, whichever is longer, so rewording a line or changing voices never cuts anything off. The lines live in `scenes.json`.
 
-**Google Cloud Text-to-Speech (recommended)**
+**Gemini voice (what the current video uses)**
+1. Needs only `GEMINI_API_KEY` (already set in this Claude environment; on your computer: `export GEMINI_API_KEY=...`).
+2. `python3 tts_gemini.py` writes one clip per scene to `vo/`. The voice (`Charon`) and the delivery note ("warm, confident, professional narrator…") are in the `gemini` block of `scenes.json`.
+3. Compare voices with `python3 tts_gemini.py --sample Charon,Kore,Algieba,Sulafat` (writes `vo/samples/`), switch with `--voice Kore`, redo one line with `--only 04-playbook`.
+4. `python3 build_video.py` renders the video with the voice mixed in.
+
+**Google Cloud Text-to-Speech (alternative)**
 1. In Google Cloud, enable the Text-to-Speech API and create an API key restricted to it.
 2. Add it as the `GOOGLE_TTS_API_KEY` secret (in this Claude environment: environment settings → Network secrets or environment variables; on your computer: `export GOOGLE_TTS_API_KEY=...`).
 3. `python3 tts_google.py` writes one clip per scene to `vo/`. Try voices with `--voice` (e.g. `en-US-Neural2-D`, `en-US-Studio-Q`, or a Chirp 3 HD voice) and list them with `--list en-US`; redo one line with `--only 04-playbook`.
@@ -35,9 +41,40 @@ The video fits itself to the voice. Each scene lasts its default length or as lo
 
 **Your own recording:** save one file per scene as `vo/01-open.mp3` … `vo/11-cta.mp3` (any of .mp3/.wav/.m4a), or a single take as `vo/full.mp3` timed to the table above, then run `build_video.py`.
 
-**Music:** drop a licensed track in as `music.mp3`; it's mixed quietly under the voice and fades out at the end.
+**Music:** `music.mp3` is a royalty-free track generated with vidIQ ("light corporate presentation": soft piano, warm pads, ~95 BPM), crossfaded into an 8½-minute bed so the walkthrough never loops abruptly. It's mixed about 18 dB under the voice, fades in and out, and is used by both videos. Swap in any other licensed track under the same name. To change only the music, run `build_video.py --remix` (add `--scenes walkthrough.json --work .build/walk` for the walkthrough); it reuses the rendered picture and redoes the audio in seconds.
 
 ## Rebuilding the screens
 
 1. With the app running locally, `node seed_and_shoot.js shots` seeds a fictional demo clinic (every name is made up) and captures the screens.
 2. Edit wording or layout in `video.html` (each element's `data-in` is seconds after its scene starts), then `python3 build_video.py`.
+
+## Full walkthrough (6–8 minutes)
+
+`InjuryCase full walkthrough.mp4` follows one fictional patient, Maya Collins, from intake to a closed, paid case, with the same HIPAA elements as the overview (opening badge, corner badge on every product screen, a HIPAA & security scene, the pricing line and the end-card badge), in seven chapters: intake, the first weeks of care, keeping patients on track, the end of care, getting paid, running your office, and pricing. Use it for the website's "Watch the demo", replies to interested clinics, and after trial sign-up. The overview video above stays the one for cold outreach.
+
+- **Script:** every line is in `walkthrough.json` (same format as `scenes.json`; a scene with a `"chapter"` starts a chapter).
+- **Chapters:** each build writes `InjuryCase full walkthrough chapters.txt`, ready to paste into a YouTube description.
+- **Voice:** `python3 tts_gemini.py --scenes walkthrough.json` (clips go to `vo_walkthrough/`; redo one line with `--only w19-mmi`).
+- **Video:** `python3 build_video.py --scenes walkthrough.json`. Scenes stretch to fit their voice clips, as with the overview.
+- **Screens:** with the app running locally, run `node seed_and_shoot.js shots` (seeds the demo clinic), then `node walkthrough_shoot.js shots_walk`. It opens Maya's case through the real New case form and moves it through every stage. The layout is in `walkthrough.html`.
+
+## 15- and 30-second ads
+
+`InjuryCase ad 15s.mp4` and `InjuryCase ad 30s.mp4` (16:9). Theme: "Whether you're new to personal injury or an experienced clinic, InjuryCase keeps every case on track." Every spoken point is also on screen, for viewers watching muted. HIPAA appears as in the overview: a HIPAA-ready badge under the main promise and on the end card, a corner badge on product screens, and (30s) a "HIPAA-ready security" tile and line.
+
+- Script and timing are in `ad15.json` / `ad30.json`; the layout is in `ad15.html` / `ad30.html`.
+- `"total_seconds"` locks the exact length: the end card absorbs any spare time, and the build stops if the voice runs over.
+- `"trim_silence"` trims each clip's own pauses for tighter timing, and `"music_volume"` sets the music a little louder than in the long videos.
+- Rebuild: `python3 tts_gemini.py --scenes ad30.json`, then `python3 build_video.py --scenes ad30.json --work .build/ad30` (same for `ad15`).
+
+### Instagram sizes
+
+Same voice and timing, with layouts rebuilt for each frame:
+- **Reels & Stories, 9:16 (1080×1920):** `InjuryCase ad 30s 9x16.mp4`, `InjuryCase ad 15s 9x16.mp4`. Text and key visuals stay out of the top ~250px and bottom ~420px, where Instagram's own buttons and captions sit.
+- **Feed, 4:5 (1080×1350):** `InjuryCase ad 30s 4x5.mp4`, `InjuryCase ad 15s 4x5.mp4`.
+- Layouts: `ad30_9x16.html`, `ad30_4x5.html`, `ad15_9x16.html`, `ad15_4x5.html`. Build one with, e.g., `python3 build_video.py --scenes ad30.json --html ad30_9x16.html --out "InjuryCase ad 30s 9x16.mp4" --work .build/ad30_9x16`.
+- These end on a "Start free trial" button graphic instead of the QR code. On Instagram the ad's own call-to-action button (e.g. "Sign Up") does the linking.
+
+## QR code
+
+Every QR code in the videos (`assets/qr.svg`) opens **https://injurycase.com/start**, which the site redirects to the free-trial sign-up (`/app.html#signup`). The redirect is one line in `pi_portal/public/.htaccess`: point it somewhere else (a promotion, a landing page) and every QR already posted follows, with no re-rendering. To check a video's code after a rebuild, scan the end card with a phone camera.
