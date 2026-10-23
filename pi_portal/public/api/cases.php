@@ -31,7 +31,7 @@ const CASE_FIELDS = [
     'limits_source' => 'str:160', 'limits_noted_on' => 'date',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
     'mediation_on' => 'date', 'trial_on' => 'date', 'settlement_signed_on' => 'date', 'disbursement_expected_on' => 'date',
-    'narrative_request' => ['pending', 'none', 'without_ratings', 'with_ratings'], 'narrative_requested_on' => 'date',
+    'narrative_request' => ['pending', 'none', 'without_ratings', 'with_ratings'], 'narrative_requested_on' => 'date', 'narrative_fee' => 'money', 'narrative_fee_ack_by' => 'str:120',
 ];
 // The attorney's answers to the final narrative request.
 const NARRATIVE_CHOICES = ['without_ratings' => 'Yes — without AMA impairment ratings', 'with_ratings' => 'Yes — with AMA whole-person impairment ratings', 'none' => 'No — not needed'];
@@ -45,7 +45,7 @@ const LIMIT_CASE_FIELDS = ['liability_carrier', 'bi_limit', 'um_limit', 'other_m
 // Case status dates heard from the attorney's office: front desk or billing.
 const STATUS_DATE_FIELDS = ['mediation_on', 'trial_on', 'settlement_signed_on', 'disbursement_expected_on',
     // Automatic status requests (front desk or billing may set them up).
-    'case_manager_name', 'case_manager_email', 'auto_status', 'auto_status_to', 'auto_status_every', 'narrative_request', 'narrative_requested_on'];
+    'case_manager_name', 'case_manager_email', 'auto_status', 'auto_status_to', 'auto_status_every', 'narrative_request', 'narrative_requested_on', 'narrative_fee', 'narrative_fee_ack_by'];
 const FINANCE_CASE_FIELDS = ['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'balance_forwarded_on', 'balance_forwarded_amount'];
 
 const CHILD_SPECS = [
@@ -313,6 +313,7 @@ function full_case(int $id, array $user): array {
             'pipLabel' => $rules['pip_label'], 'pipMedical' => $rules['pip_medical'], 'emcRule' => $rules['emc_rule'], 'emcCap' => $rules['emc_cap'],
             'tortOptions' => $rules['tort_options'], 'lopDisclosure' => $rules['lop_disclosure'], 'demandLetter' => (bool)$rules['demand_letter'],
             'balanceBilling' => $rules['balance_billing'], 'balanceNote' => $rules['balance_note'], 'summary' => jurisdiction_summary($rules)],
+        'narrativeFees' => narrative_fees(),
         'checklist' => $checklist, 'guide' => $guideFlow, 'guideOrder' => ['case' => guide_order_from($c['guide_order'] ?? null) !== null, 'practice' => guide_order_from(current_practice()['guide_order'] ?? null) !== null],
         'alerts' => $alerts, 'caseValue' => $caseValue, 'statusRequests' => status_info($c),
         'otherCases' => array_values(array_filter(patient_card((int)$c['patient_id'])['cases'], fn($x) => $x['id'] !== (int)$c['id'])),
@@ -440,6 +441,14 @@ function handle_update() {
     if (array_key_exists('stage', $cols) && $cols['stage'] === null) unset($cols['stage']);
     // A "yes" to the narrative starts its 30-day clock (unless a date was given).
     if (in_array($cols['narrative_request'] ?? null, ['without_ratings', 'with_ratings'], true) && empty($cols['narrative_requested_on']) && empty($c['narrative_requested_on'])) $cols['narrative_requested_on'] = date('Y-m-d');
+    // A "yes" returned on the paper form: the fee that applies, and the
+    // attorney's acknowledgment of it when they signed for it.
+    if (in_array($cols['narrative_request'] ?? null, ['without_ratings', 'with_ratings'], true) && !array_key_exists('narrative_fee', $cols)) $cols['narrative_fee'] = narrative_fee_for(narrative_fees(), $cols['narrative_request']);
+    if (in_array($cols['narrative_request'] ?? null, ['none', 'pending'], true)) $cols += ['narrative_fee' => null, 'narrative_fee_ack_at' => null, 'narrative_fee_ack_by' => null, 'narrative_fee_ack_via' => null];
+    if (array_key_exists('narrative_fee_ack', $caseIn)) {
+        if (!empty($caseIn['narrative_fee_ack'])) { if (!$c['narrative_fee_ack_at']) $cols += ['narrative_fee_ack_at' => now_str(), 'narrative_fee_ack_via' => 'form']; }
+        else $cols += ['narrative_fee_ack_at' => null, 'narrative_fee_ack_via' => null, 'narrative_fee_ack_by' => null];
+    }
     $changes = audit_diff(CASE_FIELDS, $c, $cols);
     if (!empty($cols)) {
         $cols['updated_at'] = now_str();
@@ -1252,6 +1261,7 @@ function handle_dashboard() {
     $alerts = [];
     $ar = ['insurance' => 0.0, 'patient' => 0.0, 'total' => 0.0, 'legal' => 0.0];
     $treating = 0;
+    $narratives = [];
     foreach ($cases as $c) {
         $x = $ctx[(int)$c['id']];
         foreach (case_alerts($c, $x) as $a) {
@@ -1265,7 +1275,16 @@ function handle_dashboard() {
         $ar['total'] += $x['totals']['total_balance'];
         if (in_array($c['stage'], LEGAL_STAGES, true)) $ar['legal'] += $x['totals']['total_balance'];
         if ($c['actively_treating'] && in_array($c['stage'], ['intake', 'treating'], true)) $treating++;
+        // Final narratives the attorney has asked for and that aren't sent yet.
+        if (in_array($c['narrative_request'], ['without_ratings', 'with_ratings'], true)) {
+            $item = current(array_filter($x['checklist'] ?? [], fn($i) => $i['key'] === 'final_narrative'));
+            if (!$item || !in_array($item['status'], ['done', 'na'], true)) $narratives[] = ['caseId' => (int)$c['id'], 'patient' => patient_name($c), 'caseNumber' => $c['case_number'],
+                'kind' => $c['narrative_request'], 'requestedOn' => $c['narrative_requested_on'], 'due' => $item['due'] ?? null,
+                'fee' => fin_can($user, 'balances') ? ($c['narrative_fee'] !== null ? (float)$c['narrative_fee'] : null) : null, 'hasFee' => $c['narrative_fee'] !== null,
+                'ackAt' => $c['narrative_fee_ack_at'], 'ackBy' => $c['narrative_fee_ack_by'], 'ackVia' => $c['narrative_fee_ack_via']];
+        }
     }
+    usort($narratives, fn($a, $b) => strcmp($a['due'] ?? '9999', $b['due'] ?? '9999'));
     $rank = ['high' => 0, 'medium' => 1, 'low' => 2];
     usort($alerts, fn($a, $b) => $rank[$a['level']] <=> $rank[$b['level']]);
     // Suggestions to strengthen cases, across the practice.
@@ -1288,7 +1307,7 @@ function handle_dashboard() {
         'visitsThisWeek' => $visitsThisWeek, 'newThisMonth' => $newThisMonth,
         'ar' => fin_can($user, 'balances') ? array_map(fn($v) => round($v, 2), $ar) : null,
         'alerts' => array_slice($alerts, 0, 200), 'alertCounts' => array_count_values(array_column($alerts, 'level')),
-        'tasks' => $tasks,
+        'tasks' => $tasks, 'narratives' => $narratives,
         'tips' => array_slice($tips, 0, 200), 'tipCounts' => array_count_values(array_column($tips, 'category')), 'tipCategories' => TIP_CATEGORIES,
     ]);
 }
@@ -1546,13 +1565,19 @@ function handle_letter() {
         $practiceHead = letterhead($c);
         $return = implode(' or ', array_filter([$practiceHead['fax'] ? 'fax ' . $h($practiceHead['fax']) : null, !empty($practiceHead['email']) ? 'email ' . $h($practiceHead['email']) : null])) ?: 'reply to our office';
         $box = '<span style="display:inline-block;width:14px;height:14px;border:1.5px solid #0B2340;margin-right:8px;vertical-align:-2px"></span>';
+        $fees = narrative_fees();
+        $feeTxt = fn($choice) => ($f = narrative_fee_for($fees, $choice)) ? ' — <strong>fee ' . $money($f) . '</strong>' : '';
+        $charges = $fees['charge'] && (narrative_fee_for($fees, 'without_ratings') || narrative_fee_for($fees, 'with_ratings'));
         $body .= '<p>At this point, please let us know whether you would like a final narrative report prepared for your client, ' . $name . '. Please mark one and return by ' . $return . ':</p>'
-            . '<p style="line-height:2">' . $box . 'Yes, <strong>without</strong> AMA impairment ratings (will include discussion of impairment, if any; percentages not included).*<br>'
-            . $box . 'Yes, <strong>with</strong> AMA whole-person impairment ratings (will include discussion of impairment, if any; percentages included).*<br>'
+            . '<p style="line-height:2">' . $box . 'Yes, <strong>without</strong> AMA impairment ratings (will include discussion of impairment, if any; percentages not included)' . $feeTxt('without_ratings') . ($charges ? '*' : '') . '<br>'
+            . $box . 'Yes, <strong>with</strong> AMA whole-person impairment ratings (will include discussion of impairment, if any; percentages included)' . $feeTxt('with_ratings') . ($charges ? '*' : '') . '<br>'
             . $box . 'No, our firm does not need a final narrative report for ' . $name . '.</p>'
-            . '<p style="font-size:10pt">*Any applicable charges will be included on the patient\'s account balance.</p>'
+            . ($charges ? '<p style="font-size:10pt">*Our office charges a fee for the final narrative report, as shown above. It will be added to the patient\'s account balance.</p>'
+                . '<p>' . $box . 'If requesting a report, <strong>we acknowledge the narrative report fee</strong> marked above.</p>'
+                : ($fees['asked'] ? '<p style="font-size:10pt">There is no charge for the final narrative report.</p>' : '<p style="font-size:10pt">*Any applicable charges will be included on the patient\'s account balance.</p>'))
             . (!empty($_GET['balance']) && fin_can($user, 'balances') ? '<p>As of today, the total outstanding balance for this patient is <strong>' . $money($d['totals']['total_balance'] ?? 0) . '</strong>.</p>' : '')
-            . '<p style="margin-top:18px">Signature: ______________________________ &nbsp; Date: ______________</p>';
+            . '<p style="margin-top:18px">Printed name: ______________________________</p>'
+            . '<p>Signature: ______________________________ &nbsp; Date: ______________</p>';
     } else {
         json_response(['error' => 'Unknown letter type'], 400);
     }

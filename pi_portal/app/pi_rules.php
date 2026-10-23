@@ -524,6 +524,24 @@ function care_guide(array $case, array $referrals, array $guideRows = [], array 
     return $steps;
 }
 
+// Final narrative report fees: whether the practice charges, and how much
+// without / with AMA impairment ratings. 'asked' is false until the
+// practice has answered (the end-of-treatment letter asks).
+function narrative_fees(?array $practice = null): array {
+    $p = $practice ?? current_practice();
+    $j = $p && !empty($p['narrative_fees']) ? json_decode($p['narrative_fees'], true) : null;
+    if (!is_array($j)) return ['asked' => false, 'charge' => false, 'without' => null, 'with' => null];
+    $amt = fn($v) => $v === null || $v === '' ? null : round(max(0, (float)$v), 2);
+    return ['asked' => true, 'charge' => !empty($j['charge']), 'without' => !empty($j['charge']) ? $amt($j['without'] ?? null) : null, 'with' => !empty($j['charge']) ? $amt($j['with'] ?? null) : null];
+}
+
+// The fee for an answer (without_ratings / with_ratings), or null if none.
+function narrative_fee_for(array $fees, ?string $choice): ?float {
+    if (!$fees['charge']) return null;
+    $f = $choice === 'with_ratings' ? $fees['with'] : ($choice === 'without_ratings' ? $fees['without'] : null);
+    return $f > 0 ? $f : null;
+}
+
 // The care guide as a flow the clinic follows: what's been done first, in
 // the order it actually happened (each re-exam as its own entry), then
 // what's next — in the clinic's own order when it has set one (for this

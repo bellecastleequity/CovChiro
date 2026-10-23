@@ -18,6 +18,7 @@
   if (!r.ok) return message(r.data.code === 'closed' ? 'No reply needed' : 'Link not available', r.data.error);
   const d = r.data, pr = d.practice;
   if (d.respondedAt) return message('Thank you', `A reply was received on ${day(d.respondedAt)}. To add anything, please contact ${pr.name}${pr.phone ? ' at ' + pr.phone : ''}.`, 'ok');
+  const fees = d.narrativeFees || {};
   const dateInput = (k, l) => `<div><label for="sr-${k}">${esc(l)}</label><input type="date" id="sr-${k}" name="${k}" value="${esc(d.known[k] || '')}"></div>`;
   box.innerHTML = `<div class="status-head">
       <p class="eyebrow">Case status update request</p>
@@ -37,8 +38,9 @@
         <div><label for="sr-paid-on">Date sent</label><input type="date" id="sr-paid-on" name="payment_sent_on"></div>
         <div><label for="sr-amt">Amount</label><input type="number" id="sr-amt" name="payment_amount" min="0" step="0.01" inputmode="decimal"></div>
         <div><label for="sr-chk">Check #</label><input id="sr-chk" name="check_number" maxlength="40"></div></div></fieldset>
-      ${d.narrative ? `<fieldset><legend>Final narrative report</legend><p class="small muted">Treatment has ended. Would you like a final narrative report for your client? Any applicable charges are included on the patient's account balance.</p>
-        ${Object.entries(d.narrative).map(([k, l]) => `<label class="radio"><input type="radio" name="narrative" value="${k}"> ${esc(l)}</label>`).join('')}</fieldset>` : ''}
+      ${d.narrative ? `<fieldset><legend>Final narrative report</legend><p class="small muted">Treatment has ended. Would you like a final narrative report for your client? ${fees.charge && (fees.without_ratings || fees.with_ratings) ? 'This office charges a fee for the report, as shown; it is added to the patient\'s account balance.' : 'There is no charge for the report.'}</p>
+        ${Object.entries(d.narrative).map(([k, l]) => `<label class="radio"><input type="radio" name="narrative" value="${k}"> ${esc(l)}${fees[k] ? ` — <b>fee ${esc(money(fees[k]))}</b>` : ''}</label>`).join('')}
+        <label class="radio status-ack" id="sr-ack" hidden><input type="checkbox" name="ack_fee" value="1"> <span>I acknowledge the narrative report fee of <b id="sr-ack-amt"></b>, to be added to the patient's account balance.</span></label></fieldset>` : ''}
       <fieldset><legend>Do you need anything from the office?</legend>
         ${Object.entries(d.needs).map(([k, l]) => `<label class="radio"><input type="checkbox" name="needs" value="${k}"> ${esc(l)}</label>`).join('')}</fieldset>
       <label for="sr-note">Anything else? <span class="muted">(optional)</span></label><textarea id="sr-note" name="note" rows="3" maxlength="2000"></textarea>
@@ -48,6 +50,14 @@
       <button class="btn lg" type="submit">Send update</button>
     </form>`;
   const form = document.getElementById('sr-form');
+  // Choosing a report that carries a fee asks for the acknowledgment.
+  const feeFor = () => fees[(form.querySelector('input[name="narrative"]:checked') || {}).value] || null;
+  form.addEventListener('change', (e) => {
+    if (e.target.name !== 'narrative') return;
+    const ack = document.getElementById('sr-ack'), f = feeFor();
+    ack.hidden = !f;
+    if (f) document.getElementById('sr-ack-amt').textContent = money(f); else ack.querySelector('input').checked = false;
+  });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = new FormData(form), body = {};
@@ -56,6 +66,7 @@
     const err = document.getElementById('sr-err');
     if (!body.status) { err.textContent = 'Choose the current status of the case.'; return; }
     if (!String(body.name || '').trim()) { err.textContent = 'Enter your name.'; return; }
+    if (d.narrative && feeFor() && !body.ack_fee) { err.textContent = `Please acknowledge the narrative report fee of ${money(feeFor())}, or choose a different option.`; return; }
     form.querySelector('button').disabled = true;
     const res = await api('reply', body);
     if (res.ok) message('Thank you — update received', `${pr.name} has your update. You can close this page.`, 'ok');

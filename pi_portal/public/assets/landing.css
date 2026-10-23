@@ -256,6 +256,8 @@ h1,h2,h3{letter-spacing:-0.025em;line-height:1.15;}
 .status-form input:not([type=radio]):not([type=checkbox]),.status-form textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font:inherit;}
 .status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 16px;}
 .status-form .err{color:#B42318;min-height:1.2em;}
+.status-form .status-ack{background:#FFF7E6;border:1px solid #F5C26B;border-radius:10px;padding:10px 12px;}
+.status-form label[hidden]{display:none;}
 .status-foot{margin-top:28px;}
 
 /* Legal page */

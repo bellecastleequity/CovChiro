@@ -27,6 +27,9 @@ CREATE TABLE practices (
   email VARCHAR(190) NULL,
   -- The practice's default order for a case's "Next steps" (JSON keys).
   guide_order VARCHAR(255) NULL,
+  -- Whether the practice charges for a final narrative report, and its
+  -- fees without / with AMA impairment ratings (JSON; null = not asked yet).
+  narrative_fees TEXT NULL,
   state CHAR(2) NOT NULL DEFAULT 'FL',
   -- Which financial categories the staff role may see (comma list of
   -- balances, ledger, settlement). Empty = none.
@@ -280,6 +283,12 @@ CREATE TABLE cases (
   -- without_ratings, with_ratings (AMA whole-person impairment), and when.
   narrative_request VARCHAR(20) NULL,
   narrative_requested_on DATE NULL,
+  -- The narrative fee the attorney agreed to, and their acknowledgment
+  -- (who, when, and whether online or on the returned form).
+  narrative_fee DECIMAL(10,2) NULL,
+  narrative_fee_ack_at DATETIME NULL,
+  narrative_fee_ack_by VARCHAR(120) NULL,
+  narrative_fee_ack_via VARCHAR(10) NULL,
   referral_source ENUM('attorney','self','provider','other') NULL,
   referred_by_contact_id INT NULL,
   referred_by_text VARCHAR(160) NULL,

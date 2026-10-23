@@ -148,7 +148,7 @@ function status_reply_summary(array $r): string {
     $lines = ['Status: ' . (STATUS_REPLY_OPTIONS[$r['status']] ?? $r['status'])];
     foreach (STATUS_REPLY_DATES as $k => $l) if (!empty($r[$k])) $lines[] = "$l: " . us_date($r[$k]);
     if (!empty($r['payment_sent_on']) || !empty($r['payment_amount'])) $lines[] = 'Payment sent: ' . ($r['payment_amount'] ? '$' . number_format((float)$r['payment_amount'], 2) : 'amount not given') . ($r['payment_sent_on'] ? ' on ' . us_date($r['payment_sent_on']) : '') . ($r['check_number'] ? ' (check #' . $r['check_number'] . ')' : '');
-    if (!empty($r['narrative'])) $lines[] = 'Final narrative report: ' . STATUS_NARRATIVE[$r['narrative']];
+    if (!empty($r['narrative'])) $lines[] = 'Final narrative report: ' . STATUS_NARRATIVE[$r['narrative']] . (!empty($r['fee_ack']) ? ' — fee of $' . number_format((float)$r['narrative_fee'], 2) . ' acknowledged' : '');
     if (!empty($r['needs'])) $lines[] = 'Needs from the office: ' . implode(', ', array_map(fn($k) => STATUS_NEEDS[$k], $r['needs']));
     if (!empty($r['note'])) $lines[] = 'Note: ' . $r['note'];
     $lines[] = 'Replied by: ' . $r['name'] . (!empty($r['email']) ? ' <' . $r['email'] . '>' : '');

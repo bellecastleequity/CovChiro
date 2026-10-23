@@ -482,7 +482,8 @@ async function pageDashboard(main) {
         <ul class="alerts" id="dash-alerts"></ul></div>
       <div>${dashTipsHtml(d)}<div class="card"><div class="card-head"><h2>My tasks (next 7 days)</h2><span class="spacer"></span><a class="small" href="#/tasks">All tasks</a><button class="btn ghost sm" data-act="new-task">+ Task</button></div>
         ${taskListHtml(d.tasks, true, 'Nothing assigned to you this week.')}</div></div>
-    </div>`;
+    </div>
+    ${dashNarrativesHtml(d.narratives || [])}`;
   let showAll = false;
   const renderAlerts = () => {
     const lvl = document.getElementById('alert-level').value;
@@ -503,6 +504,18 @@ async function pageDashboard(main) {
   // Default to the urgent and important items so the list is workable.
   document.getElementById('alert-level').value = (ac.high || 0) + (ac.medium || 0) > 0 ? 'medium' : '';
   renderAlerts();
+}
+
+// Final narratives the attorney requested, with the fee acknowledgment.
+function dashNarrativesHtml(list) {
+  if (!list.length) return '';
+  return `<div class="card mt"><div class="card-head"><h2>Final narratives to prepare</h2><span class="badge-count">${list.length}</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Patient</th><th>Report</th><th>Requested</th><th>Due</th><th>Fee</th></tr></thead><tbody>
+    ${list.map((n) => `<tr><td><a href="#/case/${n.caseId}">${esc(n.patient)}</a> <span class="muted small mono">${esc(n.caseNumber)}</span></td>
+      <td>${n.kind === 'with_ratings' ? 'With AMA ratings' : 'Without ratings'}</td><td>${esc(fmtDate(n.requestedOn))}</td>
+      <td class="${n.due && n.due < today() ? 'warn-text' : ''}">${esc(fmtDate(n.due))}</td>
+      <td>${!n.hasFee ? '<span class="muted">No charge</span>' : `${n.fee !== null ? esc(money2(n.fee)) + ' · ' : ''}${n.ackAt ? `<span class="ok-text">Acknowledged${n.ackBy ? ' by ' + esc(n.ackBy) : ''} ${esc(fmtDate(n.ackAt.slice(0, 10)))}</span>` : '<span class="warn-text">Not acknowledged</span>'}`}</td></tr>`).join('')}
+    </tbody></table></div></div>`;
 }
 
 // Tasks rendered anywhere are kept here so a click can open them for editing.
@@ -846,7 +859,7 @@ function tabOverview(el, d) {
         ${row('LOP signed', c.lop_signed_on ? fmtDate(c.lop_signed_on) + (c.lop_acknowledged_on ? ' · firm acknowledged ' + fmtDate(c.lop_acknowledged_on) : ' · not countersigned') : '')}
         ${c.mediation_on || c.trial_on ? row('Mediation · trial', (fmtDate(c.mediation_on) || '—') + ' · ' + (fmtDate(c.trial_on) || '—')) : ''}
         ${c.settlement_signed_on || c.disbursement_expected_on ? row('Settlement', (c.settlement_signed_on ? 'signed ' + fmtDate(c.settlement_signed_on) : '') + (c.disbursement_expected_on ? (c.settlement_signed_on ? ' · ' : '') + 'check expected ' + fmtDate(c.disbursement_expected_on) : '')) : ''}
-        ${c.discharge_date || c.mmi_date || c.narrative_request ? `<dt>Final narrative</dt><dd>${esc(NARRATIVE_LABELS[c.narrative_request] || 'Not asked yet')}${c.narrative_requested_on && ['without_ratings', 'with_ratings'].includes(c.narrative_request) ? ' · requested ' + esc(fmtDate(c.narrative_requested_on)) : ''}${can('case.write') || can('finance.write') ? ' <button class="linklike small" data-act="narrative">Record answer</button>' : ''}</dd>` : ''}
+        ${c.discharge_date || c.mmi_date || c.narrative_request ? `<dt>Final narrative</dt><dd>${esc(NARRATIVE_LABELS[c.narrative_request] || 'Not asked yet')}${c.narrative_requested_on && ['without_ratings', 'with_ratings'].includes(c.narrative_request) ? ' · requested ' + esc(fmtDate(c.narrative_requested_on)) : ''}${narrFeeLine(c) ? `<br><span class="small ${c.narrative_fee_ack_at ? 'ok-text' : 'warn-text'}">${esc(narrFeeLine(c))}</span>` : ''}${can('case.write') || can('finance.write') ? ' <button class="linklike small" data-act="narrative">Record answer</button>' : ''}</dd>` : ''}
         ${row('Actively treating', c.actively_treating == 1 ? 'Yes' : 'No')}
         ${row('Treatment plan', c.plan_visits_per_week ? `${+c.plan_visits_per_week}x/week${c.plan_set_on ? ' since ' + fmtDate(c.plan_set_on) : ''}` : '')}
         ${row('Head injury', Object.fromEntries(HEAD_INJURY_OPTS)[c.head_injury])}
@@ -2576,6 +2589,10 @@ async function pageSettings(main) {
       <label class="check"><input type="checkbox" id="sq-balance"${p.statusRules.show_balance ? ' checked' : ''}> Show the outstanding balance on the reply page (helps with payment status)</label>
       <p class="small muted mt-sm">${p.autoStatusCount} open case${p.autoStatusCount === 1 ? '' : 's'} currently ${p.autoStatusCount === 1 ? 'has' : 'have'} automatic requests on. Requests go out on weekday mornings.</p>
       ${p.hasAutoStatus ? '<div class="badge-row mt"><button class="btn" data-act="save-status-rules">Save</button><button class="btn ghost" data-act="save-status-rules" data-enable="1">Save and turn on for open cases with an attorney</button></div>' : ''}</div>
+    <div class="card mt" id="narr-fee-card"><h2>Final narrative reports</h2>
+      <p class="small">Does your office charge for a final narrative report? The end-of-treatment letter and the attorney's online reply page show your fee next to each option, and an attorney who requests a report acknowledges the fee. You'll see who acknowledged it, and when, on the case.</p>
+      ${narrFeeFields(p.narrativeFees)}
+      <button class="btn mt" data-act="save-narrative-fees">Save</button></div>
     <div class="card mt"><div class="card-head"><h2>Locations</h2><span class="spacer"></span>${hasFeature('locations') ? '<button class="btn ghost sm" data-act="location-edit">+ Add location</button>' : ''}</div>
       <p class="small">Run more than one office in this account: each case belongs to a location (its letterhead is used on letters and exports), lists filter by location, and team members can be limited to their own location's patients.</p>
       <div id="locations-list" class="mt">${hasFeature('locations') ? '<div class="empty">Loading…</div>' : `<div class="notice">Multiple locations are part of the ${esc(featureInfo('locations').planName)} plan.</div>`}</div></div>
@@ -3008,6 +3025,32 @@ function exportFileModal() {
     } });
 }
 
+// "Do you charge for a final narrative?" — yes/no and the two fees.
+function narrFeeFields(f) {
+  const yes = f.asked && f.charge;
+  return `<div class="nf-fields"><div class="badge-row mt-sm"><label class="check"><input type="radio" name="nf-charge" value="0"${f.asked && !f.charge ? ' checked' : ''}> No, we don't charge</label>
+      <label class="check"><input type="radio" name="nf-charge" value="1"${yes ? ' checked' : ''}> Yes, we charge a fee</label></div>
+    <div class="form-grid mt-sm nf-amounts"${yes ? '' : ' hidden'}><div><label for="nf-without">Fee — without AMA impairment ratings ($)</label><input type="number" id="nf-without" min="0" step="0.01" value="${f.without ?? ''}"></div>
+      <div><label for="nf-with">Fee — with AMA whole-person ratings ($)</label><input type="number" id="nf-with" min="0" step="0.01" value="${f.with ?? ''}"></div></div></div>`;
+}
+function readNarrFees(root) {
+  const c = root.querySelector('[name="nf-charge"]:checked');
+  if (!c) return null;
+  return { charge: c.value === '1', without: root.querySelector('#nf-without').value, with: root.querySelector('#nf-with').value };
+}
+document.addEventListener('change', (e) => {
+  if (e.target.name !== 'nf-charge') return;
+  const amts = e.target.closest('.nf-fields').querySelector('.nf-amounts');
+  amts.hidden = e.target.value !== '1';
+});
+const money2 = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Fee and acknowledgment line for a requested narrative.
+function narrFeeLine(c) {
+  if (!['without_ratings', 'with_ratings'].includes(c.narrative_request) || !c.narrative_fee) return '';
+  return c.narrative_fee_ack_at ? `Fee ${money2(c.narrative_fee)} — acknowledged${c.narrative_fee_ack_by ? ' by ' + c.narrative_fee_ack_by : ''} on ${fmtDate(c.narrative_fee_ack_at.slice(0, 10))} (${c.narrative_fee_ack_via === 'online' ? 'online reply' : 'returned form'})`
+    : `Fee ${money2(c.narrative_fee)} — not acknowledged yet`;
+}
+
 const NARRATIVE_LABELS = { pending: 'Asked — waiting for the attorney', none: 'Not needed (attorney declined)', without_ratings: 'Requested — without AMA impairment ratings', with_ratings: 'Requested — with AMA whole-person impairment ratings' };
 
 // End of treatment letter: MMI (outcome wording chosen by the provider) or
@@ -3018,10 +3061,20 @@ function eocLetterModal() {
   if (!c.discharge_date && !c.mmi_date) return toast('Record MMI, or that the patient stopped coming, under Next steps first.', true);
   const defs = [...(selfReleased ? [] : [{ n: 'outcome', l: "Outcome (use the treating provider's findings)", t: 'select', blank: false, opts: [['improved', 'Significant improvement in pain and function'], ['residual', 'Improved, with some symptoms remaining'], ['unresolved', 'Conservative care has not resolved the symptoms']] }]),
     ...(fin('balances') ? [{ n: 'balance', l: 'Include the outstanding balance', t: 'check' }] : [])];
+  const nf = S.caseData.narrativeFees || { asked: true };
+  const feeAsk = !nf.asked ? (can('users.manage') ? `<div class="notice mt"><b>Does your office charge for a final narrative report?</b> Your answer goes on the letter (and is saved for next time under Settings).${narrFeeFields(nf)}</div>`
+      : '<p class="small muted mt">Your office hasn\'t said yet whether it charges for a final narrative report, so the letter says any charges go on the patient\'s balance. An administrator can set the fee under Settings.</p>')
+    : `<p class="small muted mt">${nf.charge ? `Your fee is shown on the letter${nf.without ? ' — ' + money2(nf.without) + ' without ratings' : ''}${nf.with ? ', ' + money2(nf.with) + ' with ratings' : ''}, and the attorney acknowledges it.` : 'The letter says there is no charge for the report.'} Change this under Settings.</p>`;
   openModal({ title: 'End of treatment — narrative request', okText: 'Open letter', body: `<p class="small">${selfReleased ? 'Tells the attorney the patient stopped coming (care ended without MMI) and asks whether they need a final narrative report.' : 'Tells the attorney the patient reached MMI' + (c.maintenance_every_days && !c.discharge_date ? ' and is moving to maintenance care' : ' and was released from care') + ', and asks whether they need a final narrative report.'}
- The attorney marks: yes without AMA ratings, yes with AMA whole-person ratings, or no. Record their answer on the case when it comes back.</p>${defs.length ? fieldsHtml(defs, { balance: true }) : ''}`,
+ The attorney marks: yes without AMA ratings, yes with AMA whole-person ratings, or no. Record their answer on the case when it comes back.</p>${defs.length ? fieldsHtml(defs, { balance: true }) : ''}${feeAsk}`,
     onOk: async (el) => {
       const v = defs.length ? readFields(el, defs) : {};
+      if (!nf.asked && can('users.manage')) {
+        const f = readNarrFees(el);
+        if (!f) { toast('Choose whether your office charges for a final narrative.', true); return false; }
+        await api('admin.php?action=narrative_fees_save', f);
+        S.caseData.narrativeFees = { asked: true, charge: f.charge, without: +f.without || null, with: +f.with || null };
+      }
       window.open('api/cases.php?action=letter&type=end_of_care&id=' + c.id + (v.outcome ? '&outcome=' + v.outcome : '') + (v.balance ? '&balance=1' : ''), '_blank', 'noopener');
       if (!c.narrative_request) { S.caseData = await api('cases.php?action=update&id=' + c.id, { case: { narrative_request: 'pending' } }); renderCase(); }
     } });
@@ -3031,8 +3084,24 @@ function narrativeModal() {
   const c = S.caseData.case;
   const defs = [{ n: 'narrative_request', l: "Attorney's answer", t: 'select', blank: false, opts: [['pending', 'Asked — waiting'], ...Object.entries({ without_ratings: 'Yes — without AMA impairment ratings', with_ratings: 'Yes — with AMA whole-person impairment ratings', none: 'No — not needed' })] },
     { n: 'narrative_requested_on', l: 'Date requested (the report is due 30 days later)', t: 'date' }];
-  openModal({ title: 'Final narrative report', okText: 'Save', body: fieldsHtml(defs, { narrative_request: c.narrative_request || 'pending', narrative_requested_on: c.narrative_requested_on || '' }),
-    onOk: async (el) => { S.caseData = await api('cases.php?action=update&id=' + c.id, { case: readFields(el, defs) }); renderCase(); toast('Saved'); } });
+  const nf = S.caseData.narrativeFees || {};
+  const feeOf = (k) => k === 'with_ratings' ? nf.with : (k === 'without_ratings' ? nf.without : null);
+  const isYes = (k) => ['without_ratings', 'with_ratings'].includes(k);
+  const feeDefs = [{ n: 'narrative_fee', l: 'Narrative fee ($, blank = no charge)', t: 'money' }, { n: 'narrative_fee_ack_by', l: 'Acknowledged by (name on the form)' }];
+  const feeBox = `<div id="nm-fee" class="mt"${isYes(c.narrative_request) ? '' : ' hidden'}>${fieldsHtml(feeDefs, { narrative_fee: c.narrative_fee ?? (nf.charge ? feeOf(c.narrative_request) ?? '' : ''), narrative_fee_ack_by: c.narrative_fee_ack_by || '' })}
+    <label class="check mt-sm"><input type="checkbox" id="nm-ack"${c.narrative_fee_ack_at ? ' checked' : ''}> The attorney acknowledged the fee (checked it on the returned form)</label>
+    ${c.narrative_fee_ack_at ? `<p class="small muted">${esc(narrFeeLine(c))}</p>` : ''}</div>`;
+  const m = openModal({ title: 'Final narrative report', okText: 'Save', body: fieldsHtml(defs, { narrative_request: c.narrative_request || 'pending', narrative_requested_on: c.narrative_requested_on || '' }) + feeBox,
+    onOk: async (el) => {
+      const v = readFields(el, defs);
+      if (isYes(v.narrative_request)) Object.assign(v, readFields(el, feeDefs), { narrative_fee_ack: el.querySelector('#nm-ack').checked && !!el.querySelector('[name="narrative_fee"]').value });
+      S.caseData = await api('cases.php?action=update&id=' + c.id, { case: v }); renderCase(); toast('Saved');
+    } });
+  m.el.querySelector('[name="narrative_request"]').addEventListener('change', (e) => {
+    const yes = isYes(e.target.value);
+    m.el.querySelector('#nm-fee').hidden = !yes;
+    if (yes && nf.charge && !c.narrative_fee) m.el.querySelector('[name="narrative_fee"]').value = feeOf(e.target.value) ?? '';
+  });
 }
 
 function endCareModal() {
@@ -3192,6 +3261,12 @@ const ACTIONS = {
     if (!(await confirmBox('Send a status request now?', `An email with a secure reply link goes to ${sr.recipients.join(', ')}. No patient details are in the email.`, 'Send'))) return;
     const r = await attempt(() => api('cases.php?action=status_send&id=' + S.caseData.case.id, {}));
     if (r) { S.caseData = r; renderCase(); toast('Request sent to ' + r.to.join(', ')); }
+  },
+  'save-narrative-fees': async () => {
+    const v = readNarrFees(document.getElementById('narr-fee-card'));
+    if (!v) return toast('Choose whether your office charges for a final narrative.', true);
+    const r = await attempt(() => api('admin.php?action=narrative_fees_save', v));
+    if (r) toast('Saved');
   },
   'save-status-rules': async (el) => {
     const box = document.getElementById('status-rules-card');

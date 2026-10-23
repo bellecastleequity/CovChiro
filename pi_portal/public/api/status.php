@@ -35,6 +35,8 @@ if ($action === 'view') {
         'options' => STATUS_REPLY_OPTIONS, 'needs' => STATUS_NEEDS, 'dates' => STATUS_REPLY_DATES,
         // At the end of care, the final narrative question too.
         'narrative' => ($case['discharge_date'] || $case['mmi_date']) && !in_array($case['narrative_request'], ['none', 'without_ratings', 'with_ratings'], true) ? STATUS_NARRATIVE : null,
+        // The practice's fee for each kind of report (null = no charge).
+        'narrativeFees' => ['charge' => ($nf = narrative_fees($practice))['charge'], 'without_ratings' => narrative_fee_for($nf, 'without_ratings'), 'with_ratings' => narrative_fee_for($nf, 'with_ratings')],
         'expiresAt' => $req['expires_at'], 'respondedAt' => $req['responded_at'],
     ]);
 }
@@ -54,6 +56,10 @@ $r = ['status' => $status, 'name' => $name, 'email' => $email, 'note' => str_or_
     'needs' => array_values(array_intersect(array_keys(STATUS_NEEDS), (array)($b['needs'] ?? [])))];
 foreach (STATUS_REPLY_DATES as $k => $l) $r[$k] = date_or_null($b[$k] ?? null);
 $r['narrative'] = isset(STATUS_NARRATIVE[$b['narrative'] ?? '']) ? $b['narrative'] : null;
+// Requesting a report the practice charges for needs the fee acknowledged.
+$r['narrative_fee'] = $r['narrative'] ? narrative_fee_for(narrative_fees($practice), $r['narrative']) : null;
+if ($r['narrative_fee'] && empty($b['ack_fee'])) json_response(['error' => 'Please acknowledge the narrative report fee of $' . number_format($r['narrative_fee'], 2) . ', or choose a different option.', 'code' => 'ack_fee'], 400);
+$r['fee_ack'] = (bool)$r['narrative_fee'];
 $summary = status_reply_summary($r);
 $pdo = pi_db();
 $today = date('Y-m-d');
@@ -67,17 +73,20 @@ foreach (STATUS_REPLY_DATES as $k => $l) if ($r[$k] && $r[$k] !== $case[$k]) $ch
 if ($r['narrative']) {
     $changes['narrative_request'] = $r['narrative'];
     if ($r['narrative'] !== 'none') $changes['narrative_requested_on'] = $today;
+    $changes += $r['fee_ack'] ? ['narrative_fee' => $r['narrative_fee'], 'narrative_fee_ack_at' => now_str(), 'narrative_fee_ack_by' => mb_substr($name, 0, 120), 'narrative_fee_ack_via' => 'online']
+        : ['narrative_fee' => null, 'narrative_fee_ack_at' => null, 'narrative_fee_ack_by' => null, 'narrative_fee_ack_via' => null];
 }
 if ($changes) {
     $pdo->prepare('UPDATE cases SET ' . implode(', ', array_map(fn($k) => "$k = ?", array_keys($changes))) . ', updated_at = ? WHERE id = ?')->execute([...array_values($changes), now_str(), $case['id']]);
-    audit('update', 'case', $case['id'], (int)$case['id'], $system, 'from attorney status reply', audit_diff(array_map(fn($k) => $k === 'narrative_request' ? 'label' : 'date', array_combine(array_keys($changes), array_keys($changes))), $case, $changes));
+    audit('update', 'case', $case['id'], (int)$case['id'], $system, 'from attorney status reply', audit_diff(array_intersect_key(['narrative_request' => 'label', 'narrative_fee' => 'money', 'narrative_fee_ack_by' => 'str', 'narrative_fee_ack_via' => 'str'] + array_fill_keys(array_keys(STATUS_REPLY_DATES), 'date') + ['narrative_requested_on' => 'date'], $changes), $case, $changes));
 }
 $fromAttorney = in_array($case['auto_status_to'], ['attorney', 'both'], true) && $case['attorney_contact_id'] ? $case['attorney_contact_id'] : null;
 $pdo->prepare("INSERT INTO correspondence (case_id, occurred_on, direction, method, contact_id, contact_text, subject, notes_enc, created_at) VALUES (?, ?, 'in', 'portal', ?, ?, ?, ?, ?)")
     ->execute([$case['id'], $today, $fromAttorney, mb_substr($name, 0, 160), mb_substr('Status update (online reply): ' . STATUS_REPLY_OPTIONS[$status], 0, 200), enc($summary), now_str()]);
 // A task for the office to look it over (and post any payment).
 $urgent = in_array($status, ['paid', 'withdrawn', 'closed'], true) || $r['needs'] || in_array($r['narrative'], ['without_ratings', 'with_ratings'], true);
-$title = $status === 'paid' ? 'Attorney reports payment sent — watch for the check and post it' : ($status === 'withdrawn' ? 'Attorney no longer represents this patient — update the case' : 'Review the attorney\'s status reply');
+$title = in_array($r['narrative'], ['without_ratings', 'with_ratings'], true) ? 'Attorney requested a final narrative — prepare it' . ($r['fee_ack'] ? ' (fee $' . number_format($r['narrative_fee'], 2) . ' acknowledged)' : '') : null;
+$title = $title ?? ($status === 'paid' ? 'Attorney reports payment sent — watch for the check and post it' : ($status === 'withdrawn' ? 'Attorney no longer represents this patient — update the case' : 'Review the attorney\'s status reply'));
 $pdo->prepare("INSERT INTO tasks (practice_id, case_id, title, notes_enc, priority, due_on, email_on, email_who, created_at) VALUES (?, ?, ?, ?, ?, ?, '', '', ?)")
     ->execute([$practice['id'], $case['id'], $title, enc($summary), $urgent ? 'high' : 'normal', $today, now_str()]);
 $pdo->commit();

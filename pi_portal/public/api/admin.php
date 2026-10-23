@@ -116,7 +116,7 @@ function handle_practice() {
         'notifyRules' => practice_rules($p), 'notifyCriteria' => NOTIFY_CRITERIA, 'mailReady' => mail_ready(),
         'hasHuddle' => has_feature($p, 'huddle'), 'hasDigest' => has_feature($p, 'email_digest'), 'costs' => practice_costs($p),
         'taskEmail' => task_email_rules($p), 'hasTaskEmails' => has_feature($p, 'task_emails'),
-        'statusRules' => status_rules($p), 'hasAutoStatus' => has_feature($p, 'auto_status'),
+        'statusRules' => status_rules($p), 'hasAutoStatus' => has_feature($p, 'auto_status'), 'narrativeFees' => narrative_fees($p),
         'autoStatusCount' => $autoCount,
         'baaVersion' => $p['baa_version'], 'baaAcceptedAt' => $p['baa_accepted_at'], 'currentBaaVersion' => BAA_VERSION,
     ]]);
@@ -205,6 +205,21 @@ function handle_status_rules_save() {
         if ($turnedOn) audit('update', 'practice', pid(), null, $admin, "status requests switched on for $turnedOn open case(s)");
     }
     json_response(['ok' => true, 'rules' => $rules, 'turnedOn' => $turnedOn]);
+}
+
+// Whether the practice charges for a final narrative report, and its fees.
+function handle_narrative_fees_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $b = json_body();
+    $charge = !empty($b['charge']);
+    $amt = function ($v) { if ($v === null || $v === '') return null; $m = money_or_null($v); if ($m === null || $m < 0 || $m > 100000) json_response(['error' => 'Enter fees as dollar amounts.'], 400); return $m; };
+    $fees = ['charge' => $charge, 'without' => $charge ? $amt($b['without'] ?? null) : null, 'with' => $charge ? $amt($b['with'] ?? null) : null];
+    if ($charge && !$fees['without'] && !$fees['with']) json_response(['error' => 'Enter at least one fee, or choose that you don\'t charge.'], 400);
+    $before = narrative_fees();
+    pi_db()->prepare('UPDATE practices SET narrative_fees = ? WHERE id = ?')->execute([json_encode($fees), pid()]);
+    audit('update', 'practice', pid(), null, $admin, 'narrative fees', audit_diff(['charge' => 'bool', 'without' => 'money', 'with' => 'money'], $before, $fees));
+    json_response(['ok' => true, 'fees' => narrative_fees(['narrative_fees' => json_encode($fees)])]);
 }
 
 // Each person's own daily email: on/off and which of the practice's
@@ -503,5 +518,6 @@ switch ($action) {
     case 'my_notify_save': handle_my_notify_save(); break;
     case 'task_email_rules_save': handle_task_email_rules_save(); break;
     case 'status_rules_save': handle_status_rules_save(); break;
+    case 'narrative_fees_save': handle_narrative_fees_save(); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }

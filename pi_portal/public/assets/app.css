@@ -531,3 +531,5 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .guide-steps .gs-event .gs-head{opacity:.85;}
 .gs-move{display:inline-flex;gap:4px;margin-right:8px;}
 .gs-move .btn{padding:2px 8px;min-width:0;}
+.ok-text{color:var(--accent-dark,#0F7B5F);}
+.warn-text{color:#B54708;}
