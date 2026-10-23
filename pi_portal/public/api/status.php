@@ -28,6 +28,7 @@ if ($action === 'view') {
     if (!$req['viewed_at']) pi_db()->prepare('UPDATE status_requests SET viewed_at = ? WHERE id = ?')->execute([now_str(), $req['id']]);
     audit('status_request_view', 'case', $case['id'], (int)$case['id'], $system, $_SERVER['REMOTE_ADDR'] ?? null);
     json_response([
+        'brand' => ($wl = practice_brand($practice))['custom'] ? ['name' => $wl['name'], 'logo' => $wl['logo'], 'color' => $wl['color']] : null,
         'practice' => $head, 'patient' => trim($pt['first_name'] . ' ' . $pt['last_name']), 'dateOfInjury' => $case['date_of_injury'], 'caseNumber' => $case['case_number'],
         'lastVisit' => $lv->fetchColumn() ?: null,
         'balance' => $rules['show_balance'] ? ledger_totals_by_case(pi_db(), [(int)$case['id']])[(int)$case['id']]['total_balance'] : null,

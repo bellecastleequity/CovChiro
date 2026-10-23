@@ -22,7 +22,7 @@ define('BAA_VERSION', '2026-10-22');
 const PLANS = [
     'solo'     => ['name' => 'Silver',   'price' => 39,  'active_cases' => 75,   'users' => 3,    'blurb' => 'One doctor and front desk'],
     'practice' => ['name' => 'Gold',     'price' => 59, 'active_cases' => 300,  'users' => 10,   'blurb' => 'A busy PI clinic'],
-    'group'    => ['name' => 'Platinum', 'price' => 79, 'active_cases' => null, 'users' => null, 'blurb' => 'Multiple doctors or locations'],
+    'group'    => ['name' => 'Platinum', 'price' => 79, 'active_cases' => null, 'users' => null, 'blurb' => 'Multiple doctors or locations — under your own brand'],
 ];
 
 // ---------- features by plan ----------
@@ -49,6 +49,8 @@ const FEATURES = [
         'blurb' => "Run several offices in one account: cases and visits by location, location letterheads, location and provider filters, and team members limited to their own location's patients."],
     'custom_steps' => ['name' => 'Custom case steps', 'plan' => 'group',
         'blurb' => "Add your office's own steps to every case's checklist, with due dates, alerts and huddle items."],
+    'white_label' => ['name' => 'White label — your own brand', 'plan' => 'group',
+        'blurb' => "Run it under your clinic's own name, logo and color: your team signs in at your own branded link, and attorneys see your brand on the status reply page and emails."],
 ];
 // Shown on every plan card (in all plans).
 const CORE_FEATURES = ['Case tracking & referral guide', 'Case suggestions & policy-limit warnings', 'EHR ledger uploads (any EHR)', 'Tasks, activity & audit log'];

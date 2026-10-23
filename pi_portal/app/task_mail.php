@@ -53,25 +53,26 @@ function task_recipients(array $task, ?int $exclude = null): array {
 
 function task_email_message(string $event, array $task, array $practice, array $to, ?string $actor = null): array {
     $due = $task['due_on'] ? date('l, F j', strtotime($task['due_on'])) : null;
+    $brand = brand_name_for($practice);
     switch ($event) {
         case 'urgent':
-            $subject = BRAND_NAME . ': a task was marked urgent';
+            $subject = $brand . ': a task was marked urgent';
             $line = ($actor ? "$actor marked a task" : 'A task was marked') . " at {$practice['name']} as high priority" . ($due ? ", due $due." : '.');
             break;
         case 'late':
             $days = max(1, (int)floor((strtotime(date('Y-m-d')) - strtotime($task['due_on'])) / 86400));
-            $subject = BRAND_NAME . ': a task is ' . $days . ' day' . ($days === 1 ? '' : 's') . ' late';
+            $subject = $brand . ': a task is ' . $days . ' day' . ($days === 1 ? '' : 's') . ' late';
             $line = "A task at {$practice['name']} is past its due date — it was due $due ($days day" . ($days === 1 ? '' : 's') . ' ago) and is still open.';
             break;
         default:
-            $subject = BRAND_NAME . ': a task was completed';
+            $subject = $brand . ': a task was completed';
             $line = ($actor ? "$actor completed a task" : 'A task was completed') . " at {$practice['name']}" . ($due ? " (it was due $due)." : '.');
     }
     // First name, or the whole name when it starts with a title ("Dr. A").
     $first = explode(' ', trim($to['name']))[0];
     $text = 'Hi ' . (str_ends_with($first, '.') ? trim($to['name']) : $first) . ",\n\n$line\n\nSign in to open it:\n" . APP_URL . '/app.html#/tasks/' . $task['id'] . "\n\n"
         . "For privacy, this email never includes patient names, case details or the task itself — sign in to see them.\n"
-        . "You're getting this because you're on this task's email list. Turn task emails off under \"Email notifications\" in " . BRAND_NAME . ".\n\n— " . BRAND_NAME . "\n";
+        . "You're getting this because you're on this task's email list. Turn task emails off under \"Email notifications\" in " . $brand . ".\n\n— " . $brand . "\n";
     return [$subject, $text];
 }
 
@@ -83,7 +84,7 @@ function task_email_send(string $event, array $task, array $practice, ?array $ac
     $sent = 0;
     foreach (task_recipients($task, $actor['id'] ?? null) as $u) {
         [$subject, $text] = task_email_message($event, $task, $practice, $u, $actor['name'] ?? null);
-        if (send_mail($u['email'], $subject, $text)) $sent++;
+        if (send_mail($u['email'], $subject, $text, brand_name_for($practice))) $sent++;
     }
     if ($sent) audit('email_task_' . $event, 'task', $task['id'], $task['case_id'] ? (int)$task['case_id'] : null,
         ['id' => null, 'email' => 'system', 'practice_id' => $practice['id']], $sent . ' recipient' . ($sent === 1 ? '' : 's'));

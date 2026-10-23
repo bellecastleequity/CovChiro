@@ -14,6 +14,7 @@ require_once __DIR__ . '/totp.php';
 require_once __DIR__ . '/pi_rules.php';
 require_once __DIR__ . '/promo.php';
 require_once __DIR__ . '/saas.php';
+require_once __DIR__ . '/branding.php';
 require_once __DIR__ . '/task_mail.php';
 require_once __DIR__ . '/status_requests.php';
 

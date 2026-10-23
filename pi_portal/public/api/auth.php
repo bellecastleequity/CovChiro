@@ -44,9 +44,11 @@ function session_payload(?array $u) {
         'step' => $step,
         'csrf' => $_SESSION['csrf'],
         'idleTimeoutSeconds' => PI_IDLE_TIMEOUT_SECONDS,
-        'brand' => ['name' => BRAND_NAME, 'tagline' => BRAND_TAGLINE, 'support' => SUPPORT_EMAIL],
+        'brand' => practice_brand(null),
     ];
     if ($u && $step !== 'signed_out') $out['user'] = ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email'], 'role' => $u['role'], 'operator' => $u['practice_id'] === null];
+    // Their practice's white label, from the password and two-factor steps on.
+    if ($u && $step !== 'signed_out' && $u['practice_id']) $out['brand'] = practice_brand(practice_row((int)$u['practice_id']));
     if ($step === 'signed_in' && $u['practice_id'] === null) {
         $out['user']['perms'] = ['platform.manage'];
     } elseif ($step === 'signed_in') {
@@ -254,7 +256,7 @@ function handle_mfa_setup_start() {
     if ($u['totp_enabled']) json_response(['error' => 'Two-factor is already set up.'], 400);
     // Held in the session until the user proves their app is working.
     $_SESSION['pending_totp'] = $_SESSION['pending_totp'] ?? totp_new_secret();
-    json_response(['secret' => $_SESSION['pending_totp'], 'uri' => totp_uri($_SESSION['pending_totp'], $u['email'])]);
+    json_response(['secret' => $_SESSION['pending_totp'], 'uri' => totp_uri($_SESSION['pending_totp'], $u['email'], brand_name_for(practice_row($u['practice_id'])))]);
 }
 
 function handle_mfa_setup_confirm() {

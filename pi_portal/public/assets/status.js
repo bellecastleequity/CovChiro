@@ -15,6 +15,18 @@
     return { ok: res.ok, data };
   };
   const r = await api('view');
+  // A white-labelled practice's own name and logo instead of InjuryCase.
+  const nav = document.getElementById('sr-nav');
+  const b = r.ok && r.data.brand;
+  if (b) {
+    const a = document.getElementById('sr-logo');
+    a.removeAttribute('href');
+    a.innerHTML = b.logo ? `<img src="${esc(b.logo)}" alt="${esc(b.name)}" height="38">` : `<b class="brand-text">${esc(b.name)}</b>`;
+    document.title = 'Case Status Update — ' + b.name;
+    document.getElementById('sr-foot').innerHTML = 'This page was sent to you by the provider named above. It shows only what\'s needed to identify your client, and your reply goes straight into the provider\'s case file. Please don\'t share this link. <a href="legal.html#respondents">How replies are handled</a>';
+    if (b.color) document.documentElement.style.setProperty('--indigo', b.color), document.documentElement.style.setProperty('--brand', b.color);
+  }
+  nav.classList.remove('brand-pending');
   if (!r.ok) return message(r.data.code === 'closed' ? 'No reply needed' : 'Link not available', r.data.error);
   const d = r.data, pr = d.practice;
   if (d.respondedAt) return message('Thank you', `A reply was received on ${day(d.respondedAt)}. To add anything, please contact ${pr.name}${pr.phone ? ' at ' + pr.phone : ''}.`, 'ok');

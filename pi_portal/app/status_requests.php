@@ -117,8 +117,8 @@ function status_send(array $case, array $practice, string $kind = 'auto', ?array
             . APP_URL . '/status.html?t=' . $token . "\n\n"
             . 'The link expires on ' . date('F j, Y', strtotime($expires)) . ". If you no longer handle this case, you can say so on the same page.\n\n"
             . "Thank you,\n{$head['name']}\n" . (($line = implode(' · ', array_filter([$head['address'], $head['phone']]))) ? "$line\n" : '') . "\n"
-            . 'Sent through ' . BRAND_NAME . ' on behalf of ' . $practice['name'] . ". Please don't reply to this email; use the link above or contact the office directly.\n";
-        if (send_mail($email, 'Case status update request — ' . $head['name'], $text)) $sent[] = $email;
+            . (white_label_active($practice) ? 'Sent on behalf of ' : 'Sent through ' . BRAND_NAME . ' on behalf of ') . $practice['name'] . ". Please don't reply to this email; use the link above or contact the office directly.\n";
+        if (send_mail($email, 'Case status update request — ' . $head['name'], $text, white_label_active($practice) ? $head['name'] : null)) $sent[] = $email;
     }
     if (!$sent) return ['error' => 'The email could not be sent. Please try again later.'];
     $today = date('Y-m-d');

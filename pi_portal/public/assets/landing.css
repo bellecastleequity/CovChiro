@@ -271,3 +271,5 @@ h1,h2,h3{letter-spacing:-0.025em;line-height:1.15;}
 .legal h2{scroll-margin-top:80px;}
 .legal .table-wrap{overflow-x:auto;max-width:100%;}
 @media (max-width:600px){.legal-table th,.legal-table td{padding:8px;font-size:0.84rem;}.legal-table{min-width:0;}.legal-table td{word-break:break-word;}}
+.brand-pending .logo{visibility:hidden;}
+.brand-text{font-size:1.25rem;letter-spacing:-0.02em;color:var(--navy);}

@@ -117,6 +117,8 @@ function handle_practice() {
         'hasHuddle' => has_feature($p, 'huddle'), 'hasDigest' => has_feature($p, 'email_digest'), 'costs' => practice_costs($p),
         'taskEmail' => task_email_rules($p), 'hasTaskEmails' => has_feature($p, 'task_emails'),
         'statusRules' => status_rules($p), 'hasAutoStatus' => has_feature($p, 'auto_status'), 'narrativeFees' => narrative_fees($p),
+        'whiteLabel' => white_label_settings($p) + ['active' => white_label_active($p), 'logo' => practice_has_logo((int)$p['id']) ? brand_logo_url($p) : null, 'signinUrl' => $p['brand_slug'] ? APP_URL . '/app.html?b=' . $p['brand_slug'] : null, 'signinBase' => APP_URL . '/app.html?b='],
+        'hasWhiteLabel' => has_feature($p, 'white_label'),
         'autoStatusCount' => $autoCount,
         'baaVersion' => $p['baa_version'], 'baaAcceptedAt' => $p['baa_accepted_at'], 'currentBaaVersion' => BAA_VERSION,
     ]]);
@@ -205,6 +207,55 @@ function handle_status_rules_save() {
         if ($turnedOn) audit('update', 'practice', pid(), null, $admin, "status requests switched on for $turnedOn open case(s)");
     }
     json_response(['ok' => true, 'rules' => $rules, 'turnedOn' => $turnedOn]);
+}
+
+// White label (top plan): the practice's own product name, color and
+// branded sign-in link. The logo is uploaded separately.
+function handle_white_label_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    require_feature('white_label');
+    $b = json_body();
+    $name = str_or_null($b['name'] ?? null, 60);
+    $color = strtoupper(trim((string)($b['color'] ?? '')));
+    if ($color === '') $color = null;
+    elseif (!preg_match('/^#[0-9A-F]{6}$/', $color)) json_response(['error' => 'Choose a color as a hex value, like #2B3FD6.'], 400);
+    // Buttons put white text on this color, so it has to be dark enough to read.
+    elseif (color_contrast($color, '#FFFFFF') < 4.5) json_response(['error' => 'That color is too light for white button text to be readable. Choose a darker shade.', 'code' => 'contrast'], 400);
+    $slug = strtolower(trim((string)($b['slug'] ?? '')));
+    if ($slug === '') $slug = null;
+    elseif ($err = brand_slug_problem($slug)) json_response(['error' => $err], 400);
+    if ($slug) {
+        $s = pi_db()->prepare('SELECT COUNT(*) FROM practices WHERE brand_slug = ? AND id <> ?'); $s->execute([$slug, pid()]);
+        if ($s->fetchColumn()) json_response(['error' => 'That sign-in link is taken. Try another.'], 409);
+    }
+    $p = current_practice();
+    $before = white_label_settings($p);
+    pi_db()->prepare('UPDATE practices SET white_label = ?, brand_slug = ? WHERE id = ?')->execute([$name || $color ? json_encode(['name' => $name, 'color' => $color]) : null, $slug, pid()]);
+    audit('update', 'practice', pid(), null, $admin, 'white label', audit_diff(['name' => 'str:60', 'color' => 'str:7', 'slug' => 'str:40'], $before, ['name' => $name, 'color' => $color, 'slug' => $slug]));
+    json_response(['ok' => true]);
+}
+
+function handle_white_label_logo() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    require_feature('white_label');
+    $f = $_FILES['file'] ?? null;
+    if (!$f || $f['error'] !== UPLOAD_ERR_OK) json_response(['error' => 'Upload failed — the file may be too large.'], 400);
+    if ($f['size'] > BRAND_LOGO_MAX_BYTES) json_response(['error' => 'Logos must be 2 MB or smaller.'], 400);
+    $r = brand_logo_from_upload($f['tmp_name']);
+    if (isset($r['error'])) json_response(['error' => $r['error']], 400);
+    pi_db()->prepare('REPLACE INTO practice_logos (practice_id, png, updated_at) VALUES (?, ?, ?)')->execute([pid(), $r['png'], now_str()]);
+    audit('update', 'practice', pid(), null, $admin, 'white label logo uploaded');
+    json_response(['ok' => true, 'width' => $r['width'], 'height' => $r['height']]);
+}
+
+function handle_white_label_logo_remove() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    pi_db()->prepare('DELETE FROM practice_logos WHERE practice_id = ?')->execute([pid()]);
+    audit('update', 'practice', pid(), null, $admin, 'white label logo removed');
+    json_response(['ok' => true]);
 }
 
 // Whether the practice charges for a final narrative report, and its fees.
@@ -519,5 +570,8 @@ switch ($action) {
     case 'task_email_rules_save': handle_task_email_rules_save(); break;
     case 'status_rules_save': handle_status_rules_save(); break;
     case 'narrative_fees_save': handle_narrative_fees_save(); break;
+    case 'white_label_save': handle_white_label_save(); break;
+    case 'white_label_logo': handle_white_label_logo(); break;
+    case 'white_label_logo_remove': handle_white_label_logo_remove(); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }

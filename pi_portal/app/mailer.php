@@ -11,11 +11,12 @@ function mail_configured(): bool {
     return defined('SMTP_HOST') && SMTP_HOST !== '' && defined('MAIL_FROM') && MAIL_FROM !== '';
 }
 
-function send_mail(string $to, string $subject, string $text): bool {
+// $fromName: the sender name (a white-labelled practice's brand); defaults to InjuryCase.
+function send_mail(string $to, string $subject, string $text, ?string $fromName = null): bool {
     if (!mail_configured() || !filter_var($to, FILTER_VALIDATE_EMAIL)) return false;
     $cfg = ['host' => SMTP_HOST, 'port' => defined('SMTP_PORT') ? (int)SMTP_PORT : null, 'secure' => defined('SMTP_SECURE') ? SMTP_SECURE : 'tls',
         'user' => defined('SMTP_USER') ? SMTP_USER : '', 'pass' => defined('SMTP_PASS') ? SMTP_PASS : '', 'from' => MAIL_FROM];
-    $name = defined('BRAND_NAME') ? BRAND_NAME : 'InjuryCase';
+    $name = '=?UTF-8?B?' . base64_encode($fromName ?? (defined('BRAND_NAME') ? BRAND_NAME : 'InjuryCase')) . '?=';
     $headers = ['From: ' . $name . ' <' . MAIL_FROM . '>', 'To: <' . $to . '>', 'Subject: =?UTF-8?B?' . base64_encode($subject) . '?=',
         'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: 8bit'];
     if (defined('SUPPORT_EMAIL')) $headers[] = 'Reply-To: <' . SUPPORT_EMAIL . '>';

@@ -48,7 +48,7 @@ function totp_verify(string $secretB32, string $code, ?int $lastStep = null): ?i
     return null;
 }
 
-function totp_uri(string $secretB32, string $email): string {
-    $issuer = rawurlencode(BRAND_NAME);
+function totp_uri(string $secretB32, string $email, string $issuer = BRAND_NAME): string {
+    $issuer = rawurlencode($issuer);
     return 'otpauth://totp/' . $issuer . ':' . rawurlencode($email) . '?secret=' . $secretB32 . '&issuer=' . $issuer . '&period=30&digits=6';
 }

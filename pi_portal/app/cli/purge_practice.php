@@ -74,7 +74,7 @@ $scopes = [
     'status_requests' => "practice_id = $id", 'correspondence' => "case_id IN ($caseIds)", 'ledger' => "case_id IN ($caseIds)",
     'ehr_imports' => "case_id IN ($caseIds)", 'documents' => "case_id IN ($caseIds)", 'coverages' => "case_id IN ($caseIds)",
     'cases' => "practice_id = $id", 'patients' => "practice_id = $id", 'contacts' => "practice_id = $id",
-    'schedule_imports' => "practice_id = $id", 'ehr_formats' => "practice_id = $id", 'practice_steps' => "practice_id = $id",
+    'schedule_imports' => "practice_id = $id", 'ehr_formats' => "practice_id = $id", 'practice_steps' => "practice_id = $id", 'practice_logos' => "practice_id = $id",
     'practice_silenced' => "practice_id = $id", 'locations' => "practice_id = $id", 'feedback' => "practice_id = $id",
     'trial_notices' => "practice_id = $id", 'digest_log' => "user_id IN ($userIds)", 'audit_log' => "practice_id = $id",
     'users' => "practice_id = $id", 'practices' => "id = $id",

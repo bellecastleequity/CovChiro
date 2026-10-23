@@ -535,3 +535,20 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .gs-move .btn{padding:2px 8px;min-width:0;}
 .ok-text{color:var(--mint-ink);}
 .warn-text{color:#B54708;}
+/* White label: the practice's logo (on a white chip in the dark sidebar) or name */
+.wl-logo{display:inline-flex;align-items:center;}
+.wl-logo img{max-height:44px;max-width:220px;width:auto;height:auto;display:block;}
+.auth-card .brand .wl-logo img{max-height:56px;}
+.wl-logo.on-dark{background:#fff;border-radius:8px;padding:6px 10px;}
+.wl-logo.on-dark img{max-height:34px;max-width:180px;}
+.wl-name{font-size:1.25rem;font-weight:700;letter-spacing:-0.02em;}
+.auth-card .wl-name{color:var(--navy);font-size:1.4rem;}
+.wl-preview{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;margin-top:12px;}
+.wl-preview > div{border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:220px;}
+.wl-preview .dark{background:var(--navy);}
+.wl-preview .dark .wl-name{color:#fff;}
+.wl-preview .dark .small{color:var(--nav-ink);}
+.wl-color-row{flex-wrap:nowrap;align-items:center;}
+.wl-color-row input[type=color]{width:46px;min-width:46px;height:38px;padding:2px;border-radius:8px;}
+.wl-slug-row{flex-wrap:nowrap;align-items:center;}
+.wl-slug-row .mono{white-space:nowrap;}

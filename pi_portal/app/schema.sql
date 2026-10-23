@@ -30,6 +30,10 @@ CREATE TABLE practices (
   -- Whether the practice charges for a final narrative report, and its
   -- fees without / with AMA impairment ratings (JSON; null = not asked yet).
   narrative_fees TEXT NULL,
+  -- White label (top plan): {name, color} as JSON, and the branded
+  -- sign-in link's slug. The logo is in practice_logos.
+  white_label TEXT NULL,
+  brand_slug VARCHAR(40) NULL UNIQUE,
   state CHAR(2) NOT NULL DEFAULT 'FL',
   -- Which financial categories the staff role may see (comma list of
   -- balances, ledger, settlement). Empty = none.
@@ -78,6 +82,14 @@ CREATE TABLE practices (
 
 -- The practice's own case steps (checklist items) and the built-in steps
 -- it has switched off (item_key 'check:<key>' or 'guide:<key>').
+-- White-label logo for a practice (PNG, re-encoded and size-limited on upload).
+CREATE TABLE practice_logos (
+  practice_id INT PRIMARY KEY,
+  png MEDIUMBLOB NOT NULL,
+  updated_at DATETIME NOT NULL,
+  CONSTRAINT fk_logo_practice FOREIGN KEY (practice_id) REFERENCES practices(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE practice_steps (
   id INT AUTO_INCREMENT PRIMARY KEY,
   practice_id INT NOT NULL,

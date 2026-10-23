@@ -141,8 +141,28 @@ const entries = (obj) => Object.entries(obj || {});
 // ---------- auth screens ----------
 function authCard(inner, wide) {
   $app.innerHTML = `<div class="auth-wrap"><div class="auth-card${wide ? ' wide' : ''}">
-    <a class="brand" href="./"><img src="assets/logo-horizontal.svg" alt="${esc(S.brand.name)}"><div class="small muted">${esc(S.brand.tagline || '')}</div></a>
+    <a class="brand" href="${S.brand.custom ? '#' : './'}">${brandLogoHtml(false)}<div class="small muted">${esc(S.brand.tagline || '')}</div></a>
     ${inner}</div></div>`;
+}
+
+// White label: the practice's color for buttons, links and highlights, and
+// its name in the tab title.
+function applyBrand() {
+  const b = S.brand, root = document.documentElement.style;
+  document.title = b.name;
+  for (const v of ['--indigo', '--indigo-dark', '--brand', '--brand-dark', '--brand-tint', '--accent-tint']) root.removeProperty(v);
+  if (!b.color || !/^#[0-9A-F]{6}$/i.test(b.color)) return;
+  const n = parseInt(b.color.slice(1), 16), rgb = [n >> 16, (n >> 8) & 255, n & 255];
+  const dark = '#' + rgb.map((c) => Math.round(c * 0.78).toString(16).padStart(2, '0')).join('');
+  root.setProperty('--indigo', b.color); root.setProperty('--brand', b.color);
+  root.setProperty('--indigo-dark', dark); root.setProperty('--brand-dark', dark);
+  root.setProperty('--brand-tint', `rgba(${rgb.join(',')},0.13)`);
+}
+// The logo for the sign-in card (light) or the sidebar (dark).
+function brandLogoHtml(dark) {
+  const b = S.brand;
+  if (!b.custom) return `<img src="assets/logo-horizontal${dark ? '-dark' : ''}.svg" alt="${esc(b.name)}">`;
+  return b.logo ? `<span class="wl-logo${dark ? ' on-dark' : ''}"><img src="${esc(b.logo)}" alt="${esc(b.name)}"></span>` : `<span class="wl-name">${esc(b.name)}</span>`;
 }
 
 function showLogin(message) {
@@ -153,7 +173,7 @@ function showLogin(message) {
     <button class="btn" type="submit">Sign in</button>
     <p class="small">Authorized personnel only. All access to patient records is logged.</p>
     <p class="small hipaa-note"><b>HIPAA-ready</b> · Business Associate Agreement · encrypted · two-factor sign-in</p>
-    <p class="auth-switch">New practice? <a href="#signup" data-act="show-signup">Start a free trial</a></p>
+    ${S.brand.custom ? '' : '<p class="auth-switch">New practice? <a href="#signup" data-act="show-signup">Start a free trial</a></p>'}
   </form>`);
   document.getElementById('li-email').focus();
 }
@@ -253,7 +273,8 @@ function drawQr(canvas, text) {
 
 function applySession(s) {
   if (s.brand) S.brand = s.brand;
-  document.title = S.brand.name;
+  if (!s.user && S.signinBrand) S.brand = { ...S.brand, tagline: '', ...S.signinBrand, custom: true };
+  applyBrand();
   S.practice = s.practice || null;
   S.idleTimeout = s.idleTimeoutSeconds;
   if (s.step === 'signed_in') {
@@ -388,6 +409,9 @@ async function refreshSession() {
   const s = await attempt(() => api('auth.php?action=session'));
   if (s && s.step === 'signed_in') {
     S.practice = s.practice; S.lookups = s.lookups; const b = document.getElementById('banner'); if (b) b.innerHTML = bannerHtml();
+    // White label can change with the plan or its settings.
+    S.brand = s.brand; applyBrand();
+    const sb = document.querySelector('.sidebar .brand'); if (sb) sb.innerHTML = `${brandLogoHtml(true)}<small>${esc(S.practice.name)}</small>`;
     // A plan change takes effect at once, so drop the plan tags on nav items it unlocked.
     document.querySelectorAll('.sidebar a[data-nav]').forEach((a) => { const f = NAV_FEATURE[a.dataset.nav]; if (f && hasFeature(f)) a.querySelector('.nav-lock')?.remove(); });
   }
@@ -397,7 +421,7 @@ async function startShell() {
   const operator = S.user.operator;
   $app.innerHTML = `<div class="shell">
     <nav class="sidebar" aria-label="Main">
-      <div class="brand"><img src="assets/logo-horizontal-dark.svg" alt="${esc(S.brand.name)}"><small>${esc(operator ? 'Operator console' : S.practice.name)}</small></div>
+      <div class="brand">${brandLogoHtml(true)}<small>${esc(operator ? 'Operator console' : S.practice.name)}</small></div>
       ${!operator && multiLocation() ? (S.user.locationRestricted ? `<div class="loc-switch small">${esc(locationName(S.user.locationId))}</div>`
         : `<select class="loc-switch" id="loc-switch" aria-label="Location">${opt('', 'All locations', locFilter())}${S.lookups.locations.map((l) => opt(l.id, l.name, locFilter())).join('')}</select>`) : ''}
       ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}${NAV_FEATURE[k] && !operator && !hasFeature(NAV_FEATURE[k]) ? ` <span class="nav-lock" title="${esc(featureInfo(NAV_FEATURE[k]).planName)} plan">${esc(featureInfo(NAV_FEATURE[k]).planName)}</span>` : ''}</a>`).join('')}
@@ -2550,7 +2574,7 @@ async function pageSettings(main) {
     <div class="grid-2"><div class="card"><h2>Practice details</h2><div id="practice-form">${fieldsHtml(practiceDefs(), p)}</div>
       <div class="err" id="practice-err"></div><button class="btn mt" data-act="save-practice">Save</button></div>
     <div class="card"><h2>Business Associate Agreement</h2>
-      <p class="small mt">Because ${esc(S.brand.name)} stores your patients' health information, HIPAA requires a Business Associate Agreement between your practice and us.</p>
+      <p class="small mt">Because ${esc(S.brand.vendor || S.brand.name)} stores your patients' health information, HIPAA requires a Business Associate Agreement between your practice and us.</p>
       ${baaOk ? `<div class="notice ok mt">Accepted ${esc(fmtDate(p.baaAcceptedAt))} (version ${esc(p.baaVersion)}).</div>`
         : `<div class="notice mt">${p.baaVersion ? 'The agreement has been updated since you accepted it.' : 'Not yet accepted.'}</div>
            <label class="check mt"><input type="checkbox" id="baa-accept"> I accept the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> (version ${esc(p.currentBaaVersion)}) on behalf of ${esc(p.name)}.</label>
@@ -2593,6 +2617,7 @@ async function pageSettings(main) {
       <p class="small">Does your office charge for a final narrative report? The end-of-treatment letter and the attorney's online reply page show your fee next to each option, and an attorney who requests a report acknowledges the fee. You'll see who acknowledged it, and when, on the case.</p>
       ${narrFeeFields(p.narrativeFees)}
       <button class="btn mt" data-act="save-narrative-fees">Save</button></div>
+    ${whiteLabelCard(p)}
     <div class="card mt"><div class="card-head"><h2>Locations</h2><span class="spacer"></span>${hasFeature('locations') ? '<button class="btn ghost sm" data-act="location-edit">+ Add location</button>' : ''}</div>
       <p class="small">Run more than one office in this account: each case belongs to a location (its letterhead is used on letters and exports), lists filter by location, and team members can be limited to their own location's patients.</p>
       <div id="locations-list" class="mt">${hasFeature('locations') ? '<div class="empty">Loading…</div>' : `<div class="notice">Multiple locations are part of the ${esc(featureInfo('locations').planName)} plan.</div>`}</div></div>
@@ -2607,7 +2632,7 @@ async function pageSettings(main) {
     <div class="card mt" id="steps-card"><div class="card-head"><h2>Case steps &amp; checklist</h2><span class="spacer"></span>${hasFeature('custom_steps') ? '<button class="btn ghost sm" data-act="step-edit">+ Add your own step</button>' : ''}</div>
       <p class="small">Add the steps your office follows (they appear on every matching case's checklist, with due dates and alerts), and silence built-in steps your practice doesn't use. Silencing applies to every case; a single case can still mark a step "not needed".</p>
       <div id="steps-body" class="mt"><div class="empty">Loading…</div></div></div>
-    <div class="card mt" id="badge-card"><div class="card-head"><h2>${esc(S.brand.name)} Certified badge</h2></div>
+    <div class="card mt" id="badge-card"><div class="card-head"><h2>${esc(S.brand.vendor || S.brand.name)} Certified badge</h2></div>
       <p class="small">Put a badge on your website to show patients, attorneys and referral partners that your practice manages PI cases on secure, HIPAA-ready software. It links to a live verification page and turns itself off if your account lapses.</p>
       <div id="badge-body" class="mt"><div class="empty">Loading…</div></div></div>
     <div class="card mt"><h2>EHR ledger layouts</h2>
@@ -2615,6 +2640,7 @@ async function pageSettings(main) {
       <div id="ehr-formats" class="mt"><div class="empty">Loading…</div></div></div>`;
   loadEhrFormats();
   loadLocations();
+  paintWlPreview();
   loadBadge();
   loadSteps();
 }
@@ -2756,7 +2782,7 @@ async function pageBilling(main) {
           : `<button class="btn${k === p.plan ? '' : ' ghost'}" data-act="checkout" data-plan="${k}" data-interval="${interval}"${avail ? '' : ' disabled'}>${p.status === 'trialing' && r.firstCharge ? 'Add card — keep free days' : 'Subscribe'}</button>`}</div>`;
     }).join('')}</div>
     <p class="small mt"><strong>Paid plans renew automatically</strong> every month or year (as chosen) at the price shown, charged to your card until you cancel. Cancel any time online under <em>Manage billing &amp; invoices</em>; access continues to the end of the paid period. See the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a>.</p>
-    <p class="small muted mt">Payments are processed by Stripe; ${esc(S.brand.name)} never sees your card. Closed and dropped cases don't count toward your limit. If you cancel, your records stay readable and exportable.</p>`;
+    <p class="small muted mt">Payments are processed by Stripe; ${esc(S.brand.vendor || S.brand.name)} never sees your card. Closed and dropped cases don't count toward your limit. If you cancel, your records stay readable and exportable.</p>`;
   main.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
 }
 
@@ -3025,6 +3051,35 @@ function exportFileModal() {
     } });
 }
 
+// White label (top plan): the practice's own name, color, logo and sign-in link.
+function whiteLabelCard(p) {
+  const w = p.whiteLabel, on = p.hasWhiteLabel;
+  const base = w.signinBase;
+  return `<div class="card mt" id="wl-card"><div class="card-head"><h2>White label — your own brand</h2>${w.active ? '<span class="chip ok">On</span>' : ''}</div>
+    <p class="small">Run ${esc(S.brand.vendor || 'InjuryCase')} under your clinic's name: your logo and color in the app, a sign-in link of your own, and your name on the attorney reply page and on emails sent for your office. Contracts, billing, your BAA and the Certified badge stay under ${esc(S.brand.vendor || 'InjuryCase')}.</p>
+    ${on ? '' : `<div class="notice mt">White label is part of the ${esc(featureInfo('white_label').planName)} plan.${w.name ? ' Your saved branding comes back when you upgrade.' : ''} <a href="#/billing">See plans</a></div>`}
+    <fieldset class="assignees mt"${on ? '' : ' disabled'}><div class="form-grid">
+      <div><label for="wl-name">Product name (shown to your team and attorneys)</label><input id="wl-name" maxlength="60" value="${esc(w.name || '')}" placeholder="e.g. Bayside Case Portal"></div>
+      <div><label for="wl-color">Main color (buttons and links)</label><div class="badge-row wl-color-row"><input type="color" id="wl-color-pick" value="${esc(w.color || '#2B3FD6')}" aria-label="Pick a color"><input id="wl-color" maxlength="7" value="${esc(w.color || '')}" placeholder="#2B3FD6"></div></div>
+      <div class="full"><label for="wl-slug">Your sign-in link</label><div class="badge-row wl-slug-row"><span class="small muted mono">${esc(base)}</span><input id="wl-slug" maxlength="40" value="${esc(w.slug || '')}" placeholder="bayside"></div>
+        ${w.signinUrl ? `<p class="small mt-sm">Share with your team: <a href="${esc(w.signinUrl)}" target="_blank" rel="noopener" class="mono">${esc(w.signinUrl)}</a></p>` : ''}</div>
+      <div class="full"><label for="wl-logo-file">Logo (PNG with a transparent background works best; JPG or WebP also fine, up to 2 MB)</label>
+        <div class="badge-row"><input type="file" id="wl-logo-file" accept="image/png,image/jpeg,image/webp">${w.logo ? '<button class="btn ghost sm" data-act="wl-logo-remove">Remove logo</button>' : ''}</div></div>
+    </div>
+    <div class="wl-preview" id="wl-preview">${wlPreviewHtml(w)}</div>
+    ${on ? '<button class="btn mt" data-act="save-white-label">Save</button>' : ''}</fieldset></div>`;
+}
+function wlPreviewHtml(w) {
+  const logo = (dark) => w.logo ? `<span class="wl-logo${dark ? ' on-dark' : ''}"><img src="${esc(w.logo)}" alt=""></span>` : `<span class="wl-name">${esc(w.name || 'Your clinic')}</span>`;
+  const c = /^#[0-9A-F]{6}$/i.test(w.color || '') ? w.color : '#2B3FD6';
+  return `<div><div class="small muted">Sign-in page</div><div class="mt-sm">${logo(false)}</div><button type="button" class="btn mt-sm wl-btn" data-color="${esc(c)}" tabindex="-1">Sign in</button></div>
+    <div class="dark"><div class="small muted-light">Sidebar</div><div class="mt-sm wl-dark-name">${logo(true)}</div></div>`;
+}
+function paintWlPreview() {
+  const box = document.getElementById('wl-preview'); if (!box) return;
+  box.querySelectorAll('.wl-btn').forEach((b) => { b.style.background = b.dataset.color; b.style.borderColor = b.dataset.color; });
+}
+
 // "Do you charge for a final narrative?" — yes/no and the two fees.
 function narrFeeFields(f) {
   const yes = f.asked && f.charge;
@@ -3038,6 +3093,20 @@ function readNarrFees(root) {
   if (!c) return null;
   return { charge: c.value === '1', without: root.querySelector('#nf-without').value, with: root.querySelector('#nf-with').value };
 }
+// White label: color picker and hex box stay in step; a logo uploads on choose.
+document.addEventListener('input', (e) => {
+  const pick = e.target.id === 'wl-color-pick', hex = e.target.id === 'wl-color';
+  if (!pick && !hex) return;
+  if (pick) document.getElementById('wl-color').value = e.target.value.toUpperCase();
+  else if (/^#[0-9A-F]{6}$/i.test(e.target.value)) document.getElementById('wl-color-pick').value = e.target.value;
+  const c = document.getElementById('wl-color').value;
+  if (/^#[0-9A-F]{6}$/i.test(c)) { document.querySelectorAll('#wl-preview .wl-btn').forEach((b) => { b.dataset.color = c; }); paintWlPreview(); }
+});
+document.addEventListener('change', async (e) => {
+  if (e.target.id !== 'wl-logo-file' || !e.target.files[0]) return;
+  const fd = new FormData(); fd.append('file', e.target.files[0]);
+  if (await attempt(() => api('admin.php?action=white_label_logo', fd))) { toast('Logo uploaded'); await refreshSession(); pageSettings(document.getElementById('main')); }
+});
 document.addEventListener('change', (e) => {
   if (e.target.name !== 'nf-charge') return;
   const amts = e.target.closest('.nf-fields').querySelector('.nf-amounts');
@@ -3262,6 +3331,15 @@ const ACTIONS = {
     const r = await attempt(() => api('cases.php?action=status_send&id=' + S.caseData.case.id, {}));
     if (r) { S.caseData = r; renderCase(); toast('Request sent to ' + r.to.join(', ')); }
   },
+  'save-white-label': async () => {
+    const box = document.getElementById('wl-card');
+    const r = await attempt(() => api('admin.php?action=white_label_save', { name: box.querySelector('#wl-name').value, color: box.querySelector('#wl-color').value, slug: box.querySelector('#wl-slug').value }));
+    if (r) { toast('Branding saved'); await refreshSession(); pageSettings(document.getElementById('main')); }
+  },
+  'wl-logo-remove': async () => {
+    if (!(await confirmBox('Remove your logo?', 'Your product name is shown instead until you upload another.', 'Remove'))) return;
+    if (await attempt(() => api('admin.php?action=white_label_logo_remove', {}))) { await refreshSession(); pageSettings(document.getElementById('main')); }
+  },
   'save-narrative-fees': async () => {
     const v = readNarrFees(document.getElementById('narr-fee-card'));
     if (!v) return toast('Choose whether your office charges for a final narrative.', true);
@@ -3408,6 +3486,16 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------- boot ----------
-api('auth.php?action=session').then(applySession).catch(() => showLogin('Could not reach the server.'));
+// A white-labelled practice's sign-in link (app.html?b=slug) brands the
+// sign-in screens; it's remembered on this device for next time.
+(async () => {
+  let slug = new URLSearchParams(location.search).get('b');
+  try { if (slug) localStorage.setItem('signinBrand', slug); else slug = localStorage.getItem('signinBrand'); } catch { /* storage unavailable */ }
+  if (slug) {
+    try { S.signinBrand = await api('brand.php?action=signin&b=' + encodeURIComponent(slug), undefined, { passive: true }); }
+    catch { try { localStorage.removeItem('signinBrand'); } catch { /* ignore */ } }
+  }
+  api('auth.php?action=session').then(applySession).catch(() => showLogin('Could not reach the server.'));
+})();
 
 })();

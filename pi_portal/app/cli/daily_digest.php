@@ -44,16 +44,17 @@ foreach ($pdo->query('SELECT * FROM practices ORDER BY id')->fetchAll() as $p) {
         $counts = digest_counts($huddleFor[$key], $u, $criteria);
         if (!$counts) continue;   // nothing to report: no email
         $total = array_sum($counts);
-        $subject = BRAND_NAME . ': ' . $total . ' item' . ($total === 1 ? '' : 's') . ' need attention today';
+        $brand = brand_name_for($p);
+        $subject = $brand . ': ' . $total . ' item' . ($total === 1 ? '' : 's') . ' need attention today';
         $lines = [];
         foreach ($counts as $c => $n) $lines[] = sprintf('  %3d  %s', $n, NOTIFY_CRITERIA[$c]);
         $text = 'Hi ' . explode(' ', $u['name'])[0] . ",\n\nHere's what needs attention at {$p['name']} today (" . date('l, F j') . "):\n\n" . implode("\n", $lines)
             . "\n\nOpen the Daily huddle for the details:\n" . APP_URL . "/app.html#/huddle\n\n"
             . "For privacy, this email never includes patient names or case details — sign in to see them.\n"
-            . BRAND_NAME . " is an educational tool; clinical decisions rest with the treating provider.\n"
-            . "Change what you receive under \"Email notifications\" in " . BRAND_NAME . ".\n\n— " . BRAND_NAME . "\n";
+            . $brand . " is an educational tool; clinical decisions rest with the treating provider.\n"
+            . "Change what you receive under \"Email notifications\" in " . $brand . ".\n\n— " . $brand . "\n";
         if ($dry) { echo "[dry run] {$u['email']}: $subject\n" . implode("\n", $lines) . "\n"; continue; }
-        if (send_mail($u['email'], $subject, $text)) {
+        if (send_mail($u['email'], $subject, $text, $brand)) {
             $pdo->prepare('REPLACE INTO digest_log (user_id, sent_on, items) VALUES (?, ?, ?)')->execute([$u['id'], $today, $total]);
             audit('email_digest', 'user', $u['id'], null, ['id' => null, 'email' => 'system', 'practice_id' => $p['id']], $total . ' items');
             $sent++;
