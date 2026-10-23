@@ -137,8 +137,8 @@ function clean_fields(array $spec, array $in, ?int $caseId = null): array {
                 $stmt->execute([$id, pid()]);
                 if (!$stmt->fetch()) json_response(['error' => "Unknown $name"], 400);
             }
-            // Someone limited to one location can't move a case or visit elsewhere.
-            if (restricted_location() && $id !== restricted_location()) json_response(['error' => 'You can only use your own location.'], 403);
+            // Someone limited to some locations can't move a case or visit elsewhere.
+            if (!location_allowed($id)) json_response(['error' => 'You can only use your own locations.'], 403);
             $out[$name] = $id;
         }
         elseif ($type === 'contact' || $type === 'user') {
@@ -189,7 +189,8 @@ function patient_name(array $p): string {
 // plus the user's location restriction, for a query on cases alias $a.
 function case_filters(string $a = 'c'): array {
     [$sql, $args] = case_scope($a);
-    if (!empty($_GET['location']) && !restricted_location()) { $sql .= " AND $a.location_id = ?"; $args[] = (int)$_GET['location']; }
+    // (Someone limited to some locations can still narrow to one of theirs.)
+    if (!empty($_GET['location']) && location_allowed((int)$_GET['location'])) { $sql .= " AND $a.location_id = ?"; $args[] = (int)$_GET['location']; }
     if (!empty($_GET['provider'])) { $sql .= " AND $a.provider_user_id = ?"; $args[] = (int)$_GET['provider']; }
     return [$sql, $args];
 }
@@ -372,7 +373,8 @@ function handle_create() {
         $patientId = insert_row('patients', $p);
     }
     $cols = clean_fields(CASE_FIELDS, $b['case'] ?? []);
-    if (restricted_location()) $cols['location_id'] = restricted_location();
+    // A new case goes to the chosen location if the person may use it, else their home location.
+    if (allowed_locations() !== null && !location_allowed(isset($cols['location_id']) ? (int)$cols['location_id'] : null)) $cols['location_id'] = (int)current_user()['location_id'];
     elseif (empty($cols['location_id']) && !empty(current_user()['location_id'])) $cols['location_id'] = (int)current_user()['location_id'];
     $cols['practice_id'] = pid();
     $cols['patient_id'] = $patientId;
@@ -975,9 +977,9 @@ function load_tasks(string $where, array $args, int $limit = 500): array {
     $stmt = $pdo->prepare("SELECT t.*, c.case_number, p.first_name, p.last_name, cu.name created_by_name, du.name done_by_name
         FROM tasks t LEFT JOIN cases c ON c.id = t.case_id LEFT JOIN patients p ON p.id = c.patient_id
         LEFT JOIN users cu ON cu.id = t.created_by LEFT JOIN users du ON du.id = t.done_by
-        WHERE t.practice_id = ? AND t.archived_at IS NULL AND ($where)" . (restricted_location() ? ' AND (t.case_id IS NULL OR c.location_id = ?)' : '') . "
+        WHERE t.practice_id = ? AND t.archived_at IS NULL AND ($where)" . (($locIn = loc_in('c.location_id'))[0] ? " AND (t.case_id IS NULL OR (1=1{$locIn[0]}))" : '') . "
         ORDER BY t.done_at IS NOT NULL, t.done_at DESC, t.due_on IS NULL, t.due_on, t.priority = 'high' DESC, t.id LIMIT $limit");
-    $stmt->execute([pid(), ...$args, ...(restricted_location() ? [restricted_location()] : [])]);
+    $stmt->execute([pid(), ...$args, ...$locIn[1]]);
     $rows = $stmt->fetchAll();
     $assignees = []; $emailTo = [];
     if ($rows) {
@@ -1035,7 +1037,7 @@ function patient_card(int $patientId): array {
     $p = $p->fetch();
     $c = pi_db()->prepare('SELECT id, case_number, ehr_case_label, injury_type, date_of_injury, stage, location_id FROM cases WHERE patient_id = ? AND archived_at IS NULL ORDER BY date_of_injury DESC, id DESC');
     $c->execute([$patientId]);
-    $cases = array_values(array_filter($c->fetchAll(), fn($x) => !restricted_location() || (int)$x['location_id'] === restricted_location()));
+    $cases = array_values(array_filter($c->fetchAll(), fn($x) => location_allowed($x['location_id'] === null ? null : (int)$x['location_id'])));
     return ['id' => (int)$p['id'], 'name' => trim($p['first_name'] . ' ' . $p['last_name']), 'chartNumber' => $p['chart_number'], 'dob' => dec($p['dob_enc']),
         'cases' => array_map(fn($x) => ['id' => (int)$x['id'], 'number' => $x['case_number'], 'label' => $x['ehr_case_label'], 'type' => $x['injury_type'], 'doi' => $x['date_of_injury'], 'stage' => $x['stage'],
             'open' => in_array($x['stage'], OPEN_STAGES, true)], $cases)];

@@ -75,6 +75,8 @@ function session_payload(?array $u) {
         $l = $loc->fetch();
         $out['user']['locationId'] = $l['location_id'] ? (int)$l['location_id'] : null;
         $out['user']['locationRestricted'] = (bool)$l['location_restricted'] && $l['location_id'];
+        // Every location they may see (null = all).
+        $out['user']['locationIds'] = user_allowed_locations($u + $l);
     }
     return $out;
 }

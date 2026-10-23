@@ -83,6 +83,7 @@ define('SUPPORT_EMAIL', '$ADMIN_EMAIL');
 //   'solo' => ['monthly' => 'price_...', 'annual' => 'price_...'],
 //   'practice' => ['monthly' => 'price_...', 'annual' => 'price_...'],
 //   'group' => ['monthly' => 'price_...', 'annual' => 'price_...'],
+//   'location' => ['monthly' => 'price_...', 'annual' => 'price_...'],   // extra location add-on
 // ]);
 // Email (trial reminders) — Amazon SES SMTP credentials (see README)
 // define('SMTP_HOST', 'email-smtp.us-east-1.amazonaws.com');

@@ -98,14 +98,15 @@ function sched_dates(string $text, int $year): array {
 }
 
 // The practice's open injury cases, indexed for matching. A team member
-// limited to one location only sees that location's cases. One entry per
+// limited to some locations only sees those locations' cases. One entry per
 // case; a patient with several open cases has several entries.
 function sched_patient_index(int $practiceId): array {
+    [$locSql, $locArgs] = loc_in('c.location_id');
     $sql = "SELECT c.id case_id, c.case_number, c.ehr_case_label, c.injury_type, c.date_of_injury, c.first_visit, c.location_id, p.id patient_id, p.first_name, p.last_name, p.chart_number, p.dob_enc
         FROM cases c JOIN patients p ON p.id = c.patient_id
-        WHERE c.practice_id = ? AND c.archived_at IS NULL AND c.stage IN ('" . implode("','", OPEN_STAGES) . "')" . (restricted_location() ? ' AND c.location_id = ?' : '') . ' ORDER BY c.date_of_injury DESC, c.id DESC';
+        WHERE c.practice_id = ? AND c.archived_at IS NULL AND c.stage IN ('" . implode("','", OPEN_STAGES) . "')" . $locSql . ' ORDER BY c.date_of_injury DESC, c.id DESC';
     $s = pi_db()->prepare($sql);
-    $s->execute(array_merge([$practiceId], restricted_location() ? [restricted_location()] : []));
+    $s->execute(array_merge([$practiceId], $locArgs));
     $out = [];
     foreach ($s->fetchAll() as $r) {
         $f = sched_words($r['first_name']); $l = sched_words($r['last_name']);

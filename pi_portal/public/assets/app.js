@@ -376,12 +376,14 @@ const NAV = [
 // server regardless). Shown when the practice has more than one location.
 const multiLocation = () => (S.lookups?.locations || []).length > 1;
 const locationName = (id) => (S.lookups?.locations || []).find((l) => +l.id === +id)?.name || '';
+// The locations this person may see (everyone's, unless they're limited).
+const myLocations = () => (S.lookups?.locations || []).filter((l) => !S.user?.locationIds || S.user.locationIds.includes(+l.id));
 function locFilter() {
-  if (!multiLocation() || S.user?.locationRestricted) return '';
+  if (!multiLocation() || myLocations().length < 2) return '';
   let v = null;
   try { v = localStorage.getItem('ic.loc'); } catch { /* storage unavailable */ }
   if (v === null) v = S.user?.locationId ? String(S.user.locationId) : '';
-  return v;
+  return v === '' || myLocations().some((l) => String(l.id) === v) ? v : '';
 }
 function setLocFilter(v) { try { localStorage.setItem('ic.loc', v); } catch { /* storage unavailable */ } }
 const locQS = () => { const l = locFilter(); return l ? '&location=' + encodeURIComponent(l) : ''; };
@@ -422,8 +424,8 @@ async function startShell() {
   $app.innerHTML = `<div class="shell">
     <nav class="sidebar" aria-label="Main">
       <div class="brand">${brandLogoHtml(true)}<small>${esc(operator ? 'Operator console' : S.practice.name)}</small></div>
-      ${!operator && multiLocation() ? (S.user.locationRestricted ? `<div class="loc-switch small">${esc(locationName(S.user.locationId))}</div>`
-        : `<select class="loc-switch" id="loc-switch" aria-label="Location">${opt('', 'All locations', locFilter())}${S.lookups.locations.map((l) => opt(l.id, l.name, locFilter())).join('')}</select>`) : ''}
+      ${!operator && multiLocation() ? (myLocations().length < 2 ? `<div class="loc-switch small">${esc(locationName(S.user.locationId))}</div>`
+        : `<select class="loc-switch" id="loc-switch" aria-label="Location">${opt('', S.user.locationIds ? 'All my locations' : 'All locations', locFilter())}${myLocations().map((l) => opt(l.id, l.name, locFilter())).join('')}</select>`) : ''}
       ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}${NAV_FEATURE[k] && !operator && !hasFeature(NAV_FEATURE[k]) ? ` <span class="nav-lock" title="${esc(featureInfo(NAV_FEATURE[k]).planName)} plan">${esc(featureInfo(NAV_FEATURE[k]).planName)}</span>` : ''}</a>`).join('')}
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>
@@ -689,7 +691,7 @@ const caseDefs = () => [
   { n: 'attorney_contact_id', l: 'Attorney', t: 'contact', ctype: ['attorney'] },
   { n: 'paralegal', l: 'Paralegal (name, phone / email)', ph: 'e.g. Maria — 305-555-0100' },
   { n: 'provider_user_id', l: 'Treating provider', t: 'user' },
-  ...((S.lookups.locations || []).length && !S.user.locationRestricted ? [{ n: 'location_id', l: 'Location', t: 'select', blank: '—', opts: S.lookups.locations.map((l) => [l.id, l.name]) }] : []),
+  ...(myLocations().length && (!S.user.locationIds || myLocations().length > 1) ? [{ n: 'location_id', l: 'Location', t: 'select', blank: '—', opts: myLocations().map((l) => [l.id, l.name]) }] : []),
   { n: 'head_injury', l: 'Head injury? (hit head, lost consciousness, concussion symptoms)', t: 'select', blank: false, opts: HEAD_INJURY_OPTS },
   { n: 'jurisdiction', l: 'State whose rules apply (PIP, deadlines, liens)', t: 'select', blank: "Practice's state", opts: stateOpts() },
 ];
@@ -1327,7 +1329,7 @@ const visitDefs = () => [
   { n: 'visit_date', l: 'Date of service', t: 'date', req: true },
   { n: 'visit_type', l: 'Visit type', t: 'select', blank: false, opts: VISIT_TYPES },
   { n: 'provider_user_id', l: 'Provider', t: 'user' },
-  ...(multiLocation() && !S.user.locationRestricted ? [{ n: 'location_id', l: 'Location', t: 'select', blank: 'Case location', opts: S.lookups.locations.map((l) => [l.id, l.name]) }] : []),
+  ...(multiLocation() && myLocations().length > 1 ? [{ n: 'location_id', l: 'Location', t: 'select', blank: 'Case location', opts: myLocations().map((l) => [l.id, l.name]) }] : []),
   { n: 'cpt_codes', l: 'CPT codes', ph: '98941, 97140, 97110' },
   ...(S.caseData?.case.injury_type === 'workers_comp' ? [{ n: 'dwc25_sent', l: 'DWC-25 sent to carrier', t: 'check' }] : []),
   { n: 'notes', l: 'Visit note', t: 'textarea' },
@@ -2515,13 +2517,27 @@ function userModal(existing) {
     { n: 'finance_access', l: 'Grant full financial access (staff role only)', t: 'check' },
     ...(hasFeature('email_digest') ? [{ n: 'notify_digest', l: 'Daily email digest', t: 'check' }] : []),
     ...((S.lookups.locations || []).length ? [{ n: 'location_id', l: 'Home location', t: 'select', blank: '—', opts: S.lookups.locations.map((l) => [l.id, l.name]) },
-      { n: 'location_restricted', l: "Only see this location's patients", t: 'check' }] : []),
+      { n: 'location_restricted', l: 'Limit to their locations (home plus any ticked below)', t: 'check' }] : []),
     ...(existing ? [{ n: 'active', l: 'Active', t: 'check' }] : [])];
-  openModal({ title: existing ? 'Edit user' : 'Add user', body: fieldsHtml(defs, existing || { role: 'staff', notify_digest: 0 }), onOk: async (el) => {
-    const r = await api('admin.php?action=user_save', { ...readFields(el, defs), ...(existing ? { id: existing.id } : {}) });
+  // Other locations a limited person may also see (e.g. front desk covering two offices).
+  const extra = new Set((existing?.location_ids || []).map(Number));
+  const locBox = (S.lookups.locations || []).length > 1 ? `<fieldset class="assignees mt" id="um-locs"><legend>Also sees these locations</legend><div class="assignee-list">${S.lookups.locations.map((l) => `<label class="check"><input type="checkbox" data-loc="${l.id}"${extra.has(+l.id) ? ' checked' : ''}> ${esc(l.name)}</label>`).join('')}</div>
+    <p class="small muted">Only applies when "Limit to their locations" is on. Their home location is always included.</p></fieldset>` : '';
+  const m = openModal({ title: existing ? 'Edit user' : 'Add user', body: fieldsHtml(defs, existing || { role: 'staff', notify_digest: 0 }) + locBox, onOk: async (el) => {
+    const v = readFields(el, defs);
+    const ids = [...el.querySelectorAll('[data-loc]:checked')].map((x) => +x.dataset.loc).filter((i) => i !== +v.location_id);
+    const r = await api('admin.php?action=user_save', { ...v, ...(locBox ? { location_ids: ids } : {}), ...(existing ? { id: existing.id } : {}) });
     if (r.tempPassword) showTempPassword(r.tempPassword);
     route();
   } });
+  const box = m.el.querySelector('#um-locs'), lim = m.el.querySelector('[name="location_restricted"]'), home = m.el.querySelector('[name="location_id"]');
+  if (box && lim) {
+    const sync = () => {
+      box.hidden = !lim.checked || !home.value;
+      box.querySelectorAll('[data-loc]').forEach((c) => { const isHome = c.dataset.loc === home.value; c.disabled = isHome; if (isHome) c.checked = true; });
+    };
+    lim.addEventListener('change', sync); home.addEventListener('change', sync); sync();
+  }
 }
 
 function showTempPassword(pw) {
@@ -2723,7 +2739,22 @@ function locationModal(id) {
     { n: 'state', l: "State (new cases here follow this state's rules)", t: 'select', blank: "Practice's state", opts: stateOpts() }, { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' },
     ...(id ? [{ n: 'active', l: 'Active', t: 'check' }] : [])];
   openModal({ title: id ? 'Edit location' : 'Add location', okText: 'Save', body: fieldsHtml(defs, l),
-    onOk: async (el) => { await api('admin.php?action=location_save', { ...readFields(el, defs), ...(id ? { id: +id } : {}) }); toast('Saved'); await refreshSession(); loadLocations(); } });
+    onOk: async (el) => {
+      const body = { ...readFields(el, defs), ...(id ? { id: +id } : {}) };
+      try { await api('admin.php?action=location_save', body); }
+      catch (err) {
+        // Beyond the plan's included locations: confirm the add-on, pay, then save.
+        if (err.data?.code !== 'location_addon') throw err;
+        const a = err.data;
+        if (!a.canPay) throw err;
+        const per = a.interval === 'annual' ? '/year' : '/month';
+        if (!(await confirmBox('Add another location?', `Your plan covers ${a.allowance} location${a.allowance === 1 ? '' : 's'}. Each additional location is ${money2(a.price)}${per}${a.today > 0 ? ` — about ${money2(a.today)} today for the rest of this billing period` : ''}, added to your subscription.`, `Add location (${money2(a.price)}${per})`))) return false;
+        const r = await attempt(() => api('billing.php?action=locations_change', { quantity: a.quantity }));
+        if (!r) return false;
+        await api('admin.php?action=location_save', body);
+      }
+      toast('Saved'); await refreshSession(); loadLocations();
+    } });
 }
 
 async function loadEhrFormats() {
@@ -2758,6 +2789,8 @@ async function pageBilling(main) {
     <div class="tiles">
       <div class="tile"><div class="k">Open cases</div><div class="v">${usage(p.activeCases, p.limits.activeCases)}</div>${p.limits.activeCases ? `<div class="bar ${pct(p.activeCases, p.limits.activeCases) >= 90 ? 'warn' : ''}"><i data-w="${pct(p.activeCases, p.limits.activeCases)}"></i></div>` : ''}</div>
       <div class="tile"><div class="k">Users</div><div class="v">${usage(p.activeUsers, p.limits.users)}</div>${p.limits.users ? `<div class="bar"><i data-w="${pct(p.activeUsers, p.limits.users)}"></i></div>` : ''}</div>
+      ${p.locations.active > 1 || p.locations.extra ? `<div class="tile"><div class="k">Locations</div><div class="v">${p.locations.active}${p.locations.allowance ? ' of ' + p.locations.allowance : ''}</div>
+        <div class="small muted">${p.locations.included} included${p.locations.extra ? ` + ${p.locations.extra} extra at $${p.locations.price}/month each` : ''}</div></div>` : ''}
     </div>
     ${!r.billingReady ? '<div class="notice">Online billing isn\'t switched on yet for this installation.</div>' : ''}
     ${p.promo && !['active', 'past_due', 'comped'].includes(p.status) ? `<div class="notice ok">Promo code <strong class="mono">${esc(p.promo.code)}</strong>: ${esc(p.promo.summary)}${p.promo.plans ? ' (' + esc(p.promo.plans.map((k) => r.plans[k]?.name || k).join(' or ') + ' plan') + ')' : ''} — applied automatically at checkout.</div>` : ''}
@@ -2776,6 +2809,7 @@ async function pageBilling(main) {
         <div class="price">$${annual ? pl.annual_price : pl.price}<span>/${annual ? 'year' : 'month'}</span></div>
         <p class="small ${annual ? '' : 'muted'}">${annual ? `$${(pl.annual_price / 12).toFixed(2)}/month · save $${pl.price * 12 - pl.annual_price} a year` : `or $${pl.annual_price}/year with annual billing`}</p>
         <p class="small muted">${esc(pl.blurb)}</p>
+        ${pl.locations ? `<p class="small"><strong>${pl.locations.included} locations included</strong> · each additional location $${annual ? pl.locations.extra_price * r.annualMonthsCharged + '/year' : pl.locations.extra_price + '/month'}${p.locations.active > pl.locations.included ? ` — you have ${p.locations.active}, so +$${(p.locations.active - pl.locations.included) * (annual ? pl.locations.extra_price * r.annualMonthsCharged : pl.locations.extra_price)}/${annual ? 'year' : 'month'}` : ''}</p>` : ''}
         <ul class="small"><li>${pl.active_cases ? pl.active_cases + ' open cases' : 'Unlimited open cases'}</li><li>${pl.users ? pl.users + ' users' : 'Unlimited users'}</li><li>Unlimited closed cases</li>
           ${(pl.features || []).map((f) => `<li class="${f.included ? '' : 'no'}">${esc(f.name)}</li>`).join('')}</ul>
         ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : subscribed ? changePlanButton(r, k, interval)

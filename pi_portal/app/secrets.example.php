@@ -32,6 +32,8 @@ define('STRIPE_PRICES', [
     'solo' => ['monthly' => 'price_...', 'annual' => 'price_...'],
     'practice' => ['monthly' => 'price_...', 'annual' => 'price_...'],
     'group' => ['monthly' => 'price_...', 'annual' => 'price_...'],
+    // Extra location add-on for Platinum: $29/month, $290/year (per location).
+    'location' => ['monthly' => 'price_...', 'annual' => 'price_...'],
 ]);
 
 // ========== EMAIL (trial reminders) ==========

@@ -48,7 +48,7 @@ function task_recipients(array $task, ?int $exclude = null): array {
     if ($task['case_id']) { $s = $pdo->prepare('SELECT location_id FROM cases WHERE id = ?'); $s->execute([$task['case_id']]); $loc = $s->fetchColumn() ?: null; }
     $s = $pdo->prepare('SELECT id, name, email, location_id, location_restricted FROM users WHERE practice_id = ? AND active = 1 AND notify_tasks = 1 AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
     $s->execute([$task['practice_id'], ...$ids]);
-    return array_values(array_filter($s->fetchAll(), fn($u) => !$u['location_restricted'] || !$task['case_id'] || (int)$u['location_id'] === (int)$loc));
+    return array_values(array_filter($s->fetchAll(), fn($u) => !$task['case_id'] || ($a = user_allowed_locations($u)) === null || in_array((int)$loc, $a, true)));
 }
 
 function task_email_message(string $event, array $task, array $practice, array $to, ?string $actor = null): array {

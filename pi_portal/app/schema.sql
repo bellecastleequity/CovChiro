@@ -63,6 +63,9 @@ CREATE TABLE practices (
   stripe_customer_id VARCHAR(64) NULL,
   stripe_subscription_id VARCHAR(64) NULL,
   billing_interval ENUM('monthly','annual') NOT NULL DEFAULT 'monthly',
+  -- Paid extra locations beyond those Platinum includes (mirrors the
+  -- quantity of the location add-on on the Stripe subscription).
+  extra_locations INT NOT NULL DEFAULT 0,
   -- Promo code entered at signup (app/promo.php).
   promo_code_id INT NULL,
   promo_applied_at DATETIME NULL,
@@ -218,6 +221,16 @@ CREATE TABLE users (
   active TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL,
   FOREIGN KEY (practice_id) REFERENCES practices(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Extra locations a location-limited team member may also see (their home
+-- location, users.location_id, is always included).
+CREATE TABLE user_locations (
+  user_id INT NOT NULL,
+  location_id INT NOT NULL,
+  PRIMARY KEY (user_id, location_id),
+  CONSTRAINT fk_ul_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ul_location FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE login_throttle (

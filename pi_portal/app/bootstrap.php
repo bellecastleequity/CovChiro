@@ -295,18 +295,36 @@ function current_user(?array $set = null): ?array {
     return $user;
 }
 
-// Team members limited to one location see only that location's cases.
-// Returns the location id to restrict to, or null for everyone else.
-function restricted_location(): ?int {
+// Team members can be limited to some locations: their home location plus
+// any others they're given (user_locations). Returns the location ids a
+// user may see, or null for "every location".
+function user_allowed_locations(array $u): ?array {
+    if (empty($u['location_restricted']) || empty($u['location_id'])) return null;
+    static $cache = [];
+    if (!isset($cache[$u['id']])) {
+        $s = pi_db()->prepare('SELECT location_id FROM user_locations WHERE user_id = ?'); $s->execute([$u['id']]);
+        $cache[$u['id']] = array_values(array_unique(array_merge([(int)$u['location_id']], array_map('intval', $s->fetchAll(PDO::FETCH_COLUMN)))));
+    }
+    return $cache[$u['id']];
+}
+function allowed_locations(): ?array {
     $u = current_user();
-    return $u && !empty($u['location_restricted']) && $u['location_id'] ? (int)$u['location_id'] : null;
+    return $u ? user_allowed_locations($u) : null;
+}
+function location_allowed(?int $id): bool {
+    $a = allowed_locations();
+    return $a === null || ($id !== null && in_array($id, $a, true));
+}
+// SQL for "column is one of the user's locations": [' AND col IN (...)', args].
+function loc_in(string $col): array {
+    $a = allowed_locations();
+    return $a === null ? ['', []] : [" AND $col IN (" . implode(',', array_fill(0, count($a), '?')) . ')', $a];
 }
 
 // SQL to append to a query on cases (alias $a) for the current user's
 // location restriction: [' AND ...', args].
 function case_scope(string $a = 'c'): array {
-    $loc = restricted_location();
-    return $loc ? [" AND $a.location_id = ?", [$loc]] : ['', []];
+    return loc_in("$a.location_id");
 }
 
 // ========== AUDIT ==========
@@ -412,14 +430,15 @@ function case_or_404(int $id): array {
 function child_or_404(string $table, int $id, ?int $caseId = null): array {
     static $tables = ['referrals', 'visits', 'outcomes', 'correspondence', 'ledger', 'tasks', 'documents', 'coverages', 'outreach', 'case_estimates'];
     if (!in_array($table, $tables, true)) throw new InvalidArgumentException('bad table');
-    $loc = restricted_location();
+    [$locSql, $locArgs] = loc_in('location_id');
     if ($table === 'tasks') {
         $sql = 'SELECT t.* FROM tasks t WHERE t.id = ? AND t.practice_id = ? AND t.archived_at IS NULL'
-            . ($loc ? ' AND (t.case_id IS NULL OR t.case_id IN (SELECT id FROM cases WHERE location_id = ?))' : '');
-        $args = $loc ? [$id, pid(), $loc] : [$id, pid()];
+            . ($locSql ? " AND (t.case_id IS NULL OR t.case_id IN (SELECT id FROM cases WHERE 1=1$locSql))" : '');
+        $args = [$id, pid(), ...$locArgs];
     } else {
-        $sql = "SELECT t.* FROM $table t JOIN cases c ON c.id = t.case_id WHERE t.id = ? AND c.practice_id = ?" . ($loc ? ' AND c.location_id = ?' : '');
-        $args = $loc ? [$id, pid(), $loc] : [$id, pid()];
+        [$cSql, $cArgs] = loc_in('c.location_id');
+        $sql = "SELECT t.* FROM $table t JOIN cases c ON c.id = t.case_id WHERE t.id = ? AND c.practice_id = ?" . $cSql;
+        $args = [$id, pid(), ...$cArgs];
     }
     if ($caseId !== null) { $sql .= ' AND t.case_id = ?'; $args[] = $caseId; }
     $stmt = pi_db()->prepare($sql);

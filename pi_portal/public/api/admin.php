@@ -5,6 +5,7 @@
 define('PI_ALLOW_WHEN_LAPSED', true);
 require_once __DIR__ . '/../../app/bootstrap.php';
 require_once __DIR__ . '/../../app/badge.php';
+require_once __DIR__ . '/../../app/stripe.php';
 pi_start_session();
 
 // Home location (must belong to the practice) and whether access is
@@ -18,11 +19,34 @@ function user_location_input(array $b): array {
     return [$loc, $loc && !empty($b['location_restricted']) ? 1 : 0];
 }
 
+// Other locations a location-limited person may also see (location_ids;
+// must belong to the practice; the home location is implied).
+function user_extra_locations_input(array $b, ?int $home): array {
+    $ids = array_values(array_unique(array_filter(array_map('intval', (array)($b['location_ids'] ?? [])), fn($i) => $i > 0 && $i !== $home)));
+    if (!$ids) return [];
+    $s = pi_db()->prepare('SELECT id FROM locations WHERE practice_id = ? AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+    $s->execute([pid(), ...$ids]);
+    $ok = array_map('intval', $s->fetchAll(PDO::FETCH_COLUMN));
+    if (count($ok) !== count($ids)) json_response(['error' => 'Unknown location'], 400);
+    sort($ok);
+    return $ok;
+}
+function save_user_locations(int $userId, array $ids): void {
+    pi_db()->prepare('DELETE FROM user_locations WHERE user_id = ?')->execute([$userId]);
+    $ins = pi_db()->prepare('INSERT INTO user_locations (user_id, location_id) VALUES (?, ?)');
+    foreach ($ids as $l) $ins->execute([$userId, $l]);
+}
+function user_location_ids(int $userId): array {
+    $s = pi_db()->prepare('SELECT location_id FROM user_locations WHERE user_id = ? ORDER BY location_id'); $s->execute([$userId]);
+    return array_map('intval', $s->fetchAll(PDO::FETCH_COLUMN));
+}
+
 function handle_users() {
     require_user('users.manage');
     $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, notify_digest, location_id, location_restricted, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
     $stmt->execute([pid()]);
-    json_response(['users' => $stmt->fetchAll(), 'limit' => effective_plan(current_practice())['users']]);
+    $users = array_map(fn($u) => $u + ['location_ids' => user_location_ids((int)$u['id'])], $stmt->fetchAll());
+    json_response(['users' => $users, 'limit' => effective_plan(current_practice())['users']]);
 }
 
 // A readable one-time password the admin hands over in person or by
@@ -57,9 +81,13 @@ function handle_user_save() {
         $finAccess = $role === 'staff' && !empty($b['finance_access']) ? 1 : 0;
         $digest = array_key_exists('notify_digest', $b) ? (!empty($b['notify_digest']) ? 1 : 0) : (int)$existing['notify_digest'];
         [$locId, $locOnly] = array_key_exists('location_id', $b) ? user_location_input($b) : [$existing['location_id'], (int)$existing['location_restricted']];
-        if ($id === (int)$admin['id'] && $locOnly) json_response(['error' => "You can't limit your own account to one location."], 400);
+        if ($id === (int)$admin['id'] && $locOnly) json_response(['error' => "You can't limit your own account's locations."], 400);
+        $before = user_location_ids($id);
+        $extra = !$locOnly ? [] : (array_key_exists('location_ids', $b) ? user_extra_locations_input($b, $locId) : array_values(array_diff($before, [(int)$locId])));
         $pdo->prepare('UPDATE users SET name = ?, role = ?, active = ?, finance_access = ?, notify_digest = ?, location_id = ?, location_restricted = ? WHERE id = ? AND practice_id = ?')->execute([$name, $role, $active, $finAccess, $digest, $locId, $locOnly, $id, pid()]);
         $changes = audit_diff(['name' => 'label', 'role' => array_keys(ROLE_PERMS), 'active' => 'bool', 'finance_access' => 'bool', 'notify_digest' => 'bool', 'location_id' => 'int', 'location_restricted' => 'bool'], $existing, ['name' => $name, 'role' => $role, 'active' => $active, 'finance_access' => $finAccess, 'notify_digest' => $digest, 'location_id' => $locId, 'location_restricted' => $locOnly]);
+        save_user_locations($id, $extra);
+        if ($extra !== $before) $changes[] = ['f' => 'location_ids', 't' => 'text'];
         if ($changes) audit('update', 'user', $id, null, $admin, $existing['name'], $changes);
         json_response(['ok' => true]);
     }
@@ -74,6 +102,7 @@ function handle_user_save() {
     $pdo->prepare('INSERT INTO users (practice_id, email, name, role, finance_access, location_id, location_restricted, notify_digest, password_hash, must_change_password, created_at) VALUES (?,?,?,?,?,?,?,?,?,1,?)')
         ->execute([pid(), $email, $name, $role, $role === 'staff' && !empty($b['finance_access']) ? 1 : 0, $locId, $locOnly, array_key_exists('notify_digest', $b) ? (!empty($b['notify_digest']) ? 1 : 0) : ($role === 'admin' ? 1 : 0), password_hash($pw, PASSWORD_ARGON2ID), now_str()]);
     $newId = (int)$pdo->lastInsertId();
+    if ($locOnly) save_user_locations($newId, user_extra_locations_input($b, $locId));
     audit('create', 'user', $newId, null, $admin, $name, [['f' => 'role', 't' => 'enum', 'from' => null, 'to' => $role]]);
     json_response(['ok' => true, 'tempPassword' => $pw]);
 }
@@ -459,15 +488,36 @@ function handle_location_save() {
         'fax' => str_or_null($b['fax'] ?? null, 40), 'active' => array_key_exists('active', $b) ? (!empty($b['active']) ? 1 : 0) : 1];
     if (!$cols['name']) json_response(['error' => 'Give the location a name.'], 400);
     $pdo = pi_db();
+    $before = null;
     if ($id) {
         $s = $pdo->prepare('SELECT * FROM locations WHERE id = ? AND practice_id = ?'); $s->execute([$id, pid()]);
         $before = $s->fetch() ?: json_response(['error' => 'Not found'], 404);
+    }
+    // Adding (or turning back on) a location beyond the plan's allowance
+    // needs an extra-location add-on first.
+    $p = current_practice();
+    $allow = location_allowance($p);
+    if ($cols['active'] && (!$before || !$before['active']) && $allow !== null && active_location_count(pid()) + 1 > $allow) {
+        [$left, $inTrial] = period_left($p);
+        $interval = $p['billing_interval'] ?: 'monthly';
+        $canPay = !empty($p['stripe_subscription_id']) && in_array($p['subscription_status'], ['active', 'past_due'], true) && defined('STRIPE_PRICES') && stripe_price_id('location', $interval);
+        json_response(['error' => 'Your plan includes ' . $allow . ' location' . ($allow === 1 ? '' : 's') . '. Each additional location is $' . EXTRA_LOCATION_PRICE . '/month.' . ($canPay ? '' : ' Contact ' . SUPPORT_EMAIL . ' to add one.'),
+            'code' => 'location_addon', 'canPay' => (bool)$canPay, 'allowance' => $allow, 'quantity' => (int)$p['extra_locations'] + 1, 'interval' => $interval,
+            'price' => extra_location_amount($interval), 'today' => $inTrial ? 0 : round(extra_location_amount($interval) * $left, 2)], 402);
+    }
+    if ($id) {
         $pdo->prepare('UPDATE locations SET name = ?, address = ?, state = ?, phone = ?, fax = ?, active = ? WHERE id = ? AND practice_id = ?')->execute([...array_values($cols), $id, pid()]);
         audit('update', 'location', $id, null, $admin, $cols['name'], audit_diff(['name' => 'label', 'address' => 'label', 'state' => 'label', 'phone' => 'label', 'fax' => 'label', 'active' => 'bool'], $before, $cols));
     } else {
         $pdo->prepare('INSERT INTO locations (practice_id, name, address, state, phone, fax, active, created_at) VALUES (?,?,?,?,?,?,?,?)')->execute([pid(), ...array_values($cols), now_str()]);
         $id = (int)$pdo->lastInsertId();
         audit('create', 'location', $id, null, $admin, $cols['name']);
+    }
+    // Turning a location off stops paying for an extra one you no longer use
+    // (the unused part is credited to the next bill).
+    $needed = max(0, active_location_count(pid()) - LOCATIONS_INCLUDED);
+    if ((int)$p['extra_locations'] > $needed && !empty($p['stripe_subscription_id']) && in_array($p['subscription_status'], ['active', 'past_due'], true)) {
+        if (stripe_ready()) { set_extra_locations($p, $needed); audit('billing_locations', 'practice', pid(), null, $admin, 'extra locations ' . $p['extra_locations'] . " → $needed"); }
     }
     json_response(['ok' => true, 'id' => $id]);
 }

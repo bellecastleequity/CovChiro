@@ -8,39 +8,7 @@
 // customer.subscription.updated, customer.subscription.deleted
 define('PI_ALLOW_WHEN_LAPSED', true);
 require_once __DIR__ . '/../../app/bootstrap.php';
-
-function stripe_ready(): bool {
-    return defined('STRIPE_SECRET_KEY') && strpos(STRIPE_SECRET_KEY, 'sk_') === 0 && strlen(STRIPE_SECRET_KEY) > 12 && defined('STRIPE_PRICES');
-}
-
-// Stripe needs a trial end at least 48 hours away; with less left, billing
-// simply starts now.
-const STRIPE_MIN_TRIAL_SECONDS = 49 * 3600;
-function remaining_trial_end(array $p): ?int {
-    if ($p['subscription_status'] !== 'trialing' || !$p['trial_ends_at']) return null;
-    $end = strtotime($p['trial_ends_at']);
-    return $end - time() >= STRIPE_MIN_TRIAL_SECONDS ? $end : null;
-}
-
-// Minimal Stripe REST client (form-encoded, as Stripe's API expects).
-function stripe_api(string $method, string $path, array $params = []): array {
-    // STRIPE_API_BASE exists only so tests can point at a local stand-in.
-    $ch = curl_init((defined('STRIPE_API_BASE') ? STRIPE_API_BASE : 'https://api.stripe.com/v1/') . $path . ($method === 'GET' && $params ? '?' . http_build_query($params) : ''));
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20,
-        CURLOPT_USERPWD => STRIPE_SECRET_KEY . ':',
-        CURLOPT_CUSTOMREQUEST => $method,
-    ]);
-    if ($method !== 'GET') curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
-    $body = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $data = json_decode((string)$body, true) ?: [];
-    if ($code >= 400 || !$body) {
-        pi_log_error('Stripe ' . $method . ' ' . $path . ' failed: HTTP ' . $code . ' ' . ($data['error']['message'] ?? 'no body'));
-        json_response(['error' => 'Billing is temporarily unavailable. Please try again.'], 502);
-    }
-    return $data;
-}
+require_once __DIR__ . '/../../app/stripe.php';
 
 function handle_status() {
     require_user('users.manage');
@@ -62,27 +30,36 @@ function plan_amount(string $plan, string $interval): float {
     return (float)($interval === 'annual' ? PLANS[$plan]['price'] * ANNUAL_MONTHS_CHARGED : PLANS[$plan]['price']);
 }
 
+// Extra locations a plan would bill for, given the practice's active
+// locations (none on plans without multiple locations).
+function extras_needed(array $p, string $plan): int {
+    return plan_has_feature($plan, 'locations') ? max(0, active_location_count((int)$p['id']) - LOCATIONS_INCLUDED) : 0;
+}
+// The plan plus its extra locations, per billing period.
+function bill_amount(array $p, string $plan, string $interval): float {
+    return plan_amount($plan, $interval) + extras_needed($p, $plan) * extra_location_amount($interval);
+}
+
 // For a subscribed practice: roughly what switching to each plan costs today
 // (the prorated difference for the rest of the billing period), so the
 // button can say so. Stripe calculates the exact amount.
 function change_preview(array $p): ?array {
     if (empty($p['stripe_subscription_id']) || !in_array($p['subscription_status'], ['active', 'past_due'], true)) return null;
-    $now = time();
     $interval = $p['billing_interval'] ?: 'monthly';
-    $end = $p['current_period_end'] ? strtotime($p['current_period_end']) : $now;
     // Subscribed during the free trial and kept the free days: the first
     // billing period ends when the trial does.
-    $inTrial = $p['trial_ends_at'] && strtotime($p['trial_ends_at']) > $now && abs($end - strtotime($p['trial_ends_at'])) < 86400;
-    $left = max(0, min(1, ($end - $now) / (($interval === 'annual' ? 365 : 30.44) * 86400)));
+    [$left, $inTrial] = period_left($p);
+    $cur = plan_amount((string)$p['plan'], $interval) + (int)$p['extra_locations'] * extra_location_amount($interval);
     $out = [];
     foreach (BILLING_INTERVALS as $i) foreach (array_keys(PLANS) as $k) {
         if ($k === $p['plan'] && $i === $interval) continue;
-        $diff = plan_amount($k, $i) - plan_amount((string)$p['plan'], $interval);
+        $diff = bill_amount($p, $k, $i) - $cur;
         // A change of billing period starts a new period, charged in full
         // less the unused part of the current one.
-        $today = $inTrial ? 0 : ($i === $interval ? max(0, $diff * $left) : max(0, plan_amount($k, $i) - plan_amount((string)$p['plan'], $interval) * $left));
+        $today = $inTrial ? 0 : ($i === $interval ? max(0, $diff * $left) : max(0, bill_amount($p, $k, $i) - $cur * $left));
         $out[$k][$i] = ['upgrade' => plan_rank($k) > plan_rank((string)$p['plan']) || ($i === 'annual' && $interval === 'monthly'), 'today' => round($today, 2),
-            'credit' => !$inTrial && $diff < 0 && $i === $interval ? round(-$diff * $left, 2) : 0, 'available' => (bool)stripe_price_id($k, $i)];
+            'credit' => !$inTrial && $diff < 0 && $i === $interval ? round(-$diff * $left, 2) : 0, 'extraLocations' => extras_needed($p, $k),
+            'available' => stripe_price_id($k, $i) && (!extras_needed($p, $k) || stripe_price_id('location', $i))];
     }
     return ['plan' => $p['plan'], 'interval' => $interval, 'inTrial' => $inTrial, 'periodEnd' => $p['current_period_end'], 'options' => $out];
 }
@@ -104,16 +81,26 @@ function handle_change_plan() {
     $price = isset(PLANS[$plan]) ? stripe_price_id($plan, $interval) : null;
     if (!$price) json_response(['error' => 'That plan isn\'t available.'], 400);
     $sub = stripe_api('GET', 'subscriptions/' . $p['stripe_subscription_id']);
-    $item = $sub['items']['data'][0] ?? null;
+    $item = sub_plan_item($sub);
     if (!$item) json_response(['error' => 'Billing is temporarily unavailable. Please try again.'], 502);
     if (($item['price']['id'] ?? '') === $price) json_response(['error' => 'You are already on that plan.'], 400);
-    $up = plan_rank($plan) > plan_rank((string)$p['plan']) || ($interval === 'annual' && $p['billing_interval'] === 'monthly');
+    // Extra locations follow the plan: billed on Platinum (at the new
+    // billing period's price), dropped on plans without multiple locations.
+    $extras = extras_needed($p, $plan);
+    $locPrice = stripe_price_id('location', $interval);
+    if ($extras && !$locPrice) json_response(['error' => 'Extra locations can\'t be billed online for that billing period yet. Contact ' . SUPPORT_EMAIL . '.'], 400);
+    $locItem = sub_location_item($sub);
+    $up = plan_rank($plan) > plan_rank((string)$p['plan']) || ($interval === 'annual' && $p['billing_interval'] === 'monthly') || $extras > (int)$p['extra_locations'];
     $trialing = ($sub['status'] ?? '') === 'trialing';
-    $new = stripe_api('POST', 'subscriptions/' . $p['stripe_subscription_id'], [
-        'items[0][id]' => $item['id'], 'items[0][price]' => $price,
-        'proration_behavior' => $trialing ? 'none' : ($up ? 'always_invoice' : 'create_prorations'),
-        'payment_behavior' => 'pending_if_incomplete', 'expand[0]' => 'latest_invoice',
-    ]);
+    $params = ['items[0][id]' => $item['id'], 'items[0][price]' => $price,
+        'proration_behavior' => $trialing ? 'none' : ($up ? 'always_invoice' : 'create_prorations'), 'expand[0]' => 'latest_invoice'];
+    if ($locItem && !$extras) $params += ['items[1][id]' => $locItem['id'], 'items[1][deleted]' => 'true'];
+    elseif ($locItem) $params += ['items[1][id]' => $locItem['id'], 'items[1][price]' => $locPrice, 'items[1][quantity]' => $extras];
+    elseif ($extras) $params += ['items[1][price]' => $locPrice, 'items[1][quantity]' => $extras];
+    // Charges apply only once paid (Stripe can't hold back a removal, so a
+    // change that drops the add-on is applied as is).
+    if (!isset($params['items[1][deleted]'])) $params['payment_behavior'] = 'pending_if_incomplete';
+    $new = stripe_api('POST', 'subscriptions/' . $p['stripe_subscription_id'], $params);
     $detail = ($p['plan'] . ' ' . $p['billing_interval']) . ' → ' . $plan . ' ' . $interval;
     if (!empty($new['pending_update'])) {
         // Payment didn't go through (declined, or the bank wants
@@ -124,6 +111,29 @@ function handle_change_plan() {
     }
     apply_subscription($new);
     audit('billing_change_plan', 'practice', $p['id'], null, $user, $detail);
+    $s = pi_db()->prepare('SELECT * FROM practices WHERE id = ?'); $s->execute([$p['id']]);
+    json_response(['ok' => true, 'practice' => practice_summary($s->fetch())]);
+}
+
+// Add (or drop) paid extra locations on a live subscription — used when
+// adding a location beyond the allowance. Body: {quantity}.
+function handle_locations_change() {
+    require_method('POST');
+    $user = require_user('users.manage');
+    require_feature('locations');
+    if (!stripe_ready()) json_response(['error' => 'Online billing is not set up yet. Contact ' . SUPPORT_EMAIL . '.'], 400);
+    $p = current_practice();
+    if (empty($p['stripe_subscription_id']) || !in_array($p['subscription_status'], ['active', 'past_due'], true)) json_response(['error' => 'Choose a plan first.'], 400);
+    $qty = (int)(json_body()['quantity'] ?? -1);
+    $min = max(0, active_location_count((int)$p['id']) - LOCATIONS_INCLUDED);
+    if ($qty < $min || $qty > 200) json_response(['error' => $qty < $min ? "You have $min extra active location" . ($min === 1 ? '' : 's') . ' — turn one off first.' : 'Contact us for that many locations.'], 400);
+    $before = (int)$p['extra_locations'];
+    $r = set_extra_locations($p, $qty);
+    if (!empty($r['pending'])) {
+        audit('billing_locations_pending', 'practice', $p['id'], null, $user, "$before → $qty");
+        json_response(['pending' => true, 'payUrl' => $r['payUrl'], 'error' => 'The payment didn\'t go through, so the location wasn\'t added. Complete the payment and try again.'], 402);
+    }
+    audit('billing_locations', 'practice', $p['id'], null, $user, "extra locations $before → $qty");
     $s = pi_db()->prepare('SELECT * FROM practices WHERE id = ?'); $s->execute([$p['id']]);
     json_response(['ok' => true, 'practice' => practice_summary($s->fetch())]);
 }
@@ -149,10 +159,17 @@ function handle_checkout() {
     $params = [
         'mode' => 'subscription', 'customer' => $p['stripe_customer_id'], 'client_reference_id' => $p['id'],
         'line_items[0][price]' => $price, 'line_items[0][quantity]' => 1,
+        // (extra locations, if any, are added just below)
         'subscription_data[metadata][practice_id]' => $p['id'], 'subscription_data[metadata][plan]' => $plan,
         'subscription_data[metadata][interval]' => $interval,
         'success_url' => APP_URL . '/app.html#/billing?done=1', 'cancel_url' => APP_URL . '/app.html#/billing',
     ];
+    // Locations beyond those Platinum includes are billed from the start.
+    if ($extras = extras_needed($p, $plan)) {
+        $locPrice = stripe_price_id('location', $interval);
+        if (!$locPrice) json_response(['error' => 'Extra locations can\'t be billed online yet. Contact ' . SUPPORT_EMAIL . '.'], 400);
+        $params += ['line_items[1][price]' => $locPrice, 'line_items[1][quantity]' => $extras];
+    }
     // A discount code entered at signup is applied here; otherwise Stripe
     // lets the customer type a Stripe promotion code (not both at once).
     $promo = practice_discount($p);
@@ -189,37 +206,6 @@ function verify_stripe_signature(string $payload, string $header): bool {
     return false;
 }
 
-function apply_subscription(array $sub) {
-    $practiceId = (int)($sub['metadata']['practice_id'] ?? 0);
-    if (!$practiceId) {
-        $s = pi_db()->prepare('SELECT id FROM practices WHERE stripe_customer_id = ?');
-        $s->execute([$sub['customer']]);
-        $practiceId = (int)$s->fetchColumn();
-    }
-    if (!$practiceId) return;
-    $statusMap = ['active' => 'active', 'trialing' => 'active', 'past_due' => 'past_due', 'unpaid' => 'past_due', 'incomplete' => 'past_due',
-        'canceled' => 'canceled', 'incomplete_expired' => 'canceled', 'paused' => 'canceled'];
-    $status = $statusMap[$sub['status']] ?? 'past_due';
-    // Plan comes from the price actually subscribed to, so plan changes
-    // made in the Stripe portal are picked up too.
-    $priceId = $sub['items']['data'][0]['price']['id'] ?? null;
-    [$plan, $interval] = plan_for_price($priceId) ?? [$sub['metadata']['plan'] ?? null, $sub['metadata']['interval'] ?? null];
-    if (!in_array($interval, BILLING_INTERVALS, true)) $interval = ($sub['items']['data'][0]['price']['recurring']['interval'] ?? 'month') === 'year' ? 'annual' : 'monthly';
-    $periodEnd = $sub['current_period_end'] ?? ($sub['items']['data'][0]['current_period_end'] ?? null);
-    // A subscription started during the free trial keeps the trial's end
-    // date (the first charge); a subscription that has ended is detached so
-    // the practice can subscribe again.
-    $trialEnd = !empty($sub['trial_end']) && $sub['status'] === 'trialing' ? date('Y-m-d H:i:s', (int)$sub['trial_end']) : null;
-    $sql = 'UPDATE practices SET subscription_status = ?, stripe_subscription_id = ?, stripe_customer_id = ?, current_period_end = ?, billing_interval = ?'
-        . ($trialEnd ? ', trial_ends_at = ?' : '') . ($plan && isset(PLANS[$plan]) ? ', plan = ?' : '') . ' WHERE id = ? AND subscription_status <> "comped"';
-    $args = [$status, $status === 'canceled' ? null : $sub['id'], $sub['customer'], $periodEnd ? date('Y-m-d H:i:s', (int)$periodEnd) : null, $interval];
-    if ($trialEnd) $args[] = $trialEnd;
-    if ($plan && isset(PLANS[$plan])) $args[] = $plan;
-    $args[] = $practiceId;
-    pi_db()->prepare($sql)->execute($args);
-    audit('billing_' . $status, 'practice', $practiceId, null, ['id' => null, 'email' => 'stripe', 'practice_id' => $practiceId], trim($plan . ' ' . $interval));
-}
-
 function handle_webhook() {
     $payload = file_get_contents('php://input');
     if (!stripe_ready() || !verify_stripe_signature($payload, $_SERVER['HTTP_STRIPE_SIGNATURE'] ?? '')) {
@@ -254,5 +240,6 @@ switch ($action) {
     case 'checkout': handle_checkout(); break;
     case 'portal': handle_portal(); break;
     case 'change_plan': handle_change_plan(); break;
+    case 'locations_change': handle_locations_change(); break;
     default: json_response(['error' => 'Unknown action'], 400);
 }

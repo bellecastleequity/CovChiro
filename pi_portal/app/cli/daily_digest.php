@@ -37,7 +37,7 @@ foreach ($pdo->query('SELECT * FROM practices ORDER BY id')->fetchAll() as $p) {
         // Money items depend on what this person may see.
         // ... and on their location restriction.
         current_user($u);
-        $key = (fin_can($u, 'balances') ? 'fin' : 'nofin') . ':' . (restricted_location() ?? 'all');
+        $key = (fin_can($u, 'balances') ? 'fin' : 'nofin') . ':' . (($l = allowed_locations()) === null ? 'all' : implode(',', $l));
         $huddleFor[$key] ??= build_huddle($pdo, $u, (int)$p['id']);
         $criteria = $u['notify_criteria'] === null ? $rules['criteria'] : array_values(array_intersect(explode(',', $u['notify_criteria']), $rules['criteria']));
         if (!fin_can($u, 'balances')) $criteria = array_values(array_diff($criteria, ['money']));

@@ -45,8 +45,8 @@ const FEATURES = [
         'blurb' => "Upload yesterday's appointment list from any EHR (spreadsheet or PDF) and visits and no-shows are logged on every injury case automatically — so gaps in care and missed visits are flagged without double entry."],
     'email_digest' => ['name' => 'Daily email digest', 'plan' => 'group',
         'blurb' => "A morning email to each team member with counts of what needs attention under the criteria they choose — no patient details in the email."],
-    'locations' => ['name' => 'Multiple locations', 'plan' => 'group',
-        'blurb' => "Run several offices in one account: cases and visits by location, location letterheads, location and provider filters, and team members limited to their own location's patients."],
+    'locations' => ['name' => 'Multiple locations (2 included, then $29/month each)', 'plan' => 'group',
+        'blurb' => "Run several offices in one account (2 locations included, each additional location $29/month): cases and visits by location, location letterheads, location and provider filters, and team members limited to their own location's patients."],
     'custom_steps' => ['name' => 'Custom case steps', 'plan' => 'group',
         'blurb' => "Add your office's own steps to every case's checklist, with due dates, alerts and huddle items."],
     'white_label' => ['name' => 'White label — your own brand', 'plan' => 'group',
@@ -95,6 +95,7 @@ function require_feature(string $feature): void {
 function plans_public(): array {
     $out = [];
     foreach (PLANS as $k => $p) $out[$k] = $p + ['annual_price' => $p['price'] * ANNUAL_MONTHS_CHARGED,
+        'locations' => plan_has_feature($k, 'locations') ? ['included' => LOCATIONS_INCLUDED, 'extra_price' => EXTRA_LOCATION_PRICE] : null,
         'features' => array_map(fn($f, $d) => ['key' => $f, 'name' => $d['name'], 'included' => plan_has_feature($k, $f)], array_keys(FEATURES), FEATURES)];
     return $out;
 }
@@ -111,6 +112,27 @@ function stripe_price_id(string $plan, string $interval): ?string {
     $v = STRIPE_PRICES[$plan] ?? null;
     if (is_string($v)) return $interval === 'monthly' && $v !== '' ? $v : null;
     return !empty($v[$interval]) ? $v[$interval] : null;
+}
+
+// ---------- extra locations ----------
+// Platinum includes LOCATIONS_INCLUDED active locations; each one beyond
+// that is a paid add-on (a second item on the Stripe subscription, Price
+// STRIPE_PRICES['location'] => ['monthly' => ..., 'annual' => ...]). Free
+// trials and complimentary accounts have no location limit.
+const LOCATIONS_INCLUDED = 2;
+const EXTRA_LOCATION_PRICE = 29;   // per extra location, per month (annual: x ANNUAL_MONTHS_CHARGED)
+
+function active_location_count(int $practiceId): int {
+    $s = pi_db()->prepare('SELECT COUNT(*) FROM locations WHERE practice_id = ? AND active = 1'); $s->execute([$practiceId]);
+    return (int)$s->fetchColumn();
+}
+// How many active locations the practice may have now (null = no limit).
+function location_allowance(array $p): ?int {
+    if (in_array($p['subscription_status'], ['trialing', 'comped'], true)) return null;
+    return LOCATIONS_INCLUDED + max(0, (int)($p['extra_locations'] ?? 0));
+}
+function extra_location_amount(string $interval): float {
+    return (float)($interval === 'annual' ? EXTRA_LOCATION_PRICE * ANNUAL_MONTHS_CHARGED : EXTRA_LOCATION_PRICE);
 }
 
 // [plan, interval] for a Stripe Price id, or null.
@@ -162,6 +184,8 @@ function practice_summary(array $p): array {
         'ehrName' => $p['ehr_name'] ?? null, 'interval' => $p['billing_interval'] ?? 'monthly',
         'trialEndsAt' => $p['trial_ends_at'], 'subscribed' => !empty($p['stripe_subscription_id']),
         'features' => practice_features($p), 'featureCatalog' => feature_catalog(),
+        'locations' => ['active' => active_location_count((int)$p['id']), 'allowance' => location_allowance($p), 'included' => LOCATIONS_INCLUDED, 'extra' => (int)($p['extra_locations'] ?? 0),
+            'price' => EXTRA_LOCATION_PRICE, 'annualPrice' => EXTRA_LOCATION_PRICE * ANNUAL_MONTHS_CHARGED],
         'promo' => ($d = practice_discount($p)) ? ['code' => $d['code'], 'summary' => promo_summary($d), 'plans' => $d['plans'] ? explode(',', $d['plans']) : null] : null,
         // Features the trial includes that the chosen plan won't keep.
         'trialExtras' => $p['subscription_status'] === 'trialing' ? array_values(array_filter(array_keys(FEATURES), fn($f) => !plan_has_feature((string)$p['plan'], $f))) : [],

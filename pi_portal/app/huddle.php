@@ -89,13 +89,14 @@ function build_huddle(PDO $pdo, array $user, int $practiceId): array {
         }
     }
     // Tasks: overdue or due today, everyone's.
+    [$locSql, $locArgs] = loc_in('c.location_id');
     $t = $pdo->prepare("SELECT t.id, t.title, t.due_on, t.priority, t.case_id, c.case_number, p.first_name, p.last_name,
             (SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR ', ') FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id = t.id) assignees,
             (SELECT GROUP_CONCAT(ta.user_id) FROM task_assignees ta WHERE ta.task_id = t.id) assignee_ids
         FROM tasks t LEFT JOIN cases c ON c.id = t.case_id LEFT JOIN patients p ON p.id = c.patient_id
         WHERE t.practice_id = ? AND t.done_at IS NULL AND t.archived_at IS NULL AND t.due_on IS NOT NULL AND t.due_on <= ?"
-        . (restricted_location() ? ' AND (t.case_id IS NULL OR c.location_id = ?)' : '') . " ORDER BY t.due_on, t.priority = 'high' DESC");
-    $t->execute([$practiceId, $today, ...(restricted_location() ? [restricted_location()] : [])]);
+        . ($locSql ? " AND (t.case_id IS NULL OR (1=1$locSql))" : '') . " ORDER BY t.due_on, t.priority = 'high' DESC");
+    $t->execute([$practiceId, $today, ...$locArgs]);
     foreach ($t->fetchAll() as $r) {
         $sections['tasks']['items'][] = ['caseId' => $r['case_id'] ? (int)$r['case_id'] : null, 'patient' => $r['case_id'] ? trim($r['first_name'] . ' ' . $r['last_name']) : null,
             'caseNumber' => $r['case_number'], 'text' => $r['title'] . ($r['due_on'] < $today ? ' — overdue since ' . us_date($r['due_on']) : ' — due today'),
