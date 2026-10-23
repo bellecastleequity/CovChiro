@@ -11,7 +11,7 @@
  * - Built from the main vanity number in the content editor (Site → Main phone vanity): each digit is
  *   one beat and the letters are the last, held beat ("TREAT").
  */
-import { site, mainLine, isPlaceholder } from '../lib/site';
+import { site, mainLine, isPlaceholder, smsHref } from '../lib/site';
 import { ui, type Lang } from '../lib/i18n';
 interface Props { lang?: Lang }
 const { lang = 'en' } = Astro.props;
@@ -20,6 +20,8 @@ const t = ui(lang);
 
 const vanity = isPlaceholder(site.mainPhoneVanity) ? '' : site.mainPhoneVanity.trim();
 const tel = mainLine.tel;
+// 844-84-TREAT takes calls only (Amazon Connect); texting has its own number (Site → Texting number).
+const sms = smsHref(t.textBody);
 
 // Split "(844) 84-TREAT" into beats: one per digit, the letter word last; punctuation rides along
 // with its neighbor ("(" with the first digit, ")" with the third, "-" with TREAT).
@@ -50,7 +52,7 @@ const AUDIO_LEAD = 0.2; // the first hook word starts 0.2 s into the audio file
   <section class="vb" aria-label={`Call ${vanity}`} data-vb data-lead={AUDIO_LEAD}>
     <div class="vb__rings" aria-hidden="true"><span></span><span></span></div>
     <div class="wrap vb__in">
-      <span class="vb__eyebrow">{t.callOrText}</span>
+      <span class="vb__eyebrow">{t.callNow}</span>
       <a class="vb__num" href={tel || undefined} aria-label={`Call ${vanity}${mainLine.digits ? ` (${mainLine.digits})` : ''}`}>
         {beats.map((b, i) => (
           <span class:list={['vb__beat', { 'vb__beat--word': b.word }]} style={`--t:${at(i).toFixed(3)}s`} aria-hidden="true">{b.text}</span>
@@ -63,6 +65,9 @@ const AUDIO_LEAD = 0.2; // the first hook word starts 0.2 s into the audio file
           <span>{t.hearIt}</span>
         </button>
       </div>
+      {sms && (
+        <p class="vb__text">{t.textPrompt} <a href={sms}>{t.text} {mainLine.textDigits}</a><span class="vb__note">{t.smsNote}</span></p>
+      )}
     </div>
     <audio preload="none" src={t.jingle} data-vb-audio></audio>
   </section>
@@ -117,6 +122,22 @@ const AUDIO_LEAD = 0.2; // the first hook word starts 0.2 s into the audio file
     flex-direction: column;
     align-items: center;
     gap: 10px;
+  }
+  .vb__text {
+    margin: 6px 0 0;
+    color: #c9d3de;
+    font-weight: 600;
+  }
+  .vb__text a {
+    color: var(--teal);
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .vb__note {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: #9fb0c3;
   }
   .vb__eyebrow {
     font-weight: 800;

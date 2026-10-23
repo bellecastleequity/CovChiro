@@ -102,6 +102,9 @@ nav.tabs .n{background:#ff4d5e;color:#fff;border-radius:999px;font-size:11px;pad
     <h3>Add or reset a login</h3>
     <div class="grid"><label>Username<input type="text" id="u-name" placeholder="e.g. maria"></label><label>Display name<input type="text" id="u-display" placeholder="e.g. Maria (front desk)"></label><label>Password (10+ characters)<input type="text" id="u-pass" autocomplete="new-password"></label></div>
     <div class="row" style="margin-top:10px"><button id="u-save">Save login</button></div></section>
+  <section><h2>Phone system (Amazon Connect)</h2><p>Every call and text to the Connect numbers becomes a lead in the Leads tab on its own (badge <b>call</b> or <b>text</b>), and a repeat caller is added to their existing lead. Setup: <code>marketing/phone-system/README.md</code>. Paste these two values into the Lambda function's environment variables.</p>
+    <div class="grid" style="margin-top:10px"><label>SITE_EVENT_URL<input type="text" id="cx-url" readonly onclick="this.select()"></label><label>SITE_SECRET<input type="text" id="cx-secret" readonly onclick="this.select()" value="(click Show)"></label></div>
+    <div class="row" style="margin-top:10px"><button class="ghost small" id="cx-show">Show</button><button class="ghost small" id="cx-rotate">Make a new secret</button><span class="hint">A new secret stops the old one at once: update the Lambda right after.</span></div></section>
 </main>
 
 <main id="tab-content">
@@ -158,7 +161,7 @@ document.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => showTab
 let data = null, dirty = false, current = 'site';
 const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SITE_FIELDS = [
-  ['Contact', [['mainPhone', 'Main phone (digits)', 'tel'], ['mainPhoneVanity', 'Main phone (vanity, e.g. (844) 84-TREAT)'], ['mainEmail', 'Main email', 'email']]],
+  ['Contact', [['mainPhone', 'Main phone (digits)', 'tel'], ['mainPhoneVanity', 'Main phone (vanity, e.g. (844) 84-TREAT)'], ['mainEmail', 'Main email', 'email'], ['textPhone', 'Texting number (shows "Text us" buttons; empty hides them)', 'tel']]],
   ['Social profiles', [['social.youtube', 'YouTube channel URL', 'url'], ['social.instagram', 'Instagram profile URL', 'url'], ['social.instagramHandle', 'Handle shown in the footer (e.g. @therapyandinjury)'], ['social.facebook', 'Facebook page URL', 'url']]],
   ['Patient links (Carepatron)', [['patientLinks.booking', 'Online booking URL', 'url'], ['patientLinks.intake', 'New patient paperwork URL', 'url'], ['patientLinks.portal', 'Patient portal URL', 'url']]],
   ['Brand text', [['tagline', 'Tagline'], ['operatorLine', 'Operator line (footer)'], ['lastUpdatedLegal', 'Date the legal pages were reviewed (shown on Privacy & Accessibility)']]],
@@ -380,6 +383,10 @@ async function loadPartners() { try { PARTNERS = (await api('partners', { method
 const STATUS_LABEL = { new: 'New', contacted: 'Contacted', booked: 'Booked', showed: 'Showed', patient: 'Became a patient', notfit: 'Not a fit', noanswer: 'No answer' };
 const LANG_LABEL = { en: 'English', es: 'Español', ht: 'Kreyòl' };
 const OPEN = ['new', 'contacted', 'booked', 'noanswer'];
+// A lead that called or texted again in the last 2 days (after it came in) gets a reminder badge.
+const again = (l) => { const t = (l.touches || []).filter((x) => Date.parse(x.at) - Date.parse(l.createdAt) > 60000).at(-1); return t && Date.now() - Date.parse(t.at) < 2 * 86400000 ? '<span class="badge red">' + (t.kind === 'text' ? 'texted' : 'called') + ' again ' + ago(t.at) + '</span>' : ''; };
+const KIND_BADGE = { web: '<span class="badge teal">web form</span>', phone: '<span class="badge">phone (desk)</span>', call: '<span class="badge green">call</span>', text: '<span class="badge amber">text</span>' };
+const OUTCOME = { started: 'reached the phone menu', 'text-requested': 'pressed 1: text sent', 'text-failed': 'pressed 1: text could not be sent', transferred: 'sent to the front desk', voicemail: 'left a voicemail', 'after-hours': 'called after hours', inbound: 'texted us' };
 const ago = (iso) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
 const dayStr = (d) => d.toISOString().slice(0, 10);
 const cityOf = (slug) => (ME.branches.find((b) => b.slug === slug) || {}).city || slug || '—';
@@ -404,9 +411,10 @@ function renderLeads() {
   $('#newcount').hidden = !fresh; $('#newcount').textContent = fresh;
   $('#leadrows').innerHTML = rows.map((l) => {
     const late = l.status === 'new' && Date.now() - Date.parse(l.createdAt) > 3600000;
-    const src = esc(l.channel) + (l.kind === 'phone' ? ' <span class="sm">(phone)</span>' : '') + ((l.kind === 'phone' ? l.campaign : l.attr && l.attr.c) ? '<div class="sm">' + esc(l.kind === 'phone' ? l.campaign : l.attr.c) + '</div>' : '');
+    const camp = l.kind === 'web' ? l.attr && l.attr.c : l.campaign;
+    const src = KIND_BADGE[l.kind] + ' ' + esc(l.channel) + (camp ? '<div class="sm">' + esc(camp) + '</div>' : '') + (l.touches && l.touches.length > 1 ? '<div class="sm">' + l.touches.length + ' calls/texts</div>' : '');
     const sel = '<select class="st" data-st="' + l.id + '">' + ME.statuses.map((s) => '<option value="' + s + '"' + (s === l.status ? ' selected' : '') + '>' + STATUS_LABEL[s] + '</option>').join('') + '</select>';
-    const main = '<tr><td style="padding-left:16px">' + new Date(l.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + '<div class="sm">' + ago(l.createdAt) + '</div>' + (late ? '<span class="badge red">call now</span>' : '') + (l.type === 'notify' ? '<span class="badge">opening notice</span>' : '') + '</td>'
+    const main = '<tr><td style="padding-left:16px">' + new Date(l.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + '<div class="sm">' + ago(l.createdAt) + '</div>' + (late ? '<span class="badge red">call now</span>' : '') + (l.type === 'notify' ? '<span class="badge">opening notice</span>' : '') + again(l) + '</td>'
       + '<td><b>' + esc(l.name || '—') + '</b><div><a href="tel:' + esc((l.phone || '').replace(/[^\d+]/g, '')) + '">' + esc(l.phone) + '</a></div></td>'
       + '<td>' + esc(cityOf(l.branch)) + '<div class="sm">' + (LANG_LABEL[l.lang] || 'English') + '</div></td>'
       + '<td>' + src + '</td><td>' + window14(l) + '</td><td>' + sel + '</td>'
@@ -415,12 +423,15 @@ function renderLeads() {
     const a = l.attr || {};
     const facts = [['Preferred time', l.preferredTime], ['Accident date', l.accidentDate], ['How they heard', l.howHeard], ['Referred by', l.referrer && l.referrer.org], ['Landing page', a.l], ['Page with the form', a.p], ['Came from site', a.r], ['Ad / content', a.t], ['Search term', a.k], ['Source · medium', [a.s, a.m].filter(Boolean).join(' · ')], ['First seen', a.at && new Date(a.at).toLocaleString()]].filter(([, v]) => v);
     return main + '<tr class="detail"><td colspan="7" style="padding:14px 16px"><div class="grid"><div><dl class="kv">' + facts.map(([k, v]) => '<dt>' + k + '</dt><dd>' + esc(v) + '</dd>').join('') + '</dl>'
-      + (l.kind === 'phone' && isReferral(l.howHeard) && PARTNERS.length ? '<label style="margin-top:10px">Referred by (office)<select data-ref="' + l.id + '">' + partnerOptions(l.referrer && l.referrer.id) + '</select></label>' : '')
+      + (l.kind !== 'web' ? '<label style="margin-top:10px">How did you hear about us?<select data-heard="' + l.id + '"><option value="">(not asked yet)</option>' + ME.howHeard.map((h) => '<option' + (h === l.howHeard ? ' selected' : '') + '>' + esc(h) + '</option>').join('') + '</select></label>' : '')
+      + (l.touches && l.touches.length ? '<h3>Calls and texts</h3>' + l.touches.map((t) => '<div class="sm">' + new Date(t.at).toLocaleString() + ' · ' + (t.kind === 'text' ? 'text' : 'call') + (t.outcome ? ' · ' + esc(OUTCOME[t.outcome] || t.outcome) : '') + (t.menu ? ' · menu: ' + esc(t.menu) : '') + (t.dialed ? ' · to ' + esc(t.dialed) : '') + '</div>').join('') : '')
+      + (l.kind !== 'web' && isReferral(l.howHeard) && PARTNERS.length ? '<label style="margin-top:10px">Referred by (office)<select data-ref="' + l.id + '">' + partnerOptions(l.referrer && l.referrer.id) + '</select></label>' : '')
       + '<h3>History</h3>' + l.history.map((h) => '<div class="sm">' + new Date(h.at).toLocaleString() + ' · ' + esc(STATUS_LABEL[h.status] || h.status) + ' · ' + esc(h.by) + '</div>').join('') + '</div>'
       + '<div><h3 style="margin-top:0">Notes</h3>' + (l.notes || []).map((n) => '<p style="color:var(--navy)">' + esc(n.text) + '<br><span class="sm">' + esc(n.by) + ' · ' + new Date(n.at).toLocaleString() + '</span></p>').join('')
       + '<textarea id="note-' + l.id + '" style="min-height:60px" placeholder="e.g. Left voicemail; booked Tue 2 pm"></textarea><div class="row" style="margin-top:8px"><button class="small" data-note="' + l.id + '">Add note</button>' + (ME.role === 'owner' ? '<button class="ghost small" data-del="' + l.id + '">Delete lead</button>' : '') + '</div></div></div></td></tr>';
   }).join('') || '<tr><td colspan="7" style="padding:16px">No leads here yet.</td></tr>';
   document.querySelectorAll('[data-st]').forEach((s) => s.onchange = () => changeLead({ id: s.dataset.st, status: s.value }, 'Status saved'));
+  document.querySelectorAll('[data-heard]').forEach((s) => s.onchange = () => changeLead({ id: s.dataset.heard, howHeard: s.value }, 'Saved'));
   document.querySelectorAll('[data-ref]').forEach((s) => s.onchange = () => changeLead({ id: s.dataset.ref, referrerId: s.value }, 'Referring office saved'));
   document.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => { openId = openId === b.dataset.open ? null : b.dataset.open; renderLeads(); });
   document.querySelectorAll('[data-note]').forEach((b) => b.onclick = () => { const t = $('#note-' + b.dataset.note).value.trim(); if (t) changeLead({ id: b.dataset.note, note: t }, 'Note added'); });
@@ -457,14 +468,14 @@ const money = (n) => (n ? '$' + n.toLocaleString(undefined, { maximumFractionDig
 function rtable(group, withSpend) {
   const rows = Object.entries(group).sort((a, b) => b[1].leads - a[1].leads || b[1].calls - a[1].calls);
   if (!rows.length) return '<p>No data in this range.</p>';
-  const head = '<tr><th></th><th class="num">Leads</th><th class="num">Web</th><th class="num">Phone</th><th class="num">Contacted</th><th class="num">Booked</th><th class="num">Showed</th><th class="num">New patients</th><th class="num">Call taps</th>' + (withSpend ? '<th class="num">Spend</th><th class="num">Per lead</th><th class="num">Per patient</th>' : '') + '</tr>';
-  return '<div style="overflow:auto"><table>' + head + rows.map(([k, r]) => '<tr><td>' + esc(k) + '</td>' + ['leads', 'web', 'phone', 'contacted', 'booked', 'showed', 'patients', 'calls'].map((c) => '<td class="num">' + (r[c] || 0) + '</td>').join('') + (withSpend ? '<td class="num">' + money(r.spend) + '</td><td class="num">' + (r.spend && r.leads ? money(r.spend / r.leads) : '—') + '</td><td class="num">' + (r.spend && r.patients ? money(r.spend / r.patients) : '—') + '</td>' : '') + '</tr>').join('') + '</table></div>';
+  const head = '<tr><th></th><th class="num">Leads</th><th class="num">Web</th><th class="num">Phone</th><th class="num">Text</th><th class="num">Contacted</th><th class="num">Booked</th><th class="num">Showed</th><th class="num">New patients</th><th class="num">Call taps</th><th class="num">Text taps</th>' + (withSpend ? '<th class="num">Spend</th><th class="num">Per lead</th><th class="num">Per patient</th>' : '') + '</tr>';
+  return '<div style="overflow:auto"><table>' + head + rows.map(([k, r]) => '<tr><td>' + esc(k) + '</td>' + ['leads', 'web', 'phone', 'text', 'contacted', 'booked', 'showed', 'patients', 'calls', 'texts'].map((c) => '<td class="num">' + (r[c] || 0) + '</td>').join('') + (withSpend ? '<td class="num">' + money(r.spend) + '</td><td class="num">' + (r.spend && r.leads ? money(r.spend / r.leads) : '—') + '</td><td class="num">' + (r.spend && r.patients ? money(r.spend / r.patients) : '—') + '</td>' : '') + '</tr>').join('') + '</table></div>';
 }
 async function loadReport() {
   if (!$('#rfrom').value) { const d = new Date(); $('#rfrom').value = dayStr(new Date(d.getFullYear(), d.getMonth(), 1)); $('#rto').value = dayStr(d); }
   const r = await api('report?from=' + $('#rfrom').value + '&to=' + $('#rto').value, { method: 'GET', headers: {} });
   const t = r.totals;
-  $('#rcards').innerHTML = [['Leads', t.leads], ['Contacted', t.contacted], ['Booked', t.booked], ['Showed', t.showed], ['New patients', t.patients], ['Call taps', t.calls], ['Ad spend', money(t.spend)], ['Cost per patient', t.spend && t.patients ? money(t.spend / t.patients) : '—']].map(([k, v]) => '<div class="card"><b>' + v + '</b><span>' + k + '</span></div>').join('');
+  $('#rcards').innerHTML = [['Leads', t.leads], ['Contacted', t.contacted], ['Booked', t.booked], ['Showed', t.showed], ['New patients', t.patients], ['Call taps', t.calls], ['Text taps', t.texts || 0], ['Ad spend', money(t.spend)], ['Cost per patient', t.spend && t.patients ? money(t.spend / t.patients) : '—']].map(([k, v]) => '<div class="card"><b>' + v + '</b><span>' + k + '</span></div>').join('');
   $('#r-channel').innerHTML = rtable(r.groups.channel);
   $('#r-campaign').innerHTML = rtable(r.groups.campaign, true);
   $('#r-lang').innerHTML = rtable(Object.fromEntries(Object.entries(r.groups.lang).map(([k, v]) => [LANG_LABEL[k] || k, v])));
@@ -670,6 +681,8 @@ async function loadUsers() {
   $('#users').innerHTML = r.users.length ? '<table><tr><th>Username</th><th>Name</th><th>Added</th><th></th></tr>' + r.users.map((u) => '<tr><td><b>' + esc(u.username) + '</b></td><td>' + esc(u.name) + '</td><td>' + fmt(u.createdAt) + '</td><td><button class="ghost small" data-rm="' + esc(u.username) + '">Remove</button></td></tr>').join('') + '</table>' : '<p>No front desk logins yet.</p>';
   document.querySelectorAll('[data-rm]').forEach((b) => b.onclick = async () => { if (!confirm('Remove ' + b.dataset.rm + '?')) return; try { await api('users', { method: 'POST', body: JSON.stringify({ username: b.dataset.rm, remove: true }) }); msg('Removed', true); loadUsers(); } catch (e) { msg(e.message, false); } });
 }
+$('#cx-show').onclick = async () => { try { const r = await api('connect', { method: 'GET', headers: {} }); $('#cx-url').value = r.url; $('#cx-secret').value = r.secret; } catch (e) { msg(e.message, false); } };
+$('#cx-rotate').onclick = async () => { if (!confirm('Make a new secret? Calls stop being logged until the Lambda has the new one.')) return; try { const r = await api('connect/rotate', { method: 'POST' }); $('#cx-url').value = r.url; $('#cx-secret').value = r.secret; msg('New secret made: paste it into the Lambda now', true); } catch (e) { msg(e.message, false); } };
 $('#u-save').onclick = async () => {
   try { await api('users', { method: 'POST', body: JSON.stringify({ username: $('#u-name').value, name: $('#u-display').value, password: $('#u-pass').value }) }); $('#u-pass').value = ''; msg('Login saved', true); loadUsers(); } catch (e) { msg(e.message, false); }
 };

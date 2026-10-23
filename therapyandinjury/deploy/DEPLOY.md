@@ -70,6 +70,9 @@ Open `https://therapyandinjury.com/_admin` and sign in. The **Content** tab edit
 - **Rules**: never offer or give anything of value for referrals (no gifts, gift cards, referral fees, or meals tied to referrals; Florida §817.505 and §456.054). Every email carries the mailing address and an unsubscribe link, and unsubscribes are permanent (CAN-SPAM). Don't buy email lists.
 - **Storage**: `outreach/outreach.json` (contacts, campaigns, sent emails) and `outreach/secret.json` (keys) in the app folder. Updates never touch them; include them in your cPanel backups.
 
+### Phone system (Amazon Connect): calls and texts become leads
+Once 844-84-TREAT runs on Amazon Connect, every call and every text conversation lands in **Leads** on its own (badges **call** / **text**). A repeat caller is added to their existing lead and flagged **called again**. The Lambda function and the full setup (phone menu, press 1 to text, scripts in English/Spanish/Creole, text-number registration answers) are in `marketing/phone-system/README.md`. The two values the Lambda needs are in /_admin → **Team → Phone system**. Once the texting number is registered, enter it under **Content → Site → Texting number** and the site shows "Text us" buttons.
+
 ### Spanish and Haitian Creole pages
 `/es/` (Español) and `/ht/` (Kreyòl ayisyen) are full landing pages with their own commercial and jingle. The flag button in the header switches between English, Español and Kreyòl. They use the same location facts as the English pages (address, hours, phone, email), so editor changes show in all three. Requests sent from them arrive by email marked with the language ("— Spanish" in the subject).
 - To show **"Se habla español"** or **"Nou pale kreyòl"**, add `Español` or `Kreyòl` under that location's **Languages spoken**. Leave them off until someone on staff speaks the language.

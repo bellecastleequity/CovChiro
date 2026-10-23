@@ -4,7 +4,7 @@
  * Remembers, on this device, how the visitor arrived: the ad link's utm_* tags (or a Google/Meta click,
  * without keeping the click ID), the referring site's name, the first page, and when. Kept 90 days; a
  * new ad click replaces it. The appointment form sends it with the request (deploy/server/leads.js),
- * and taps on call buttons are counted anonymously for the Reports (/api/event). If Google Analytics is
+ * and taps on call and text buttons are counted anonymously for the Reports (/api/event). If Google Analytics is
  * on, the same two moments are sent as events with no names or numbers.
  */
 ---
@@ -30,11 +30,12 @@
     var lang = (document.documentElement.lang || 'en').slice(0, 2);
     window.tiSource = function () { var a = {}; for (var k in saved || {}) a[k] = saved[k]; a.p = location.pathname; return a; };
     document.addEventListener('click', function (e) {
-      var a = e.target.closest && e.target.closest('a[href^="tel:"]');
+      var a = e.target.closest && e.target.closest('a[href^="tel:"], a[href^="sms:"]');
       if (!a) return;
-      var body = JSON.stringify({ type: 'call', attr: window.tiSource(), page: location.pathname, lang: lang });
+      var type = a.getAttribute('href').indexOf('sms:') === 0 ? 'text' : 'call';
+      var body = JSON.stringify({ type: type, attr: window.tiSource(), page: location.pathname, lang: lang });
       try { navigator.sendBeacon('/api/event', new Blob([body], { type: 'application/json' })); } catch (err) {}
-      if (window.gtag) window.gtag('event', 'call_tap', { page_path: location.pathname, campaign: (saved && saved.c) || '(none)', source: (saved && (saved.s || saved.ads || saved.r)) || 'direct', language: lang });
+      if (window.gtag) window.gtag('event', type + '_tap', { page_path: location.pathname, campaign: (saved && saved.c) || '(none)', source: (saved && (saved.s || saved.ads || saved.r)) || 'direct', language: lang });
     }, true);
   })();
 </script>

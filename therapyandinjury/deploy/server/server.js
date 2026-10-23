@@ -15,6 +15,7 @@
  *   - adds security headers to every response; compresses and ETags rendered pages
  *   - POST /api/appointment (and the old .php URL): appointment requests by email
  *   - /api/outreach/*: referral-partner email campaigns (SendGrid events, unsubscribe, the send timer)
+ *   - POST /api/connect/event: calls and texts from Amazon Connect become leads (signed with a shared secret)
  *   - /_admin: password-protected updater + content editor; GET /_health: version check
  */
 const fs = require('fs');
@@ -337,6 +338,15 @@ function start({ root, releaseDir, version, degraded = null }) {
           try { leads.addEvent(root, JSON.parse(raw || '{}')); } catch (e) { console.error('[event]', e.message); }
         }
         return send(res, 204, { 'cache-control': 'no-store' }, '');
+      }
+      if (url.pathname === '/api/connect/event') {
+        const json = (status, body) => send(res, status, { 'content-type': 'application/json', 'cache-control': 'no-store' }, JSON.stringify(body));
+        if (req.method !== 'POST') return json(405, { ok: false });
+        let raw;
+        try { raw = await readLimited(req, 64 * 1024); } catch { return json(413, { ok: false }); }
+        if (!leads.connectSigned(root, req.headers, raw)) return json(401, { ok: false, error: 'signature' });
+        try { return json(200, { ok: true, ...leads.addConnectEvent(root, JSON.parse(raw.toString('utf8') || '{}')) }); }
+        catch (e) { console.error('[connect]', e.message); return json(400, { ok: false, error: 'bad event' }); }
       }
       if (url.pathname.startsWith('/api/outreach/')) return await outreachRoute(req, res, url, root, canonical.origin, send);
       if (url.pathname === '/_admin' || url.pathname.startsWith('/_admin/')) return await admin.handle(req, res, url, ctx, send);

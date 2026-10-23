@@ -213,6 +213,8 @@ async function handle(req, res, url, ctx, send) {
     }
   }
   if (req.method === 'GET' && route === '/_admin/api/users') return json(200, { ok: true, users: leads.listUsers(ctx.root) });
+  if (req.method === 'GET' && route === '/_admin/api/connect') return json(200, { ok: true, url: `${origin}/api/connect/event`, secret: leads.connectSecret(ctx.root) });
+  if (req.method === 'POST' && route === '/_admin/api/connect/rotate' && req.headers['x-admin-action'] === '1') return json(200, { ok: true, url: `${origin}/api/connect/event`, secret: leads.connectSecret(ctx.root, true) });
 
   if (req.method === 'GET' && route === '/_admin') return send(res, 200, { ...base, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https://i.ytimg.com; frame-ancestors 'none'" }, PAGE);
   if (req.method === 'GET' && route === '/_admin/api/content') {

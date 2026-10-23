@@ -9,6 +9,7 @@
   "operatorLine": "Therapy & Injury is owner-operated.",
   "mainPhone": "(844) 848-7328",
   "mainPhoneVanity": "(844) 84-TREAT",
+  "textPhone": "",
   "mainEmail": "[MAIN EMAIL]",
   "formEndpoint": "/api/appointment",
   "patientLinks": {

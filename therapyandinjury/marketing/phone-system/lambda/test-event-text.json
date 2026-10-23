@@ -1,0 +1,13 @@
+{
+  "Name": "ContactFlowEvent",
+  "Details": {
+    "ContactData": {
+      "Channel": "CHAT",
+      "ContactId": "66666666-7777-8888-9999-000000000000",
+      "CustomerEndpoint": { "Address": "+13525550142", "Type": "TELEPHONE_NUMBER" },
+      "SystemEndpoint": { "Address": "+13525550100", "Type": "TELEPHONE_NUMBER" },
+      "Attributes": { "name": "Maria Lopez", "accidentDate": "2026-10-20" }
+    },
+    "Parameters": { "summary": "Rear-ended on SR 200 on Oct 20, neck pain. Wants a Tuesday morning visit." }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "Name": "ContactFlowEvent",
+  "Details": {
+    "ContactData": {
+      "Channel": "VOICE",
+      "ContactId": "11111111-2222-3333-4444-555555555555",
+      "CustomerEndpoint": { "Address": "+13525550142", "Type": "TELEPHONE_NUMBER" },
+      "SystemEndpoint": { "Address": "+18448487328", "Type": "TELEPHONE_NUMBER" },
+      "Attributes": { "lang": "en" },
+      "InitiationMethod": "INBOUND"
+    },
+    "Parameters": { "action": "sendText", "menu": "1" }
+  }
+}

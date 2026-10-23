@@ -4,12 +4,16 @@
  * with where it came from (ad campaign, page, language), its status through the funnel, notes, and
  * anonymous call-button taps for reports. Nothing here leaves the server: no CRM, no ad pixels.
  *
+ * Lead kinds: 'web' (website form), 'phone' (logged by the front desk), and 'call' / 'text' (logged by
+ * the phone system: Amazon Connect posts each call and text conversation to /api/connect/event).
+ *
  * Storage (app root, never touched by updates):
  *   leads/leads.enc         leads, call-tap counts and ad spend; AES-256-GCM encrypted
  *   leads/key               the encryption key (made on first use, readable by the app user only),
  *                           unless LEADS_KEY (64 hex characters) is set in the environment
  *   leads/backup-<day>.enc  one encrypted copy per day, last 14 kept
  *   users.json              front-desk logins (scrypt password hashes, no lead data)
+ *   leads/connect.json      the shared secret Amazon Connect signs its posts with
  * Writes take a short lock so several app processes (Passenger can run more than one) never clash.
  */
 const fs = require('fs');
@@ -116,7 +120,8 @@ function cleanAttr(raw) {
 
 /** Marketing channel for reports, from a web visitor's source or a phone lead's "how did you hear". */
 function channel(lead) {
-  if (lead.kind === 'phone') {
+  if ((lead.kind === 'call' || lead.kind === 'text') && !lead.howHeard) return lead.kind === 'call' ? 'Phone call (not asked yet)' : 'Text message (not asked yet)';
+  if (lead.kind === 'phone' || lead.kind === 'call' || lead.kind === 'text') {
     const h = lead.howHeard || 'Other';
     if (/facebook|instagram/i.test(h)) return 'Meta ads';
     if (/google ad/i.test(h)) return 'Google ads';
@@ -189,7 +194,7 @@ function changeLead(root, body, by) {
 
 /** Anonymous call-button tap (no IP, no phone): counted per day, channel, campaign, page and language. */
 function addEvent(root, body) {
-  const type = body.type === 'call' ? 'call' : null;
+  const type = body.type === 'call' || body.type === 'text' ? body.type : null;
   if (!type) return;
   const attr = cleanAttr(body.attr);
   const fake = { kind: 'web', attr };
@@ -218,26 +223,29 @@ function report(root, from, to) {
   const db = read(root);
   const leads = db.leads.filter((l) => inRange(l.createdAt, from, to) && l.type !== 'notify');
   const groups = { channel: {}, campaign: {}, lang: {}, branch: {}, referrer: {} };
-  const blank = () => ({ leads: 0, web: 0, phone: 0, contacted: 0, booked: 0, showed: 0, patients: 0, calls: 0, spend: 0 });
+  const blank = () => ({ leads: 0, web: 0, phone: 0, text: 0, contacted: 0, booked: 0, showed: 0, patients: 0, calls: 0, texts: 0, spend: 0 });
   const add = (g, key, l) => {
     const r = (groups[g][key] ||= blank());
-    r.leads++; r[l.kind === 'phone' ? 'phone' : 'web']++;
+    r.leads++; r[l.kind === 'text' ? 'text' : l.kind === 'web' ? 'web' : 'phone']++;
     const s = reached(l);
     if (s >= 1) r.contacted++; if (s >= 2) r.booked++; if (s >= 3) r.showed++; if (s >= 4) r.patients++;
   };
   for (const l of leads) {
     add('channel', channel(l), l);
-    add('campaign', l.kind === 'phone' ? l.campaign || '(phone, no campaign)' : l.attr?.c || '(no campaign)', l);
+    add('campaign', l.kind === 'web' ? l.attr?.c || '(no campaign)' : l.campaign || '(phone, no campaign)', l);
     add('lang', l.lang || 'en', l);
     add('branch', l.branch || '—', l);
     if (l.referrer?.org) add('referrer', l.referrer.org, l);
   }
+  let hidden = 0;
   for (const [k, n] of Object.entries(db.events)) {
-    const [day, , ch, camp, , lang] = k.split('|');
+    const [day, type, ch, camp, , lang] = k.split('|');
     if (!inRange(day, from, to)) continue;
-    (groups.channel[ch] ||= blank()).calls += n;
-    (groups.campaign[camp || '(no campaign)'] ||= blank()).calls += n;
-    (groups.lang[lang || 'en'] ||= blank()).calls += n;
+    if (type.startsWith('connect-')) { hidden += n; continue; } // calls/texts with no caller ID
+    const col = type === 'text' ? 'texts' : 'calls';
+    (groups.channel[ch] ||= blank())[col] += n;
+    (groups.campaign[camp || '(no campaign)'] ||= blank())[col] += n;
+    (groups.lang[lang || 'en'] ||= blank())[col] += n;
   }
   // Spend: whole months that overlap the range.
   for (const [k, amt] of Object.entries(db.spend)) {
@@ -248,6 +256,7 @@ function report(root, from, to) {
   const totals = blank();
   for (const r of Object.values(groups.channel)) for (const k of Object.keys(totals)) totals[k] += r[k];
   totals.spend = Object.values(groups.campaign).reduce((a, r) => a + r.spend, 0);
+  totals.noCallerId = hidden;
   return { from, to, totals, groups, spend: db.spend };
 }
 
@@ -260,7 +269,7 @@ const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"
 function exportCsv(root, from, to) {
   const rows = [['Received', 'Kind', 'Status', 'Name', 'Phone', 'Location', 'Language', 'Channel', 'Campaign', 'Ad / content', 'Landing page', 'Preferred time', 'Accident date', 'How heard', 'Referred by', 'Notes']];
   for (const l of listLeads(root, from, to)) {
-    rows.push([l.createdAt, l.kind, l.status, l.name, l.phone, l.branch, l.lang, l.channel, l.kind === 'phone' ? l.campaign : l.attr?.c, l.attr?.t, l.attr?.l, l.preferredTime, l.accidentDate, l.howHeard, l.referrer?.org, (l.notes || []).map((n) => `${n.at.slice(0, 10)} ${n.by}: ${n.text}`).join(' | ')]);
+    rows.push([l.createdAt, l.kind, l.status, l.name, l.phone, l.branch, l.lang, l.channel, l.kind === 'web' ? l.attr?.c : l.campaign, l.attr?.t, l.attr?.l, l.preferredTime, l.accidentDate, l.howHeard, l.referrer?.org, (l.notes || []).map((n) => `${n.at.slice(0, 10)} ${n.by}: ${n.text}`).join(' | ')]);
   }
   return rows.map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
 }
@@ -320,6 +329,80 @@ function matchPatients(root, csvText, by) {
   return { rows: rows.length - 1, phones: patients.size, phoneColumns: phoneCols.map((i) => rows[0][i]), dateColumn: dateCol >= 0 ? rows[0][dateCol] : null, ...result };
 }
 
+// ---------- phone system (Amazon Connect) ----------
+const RECENT_DAYS = 30; // a caller or texter seen again within this many days updates their lead
+function connectSecret(root, rotate = false) {
+  const f = path.join(dirOf(root), 'connect.json');
+  let s = null;
+  try { s = JSON.parse(fs.readFileSync(f, 'utf8')).secret; } catch {}
+  if (!s || rotate) {
+    s = crypto.randomBytes(32).toString('base64url');
+    const tmp = `${f}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ secret: s, createdAt: new Date().toISOString() }) + '\n', { mode: 0o600 });
+    fs.renameSync(tmp, f);
+  }
+  return s;
+}
+/** Checks X-TI-Timestamp / X-TI-Signature (hex HMAC-SHA256 of "<timestamp>.<body>"), 5-minute window. */
+function connectSigned(root, headers, raw) {
+  const ts = Number(headers['x-ti-timestamp']), sig = String(headers['x-ti-signature'] || '');
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300 || !/^[a-f0-9]{64}$/.test(sig)) return false;
+  const want = crypto.createHmac('sha256', connectSecret(root)).update(`${ts}.`).update(raw).digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(want), Buffer.from(sig));
+}
+
+/**
+ * One call or text conversation from Amazon Connect (posted by marketing/phone-system/lambda). A new
+ * number becomes a lead; a number seen in the last 30 days gets the contact added to its lead. Several
+ * posts for one contact (call started, pressed 1 for text, details from the AI agent) merge into one entry.
+ * Returns { leadId, isNew, existing } so the call flow can route returning patients differently.
+ */
+function addConnectEvent(root, ev) {
+  const phone = digits(ev.phone);
+  const kind = ev.channel === 'text' ? 'text' : 'call';
+  const contactId = clean(ev.contactId, 80);
+  const now = new Date().toISOString();
+  const touch = { at: now, kind, contactId, dialed: clean(ev.dialed, 20), menu: clean(ev.menu, 60), outcome: clean(ev.outcome, 60) };
+  if (phone.length < 10) {
+    // Blocked / unknown caller ID: nothing to call back, so it's only counted.
+    update(root, (db) => { const k = [today(), `connect-${kind}`, 'Unknown caller ID', '', '', ['es', 'ht'].includes(ev.lang) ? ev.lang : 'en'].join('|'); db.events[k] = (db.events[k] || 0) + 1; });
+    return { leadId: '', isNew: false, existing: 'none' };
+  }
+  const name = clean(ev.name, 100), summary = clean(ev.summary, 2000);
+  const accidentDate = /^\d{4}-\d{2}-\d{2}$/.test(ev.accidentDate || '') ? ev.accidentDate : '';
+  const howHeard = HOW_HEARD.includes(ev.howHeard) ? ev.howHeard : '';
+  return update(root, (db) => {
+    const since = new Date(Date.now() - RECENT_DAYS * 864e5).toISOString();
+    const mine = db.leads.filter((l) => digits(l.phone) === phone);
+    const everPatient = mine.some((l) => l.status === 'patient' || (l.history || []).some((h) => h.status === 'patient'));
+    let l = mine.filter((x) => x.createdAt >= since || (x.touches || []).some((t) => t.at >= since)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    const isNew = !l;
+    if (!l) {
+      l = {
+        id: newId(), kind, via: 'connect', createdAt: now, type: 'appointment', branch: clean(ev.branch, 40) || 'ocala',
+        lang: ['es', 'ht'].includes(ev.lang) ? ev.lang : 'en', name, phone: `(${phone.slice(0, 3)}) ${phone.slice(3, 6)}-${phone.slice(6)}`, accidentDate, howHeard, campaign: '',
+        status: 'new', history: [{ status: 'new', by: 'phone system', at: now }], notes: [], touches: [],
+      };
+      if (everPatient) l.notes.push({ by: 'phone system', at: now, text: 'Returning: this number belongs to an earlier patient.' });
+      db.leads.push(l);
+    }
+    l.touches ||= [];
+    const same = contactId && l.touches.find((t) => t.contactId === contactId);
+    if (same) {
+      for (const k of ['menu', 'outcome', 'dialed']) if (touch[k]) same[k] = touch[k];
+      same.updatedAt = now;
+    } else l.touches.push(touch);
+    if (!l.name && name) l.name = name;
+    if (!l.accidentDate && accidentDate) l.accidentDate = accidentDate;
+    if (!l.howHeard && howHeard) l.howHeard = howHeard;
+    if (ev.lang && ['es', 'ht'].includes(ev.lang) && l.lang === 'en') l.lang = ev.lang;
+    if (summary) l.notes.push({ by: kind === 'text' ? 'AI agent (text)' : 'AI agent (call)', at: now, text: summary });
+    // Someone already worked this lead to "no answer" and they've now called or texted back: put it back on top.
+    if (!isNew && !same && ['noanswer'].includes(l.status)) { l.status = 'new'; l.history.push({ status: 'new', by: `phone system (${kind === 'text' ? 'texted' : 'called'} back)`, at: now }); }
+    return { leadId: l.id, isNew, existing: everPatient ? 'patient' : isNew ? 'none' : 'lead' };
+  });
+}
+
 // ---------- front-desk logins ----------
 const usersFile = (root) => path.join(root, 'users.json');
 function readUsers(root) { try { return JSON.parse(fs.readFileSync(usersFile(root), 'utf8')).users || []; } catch { return []; } }
@@ -349,4 +432,4 @@ function saveUser(root, body) {
 function removeUser(root, username) { writeUsers(root, readUsers(root).filter((u) => u.username !== String(username).toLowerCase())); }
 const listUsers = (root) => readUsers(root).map(({ username, name, role, createdAt }) => ({ username, name, role, createdAt }));
 
-module.exports = { STATUSES, HOW_HEARD, addWebLead, addPhoneLead, changeLead, addEvent, setSpend, report, listLeads, exportCsv, matchPatients, parseCsv, checkUser, saveUser, removeUser, listUsers, channel };
+module.exports = { STATUSES, HOW_HEARD, addConnectEvent, connectSecret, connectSigned, addWebLead, addPhoneLead, changeLead, addEvent, setSpend, report, listLeads, exportCsv, matchPatients, parseCsv, checkUser, saveUser, removeUser, listUsers, channel };

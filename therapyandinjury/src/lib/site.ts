@@ -115,7 +115,9 @@ export const telHref = (phone: string) => {
 };
 
 /** The brand's main line, e.g. (844) 84-TREAT · 848-7328. */
-export const mainLine = { digits: '', vanity: '', tel: '' };
+export const mainLine = { digits: '', vanity: '', tel: '', text: '', textDigits: '' };
+/** sms: link to the texting number with a first message filled in ("?&body=" works on iPhone and Android). */
+export const smsHref = (body = '') => (mainLine.text ? `${mainLine.text}${body ? `?&body=${encodeURIComponent(body)}` : ''}` : '');
 
 /**
  * Which number to call: a location's own local number once it's set, otherwise the brand's
@@ -208,6 +210,10 @@ function derive() {
   mainLine.digits = site.mainPhone;
   mainLine.vanity = isPlaceholder(site.mainPhoneVanity) ? '' : site.mainPhoneVanity;
   mainLine.tel = telHref(site.mainPhone);
+  // Texting number (Amazon End User Messaging). Empty or a placeholder hides every "Text us" button.
+  const text = typeof site.textPhone === 'string' && !isPlaceholder(site.textPhone) ? site.textPhone.trim() : '';
+  mainLine.textDigits = text.replace(/\D/g, '').length >= 10 ? text : '';
+  mainLine.text = mainLine.textDigits ? telHref(text).replace(/^tel:/, 'sms:') : '';
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
