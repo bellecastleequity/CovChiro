@@ -75,3 +75,47 @@ export function callTurn(i: CallTurnInput): CallTurnResult {
   if (i.answer) return { action: "continue", outcome: "ANSWERED", say: `${forVoice(i.answer)} Is there anything else I can help with?` };
   return toPerson("That's one for our team. ");
 }
+
+// ---------------- the call menu: continue by text, or ask for a callback (owner, Oct 23 2026) ----------------
+//
+// (855) 55-COVER is a calling line (ported into Amazon Connect: voice only). A caller can press 1 to
+// continue by text (we text them from the AWS texting number) or ask for a callback. They confirm the
+// number they're calling from or key in another one. Rules here; services/callline.ts does the rest.
+
+export type HandoffChoice = "same" | "other";
+export type HandoffProblem = "no_caller_id" | "invalid_number" | "toll_free";
+
+/**
+ * The number to text or call back: the caller ID when they confirm it, else the 10 digits they keyed in.
+ * U.S. numbers only; toll-free numbers can't receive our texts and aren't a sensible callback.
+ */
+export function handoffNumber(i: { choice: HandoffChoice; callerPhone: string | null | undefined; digits?: string | null }, normalize: (raw: string) => string | null): { phone: string } | { problem: HandoffProblem } {
+  const raw = i.choice === "same" ? (i.callerPhone ?? "") : (i.digits ?? "").replace(/\D/g, "");
+  if (i.choice === "same" && !raw.replace(/\D/g, "")) return { problem: "no_caller_id" };
+  const phone = normalize(raw);
+  if (!phone) return { problem: "invalid_number" };
+  if (/^\+1(800|833|844|855|866|877|888)/.test(phone)) return { problem: "toll_free" };
+  return { phone };
+}
+
+/** The last 4 digits, as the call reads them back ("ending in 1 2 3 4"). */
+export function lastFourForVoice(phone: string | null | undefined): string | null {
+  const d = (phone ?? "").replace(/\D/g, "");
+  return d.length >= 10 ? d.slice(-4).split("").join(" ") : null;
+}
+
+/** What the call says when a number can't be used. */
+export function handoffProblemSay(p: HandoffProblem | "opted_out" | "too_many"): string {
+  return {
+    no_caller_id: "We can't see the number you're calling from. Please enter the 10-digit mobile number to use, then press pound.",
+    invalid_number: "That number didn't look right. Please enter a 10-digit U.S. mobile number, then press pound.",
+    toll_free: "That's a toll-free number, which can't receive texts. Please enter a 10-digit mobile number, then press pound.",
+    opted_out: "That number has opted out of texts from us, so we can't text it. Let's continue on the call.",
+    too_many: "We've already sent a few texts to that number today. Please reply to the last one, or stay on the line.",
+  }[p];
+}
+
+/** The first text after a caller pressed 1 ({brand}, {callLine} filled in). */
+export function handoffFirstText(template: string, brand: string, callLine: string): string {
+  return template.replaceAll("{brand}", brand).replaceAll("{callLine}", callLine).trim();
+}

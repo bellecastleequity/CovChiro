@@ -104,12 +104,18 @@ export async function sendText(actor: Actor, rawPhone: string, body: string) {
   if (text.length > 600) throw new DomainError("VALIDATION", "Keep a text under 600 characters (it's split into several texts above 160).");
   const { isSuppressed } = await import("./growth/engine");
   if (await isSuppressed("SMS", phone)) throw new DomainError("VALIDATION", "This number texted STOP, so we can't text it. They can text START to opt back in.");
+  const { ok, error } = await sendFromTextingNumber(phone, text, actor.userId);
+  await prisma.textMessage.updateMany({ where: { phone, direction: "IN", readAt: null }, data: { readAt: clock.now() } });
+  if (!ok) throw new DomainError("VALIDATION", `Not sent: ${error}`);
+  return { sent: true };
+}
+
+/** Sends from the AWS texting number and keeps it in the Texts thread (author null = sent by the system). */
+export async function sendFromTextingNumber(phone: string, text: string, authorUserId: string | null) {
   const texter = smsProvider();
   const ok = await texter.send(phone, text).catch(() => false);
   const error = ok ? null : ((texter as { lastError?: string | null }).lastError ?? "The texting service refused the message.");
   const who = await whoIs(phone);
-  await prisma.textMessage.create({ data: { phone, direction: "OUT", body: text, userId: who.userId, authorUserId: actor.userId, status: ok ? "SENT" : "FAILED", error } });
-  await prisma.textMessage.updateMany({ where: { phone, direction: "IN", readAt: null }, data: { readAt: clock.now() } });
-  if (!ok) throw new DomainError("VALIDATION", `Not sent: ${error}`);
-  return { sent: true };
+  await prisma.textMessage.create({ data: { phone, direction: "OUT", body: text, userId: who.userId, authorUserId, status: ok ? "SENT" : "FAILED", error } });
+  return { ok, error };
 }

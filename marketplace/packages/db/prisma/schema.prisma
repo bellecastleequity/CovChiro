@@ -3081,3 +3081,30 @@ model WelcomeRedemption {
   @@index([entitlementId, status])
   @@index([clinicOrgId, status])
 }
+
+/// The phone line's call menu (owner, Oct 2026: (855) 55-COVER is calls only): a caller pressed 1 to continue
+/// by text (we texted them from the AWS texting number) or asked for a callback. One row per Connect contact
+/// and request; pressing 1 is the caller's request for that one conversation (never marketing consent).
+model CallLog {
+  id           String    @id @default(cuid())
+  /// Amazon Connect ContactId + ":" + kind (one row per call and request, so retries never double-text).
+  contactKey   String    @unique
+  /// TEXT | CALLBACK
+  kind         String
+  /// The caller ID Connect saw (null = blocked / unknown).
+  callerPhone  String?
+  /// The number we texted or will call back (+1 E.164).
+  phone        String?
+  /// same | other: confirmed the caller ID or keyed in another number.
+  choice       String
+  /// TEXT_SENT | CALLBACK_REQUESTED | OPTED_OUT | TOO_MANY | INVALID | FAILED
+  outcome      String
+  error        String?
+  /// Callbacks: when someone on the team called back (Admin → Calls).
+  handledAt    DateTime? @db.Timestamptz(3)
+  handledById  String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([kind, handledAt])
+  @@index([phone, createdAt])
+}

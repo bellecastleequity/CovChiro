@@ -58,6 +58,8 @@ const EnvSchema = z.object({
   AWS_SMS_CONFIGURATION_SET: z.string().optional(),
   /** SNS topic ARN(s), comma-separated, allowed to post replies and delivery results to /api/webhooks/aws-sms. */
   AWS_SMS_SNS_TOPIC_ARNS: z.string().optional(),
+  /** Shared secret between the Amazon Connect Lambda and /api/connect/* (HMAC-SHA256 signature). Unset = those endpoints are off. */
+  CONNECT_WEBHOOK_SECRET: z.string().optional(),
   /** "aws" or "twilio" when both are configured; otherwise whichever has keys (AWS first). */
   SMS_PROVIDER: z.enum(["aws", "twilio"]).optional(),
   ESIGN_API_KEY: z.string().optional(),
