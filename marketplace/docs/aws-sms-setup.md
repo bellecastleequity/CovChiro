@@ -71,7 +71,7 @@ Go to cPanel → **Setup Node.js App** → coverageoncall.com → **Environment 
 | `AWS_SMS_ACCESS_KEY_ID` | the AKIA… key |
 | `AWS_SMS_SECRET_ACCESS_KEY` | the secret |
 | `AWS_SMS_REGION` | `us-east-1` |
-| `AWS_SMS_ORIGINATION` | the business number: `+18555526837` ((855) 55-COVER) |
+| `AWS_SMS_ORIGINATION` | your AWS texting number (a toll-free number bought in AWS End User Messaging; not the (855) 55-COVER calling line) |
 | `AWS_SMS_CONFIGURATION_SET` | `coverageoncall` |
 | `AWS_SMS_SNS_TOPIC_ARNS` | the topic ARN from step 5 |
 
@@ -93,6 +93,7 @@ Twilio is still supported. If both services are configured, AWS is used unless `
 
 ## The business number: (855) 55-COVER
 
-- **Website and emails.** The number shows with Call and Text buttons in the site footer, on Contact, on the help pages and "Need help now?", and at the bottom of every email. It's set in Admin → Settings → Help & support (`site.phone`, `site.phoneLabel`, `site.phoneText`). Leave `site.phone` blank to hide it everywhere.
-- **Texts.** When this number is `AWS_SMS_ORIGINATION` and its two-way SMS points at the SNS topic (step 5), texts to it reach the site. Shift-offer answers (YES/NO + code) and STOP/HELP/START are handled automatically. Everything else lands in **Admin → Texts**: you get an alert, the sender gets one automatic reply (`sms.inboxAutoReply`), and you reply from the business number on that page.
-- **Calls.** The site only shows the number and a Call button; it doesn't answer calls. Calls go wherever the number's voice service sends them (for example, forwarded to your cell). An AWS End User Messaging number on its own is for texts. To answer calls on an AWS number, it has to be set up in Amazon Connect.
+- **Calls only (owner decision, Oct 2026).** The vanity number is a calling line: it shows with a Call button in the site footer, on Contact, on the help pages and "Need help now?", and at the bottom of every email ("Call (855) 55-COVER"). It's never offered for texting anywhere (no Text button, no "call or text"). Set it in Admin → Settings → Help & support (`site.phone`, `site.phoneLabel`); leave `site.phone` blank to hide it everywhere.
+- **Why:** a toll-free number ported into Amazon Connect gets voice only (AWS, Oct 23 2026), and people reply to the number that texted them anyway.
+- **Texts** come only from the AWS End User Messaging texting number (`AWS_SMS_ORIGINATION`): shift offers, reminders, alerts and our replies. Replies to those texts land on that number: YES/NO + code and STOP/HELP/START are handled automatically, everything else goes to **Admin → Texts**. Use a separate AWS toll-free texting number for this (start its toll-free verification early; it takes a few weeks).
+- **Calls** go wherever the number's voice service sends them: forwarded to a cell while it's at NumberBarn, later Amazon Connect (the AI phone agent, on hold).

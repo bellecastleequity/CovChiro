@@ -34,7 +34,7 @@ export interface EmailSocial {
   instagram?: string;
   youtube?: string;
   /** Business line for the footer, e.g. { label: "(855) 55-COVER", tel: "+18555526837", text: true }. */
-  phone?: { label: string; tel: string; text: boolean };
+  phone?: { label: string; tel: string };
 }
 
 export function renderEmail(c: EmailContent, social: EmailSocial = {}): { html: string; text: string } {
@@ -70,14 +70,14 @@ ${it.lines.map((l) => `<div style="font-size:14px;line-height:1.5;color:#475569;
   .join("")}
 ${cta}
 <tr><td style="font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px">${esc(c.footerNote ?? `${b.name} · ${b.domain} · Questions? ${b.supportEmail}`)}${
-    social.phone ? ` · ${social.phone.text ? "Call or text" : "Call"} <a href="tel:${esc(social.phone.tel)}" style="color:#64748b">${esc(social.phone.label)}</a>` : ""
+    social.phone ? ` · Call <a href="tel:${esc(social.phone.tel)}" style="color:#64748b">${esc(social.phone.label)}</a>` : ""
   }${
     c.unsubscribeUrl ? ` · <a href="${esc(c.unsubscribeUrl)}" style="color:#94a3b8">Unsubscribe</a>` : ""
   }</td></tr>
 ${socialRow}
 </table></td></tr></table></body></html>`;
   const items = (c.items ?? []).flatMap((it) => ["", it.title, ...it.lines, ...it.links.map((l) => `${l.label}: ${absoluteUrl(l.url)}`)]);
-  const text = [c.heading, "", ...c.paragraphs, ...items, ...(c.cta ? ["", `${c.cta.label}: ${absoluteUrl(c.cta.url)}`] : []), "", `${b.name} · ${b.domain}`, ...(social.phone ? [`${social.phone.text ? "Call or text" : "Call"} ${social.phone.label}`] : []), ...icons.map((i) => `${i.label}: ${i.url}`), ...(c.unsubscribeUrl ? [`Unsubscribe: ${c.unsubscribeUrl}`] : [])].join("\n");
+  const text = [c.heading, "", ...c.paragraphs, ...items, ...(c.cta ? ["", `${c.cta.label}: ${absoluteUrl(c.cta.url)}`] : []), "", `${b.name} · ${b.domain}`, ...(social.phone ? [`Call ${social.phone.label}`] : []), ...icons.map((i) => `${i.label}: ${i.url}`), ...(c.unsubscribeUrl ? [`Unsubscribe: ${c.unsubscribeUrl}`] : [])].join("\n");
   return { html, text };
 }
 
@@ -88,7 +88,7 @@ export async function sendEmail(to: string, c: EmailContent): Promise<boolean> {
   const st = await getSettings().catch(() => null);
   const { html, text } = renderEmail(c, {
     instagram: st?.["site.instagramUrl"] || undefined, youtube: st?.["site.youtubeUrl"] || undefined,
-    phone: st?.["site.phone"] ? { label: st["site.phoneLabel"].trim() || st["site.phone"], tel: st["site.phone"], text: st["site.phoneText"] } : undefined,
+    phone: st?.["site.phone"] ? { label: st["site.phoneLabel"].trim() || st["site.phone"], tel: st["site.phone"] } : undefined,
   });
   const mailer = mailProvider();
   lastEmailError = null;

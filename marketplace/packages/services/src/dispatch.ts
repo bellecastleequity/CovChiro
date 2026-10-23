@@ -709,7 +709,7 @@ export async function handleInboundSms(fromPhone: string, text: string): Promise
   }
   if (r.kind === "HELP") {
     const st = await getSettings();
-    const line = st["site.phone"] ? `call or text ${st["site.phoneLabel"] || st["site.phone"]} or email ${b.supportEmail}` : b.supportEmail;
+    const line = st["site.phone"] ? `call ${st["site.phoneLabel"] || st["site.phone"]} or email ${b.supportEmail}` : b.supportEmail;
     return `${b.name}: Reply YES <code> or NO <code> to answer a shift offer. Help: ${line}. Reply STOP to opt out.`;
   }
   // Anything that isn't a shift-offer answer goes to the team's Texts inbox (Admin → Texts).

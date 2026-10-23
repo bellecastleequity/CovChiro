@@ -52,7 +52,7 @@ export async function HelpHome({ center, actor }: { center: HelpCenter; actor: A
       <div className="mb-6">
         <HelpSearch items={items} contactHref={`${center.base}/contact`} />
       </div>
-      <BusinessPhone className="mb-6" title="Rather talk to a person?" note="Call or text our team." />
+      <BusinessPhone className="mb-6" title="Rather talk to a person?" note="Call our team." />
       {answered ? (
         <Alert tone="success" className="mb-6" title={`We replied to ${answered === 1 ? "your request" : `${answered} of your requests`}`}>
           <Link href={`${center.base}/contact#requests`} className="font-medium underline">See the reply →</Link>

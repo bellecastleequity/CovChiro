@@ -70,7 +70,7 @@ export async function UrgentHelp({ center, actor, user, shiftId, sentId }: { cen
         Help center
       </Link>
       <PageHeader eyebrow="Need help now?" title="Reach our team right away" description={`For anything that can't wait: a no-show, a problem at the clinic, a payment issue today. ${s["support.urgentPromise"]}`} />
-      <BusinessPhone className="mb-4" title="Fastest: call or text us now" note="Or fill in the form below and we'll reach you." />
+      <BusinessPhone className="mb-4" title="Fastest: call us now" note="Or fill in the form below and we'll reach you." />
       <Card className="border-red-200">
         <CardBody>
           <ActionForm action={escalateAction} className="space-y-5" successMessage={false}>

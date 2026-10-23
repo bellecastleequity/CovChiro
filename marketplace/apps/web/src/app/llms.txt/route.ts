@@ -40,7 +40,7 @@ export async function GET() {
     "## Key facts",
     `- Website: ${base}`,
     `- Support: ${b.supportEmail}`,
-    ...(s["site.phone"] ? [`- Phone: ${s["site.phoneLabel"] || s["site.phone"]} (${s["site.phone"].replace(/^\+1(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3")})${s["site.phoneText"] ? ", call or text" : ""}`] : []),
+    ...(s["site.phone"] ? [`- Phone: ${s["site.phoneLabel"] || s["site.phone"]} (${s["site.phone"].replace(/^\+1(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3")})`] : []),
     `- Mileage is passed through to the provider at $${(s["pricing.mileageRateCentsPerMile"] / 100).toFixed(2)} per mile; overnight lodging is a flat ${usd(s["pricing.lodgingNightlyCents"])} a night when needed.`,
     `- Free cancellation for clinics ${s["payments.clinicFreeCancelHours"]}+ hours before the shift.`,
     `- No patient information is stored on the platform.`,

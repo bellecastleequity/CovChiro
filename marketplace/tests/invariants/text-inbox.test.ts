@@ -47,10 +47,11 @@ describe("business number: Admin → Texts inbox", () => {
     await expect(texts.sendText(admin, phone, "Still there?")).rejects.toThrow(/STOP/);
   });
 
-  it("every email footer offers the business line", () => {
-    const { html, text } = renderEmail({ subject: "s", heading: "h", paragraphs: ["p"] }, { phone: { label: "(855) 55-COVER", tel: "+18555526837", text: true } });
+  it("every email footer offers the business line for calls only (never texting)", () => {
+    const { html, text } = renderEmail({ subject: "s", heading: "h", paragraphs: ["p"] }, { phone: { label: "(855) 55-COVER", tel: "+18555526837" } });
     expect(html).toContain('href="tel:+18555526837"');
-    expect(html).toContain("Call or text");
-    expect(text).toContain("Call or text (855) 55-COVER");
+    expect(html).not.toContain("sms:");
+    expect(html).not.toMatch(/or text/i);
+    expect(text).toContain("Call (855) 55-COVER");
   });
 });
