@@ -18,6 +18,7 @@ switch ($action) {
     case 'change_password': handle_change_password(); break;
     case 'mfa_setup_start': handle_mfa_setup_start(); break;
     case 'mfa_setup_confirm': handle_mfa_setup_confirm(); break;
+    case 'accept_terms': handle_accept_terms(); break;
     case 'mfa_verify': handle_mfa_verify(); break;
     case 'logout': handle_logout(); break;
     default: json_response(['error' => 'Unknown action'], 400);
@@ -35,6 +36,8 @@ function auth_step(?array $u): string {
     if ($u['must_change_password']) return 'password_change';
     if (!$u['totp_enabled']) return 'mfa_setup';
     if (empty($_SESSION['mfa_ok'])) return 'mfa';
+    // Every practice user personally accepts the current Terms and User Agreement.
+    if ($u['practice_id'] && ($u['terms_version'] ?? null) !== USER_TERMS_VERSION) return 'terms';
     return 'signed_in';
 }
 
@@ -43,7 +46,7 @@ function session_payload(?array $u) {
     $out = [
         'step' => $step,
         'csrf' => $_SESSION['csrf'],
-        'idleTimeoutSeconds' => PI_IDLE_TIMEOUT_SECONDS,
+        'idleTimeoutSeconds' => PI_IDLE_TIMEOUT_SECONDS, 'termsVersion' => USER_TERMS_VERSION,
         'brand' => practice_brand(null),
     ];
     if ($u && $step !== 'signed_out') $out['user'] = ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email'], 'role' => $u['role'], 'operator' => $u['practice_id'] === null];
@@ -176,7 +179,7 @@ function handle_signup() {
     if (!$practiceName || !$name) json_response(['error' => 'Enter your practice name and your name.'], 400);
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) json_response(['error' => 'Enter a valid email address.'], 400);
     if ($p = password_problem($password, ['email' => $email])) json_response(['error' => $p], 400);
-    if (empty($b['accept'])) json_response(['error' => 'Please accept the Terms and Business Associate Agreement.'], 400);
+    if (empty($b['accept'])) json_response(['error' => 'Please accept the Terms, User Agreement and Business Associate Agreement.'], 400);
     $promo = null;
     if (trim((string)($b['promo'] ?? '')) !== '') {
         $promo = promo_find($b['promo']);
@@ -189,8 +192,9 @@ function handle_signup() {
 
     $pdo->beginTransaction();
     $practiceId = create_practice($practiceName, $plan);
-    $pdo->prepare("INSERT INTO users (practice_id, email, name, role, notify_digest, password_hash, must_change_password, created_at) VALUES (?, ?, ?, 'admin', 1, ?, 0, ?)")
-        ->execute([$practiceId, $email, $name, password_hash($password, PASSWORD_ARGON2ID), now_str()]);
+    // The owner accepts the Terms and User Agreement personally as they sign up.
+    $pdo->prepare("INSERT INTO users (practice_id, email, name, role, notify_digest, password_hash, must_change_password, created_at, terms_version, terms_accepted_at, terms_accepted_name, terms_accepted_ip) VALUES (?, ?, ?, 'admin', 1, ?, 0, ?, ?, ?, ?, ?)")
+        ->execute([$practiceId, $email, $name, password_hash($password, PASSWORD_ARGON2ID), now_str(), USER_TERMS_VERSION, now_str(), $name, mb_substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45)]);
     $userId = (int)$pdo->lastInsertId();
     $pdo->prepare('UPDATE practices SET baa_version = ?, baa_accepted_at = ?, baa_accepted_by = ? WHERE id = ?')->execute([BAA_VERSION, now_str(), $userId, $practiceId]);
     if ($promo && !promo_redeem($promo, $practiceId)) { $pdo->rollBack(); json_response(['error' => 'That promo code has been fully used.', 'field' => 'promo'], 400); }
@@ -250,6 +254,22 @@ function require_password_step(): array {
     $u = load_user((int)$user['id']);
     if ($u['must_change_password']) json_response(['error' => 'Change your password first.', 'code' => 'pw_change'], 400);
     return $u;
+}
+
+// A user's own acceptance of the Terms of Service and User Agreement, with
+// the full name they type as their electronic signature.
+function handle_accept_terms() {
+    require_method('POST');
+    $user = require_user(null, true);
+    if (empty($_SESSION['mfa_ok'])) json_response(['error' => 'Two-factor verification required', 'code' => 'mfa'], 401);
+    $b = json_body();
+    $name = str_or_null($b['name'] ?? null, 120);
+    if (empty($b['accept']) || !$name) json_response(['error' => 'Tick the box and type your full name to accept.'], 400);
+    if (($b['version'] ?? '') !== USER_TERMS_VERSION) json_response(['error' => 'The terms have been updated. Please reload and review the current version.', 'code' => 'stale'], 409);
+    pi_db()->prepare('UPDATE users SET terms_version = ?, terms_accepted_at = ?, terms_accepted_name = ?, terms_accepted_ip = ? WHERE id = ?')
+        ->execute([USER_TERMS_VERSION, now_str(), $name, mb_substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45), $user['id']]);
+    audit('accept_terms', 'user', $user['id'], null, $user, USER_TERMS_VERSION . ' signed "' . $name . '"');
+    json_response(session_payload(load_user((int)$user['id'])));
 }
 
 function handle_mfa_setup_start() {

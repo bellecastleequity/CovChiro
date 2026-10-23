@@ -205,6 +205,12 @@ CREATE TABLE users (
   -- cases of that location.
   location_id INT NULL,
   location_restricted TINYINT(1) NOT NULL DEFAULT 0,
+  -- This user's own acceptance of the Terms of Service and User Agreement
+  -- (version, when, the name they typed, from where).
+  terms_version VARCHAR(20) NULL,
+  terms_accepted_at DATETIME NULL,
+  terms_accepted_name VARCHAR(120) NULL,
+  terms_accepted_ip VARCHAR(45) NULL,
   notify_digest TINYINT(1) NOT NULL DEFAULT 0,
   notify_criteria VARCHAR(255) NULL,
   -- Task email alerts (urgent / late / completed) for tasks this person is

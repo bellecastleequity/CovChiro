@@ -43,7 +43,7 @@ function user_location_ids(int $userId): array {
 
 function handle_users() {
     require_user('users.manage');
-    $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, notify_digest, location_id, location_restricted, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at FROM users WHERE practice_id = ? ORDER BY active DESC, name');
+    $stmt = pi_db()->prepare('SELECT id, email, name, role, finance_access, notify_digest, location_id, location_restricted, active, totp_enabled, must_change_password, locked_until, last_login_at, created_at, terms_version, terms_accepted_at, terms_accepted_name FROM users WHERE practice_id = ? ORDER BY active DESC, name');
     $stmt->execute([pid()]);
     $users = array_map(fn($u) => $u + ['location_ids' => user_location_ids((int)$u['id'])], $stmt->fetchAll());
     json_response(['users' => $users, 'limit' => effective_plan(current_practice())['users']]);
@@ -539,7 +539,7 @@ const AUDIT_CATEGORIES = [
     'changes' => "a.action IN ('create','update','archive','forward_balance','ehr_import','letter','upload')",
     'access' => "a.action IN ('view','list','download','export','ehr_preview')",
     'signin' => "(a.action LIKE 'login%' OR a.action LIKE 'mfa%' OR a.action IN ('logout','session_timeout','password_changed','access_denied'))",
-    'admin' => "(a.entity IN ('user','practice','audit_log') OR a.action LIKE 'reset_%' OR a.action LIKE 'billing_%' OR a.action = 'accept_baa')",
+    'admin' => "(a.entity IN ('user','practice','audit_log') OR a.action LIKE 'reset_%' OR a.action LIKE 'billing_%' OR a.action IN ('accept_baa', 'accept_terms'))",
 ];
 
 function audit_query(array $q, int $limit): array {

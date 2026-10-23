@@ -259,7 +259,7 @@ function pid(): int {
 function require_user(?string $perm = null, bool $allowPending = false): array {
     if (empty($_SESSION['uid'])) json_response(['error' => 'Not signed in', 'code' => 'auth'], 401);
     if (!$allowPending && empty($_SESSION['mfa_ok'])) json_response(['error' => 'Two-factor verification required', 'code' => 'mfa'], 401);
-    $stmt = pi_db()->prepare('SELECT id, practice_id, email, name, role, finance_access, location_id, location_restricted, active, must_change_password, totp_enabled FROM users WHERE id = ?');
+    $stmt = pi_db()->prepare('SELECT id, practice_id, email, name, role, finance_access, location_id, location_restricted, active, must_change_password, totp_enabled, terms_version FROM users WHERE id = ?');
     $stmt->execute([$_SESSION['uid']]);
     $user = $stmt->fetch();
     if (!$user || !$user['active']) {
@@ -267,6 +267,8 @@ function require_user(?string $perm = null, bool $allowPending = false): array {
         json_response(['error' => 'Account disabled', 'code' => 'auth'], 401);
     }
     if (!$allowPending && $user['must_change_password']) json_response(['error' => 'Password change required', 'code' => 'pw_change'], 401);
+    // No practice data until this user has accepted the current Terms and User Agreement.
+    if (!$allowPending && $user['practice_id'] && $user['terms_version'] !== USER_TERMS_VERSION) json_response(['error' => 'Please review and accept the Terms of Service and User Agreement to continue.', 'code' => 'terms'], 403);
     check_csrf();
     if ($user['practice_id'] !== null) {
         $s = pi_db()->prepare('SELECT * FROM practices WHERE id = ?');

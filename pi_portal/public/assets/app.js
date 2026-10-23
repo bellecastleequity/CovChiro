@@ -57,6 +57,8 @@ async function api(path, body, { passive = false } = {}) {
     lockOut(data.error);
     throw new Error(data.error);
   }
+  // Terms changed (or never accepted): back to the acceptance screen.
+  if (res.status === 403 && data?.code === 'terms') { api('auth.php?action=session').then(applySession).catch(() => {}); throw new Error(data.error); }
   if (!res.ok) { const err = new Error(data?.error || 'Request failed'); err.data = data; err.status = res.status; throw err; }
   return data;
 }
@@ -198,7 +200,7 @@ async function showSignup() {
         <div class="promo-row"><input id="su-promo" value="${esc(promo)}" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="button" class="btn ghost" data-act="promo-check">Apply</button></div>
         <div class="small" id="su-promo-msg" aria-live="polite"></div></div>
     </div>
-    <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> (including automatic renewal of paid plans until canceled) and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice, have read the <a href="legal.html#privacy" target="_blank" rel="noopener">Privacy Policy</a>, and understand that InjuryCase is an educational tool — clinical decisions remain with our treating providers.</label>
+    <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> (including automatic renewal of paid plans until canceled and the restrictions on copying or building competing products), the <a href="legal.html#user-agreement" target="_blank" rel="noopener">User Agreement</a> personally, and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice, have read the <a href="legal.html#privacy" target="_blank" rel="noopener">Privacy Policy</a>, and understand that InjuryCase is an educational tool — clinical decisions remain with our treating providers.</label>
     <div class="err" data-role="err"></div>
     <button class="btn" type="submit">Create practice account</button>
     <p class="auth-switch">Already have an account? <a href="#" data-act="show-login">Sign in</a></p>
@@ -259,6 +261,30 @@ function showMfa() {
   document.getElementById('mf-code').focus();
 }
 
+// Every user — the owner and each sub-user — personally accepts the current
+// Terms of Service and User Agreement before using the app, signing with
+// their typed name.
+function showTerms(s) {
+  const vendor = S.brand.vendor || 'InjuryCase';
+  authCard(`<form data-form="terms" data-version="${esc(s.termsVersion)}">
+    <h3>Terms of use</h3>
+    <p class="small">Before you continue, please review and accept the ${esc(vendor)} <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="legal.html#user-agreement" target="_blank" rel="noopener">User Agreement</a> (version ${esc(s.termsVersion)}). They apply to you personally, in addition to your practice's agreement. In short:</p>
+    <ul class="small terms-points">
+      <li>Use the app only for your practice's own patients, with your own login and two-factor.</li>
+      <li>The software, its workflows, rules, checklists, templates and screens belong to ${esc(vendor)} and are confidential.</li>
+      <li>Don't copy, record, scrape or reverse engineer it, and don't use it — on your own, with others, or by helping anyone else — to build or improve a similar or competing product. This continues for 24 months after your access ends.</li>
+      <li>Don't share access or these materials with anyone outside your practice or anyone building a competing product.</li>
+      <li>Your activity is logged for security, HIPAA and enforcement of these terms.</li>
+    </ul>
+    <label class="check mt"><input type="checkbox" id="tm-accept"> I have read and agree to the Terms of Service and User Agreement, including the restrictions on copying and competing products.</label>
+    <label for="tm-name" class="mt">Type your full name to sign</label><input id="tm-name" autocomplete="name" maxlength="120" required>
+    <div class="err" data-role="err"></div>
+    <button class="btn" type="submit">I agree</button>
+    <p class="small"><a href="#" data-act="sign-out">Sign out instead</a></p>
+  </form>`, true);
+  document.getElementById('tm-name').focus();
+}
+
 function drawQr(canvas, text) {
   const qr = qrcode(0, 'M');
   qr.addData(text);
@@ -277,13 +303,14 @@ function applySession(s) {
   applyBrand();
   S.practice = s.practice || null;
   S.idleTimeout = s.idleTimeoutSeconds;
+  S.termsVersion = s.termsVersion;
   if (s.step === 'signed_in') {
     S.user = s.user; S.lookups = s.lookups;
     startShell();
   } else {
     S.user = null; S.caseData = null;
     if (s.step === 'signed_out' && location.hash.startsWith('#signup')) showSignup();
-    else ({ signed_out: showLogin, password_change: showPasswordChange, mfa_setup: showMfaSetup, mfa: showMfa })[s.step]?.();
+    else ({ signed_out: showLogin, password_change: showPasswordChange, mfa_setup: showMfaSetup, mfa: showMfa, terms: () => showTerms(s) })[s.step]?.();
   }
 }
 
@@ -315,7 +342,7 @@ document.addEventListener('submit', async (e) => {
       s = await api('auth.php?action=change_password', { current: form.querySelector('#pc-cur').value, new: n1 });
     }
     else if (kind === 'signup') {
-      if (!form.querySelector('#su-accept').checked) throw new Error('Please accept the Terms and Business Associate Agreement.');
+      if (!form.querySelector('#su-accept').checked) throw new Error('Please accept the Terms, User Agreement and Business Associate Agreement.');
       s = await api('auth.php?action=signup', {
         practice_name: form.querySelector('#su-practice').value, name: form.querySelector('#su-name').value,
         email: form.querySelector('#su-email').value, password: form.querySelector('#su-pw').value,
@@ -324,6 +351,10 @@ document.addEventListener('submit', async (e) => {
       history.replaceState(null, '', location.pathname);
     } else if (kind === 'mfasetup') s = await api('auth.php?action=mfa_setup_confirm', { code: form.querySelector('#mf-code').value });
     else if (kind === 'mfa') s = await api('auth.php?action=mfa_verify', { code: form.querySelector('#mf-code').value });
+    else if (kind === 'terms') {
+      if (!form.querySelector('#tm-accept').checked) throw new Error('Tick the box to accept.');
+      s = await api('auth.php?action=accept_terms', { accept: true, name: form.querySelector('#tm-name').value.trim(), version: form.dataset.version });
+    }
     applySession(s);
   } catch (ex) {
     if (document.body.contains(err)) err.textContent = ex.message;
@@ -2153,7 +2184,7 @@ const AUDIT_VERBS = {
   ehr_preview: 'previewed an EHR ledger upload', login: 'signed in', logout: 'signed out', login_password_ok: 'entered their password', login_failed: 'failed to sign in',
   login_locked: 'tried to sign in to a locked account', mfa_failed: 'entered a wrong two-factor code', mfa_enrolled: 'set up two-factor sign-in',
   password_changed: 'changed their password', session_timeout: 'was signed out after inactivity', access_denied: 'was refused access to', reset_password: 'issued a new one-time password for',
-  reset_mfa: 'reset two-factor for', reset_unlock: 'unlocked', reset_badge: 'issued new website badge links for', accept_baa: 'accepted the Business Associate Agreement', signup: 'signed the practice up',
+  reset_mfa: 'reset two-factor for', reset_unlock: 'unlocked', reset_badge: 'issued new website badge links for', accept_baa: 'accepted the Business Associate Agreement', accept_terms: 'accepted the Terms of Service and User Agreement', signup: 'signed the practice up',
   billing_checkout: 'started a plan checkout', billing_portal: 'opened billing', platform_update: 'changed the plan for',
 };
 const AUDIT_THINGS = {
@@ -2210,7 +2241,7 @@ function auditSentence(e) {
   else if (e.entity === 'milestone') thing = `checklist item “${esc(humanize(e.entityId || ''))}”`;
   else if (['user', 'contact', 'ehr_format'].includes(e.entity) && e.detail) thing = `${thing} ${esc(e.detail)}`;
   else thing = esc(thing);
-  if (['list', 'login', 'logout', 'login_password_ok', 'login_failed', 'login_locked', 'mfa_failed', 'mfa_enrolled', 'password_changed', 'session_timeout', 'accept_baa', 'forward_balance', 'ehr_import', 'ehr_preview', 'signup', 'billing_checkout', 'billing_portal'].includes(e.action)) thing = '';
+  if (['list', 'login', 'logout', 'login_password_ok', 'login_failed', 'login_locked', 'mfa_failed', 'mfa_enrolled', 'password_changed', 'session_timeout', 'accept_baa', 'accept_terms', 'forward_balance', 'ehr_import', 'ehr_preview', 'signup', 'billing_checkout', 'billing_portal'].includes(e.action)) thing = '';
   if (e.action === 'access_denied') thing = esc(e.entityId || '');
   let extra = '';
   if (e.action === 'letter' && e.detail) extra = ` <span class="muted">(${esc(humanize(e.detail))})</span>`;
@@ -2494,11 +2525,13 @@ async function pageAdmin(main) {
   const r = await attempt(() => api('admin.php?action=users'));
   if (!r) return;
   main.innerHTML = `<div class="page-head"><div><h1>Users</h1><div class="sub">Every user signs in with their own account and two-factor. Never share logins.</div></div><span class="spacer"></span><button class="btn" data-act="add-user">+ User</button></div>
-    <div class="card"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Financials</th><th>Status</th><th>2FA</th><th>Last sign-in</th><th></th></tr></thead><tbody>
+    <div class="card"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Financials</th><th>Status</th><th>2FA</th><th>Terms</th><th>Last sign-in</th><th></th></tr></thead><tbody>
     ${r.users.map((u) => `<tr><td><strong>${esc(u.name)}</strong></td><td>${esc(u.email)}</td><td><span class="chip">${esc(u.role)}</span></td>
       <td class="small">${u.role !== 'staff' ? 'All' : u.finance_access == 1 ? '<span class="chip teal">All (granted)</span>' : '<a href="#/settings">Staff setting</a>'}</td>
       <td>${u.active == 1 ? (u.locked_until && u.locked_until > new Date().toISOString().slice(0, 19).replace('T', ' ') ? '<span class="chip red">Locked</span>' : '<span class="chip teal">Active</span>') : '<span class="chip na">Disabled</span>'}${u.must_change_password == 1 ? ' <span class="chip ochre">Temp password</span>' : ''}</td>
-      <td>${u.totp_enabled == 1 ? '✓' : '<span class="muted">not set up</span>'}</td><td class="small">${esc(u.last_login_at || 'never')}</td>
+      <td>${u.totp_enabled == 1 ? '✓' : '<span class="muted">not set up</span>'}</td>
+      <td class="small">${u.terms_version === S.termsVersion ? `<span title="Signed &quot;${esc(u.terms_accepted_name)}&quot; ${esc(u.terms_accepted_at)}">✓ ${esc(fmtDate(u.terms_accepted_at.slice(0, 10)))}</span>` : '<span class="muted">at next sign-in</span>'}</td>
+      <td class="small">${esc(u.last_login_at || 'never')}</td>
       <td class="nowrap"><button class="btn ghost sm" data-act="edit-user" data-id="${u.id}">Edit</button>
         <button class="btn ghost sm" data-act="reset-user" data-id="${u.id}" data-what="password">Reset password</button>
         <button class="btn ghost sm" data-act="reset-user" data-id="${u.id}" data-what="mfa">Reset 2FA</button>

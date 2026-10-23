@@ -552,3 +552,4 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .wl-color-row input[type=color]{width:46px;min-width:46px;height:38px;padding:2px;border-radius:8px;}
 .wl-slug-row{flex-wrap:nowrap;align-items:center;}
 .wl-slug-row .mono{white-space:nowrap;}
+.terms-points{margin:8px 0 4px 18px;display:flex;flex-direction:column;gap:4px;}
