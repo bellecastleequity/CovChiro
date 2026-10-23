@@ -117,7 +117,7 @@ const CHECKLIST = [
     // Discharge
     'final_adl'               => ['label' => 'Final ADL survey completed',          'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 0, 'cases' => ALL_CASES],
     'tx_complete_letter'      => ['label' => 'Treatment complete letter sent',      'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 7, 'cases' => LIABILITY_CASES],
-    'final_narrative'         => ['label' => 'Narrative report sent (only when the attorney requests it)', 'group' => 'At MMI / discharge', 'anchor' => null, 'days' => null, 'cases' => LIABILITY_CASES],
+    'final_narrative'         => ['label' => 'Final narrative report sent (when the attorney requests one)', 'group' => 'At MMI / discharge', 'anchor' => 'narrative_requested_on', 'days' => 30, 'cases' => LIABILITY_CASES],
     'wc_final_status'         => ['label' => 'Final DWC-25 (MMI / discharge status) sent to carrier', 'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 3, 'cases' => ['workers_comp'], 'rule' => 'wc_rules'],
     'records_request'         => ['label' => 'Attorney records request fulfilled',  'group' => 'At MMI / discharge', 'anchor' => null, 'days' => null, 'cases' => LIABILITY_CASES],
 ];
@@ -488,6 +488,7 @@ function care_guide(array $case, array $referrals, array $guideRows = [], array 
             $mmi = $case['mmi_date'] ?? null;
             $every = (int)($case['maintenance_every_days'] ?? 0);
             if ($mmi && $every && !$disch) { $status = 'done'; $text = 'Reached MMI ' . us_date($mmi) . ' — maintenance plan ' . maintenance_label($every); }
+            elseif ($disch && !$mmi && ($case['end_reason'] ?? null) && !str_starts_with((string)$case['end_reason'], 'mmi')) { $status = 'done'; $text = 'Care ended ' . us_date($disch) . ' without MMI — ' . (str_contains((string)$case['end_reason'], 'referred_out') ? 'referred to another provider' : 'patient stopped coming (self-released / unable to reach)'); }
             elseif ($disch) { $status = 'done'; $text = ($mmi && $mmi !== $disch ? 'Reached MMI ' . us_date($mmi) . ' · ' : '') . 'Discharged ' . us_date($disch); }
             else $text = $fv ? 'Decide at each re-exam whether the patient has reached MMI' : 'When treatment is complete';
         } elseif ($key === 'maintenance') {
@@ -501,6 +502,14 @@ function care_guide(array $case, array $referrals, array $guideRows = [], array 
                 else $text = 'Next maintenance visit by ' . us_date($due) . ' (' . maintenance_label($every) . ')';
             }
         }
+        // When a done step happened, for showing the flow in the order it was done.
+        $doneOn = null;
+        if ($status === 'done') {
+            if ($refs) $doneOn = min(array_map(fn($r) => (string)($r['ordered_on'] ?: substr((string)($r['created_at'] ?? ''), 0, 10)), $refs)) ?: null;
+            if ($key === 'emc') $doneOn = ($case['emc_on'] ?? null) ?: $doneOn;
+            if ($key === 'mmi') $doneOn = ($case['mmi_date'] ?? null) ?: $disch;
+            if ($key === 'maintenance') $doneOn = $disch;
+        }
         // The clinic's own call overrides a suggestion (never a done step).
         $g = $set[$key] ?? null;
         if ($g && $status !== 'done') {
@@ -508,11 +517,48 @@ function care_guide(array $case, array $referrals, array $guideRows = [], array 
             elseif ($g['status'] === 'snoozed' && $g['until'] && $g['until'] > $today && in_array($status, ['now', 'consider', 'ask'], true)) { $status = 'snoozed'; $text = 'Reminder set for ' . us_date($g['until']) . ($g['reason'] ? ' — ' . $g['reason'] : ''); }
         }
         $steps[] = ['key' => $key, 'title' => $def['title'], 'when' => $def['when'], 'why' => $def['why'], 'kind' => $def['kind'], 'types' => $def['types'],
-            'visitType' => $def['visit_type'] ?? null, 'status' => $status, 'text' => $text, 'due' => $due,
+            'visitType' => $def['visit_type'] ?? null, 'status' => $status, 'text' => $text, 'due' => $due, 'doneOn' => $doneOn,
             'referrals' => array_map(fn($r) => ['id' => (int)$r['id'], 'type' => $r['type'], 'status' => $r['status'], 'body_region' => $r['body_region'] ?? null,
                 'ordered_on' => $r['ordered_on'], 'completed_on' => $r['completed_on'], 'report_received_on' => $r['report_received_on']], $refs)];
     }
     return $steps;
+}
+
+// The care guide as a flow the clinic follows: what's been done first, in
+// the order it actually happened (each re-exam as its own entry), then
+// what's next — in the clinic's own order when it has set one (for this
+// case, or as the practice's default), else the standard order — and
+// steps that don't apply last. Doing steps out of the standard order
+// (a re-exam before the ortho referral) simply shows in that order.
+const GUIDE_DONE = ['done'];
+const GUIDE_LAST = ['na', 'dismissed'];
+
+function guide_flow(array $steps, array $reexamDates = [], ?array $order = null): array {
+    $std = array_flip(array_keys(CARE_GUIDE));
+    $pos = $order ? array_flip(array_values(array_filter($order, fn($k) => isset(CARE_GUIDE[$k])))) : [];
+    $done = []; $next = []; $last = [];
+    sort($reexamDates);
+    foreach (array_values(array_unique($reexamDates)) as $i => $d) {
+        $done[] = ['key' => 'reexam_' . ($i + 1), 'title' => 'Re-exam #' . ($i + 1), 'when' => '', 'why' => CARE_GUIDE['reexam']['why'], 'kind' => 'event', 'types' => [],
+            'visitType' => 're_exam', 'status' => 'done', 'text' => 'Done ' . us_date($d), 'due' => null, 'doneOn' => $d, 'referrals' => [], 'movable' => false];
+    }
+    foreach ($steps as $st) {
+        $st['movable'] = !in_array($st['status'], GUIDE_DONE, true) && !in_array($st['status'], GUIDE_LAST, true);
+        if (in_array($st['status'], GUIDE_DONE, true)) $done[] = $st;
+        elseif (in_array($st['status'], GUIDE_LAST, true)) $last[] = $st;
+        else $next[] = $st;
+    }
+    // Done: by date (undated ones after, in the standard order).
+    usort($done, fn($a, $b) => [$a['doneOn'] === null, (string)$a['doneOn'], $std[$a['key']] ?? 50] <=> [$b['doneOn'] === null, (string)$b['doneOn'], $std[$b['key']] ?? 50]);
+    $rank = fn($s) => $pos[$s['key']] ?? (count($pos) + ($std[$s['key']] ?? 50));
+    usort($next, fn($a, $b) => $rank($a) <=> $rank($b));
+    usort($last, fn($a, $b) => ($std[$a['key']] ?? 50) <=> ($std[$b['key']] ?? 50));
+    return array_merge($done, $next, $last);
+}
+
+function guide_order_from(?string $json): ?array {
+    $a = $json ? json_decode($json, true) : null;
+    return is_array($a) && $a ? array_values(array_filter($a, fn($k) => is_string($k) && isset(CARE_GUIDE[$k]))) : null;
 }
 
 function maintenance_label(int $days): string {
@@ -929,7 +975,9 @@ function case_checklist(array $case, array $milestoneRows, array $referrals): ar
         // 'care_end': the end of active care — MMI, or discharge if no MMI date.
         $anchorDate = $def['anchor'] === 'care_end' ? (($case['mmi_date'] ?? null) ?: ($case['discharge_date'] ?? null)) : ($def['anchor'] ? ($case[$def['anchor']] ?? null) : null);
         $due = ($anchorDate && $def['days'] !== null) ? add_days($anchorDate, $def['days']) : null;
-        if ($m && $m['not_applicable']) $status = 'na';
+        // The narrative is only due once the attorney asks for one.
+        $narrativeNone = $key === 'final_narrative' && ($case['narrative_request'] ?? null) === 'none';
+        if (($m && $m['not_applicable']) || $narrativeNone) $status = 'na';
         elseif ($completedOn) $status = 'done';
         elseif ($def['anchor'] && !$anchorDate) $status = 'waiting';
         elseif ($due && $due < $today) $status = 'overdue';

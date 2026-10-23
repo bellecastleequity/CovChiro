@@ -23,6 +23,10 @@ CREATE TABLE practices (
   address VARCHAR(255) NULL,
   phone VARCHAR(40) NULL,
   fax VARCHAR(40) NULL,
+  -- Where attorneys return forms (e.g. the final narrative request).
+  email VARCHAR(190) NULL,
+  -- The practice's default order for a case's "Next steps" (JSON keys).
+  guide_order VARCHAR(255) NULL,
   state CHAR(2) NOT NULL DEFAULT 'FL',
   -- Which financial categories the staff role may see (comma list of
   -- balances, ledger, settlement). Empty = none.
@@ -257,6 +261,8 @@ CREATE TABLE cases (
   -- What the clinic's EHR calls this case (e.g. "Auto 7/20/26"), for
   -- telling a patient's open cases apart in appointment uploads.
   ehr_case_label VARCHAR(80) NULL,
+  -- This case's own order for "Next steps" (JSON keys; NULL = practice default).
+  guide_order VARCHAR(255) NULL,
   patient_id INT NOT NULL,
   location_id INT NULL,
   -- State whose law applies (app/jurisdictions.php); set from the location
@@ -267,6 +273,13 @@ CREATE TABLE cases (
   date_of_injury DATE NULL,
   first_visit DATE NULL,
   discharge_date DATE NULL,
+  -- How care ended: mmi_discharge, mmi_maintenance, or flags for a patient
+  -- who stopped coming (self_released, unreachable), referred_out, other.
+  end_reason VARCHAR(40) NULL,
+  -- The attorney's answer to the final narrative request: pending, none,
+  -- without_ratings, with_ratings (AMA whole-person impairment), and when.
+  narrative_request VARCHAR(20) NULL,
+  narrative_requested_on DATE NULL,
   referral_source ENUM('attorney','self','provider','other') NULL,
   referred_by_contact_id INT NULL,
   referred_by_text VARCHAR(160) NULL,

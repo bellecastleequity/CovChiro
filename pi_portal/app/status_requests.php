@@ -28,6 +28,8 @@ const STATUS_REPLY_OPTIONS = [
     'withdrawn' => 'We no longer represent this client',
 ];
 const STATUS_NEEDS = ['records' => 'Updated medical records', 'bills' => 'Itemized bills / ledger', 'narrative' => 'Narrative report', 'lien' => 'Final lien / balance letter'];
+// The final narrative question (asked once care has ended).
+const STATUS_NARRATIVE = ['without_ratings' => 'Yes — without AMA impairment ratings', 'with_ratings' => 'Yes — with AMA whole-person impairment ratings', 'none' => 'No — our firm does not need a final narrative report'];
 // Reply date fields that are copied onto the case.
 const STATUS_REPLY_DATES = ['mediation_on' => 'Mediation date', 'trial_on' => 'Trial date', 'settlement_signed_on' => 'Settlement signed', 'disbursement_expected_on' => 'Expected disbursement / check date'];
 
@@ -146,6 +148,7 @@ function status_reply_summary(array $r): string {
     $lines = ['Status: ' . (STATUS_REPLY_OPTIONS[$r['status']] ?? $r['status'])];
     foreach (STATUS_REPLY_DATES as $k => $l) if (!empty($r[$k])) $lines[] = "$l: " . us_date($r[$k]);
     if (!empty($r['payment_sent_on']) || !empty($r['payment_amount'])) $lines[] = 'Payment sent: ' . ($r['payment_amount'] ? '$' . number_format((float)$r['payment_amount'], 2) : 'amount not given') . ($r['payment_sent_on'] ? ' on ' . us_date($r['payment_sent_on']) : '') . ($r['check_number'] ? ' (check #' . $r['check_number'] . ')' : '');
+    if (!empty($r['narrative'])) $lines[] = 'Final narrative report: ' . STATUS_NARRATIVE[$r['narrative']];
     if (!empty($r['needs'])) $lines[] = 'Needs from the office: ' . implode(', ', array_map(fn($k) => STATUS_NEEDS[$k], $r['needs']));
     if (!empty($r['note'])) $lines[] = 'Note: ' . $r['note'];
     $lines[] = 'Replied by: ' . $r['name'] . (!empty($r['email']) ? ' <' . $r['email'] . '>' : '');

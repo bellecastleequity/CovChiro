@@ -846,6 +846,7 @@ function tabOverview(el, d) {
         ${row('LOP signed', c.lop_signed_on ? fmtDate(c.lop_signed_on) + (c.lop_acknowledged_on ? ' · firm acknowledged ' + fmtDate(c.lop_acknowledged_on) : ' · not countersigned') : '')}
         ${c.mediation_on || c.trial_on ? row('Mediation · trial', (fmtDate(c.mediation_on) || '—') + ' · ' + (fmtDate(c.trial_on) || '—')) : ''}
         ${c.settlement_signed_on || c.disbursement_expected_on ? row('Settlement', (c.settlement_signed_on ? 'signed ' + fmtDate(c.settlement_signed_on) : '') + (c.disbursement_expected_on ? (c.settlement_signed_on ? ' · ' : '') + 'check expected ' + fmtDate(c.disbursement_expected_on) : '')) : ''}
+        ${c.discharge_date || c.mmi_date || c.narrative_request ? `<dt>Final narrative</dt><dd>${esc(NARRATIVE_LABELS[c.narrative_request] || 'Not asked yet')}${c.narrative_requested_on && ['without_ratings', 'with_ratings'].includes(c.narrative_request) ? ' · requested ' + esc(fmtDate(c.narrative_requested_on)) : ''}${can('case.write') || can('finance.write') ? ' <button class="linklike small" data-act="narrative">Record answer</button>' : ''}</dd>` : ''}
         ${row('Actively treating', c.actively_treating == 1 ? 'Yes' : 'No')}
         ${row('Treatment plan', c.plan_visits_per_week ? `${+c.plan_visits_per_week}x/week${c.plan_set_on ? ' since ' + fmtDate(c.plan_set_on) : ''}` : '')}
         ${row('Head injury', Object.fromEntries(HEAD_INJURY_OPTS)[c.head_injury])}
@@ -860,6 +861,7 @@ function tabOverview(el, d) {
         <div class="filters"><button class="btn ghost sm" data-act="letter" data-type="status_request">Status update request</button>
         <button class="btn ghost sm" data-act="letter" data-type="attendance">Scheduling help (attendance)</button>
         ${can('export') || can('case.write') ? '<button class="btn ghost sm" data-act="export-file">Export patient file</button>' : ''}
+        <button class="btn ghost sm" data-act="eoc-letter">End of treatment / narrative request</button>
         ${fin('balances') ? '<button class="btn ghost sm" data-act="letter" data-type="tx_complete">Treatment complete</button>' : ''}
         ${fin('settlement') ? '<button class="btn ghost sm" data-act="letter" data-type="reduction_response">Reduction response</button>' : ''}
         ${d.rules.demandLetter && fin('ledger') && (d.coverages || []).some((cv) => cv.type === 'pip') ? '<button class="btn ghost sm" data-act="letter" data-type="pip_demand">PIP pre-suit demand (to insurer)</button>' : ''}</div>
@@ -993,6 +995,7 @@ function outreachCardHtml(d) {
     <div class="filters gs-actions">
       ${st.state !== 'hold' ? '<button class="btn sm" data-act="outreach-log">+ Log outreach attempt</button>' : ''}
       ${st.state === 'notify' ? '<button class="btn sm" data-act="letter" data-type="attendance">Preview letter to attorney</button><button class="btn sm" data-act="outreach-hold">Attorney notified — pause calls</button>' : ''}
+      ${['notify', 'hold'].includes(st.state) && can('case.write') && !d.case.discharge_date ? '<button class="btn ghost sm" data-act="end-care">Patient stopped coming — end care…</button>' : ''}
       ${st.state === 'hold' ? '<button class="btn ghost sm" data-act="outreach-resume">Resume calls</button>' : ''}
     </div>
     ${recent.length ? `<table class="small mt-sm"><thead><tr><th>Date</th><th>How</th><th>Outcome</th><th>Note</th><th>By</th></tr></thead><tbody>${recent.map((o) => `<tr><td class="nowrap">${esc(fmtDate(o.attempted_on))}</td><td>${esc(o.method)}</td><td>${esc(d.outreachOutcomes[o.outcome] || o.outcome)}</td><td>${esc(o.notes || '')}</td><td>${esc(o.created_by_name || '')}</td></tr>`).join('')}</tbody></table>` : ''}
@@ -1035,13 +1038,34 @@ function refProgressHtml(r) {
   return `<div class="ref-progress"><button class="linklike small" data-act="edit-referral" data-id="${r.id}">${esc(label('referralTypes', r.type))}${r.body_region ? ' · ' + esc(r.body_region) : ''}</button>
     ${r.status === 'no_show' ? '<span class="chip overdue">No-show — reschedule</span>' : `<ol class="steps">${REF_STEPS.map(([, t], i) => `<li class="${i <= at ? 'on' : ''}">${t}</li>`).join('')}</ol>`}</div>`;
 }
+// The order of the steps still to do, while reordering (else null).
+const guideReorder = { keys: null };
 function guideCardHtml(d) {
   if (!d.guide) return '';
   const w = can('case.write'), cw = can('clinical.write');
   const open = d.guide.filter((g) => ['now', 'consider', 'ask'].includes(g.status)).length;
+  const reorder = guideReorder.keys && w;
+  // While reordering, the movable steps follow the order being edited.
+  let steps = d.guide;
+  if (reorder) {
+    const movable = d.guide.filter((g) => g.movable), byKey = Object.fromEntries(movable.map((g) => [g.key, g]));
+    const ordered = guideReorder.keys.map((k) => byKey[k]).filter(Boolean);
+    let i = 0;
+    steps = d.guide.map((g) => (g.movable ? ordered[i++] : g));
+  }
+  const firstNext = steps.findIndex((g) => g.status !== 'done');
+  const movableKeys = steps.filter((g) => g.movable).map((g) => g.key);
   return `<div class="card guide"><div class="card-head"><h2>Next steps</h2>
-      <span class="small muted">${open ? `${open} need${open === 1 ? 's' : ''} attention` : 'On track'}</span><span class="spacer"></span><a class="small" href="#/playbook">How PI cases work</a></div>
-    <ol class="guide-steps">${d.guide.map((g) => {
+      <span class="small muted">${open ? `${open} need${open === 1 ? 's' : ''} attention` : 'On track'}${d.guideOrder?.case ? ' · your order for this case' : d.guideOrder?.practice ? " · your practice's order" : ''}</span><span class="spacer"></span>
+      ${w && movableKeys.length > 1 ? (reorder ? '' : '<button class="btn ghost sm" data-act="guide-reorder">Reorder</button>') : ''}<a class="small" href="#/playbook">How PI cases work</a></div>
+    ${reorder ? `<div class="notice mt-sm">Move the steps still to do into the order your office follows. Done steps stay in the order they happened.
+      <div class="badge-row mt-sm"><button class="btn sm" data-act="guide-order-save" data-scope="case">Save for this case</button>${can('users.manage') ? '<button class="btn ghost sm" data-act="guide-order-save" data-scope="practice">Save as our order for every case</button>' : ''}
+        ${d.guideOrder?.case ? '<button class="btn ghost sm" data-act="guide-order-save" data-scope="reset">Back to the practice order</button>' : ''}<button class="btn ghost sm" data-act="guide-reorder-cancel">Cancel</button></div></div>` : ''}
+    <ol class="guide-steps">${steps.map((g, idx) => {
+      if (g.kind === 'event') return `${idx === 0 ? '<li class="gs-divider small muted">Done so far</li>' : ''}<li class="gs-done gs-event"><div class="gs-head"><span class="chip done">Done</span> <strong>${esc(g.title)}</strong> <span class="small muted">${esc(g.text)}</span></div></li>`;
+      const divider = idx === 0 && g.status === 'done' ? '<li class="gs-divider small muted">Done so far</li>' : idx === firstNext && idx > 0 ? '<li class="gs-divider small muted">Next</li>' : '';
+      const mi = movableKeys.indexOf(g.key);
+      const mover = reorder && g.movable ? `<span class="gs-move"><button class="btn ghost sm" data-act="guide-move" data-key="${g.key}" data-d="-1"${mi === 0 ? ' disabled' : ''} aria-label="Move ${esc(g.title)} up">↑</button><button class="btn ghost sm" data-act="guide-move" data-key="${g.key}" data-d="1"${mi === movableKeys.length - 1 ? ' disabled' : ''} aria-label="Move ${esc(g.title)} down">↓</button></span>` : '';
       const [cls, txt] = GUIDE_CHIPS[g.status];
       const act = [];
       const openish = ['now', 'consider', 'upcoming', 'waiting', 'ask'].includes(g.status);
@@ -1064,7 +1088,10 @@ function guideCardHtml(d) {
       if (['dismissed', 'snoozed'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-clear" data-step="${g.key}">Undo</button>`);
       if (g.key === 'neuro' && g.status === 'na' && d.case.head_injury === 'no' && w) act.push(`<button class="btn ghost sm" data-act="head-injury" data-v="unknown">Change answer</button>`);
       if (['now', 'consider'].includes(g.status)) act.push(`<button class="btn ghost sm" data-act="task-from-alert" data-case="${d.case.id}" data-text="${esc(g.title + ': ' + g.text)}">+ Task</button>`);
-      return `<li class="gs-${esc(g.status)}"><div class="gs-head"><span class="chip ${cls}">${txt}</span> <strong>${esc(g.title)}</strong> <span class="small muted">${esc(g.when)}</span></div>
+      if (g.kind === 'mmi' && w && !['done', 'na', 'dismissed'].includes(g.status)) act.push('<button class="btn ghost sm" data-act="end-care">Patient stopped coming…</button>');
+      if (g.kind === 'mmi' && w && d.case.discharge_date && !d.case.mmi_date) act.push('<button class="btn ghost sm" data-act="resume-care">Patient came back — resume care</button>');
+      if (reorder) act.length = 0;
+      return `${divider}<li class="gs-${esc(g.status)}"><div class="gs-head">${mover}<span class="chip ${cls}">${txt}</span> <strong>${esc(g.title)}</strong> <span class="small muted">${esc(g.when)}</span></div>
         <div class="gs-body">${g.text ? `<div>${esc(g.text)}</div>` : ''}
           ${g.referrals.map(refProgressHtml).join('')}
           <details class="small"><summary>Why this matters</summary><p class="muted">${esc(g.why)}</p></details>
@@ -2501,7 +2528,7 @@ async function pageAudit(main) {
 
 // ---------- practice settings ----------
 const practiceDefs = () => [{ n: 'name', l: 'Practice name', req: true, full: true }, { n: 'address', l: 'Address (letterhead)', t: 'textarea', rows: 2 },
-  { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' }, { n: 'state', l: 'State (default rules for new cases)', t: 'select', blank: false, opts: stateOpts() }, { n: 'ehr_name', l: 'Your EHR / EMR', ph: 'e.g. ChiroTouch, Jane, ECLIPSE' }];
+  { n: 'phone', l: 'Phone' }, { n: 'fax', l: 'Fax' }, { n: 'email', l: 'Office email (attorneys return forms here)', t: 'email' }, { n: 'state', l: 'State (default rules for new cases)', t: 'select', blank: false, opts: stateOpts() }, { n: 'ehr_name', l: 'Your EHR / EMR', ph: 'e.g. ChiroTouch, Jane, ECLIPSE' }];
 async function pageSettings(main) {
   const r = await attempt(() => api('admin.php?action=practice'));
   if (!r) return;
@@ -2981,6 +3008,46 @@ function exportFileModal() {
     } });
 }
 
+const NARRATIVE_LABELS = { pending: 'Asked — waiting for the attorney', none: 'Not needed (attorney declined)', without_ratings: 'Requested — without AMA impairment ratings', with_ratings: 'Requested — with AMA whole-person impairment ratings' };
+
+// End of treatment letter: MMI (outcome wording chosen by the provider) or
+// self-released; asks the attorney about a final narrative report.
+function eocLetterModal() {
+  const c = S.caseData.case;
+  const selfReleased = c.discharge_date && !c.mmi_date;
+  if (!c.discharge_date && !c.mmi_date) return toast('Record MMI, or that the patient stopped coming, under Next steps first.', true);
+  const defs = [...(selfReleased ? [] : [{ n: 'outcome', l: "Outcome (use the treating provider's findings)", t: 'select', blank: false, opts: [['improved', 'Significant improvement in pain and function'], ['residual', 'Improved, with some symptoms remaining'], ['unresolved', 'Conservative care has not resolved the symptoms']] }]),
+    ...(fin('balances') ? [{ n: 'balance', l: 'Include the outstanding balance', t: 'check' }] : [])];
+  openModal({ title: 'End of treatment — narrative request', okText: 'Open letter', body: `<p class="small">${selfReleased ? 'Tells the attorney the patient stopped coming (care ended without MMI) and asks whether they need a final narrative report.' : 'Tells the attorney the patient reached MMI' + (c.maintenance_every_days && !c.discharge_date ? ' and is moving to maintenance care' : ' and was released from care') + ', and asks whether they need a final narrative report.'}
+ The attorney marks: yes without AMA ratings, yes with AMA whole-person ratings, or no. Record their answer on the case when it comes back.</p>${defs.length ? fieldsHtml(defs, { balance: true }) : ''}`,
+    onOk: async (el) => {
+      const v = defs.length ? readFields(el, defs) : {};
+      window.open('api/cases.php?action=letter&type=end_of_care&id=' + c.id + (v.outcome ? '&outcome=' + v.outcome : '') + (v.balance ? '&balance=1' : ''), '_blank', 'noopener');
+      if (!c.narrative_request) { S.caseData = await api('cases.php?action=update&id=' + c.id, { case: { narrative_request: 'pending' } }); renderCase(); }
+    } });
+}
+
+function narrativeModal() {
+  const c = S.caseData.case;
+  const defs = [{ n: 'narrative_request', l: "Attorney's answer", t: 'select', blank: false, opts: [['pending', 'Asked — waiting'], ...Object.entries({ without_ratings: 'Yes — without AMA impairment ratings', with_ratings: 'Yes — with AMA whole-person impairment ratings', none: 'No — not needed' })] },
+    { n: 'narrative_requested_on', l: 'Date requested (the report is due 30 days later)', t: 'date' }];
+  openModal({ title: 'Final narrative report', okText: 'Save', body: fieldsHtml(defs, { narrative_request: c.narrative_request || 'pending', narrative_requested_on: c.narrative_requested_on || '' }),
+    onOk: async (el) => { S.caseData = await api('cases.php?action=update&id=' + c.id, { case: readFields(el, defs) }); renderCase(); toast('Saved'); } });
+}
+
+function endCareModal() {
+  const c = S.caseData.case;
+  openModal({ title: 'Patient stopped coming', okText: 'End care', body: `<p class="small">Ends active care without an MMI finding — for a patient who stopped attending. Care ends on their last visit unless you choose another date. If they come back, use "Patient came back — resume care".</p>
+      <div class="assignee-list mt">${Object.entries({ self_released: 'Self-released', unreachable: 'Unable to be reached by phone/text', referred_out: 'Referred to another provider', other: 'Other' }).map(([k, l]) => `<label class="check"><input type="checkbox" data-flag="${k}"${k === 'self_released' ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>
+      <div class="form-grid mt"><div><label for="ec-date">Care ended on (blank = last visit)</label><input type="date" id="ec-date" max="${esc(today())}"></div></div>
+      <p class="small muted mt">Next: the end-of-treatment letter (Letters) asks the attorney whether they need a final narrative report.</p>`,
+    onOk: async (el) => {
+      const flags = [...el.querySelectorAll('[data-flag]:checked')].map((x) => x.dataset.flag);
+      S.caseData = await api('cases.php?action=end_care&id=' + c.id, { flags, date: el.querySelector('#ec-date').value || null });
+      renderCase(); toast('Care ended');
+    } });
+}
+
 function openLetter(type) {
   window.open('api/cases.php?action=letter&type=' + encodeURIComponent(type) + '&id=' + S.caseData.case.id, '_blank', 'noopener');
 }
@@ -3198,6 +3265,26 @@ const ACTIONS = {
     if (await attempt(() => api('documents.php?action=archive', { id: +el.dataset.id }))) reloadCase();
   },
   'letter': (el) => openLetter(el.dataset.type),
+  'eoc-letter': () => eocLetterModal(),
+  'narrative': () => narrativeModal(),
+  'end-care': () => endCareModal(),
+  'resume-care': async () => {
+    if (!(await confirmBox('Resume care?', 'The patient is treating again: the end of care is cleared and the case goes back to treating.', 'Resume'))) return;
+    const r = await attempt(() => api('cases.php?action=resume_care&id=' + S.caseData.case.id, {}));
+    if (r) { S.caseData = r; renderCase(); toast('Care resumed'); }
+  },
+  'guide-reorder': () => { guideReorder.keys = S.caseData.guide.filter((g) => g.movable).map((g) => g.key); renderCase(); },
+  'guide-reorder-cancel': () => { guideReorder.keys = null; renderCase(); },
+  'guide-move': (el) => {
+    const k = guideReorder.keys, i = k.indexOf(el.dataset.key), j = i + +el.dataset.d;
+    if (i < 0 || j < 0 || j >= k.length) return;
+    [k[i], k[j]] = [k[j], k[i]];
+    renderCase();
+  },
+  'guide-order-save': async (el) => {
+    const r = await attempt(() => api('cases.php?action=guide_order&id=' + S.caseData.case.id, { order: guideReorder.keys, scope: el.dataset.scope }));
+    if (r) { guideReorder.keys = null; S.caseData = r; renderCase(); toast(el.dataset.scope === 'practice' ? 'Saved as your order for every case' : el.dataset.scope === 'reset' ? 'Back to the practice order' : 'Order saved for this case'); }
+  },
   'new-task': (el) => taskModal(el.dataset.case ? +el.dataset.case : null),
   'edit-task': (el) => { const t = taskCache.get(+el.dataset.id); if (t) taskModal(t.case_id, t); },
   'task-from-alert': (el) => taskModal(+el.dataset.case, null, { title: el.dataset.text.slice(0, 200), assignees: [] }),

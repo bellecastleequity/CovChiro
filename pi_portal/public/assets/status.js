@@ -37,6 +37,8 @@
         <div><label for="sr-paid-on">Date sent</label><input type="date" id="sr-paid-on" name="payment_sent_on"></div>
         <div><label for="sr-amt">Amount</label><input type="number" id="sr-amt" name="payment_amount" min="0" step="0.01" inputmode="decimal"></div>
         <div><label for="sr-chk">Check #</label><input id="sr-chk" name="check_number" maxlength="40"></div></div></fieldset>
+      ${d.narrative ? `<fieldset><legend>Final narrative report</legend><p class="small muted">Treatment has ended. Would you like a final narrative report for your client? Any applicable charges are included on the patient's account balance.</p>
+        ${Object.entries(d.narrative).map(([k, l]) => `<label class="radio"><input type="radio" name="narrative" value="${k}"> ${esc(l)}</label>`).join('')}</fieldset>` : ''}
       <fieldset><legend>Do you need anything from the office?</legend>
         ${Object.entries(d.needs).map(([k, l]) => `<label class="radio"><input type="checkbox" name="needs" value="${k}"> ${esc(l)}</label>`).join('')}</fieldset>
       <label for="sr-note">Anything else? <span class="muted">(optional)</span></label><textarea id="sr-note" name="note" rows="3" maxlength="2000"></textarea>

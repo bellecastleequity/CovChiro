@@ -111,7 +111,7 @@ function handle_practice() {
     $q->execute([$p['id']]);
     $autoCount = (int)$q->fetchColumn();
     json_response(['practice' => [
-        'name' => $p['name'], 'address' => $p['address'], 'phone' => $p['phone'], 'fax' => $p['fax'], 'state' => $p['state'], 'ehrName' => $p['ehr_name'],
+        'name' => $p['name'], 'address' => $p['address'], 'phone' => $p['phone'], 'fax' => $p['fax'], 'email' => $p['email'] ?? null, 'state' => $p['state'], 'ehrName' => $p['ehr_name'],
         'staffFinance' => array_values(array_filter(explode(',', (string)$p['staff_finance']))),
         'notifyRules' => practice_rules($p), 'notifyCriteria' => NOTIFY_CRITERIA, 'mailReady' => mail_ready(),
         'hasHuddle' => has_feature($p, 'huddle'), 'hasDigest' => has_feature($p, 'email_digest'), 'costs' => practice_costs($p),
@@ -129,9 +129,11 @@ function handle_practice_save() {
     $name = str_or_null($b['name'] ?? null, 160);
     if (!$name) json_response(['error' => 'Enter the practice name.'], 400);
     $state = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', (string)($b['state'] ?? 'FL')), 0, 2)) ?: 'FL';
-    $after = ['name' => $name, 'address' => str_or_null($b['address'] ?? null, 255), 'phone' => str_or_null($b['phone'] ?? null, 40), 'fax' => str_or_null($b['fax'] ?? null, 40), 'state' => $state, 'ehr_name' => str_or_null($b['ehr_name'] ?? null, 80)];
-    $changes = audit_diff(['name' => 'label', 'address' => 'label', 'phone' => 'label', 'fax' => 'label', 'state' => 'label', 'ehr_name' => 'label'], current_practice(), $after);
-    pi_db()->prepare('UPDATE practices SET name = ?, address = ?, phone = ?, fax = ?, state = ?, ehr_name = ? WHERE id = ?')
+    $email = str_or_null($b['email'] ?? null, 190);
+    if ($email && !filter_var($email, FILTER_VALIDATE_EMAIL)) json_response(['error' => 'Check the office email address.'], 400);
+    $after = ['name' => $name, 'address' => str_or_null($b['address'] ?? null, 255), 'phone' => str_or_null($b['phone'] ?? null, 40), 'fax' => str_or_null($b['fax'] ?? null, 40), 'email' => $email, 'state' => $state, 'ehr_name' => str_or_null($b['ehr_name'] ?? null, 80)];
+    $changes = audit_diff(['name' => 'label', 'address' => 'label', 'phone' => 'label', 'fax' => 'label', 'email' => 'label', 'state' => 'label', 'ehr_name' => 'label'], current_practice(), $after);
+    pi_db()->prepare('UPDATE practices SET name = ?, address = ?, phone = ?, fax = ?, email = ?, state = ?, ehr_name = ? WHERE id = ?')
         ->execute([...array_values($after), pid()]);
     if ($changes) audit('update', 'practice', pid(), null, $admin, null, $changes);
     json_response(['ok' => true]);

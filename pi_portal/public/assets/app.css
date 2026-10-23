@@ -525,3 +525,9 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .mkt-check{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;font-size:0.92rem;}
 .mkt-check .ok{color:var(--green-dark);}
 .mkt-check .todo{color:var(--muted);}
+/* Next steps flow */
+.guide-steps > li.gs-divider{counter-increment:none;padding:10px 0 2px;border-bottom:none;font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:0.72rem;}
+.guide-steps > li.gs-divider::before{display:none;}
+.guide-steps .gs-event .gs-head{opacity:.85;}
+.gs-move{display:inline-flex;gap:4px;margin-right:8px;}
+.gs-move .btn{padding:2px 8px;min-width:0;}

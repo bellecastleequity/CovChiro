@@ -31,7 +31,12 @@ const CASE_FIELDS = [
     'limits_source' => 'str:160', 'limits_noted_on' => 'date',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
     'mediation_on' => 'date', 'trial_on' => 'date', 'settlement_signed_on' => 'date', 'disbursement_expected_on' => 'date',
+    'narrative_request' => ['pending', 'none', 'without_ratings', 'with_ratings'], 'narrative_requested_on' => 'date',
 ];
+// The attorney's answers to the final narrative request.
+const NARRATIVE_CHOICES = ['without_ratings' => 'Yes — without AMA impairment ratings', 'with_ratings' => 'Yes — with AMA whole-person impairment ratings', 'none' => 'No — not needed'];
+// Why care ended for a patient who stopped coming (end_reason flags).
+const END_FLAGS = ['self_released' => 'Self-released', 'unreachable' => 'Unable to be reached by phone/text', 'referred_out' => 'Referred to another provider', 'other' => 'Other'];
 // These need finance.write instead of case.write. Billing can also move a
 // case through the legal / settlement stages.
 // Policy limits: front desk hears them on the attorney call, billing from
@@ -40,7 +45,7 @@ const LIMIT_CASE_FIELDS = ['liability_carrier', 'bi_limit', 'um_limit', 'other_m
 // Case status dates heard from the attorney's office: front desk or billing.
 const STATUS_DATE_FIELDS = ['mediation_on', 'trial_on', 'settlement_signed_on', 'disbursement_expected_on',
     // Automatic status requests (front desk or billing may set them up).
-    'case_manager_name', 'case_manager_email', 'auto_status', 'auto_status_to', 'auto_status_every'];
+    'case_manager_name', 'case_manager_email', 'auto_status', 'auto_status_to', 'auto_status_every', 'narrative_request', 'narrative_requested_on'];
 const FINANCE_CASE_FIELDS = ['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'balance_forwarded_on', 'balance_forwarded_amount'];
 
 const CHILD_SPECS = [
@@ -275,6 +280,9 @@ function full_case(int $id, array $user): array {
     $guide = care_guide($c, $referrals, $guideRows, head_injury_codes(array_column($visits, 'icd_codes')),
         ($exams = array_column(array_filter($visits, fn($v) => in_array($v['visit_type'], ['initial', 're_exam'], true)), 'visit_date')) ? max($exams) : null,
         ($seen = array_column(array_filter($visits, fn($v) => $v['visit_type'] !== 'no_show'), 'visit_date')) ? max($seen) : null);
+    // Shown as a flow: done steps in the order they happened, then next steps in the clinic's order.
+    $guideOrder = guide_order_from($c['guide_order'] ?? null) ?? guide_order_from(current_practice()['guide_order'] ?? null);
+    $guideFlow = guide_flow($guide, array_column(array_filter($visits, fn($v) => $v['visit_type'] === 're_exam' && empty($v['archived_at'])), 'visit_date'), $guideOrder);
     $ctx = [
         'estimateRows' => $fetch('SELECT * FROM case_estimates WHERE case_id = ? AND archived_at IS NULL ORDER BY id'), 'costs' => practice_costs(),
         'checklist' => $checklist, 'guide' => $guide, 'referrals' => $referrals, 'visits' => $visits, 'totals' => $totals, 'ledgerRows' => $allLedger, 'attendedDates' => $visitDates, 'outreach' => $outreach, 'coverages' => $coverages, 'openItems' => $openItems,
@@ -305,7 +313,8 @@ function full_case(int $id, array $user): array {
             'pipLabel' => $rules['pip_label'], 'pipMedical' => $rules['pip_medical'], 'emcRule' => $rules['emc_rule'], 'emcCap' => $rules['emc_cap'],
             'tortOptions' => $rules['tort_options'], 'lopDisclosure' => $rules['lop_disclosure'], 'demandLetter' => (bool)$rules['demand_letter'],
             'balanceBilling' => $rules['balance_billing'], 'balanceNote' => $rules['balance_note'], 'summary' => jurisdiction_summary($rules)],
-        'checklist' => $checklist, 'guide' => $guide, 'alerts' => $alerts, 'caseValue' => $caseValue, 'statusRequests' => status_info($c),
+        'checklist' => $checklist, 'guide' => $guideFlow, 'guideOrder' => ['case' => guide_order_from($c['guide_order'] ?? null) !== null, 'practice' => guide_order_from(current_practice()['guide_order'] ?? null) !== null],
+        'alerts' => $alerts, 'caseValue' => $caseValue, 'statusRequests' => status_info($c),
         'otherCases' => array_values(array_filter(patient_card((int)$c['patient_id'])['cases'], fn($x) => $x['id'] !== (int)$c['id'])),
         'outreach' => $outreach, 'outreachState' => outreach_state($c, $outreach, $visitDates), 'outreachOutcomes' => OUTREACH_OUTCOMES,
         'tips' => case_tips($c, ['referrals' => $referrals, 'visits' => $visits, 'icd' => array_column($visits, 'icd_codes'), 'guideRows' => $guideRows, 'outcomeDates' => array_unique(array_column($outcomes, 'taken_on'))]),
@@ -429,6 +438,8 @@ function handle_update() {
 
     $cols = clean_fields(CASE_FIELDS, $caseIn);
     if (array_key_exists('stage', $cols) && $cols['stage'] === null) unset($cols['stage']);
+    // A "yes" to the narrative starts its 30-day clock (unless a date was given).
+    if (in_array($cols['narrative_request'] ?? null, ['without_ratings', 'with_ratings'], true) && empty($cols['narrative_requested_on']) && empty($c['narrative_requested_on'])) $cols['narrative_requested_on'] = date('Y-m-d');
     $changes = audit_diff(CASE_FIELDS, $c, $cols);
     if (!empty($cols)) {
         $cols['updated_at'] = now_str();
@@ -669,11 +680,11 @@ function handle_mmi() {
     if ($plan === 'maintenance') {
         $every = (int)($b['every_days'] ?? 0);
         if ($every < 7 || $every > 180) json_response(['error' => 'Choose how often: between every week and every 6 months.'], 400);
-        $upd += ['maintenance_every_days' => $every, 'mmi_date' => $c['mmi_date'] ?: $date, 'discharge_date' => null];
+        $upd += ['maintenance_every_days' => $every, 'mmi_date' => $c['mmi_date'] ?: $date, 'discharge_date' => null, 'end_reason' => 'mmi_maintenance'];
         if (in_array($c['stage'], ['intake', 'treating'], true)) $upd['stage'] = 'tx_complete';
         update_row('cases', $id, $upd);
     } elseif ($plan === 'discharge') {
-        $upd += ['mmi_date' => $c['mmi_date'] ?: $date, 'discharge_date' => $date, 'actively_treating' => 0];
+        $upd += ['mmi_date' => $c['mmi_date'] ?: $date, 'discharge_date' => $date, 'actively_treating' => 0, 'end_reason' => 'mmi_discharge'];
         if (in_array($c['stage'], ['intake', 'treating'], true)) $upd['stage'] = 'tx_complete';
         update_row('cases', $id, $upd);
         $s = pi_db()->prepare("SELECT id FROM visits WHERE case_id = ? AND visit_date = ? AND archived_at IS NULL");
@@ -1343,6 +1354,63 @@ function handle_ar_report() {
     ], 'settlementVisible' => $set]);
 }
 
+// ---------- end of care without MMI, and the care flow order ----------
+// The patient stopped coming (self-released / can't be reached) or went
+// elsewhere: care ends on their last visit (or the date given), without
+// an MMI finding. Undone with resume_care if they come back.
+function handle_end_care() {
+    require_method('POST');
+    $user = require_user('case.write');
+    $id = (int)($_GET['id'] ?? 0);
+    $c = case_or_404($id);
+    $b = json_body();
+    $flags = array_values(array_intersect(array_keys(END_FLAGS), (array)($b['flags'] ?? [])));
+    if (!$flags) json_response(['error' => 'Choose why care ended.'], 400);
+    $s = pi_db()->prepare("SELECT MAX(visit_date) FROM visits WHERE case_id = ? AND archived_at IS NULL AND visit_type <> 'no_show'");
+    $s->execute([$id]);
+    $date = date_or_null($b['date'] ?? null) ?? ($s->fetchColumn() ?: date('Y-m-d'));
+    $upd = ['discharge_date' => $date, 'end_reason' => implode(',', $flags), 'actively_treating' => 0, 'updated_at' => now_str()];
+    if (in_array($c['stage'], ['intake', 'treating'], true)) $upd['stage'] = 'tx_complete';
+    update_row('cases', $id, $upd);
+    audit('update', 'case', $id, $id, $user, 'care ended: ' . implode(', ', array_map(fn($f) => END_FLAGS[$f], $flags)), audit_diff(['discharge_date' => 'date', 'stage' => array_keys(STAGES)], $c, $upd));
+    json_response(full_case($id, $user));
+}
+
+function handle_resume_care() {
+    require_method('POST');
+    $user = require_user('case.write');
+    $id = (int)($_GET['id'] ?? 0);
+    $c = case_or_404($id);
+    if ($c['mmi_date'] || !$c['discharge_date']) json_response(['error' => 'Only care that ended without MMI can be resumed here.'], 400);
+    $upd = ['discharge_date' => null, 'end_reason' => null, 'actively_treating' => 1, 'updated_at' => now_str()] + ($c['stage'] === 'tx_complete' ? ['stage' => 'treating'] : []);
+    update_row('cases', $id, $upd);
+    audit('update', 'case', $id, $id, $user, 'care resumed', audit_diff(['discharge_date' => 'date', 'stage' => array_keys(STAGES)], $c, $upd));
+    json_response(full_case($id, $user));
+}
+
+// The order of "Next steps": for this case, or as the practice's default
+// for every case (admins), or back to the standard order.
+function handle_guide_order() {
+    require_method('POST');
+    $user = require_user('case.write');
+    $id = (int)($_GET['id'] ?? 0);
+    case_or_404($id);
+    $b = json_body();
+    $order = array_values(array_unique(array_filter((array)($b['order'] ?? []), fn($k) => is_string($k) && isset(CARE_GUIDE[$k]))));
+    $scope = (string)($b['scope'] ?? 'case');
+    if ($scope === 'practice') {
+        if (!can($user, 'users.manage')) json_response(['error' => 'Only an admin can set the order for every case.'], 403);
+        pi_db()->prepare('UPDATE practices SET guide_order = ? WHERE id = ?')->execute([$order ? json_encode($order) : null, pid()]);
+        pi_db()->prepare('UPDATE cases SET guide_order = NULL WHERE id = ?')->execute([$id]);
+        $p = current_practice(); $p['guide_order'] = $order ? json_encode($order) : null; current_practice($p);
+        audit('update', 'practice', pid(), null, $user, 'next steps order: ' . ($order ? implode(' > ', $order) : 'standard'));
+    } else {
+        pi_db()->prepare('UPDATE cases SET guide_order = ? WHERE id = ?')->execute([$scope === 'reset' || !$order ? null : json_encode($order), $id]);
+        audit('update', 'case', $id, $id, $user, 'next steps order: ' . ($scope === 'reset' || !$order ? 'default' : implode(' > ', $order)));
+    }
+    json_response(full_case($id, $user));
+}
+
 // ---------- letters ----------
 // Printable HTML letters to the attorney. Opened in a new tab and printed
 // or saved to PDF by the browser — nothing is emailed from the server.
@@ -1444,6 +1512,47 @@ function handle_letter() {
             . '<table class="it"><thead><tr><th>Date of service</th><th>Description</th><th class="n">Charge</th><th class="n">Insurance paid/adj.</th><th class="n">Patient paid/adj.</th><th class="n">Patient balance</th></tr></thead><tbody>'
             . $rowsHtml . '</tbody><tfoot><tr><td colspan="5">Total patient balance due</td><td class="n">' . $money($t['patient_balance']) . '</td></tr></tfoot></table>'
             . '<p>Please remit payment to our office upon settlement, referencing our file number above. Contact us with any questions about this account.</p>';
+    } elseif ($type === 'end_of_care') {
+        // End of treatment: reached MMI (discharge or maintenance), or the
+        // patient stopped coming — with the final narrative request form.
+        // The outcome wording is the treating provider's choice (?outcome=).
+        $name = $h(patient_name($p));
+        $selfReleased = $c['discharge_date'] && !$c['mmi_date'];
+        $flags = array_values(array_intersect(array_keys(END_FLAGS), explode(',', (string)$c['end_reason'])));
+        $cov = $d['coverages'][0] ?? null;
+        $claim = array_filter(['Insurance company' => $cov ? ($cov['carrier_org'] ?: $cov['carrier_text']) : null, 'Claim adjuster' => $cov['adjuster'] ?? null,
+            'Claim number' => $cov['claim_number'] ?? null, 'Policy number' => $cov['policy_number'] ?? null, 'Date of loss' => $c['date_of_injury'] ? date('m/d/Y', strtotime($c['date_of_injury'])) : null]);
+        $claimHtml = $claim ? '<table class="it" style="width:auto"><tbody>' . implode('', array_map(fn($k, $v) => '<tr><td>' . $h($k) . '</td><td><strong>' . $h($v) . '</strong></td></tr>', array_keys($claim), $claim)) . '</tbody></table>' : '';
+        $dos = $c['first_visit'] ? ' (dates of service ' . $h(date('m/d/Y', strtotime($c['first_visit']))) . ' through ' . $h($d['stats']['lastVisit'] ? date('m/d/Y', strtotime($d['stats']['lastVisit'])) : '—') . ', ' . (int)$d['stats']['visitCount'] . ' visits)' : '';
+        if ($selfReleased) {
+            $title = 'End of treatment — final narrative request';
+            $last = $d['stats']['lastVisit'] ? date('F j, Y', strtotime($d['stats']['lastVisit'])) : null;
+            $status = $flags ? implode(', ', array_map(fn($f) => END_FLAGS[$f], $flags)) : 'Self-released';
+            $body = $claimHtml . '<p>We had an active treatment plan for your client, ' . $name . '. Your client has not been into our office for treatment as planned' . ($last ? ' since ' . $h($last) : '') . $dos . '. At your earliest convenience, please reach out to your client regarding this status.</p>'
+                . '<p>At this time, we consider the patient: <strong>' . $h($status) . '</strong>.</p>';
+        } else {
+            $title = 'Case status — end of treatment and final narrative request';
+            $outcome = in_array($_GET['outcome'] ?? '', ['improved', 'residual', 'unresolved'], true) ? $_GET['outcome'] : 'residual';
+            $mmi = $c['mmi_date'] ? date('F j, Y', strtotime($c['mmi_date'])) : null;
+            $maint = $c['maintenance_every_days'] && !$c['discharge_date'];
+            $body = $claimHtml . '<p>Your client, ' . $name . ', has ' . ($mmi ? 'reached maximum medical improvement (MMI) as of ' . $h($mmi) : 'completed the prescribed treatment plan') . ' after a course of treatment at our office' . $dos
+                . ($c['date_of_injury'] ? ' for injuries sustained on ' . $h(date('F j, Y', strtotime($c['date_of_injury']))) : '') . '.</p>'
+                . '<p>' . ['improved' => 'Your client has made significant improvement in pain and function in the affected areas.',
+                    'residual' => 'While your client showed improvement with treatment, they still report some symptoms similar to those reported shortly after the accident.',
+                    'unresolved' => 'While your client showed some improvement with treatment, they still report symptoms similar to those reported shortly after the accident, and conservative care has not resolved them.'][$outcome] . '</p>'
+                . '<p>' . ($maint ? 'We are transitioning your client to a maintenance plan of care (about every ' . max(1, (int)round($c['maintenance_every_days'] / 7)) . ' weeks) to help maintain the progress made and provide supportive care' . ($outcome !== 'improved' ? '. Further care may be needed in the future to maintain and support that progress' : '') . '. Those visits will appear on future statements.'
+                    : 'Your client has been released from active care' . ($c['discharge_date'] ? ' as of ' . $h(date('F j, Y', strtotime($c['discharge_date']))) : '') . '.') . '</p>';
+        }
+        $practiceHead = letterhead($c);
+        $return = implode(' or ', array_filter([$practiceHead['fax'] ? 'fax ' . $h($practiceHead['fax']) : null, !empty($practiceHead['email']) ? 'email ' . $h($practiceHead['email']) : null])) ?: 'reply to our office';
+        $box = '<span style="display:inline-block;width:14px;height:14px;border:1.5px solid #0B2340;margin-right:8px;vertical-align:-2px"></span>';
+        $body .= '<p>At this point, please let us know whether you would like a final narrative report prepared for your client, ' . $name . '. Please mark one and return by ' . $return . ':</p>'
+            . '<p style="line-height:2">' . $box . 'Yes, <strong>without</strong> AMA impairment ratings (will include discussion of impairment, if any; percentages not included).*<br>'
+            . $box . 'Yes, <strong>with</strong> AMA whole-person impairment ratings (will include discussion of impairment, if any; percentages included).*<br>'
+            . $box . 'No, our firm does not need a final narrative report for ' . $name . '.</p>'
+            . '<p style="font-size:10pt">*Any applicable charges will be included on the patient\'s account balance.</p>'
+            . (!empty($_GET['balance']) && fin_can($user, 'balances') ? '<p>As of today, the total outstanding balance for this patient is <strong>' . $money($d['totals']['total_balance'] ?? 0) . '</strong>.</p>' : '')
+            . '<p style="margin-top:18px">Signature: ______________________________ &nbsp; Date: ______________</p>';
     } else {
         json_response(['error' => 'Unknown letter type'], 400);
     }
@@ -1494,6 +1603,9 @@ switch ($action) {
     case 'task_save': handle_task_save(); break;
     case 'task': handle_task(); break;
     case 'patient_search': handle_patient_search(); break;
+    case 'end_care': handle_end_care(); break;
+    case 'resume_care': handle_resume_care(); break;
+    case 'guide_order': handle_guide_order(); break;
     case 'status_send': handle_status_send(); break;
     case 'task_delete': handle_task_delete(); break;
     case 'task_counts': handle_task_counts(); break;
