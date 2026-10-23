@@ -619,10 +619,10 @@ function mkt_render(array $p, int $step, array $s): array {
     $subject = $subjects[$step][$p['id'] % 2] ?? $subjects[1][0];
     if (mb_strlen($subject) > 90) $subject = $subjects[$step][0];
 
-    $btn = fn($label, $href) => '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0"><tr><td bgcolor="#1FA866" style="border-radius:10px">'
-        . '<a href="' . $h($href) . '" style="display:inline-block;padding:15px 28px;font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:bold;color:#0B2340;text-decoration:none;border-radius:10px">' . $h($label) . '</a></td></tr></table>';
+    $btn = fn($label, $href) => '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0"><tr><td bgcolor="#2B3FD6" style="border-radius:10px">'
+        . '<a href="' . $h($href) . '" style="display:inline-block;padding:15px 28px;font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px">' . $h($label) . '</a></td></tr></table>';
     $benefit = fn($icon, $title, $text) => '<tr><td valign="top" width="52" style="padding:10px 14px 10px 0"><div style="width:44px;height:44px;line-height:44px;border-radius:22px;background:#E3F6EC;text-align:center;font-size:22px">' . $icon . '</div></td>'
-        . '<td valign="top" style="padding:10px 0;font-family:Arial,Helvetica,sans-serif"><div style="font-size:17px;font-weight:bold;color:#0B2340">' . $h($title) . '</div><div style="font-size:15px;line-height:22px;color:#3B4D63;margin-top:3px">' . $h($text) . '</div></td></tr>';
+        . '<td valign="top" style="padding:10px 0;font-family:Arial,Helvetica,sans-serif"><div style="font-size:17px;font-weight:bold;color:#0F1733">' . $h($title) . '</div><div style="font-size:15px;line-height:22px;color:#3B4D63;margin-top:3px">' . $h($text) . '</div></td></tr>';
     $p_ = fn($t) => '<p style="margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:25px;color:#22344A">' . $t . '</p>';
     $trialLine = '14-day free trial &middot; No credit card &middot; No strings attached';
 
@@ -639,7 +639,7 @@ function mkt_render(array $p, int $step, array $s): array {
             . $p_('Built with physicians and shaped by more than 10 years of personal-injury attorney input. HIPAA-ready, with a Business Associate Agreement included.')
             . $btn('Start your free trial', $u['trial'])
             . '<p style="margin:0 0 18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#5A6B80">' . $trialLine . '</p>'
-            . ($video ? $p_('<a href="' . $h($u['video']) . '" style="color:#127A49">Watch the 2-minute tour &rarr;</a>') : '')
+            . ($video ? $p_('<a href="' . $h($u['video']) . '" style="color:#2B3FD6">Watch the 2-minute tour &rarr;</a>') : '')
             . $p_('If you\'re not the right person for this, I\'d be grateful if you passed it to whoever manages your PI cases.');
         $text = "$hi,\n\nAuto-accident cases are some of the most rewarding patients a {$sp['one']} sees — and the most paperwork-heavy. InjuryCase keeps every injury case on track, from the first visit to the final check:\n\n"
             . "- Better patient outcomes: gaps in care, missed visits and overdue referrals flagged every morning.\n- Better attorney relationships: status, treatment-complete and reduction letters in one click, plus automatic status requests.\n- A less stressed staff: referrals, deadlines, balances and settlements in one place.\n\n"
@@ -648,7 +648,7 @@ function mkt_render(array $p, int $step, array $s): array {
         $body = $p_($h($hi) . ',')
             . $p_('Following up on my note about <strong>InjuryCase</strong>. The practices we work with say the biggest change is the front desk: instead of chasing attorneys and digging through spreadsheets, the morning huddle sheet shows exactly which patients need a call, which referrals are overdue and which settlements are still waiting on a check.')
             . $p_('Patients stay on their treatment plans, attorneys get updates without asking, and your team goes home on time.')
-            . ($video ? $p_('<a href="' . $h($u['video']) . '" style="color:#127A49;font-weight:bold">See it in 2 minutes &rarr;</a>') : '')
+            . ($video ? $p_('<a href="' . $h($u['video']) . '" style="color:#2B3FD6;font-weight:bold">See it in 2 minutes &rarr;</a>') : '')
             . $btn('Try it free for 14 days', $u['trial'])
             . '<p style="margin:0 0 18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#5A6B80">' . $trialLine . '</p>';
         $text = "$hi,\n\nFollowing up on my note about InjuryCase. Instead of chasing attorneys and digging through spreadsheets, the morning huddle sheet shows which patients need a call, which referrals are overdue and which settlements are waiting on a check. Patients stay on plan, attorneys get updates without asking, and your team goes home on time.\n\n"
@@ -666,16 +666,16 @@ function mkt_render(array $p, int $step, array $s): array {
         . '<a href="' . $h($u['unsub']) . '" style="color:#5A6B80;text-decoration:underline">Unsubscribe</a> and you won\'t hear from us again.<br>'
         . 'InjuryCase &middot; ' . $h($s['postal_address']) . ' &middot; <a href="' . APP_URL . '/legal.html#privacy" style="color:#5A6B80">Privacy</a>';
     $html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting"><title>' . $h($subject) . '</title></head>'
-        . '<body style="margin:0;padding:0;background:#EEF2F7">'
+        . '<body style="margin:0;padding:0;background:#F4F6FB">'
         . '<div style="display:none;max-height:0;overflow:hidden;opacity:0">' . $h($step === 1 ? 'Better patient outcomes, better attorney relationships, a less stressed staff — free trial, no card.' : 'Free trial, no card, no strings attached.') . '</div>'
-        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEF2F7"><tr><td align="center" style="padding:24px 12px">'
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F4F6FB"><tr><td align="center" style="padding:24px 12px">'
         . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px">'
         . '<tr><td style="padding:6px 8px 16px"><a href="' . $h($u['site']) . '"><img src="' . $img . '/logo.png" width="170" alt="InjuryCase" style="display:block;border:0;width:170px;height:auto"></a></td></tr>'
-        . '<tr><td bgcolor="#FFFFFF" style="border-radius:16px;padding:30px 32px 18px;box-shadow:0 6px 20px rgba(11,35,64,.08)">'
-        . ($step === 1 ? '<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;letter-spacing:1.5px;color:#1FA866;text-transform:uppercase;margin:0 0 8px">For injury-care practices</div>'
-            . '<h1 style="margin:0 0 18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:32px;color:#0B2340">Better outcomes for your auto-accident patients &mdash; with less paperwork</h1>' : '')
+        . '<tr><td bgcolor="#FFFFFF" style="border-radius:16px;padding:30px 32px 18px;box-shadow:0 6px 20px rgba(15,23,51,.08)">'
+        . ($step === 1 ? '<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;letter-spacing:1.5px;color:#2B3FD6;text-transform:uppercase;margin:0 0 8px">For injury-care practices</div>'
+            . '<h1 style="margin:0 0 18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:32px;color:#0F1733">Better outcomes for your auto-accident patients &mdash; with less paperwork</h1>' : '')
         . $body
-        . '<p style="margin:6px 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:24px;color:#22344A">' . $sign . '<br><span style="color:#5A6B80;font-size:14px">InjuryCase &middot; <a href="' . $h($u['site']) . '" style="color:#127A49">injurycase.com</a></span></p>'
+        . '<p style="margin:6px 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:24px;color:#22344A">' . $sign . '<br><span style="color:#5A6B80;font-size:14px">InjuryCase &middot; <a href="' . $h($u['site']) . '" style="color:#2B3FD6">injurycase.com</a></span></p>'
         . '</td></tr>'
         . '<tr><td style="padding:18px 16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#5A6B80;text-align:center">' . $footer . '</td></tr>'
         . '</table></td></tr></table></body></html>';

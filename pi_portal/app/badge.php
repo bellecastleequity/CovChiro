@@ -51,7 +51,7 @@ function badge_shield(float $cx, float $top, float $s, bool $active, string $gid
 }
 
 function badge_gradient(string $id, bool $active): string {
-    [$a, $b] = $active ? ['#2BC47D', '#168A52'] : ['#A9B3C1', '#7D8898'];
+    [$a, $b] = $active ? ['#4A5CF0', '#1F2DA6'] : ['#A9B3C1', '#7D8898'];
     return '<linearGradient id="' . $id . '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' . $a . '"/><stop offset="1" stop-color="' . $b . '"/></linearGradient>';
 }
 
@@ -60,29 +60,29 @@ function badge_svg(string $style, bool $active): string {
     $font = BADGE_FONT;
     $label = $active ? BRAND_NAME . ' Certified Practice' : BRAND_NAME . ' verification unavailable';
     if ($style === 'seal') {
-        $ring = $active ? '#1FA866' : '#9AA5B4';
+        $ring = $active ? '#5EEAD4' : '#9AA5B4';
         $bottom = $active ? 'CERTIFIED PRACTICE' : 'NOT VERIFIED';
         return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" role="img" aria-label="' . $label . '">'
             . '<defs>' . badge_gradient($active ? 'icg-on' : 'icg-off', $active)
             . '<path id="ict" d="M 28 80 A 52 52 0 0 1 132 80"/><path id="icb" d="M 19 80 A 61 61 0 0 0 141 80"/></defs>'
-            . '<circle cx="80" cy="80" r="78" fill="#0B2340"/>'
+            . '<circle cx="80" cy="80" r="78" fill="#0F1733"/>'
             . '<circle cx="80" cy="80" r="72" fill="none" stroke="' . $ring . '" stroke-width="2.5"/>'
             . '<circle cx="80" cy="80" r="44" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1"/>'
             . '<text font-family="' . $font . '" font-size="13" font-weight="800" fill="#FFFFFF" text-anchor="middle"><textPath href="#ict" startOffset="50%" text-anchor="middle" textLength="104" lengthAdjust="spacing">INJURYCASE</textPath></text>'
-            . '<text font-family="' . $font . '" font-size="10.5" font-weight="700" fill="' . ($active ? '#7FE0B0' : '#C3CBD6') . '" text-anchor="middle"><textPath href="#icb" startOffset="50%" text-anchor="middle" textLength="' . ($active ? 146 : 98) . '" lengthAdjust="spacing">' . $bottom . '</textPath></text>'
+            . '<text font-family="' . $font . '" font-size="10.5" font-weight="700" fill="' . ($active ? '#5EEAD4' : '#C3CBD6') . '" text-anchor="middle"><textPath href="#icb" startOffset="50%" text-anchor="middle" textLength="' . ($active ? 146 : 98) . '" lengthAdjust="spacing">' . $bottom . '</textPath></text>'
             . '<text x="21" y="84" font-family="' . $font . '" font-size="10" fill="' . $ring . '" text-anchor="middle">★</text>'
             . '<text x="139" y="84" font-family="' . $font . '" font-size="10" fill="' . $ring . '" text-anchor="middle">★</text>'
             . badge_shield(80, 53, 1.12, $active, $active ? 'icg-on' : 'icg-off')
             . '</svg>';
     }
     $dark = $style === 'dark';
-    [$bg, $border, $ink, $muted] = $dark ? ['#0B2340', '#0B2340', '#FFFFFF', 'rgba(255,255,255,0.72)'] : ['#FFFFFF', '#D5DCE6', '#0B2340', 'rgba(11,35,64,0.68)'];
+    [$bg, $border, $ink, $muted] = $dark ? ['#0F1733', '#0F1733', '#FFFFFF', 'rgba(255,255,255,0.72)'] : ['#FFFFFF', '#D5DCE6', '#0F1733', 'rgba(15,23,51,0.68)'];
     [$l1, $l2, $l3] = $active ? ['INJURYCASE', 'Certified Practice', 'Secure PI case management'] : ['INJURYCASE', 'Not verified', 'This badge is not currently active'];
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 72" width="240" height="72" role="img" aria-label="' . $label . '">'
         . '<defs>' . badge_gradient($active ? 'icg-on' : 'icg-off', $active) . '</defs>'
         . '<rect x="0.5" y="0.5" width="239" height="71" rx="12" fill="' . $bg . '" stroke="' . $border . '"/>'
         . badge_shield(36, 12, 1, $active, $active ? 'icg-on' : 'icg-off')
-        . '<text x="66" y="26" font-family="' . $font . '" font-size="10" font-weight="700" letter-spacing="1.8" fill="' . ($active ? ($dark ? '#7FE0B0' : '#1FA866') : $muted) . '">' . $l1 . '</text>'
+        . '<text x="66" y="26" font-family="' . $font . '" font-size="10" font-weight="700" letter-spacing="1.8" fill="' . ($active ? ($dark ? '#5EEAD4' : '#2B3FD6') : $muted) . '">' . $l1 . '</text>'
         . '<text x="66" y="45" font-family="' . $font . '" font-size="17" font-weight="800" fill="' . $ink . '">' . $l2 . '</text>'
         . '<text x="66" y="59" font-family="' . $font . '" font-size="9.5" fill="' . $muted . '">' . $l3 . '</text>'
         . '</svg>';

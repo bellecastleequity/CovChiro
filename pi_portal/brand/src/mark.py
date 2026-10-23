@@ -19,7 +19,7 @@ def swoosh_poly(p0, p1, p2, p3, w0, w1, n=40):
         left.append((x + nx*w, y + ny*w)); right.append((x - nx*w, y - ny*w))
     pts = left + right[::-1]
     return 'M' + ' L'.join('%.2f %.2f' % p for p in pts) + ' Z', left
-def mark(bg='#0B2340', glyph='#FFFFFF', arrow='#1FA866', with_c=True, gap=True):
+def mark(bg='#2B3FD6', glyph='#FFFFFF', arrow='#5EEAD4', with_c=True, gap=True):
     out = []
     if bg: out.append('<rect width="64" height="64" rx="15" fill="%s"/>' % bg)
     out.append('<circle cx="15.5" cy="14.5" r="5.3" fill="%s"/>' % glyph)

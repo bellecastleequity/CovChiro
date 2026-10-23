@@ -601,8 +601,8 @@ function handle_export_file() {
     $addr = nl2br($h($practice['address'] ?? ''));
     $contactLine = implode(' · ', array_filter([$practice['phone'] ? 'Phone ' . $h($practice['phone']) : null, $practice['fax'] ? 'Fax ' . $h($practice['fax']) : null]));
     echo '<!doctype html><html><head><meta charset="utf-8"><title>Patient care summary — ' . $h($c['case_number']) . '</title><style>
-        body{font-family:Georgia,serif;max-width:7.5in;margin:0.5in auto;color:#0B2340;line-height:1.45;font-size:11pt}
-        .lh{border-bottom:2px solid #1FA866;padding-bottom:10px;margin-bottom:18px}.lh b{font-size:15pt}
+        body{font-family:Georgia,serif;max-width:7.5in;margin:0.5in auto;color:#0F1733;line-height:1.45;font-size:11pt}
+        .lh{border-bottom:2px solid #2B3FD6;padding-bottom:10px;margin-bottom:18px}.lh b{font-size:15pt}
         h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:22px 0 6px;border-bottom:1px solid #ccd5e0;padding-bottom:3px}
         table{width:100%;border-collapse:collapse;font-size:10pt}th,td{text-align:left;padding:4px 6px;border-bottom:1px solid #e3e8ef;vertical-align:top}
         thead th{font-size:9pt;text-transform:uppercase;letter-spacing:.03em;color:#4a5a70}table.kv th{width:30%;font-weight:normal;color:#4a5a70}
@@ -610,7 +610,7 @@ function handle_export_file() {
         .foot{margin-top:30px;font-size:8.5pt;color:#4a5a70;border-top:1px solid #e3e8ef;padding-top:8px}
         @media print{.noprint{display:none}body{margin:0.4in}h2{break-after:avoid}tr{break-inside:avoid}}
         </style></head><body>
-        <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#EEF2F7;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.</p>
+        <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#F4F6FB;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.</p>
         <div class="lh"><b>' . $h($practice['name']) . '</b>' . ($addr ? '<br>' . $addr : '') . ($contactLine ? '<br>' . $contactLine : '') . '</div>
         <h1>Patient care summary</h1><div class="meta">Our file ' . $h($c['case_number']) . ' · Prepared ' . date('m/d/Y') . ($for ? ' for ' . $h($for) : '') . '</div>';
     foreach ($sections as [$title, $html]) echo '<h2>' . $h($title) . '</h2>' . $html;
@@ -1564,7 +1564,7 @@ function handle_letter() {
         }
         $practiceHead = letterhead($c);
         $return = implode(' or ', array_filter([$practiceHead['fax'] ? 'fax ' . $h($practiceHead['fax']) : null, !empty($practiceHead['email']) ? 'email ' . $h($practiceHead['email']) : null])) ?: 'reply to our office';
-        $box = '<span style="display:inline-block;width:14px;height:14px;border:1.5px solid #0B2340;margin-right:8px;vertical-align:-2px"></span>';
+        $box = '<span style="display:inline-block;width:14px;height:14px;border:1.5px solid #0F1733;margin-right:8px;vertical-align:-2px"></span>';
         $fees = narrative_fees();
         $feeTxt = fn($choice) => ($f = narrative_fee_for($fees, $choice)) ? ' — <strong>fee ' . $money($f) . '</strong>' : '';
         $charges = $fees['charge'] && (narrative_fee_for($fees, 'without_ratings') || narrative_fee_for($fees, 'with_ratings'));
@@ -1591,15 +1591,15 @@ function handle_letter() {
     $attn = $c['paralegal'] ? 'Attn: ' . $h($c['paralegal']) . '<br>' : '';
     $to = $toOverride ?? $attn . ($atty ? $h($atty['name'] ?? '') . '<br>' . $h($atty['organization'] ?? '') . ($atty['address'] ? '<br>' . nl2br($h($atty['address'])) : '') . ($atty['fax'] ? '<br>Fax ' . $h($atty['fax']) : '') . ($atty['email'] ? '<br>' . $h($atty['email']) : '') : 'Attorney of record');
     echo '<!doctype html><html><head><meta charset="utf-8"><title>' . $h($title) . '</title><style>
-        body{font-family:Georgia,serif;max-width:7in;margin:0.6in auto;color:#0B2340;line-height:1.5;font-size:12pt}
-        .lh{border-bottom:2px solid #1FA866;padding-bottom:10px;margin-bottom:24px}.lh b{font-size:15pt;color:#0B2340}
-        .re{margin:18px 0;padding:10px 12px;background:#EEF2F7;border-left:3px solid #1FA866}
-        .conf{margin-top:40px;font-size:9pt;color:#0B2340;opacity:.75;border-top:1px solid #EEF2F7;padding-top:8px}
-        table.it{width:100%;border-collapse:collapse;font-size:10pt;margin:14px 0}table.it th,table.it td{padding:5px 6px;border-bottom:1px solid #EEF2F7;text-align:left}
-        table.it .n{text-align:right;white-space:nowrap}table.it tfoot td{font-weight:bold;border-top:2px solid #0B2340}
+        body{font-family:Georgia,serif;max-width:7in;margin:0.6in auto;color:#0F1733;line-height:1.5;font-size:12pt}
+        .lh{border-bottom:2px solid #2B3FD6;padding-bottom:10px;margin-bottom:24px}.lh b{font-size:15pt;color:#0F1733}
+        .re{margin:18px 0;padding:10px 12px;background:#F4F6FB;border-left:3px solid #2B3FD6}
+        .conf{margin-top:40px;font-size:9pt;color:#0F1733;opacity:.75;border-top:1px solid #F4F6FB;padding-top:8px}
+        table.it{width:100%;border-collapse:collapse;font-size:10pt;margin:14px 0}table.it th,table.it td{padding:5px 6px;border-bottom:1px solid #F4F6FB;text-align:left}
+        table.it .n{text-align:right;white-space:nowrap}table.it tfoot td{font-weight:bold;border-top:2px solid #0F1733}
         @media print{.noprint{display:none}body{margin:0.5in}}
         </style></head><body>
-        <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#EEF2F7;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.' . ($type === 'pip_demand' ? ' Review with your attorney before sending, send it so receipt can be proven, then record the date sent on the PIP coverage (Financials) to start the 30-day clock.' : '') . '</p>
+        <p class="noprint" style="font-family:sans-serif;font-size:10pt;background:#F4F6FB;padding:8px">Use your browser\'s Print (Ctrl/Cmd+P) to print or save as PDF.' . ($type === 'pip_demand' ? ' Review with your attorney before sending, send it so receipt can be proven, then record the date sent on the PIP coverage (Financials) to start the 30-day clock.' : '') . '</p>
         <div class="lh"><b>' . $h($practice['name']) . '</b>' . ($addr ? '<br>' . $addr : '') . ($contactLine ? '<br>' . $contactLine : '') . '</div>
         <p>' . date('F j, Y') . '</p><p>' . $to . '</p>
         <div class="re"><strong>RE: ' . $h($title) . '</strong><br>Patient: ' . $patientLine . '<br>Our file: ' . $h($c['case_number']) . '</div>
