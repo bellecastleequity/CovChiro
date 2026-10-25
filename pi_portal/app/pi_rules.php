@@ -62,6 +62,16 @@ define('WC_DWC25_DAYS', 3);
 // The lowest share of the patient balance the office will normally accept
 // on an attorney's reduction request (the "80%" column on the A/R sheet).
 define('REDUCTION_FLOOR_PCT', 0.80);
+// The practice's reduction terms: share of the patient balance accepted if
+// paid within 30 days ('pct'), and if paid later ('late_pct', suggested:
+// the 30-day amount plus 5%). 'asked' = the practice has set them.
+function reduction_terms(?array $practice = null): array {
+    $p = $practice ?? (function_exists('current_practice') ? current_practice() : null);
+    $j = $p && !empty($p['reduction_terms']) ? json_decode($p['reduction_terms'], true) : null;
+    $pct = is_array($j) && isset($j['pct']) ? (float)$j['pct'] : REDUCTION_FLOOR_PCT * 100;
+    $late = is_array($j) && isset($j['late_pct']) ? (float)$j['late_pct'] : min(100, round($pct * 1.05, 1));
+    return ['asked' => is_array($j), 'pct' => $pct, 'late_pct' => max($pct, $late)];
+}
 
 define('TREATMENT_GAP_DAYS', 14);
 define('STALE_CORRESPONDENCE_DAYS', 30);
@@ -93,13 +103,35 @@ define('PIP_LOW_REMAINING', 1500.00);
 const ALL_CASES = ['auto', 'slip_fall', 'workers_comp', 'other_pi'];
 const LIABILITY_CASES = ['auto', 'slip_fall', 'other_pi'];
 const CHECKLIST = [
+    // Visit 1 paperwork. Lien / LOP / records release stay in the clinic's own
+    // chart (EHR) — never sent to the insurer unless subpoenaed.
+    'records_release_signed'  => ['label' => 'Records release / HIPAA authorization signed', 'group' => 'Visit 1 paperwork', 'anchor' => 'first_visit', 'days' => 0, 'cases' => ALL_CASES],
+    'lien_signed'             => ['label' => 'Lien signed by the patient (recommended)', 'group' => 'Visit 1 paperwork', 'anchor' => 'first_visit', 'days' => 0, 'cases' => LIABILITY_CASES,
+        'detail' => "Keep it in the patient's chart in your EHR. Never send it to the insurance company unless it's subpoenaed."],
+    'lop_signed'              => ['label' => 'Letter of protection signed by patient', 'group' => 'Visit 1 paperwork', 'anchor' => 'first_visit', 'days' => 0, 'cases' => ['slip_fall', 'other_pi'], 'source' => 'case', 'field' => 'lop_signed_on',
+        'detail' => "Keep it in the patient's chart in your EHR. Never send it to an insurance company unless it's subpoenaed."],
+    'auto_lop_signed'         => ['label' => 'Letter of protection signed by patient (case is on an LOP)', 'group' => 'Visit 1 paperwork', 'anchor' => 'first_visit', 'days' => 0, 'cases' => ['auto'], 'basis' => 'lop', 'source' => 'case', 'field' => 'lop_signed_on',
+        'detail' => "The balance is held and paid from the settlement. Keep the LOP in your EHR — never send it to an insurance company unless it's subpoenaed."],
+    'aob_signed'              => ['label' => 'Assignment of benefits signed', 'group' => 'Visit 1 paperwork', 'anchor' => 'first_visit', 'days' => 0, 'cases' => ['auto'], 'rule' => 'pip', 'basis' => 'insurance'],
+    'std_disclosure_signed'   => ['label' => 'Standard Disclosure & Acknowledgment form signed by the patient and the doctor', 'group' => 'Visit 1 paperwork', 'anchor' => 'first_visit', 'days' => 0, 'cases' => ['auto'], 'states' => ['FL'], 'basis' => 'insurance',
+        'detail' => 'Florida form OIR-B1-1571. The patient signs at the first visit and the treating doctor signs by their own hand; the original goes to the insurer.'],
     // Within 48 hours of the first visit
     'attorney_contacted'      => ['label' => 'Called attorney (ask for the policy limits)',                     'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => LIABILITY_CASES],
     'lor_received'            => ['label' => 'Letter of representation received',   'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => LIABILITY_CASES],
-    'aob_signed'              => ['label' => 'PIP application / assignment of benefits signed', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto'], 'rule' => 'pip'],
-    'lop_signed'              => ['label' => 'Letter of protection signed by patient', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['slip_fall', 'other_pi'], 'source' => 'case', 'field' => 'lop_signed_on'],
+    'lop_to_attorney'         => ['label' => 'Lien / LOP sent to the attorney (fax or email)', 'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => LIABILITY_CASES],
+    // Mailed to the PIP insurer (adjuster) — as soon as each is ready, with
+    // the next outgoing mail; no need to wait for a batch.
+    'treatment_notice_mailed' => ['label' => 'Notice of initiation of treatment mailed to the insurer', 'group' => 'Mail to the insurer', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto'], 'states' => ['FL'], 'basis' => 'insurance', 'mail' => true, 'letter' => 'treatment_notice',
+        'detail' => 'Send it with the letter of intent to bill. Florida §627.736(5)(c): bills are due within 35 days of treatment, or within 75 days if this notice reaches the insurer within 21 days of the first visit.'],
+    'intent_to_bill_mailed'   => ['label' => 'Letter of intent to bill mailed to the insurer', 'group' => 'Mail to the insurer', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto'], 'states' => ['FL'], 'basis' => 'insurance', 'mail' => true, 'letter' => 'intent_to_bill',
+        'detail' => 'Send it every time, with the notice of initiation of treatment — it protects your billing window when the first bills may not go out within 21 days.'],
+    'std_disclosure_mailed'   => ['label' => 'Original Standard Disclosure form mailed to the insurer', 'group' => 'Mail to the insurer', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto'], 'states' => ['FL'], 'basis' => 'insurance', 'mail' => true,
+        'detail' => 'Florida §627.736(4)(b): the original must be furnished to the insurer and may not be sent electronically. Without it the claim may not be paid.'],
+    'aob_mailed'              => ['label' => 'Assignment of benefits mailed to the insurer', 'group' => 'Mail to the insurer', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto'], 'rule' => 'pip', 'basis' => 'insurance', 'mail' => true],
+    'emc_mailed'              => ['label' => 'EMC report mailed to the insurer adjuster', 'group' => 'Mail to the insurer', 'anchor' => 'emc_on', 'days' => 2, 'cases' => ['auto'], 'rule' => 'emc_rule', 'basis' => 'insurance', 'mail' => true,
+        'detail' => 'Due once the EMC determination is recorded on the case. Mail it with the next outgoing mail so reimbursement isn\'t held up.'],
     'incident_report'         => ['label' => 'Incident report & photos requested',  'group' => 'Within 48 hours', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['slip_fall', 'other_pi']],
-    'claim_notice'            => ['label' => 'PIP / no-fault application sent to the insurer', 'group' => 'State requirements', 'anchor' => 'date_of_injury', 'days_rule' => 'notice_days', 'cases' => ['auto'], 'rule' => 'notice_days'],
+    'claim_notice'            => ['label' => 'PIP / no-fault application sent to the insurer', 'group' => 'State requirements', 'anchor' => 'date_of_injury', 'days_rule' => 'notice_days', 'cases' => ['auto'], 'rule' => 'notice_days', 'basis' => 'insurance'],
     'tort_option'             => ['label' => "Asked which lawsuit (tort) option the patient's policy has", 'group' => 'State requirements', 'anchor' => 'first_visit', 'days' => 2, 'cases' => ['auto'], 'rule' => 'tort_options', 'source' => 'case_set', 'field' => 'tort_option'],
     'treatment_plan_sent'     => ['label' => 'Treatment plan sent to the insurer (required after the state\'s visit/day limit)', 'group' => 'State requirements', 'anchor' => 'first_visit', 'days_rule' => 'treatment_plan', 'cases' => ['auto'], 'rule' => 'treatment_plan'],
     'nj_treatment_plan'       => ['label' => 'Attending Provider Treatment Plan sent (Care Paths decision point / precertification)', 'group' => 'State requirements', 'anchor' => 'first_visit', 'days' => 3, 'cases' => ['auto'], 'states' => ['NJ']],
@@ -120,6 +152,19 @@ const CHECKLIST = [
     'final_narrative'         => ['label' => 'Final narrative report sent (when the attorney requests one)', 'group' => 'At MMI / discharge', 'anchor' => 'narrative_requested_on', 'days' => 30, 'cases' => LIABILITY_CASES],
     'wc_final_status'         => ['label' => 'Final DWC-25 (MMI / discharge status) sent to carrier', 'group' => 'At MMI / discharge', 'anchor' => 'care_end', 'days' => 3, 'cases' => ['workers_comp'], 'rule' => 'wc_rules'],
     'records_request'         => ['label' => 'Attorney records request fulfilled',  'group' => 'At MMI / discharge', 'anchor' => null, 'days' => null, 'cases' => LIABILITY_CASES],
+    // Optional "new patient chart setup" pack (Practice settings; off by
+    // default) — the front-desk steps of a typical PI intake.
+    'cs_phone_details'        => ['pack' => 'chart_setup', 'label' => 'On the phone: preferred name, best phone, date of birth, address', 'group' => 'New patient chart setup', 'anchor' => 'first_visit', 'days' => -1, 'cases' => ALL_CASES],
+    'cs_attorney_details'     => ['pack' => 'chart_setup', 'label' => 'On the phone: attorney, case manager, auto insurer, policy and claim numbers, date of accident, attorney phone & fax', 'group' => 'New patient chart setup', 'anchor' => 'first_visit', 'days' => -1, 'cases' => LIABILITY_CASES],
+    'cs_prior_care'           => ['pack' => 'chart_setup', 'label' => 'On the phone: seen by a doctor or hospital since the accident? By ambulance?', 'group' => 'New patient chart setup', 'anchor' => 'first_visit', 'days' => -1, 'cases' => ALL_CASES,
+        'detail' => 'In Florida, PIP covers treatment only if the first evaluation is within 14 days of the accident.'],
+    'cs_paperwork_sent'       => ['pack' => 'chart_setup', 'label' => 'New patient paperwork texted to the patient', 'group' => 'New patient chart setup', 'anchor' => 'first_visit', 'days' => -1, 'cases' => ALL_CASES],
+    'cs_verify_claim'         => ['pack' => 'chart_setup', 'label' => 'Claim number, policy number, date of accident and insurer verified with the attorney', 'group' => 'New patient chart setup', 'anchor' => 'first_visit', 'days' => 0, 'cases' => ['auto']],
+    'cs_intake_uploaded'      => ['pack' => 'chart_setup', 'label' => 'Intake paperwork and ID card scanned into the chart', 'group' => 'New patient chart setup', 'anchor' => 'first_visit', 'days' => 0, 'cases' => ALL_CASES],
+    'cs_chart_profile'        => ['pack' => 'chart_setup', 'label' => 'EHR profile completed: photo, email, demographics, default appointment type, signature on file, first treatment date', 'group' => 'New patient chart setup', 'anchor' => 'first_visit', 'days' => 0, 'cases' => ALL_CASES],
+    'cs_chart_flags'          => ['pack' => 'chart_setup', 'label' => 'Chart flags added: injury case (date of accident, attorney), medical alerts, HIPAA "authorized to speak to"', 'group' => 'New patient chart setup', 'anchor' => 'first_visit', 'days' => 0, 'cases' => ALL_CASES],
+    'cs_rof_video'            => ['pack' => 'chart_setup', 'label' => 'Report of findings / welcome video sent to the patient', 'group' => 'New patient chart setup', 'anchor' => 'first_visit', 'days' => 1, 'cases' => ALL_CASES],
+    'cs_next_day_call'        => ['pack' => 'chart_setup', 'label' => 'Next-business-day check-in call: how are they feeling? Follow-up visit confirmed (log the call)', 'group' => 'New patient chart setup', 'anchor' => 'first_visit', 'days' => 1, 'cases' => ALL_CASES],
 ];
 
 function days_between(?string $from, ?string $to): ?int {
@@ -178,7 +223,9 @@ function ledger_totals(array $entries): array {
     $t['total_charges'] = round($t['insurance_charges'] + $t['patient_charges'], 2);
     $t['total_balance'] = round($t['insurance_balance'] + $t['patient_balance'], 2);
     // Reductions only ever apply to the patient balance the attorney pays.
-    $t['reduction_floor'] = round(max(0, $t['patient_balance']) * REDUCTION_FLOOR_PCT, 2);
+    $rt = reduction_terms();
+    $t['reduction_floor'] = round(max(0, $t['patient_balance']) * $rt['pct'] / 100, 2);
+    $t['reduction_late'] = round(max(0, $t['patient_balance']) * $rt['late_pct'] / 100, 2);
     $t['by_coverage'] = $cov;
     return $t;
 }
@@ -294,14 +341,15 @@ const STEP_ANCHORS = ['first_visit' => 'first visit', 'date_of_injury' => 'accid
 // ['custom' => key => checklist-style def, 'silenced' => item_key => true]
 function practice_step_config(?int $practiceId): array {
     static $cache = [];
-    if (!$practiceId) return ['custom' => [], 'silenced' => []];
+    if (!$practiceId) return ['custom' => [], 'silenced' => [], 'packs' => []];
     if (isset($cache[$practiceId])) return $cache[$practiceId];
     $pdo = pi_db();
     // Custom steps are a plan feature; after a downgrade they're kept but
     // stop appearing on cases. Silencing built-in steps works on every plan.
     $p = $pdo->prepare('SELECT * FROM practices WHERE id = ?'); $p->execute([$practiceId]);
+    $prow = $p->fetch() ?: null;
     $rows = [];
-    if (has_feature($p->fetch() ?: null, 'custom_steps')) {
+    if (has_feature($prow, 'custom_steps')) {
         $s = $pdo->prepare('SELECT * FROM practice_steps WHERE practice_id = ? AND active = 1 ORDER BY id');
         $s->execute([$practiceId]);
         $rows = $s->fetchAll();
@@ -315,11 +363,23 @@ function practice_step_config(?int $practiceId): array {
     }
     $s = $pdo->prepare('SELECT item_key FROM practice_silenced WHERE practice_id = ?');
     $s->execute([$practiceId]);
-    return $cache[$practiceId] = ['custom' => $custom, 'silenced' => array_fill_keys($s->fetchAll(PDO::FETCH_COLUMN), true)];
+    return $cache[$practiceId] = ['custom' => $custom, 'silenced' => array_fill_keys($s->fetchAll(PDO::FETCH_COLUMN), true),
+        // Optional built-in step packs the practice switched on.
+        'packs' => array_filter(['chart_setup' => !empty($prow['chart_setup_steps'])])];
 }
 
 function checklist_applies(array $def, array $case, array $rules): bool {
-    return in_array($case['injury_type'], $def['cases'], true) && checklist_rule_ok($def, $rules);
+    return in_array($case['injury_type'], $def['cases'], true) && checklist_rule_ok($def, $rules)
+        && (!isset($def['basis']) || case_billing_basis($case) === $def['basis']);
+}
+
+// Who pays on an auto case: the PIP insurer ('insurance') or the settlement
+// under a letter of protection ('lop'). Set on the case when someone
+// switches it; otherwise decided from the coverages — a denied claim, no
+// insurance, or health insurance only means LOP.
+function case_billing_basis(array $case): string {
+    if (!empty($case['billing_basis'])) return $case['billing_basis'];
+    return in_array($case['benefits'] ?? null, ['denied', 'lop', 'health'], true) ? 'lop' : 'insurance';
 }
 
 // State conditions on a checklist item: 'states' lists where it applies;
@@ -365,8 +425,8 @@ const CARE_GUIDE = [
     ],
     'emc' => [
         'title' => 'EMC determination', 'kind' => 'emc', 'types' => ['emc'], 'cases' => ['auto'],
-        'when' => 'Week 1 — done in house by an MD/DO, or referred out.',
-        'why' => "Florida PIP pays up to \$10,000 only if an MD, DO, dentist, PA or APRN finds an Emergency Medical Condition — a chiropractor can't make the finding. Without one, PIP stops at \$2,500. Get the determination in the first week — in house if you have a qualifying provider, otherwise refer out — and record the result and who made it on the case.",
+        'when' => 'As soon as possible — it can be done any time during treatment, but delays hold up reimbursement.',
+        'why' => "Florida PIP pays up to \$10,000 only if an MD, DO, dentist, PA or APRN finds an Emergency Medical Condition — a chiropractor can't make the finding. Without one, PIP stops at \$2,500. It's usually made at the orthopedic visit, but some clinics use an in-house physician, nurse practitioner, PA or a telemedicine provider. Record the result and who made it on the case; for an insurance case the report is then mailed to the adjuster (on an LOP it's still clinically useful, but nothing goes to an insurer).",
         'rule' => 'emc_rule',
     ],
     'ortho' => [
@@ -973,6 +1033,7 @@ function case_checklist(array $case, array $milestoneRows, array $referrals): ar
     $cfg = practice_step_config(isset($case['practice_id']) ? (int)$case['practice_id'] : null);
     foreach (CHECKLIST + $cfg['custom'] as $key => $def) {
         if (isset($cfg['silenced']['check:' . $key])) continue;
+        if (isset($def['pack']) && empty($cfg['packs'][$def['pack']])) continue;
         if (!checklist_applies($def, $case, $rules)) continue;
         $def['days'] = checklist_days($def, $rules);
         if ($key === 'claim_notice' && $rules['code'] === 'DC') $def['label'] = 'PIP-or-tort election made (within 60 days of the accident)';
@@ -1001,11 +1062,15 @@ function case_checklist(array $case, array $milestoneRows, array $referrals): ar
         elseif ($due && $due < $today) $status = 'overdue';
         elseif ($due && $due <= add_days($today, 2)) $status = 'due';
         else $status = 'upcoming';
+        // Pushed off to a later date: quiet until then.
+        $snoozed = $m['snoozed_until'] ?? null;
+        if ($snoozed && $snoozed > $today && in_array($status, ['overdue', 'due', 'upcoming'], true)) $status = 'snoozed';
         $items[] = [
             'key' => $key, 'label' => $def['label'], 'group' => $def['group'],
             'auto' => $source !== null, 'autoFrom' => $source,
             'due' => $due, 'completedOn' => $completedOn, 'status' => $status,
             'note' => $m['note'] ?? null, 'custom' => !empty($def['custom']), 'detail' => $def['detail'] ?? null,
+            'mail' => !empty($def['mail']), 'letter' => $def['letter'] ?? null, 'snoozedUntil' => $snoozed && $snoozed > $today ? $snoozed : null,
         ];
     }
     return $items;

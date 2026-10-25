@@ -540,6 +540,7 @@ async function pageDashboard(main) {
       <div>${dashTipsHtml(d)}<div class="card"><div class="card-head"><h2>My tasks (next 7 days)</h2><span class="spacer"></span><a class="small" href="#/tasks">All tasks</a><button class="btn ghost sm" data-act="new-task">+ Task</button></div>
         ${taskListHtml(d.tasks, true, 'Nothing assigned to you this week.')}</div></div>
     </div>
+    ${dashMailHtml(d.mailQueue || [])}
     ${dashNarrativesHtml(d.narratives || [])}`;
   let showAll = false;
   const renderAlerts = () => {
@@ -561,6 +562,18 @@ async function pageDashboard(main) {
   // Default to the urgent and important items so the list is workable.
   document.getElementById('alert-level').value = (ac.high || 0) + (ac.medium || 0) > 0 ? 'medium' : '';
   renderAlerts();
+}
+
+// Insurer mailings ready to go out with the next outgoing mail, one
+// envelope per insurer. Ticking "Mailed" completes the checklist step.
+function dashMailHtml(groups) {
+  if (!groups.length || !can('case.write')) return '';
+  const n = groups.reduce((a, g) => a + g.items.length, 0);
+  return `<div class="card mt" id="mail-queue"><div class="card-head"><h2>Mail to insurers</h2><span class="badge-count">${n}</span><span class="spacer"></span><span class="small muted">Send with the next outgoing mail — no need to wait for a batch.</span></div>
+    ${groups.map((g) => `<h3 class="mt-sm">${esc(g.insurer)}</h3><ul class="alerts">${g.items.map((i) => `<li class="${i.overdue ? 'high' : 'medium'}"><span class="dot"></span>
+      <div class="grow"><a href="#/case/${i.caseId}/checklist" class="who">${esc(i.patient)}</a> <span class="muted small mono">${esc(i.caseNumber)}</span>${i.adjuster ? ` <span class="small muted">· Attn ${esc(i.adjuster)}</span>` : ''}<div>${esc(i.label)}${i.overdue ? ` <span class="small warn-text">(due ${esc(fmtDate(i.due))})</span>` : ''}</div></div>
+      ${i.letter ? `<a class="btn ghost sm" href="api/cases.php?action=letter&type=${esc(i.letter)}&id=${i.caseId}" target="_blank" rel="noopener">Letter</a>` : ''}
+      <button class="btn ghost sm" data-act="mail-done" data-case="${i.caseId}" data-key="${esc(i.key)}">Mailed</button></li>`).join('')}</ul>`).join('')}</div>`;
 }
 
 // Final narratives the attorney requested, with the fee acknowledgment.
@@ -602,7 +615,7 @@ function taskListHtml(tasks, showCase, empty = 'No open tasks.') {
       : t.due_on ? `${overdue ? '<span class="chip overdue">Overdue</span> ' : dueToday ? '<span class="chip due">Today</span> ' : ''}Due ${esc(fmtDate(t.due_on))}` : 'No due date';
     return `<li class="${level}${t.done_at ? ' done' : ''}"><input type="checkbox" data-act="task-done" data-id="${t.id}" aria-label="${t.done_at ? 'Reopen task' : 'Mark done'}"${t.done_at ? ' checked' : ''}>
       <div><button class="linklike" data-act="edit-task" data-id="${t.id}">${t.priority === 'high' && !t.done_at ? '<span class="chip red">High</span> ' : ''}${t.done_at ? `<s>${esc(t.title)}</s>` : esc(t.title)}</button>${t.notes ? ' <span class="small muted" title="Has notes">· notes</span>' : ''}
-      <div class="small muted">${when} · <span title="Assigned to">${esc(assigneeText(t))}</span>${showCase && t.case_id ? ` · <a href="#/case/${t.case_id}">${esc(t.patient)}</a>` : ''}${t.created_by_name && t.created_by != S.user.id ? ' · from ' + esc(t.created_by_name) : ''}</div></div></li>`;
+      <div class="small muted">${when}${!t.done_at && (can('case.write') || can('finance.write')) ? ` · <button class="linklike" data-act="push-task" data-id="${t.id}">Push off…</button>` : ''} · <span title="Assigned to">${esc(assigneeText(t))}</span>${showCase && t.case_id ? ` · <a href="#/case/${t.case_id}">${esc(t.patient)}</a>` : ''}${t.created_by_name && t.created_by != S.user.id ? ' · from ' + esc(t.created_by_name) : ''}</div></div></li>`;
   }).join('')}</ul>`;
 }
 
@@ -708,8 +721,10 @@ function stageChip(stage) {
 // ---------- new case ----------
 const PATIENT_DEFS = [
   { n: 'first_name', l: 'First name', req: true }, { n: 'last_name', l: 'Last name' },
+  { n: 'preferred_name', l: 'Preferred name / nickname', ph: 'e.g. Tom' },
   { n: 'dob', l: 'Date of birth', t: 'date' }, { n: 'chart_number', l: 'Chart / account # in your EHR', ph: 'Matches appointment uploads exactly' }, { n: 'phone', l: 'Phone', t: 'tel' },
   { n: 'email', l: 'Email', t: 'email' }, { n: 'address', l: 'Address', full: true },
+  { n: 'hipaa_contacts', l: 'Authorized to speak to (HIPAA release)', ph: 'e.g. spouse Maria — 727-555-0100', full: true },
 ];
 const caseDefs = () => [
   { n: 'injury_type', l: 'Case type', t: 'select', blank: false, opts: entries(S.lookups.injuryTypes) },
@@ -724,6 +739,8 @@ const caseDefs = () => [
   { n: 'provider_user_id', l: 'Treating provider', t: 'user' },
   ...(myLocations().length && (!S.user.locationIds || myLocations().length > 1) ? [{ n: 'location_id', l: 'Location', t: 'select', blank: '—', opts: myLocations().map((l) => [l.id, l.name]) }] : []),
   { n: 'head_injury', l: 'Head injury? (hit head, lost consciousness, concussion symptoms)', t: 'select', blank: false, opts: HEAD_INJURY_OPTS },
+  { n: 'initial_care', l: 'Seen since the accident (before our first visit)?', t: 'select', blank: false, opts: [['unknown', 'Not asked yet'], ['none', 'No'], ['doctor', 'Yes — a doctor'], ['urgent_care', 'Yes — urgent care'], ['hospital', 'Yes — hospital / ER']] },
+  { n: 'ambulance', l: 'Taken by ambulance?', t: 'select', blank: false, opts: [['unknown', 'Not asked yet'], ['no', 'No'], ['yes', 'Yes']] },
   { n: 'jurisdiction', l: 'State whose rules apply (PIP, deadlines, liens)', t: 'select', blank: "Practice's state", opts: stateOpts() },
 ];
 
@@ -844,6 +861,7 @@ async function pageCase(main, args) {
 function renderCase() {
   const main = document.getElementById('main');
   const d = S.caseData, c = d.case, p = d.patient;
+  setTimeout(() => maybeShowBasisChange(d), 0);
   const tabs = CASE_TABS.filter(([, , perm]) => !perm || can(perm));
   if (!tabs.find(([k]) => k === S.caseTab)) S.caseTab = 'overview';
   const atty = d.contacts.attorney_contact_id;
@@ -898,7 +916,7 @@ function tabOverview(el, d) {
   const row = (t, v) => `<dt>${esc(t)}</dt><dd>${v === null || v === undefined || v === '' ? '<span class="muted">—</span>' : esc(v)}</dd>`;
   const contactRow = (t, ct) => `<dt>${esc(t)}</dt><dd>${ct ? esc(contactName(ct)) + (ct.phone ? `<div class="small muted">☎ ${esc(ct.phone)}${ct.fax ? ' · fax ' + esc(ct.fax) : ''}</div>` : '') + (ct.email ? `<div class="small"><a href="mailto:${esc(ct.email)}">${esc(ct.email)}</a></div>` : '') : '<span class="muted">—</span>'}</dd>`;
   const provider = (S.lookups.providers || []).find((u) => +u.id === +c.provider_user_id);
-  el.innerHTML = `${outreachCardHtml(d)}${guideCardHtml(d)}${tipsCardHtml(d)}<div class="grid-2">
+  el.innerHTML = `${basisNoticeHtml(d)}${outreachCardHtml(d)}${guideCardHtml(d)}${tipsCardHtml(d)}<div class="grid-2">
     <div class="card"><div class="card-head"><h2>Case</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-case">Edit</button>' : ''}</div>
       <dl class="kv">
         ${row('Case type', label('injuryTypes', c.injury_type))}
@@ -910,7 +928,10 @@ function tabOverview(el, d) {
         <dt>Insurance</dt><dd>${(d.coverages || []).length ? d.coverages.map((cv) => `<div>${esc(label('coverageTypes', cv.type))}${cv.carrier_org || cv.carrier_text ? ' — ' + esc(cv.carrier_org || cv.carrier_text) : ''} <span class="chip ${cv.status === 'active' ? 'teal' : 'na'}">${esc(label('coverageStatus', cv.status))}</span>${cv.claim_number ? `<div class="small muted">Claim # ${esc(cv.claim_number)}</div>` : ''}</div>`).join('') : '<span class="muted">None — patient balance / LOP</span>'}</dd>
         <dt>Policy limits</dt><dd>${c.bi_limit || c.um_limit ? `${c.bi_limit ? 'At-fault BI ' + esc(money(c.bi_limit)) : ''}${c.bi_limit && c.um_limit ? ' · ' : ''}${c.um_limit ? 'UM ' + esc(money(c.um_limit)) : ''}${c.limits_source ? `<div class="small muted">${esc(c.limits_source)}${c.limits_noted_on ? ' · ' + esc(fmtDate(c.limits_noted_on)) : ''}</div>` : ''}` : '<span class="muted">Not known yet — ask the attorney</span>'}
           ${can('case.write') || can('finance.write') ? ' <button class="linklike small" data-act="edit-limits">Edit</button>' : ''}</dd>
-        ${row('Bills go to', label('benefits', c.benefits))}${c.injury_type === 'auto' && d.rules.emcRule ? row('EMC determination', c.emc_status + (c.emc_by ? ' · by ' + (S.lookups.emcCredentials[c.emc_by] || c.emc_by) : '') + (c.emc_on ? ' · ' + fmtDate(c.emc_on) : '')) : ''}
+        ${row('Bills go to', label('benefits', c.benefits))}
+        ${d.billingBasis ? `<dt>Billing</dt><dd>${d.billingBasis === 'lop' ? '<span class="chip violet">Letter of protection</span> <span class="small muted">balance held until the case settles</span>' : '<span class="chip teal">Insurance (PIP)</span>'}
+          ${can('case.write') ? ` <button class="linklike small" data-act="switch-basis" data-to="${d.billingBasis === 'lop' ? 'insurance' : 'lop'}">${d.billingBasis === 'lop' ? 'Switch to insurance…' : 'Switch to LOP…'}</button>` : ''}</dd>` : ''}
+        ${c.injury_type === 'auto' && d.rules.emcRule ? row('EMC determination', c.emc_status + (c.emc_by ? ' · by ' + (S.lookups.emcCredentials[c.emc_by] || c.emc_by) : '') + (c.emc_on ? ' · ' + fmtDate(c.emc_on) : '')) : ''}
         ${c.injury_type === 'auto' && d.rules.tortOptions ? row('Lawsuit option', c.tort_option === 'unknown' ? 'Not asked yet' : d.rules.tortOptions[c.tort_option]) : ''}
         ${row('State rules', d.rules.name + ' · ' + S.lookups.supportLabels[d.rules.support])}
         ${row('LOP signed', c.lop_signed_on ? fmtDate(c.lop_signed_on) + (c.lop_acknowledged_on ? ' · firm acknowledged ' + fmtDate(c.lop_acknowledged_on) : ' · not countersigned') : '')}
@@ -921,7 +942,7 @@ function tabOverview(el, d) {
         ${row('Treatment plan', c.plan_visits_per_week ? `${+c.plan_visits_per_week}x/week${c.plan_set_on ? ' since ' + fmtDate(c.plan_set_on) : ''}` : '')}
         ${row('Head injury', Object.fromEntries(HEAD_INJURY_OPTS)[c.head_injury])}
       </dl></div>
-    <div>${statusCardHtml(d)}
+    <div>${caseUpdateCardHtml(d)}${statusCardHtml(d)}
       <div class="card"><div class="card-head"><h2>Patient</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-patient">Edit</button>' : ''}</div>
         <dl class="kv">${row('Name', [p.first_name, p.last_name].join(' '))}${row('Date of birth', fmtDate(p.dob))}${row('Phone', p.phone)}${row('Email', p.email)}${row('Address', p.address)}</dl></div>
       <div class="card"><div class="card-head"><h2>Case notes</h2><span class="spacer"></span>${can('case.write') ? '<button class="btn ghost sm" data-act="edit-notes">Edit</button>' : ''}</div>
@@ -934,8 +955,9 @@ function tabOverview(el, d) {
         <button class="btn ghost sm" data-act="eoc-letter">End of treatment / narrative request</button>
         ${fin('balances') ? '<button class="btn ghost sm" data-act="letter" data-type="tx_complete">Treatment complete</button>' : ''}
         ${fin('settlement') ? '<button class="btn ghost sm" data-act="letter" data-type="reduction_response">Reduction response</button>' : ''}
-        ${d.rules.demandLetter && fin('ledger') && (d.coverages || []).some((cv) => cv.type === 'pip') ? '<button class="btn ghost sm" data-act="letter" data-type="pip_demand">PIP pre-suit demand (to insurer)</button>' : ''}</div>
-        <p class="small muted">Opens a printable letter addressed to the attorney of record (the PIP demand goes to the insurer). Log it under Correspondence once sent.</p></div>
+        ${d.rules.demandLetter && fin('ledger') && (d.coverages || []).some((cv) => cv.type === 'pip') ? '<button class="btn ghost sm" data-act="letter" data-type="pip_demand">PIP pre-suit demand (to insurer)</button>' : ''}
+        ${d.rules.demandLetter && d.billingBasis === 'insurance' ? '<button class="btn ghost sm" data-act="letter" data-type="treatment_notice">Notice of initiation of treatment (to insurer)</button><button class="btn ghost sm" data-act="letter" data-type="intent_to_bill">Letter of intent to bill (to insurer)</button>' : ''}</div>
+        <p class="small muted">Opens a printable letter addressed to the attorney of record (letters marked "to insurer" go to the PIP adjuster). Log it under Correspondence once sent.</p></div>
     </div></div>`;
 }
 
@@ -978,16 +1000,17 @@ function editNotesModal() {
 }
 
 // --- checklist ---
-const STATUS_TEXT = { done: 'Done', na: 'N/A', overdue: 'Overdue', due: 'Due soon', upcoming: 'Upcoming', waiting: 'Not yet' };
+const STATUS_TEXT = { done: 'Done', na: 'N/A', overdue: 'Overdue', due: 'Due soon', upcoming: 'Upcoming', waiting: 'Not yet', snoozed: 'Pushed off' };
 function tabChecklist(el, d) {
   const groups = {};
   d.checklist.forEach((i) => (groups[i.group] = groups[i.group] || []).push(i));
   const editable = can('case.write');
   el.innerHTML = `<div class="card">
-    <p class="small muted">Deadlines follow the office protocol: intake items within 48 hours of the first visit, MRI within 10 days, EMC referral within 21 days, consults within 45 days. Imaging and consult items tick themselves off from the Co-management tab.</p>
+    <p class="small muted">Deadlines follow the office protocol: visit 1 paperwork at the first visit, intake items within 48 hours, insurer mailings with the next outgoing mail. Imaging and consult items tick themselves off from the Co-management tab. Your office can turn off steps it doesn't use under Practice settings → Case steps &amp; checklist.</p>
     ${entries(groups).map(([g, items]) => `<div class="checklist-group"><h3>${esc(g)}</h3>${items.map((i) => `
       <div class="check-row" data-key="${esc(i.key)}">
-        <div class="lbl">${esc(i.label)}${i.custom ? ' <span class="chip">Our step</span>' : ''}${i.detail ? `<small>${esc(i.detail)}</small>` : ''}${i.due ? `<small>Due ${esc(fmtDate(i.due))}${i.note ? ' · ' + esc(i.note) : ''}</small>` : (i.note ? `<small>${esc(i.note)}</small>` : '')}</div>
+        <div class="lbl">${i.mail ? '<span class="chip mail" title="Mailed to the insurer">✉ Mail</span> ' : ''}${esc(i.label)}${i.custom ? ' <span class="chip">Our step</span>' : ''}${i.detail ? `<small>${esc(i.detail)}</small>` : ''}${i.due ? `<small>Due ${esc(fmtDate(i.due))}${i.snoozedUntil ? ' · pushed to ' + esc(fmtDate(i.snoozedUntil)) : ''}${i.note ? ' · ' + esc(i.note) : ''}</small>` : (i.note ? `<small>${esc(i.note)}</small>` : '')}
+          ${i.letter || (editable && ['overdue', 'due', 'upcoming', 'snoozed'].includes(i.status)) ? `<small class="row-actions">${i.letter ? `<a href="api/cases.php?action=letter&type=${esc(i.letter)}&id=${d.case.id}" target="_blank" rel="noopener">Open letter</a>` : ''}${editable && ['overdue', 'due', 'upcoming', 'snoozed'].includes(i.status) ? `<button class="linklike" data-act="push-step" data-key="${esc(i.key)}">Push off…</button>` : ''}</small>` : ''}</div>
         <div><span class="chip ${esc(i.status)}">${esc(STATUS_TEXT[i.status])}</span></div>
         <div>${i.auto ? `<span class="small muted">${i.completedOn ? esc(fmtDate(i.completedOn)) : 'From referrals'}</span>`
           : `<input type="date" value="${esc(i.completedOn || '')}" data-act-change="ms-date" aria-label="Completed on"${editable ? '' : ' disabled'}>`}</div>
@@ -1013,6 +1036,19 @@ function tabChecklist(el, d) {
 // help (they can usually reach their client), then stop calling until the
 // patient comes back. Notes may be requested in the claim: keep them factual.
 // Automatic status requests to the attorney / case manager (Gold and up).
+// Monthly case update to the attorney / case manager (on by default).
+function caseUpdateCardHtml(d) {
+  const u = d.caseUpdates, editable = can('case.write') || can('finance.write');
+  if (!u) return '';
+  const hist = u.history.map((h) => `<li><span>${esc(fmtDate(h.sent_at))} · ${h.kind === 'auto' ? 'automatic' : 'sent by ' + esc(h.sent_by_name || 'hand')} to ${esc(h.sent_to)}</span><span class="small ${h.viewed_at ? '' : 'muted'}">${h.viewed_at ? '✓ Opened ' + esc(fmtDate(h.viewed_at)) : 'Not opened yet'}</span></li>`).join('');
+  return `<div class="card status-req"><div class="card-head"><h2>Monthly case update</h2><span class="spacer"></span>
+      ${editable && u.practiceOn ? `<label class="check small"><input type="checkbox" data-act-change="case-update-toggle"${u.on ? ' checked' : ''}> Send every 30 days</label>` : ''}</div>
+    <p class="small muted">Every 30 days the attorney${u.to.length ? ` (${esc(u.to.join(', '))})` : ''} gets a secure link to a one-page update: appointment history by week, outcome-score progress, referrals made and completed, and a balance snapshot (marked not the official ledger). The email itself has no patient details.</p>
+    ${!u.practiceOn ? '<div class="notice">Monthly case updates are turned off for your practice (Practice settings).</div>' : u.problem ? `<div class="notice">${esc(u.problem)}</div>` : u.on && u.nextOn ? `<p class="small">Next update: <strong>${esc(fmtDate(u.nextOn))}</strong>${u.lastOn ? ' · last sent ' + esc(fmtDate(u.lastOn)) : ''}</p>` : ''}
+    <div class="badge-row mt-sm"><a class="btn ghost sm" href="api/cases.php?action=case_update_preview&id=${d.case.id}" target="_blank" rel="noopener">Preview</a>${editable && !u.problem ? '<button class="btn ghost sm" data-act="case-update-send">Send now</button>' : ''}</div>
+    ${hist ? `<ul class="sr-hist mt-sm">${hist}</ul>` : ''}</div>`;
+}
+
 function statusCardHtml(d) {
   const sr = d.statusRequests, editable = can('case.write') || can('finance.write');
   if (!sr) return '';
@@ -1153,7 +1189,7 @@ function guideCardHtml(d) {
         else if (maint) act.push(`<button class="btn ghost sm" data-act="mmi" data-plan="maintenance">Change frequency</button><button class="btn ghost sm" data-act="mmi" data-plan="discharge">End maintenance — discharge</button>`);
         else if (d.case.discharge_date) act.push(`<button class="btn ghost sm" data-act="mmi" data-plan="maintenance">Start a maintenance plan</button>`);
       }
-      if (['now', 'consider', 'ask'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-snooze" data-step="${g.key}">Remind me later</button>`);
+      if (['now', 'consider', 'ask'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="push-guide" data-step="${g.key}">Push off…</button>`);
       if (openish && g.kind !== 'visit' && w) act.push(`<button class="btn ghost sm" data-act="guide-dismiss" data-step="${g.key}">Not needed…</button>`);
       if (['dismissed', 'snoozed'].includes(g.status) && w) act.push(`<button class="btn ghost sm" data-act="guide-clear" data-step="${g.key}">Undo</button>`);
       if (g.key === 'neuro' && g.status === 'na' && d.case.head_injury === 'no' && w) act.push(`<button class="btn ghost sm" data-act="head-injury" data-v="unknown">Change answer</button>`);
@@ -1548,7 +1584,7 @@ function tabFinancials(el, d) {
           <div class="money-row"><span>Mediation · trial</span><strong>${esc(fmtDate(c.mediation_on) || '—')} · ${esc(fmtDate(c.trial_on) || '—')}</strong></div>
           <div class="money-row"><span>Settlement signed · check expected</span><strong>${esc(fmtDate(c.settlement_signed_on) || '—')} · ${c.disbursement_expected_on ? `<span class="${!c.check_received_on && c.disbursement_expected_on < today() ? 'trend-up' : ''}">${esc(fmtDate(c.disbursement_expected_on))}</span>` : '—'}</strong></div>
           <div class="money-row"><span>Balance forwarded to attorney</span><strong>${c.balance_forwarded_on ? esc(fmtDate(c.balance_forwarded_on)) + (showSet ? ' · ' + money(c.balance_forwarded_amount) : '') : '—'}</strong></div>
-          ${showSet ? `<div class="money-row"><span>${Math.round(S.lookups.reductionFloorPct * 100)}% floor (of patient balance)</span><strong>${money(t.reduction_floor)}</strong></div>
+          ${showSet ? `<div class="money-row"><span>Reduction floor — paid within 30 days (${d.reductionTerms.pct}%)</span><strong>${money(t.reduction_floor)}</strong></div><div class="money-row"><span>Paid after 30 days (${d.reductionTerms.late_pct}%)</span><strong>${money(t.reduction_late)}</strong></div>
           <div class="money-row"><span>Attorney offer</span><strong>${money(c.atty_offer)}${c.atty_offer && t.patient_balance > 0 ? ` <span class="small muted">(${Math.round(c.atty_offer / t.patient_balance * 1000) / 10}%)</span>` : ''}</strong></div>
           <div class="money-row"><span>Final settlement</span><strong>${money(c.final_settlement)}</strong></div>
           <div class="money-row"><span>Date authorized · check received</span><strong>${esc(fmtDate(c.date_authorized))} · ${esc(fmtDate(c.check_received_on))}</strong></div>
@@ -2666,6 +2702,14 @@ async function pageSettings(main) {
       <p class="small">Does your office charge for a final narrative report? The end-of-treatment letter and the attorney's online reply page show your fee next to each option, and an attorney who requests a report acknowledges the fee. You'll see who acknowledged it, and when, on the case.</p>
       ${narrFeeFields(p.narrativeFees)}
       <button class="btn mt" data-act="save-narrative-fees">Save</button></div>
+    <div class="card mt"><h2>Monthly case updates to attorneys</h2>
+      <p class="small">Every 30 days, each open injury case's attorney and case manager get a secure link to a one-page update: appointments kept and missed by week, outcome-score progress, referrals made and completed, a balance snapshot (clearly marked as not the official ledger), how to reach your office, and a thank-you. The email itself never includes patient details. Each case can also be switched off on its own.</p>
+      <label class="check mt"><input type="checkbox" id="cu-on"${p.caseUpdates ? ' checked' : ''}> Send monthly case updates</label>
+      <button class="btn mt" data-act="save-case-updates">Save</button></div>
+    <div class="card mt" id="red-card"><h2>Reduction requests</h2>
+      <p class="small">When an attorney asks for a reduction, the reduction letter offers your 30-day amount and a higher amount if payment arrives more than 30 days after settlement.</p>
+      ${reductionFieldsHtml(p.reductionTerms)}
+      <button class="btn mt" data-act="save-reduction-terms">Save</button></div>
     ${whiteLabelCard(p)}
     <div class="card mt"><div class="card-head"><h2>Locations</h2><span class="spacer"></span>${hasFeature('locations') ? '<button class="btn ghost sm" data-act="location-edit">+ Add location</button>' : ''}</div>
       <p class="small">Run more than one office in this account: each case belongs to a location (its letterhead is used on letters and exports), lists filter by location, and team members can be limited to their own location's patients.</p>
@@ -2703,8 +2747,9 @@ async function loadSteps() {
   const types = (cs) => !cs || cs.length >= Object.keys(r.injuryTypes).length ? 'All cases' : cs.map((c) => r.injuryTypes[c] || c).join(', ');
   const due = (st) => st.anchor === 'none' ? 'When it happens' : `${+st.days ? st.days + ' day' + (+st.days === 1 ? '' : 's') + ' after the' : 'On the day of the'} ${r.anchors[st.anchor]}`;
   const toggle = (it) => `<button class="btn ${it.silenced ? '' : 'ghost '}sm" data-act="step-silence" data-key="${esc(it.key)}" data-on="${it.silenced ? 0 : 1}">${it.silenced ? 'Turn back on' : 'Silence'}</button>`;
-  const row = (it, sub) => `<tr${it.silenced ? ' class="muted"' : ''}><td>${esc(it.title)}${it.stateOnly ? ' <span class="chip">State rule</span>' : ''}${sub ? `<div class="small muted">${esc(sub)}</div>` : ''}</td><td class="small">${esc(types(it.cases))}</td><td>${it.silenced ? '<span class="chip na">Silenced</span>' : '<span class="chip teal">On</span>'}</td><td class="right">${toggle(it)}</td></tr>`;
-  box.innerHTML = `<h3>Your own steps</h3>
+  const row = (it, sub) => `<tr${it.silenced ? ' class="muted"' : ''}><td>${esc(it.title)}${it.stateOnly ? ' <span class="chip">State rule</span>' : ''}${it.insuranceOnly ? ' <span class="chip">Insurance cases</span>' : ''}${sub ? `<div class="small muted">${esc(sub)}</div>` : ''}</td><td class="small">${esc(types(it.cases))}</td><td>${it.silenced ? '<span class="chip na">Silenced</span>' : '<span class="chip teal">On</span>'}</td><td class="right">${toggle(it)}</td></tr>`;
+  box.innerHTML = `<div class="notice ok"><label class="check"><input type="checkbox" id="pack-chart"${r.packs.chart_setup ? ' checked' : ''}> <span><strong>Include new patient chart-setup steps</strong> — the front-desk intake routine (details to get on the phone, paperwork texted, claim verified with the attorney, EHR profile and chart flags, welcome video, next-day check-in call) as a checklist group on every case. Off by default; turn off any single step below.</span></label></div>
+    <h3 class="mt">Your own steps</h3>
     ${!r.customEnabled ? `<div class="notice">Custom case steps are part of the ${esc(featureInfo('custom_steps').planName)} plan.${r.custom.length ? ' Your saved steps are kept and come back when you upgrade.' : ''} <a href="#/billing">See plans</a></div>` : r.custom.length ? `<div class="table-wrap"><table><thead><tr><th>Step</th><th>Applies to</th><th>Due</th><th></th></tr></thead><tbody>${r.custom.map((st) => `<tr><td><strong>${esc(st.title)}</strong>${st.detail ? `<div class="small muted">${esc(st.detail)}</div>` : ''}</td>
       <td class="small">${esc(types(st.cases ? st.cases.split(',') : null))}</td><td class="small">${esc(due(st))}</td>
       <td class="right nowrap"><button class="btn ghost sm" data-act="step-edit" data-id="${st.id}">Edit</button> <button class="btn ghost sm" data-act="step-remove" data-id="${st.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
@@ -3147,6 +3192,80 @@ function paintWlPreview() {
   box.querySelectorAll('.wl-btn').forEach((b) => { b.style.background = b.dataset.color; b.style.borderColor = b.dataset.color; });
 }
 
+// ----- Reduction terms: what's accepted within 30 days, and after -----
+function reductionFieldsHtml(t) {
+  return `<div class="form-grid mt-sm"><div><label for="rt-pct">Accept if paid within 30 days (% of patient balance)</label><input type="number" id="rt-pct" min="10" max="100" step="0.5" value="${t.pct}"></div>
+    <div><label for="rt-late">Accept if paid after 30 days (%)</label><input type="number" id="rt-late" min="10" max="100" step="0.5" value="${t.late_pct}"><div class="small muted">Suggested: the 30-day amount plus 5%.</div></div></div>`;
+}
+document.addEventListener('input', (e) => {
+  if (e.target.id !== 'rt-pct') return;
+  const late = e.target.closest('.modal, .card')?.querySelector('#rt-late');
+  if (late) late.value = Math.min(100, Math.round(+e.target.value * 1.05 * 10) / 10);
+});
+// First reduction letter: ask the practice for both amounts.
+function reductionTermsModal(then) {
+  const t = S.caseData.reductionTerms;
+  if (!can('users.manage')) return then();
+  openModal({ title: 'Your reduction terms', okText: 'Save and open letter',
+    body: `<p class="small">The letter states what your office accepts if the attorney pays within 30 days of settlement — and a second, higher amount if payment comes later. These are saved for every case (change them under Practice settings).</p>${reductionFieldsHtml(t)}`,
+    onOk: async (el) => {
+      const pct = +el.querySelector('#rt-pct').value, late = +el.querySelector('#rt-late').value;
+      await api('admin.php?action=reduction_terms_save', { pct, late_pct: late });
+      S.caseData.reductionTerms = { asked: true, pct, late_pct: late };
+      then();
+    } });
+}
+
+// ----- Push off: when a step or task can't be done now -----
+// Logged with who pushed it and listed on the next daily huddle.
+function pushOffModal({ kind, key, caseId, label }) {
+  const plus = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const m = openModal({ title: 'Push off to a later date', okText: 'Push off',
+    body: `<p class="small"><strong>${esc(label)}</strong></p><p class="small muted">How long should it wait? It's logged with your name and shows on the next daily huddle.</p>
+      <div class="badge-row mt-sm">${[[1, '1 day'], [7, '1 week'], [14, '2 weeks']].map(([n, l]) => `<button type="button" class="btn ghost sm" data-push-days="${n}">${l}</button>`).join('')}</div>
+      <div class="form-grid mt"><div><label for="po-date">Or pick a date</label><input type="date" id="po-date" min="${plus(1)}" value="${plus(1)}"></div></div>`,
+    onOk: async (el) => {
+      const until = el.querySelector('#po-date').value;
+      const r = await api('cases.php?action=push' + (caseId ? '&id=' + caseId : ''), { kind, key, until });
+      toast('Pushed to ' + fmtDate(until));
+      if (r.case) { S.caseData = r; renderCase(); } else route();
+    } });
+  m.el.querySelectorAll('[data-push-days]').forEach((b) => b.addEventListener('click', () => {
+    m.el.querySelector('#po-date').value = plus(+b.dataset.pushDays);
+    m.el.querySelectorAll('[data-push-days]').forEach((x) => x.classList.toggle('ghost', x !== b));
+  }));
+}
+
+// ----- Insurance ↔ letter of protection -----
+const BASIS_NAMES = { insurance: 'insurance (PIP) billing', lop: 'a letter of protection' };
+function basisListHtml(items) { return items.length ? `<ul class="small">${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="small muted">None</p>'; }
+// The last switch, until someone dismisses it — so everyone on the case sees it.
+function basisNoticeHtml(d) {
+  const b = d.basisChange;
+  if (!b) return '';
+  return `<div class="card basis-notice"><div class="card-head"><h2>Switched to ${esc(BASIS_NAMES[b.to])}</h2><span class="spacer"></span><button class="btn ghost sm" data-act="basis-seen">Got it</button></div>
+    <p class="small">${esc(fmtDate(b.at.slice(0, 10)))}${b.by ? ' by ' + esc(b.by) : ''}${b.why ? ' — ' + esc(b.why) : ''}. The case's steps were updated:</p>
+    <div class="grid-2"><div><strong class="small">Added</strong>${basisListHtml(b.added)}</div><div><strong class="small">Removed (no longer needed)</strong>${basisListHtml(b.removed)}</div></div></div>`;
+}
+// Pops up once right after a switch (the notice card stays until dismissed).
+const shownBasis = new Set();
+function maybeShowBasisChange(d) {
+  const b = d.basisChange;
+  if (!b || shownBasis.has(d.case.id + b.at)) return;
+  shownBasis.add(d.case.id + b.at);
+  if (Date.now() - new Date(b.at.replace(' ', 'T')).getTime() > 10 * 60 * 1000) return;   // only for a change just made
+  openModal({ title: `Case switched to ${BASIS_NAMES[b.to]}`, cancelText: 'OK', body: `<p class="small">${b.why ? esc(b.why) + '. ' : ''}${b.to === 'lop' ? 'Insurance paperwork and mailings are no longer needed; the balance is held until the case settles. Clinical steps (like the EMC evaluation) stay.' : 'Insurance paperwork and mailings to the insurer were added.'} A summary was emailed to the practice's administrators.</p>
+    <div class="grid-2"><div><strong class="small">Steps added</strong>${basisListHtml(b.added)}</div><div><strong class="small">Steps removed</strong>${basisListHtml(b.removed)}</div></div>` });
+}
+function switchBasisModal(to) {
+  const c = S.caseData.case;
+  const reasons = to === 'lop' ? ['Claim denied', 'Policy lapsed / no coverage', 'PIP exhausted', 'Other disqualifying factor', 'Attorney requested an LOP'] : ['Coverage confirmed', 'Claim accepted', 'Insurance information received'];
+  openModal({ title: to === 'lop' ? 'Switch to a letter of protection' : 'Switch to insurance billing', okText: 'Switch',
+    body: `<p class="small">${to === 'lop' ? 'The balance will be held at your office and resolved when the attorney settles the case. Insurance-only steps (assignment of benefits, standard disclosure, insurer mailings) come off the case; clinical steps stay. Make sure the patient signs a letter of protection.' : 'Insurance paperwork and mailings to the PIP insurer will be added to the case. Add or update the PIP coverage under Insurance.'}</p>
+      <div class="form-grid mt"><div class="full"><label for="sb-why">Why?</label><select id="sb-why">${reasons.map((r) => opt(r, r)).join('')}</select></div></div>`,
+    onOk: async (el) => { S.caseData = await api('cases.php?action=update&id=' + c.id, { case: { billing_basis: to }, basis_reason: el.querySelector('#sb-why').value }); renderCase(); } });
+}
+
 // "Do you charge for a final narrative?" — yes/no and the two fees.
 function narrFeeFields(f) {
   const yes = f.asked && f.charge;
@@ -3160,6 +3279,12 @@ function readNarrFees(root) {
   if (!c) return null;
   return { charge: c.value === '1', without: root.querySelector('#nf-without').value, with: root.querySelector('#nf-with').value };
 }
+// Monthly case update on/off for one case.
+document.addEventListener('change', async (e) => {
+  if (e.target.dataset?.actChange !== 'case-update-toggle') return;
+  const r = await attempt(() => api('cases.php?action=update&id=' + S.caseData.case.id, { case: { case_updates: e.target.checked } }));
+  if (r) { S.caseData = r; renderCase(); toast(e.target.checked ? 'Monthly updates on for this case' : 'Monthly updates off for this case'); }
+});
 // White label: color picker and hex box stay in step; a logo uploads on choose.
 document.addEventListener('input', (e) => {
   const pick = e.target.id === 'wl-color-pick', hex = e.target.id === 'wl-color';
@@ -3173,6 +3298,10 @@ document.addEventListener('change', async (e) => {
   if (e.target.id !== 'wl-logo-file' || !e.target.files[0]) return;
   const fd = new FormData(); fd.append('file', e.target.files[0]);
   if (await attempt(() => api('admin.php?action=white_label_logo', fd))) { toast('Logo uploaded'); await refreshSession(); pageSettings(document.getElementById('main')); }
+});
+document.addEventListener('change', async (e) => {
+  if (e.target.id !== 'pack-chart') return;
+  if (await attempt(() => api('admin.php?action=step_packs_save', { chart_setup: e.target.checked }))) { toast(e.target.checked ? 'Chart-setup steps added to cases' : 'Chart-setup steps removed'); loadSteps(); }
 });
 document.addEventListener('change', (e) => {
   if (e.target.name !== 'nf-charge') return;
@@ -3317,6 +3446,12 @@ const ACTIONS = {
   'sort-cases': (el) => { casesState.dir = casesState.sort === el.dataset.key ? -casesState.dir : 1; casesState.sort = el.dataset.key; const t = document.getElementById('cases-table'); if (t._rows) renderCasesTable(t._rows); },
   'sort-ar': (el) => { arState.dir = arState.sort === el.dataset.key ? -arState.dir : 1; arState.sort = el.dataset.key; pageAR(document.getElementById('main')); },
   'case-tab': (el) => { S.caseTab = el.dataset.tab; renderCase(); },
+  'switch-basis': (el) => switchBasisModal(el.dataset.to),
+  'mail-done': async (el) => {
+    const r = await attempt(() => api('cases.php?action=milestone&id=' + el.dataset.case, { key: el.dataset.key, completed_on: today(), not_applicable: false }));
+    if (r) { toast('Marked mailed'); el.closest('li').remove(); }
+  },
+  'basis-seen': async () => { S.caseData = await api('cases.php?action=basis_seen&id=' + S.caseData.case.id, {}); renderCase(); },
   'edit-case': editCaseModal, 'edit-patient': editPatientModal, 'edit-notes': editNotesModal,
   'add-referral': () => referralModal(null),
   'guide-refer': (el) => referralModal(null, { type: el.dataset.type, ...(el.dataset.region ? { body_region: el.dataset.region } : {}) }),
@@ -3392,6 +3527,14 @@ const ACTIONS = {
     if (r) { toast('Saved'); pageSchedule(document.getElementById('main')); }
   },
   'status-settings': () => statusSettingsModal(),
+  'case-update-send': async () => {
+    const r = await attempt(() => api('cases.php?action=case_update_send&id=' + S.caseData.case.id, {}));
+    if (r) { S.caseData = r; renderCase(); toast('Update sent to ' + r.to.join(', ')); }
+  },
+  'save-case-updates': async (el) => {
+    const on = document.getElementById('cu-on').checked;
+    if (await attempt(() => api('admin.php?action=case_updates_save', { on }))) toast(on ? 'Monthly case updates on' : 'Monthly case updates off');
+  },
   'status-send': async () => {
     const sr = S.caseData.statusRequests;
     if (!(await confirmBox('Send a status request now?', `An email with a secure reply link goes to ${sr.recipients.join(', ')}. No patient details are in the email.`, 'Send'))) return;
@@ -3459,6 +3602,9 @@ const ACTIONS = {
   },
   'guide-dismiss': (el) => guideDismissModal(el.dataset.step),
   'guide-snooze': (el) => guideSnoozeModal(el.dataset.step),
+  'push-guide': (el) => pushOffModal({ kind: 'guide', key: el.dataset.step, caseId: S.caseData.case.id, label: (S.caseData.guide.find((g) => g.key === el.dataset.step) || {}).title || 'Next step' }),
+  'push-step': (el) => pushOffModal({ kind: 'step', key: el.dataset.key, caseId: S.caseData.case.id, label: (S.caseData.checklist.find((i) => i.key === el.dataset.key) || {}).label || 'Checklist step' }),
+  'push-task': (el) => { const t = taskCache.get(+el.dataset.id) || taskCache.get(el.dataset.id); pushOffModal({ kind: 'task', key: el.dataset.id, caseId: null, label: t ? t.title : 'Task' }); },
   'guide-clear': (el) => attempt(() => guideStep(el.dataset.step, { status: 'clear' })),
   'head-injury': async (el) => {
     const r = await attempt(() => api('cases.php?action=update&id=' + S.caseData.case.id, { case: { head_injury: el.dataset.v } }));
@@ -3484,7 +3630,11 @@ const ACTIONS = {
     if (!await confirmBox('Remove document', 'Remove this document from the case? It is archived, not destroyed.', 'Remove')) return;
     if (await attempt(() => api('documents.php?action=archive', { id: +el.dataset.id }))) reloadCase();
   },
-  'letter': (el) => openLetter(el.dataset.type),
+  'letter': (el) => (el.dataset.type === 'reduction_response' && S.caseData && !S.caseData.reductionTerms.asked ? reductionTermsModal(() => openLetter('reduction_response')) : openLetter(el.dataset.type)),
+  'save-reduction-terms': async () => {
+    const box = document.getElementById('red-card');
+    if (await attempt(() => api('admin.php?action=reduction_terms_save', { pct: +box.querySelector('#rt-pct').value, late_pct: +box.querySelector('#rt-late').value }))) { toast('Saved'); await refreshSession(); }
+  },
   'eoc-letter': () => eocLetterModal(),
   'narrative': () => narrativeModal(),
   'end-care': () => endCareModal(),

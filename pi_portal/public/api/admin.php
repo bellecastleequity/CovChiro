@@ -145,7 +145,7 @@ function handle_practice() {
         'notifyRules' => practice_rules($p), 'notifyCriteria' => NOTIFY_CRITERIA, 'mailReady' => mail_ready(),
         'hasHuddle' => has_feature($p, 'huddle'), 'hasDigest' => has_feature($p, 'email_digest'), 'costs' => practice_costs($p),
         'taskEmail' => task_email_rules($p), 'hasTaskEmails' => has_feature($p, 'task_emails'),
-        'statusRules' => status_rules($p), 'hasAutoStatus' => has_feature($p, 'auto_status'), 'narrativeFees' => narrative_fees($p),
+        'statusRules' => status_rules($p), 'hasAutoStatus' => has_feature($p, 'auto_status'), 'narrativeFees' => narrative_fees($p), 'reductionTerms' => reduction_terms($p), 'caseUpdates' => case_updates_on($p),
         'whiteLabel' => white_label_settings($p) + ['active' => white_label_active($p), 'logo' => practice_has_logo((int)$p['id']) ? brand_logo_url($p) : null, 'signinUrl' => $p['brand_slug'] ? APP_URL . '/app.html?b=' . $p['brand_slug'] : null, 'signinBase' => APP_URL . '/app.html?b='],
         'hasWhiteLabel' => has_feature($p, 'white_label'),
         'autoStatusCount' => $autoCount,
@@ -287,6 +287,31 @@ function handle_white_label_logo_remove() {
     json_response(['ok' => true]);
 }
 
+// Monthly case updates to attorneys: on (default) or off for the practice.
+function handle_case_updates_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $on = !empty(json_body()['on']) ? 1 : 0;
+    pi_db()->prepare('UPDATE practices SET case_updates = ? WHERE id = ?')->execute([$on, pid()]);
+    audit('update', 'practice', pid(), null, $admin, 'monthly case updates ' . ($on ? 'on' : 'off'));
+    json_response(['ok' => true]);
+}
+
+// Reduction terms: % of the patient balance accepted if paid within 30 days
+// of settlement, and if paid later.
+function handle_reduction_terms_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $b = json_body();
+    $pct = round((float)($b['pct'] ?? 0), 1); $late = round((float)($b['late_pct'] ?? 0), 1);
+    if ($pct < 10 || $pct > 100 || $late < 10 || $late > 100) json_response(['error' => 'Enter percentages between 10 and 100.'], 400);
+    if ($late < $pct) json_response(['error' => 'The after-30-days amount should be at least the 30-day amount.'], 400);
+    $before = reduction_terms();
+    pi_db()->prepare('UPDATE practices SET reduction_terms = ? WHERE id = ?')->execute([json_encode(['pct' => $pct, 'late_pct' => $late]), pid()]);
+    audit('update', 'practice', pid(), null, $admin, 'reduction terms', audit_diff(['pct' => 'str', 'late_pct' => 'str'], $before, ['pct' => $pct, 'late_pct' => $late]));
+    json_response(['ok' => true]);
+}
+
 // Whether the practice charges for a final narrative report, and its fees.
 function handle_narrative_fees_save() {
     require_method('POST');
@@ -378,9 +403,23 @@ function handle_steps() {
     $guide = []; $check = [];
     foreach (CARE_GUIDE as $k => $d) $guide[] = ['key' => 'guide:' . $k, 'title' => $d['title'], 'when' => $d['when'], 'cases' => $d['cases'], 'silenced' => isset($cfg['silenced']['guide:' . $k]),
         'stateOnly' => isset($d['rule'])];
-    foreach (CHECKLIST as $k => $d) $check[] = ['key' => 'check:' . $k, 'title' => $d['label'], 'group' => $d['group'], 'cases' => $d['cases'], 'silenced' => isset($cfg['silenced']['check:' . $k]),
-        'stateOnly' => isset($d['rule']) || isset($d['states'])];
-    json_response(['custom' => $s->fetchAll(), 'customEnabled' => has_feature(current_practice(), 'custom_steps'), 'guide' => $guide, 'checklist' => $check, 'anchors' => STEP_ANCHORS, 'injuryTypes' => INJURY_TYPES]);
+    foreach (CHECKLIST as $k => $d) {
+        if (isset($d['pack']) && empty($cfg['packs'][$d['pack']])) continue;   // optional pack switched off
+        $check[] = ['key' => 'check:' . $k, 'title' => $d['label'], 'group' => $d['group'], 'cases' => $d['cases'], 'silenced' => isset($cfg['silenced']['check:' . $k]),
+            'stateOnly' => isset($d['rule']) || isset($d['states']), 'insuranceOnly' => ($d['basis'] ?? null) === 'insurance'];
+    }
+    json_response(['custom' => $s->fetchAll(), 'customEnabled' => has_feature(current_practice(), 'custom_steps'), 'guide' => $guide, 'checklist' => $check, 'anchors' => STEP_ANCHORS, 'injuryTypes' => INJURY_TYPES,
+        'packs' => ['chart_setup' => !empty($cfg['packs']['chart_setup'])]]);
+}
+
+// Optional built-in step packs (e.g. the new patient chart-setup steps).
+function handle_step_packs_save() {
+    require_method('POST');
+    $admin = require_user('users.manage');
+    $on = !empty(json_body()['chart_setup']) ? 1 : 0;
+    pi_db()->prepare('UPDATE practices SET chart_setup_steps = ? WHERE id = ?')->execute([$on, pid()]);
+    audit('update', 'practice', pid(), null, $admin, 'chart setup steps ' . ($on ? 'on' : 'off'));
+    json_response(['ok' => true]);
 }
 
 function handle_step_save() {
@@ -608,6 +647,7 @@ switch ($action) {
     case 'notify_rules_save': handle_notify_rules_save(); break;
     case 'costs_save': handle_costs_save(); break;
     case 'steps': handle_steps(); break;
+    case 'step_packs_save': handle_step_packs_save(); break;
     case 'step_save': handle_step_save(); break;
     case 'step_silence': handle_step_silence(); break;
     case 'badge': handle_badge(); break;
@@ -620,6 +660,8 @@ switch ($action) {
     case 'task_email_rules_save': handle_task_email_rules_save(); break;
     case 'status_rules_save': handle_status_rules_save(); break;
     case 'narrative_fees_save': handle_narrative_fees_save(); break;
+    case 'reduction_terms_save': handle_reduction_terms_save(); break;
+    case 'case_updates_save': handle_case_updates_save(); break;
     case 'white_label_save': handle_white_label_save(); break;
     case 'white_label_logo': handle_white_label_logo(); break;
     case 'white_label_logo_remove': handle_white_label_logo_remove(); break;

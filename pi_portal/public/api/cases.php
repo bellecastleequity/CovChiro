@@ -12,6 +12,7 @@ pi_start_session();
 const PATIENT_FIELDS = [
     'first_name' => 'str:80', 'last_name' => 'str:80', 'chart_number' => 'str:40',
     'dob' => 'enc', 'phone' => 'enc', 'email' => 'enc', 'address' => 'enc',
+    'preferred_name' => 'str:80', 'hipaa_contacts' => 'enc',
 ];
 const CASE_FIELDS = [
     'stage' => ['intake','treating','tx_complete','demand','litigation','mediation','negotiating','settled','closed','dropped'],
@@ -20,6 +21,7 @@ const CASE_FIELDS = [
     'referral_source' => ['attorney','self','provider','other'],
     'referred_by_contact_id' => 'contact', 'referred_by_text' => 'str:160',
     'attorney_contact_id' => 'contact', 'emc_status' => ['pending','yes','no'],
+    'billing_basis' => ['insurance', 'lop'], 'initial_care' => ['unknown', 'none', 'doctor', 'urgent_care', 'hospital'], 'ambulance' => ['unknown', 'no', 'yes'],
     'emc_by' => ['MD','DO','DMD','PA','APRN','DC','other'], 'emc_on' => 'date', 'tort_option' => ['unknown','limited','full'], 'jurisdiction' => 'state',
     'lop_signed_on' => 'date', 'lop_acknowledged_on' => 'date',
     'lop_factored' => ['unknown','no','yes'], 'lop_factor_company' => 'str:160', 'lop_factor_price' => 'money', 'lop_health_coverage' => ['unknown','no','yes'],
@@ -27,7 +29,7 @@ const CASE_FIELDS = [
     'actively_treating' => 'bool', 'provider_user_id' => 'user', 'location_id' => 'location', 'notes' => 'enc', 'head_injury' => ['unknown', 'yes', 'no'],
     'mmi_date' => 'date', 'maintenance_every_days' => 'int', 'plan_visits_per_week' => 'money', 'plan_set_on' => 'date',
     'ehr_case_label' => 'str:80', 'paralegal' => 'str:160', 'case_manager_name' => 'str:160', 'case_manager_email' => 'email',
-    'auto_status' => 'bool', 'auto_status_to' => ['attorney', 'case_manager', 'both'], 'auto_status_every' => 'int', 'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
+    'auto_status' => 'bool', 'case_updates' => 'bool', 'auto_status_to' => ['attorney', 'case_manager', 'both'], 'auto_status_every' => 'int', 'liability_carrier' => 'str:160', 'bi_limit' => 'money', 'um_limit' => 'money', 'other_medical_estimate' => 'money',
     'limits_source' => 'str:160', 'limits_noted_on' => 'date',
     'atty_offer' => 'money', 'final_settlement' => 'money', 'date_authorized' => 'date', 'check_received_on' => 'date',
     'mediation_on' => 'date', 'trial_on' => 'date', 'settlement_signed_on' => 'date', 'disbursement_expected_on' => 'date',
@@ -298,7 +300,7 @@ function full_case(int $id, array $user): array {
     $bal = fin_can($user, 'balances'); $led = fin_can($user, 'ledger'); $set = fin_can($user, 'settlement');
     if (!$set) {
         foreach (['atty_offer', 'final_settlement', 'date_authorized', 'check_received_on', 'balance_forwarded_amount'] as $k) $case[$k] = null;
-        unset($totals['reduction_floor']);
+        unset($totals['reduction_floor'], $totals['reduction_late']);
     }
     $alerts = case_alerts($c, $ctx);
     // Alerts built on money (bills vs. policy limits) are left out entirely
@@ -314,9 +316,11 @@ function full_case(int $id, array $user): array {
             'pipLabel' => $rules['pip_label'], 'pipMedical' => $rules['pip_medical'], 'emcRule' => $rules['emc_rule'], 'emcCap' => $rules['emc_cap'],
             'tortOptions' => $rules['tort_options'], 'lopDisclosure' => $rules['lop_disclosure'], 'demandLetter' => (bool)$rules['demand_letter'],
             'balanceBilling' => $rules['balance_billing'], 'balanceNote' => $rules['balance_note'], 'summary' => jurisdiction_summary($rules)],
-        'narrativeFees' => narrative_fees(),
+        'narrativeFees' => narrative_fees(), 'reductionTerms' => reduction_terms(),
+        'billingBasis' => $c['injury_type'] === 'auto' ? case_billing_basis($c) : null, 'basisSet' => $c['billing_basis'] !== null,
+        'basisChange' => $c['basis_change'] ? json_decode($c['basis_change'], true) : null,
         'checklist' => $checklist, 'guide' => $guideFlow, 'guideOrder' => ['case' => guide_order_from($c['guide_order'] ?? null) !== null, 'practice' => guide_order_from(current_practice()['guide_order'] ?? null) !== null],
-        'alerts' => $alerts, 'caseValue' => $caseValue, 'statusRequests' => status_info($c),
+        'alerts' => $alerts, 'caseValue' => $caseValue, 'statusRequests' => status_info($c), 'caseUpdates' => case_update_info($c),
         'otherCases' => array_values(array_filter(patient_card((int)$c['patient_id'])['cases'], fn($x) => $x['id'] !== (int)$c['id'])),
         'outreach' => $outreach, 'outreachState' => outreach_state($c, $outreach, $visitDates), 'outreachOutcomes' => OUTREACH_OUTCOMES,
         'tips' => case_tips($c, ['referrals' => $referrals, 'visits' => $visits, 'icd' => array_column($visits, 'icd_codes'), 'guideRows' => $guideRows, 'outcomeDates' => array_unique(array_column($outcomes, 'taken_on'))]),
@@ -329,12 +333,64 @@ function full_case(int $id, array $user): array {
 }
 
 // Keeps cases.benefits (the summary used by list filters and reports) in
-// step with the case's coverages.
+// step with the case's coverages. When that turns an insurance case into a
+// letter-of-protection one (claim denied, policy lapsed, no PIP) or back
+// (coverage confirmed later), the case's billing basis follows.
 function sync_benefits(int $caseId) {
     $c = case_or_404($caseId);
     $s = pi_db()->prepare('SELECT * FROM coverages WHERE case_id = ? AND archived_at IS NULL ORDER BY priority, id');
     $s->execute([$caseId]);
-    pi_db()->prepare('UPDATE cases SET benefits = ? WHERE id = ?')->execute([derive_benefits($s->fetchAll(), $c['injury_type']), $caseId]);
+    $new = derive_benefits($s->fetchAll(), $c['injury_type']);
+    $basis = $c['billing_basis'];
+    if ($new !== $c['benefits'] && $c['injury_type'] === 'auto') {
+        if (in_array($new, ['denied', 'lop', 'health'], true)) $basis = 'lop';
+        elseif ($new === 'pip') $basis = 'insurance';
+    }
+    pi_db()->prepare('UPDATE cases SET benefits = ?, billing_basis = ? WHERE id = ?')->execute([$new, $basis, $caseId]);
+}
+
+// Insurance ↔ LOP switches. Call basis_watch() before a change and the
+// returned function after it: if the billing basis changed, the steps that
+// were added and removed are saved on the case (shown until dismissed),
+// logged, and emailed to the practice's administrators.
+function basis_steps(array $case): array {
+    $out = [];
+    foreach (case_checklist($case, [], []) as $i) $out[$i['key']] = $i['label'];
+    return $out;
+}
+function basis_watch(int $caseId): callable {
+    $before = case_or_404($caseId);
+    $steps = $before['injury_type'] === 'auto' ? basis_steps($before) : [];
+    return function (array $user, string $why = '') use ($caseId, $before, $steps): ?array {
+        $after = case_or_404($caseId);
+        $from = case_billing_basis($before); $to = case_billing_basis($after);
+        if ($after['injury_type'] !== 'auto' || $before['injury_type'] !== 'auto' || $from === $to) return null;
+        $now = basis_steps($after);
+        $change = ['from' => $from, 'to' => $to, 'at' => now_str(), 'by' => $user['name'] ?? null, 'why' => $why ?: null,
+            'added' => array_values(array_diff_key($now, $steps)), 'removed' => array_values(array_diff_key($steps, $now))];
+        pi_db()->prepare('UPDATE cases SET basis_change = ? WHERE id = ?')->execute([json_encode($change), $caseId]);
+        audit('update', 'case', $caseId, $caseId, $user, 'billing basis', [['f' => 'billing_basis', 't' => 'enum', 'from' => $from, 'to' => $to]]);
+        basis_change_email($after, $change, $user);
+        return $change;
+    };
+}
+const BASIS_LABELS = ['insurance' => 'PIP insurance billing', 'lop' => 'a letter of protection (balance held until the case settles)'];
+// The summary email: no patient details, just the case number, the switch
+// and the steps — sign in for the rest.
+function basis_change_email(array $case, array $change, array $actor): void {
+    require_once __DIR__ . '/../../app/mailer.php';
+    if (!mail_configured()) return;
+    $p = current_practice();
+    $brand = brand_name_for($p);
+    $list = fn($a) => $a ? implode("\n", array_map(fn($x) => "  • $x", $a)) : '  (none)';
+    $text = "Case {$case['case_number']} at {$p['name']} was switched from " . BASIS_LABELS[$change['from']] . ' to ' . BASIS_LABELS[$change['to']]
+        . ($change['by'] ? " by {$change['by']}" : '') . ($change['why'] ? " ({$change['why']})" : '') . ".\n\n"
+        . "Steps added to the case:\n" . $list($change['added']) . "\n\nSteps removed (no longer needed):\n" . $list($change['removed']) . "\n\n"
+        . "Open the case:\n" . APP_URL . '/app.html#/case/' . $case['id'] . "\n\n"
+        . "For privacy, this email never includes patient names or details — sign in to see them.\n\n— $brand\n";
+    $s = pi_db()->prepare("SELECT DISTINCT email FROM users WHERE practice_id = ? AND active = 1 AND (role = 'admin' OR id = ?)");
+    $s->execute([$p['id'], $actor['id'] ?? 0]);
+    foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $to) send_mail($to, "$brand: a case switched to " . ($change['to'] === 'lop' ? 'a letter of protection' : 'insurance billing'), $text, $brand);
 }
 
 function handle_get() {
@@ -422,6 +478,7 @@ function handle_update() {
     $b = json_body();
     $caseIn = $b['case'] ?? [];
     $patientIn = $b['patient'] ?? [];
+    $basisDone = basis_watch($id);
 
     $limitsIn = array_intersect_key($caseIn, array_flip(LIMIT_CASE_FIELDS));
     if ($limitsIn && !can($user, 'case.write') && !can($user, 'finance.write')) json_response(['error' => 'Your role does not allow editing policy limits.'], 403);
@@ -468,6 +525,17 @@ function handle_update() {
     }
     if (array_key_exists('injury_type', $cols)) sync_benefits($id);
     if ($changes) audit('update', 'case', $id, $id, $user, null, $changes);
+    $basisDone($user, str_or_null($b['basis_reason'] ?? null, 120) ?? '');
+    json_response(full_case($id, $user));
+}
+
+// Hides the notice of the last insurance/LOP switch.
+function handle_basis_seen() {
+    require_method('POST');
+    $user = require_user('case.read');
+    $id = (int)($_GET['id'] ?? 0);
+    case_or_404($id);
+    pi_db()->prepare('UPDATE cases SET basis_change = NULL WHERE id = ?')->execute([$id]);
     json_response(full_case($id, $user));
 }
 
@@ -734,8 +802,56 @@ function handle_guide_step() {
         $until = date_or_null($b['until'] ?? null) ?? add_days(date('Y-m-d'), max(1, min(120, (int)($b['days'] ?? 14))));
         if ($until <= date('Y-m-d')) json_response(['error' => 'Pick a date in the future.'], 400);
         $pdo->prepare('REPLACE INTO case_guide (case_id, step, status, until, reason, updated_by, updated_at) VALUES (?, ?, \'snoozed\', ?, ?, ?, ?)')->execute([$id, $step, $until, $reason, $user['id'], now_str()]);
+        log_pushoff($id, null, 'guide', $step, CARE_GUIDE[$step]['title'], null, $until, $user);
     } else json_response(['error' => 'Unknown choice'], 400);
     audit('update', 'care_guide', $step, $id, $user, $reason, [['f' => 'guide_' . $step, 't' => 'enum', 'from' => null, 'to' => $what === 'clear' ? 'suggested again' : ($what === 'snoozed' ? 'remind on ' . $until : 'not needed')]]);
+    json_response(full_case($id, $user));
+}
+
+// "Push off": move a checklist step, a care-guide step or a task to a later
+// date when it can't be done now. Logged with who did it, and listed on the
+// next daily huddle. Body: {kind: step|guide|task, key (step/guide key or
+// task id), until (date)}.
+function log_pushoff(int $caseId, ?int $taskCase, string $kind, string $key, string $label, ?string $from, string $to, array $user): void {
+    pi_db()->prepare('INSERT INTO pushoffs (practice_id, case_id, kind, item_key, label, from_date, to_date, user_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+        ->execute([pid(), $caseId ?: $taskCase, $kind, mb_substr($key, 0, 60), mb_substr($label, 0, 255), $from, $to, $user['id'], now_str()]);
+}
+function handle_push() {
+    require_method('POST');
+    $user = require_user('case.read');
+    $b = json_body();
+    $kind = (string)($b['kind'] ?? '');
+    $until = date_or_null($b['until'] ?? null);
+    if (!$until || $until <= date('Y-m-d')) json_response(['error' => 'Pick a later date.'], 400);
+    if ($until > add_days(date('Y-m-d'), 365)) json_response(['error' => 'Push it off by a year at most.'], 400);
+    $pdo = pi_db();
+    if ($kind === 'task') {
+        $t = child_or_404('tasks', (int)($b['key'] ?? 0));
+        if (!can($user, 'case.write') && !can($user, 'finance.write')) json_response(['error' => 'Your role does not allow this.'], 403);
+        $pdo->prepare('UPDATE tasks SET due_on = ?, late_emailed_at = NULL WHERE id = ?')->execute([$until, $t['id']]);
+        log_pushoff(0, $t['case_id'] ? (int)$t['case_id'] : null, 'task', (string)$t['id'], 'Task: ' . $t['title'], $t['due_on'], $until, $user);
+        audit('update', 'task', $t['id'], $t['case_id'], $user, 'pushed off', [['f' => 'due_on', 't' => 'date', 'from' => $t['due_on'], 'to' => $until]]);
+        json_response(['ok' => true]);
+    }
+    if (!can($user, 'case.write')) json_response(['error' => 'Your role does not allow this.'], 403);
+    $id = (int)($_GET['id'] ?? 0);
+    case_or_404($id);
+    $key = (string)($b['key'] ?? '');
+    if ($kind === 'step') {
+        $item = current(array_filter(full_case($id, $user)['checklist'], fn($i) => $i['key'] === $key));
+        if (!$item) json_response(['error' => 'Unknown step'], 400);
+        $pdo->prepare('INSERT INTO case_milestones (case_id, milestone, snoozed_until, snoozed_by, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE snoozed_until = VALUES(snoozed_until), snoozed_by = VALUES(snoozed_by), updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)')
+            ->execute([$id, $key, $until, $user['id'], $user['id'], now_str()]);
+        log_pushoff($id, null, 'step', $key, $item['label'], $item['due'], $until, $user);
+        audit('update', 'milestone', $key, $id, $user, 'pushed off', [['f' => 'pushed_to', 't' => 'date', 'from' => $item['due'], 'to' => $until]]);
+    } elseif ($kind === 'guide') {
+        if (!isset(CARE_GUIDE[$key])) json_response(['error' => 'Unknown step'], 400);
+        $pdo->prepare('REPLACE INTO case_guide (case_id, step, status, until, reason, updated_by, updated_at) VALUES (?, ?, \'snoozed\', ?, ?, ?, ?)')
+            ->execute([$id, $key, $until, str_or_null($b['reason'] ?? null, 255), $user['id'], now_str()]);
+        log_pushoff($id, null, 'guide', $key, CARE_GUIDE[$key]['title'], null, $until, $user);
+        audit('update', 'care_guide', $key, $id, $user, 'pushed off', [['f' => 'guide_' . $key, 't' => 'enum', 'from' => null, 'to' => 'remind on ' . $until]]);
+    } else json_response(['error' => 'Unknown item'], 400);
     json_response(full_case($id, $user));
 }
 
@@ -867,7 +983,7 @@ function handle_child_save() {
             }
         }
     }
-    if ($table === 'coverages') sync_benefits($caseId);
+    if ($table === 'coverages') { $w = basis_watch($caseId); sync_benefits($caseId); $w($user, 'coverage ' . ($cols['status'] ?? 'updated')); }
     // First visit logged on an intake case starts the treating stage.
     if ($table === 'visits') {
         $c = case_or_404($caseId);
@@ -960,7 +1076,7 @@ function handle_child_archive() {
     $row = child_or_404($table, $childId, $caseId);
     pi_db()->prepare("UPDATE $table SET archived_at = ? WHERE id = ?")->execute([now_str(), $childId]);
     touch_case($caseId);
-    if ($table === 'coverages') sync_benefits($caseId);
+    if ($table === 'coverages') { $w = basis_watch($caseId); sync_benefits($caseId); $w($user, 'coverage removed'); }
     audit('archive', $table, $childId, $caseId, $user, null, safe_snapshot($spec['fields'], $row));
     json_response(full_case($caseId, $user));
 }
@@ -1095,6 +1211,40 @@ function handle_status_send() {
     $r = status_send($c, current_practice(), 'manual', $user);
     if (isset($r['error'])) json_response(['error' => $r['error']], 400);
     json_response(['ok' => true, 'sent' => $r['sent'], 'to' => $r['to']] + full_case((int)$c['id'], $user));
+}
+
+// The monthly attorney update on the case page: on/off, last sent, history.
+function case_update_info(array $c): ?array {
+    if (!in_array($c['injury_type'], LIABILITY_CASES, true)) return null;
+    $p = current_practice();
+    $h = pi_db()->prepare('SELECT r.sent_at, r.sent_to, r.kind, r.viewed_at, u.name sent_by_name FROM case_reports r LEFT JOIN users u ON u.id = r.sent_by WHERE r.case_id = ? ORDER BY r.sent_at DESC LIMIT 6');
+    $h->execute([$c['id']]);
+    $next = (int)$c['case_updates'] && $c['first_visit'] ? max(add_days($c['case_update_last_on'] ?: $c['first_visit'], CASE_UPDATE_EVERY_DAYS), date('Y-m-d')) : null;
+    return ['practiceOn' => case_updates_on($p), 'on' => (bool)$c['case_updates'], 'lastOn' => $c['case_update_last_on'], 'nextOn' => case_updates_on($p) ? $next : null,
+        'problem' => case_update_problem($c, $p), 'to' => array_column(case_update_recipients($c), 0), 'history' => $h->fetchAll()];
+}
+
+// Send this month's attorney update now.
+function handle_case_update_send() {
+    require_method('POST');
+    $user = require_user('case.read');
+    if (!can($user, 'case.write') && !can($user, 'finance.write')) json_response(['error' => 'Your role does not allow this.'], 403);
+    $c = case_or_404((int)($_GET['id'] ?? 0));
+    $r = case_update_send($c, current_practice(), 'manual', $user);
+    if (isset($r['error'])) json_response(['error' => $r['error']], 400);
+    json_response(['ok' => true, 'sent' => $r['sent'], 'to' => $r['to']] + full_case((int)$c['id'], $user));
+}
+
+// What the attorney would see if the update went out today.
+function handle_case_update_preview() {
+    $user = require_user('case.read');
+    $c = case_or_404((int)($_GET['id'] ?? 0));
+    $p = current_practice();
+    audit('view', 'case_update_preview', $c['id'], (int)$c['id'], $user);
+    header('Content-Type: text/html; charset=utf-8');
+    $brand = practice_brand($p);
+    echo case_update_html(case_update_snapshot($c, $p), status_letterhead($c, $p) + ['email' => $p['email'] ?? null], $brand['custom'] ? $brand : null);
+    exit;
 }
 
 // One task (the link in task emails opens it).
@@ -1264,6 +1414,7 @@ function handle_dashboard() {
     $ar = ['insurance' => 0.0, 'patient' => 0.0, 'total' => 0.0, 'legal' => 0.0];
     $treating = 0;
     $narratives = [];
+    $mail = [];
     foreach ($cases as $c) {
         $x = $ctx[(int)$c['id']];
         foreach (case_alerts($c, $x) as $a) {
@@ -1277,6 +1428,15 @@ function handle_dashboard() {
         $ar['total'] += $x['totals']['total_balance'];
         if (in_array($c['stage'], LEGAL_STAGES, true)) $ar['legal'] += $x['totals']['total_balance'];
         if ($c['actively_treating'] && in_array($c['stage'], ['intake', 'treating'], true)) $treating++;
+        // Insurer mailings that are ready, grouped by insurer so they can go
+        // out together with the next outgoing mail.
+        foreach ($x['checklist'] ?? [] as $i) {
+            if (empty($i['mail']) || !in_array($i['status'], ['overdue', 'due'], true)) continue;
+            $pipCov = first_coverage($x['coverages'] ?? [], 'pip');
+            $ins = $pipCov ? ($pipCov['carrier_org'] ?: ($pipCov['carrier_text'] ?: 'PIP insurer')) : 'Insurer not entered yet';
+            $mail[$ins][] = ['caseId' => (int)$c['id'], 'patient' => patient_name($c), 'caseNumber' => $c['case_number'], 'key' => $i['key'], 'label' => $i['label'],
+                'due' => $i['due'], 'overdue' => $i['status'] === 'overdue', 'letter' => $i['letter'], 'adjuster' => $pipCov['adjuster'] ?? null];
+        }
         // Final narratives the attorney has asked for and that aren't sent yet.
         if (in_array($c['narrative_request'], ['without_ratings', 'with_ratings'], true)) {
             $item = current(array_filter($x['checklist'] ?? [], fn($i) => $i['key'] === 'final_narrative'));
@@ -1310,6 +1470,7 @@ function handle_dashboard() {
         'ar' => fin_can($user, 'balances') ? array_map(fn($v) => round($v, 2), $ar) : null,
         'alerts' => array_slice($alerts, 0, 200), 'alertCounts' => array_count_values(array_column($alerts, 'level')),
         'tasks' => $tasks, 'narratives' => $narratives,
+        'mailQueue' => array_map(fn($k) => ['insurer' => $k, 'items' => $mail[$k]], array_keys($mail)),
         'tips' => array_slice($tips, 0, 200), 'tipCounts' => array_count_values(array_column($tips, 'category')), 'tipCategories' => TIP_CATEGORIES,
     ]);
 }
@@ -1488,7 +1649,8 @@ function handle_letter() {
         $body = '<p>Thank you for your reduction request on the above-referenced case. The patient balance on this account is <strong>'
             . $money($d['totals']['patient_balance'] ?? 0) . '</strong>.</p>'
             . ($c['atty_offer'] !== null ? '<p>Your offer of ' . $money($c['atty_offer']) . ' has been received and is under review.</p>' : '')
-            . '<p>Our office is able to accept <strong>' . $money($d['totals']['reduction_floor'] ?? 0) . '</strong> (' . round(REDUCTION_FLOOR_PCT * 100) . '% of the balance) in full satisfaction of this account, provided payment is received within 30 days of settlement.</p>';
+            . '<p>Our office is able to accept <strong>' . $money($d['totals']['reduction_floor'] ?? 0) . '</strong> (' . rtrim(rtrim(number_format(($rt = reduction_terms())['pct'], 1), '0'), '.') . '% of the balance) in full satisfaction of this account, provided payment is received within 30 days of settlement.</p>'
+            . '<p>If payment is received more than 30 days after settlement, the amount required to satisfy this account is <strong>' . $money($d['totals']['reduction_late'] ?? 0) . '</strong> (' . rtrim(rtrim(number_format($rt['late_pct'], 1), '0'), '.') . '% of the balance).</p>';
     } elseif ($type === 'pip_demand') {
         // Florida pre-suit demand letter (§627.736(10)) to the PIP insurer
         // for overdue bills: insured, claim/policy number, and an itemized
@@ -1511,6 +1673,32 @@ function handle_letter() {
             . '<p>Copies of the bills previously submitted are available on request. Please pay the overdue amount, with any applicable interest and penalty, within 30 days of receipt of this letter.</p>';
         $toOverride = ($pip['adjuster'] ? 'Attn: ' . $h($pip['adjuster']) . '<br>' : '') . $h($pip['carrier_org'] ?: ($pip['carrier_text'] ?: 'PIP insurer'))
             . ($pip['carrier_address'] ? '<br>' . nl2br($h($pip['carrier_address'])) : '') . ($pip['carrier_fax'] ? '<br>Fax ' . $h($pip['carrier_fax']) : '');
+        $dear = 'Claims Adjuster';
+    } elseif ($type === 'treatment_notice' || $type === 'intent_to_bill') {
+        // Florida PIP: mailed to the insurer after the first visit, the two
+        // together. The notice of initiation of treatment (§627.736(5)(c))
+        // extends the billing window from 35 to 75 days if it reaches the
+        // insurer within 21 days of the first visit.
+        if (case_rules($c)['code'] !== 'FL') json_response(['error' => 'These insurer letters follow Florida PIP law.'], 400);
+        $pip = first_coverage($d['coverages'], 'pip');
+        $claim = '<table class="it" style="width:auto"><tbody>'
+            . '<tr><th>Patient</th><td>' . $h(patient_name($p)) . '</td></tr>'
+            . '<tr><th>Date of loss</th><td>' . $h($c['date_of_injury'] ? date('m/d/Y', strtotime($c['date_of_injury'])) : '—') . '</td></tr>'
+            . '<tr><th>Date of initiation of treatment</th><td>' . $h($c['first_visit'] ? date('m/d/Y', strtotime($c['first_visit'])) : '—') . '</td></tr>'
+            . '<tr><th>Claim #</th><td>' . $h($pip['claim_number'] ?? '') . '</td></tr>'
+            . ($pip && $pip['policy_number'] ? '<tr><th>Policy #</th><td>' . $h($pip['policy_number']) . '</td></tr>' : '') . '</tbody></table>';
+        if ($type === 'treatment_notice') {
+            $title = 'Notice of initiation of treatment';
+            $body = $claim . '<p>This document shall serve as formal notice to the insurer that the first examination or treatment of the claimant has occurred. While section 627.736, Florida Statutes, requires medical providers to submit bills to insurance companies within 35 days of treatment, subsection (5)(c) allows medical providers to submit bills within 75 days of treatment if this notice is provided within 21 days of the first examination or treatment. Any deficiencies in this notice are deemed waived if they are not specifically objected to in writing before the 21-day window expires.</p>'
+                . '<p style="font-size:10pt">Section 627.736(5)(c), Florida Statutes: "With respect to any treatment or service, other than medical services billed by a hospital or other provider for emergency services and care as defined in s. 395.002 or inpatient services rendered at a hospital-owned facility, the statement of charges must be furnished to the insurer by the provider and may not include, and the insurer is not required to pay, charges for treatment or services rendered more than 35 days before the postmark date or electronic transmission date of the statement, except for past due amounts previously billed on a timely basis under this paragraph, and except that, if the provider submits to the insurer a notice of initiation of treatment within 21 days after its first examination or treatment of the claimant, the statement may include charges for treatment or services rendered up to, but not more than, 75 days before the postmark date of the statement. The injured party is not liable for, and the provider may not bill the injured party for, charges that are unpaid because of the provider\'s failure to comply with this paragraph. Any agreement requiring the injured person or insured to pay for such charges is unenforceable."</p>'
+                . '<p>If I may assist you any further, please do not hesitate to contact our office. Thank you for your time.</p>';
+        } else {
+            $title = 'Letter of intent to bill';
+            $body = $claim . '<p>Please be advised that our office has been consulted by, and has begun rendering treatment to, the above-referenced patient. The patient\'s first date of treatment was ' . $h($c['first_visit'] ? date('m/d/Y', strtotime($c['first_visit'])) : '—') . '.</p>'
+                . '<p>The patient has assigned benefits to our office in accordance with section 627.736(5)(b), Florida Statutes. We will be submitting bills in a timely manner.</p>';
+        }
+        $toOverride = $pip ? ($pip['adjuster'] ? 'Attn: ' . $h($pip['adjuster']) . '<br>' : '') . $h($pip['carrier_org'] ?: ($pip['carrier_text'] ?: 'PIP insurer'))
+            . ($pip['carrier_address'] ? '<br>' . nl2br($h($pip['carrier_address'])) : '') : 'PIP insurer — add the PIP coverage under Insurance';
         $dear = 'Claims Adjuster';
     } elseif ($type === 'statement') {
         // Itemized patient balance, by date of service, for the attorney.
@@ -1620,6 +1808,10 @@ switch ($action) {
     case 'create': handle_create(); break;
     case 'update': handle_update(); break;
     case 'milestone': handle_milestone(); break;
+    case 'basis_seen': handle_basis_seen(); break;
+    case 'push': handle_push(); break;
+    case 'case_update_send': handle_case_update_send(); break;
+    case 'case_update_preview': handle_case_update_preview(); break;
     case 'child_save': handle_child_save(); break;
     case 'child_archive': handle_child_archive(); break;
     case 'move_balance': handle_move_balance(); break;

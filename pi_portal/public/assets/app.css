@@ -553,3 +553,10 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .wl-slug-row{flex-wrap:nowrap;align-items:center;}
 .wl-slug-row .mono{white-space:nowrap;}
 .terms-points{margin:8px 0 4px 18px;display:flex;flex-direction:column;gap:4px;}
+.basis-notice{border-left:4px solid var(--indigo);}
+.chip.violet{background:var(--violet-tint);color:var(--violet);}
+.chip.mail{background:var(--amber-tint);color:var(--amber-ink);}
+.check-row .row-actions{display:flex;gap:12px;margin-top:2px;}
+.chip.snoozed{background:var(--bg-2);color:var(--muted);}
+.check-row .lbl small.row-actions{display:flex;gap:14px;}
+.basis-notice ul{padding-left:18px;margin:4px 0;}

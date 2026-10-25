@@ -102,6 +102,7 @@ printf '%s\n' "CRON_TZ=America/New_York" \
   "38 6 * * * apache php $APP/app/cli/daily_digest.php >> $APP/storage/logs/cron.log 2>&1" \
   "52 7 * * * apache php $APP/app/cli/task_reminders.php >> $APP/storage/logs/cron.log 2>&1" \
   "23 9 * * 1-5 apache php $APP/app/cli/status_requests.php >> $APP/storage/logs/cron.log 2>&1" \
+  "41 9 * * 1-5 apache php $APP/app/cli/case_updates.php >> $APP/storage/logs/cron.log 2>&1" \
   "17 9 * * * apache php $APP/app/cli/trial_reminders.php >> $APP/storage/logs/cron.log 2>&1" > /etc/cron.d/injurycase
 chmod 644 /etc/cron.d/injurycase
 

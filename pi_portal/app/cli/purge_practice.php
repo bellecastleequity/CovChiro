@@ -71,6 +71,7 @@ $scopes = [
     'task_assignees' => "task_id IN ($taskIds)", 'task_email_to' => "task_id IN ($taskIds)", 'tasks' => "practice_id = $id",
     'case_estimates' => "case_id IN ($caseIds)", 'case_milestones' => "case_id IN ($caseIds)", 'case_guide' => "case_id IN ($caseIds)",
     'referrals' => "case_id IN ($caseIds)", 'outreach' => "case_id IN ($caseIds)", 'visits' => "case_id IN ($caseIds)", 'outcomes' => "case_id IN ($caseIds)",
+    'case_reports' => "practice_id = $id", 'pushoffs' => "practice_id = $id",
     'status_requests' => "practice_id = $id", 'correspondence' => "case_id IN ($caseIds)", 'ledger' => "case_id IN ($caseIds)",
     'ehr_imports' => "case_id IN ($caseIds)", 'documents' => "case_id IN ($caseIds)", 'coverages' => "case_id IN ($caseIds)",
     'cases' => "practice_id = $id", 'patients' => "practice_id = $id", 'contacts' => "practice_id = $id",

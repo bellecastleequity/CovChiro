@@ -34,6 +34,13 @@ CREATE TABLE practices (
   -- sign-in link's slug. The logo is in practice_logos.
   white_label TEXT NULL,
   brand_slug VARCHAR(40) NULL UNIQUE,
+  -- Optional "new patient chart setup" steps on every case's checklist.
+  chart_setup_steps TINYINT(1) NOT NULL DEFAULT 0,
+  -- What the practice accepts on a reduction request: % of the patient
+  -- balance if paid within 30 days, and % if paid later (JSON).
+  reduction_terms TEXT NULL,
+  -- Monthly case updates to attorneys / case managers (on unless turned off).
+  case_updates TINYINT(1) NOT NULL DEFAULT 1,
   state CHAR(2) NOT NULL DEFAULT 'FL',
   -- Which financial categories the staff role may see (comma list of
   -- balances, ledger, settlement). Empty = none.
@@ -273,6 +280,8 @@ CREATE TABLE patients (
   practice_id INT NOT NULL,
   first_name VARCHAR(80) NOT NULL,
   last_name VARCHAR(80) NOT NULL DEFAULT '',
+  -- What the patient likes to be called.
+  preferred_name VARCHAR(80) NULL,
   -- The patient's chart / account number in the clinic's EHR: one
   -- patient record per person (they may have several open cases), and the
   -- surest match for appointment list uploads.
@@ -281,6 +290,8 @@ CREATE TABLE patients (
   phone_enc TEXT NULL,
   email_enc TEXT NULL,
   address_enc TEXT NULL,
+  -- People the patient authorizes us to speak with (HIPAA), encrypted.
+  hipaa_contacts_enc TEXT NULL,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   FOREIGN KEY (practice_id) REFERENCES practices(id),
@@ -332,6 +343,19 @@ CREATE TABLE cases (
   -- Who made the EMC determination (Florida: MD, DO, DMD, PA or APRN only).
   emc_by VARCHAR(10) NULL,
   emc_on DATE NULL,
+  -- Who pays: the PIP insurer ('insurance') or the settlement under a letter
+  -- of protection ('lop'). NULL = decided from the coverages. Insurance-only
+  -- steps (assignment of benefits, standard disclosure, insurer mailings)
+  -- follow it. basis_change: the last switch and the steps it added/removed
+  -- (JSON), shown on the case until dismissed.
+  billing_basis ENUM('insurance','lop') NULL,
+  basis_change TEXT NULL,
+  -- Care before the first visit, and whether they came by ambulance.
+  initial_care ENUM('unknown','none','doctor','urgent_care','hospital') NOT NULL DEFAULT 'unknown',
+  ambulance ENUM('unknown','no','yes') NOT NULL DEFAULT 'unknown',
+  -- This case's monthly update to the attorney (on/off) and when it last went.
+  case_updates TINYINT(1) NOT NULL DEFAULT 1,
+  case_update_last_on DATE NULL,
   -- Choice states (NJ, PA, KY): the lawsuit option on the patient's policy.
   tort_option ENUM('unknown','limited','full') NOT NULL DEFAULT 'unknown',
   actively_treating TINYINT(1) NOT NULL DEFAULT 1,
@@ -475,6 +499,9 @@ CREATE TABLE case_milestones (
   completed_on DATE NULL,
   not_applicable TINYINT(1) NOT NULL DEFAULT 0,
   note VARCHAR(255) NULL,
+  -- Pushed off to a later date (by whom).
+  snoozed_until DATE NULL,
+  snoozed_by INT NULL,
   updated_by INT NULL,
   updated_at DATETIME NOT NULL,
   PRIMARY KEY (case_id, milestone),
@@ -684,6 +711,40 @@ CREATE TABLE ehr_imports (
 
 -- The care guide's referral steps a clinic has set aside for a case:
 -- "not needed" (with a reason) or "remind me later" (until a date).
+-- Monthly case updates sent to the attorney / case manager: the secure
+-- link (hashed) and the summary as it was when sent (encrypted).
+CREATE TABLE case_reports (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NOT NULL,
+  case_id INT NOT NULL,
+  token_hash CHAR(64) NOT NULL UNIQUE,
+  kind ENUM('auto','manual') NOT NULL DEFAULT 'auto',
+  sent_to VARCHAR(400) NOT NULL,
+  sent_by INT NULL,
+  sent_at DATETIME NOT NULL,
+  expires_at DATETIME NOT NULL,
+  viewed_at DATETIME NULL,
+  snapshot_enc MEDIUMTEXT NOT NULL,
+  INDEX idx_case_reports_case (case_id, sent_at),
+  CONSTRAINT fk_cr_case FOREIGN KEY (case_id) REFERENCES cases(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Steps and tasks someone pushed off to a later date, for the daily huddle.
+CREATE TABLE pushoffs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NOT NULL,
+  case_id INT NULL,
+  kind ENUM('step','guide','task') NOT NULL,
+  item_key VARCHAR(60) NOT NULL,
+  label VARCHAR(255) NOT NULL,
+  from_date DATE NULL,
+  to_date DATE NOT NULL,
+  user_id INT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_pushoffs_practice (practice_id, created_at),
+  CONSTRAINT fk_push_practice FOREIGN KEY (practice_id) REFERENCES practices(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE case_guide (
   case_id INT NOT NULL,
   step VARCHAR(20) NOT NULL,

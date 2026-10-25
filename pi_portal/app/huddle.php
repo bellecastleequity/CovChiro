@@ -11,6 +11,7 @@ const HUDDLE_SECTIONS = [
     'money' => 'Insurance & case value',
     'legal' => 'Attorney & settlement',
     'checklist' => 'Checklist items overdue',
+    'pushed' => 'Pushed off since the last huddle',
 ];
 
 // $user decides what money-related items appear (financial visibility).
@@ -116,6 +117,17 @@ function build_huddle(PDO $pdo, array $user, int $practiceId): array {
         unset($i['labels']);
         return $i;
     }, $byCase));
+    // Steps and tasks someone pushed to a later date since the last working
+    // day's huddle, and who did it.
+    $since = date('Y-m-d', strtotime(date('N') === '1' ? 'last friday' : 'yesterday'));
+    [$locSql, $locArgs] = loc_in('c.location_id');
+    $ps = $pdo->prepare("SELECT po.*, u.name user_name, c.case_number, p.first_name, p.last_name FROM pushoffs po LEFT JOIN users u ON u.id = po.user_id
+        LEFT JOIN cases c ON c.id = po.case_id LEFT JOIN patients p ON p.id = c.patient_id
+        WHERE po.practice_id = ? AND po.created_at >= ?" . ($locSql ? " AND (po.case_id IS NULL OR (1=1$locSql))" : '') . ' ORDER BY po.created_at');
+    $ps->execute([$practiceId, $since . ' 00:00:00', ...$locArgs]);
+    foreach ($ps->fetchAll() as $r) $sections['pushed']['items'][] = ['caseId' => $r['case_id'] ? (int)$r['case_id'] : null, 'patient' => trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? '')) ?: null,
+        'caseNumber' => $r['case_number'], 'level' => 'low', 'criterion' => 'tasks',
+        'text' => $r['label'] . ' — pushed to ' . us_date($r['to_date']) . ' by ' . ($r['user_name'] ?: 'someone') . ' on ' . us_date(substr($r['created_at'], 0, 10))];
     $rank = ['high' => 0, 'medium' => 1, 'low' => 2];
     foreach ($sections as &$s) usort($s['items'], fn($a, $b) => [$rank[$a['level']], $a['patient'] ?? ''] <=> [$rank[$b['level']], $b['patient'] ?? '']);
     unset($s);

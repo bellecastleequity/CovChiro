@@ -67,7 +67,7 @@ function session_payload(?array $u) {
         $out['lookups'] = [
             'stages' => STAGES, 'benefits' => BENEFITS, 'referralTypes' => REFERRAL_TYPES,
             'injuryTypes' => INJURY_TYPES, 'coverageTypes' => COVERAGE_TYPES, 'coverageStatus' => COVERAGE_STATUS,
-            'outcomeMeasures' => OUTCOME_MEASURES, 'reductionFloorPct' => REDUCTION_FLOOR_PCT,
+            'outcomeMeasures' => OUTCOME_MEASURES, 'reductionFloorPct' => reduction_terms()['pct'] / 100,
             'states' => jurisdiction_list(), 'outsideCosts' => practice_costs($practice), 'taskEmail' => task_email_rules($practice) + ['events' => TASK_EMAIL_EVENTS, 'whoLabels' => TASK_EMAIL_WHO], 'statusTo' => STATUS_TO, 'supportLabels' => SUPPORT_LABELS, 'emcCredentials' => EMC_CREDENTIALS,
             'providers' => $q("SELECT id, name FROM users WHERE practice_id = ? AND active = 1 AND role IN ('provider','admin') ORDER BY name"),
             'users' => $q('SELECT id, name FROM users WHERE practice_id = ? AND active = 1 ORDER BY name'),

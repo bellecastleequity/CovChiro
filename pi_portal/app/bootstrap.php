@@ -17,6 +17,7 @@ require_once __DIR__ . '/saas.php';
 require_once __DIR__ . '/branding.php';
 require_once __DIR__ . '/task_mail.php';
 require_once __DIR__ . '/status_requests.php';
+require_once __DIR__ . '/case_updates.php';
 
 define('PI_TIMEZONE', 'America/New_York');
 define('PI_IDLE_TIMEOUT_SECONDS', 15 * 60);
