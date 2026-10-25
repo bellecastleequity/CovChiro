@@ -20,6 +20,7 @@ export * as concentration from "./concentration";
 export * as activity from "./activity";
 export * as texts from "./textinbox";
 export * as callline from "./callline";
+export * as adminlists from "./adminlists";
 export * as welcome from "./welcome";
 export * from "./matching";
 export * from "./pricing";
