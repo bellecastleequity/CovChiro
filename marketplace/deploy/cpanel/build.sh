@@ -172,7 +172,7 @@ rm -rf "$PKG"
 # The same package in pieces under 30 MB (for size-limited transfers); the updater joins them.
 (cd "$ROOT/dist" && rm -f coverageoncall-update-*.tar.gz.part* \
   && split -b 29m --numeric-suffixes=1 -a 1 coverageoncall-update.tar.gz "coverageoncall-update-$VERSION.tar.gz.part")
-echo "Built dist/coverageoncall-update.tar.gz ($(du -h "$ROOT/dist/coverageoncall-update.tar.gz" | cut -f1), one-file update: upload, Stop App, Run JS script update, Start App)"
+echo "Built dist/coverageoncall-update.tar.gz ($(du -h "$ROOT/dist/coverageoncall-update.tar.gz" | cut -f1), one-file update, sent as the .part pieces: upload them, with the app running Run JS script update, then Stop App, wait, Start App)"
 (cd "$OUT/$APP_DIR" && rm -f "$ROOT"/dist/coverageoncall-update*.zip \
   && zip -qr -9 "$ROOT/dist/coverageoncall-update-part1.zip" app \
   && zip -qr -9 "$ROOT/dist/coverageoncall-update-part2.zip" node_modules -x "node_modules/.prisma/*" \
