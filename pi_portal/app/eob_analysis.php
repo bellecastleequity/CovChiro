@@ -64,7 +64,7 @@ function eob_insights(int $practiceId, ?string $from = null): array {
     $from = $from ?: date('Y-m-d', strtotime('-12 months'));
     [$locSql, $locArgs] = case_scope('c');
     $s = pi_db()->prepare("SELECT e.*, c.case_number, p.first_name, p.last_name FROM eobs e JOIN cases c ON c.id = e.case_id JOIN patients p ON p.id = c.patient_id
-        WHERE e.practice_id = ? AND e.archived_at IS NULL AND COALESCE(e.eob_date, DATE(e.created_at)) >= ?$locSql ORDER BY COALESCE(e.eob_date, DATE(e.created_at)) DESC, e.id DESC");
+        WHERE e.practice_id = ? AND e.archived_at IS NULL AND e.kind = 'eob' AND COALESCE(e.eob_date, DATE(e.created_at)) >= ?$locSql ORDER BY COALESCE(e.eob_date, DATE(e.created_at)) DESC, e.id DESC");
     $s->execute(array_merge([$practiceId, $from], $locArgs));
     $eobs = $s->fetchAll();
     $ids = array_column($eobs, 'id');
@@ -177,12 +177,23 @@ function eob_genie_report(int $practiceId, ?string $from = null): array {
         LEFT JOIN case_milestones m ON m.case_id = c.id AND m.milestone = 'treatment_notice_mailed'
         WHERE e.practice_id = ? AND e.archived_at IS NULL AND COALESCE(e.eob_date, DATE(e.created_at)) >= ?$locSql ORDER BY COALESCE(e.eob_date, DATE(e.created_at)) DESC");
     $s->execute(array_merge([$practiceId, $from], $locArgs));
-    $eobs = $s->fetchAll();
+    $all = $s->fetchAll();
+    $eobs = array_values(array_filter($all, fn($e) => $e['kind'] === 'eob'));
     $lines = [];
     if ($eobs) foreach ($pdo->query('SELECT * FROM eob_lines WHERE eob_id IN (' . implode(',', array_map('intval', array_column($eobs, 'id'))) . ')')->fetchAll() as $l) $lines[$l['eob_id']][] = $l;
     $usual = eob_usual_allowed($practiceId);
     $who = fn($e) => ['eobId' => (int)$e['id'], 'caseId' => (int)$e['case_id'], 'caseNumber' => $e['case_number'], 'patient' => trim($e['first_name'] . ' ' . $e['last_name']), 'payer' => $e['payer'], 'eobDate' => $e['eob_date'],
         'demandLetter' => jurisdiction_code($e['jurisdiction'] ?: 'FL') === 'FL'];
+    // Checks without an EOB: demand and suit money, mostly through an attorney.
+    $rec = []; $byFirm = [];
+    foreach ($all as $e) {
+        if ($e['kind'] !== 'payment') continue;
+        $rec[] = $who($e) + ['amount' => (float)$e['paid'], 'interest' => (float)($e['interest'] ?? 0), 'fees' => $e['fees'] !== null ? (float)$e['fees'] : null, 'via' => $e['via'], 'viaRef' => $e['via_ref'],
+            'recovery' => (bool)$e['recovery'], 'checkDate' => $e['check_date'], 'checkNumber' => $e['check_number'], 'posted' => (bool)$e['posted']];
+        $f = $e['via'] ?: 'Paid to the clinic directly';
+        $byFirm[$f] = ['via' => $f, 'n' => ($byFirm[$f]['n'] ?? 0) + 1, 'amount' => round(($byFirm[$f]['amount'] ?? 0) + (float)$e['paid'], 2), 'interest' => round(($byFirm[$f]['interest'] ?? 0) + (float)($e['interest'] ?? 0), 2)];
+    }
+    usort($byFirm, fn($a, $b) => $b['amount'] <=> $a['amount']);
     $money = []; $late = []; $billedLate = []; $codeLines = []; $minDos = null;
     foreach ($eobs as $e) {
         $t = eob_timing($e, $e['notice_on'], $e['first_visit'], $rate);
@@ -228,7 +239,8 @@ function eob_genie_report(int $practiceId, ?string $from = null): array {
         'paidLate' => ['interestDue' => round(array_sum(array_map(fn($x) => $x['interestDue'] ?? 0, $late)), 2), 'items' => $late],
         'noEob' => eob_charges_without_eob($practiceId),
         'billedLate' => ['charged' => round(array_sum(array_column($billedLate, 'charged')), 2), 'items' => $billedLate],
-        'pip' => eob_pip_forecast($practiceId)];
+        'pip' => eob_pip_forecast($practiceId),
+        'recovered' => ['total' => round(array_sum(array_column($rec, 'amount')), 2), 'interest' => round(array_sum(array_column($rec, 'interest')), 2), 'byFirm' => array_values($byFirm), 'items' => $rec]];
 }
 
 // Insurance charges still open well after the date of service with no EOB
@@ -275,7 +287,7 @@ function eob_pip_forecast(int $practiceId): array {
     if (!$pips) return ['items' => []];
     // PIP paid per date of service, from EOBs.
     $perVisit = []; $all = [];
-    foreach ($pdo->query("SELECT case_id, paid, dos_from, dos_to, (SELECT COUNT(DISTINCT dos) FROM eob_lines l WHERE l.eob_id = e.id) n FROM eobs e WHERE practice_id = " . (int)$practiceId . " AND archived_at IS NULL AND paid > 0 AND status <> 'exhausted'")->fetchAll() as $r) {
+    foreach ($pdo->query("SELECT case_id, paid, dos_from, dos_to, (SELECT COUNT(DISTINCT dos) FROM eob_lines l WHERE l.eob_id = e.id) n FROM eobs e WHERE practice_id = " . (int)$practiceId . " AND archived_at IS NULL AND kind = 'eob' AND paid > 0 AND status <> 'exhausted'")->fetchAll() as $r) {
         $n = max(1, (int)$r['n']); $v = (float)$r['paid'] / $n;
         $perVisit[$r['case_id']][] = $v; $all[] = $v;
     }

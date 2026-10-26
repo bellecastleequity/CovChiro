@@ -73,7 +73,11 @@ function eob_case_info(int $caseId, array $h): array {
         $s->execute([$caseId, $h['dosFrom'], $h['billRef'] ?: null, $h['payer'] ?: '']);
         $dupe = $s->fetch() ?: null;
     }
-    return ['caseId' => $caseId, 'caseNumber' => $c['case_number'], 'ehr' => $c['ehr_synced_at'] ? ($c['ehr_system'] ?: 'EHR') : null,
+    // What is still open with insurance, per coverage (0 = not tied to one) — for a check without an EOB.
+    $lr = pi_db()->prepare('SELECT * FROM ledger WHERE case_id = ?'); $lr->execute([$caseId]);
+    $openBy = [];
+    foreach (ledger_open_items($lr->fetchAll()) as $it) if ($it['billed_to'] === 'insurance' && $it['ins_open'] > 0.005) $openBy[(int)$it['coverage_id']] = round(($openBy[(int)$it['coverage_id']] ?? 0) + $it['ins_open'], 2);
+    return ['caseId' => $caseId, 'caseNumber' => $c['case_number'], 'ehr' => $c['ehr_synced_at'] ? ($c['ehr_system'] ?: 'EHR') : null, 'openByCoverage' => (object)$openBy,
         'coverages' => $covs, 'coverageId' => eob_pick_coverage($covs, $h['payer'] ?? null, $h['claim'] ?? null),
         'duplicateOf' => $dupe ? ['id' => (int)$dupe['id'], 'on' => substr($dupe['created_at'], 0, 10)] : null];
 }
@@ -111,9 +115,19 @@ function handle_upload() {
         unset($l);
     }
     unset($e);
+    foreach ($r['payments'] as $i => &$p) {
+        $p['index'] = $i;
+        $p['via'] = eob_match_firm($p['upper'] ?? '') ?? $p['via'];
+        unset($p['upper']);
+        $h = ['claim' => $p['claim'], 'patient' => $p['patient'], 'dateOfLoss' => $p['dateOfLoss'] ?? null, 'payer' => $p['payer']];
+        $p['matches'] = eob_match_cases($h);
+        $pick = $caseId ?: (($p['matches'][0]['score'] ?? 0) >= 55 ? $p['matches'][0]['caseId'] : null);
+        $p['case'] = $pick ? eob_case_info($pick, $h) : null;
+    }
+    unset($p);
     session_start();
     $_SESSION['eob_pending'] = ['token' => $token, 'pages' => $r['pageCount']];
-    audit('eob_read', 'case', $caseId ?: null, $caseId ?: null, $user, count($r['eobs']) . ' EOB(s), ' . $r['pageCount'] . ' page(s)');
+    audit('eob_read', 'case', $caseId ?: null, $caseId ?: null, $user, count($r['eobs']) . ' EOB(s), ' . count($r['payments']) . ' check(s) without an EOB, ' . $r['pageCount'] . ' page(s)');
     json_response($r + ['token' => $token, 'layouts' => EOB_LAYOUT_NAMES]);
 }
 
@@ -143,8 +157,19 @@ function eob_post(int $eobId, int $caseId, ?int $coverageId, array $e, array $li
         if ($amount < 0.005) return;
         $ins->execute([$caseId, $date, $kind, $bucket, $bucket === 'insurance' ? $cov : null, $to, null, $appliesTo, round($amount, 2), mb_substr('EOB ' . ($e['bill_ref'] ?: ($e['check_number'] ?: '')), 0, 120), mb_substr($memo, 0, 255), 'manual', $eobId, $user['id'], now_str()]);
     };
-    $posted = ['payments' => 0.0, 'adjustments' => 0.0, 'toPatient' => 0.0, 'chargesCreated' => 0];
+    $posted = ['payments' => 0.0, 'adjustments' => 0.0, 'toPatient' => 0.0, 'fromPatient' => 0.0, 'chargesCreated' => 0];
     $paidDate = $e['check_date'] ?: ($e['eob_date'] ?: date('Y-m-d'));
+    // Interest on a late payment isn't a payment on the charges: it's kept on
+    // the EOB (and in the EOB Genie report), not posted against the visits.
+    $checkPaid = $e['paid'] !== null ? max(0, (float)$e['paid'] - (float)($e['interest'] ?? 0)) : null;
+    $dedTotal = (float)($e['deductible'] ?? 0);
+    // MedPay (in Florida, usually the 20% PIP leaves) pays what was moved to
+    // the patient: that balance moves back to MedPay and is paid there. No
+    // fee-schedule reduction, nothing moved to the patient.
+    $cv = $pdo->prepare('SELECT type FROM coverages WHERE id = ?'); $cv->execute([$coverageId]);
+    $medpay = $coverageId && $cv->fetchColumn() === 'medpay';
+    $open = [];
+    if ($medpay) { $lr = $pdo->prepare('SELECT * FROM ledger WHERE case_id = ?'); $lr->execute([$caseId]); foreach (ledger_open_items($lr->fetchAll()) as $it) $open[$it['id']] = $it; }
     foreach ($byDos as $dos => $ls) {
         $charged = array_sum(array_map(fn($l) => (float)$l['charged'], $ls));
         $allowed = array_sum(array_map(fn($l) => (float)($l['allowed_full'] ?? 0), $ls));
@@ -166,8 +191,19 @@ function eob_post(int $eobId, int $caseId, ?int $coverageId, array $e, array $li
             continue;
         }
         if ($linePaid) $paid = array_sum(array_map(fn($l) => (float)($l['paid'] ?? 0), $ls));
-        elseif ($e['paid'] !== null) $paid = $allowedTotal > 0 ? (float)$e['paid'] * $allowed / $allowedTotal : (float)$e['paid'] / count($byDos);
+        elseif ($checkPaid !== null) $paid = $allowedTotal > 0 ? $checkPaid * $allowed / $allowedTotal : $checkPaid / count($byDos);
         else $paid = 0.0;
+        if ($medpay) {
+            $back = min($paid, max(0, (float)($open[$cid]['pat_open'] ?? 0)));
+            if ($back >= 0.005) {
+                $ins->execute([$caseId, $paidDate, 'transfer', 'patient', null, 'insurance', $coverageId, $cid, round($back, 2), mb_substr('EOB ' . ($e['bill_ref'] ?: ($e['check_number'] ?: '')), 0, 120),
+                    mb_substr('Patient balance paid by MedPay (' . $e['payer'] . ')', 0, 255), 'manual', $eobId, $user['id'], now_str()]);
+                $posted['fromPatient'] += $back;
+            }
+            $post($paidDate, 'payment', 'insurance', $coverageId, null, $cid, $paid, $e['payer'] . ' MedPay payment' . ($e['check_number'] ? ' — check ' . $e['check_number'] : '') . ' (' . $codes . ')');
+            $posted['payments'] += $paid;
+            continue;
+        }
         $post($paidDate, 'payment', 'insurance', $coverageId, null, $cid, $paid, $e['payer'] . ' payment' . ($e['check_number'] ? ' — check ' . $e['check_number'] : '') . ' (' . $codes . ')');
         $posted['payments'] += $paid;
         $denied = array_sum(array_map(fn($l) => (float)($l['allowed_full'] ?? 0) < 0.01 ? (float)$l['charged'] : 0, $ls));
@@ -177,12 +213,86 @@ function eob_post(int $eobId, int $caseId, ?int $coverageId, array $e, array $li
         // What PIP allowed but didn't pay (20% / deductible) is the patient's.
         if ($e['paid'] !== null || $linePaid) {
             $rest = max(0, $allowed - $paid);
-            $post($paidDate, 'transfer', 'insurance', $coverageId, 'patient', $cid, $rest, 'PIP 20% coinsurance / deductible (' . $e['payer'] . ') — patient responsibility');
+            $ded = min($rest, $allowedTotal > 0 ? $dedTotal * $allowed / $allowedTotal : $dedTotal / count($byDos));
+            $post($paidDate, 'transfer', 'insurance', $coverageId, 'patient', $cid, $ded, 'PIP deductible (' . $e['payer'] . ') — patient responsibility');
+            $post($paidDate, 'transfer', 'insurance', $coverageId, 'patient', $cid, $rest - $ded, 'PIP 20% coinsurance (' . $e['payer'] . ') — patient responsibility');
             $posted['toPatient'] += $rest;
         }
     }
     foreach ($posted as $k => $v) if (is_float($v)) $posted[$k] = round($v, 2);
     return $posted;
+}
+
+// A check with no EOB (a PIP demand or suit payment, usually forwarded by
+// the clinic's attorney): what isn't interest pays the case's oldest open
+// balances with this coverage first. When it is more than is open, it
+// recovers fee-schedule reductions taken on earlier EOBs (the reduction is
+// reversed and paid); anything left is posted unapplied, to sort out on the
+// ledger. Interest and attorney fees are recorded, not posted.
+function eob_post_payment(int $eobId, int $caseId, ?int $coverageId, array $row, float $amount, float $interest, array $user): array {
+    $pdo = pi_db();
+    $lr = $pdo->prepare('SELECT * FROM ledger WHERE case_id = ?'); $lr->execute([$caseId]);
+    $items = array_values(array_filter(ledger_open_items($lr->fetchAll()), fn($it) => $it['billed_to'] === 'insurance' && ($it['coverage_id'] === null || $it['coverage_id'] === $coverageId)));
+    usort($items, fn($a, $b) => [$a['date'], $a['id']] <=> [$b['date'], $b['id']]);
+    $date = $row['check_date'] ?: date('Y-m-d');
+    $ref = mb_substr('Check ' . ($row['check_number'] ?: '') . ($row['via_ref'] ? ' · file ' . $row['via_ref'] : ''), 0, 120);
+    $what = $row['payer'] . ($row['recovery'] ? ' demand / suit payment' : ' payment') . ($row['via'] ? ' via ' . $row['via'] : '');
+    $ins = $pdo->prepare('INSERT INTO ledger (case_id, entry_date, kind, bucket, coverage_id, applies_to_id, amount, reference, memo, source, eob_id, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
+    $put = fn($kind, $appliesTo, $amt, $memo) => $ins->execute([$caseId, $date, $kind, 'insurance', $coverageId, $appliesTo, round($amt, 2), $ref, mb_substr($memo, 0, 255), 'manual', $eobId, $user['id'], now_str()]);
+    $left = round(max(0, $amount - $interest), 2);
+    $out = ['payments' => 0.0, 'reductionsRecovered' => 0.0, 'unapplied' => 0.0, 'interest' => round($interest, 2), 'charges' => 0];
+    foreach ($items as $it) {
+        if ($left < 0.005) break;
+        $x = min($left, $it['ins_open']);
+        if ($x < 0.005) continue;
+        $put('payment', $it['id'], $x, $what . ' (visit ' . $it['date'] . ')');
+        $left = round($left - $x, 2); $out['payments'] += $x; $out['charges']++;
+    }
+    foreach ($items as $it) {
+        if ($left < 0.005) break;
+        $x = min($left, $it['ins_adjusted']);
+        if ($x < 0.005) continue;
+        $put('adjustment', $it['id'], -$x, 'Fee-schedule reduction recovered — ' . $what);
+        $put('payment', $it['id'], $x, $what . ' (visit ' . $it['date'] . ', recovered reduction)');
+        $left = round($left - $x, 2); $out['payments'] += $x; $out['reductionsRecovered'] += $x;
+    }
+    if ($left >= 0.005) { $put('payment', null, $left, $what . ' — more than the open balance; apply it on the ledger'); $out['unapplied'] = $left; $out['payments'] += $left; }
+    foreach ($out as $k => $v) if (is_float($v)) $out[$k] = round($v, 2);
+    return $out;
+}
+
+// A reviewed check without an EOB, as submitted.
+function eob_payment_input(array $it, int $caseId): array {
+    $h = $it['header'] ?? [];
+    $amount = eob_num($h['amount'] ?? null);
+    if ($amount === null || $amount <= 0) json_response(['error' => 'Enter the check amount for each payment you are saving.'], 400);
+    $interest = min($amount, max(0, (float)eob_num($h['interest'] ?? null)));
+    $covs = eob_coverages($caseId);
+    $coverageId = in_array((int)($it['coverageId'] ?? 0), array_column($covs, 'id'), true) ? (int)$it['coverageId'] : eob_pick_coverage($covs, $h['payer'] ?? null, $h['claim'] ?? null);
+    $row = ['payer' => mb_substr(trim((string)($h['payer'] ?? '')) ?: 'Auto insurer', 0, 120), 'layout' => 'payment', 'kind' => 'payment',
+        'claim' => trim((string)($h['claim'] ?? '')) ?: null, 'bill_ref' => null, 'received_on' => null, 'eob_date' => eob_day($h['checkDate'] ?? null),
+        'dos_from' => null, 'dos_to' => null, 'check_number' => mb_substr((string)($h['checkNumber'] ?? ''), 0, 40) ?: null, 'check_date' => eob_day($h['checkDate'] ?? null),
+        'status' => 'paid', 'via' => mb_substr(trim((string)($h['via'] ?? '')), 0, 120) ?: null, 'via_ref' => mb_substr(trim((string)($h['viaRef'] ?? '')), 0, 60) ?: null, 'recovery' => !empty($h['recovery'])];
+    $r = ['totals' => ['charged' => 0, 'allowed' => null, 'deductible' => null, 'coinsurance' => null, 'paid' => $amount, 'interest' => $interest ?: null, 'fees' => eob_num($h['fees'] ?? null)],
+        'reasons' => [], 'checks' => [], 'status' => 'paid'];
+    return [$r, $row, $coverageId, $amount, $interest];
+}
+
+// The attorney a check came through, from the practice's attorney contacts:
+// the firm's name, its email domain or phone number on the pages.
+function eob_match_firm(string $upper): ?string {
+    $s = pi_db()->prepare("SELECT organization, name, email, phone FROM contacts WHERE practice_id = ? AND type = 'attorney' AND archived_at IS NULL");
+    $s->execute([pid()]);
+    $flat = preg_replace('/[^A-Z0-9]/', '', str_replace('&', 'AND', $upper));
+    $digits = preg_replace('/\D/', '', $upper);
+    foreach ($s->fetchAll() as $c) {
+        $org = preg_replace('/[^A-Z0-9]/', '', str_replace('&', 'AND', strtoupper((string)$c['organization'])));
+        $org = preg_replace('/(PA|PLLC|LLP|LLC|INC)$/', '', $org);
+        $dom = preg_match('/@([a-z0-9.\-]+)$/i', (string)$c['email'], $m) && !preg_match('/gmail|yahoo|outlook|hotmail|aol|icloud/i', $m[1]) ? preg_replace('/[^A-Z0-9]/', '', strtoupper($m[1])) : '';
+        $ph = preg_replace('/\D/', '', (string)$c['phone']);
+        if ((strlen($org) >= 6 && str_contains($flat, $org)) || (strlen($dom) >= 6 && str_contains($flat, $dom)) || (strlen($ph) === 10 && str_contains($digits, $ph))) return $c['organization'] ?: $c['name'];
+    }
+    return null;
 }
 
 // One reviewed EOB as submitted (on upload or edit): its lines, totals and
@@ -196,12 +306,13 @@ function eob_input(array $it, int $caseId): array {
         $lines[] = ['line_no' => $n + 1, 'dos' => eob_day($l['dos'] ?? null), 'code' => substr($code, 0, 10), 'modifiers' => mb_substr((string)($l['modifiers'] ?? ''), 0, 20) ?: null,
             'units' => eob_num($l['units'] ?? null), 'charged' => eob_num($l['charged']), 'allowed_full' => eob_num($l['allowed'] ?? null), 'paid' => eob_num($l['paid'] ?? null), 'reasons' => mb_substr((string)($l['reasons'] ?? ''), 0, 120) ?: null];
     }
-    $r = eob_finish(['lines' => array_map(fn($l) => ['dos' => $l['dos'], 'code' => $l['code'], 'charged' => $l['charged'], 'allowed' => $l['allowed_full'], 'paid' => $l['paid'], 'reasons' => $l['reasons']], $lines),
-        'totals' => ['charged' => eob_num($t['charged'] ?? null), 'allowed' => eob_num($t['allowed'] ?? null), 'deductible' => eob_num($t['deductible'] ?? null), 'coinsurance' => eob_num($t['coinsurance'] ?? null), 'interest' => eob_num($t['interest'] ?? null), 'paid' => eob_num($t['paid'] ?? null)],
-        'reasons' => is_array($it['reasons'] ?? null) ? $it['reasons'] : [], 'header' => []], !empty($it['exhausted']) ? 'BENEFITS EXHAUSTED' : '');
-    if (!$lines && $r['totals']['charged'] <= 0) json_response(['error' => 'Each EOB needs its service lines or at least the total charged.'], 400);
     $covs = eob_coverages($caseId);
     $coverageId = in_array((int)($it['coverageId'] ?? 0), array_column($covs, 'id'), true) ? (int)$it['coverageId'] : eob_pick_coverage($covs, $h['payer'] ?? null, $h['claim'] ?? null);
+    $medpay = (bool)array_filter($covs, fn($c) => $c['id'] === $coverageId && $c['type'] === 'medpay');
+    $r = eob_finish(['lines' => array_map(fn($l) => ['dos' => $l['dos'], 'code' => $l['code'], 'charged' => $l['charged'], 'allowed' => $l['allowed_full'], 'paid' => $l['paid'], 'reasons' => $l['reasons']], $lines),
+        'totals' => ['charged' => eob_num($t['charged'] ?? null), 'allowed' => eob_num($t['allowed'] ?? null), 'deductible' => eob_num($t['deductible'] ?? null), 'coinsurance' => eob_num($t['coinsurance'] ?? null), 'interest' => eob_num($t['interest'] ?? null), 'paid' => eob_num($t['paid'] ?? null)],
+        'reasons' => is_array($it['reasons'] ?? null) ? $it['reasons'] : [], 'header' => []], (!empty($it['exhausted']) ? 'BENEFITS EXHAUSTED' : '') . ($medpay ? ' MED PAY' : ''));
+    if (!$lines && $r['totals']['charged'] <= 0) json_response(['error' => 'Each EOB needs its service lines or at least the total charged.'], 400);
     $dos = array_filter(array_column($lines, 'dos'));
     $row = ['payer' => mb_substr(trim((string)($h['payer'] ?? '')) ?: 'Auto insurer', 0, 120), 'layout' => in_array($it['layout'] ?? '', array_keys(EOB_LAYOUT_NAMES), true) ? $it['layout'] : 'manual',
         'claim' => trim((string)($h['claim'] ?? '')) ?: null, 'bill_ref' => mb_substr((string)($h['billRef'] ?? ''), 0, 60) ?: null, 'received_on' => eob_day($h['receivedOn'] ?? null), 'eob_date' => eob_day($h['eobDate'] ?? null),
@@ -214,13 +325,14 @@ function eob_input(array $it, int $caseId): array {
 function eob_write(?int $eobId, int $caseId, ?int $coverageId, array $row, array $r, array $lines, array $user): int {
     $pdo = pi_db(); $tot = $r['totals'];
     $vals = [$coverageId, $row['payer'], $row['layout'], enc($row['claim']), $row['bill_ref'], $row['received_on'], $row['eob_date'], $row['dos_from'], $row['dos_to'], $row['check_number'], $row['check_date'],
-        $tot['charged'], $tot['allowed'], $tot['deductible'], $tot['coinsurance'], $tot['paid'], $tot['interest'], $row['status'], json_encode($r['reasons'] ?: null), json_encode($r['checks'])];
+        $tot['charged'], $tot['allowed'], $tot['deductible'], $tot['coinsurance'], $tot['paid'], $tot['interest'], $row['status'], json_encode($r['reasons'] ?: null), json_encode($r['checks']),
+        $row['kind'] ?? 'eob', $row['via'] ?? null, $row['via_ref'] ?? null, empty($row['recovery']) ? 0 : 1, $tot['fees'] ?? null];
     if ($eobId === null) {
-        $pdo->prepare('INSERT INTO eobs (coverage_id, payer, layout, claim_number_enc, bill_ref, received_on, eob_date, dos_from, dos_to, check_number, check_date, charged, allowed, deductible, coinsurance, paid, interest, status, reasons, checks, practice_id, case_id, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        $pdo->prepare('INSERT INTO eobs (coverage_id, payer, layout, claim_number_enc, bill_ref, received_on, eob_date, dos_from, dos_to, check_number, check_date, charged, allowed, deductible, coinsurance, paid, interest, status, reasons, checks, kind, via, via_ref, recovery, fees, practice_id, case_id, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
             ->execute(array_merge($vals, [pid(), $caseId, $user['id'], now_str()]));
         $eobId = (int)$pdo->lastInsertId();
     } else {
-        $pdo->prepare('UPDATE eobs SET coverage_id = ?, payer = ?, layout = ?, claim_number_enc = ?, bill_ref = ?, received_on = ?, eob_date = ?, dos_from = ?, dos_to = ?, check_number = ?, check_date = ?, charged = ?, allowed = ?, deductible = ?, coinsurance = ?, paid = ?, interest = ?, status = ?, reasons = ?, checks = ? WHERE id = ?')
+        $pdo->prepare('UPDATE eobs SET coverage_id = ?, payer = ?, layout = ?, claim_number_enc = ?, bill_ref = ?, received_on = ?, eob_date = ?, dos_from = ?, dos_to = ?, check_number = ?, check_date = ?, charged = ?, allowed = ?, deductible = ?, coinsurance = ?, paid = ?, interest = ?, status = ?, reasons = ?, checks = ?, kind = ?, via = ?, via_ref = ?, recovery = ?, fees = ? WHERE id = ?')
             ->execute(array_merge($vals, [$eobId]));
         $pdo->prepare('DELETE FROM eob_lines WHERE eob_id = ?')->execute([$eobId]);
     }
@@ -258,7 +370,8 @@ function handle_apply() {
     $pend = $_SESSION['eob_pending'] ?? null;
     if (!$pend || !hash_equals($pend['token'], (string)($b['token'] ?? ''))) json_response(['error' => 'This upload has expired — choose the file again.'], 409);
     $items = array_values(array_filter($b['eobs'] ?? [], fn($x) => !empty($x['include'])));
-    if (!$items) json_response(['error' => 'Choose at least one EOB to save.'], 400);
+    $pays = array_values(array_filter($b['payments'] ?? [], fn($x) => !empty($x['include'])));
+    if (!$items && !$pays) json_response(['error' => 'Choose at least one EOB or payment to save.'], 400);
     $pdo = pi_db();
     $saved = []; $switched = [];
     foreach ($items as $it) {
@@ -270,7 +383,7 @@ function handle_apply() {
         $eobId = eob_write(null, $caseId, $coverageId, $row, $r, $lines, $user);
         $posted = null;
         if ($postIt) {
-            $posted = eob_post($eobId, $caseId, $coverageId, $row + ['paid' => $r['totals']['paid']], eob_post_lines($lines, $row, $r['totals']), $user);
+            $posted = eob_post($eobId, $caseId, $coverageId, $row + ['paid' => $r['totals']['paid'], 'interest' => $r['totals']['interest'], 'deductible' => $r['totals']['deductible']], eob_post_lines($lines, $row, $r['totals']), $user);
             $pdo->prepare('UPDATE eobs SET posted = 1 WHERE id = ?')->execute([$eobId]);
         }
         $pdo->commit();
@@ -278,6 +391,23 @@ function handle_apply() {
         touch_case($caseId);
         audit('eob_save', 'case', $caseId, $caseId, $user, $row['payer'] . ' ' . ($row['dos_from'] ?? '') . ($posted ? ' — posted' : ''));
         $saved[] = ['id' => $eobId, 'caseId' => $caseId, 'caseNumber' => $case['case_number'], 'payer' => $row['payer'], 'status' => $row['status'], 'posted' => $posted, 'notPostedWhy' => !empty($it['post']) && !$postIt ? eob_not_posted_why($case, $user) : null];
+    }
+    foreach ($pays as $it) {
+        $caseId = (int)($it['caseId'] ?? 0);
+        $case = case_or_404($caseId);
+        [$r, $row, $coverageId, $amount, $interest] = eob_payment_input($it, $caseId);
+        $postIt = !empty($it['post']) && !$case['ehr_synced_at'] && fin_can($user, 'ledger');
+        $pdo->beginTransaction();
+        $eobId = eob_write(null, $caseId, $coverageId, $row, $r, [], $user);
+        $posted = null;
+        if ($postIt) {
+            $posted = eob_post_payment($eobId, $caseId, $coverageId, $row, $amount, $interest, $user);
+            $pdo->prepare('UPDATE eobs SET posted = 1 WHERE id = ?')->execute([$eobId]);
+        }
+        $pdo->commit();
+        touch_case($caseId);
+        audit('eob_save', 'case', $caseId, $caseId, $user, $row['payer'] . ' check' . ($row['via'] ? ' via ' . $row['via'] : '') . ' $' . number_format($amount, 2) . ($posted ? ' — posted' : ''));
+        $saved[] = ['id' => $eobId, 'caseId' => $caseId, 'caseNumber' => $case['case_number'], 'payer' => $row['payer'], 'kind' => 'payment', 'status' => 'paid', 'posted' => $posted, 'notPostedWhy' => !empty($it['post']) && !$postIt ? eob_not_posted_why($case, $user) : null];
     }
     unset($_SESSION['eob_pending']);
     json_response(['saved' => $saved, 'switchedToLop' => $switched]);
@@ -312,7 +442,7 @@ function handle_update() {
         $n->execute([now_str(), $user['id'], now_str(), $old['id']]);
         $removed = $n->rowCount();
     }
-    if ($wantPost) $posted = eob_post((int)$old['id'], $caseId, $coverageId, $row + ['paid' => $r['totals']['paid']], eob_post_lines($lines, $row, $r['totals']), $user);
+    if ($wantPost) $posted = eob_post((int)$old['id'], $caseId, $coverageId, $row + ['paid' => $r['totals']['paid'], 'interest' => $r['totals']['interest'], 'deductible' => $r['totals']['deductible']], eob_post_lines($lines, $row, $r['totals']), $user);
     $pdo->prepare('UPDATE eobs SET posted = ? WHERE id = ?')->execute([$wantPost ? 1 : 0, $old['id']]);
     $pdo->commit();
     $switched = $r['status'] === 'exhausted' && $old['status'] !== 'exhausted' && eob_exhaust($caseId, $coverageId, $row, $user);
@@ -330,7 +460,8 @@ function eob_row_out(array $e, array $lines, array $usual, bool $money, array $c
     $out = ['id' => (int)$e['id'], 'caseId' => (int)$e['case_id'], 'payer' => $e['payer'], 'layout' => $e['layout'], 'billRef' => $e['bill_ref'], 'receivedOn' => $e['received_on'], 'eobDate' => $e['eob_date'],
         'dosFrom' => $e['dos_from'], 'dosTo' => $e['dos_to'], 'checkNumber' => $e['check_number'], 'checkDate' => $e['check_date'], 'status' => $e['status'], 'posted' => (bool)$e['posted'],
         'claim' => dec($e['claim_number_enc']), 'coverageId' => $e['coverage_id'] ? (int)$e['coverage_id'] : null,
-        'interest' => $e['interest'] !== null ? (float)$e['interest'] : null,
+        'interest' => $e['interest'] !== null ? (float)$e['interest'] : null, 'kind' => $e['kind'], 'via' => $e['via'], 'viaRef' => $e['via_ref'], 'recovery' => (bool)$e['recovery'],
+        'fees' => $e['fees'] !== null ? (float)$e['fees'] : null,
         'daysToPay' => eob_days_to_pay($e), 'timing' => eob_timing($e, $noticeOn, $case['first_visit'] ?? null, eob_settings()['interest_rate']), 'checks' => json_decode((string)$e['checks'], true) ?: [], 'reasons' => json_decode((string)$e['reasons'], true) ?: [], 'createdAt' => $e['created_at']];
     if ($money) {
         $out += ['charged' => (float)$e['charged'], 'allowed' => $e['allowed'] !== null ? (float)$e['allowed'] : null, 'deductible' => $e['deductible'] !== null ? (float)$e['deductible'] : null,

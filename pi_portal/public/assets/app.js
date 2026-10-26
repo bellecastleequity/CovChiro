@@ -3325,11 +3325,12 @@ function genieProgress(host, file) {
   requestAnimationFrame(tick);
   return {
     stop() { stopped = true; },
-    async done(n) {
+    async done(n, checks = 0) {
       stopped = true;
       bar.style.width = '100%';
       root.classList.add('gp-done');
-      setMsg(n ? `Ta-da! ${n} EOB${n === 1 ? '' : 's'} ready for you to check.` : 'All done — no auto / PIP EOBs in this one.');
+      const what = [n ? `${n} EOB${n === 1 ? '' : 's'}` : '', checks ? `${checks} check${checks === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
+      setMsg(what ? `Ta-da! ${what} ready for you to check.` : 'All done — no auto / PIP EOBs in this one.');
       root.querySelector('.gp-sub').textContent = '';
       const quiet = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       await new Promise((r) => setTimeout(r, quiet ? 400 : 1400));
@@ -3347,17 +3348,21 @@ function eobUploadModal(caseId = null) {
       const fd = new FormData(); if (caseId) fd.append('case_id', caseId); fd.append('file', file);
       const show = genieProgress(host, file);
       try { res = await api('eob.php?action=upload', fd); } catch (err) { show.stop(); showFile(); throw err; }
-      await show.done(res.eobs.length);
+      await show.done(res.eobs.length, (res.payments || []).length);
       renderReview(); okBtn.textContent = 'Save'; return false;
     }
     readAll();
     const items = res.eobs.map((e) => ({ include: e.include, caseId: e.case?.caseId || null, coverageId: e.coverageId || null, header: e.header, lines: e.lines, totals: e.totals,
       pages: e.pages, layout: e.layout, reasons: e.reasons, exhausted: e.status === 'exhausted', post: e.post }));
-    const missing = items.find((x) => x.include && !x.caseId);
-    if (missing) throw new Error('Choose the case for every EOB you are saving (or untick it).');
-    const r = await api('eob.php?action=apply', { token: res.token, eobs: items });
-    const posted = r.saved.filter((s) => s.posted).length;
-    toast(`${r.saved.length} EOB${r.saved.length === 1 ? '' : 's'} saved${posted ? ' — ' + posted + ' posted to the ledger' : ''}`);
+    const pays = (res.payments || []).map((p) => ({ include: p.include, caseId: p.case?.caseId || null, coverageId: p.coverageId || null, post: p.post,
+      header: { payer: p.payer, claim: p.claim, checkNumber: p.checkNumber, checkDate: p.date, amount: p.amount, interest: p.interest, fees: p.fees, via: p.via, viaRef: p.viaRef, recovery: p.recovery } }));
+    const missing = items.find((x) => x.include && !x.caseId) || pays.find((x) => x.include && !x.caseId);
+    if (missing) throw new Error('Choose the case for every EOB and check you are saving (or untick it).');
+    if (!items.some((x) => x.include) && !pays.some((x) => x.include)) throw new Error('Tick at least one EOB or check to save.');
+    const r = await api('eob.php?action=apply', { token: res.token, eobs: items, payments: pays });
+    const posted = r.saved.filter((s) => s.posted).length, nPay = r.saved.filter((s) => s.kind === 'payment').length, nEob = r.saved.length - nPay;
+    toast(`${[nEob ? nEob + ' EOB' + (nEob === 1 ? '' : 's') : '', nPay ? nPay + ' check' + (nPay === 1 ? '' : 's') : ''].filter(Boolean).join(' and ')} saved${posted ? ' — ' + posted + ' posted to the ledger' : ''}`);
+    r.saved.filter((s) => s.posted?.unapplied).forEach((s) => toast(`${s.caseNumber}: ${money(s.posted.unapplied)} was more than the open balance — it's on the ledger unapplied; check it.`));
     r.saved.filter((s) => s.notPostedWhy).forEach((s) => toast(s.caseNumber + ': ' + s.notPostedWhy));
     if (r.switchedToLop.length) toast(`PIP benefits exhausted — ${r.switchedToLop.length === 1 ? 'the case moved' : r.switchedToLop.length + ' cases moved'} to a letter of protection`);
     if (S.caseData && caseId) await reloadCase(); else route();
@@ -3366,8 +3371,8 @@ function eobUploadModal(caseId = null) {
   const okBtn = m.el.querySelector('[data-ok]');
   function showFile() {
     host.innerHTML = `${genieHead()}<p class="small">Scan the auto insurers' EOBs — one, or the whole day's mail in one PDF — and upload the scan. Each EOB is read, matched to its patient's case, and shown here to check before anything is saved.</p>
-      <ul class="small muted mt"><li>Auto / PIP payers only: GEICO, Progressive, State Farm, USAA, Allstate, Travelers, MetLife / Farmers, AAA and others. Health-insurance, Medicare and attorney paperwork in the batch is skipped.</li>
-        <li>Checks and payment advices in the scan are matched to their EOB.</li><li>Scan at 300 dpi, black and white or greyscale, for the best reading.</li>
+      <ul class="small muted mt"><li>Auto / PIP payers only: GEICO, Progressive, State Farm, USAA, Allstate, Travelers, MetLife / Farmers, AAA and others. Health-insurance and Medicare paperwork in the batch is skipped.</li>
+        <li>Checks and payment advices in the scan are matched to their EOB. A check with no EOB — like a PIP demand or suit payment your attorney forwards with a cover letter — is read too and applied to the case's open balance.</li><li>Scan at 300 dpi, black and white or greyscale, for the best reading.</li>
         <li>The scan is only read — it isn't kept. Only the numbers you confirm are saved; keep the paper or scan in your EHR.</li></ul>
       <label class="mt" for="eob-file">Scanned EOB (PDF)</label><input type="file" id="eob-file" accept="application/pdf,.pdf">`;
   }
@@ -3404,20 +3409,58 @@ function eobUploadModal(caseId = null) {
           <td><input data-l="reasons" value="${esc(l.reasons || '')}" class="w-codes" aria-label="Reason codes"></td><td><button type="button" class="linklike" data-eob-del="${j}" aria-label="Remove line">✕</button></td></tr>`).join('')}
         </tbody></table></div>
       <button type="button" class="btn ghost sm mt-sm" data-eob-add>+ Add line</button>
-      <div class="form-grid mt-sm eob-totals">${[['charged', 'Total charged'], ['allowed', 'Total allowed'], ['deductible', 'Deductible'], ['coinsurance', 'PIP 20% / copay'], ['paid', 'Paid (check)']].map(([k, l]) => `<div><label for="eob-${i}-t-${k}">${l}</label><input id="eob-${i}-t-${k}" type="number" step="0.01" data-t="${k}" value="${t[k] ?? ''}"${k === 'paid' && t.paid === null && e.estimatedPaid !== null ? ` placeholder="about ${e.estimatedPaid}"` : ''}></div>`).join('')}</div>
+      <div class="form-grid mt-sm eob-totals">${[['charged', 'Total charged'], ['allowed', 'Total allowed'], ['deductible', 'Deductible'], ['coinsurance', 'PIP 20% / copay'], ['interest', 'Interest paid'], ['paid', 'Paid (check)']].map(([k, l]) => `<div><label for="eob-${i}-t-${k}">${l}</label><input id="eob-${i}-t-${k}" type="number" step="0.01" data-t="${k}" value="${t[k] ?? ''}"${k === 'paid' && t.paid === null && e.estimatedPaid !== null ? ` placeholder="about ${e.estimatedPaid}"` : ''}></div>`).join('')}</div>
       ${t.paid === null && e.estimatedPaid !== null ? `<p class="small muted">This EOB doesn't print the payment (it's mailed separately). PIP pays 80% of the allowed amount — about ${money(e.estimatedPaid)}. Enter the check amount here if you have it; otherwise save now and post the payment on the case when the check comes.</p>` : ''}
       ${eobChecksHtml(e.checks)}${eobNotesHtml(e.lines)}
       ${e.status === 'exhausted' ? '<div class="notice">PIP benefits exhausted. Saving marks the PIP coverage exhausted and moves the case to a letter of protection; posting moves these charges to the patient balance.</div>' : ''}
       ${c?.duplicateOf ? `<div class="notice">An EOB from this payer for the same dates was already saved on ${esc(fmtDate(c.duplicateOf.on))}. Posting again would count the payment twice.</div>` : ''}
-      <label class="check mt-sm"><input type="checkbox" data-e="post"${e.post ? ' checked' : ''}${c?.ehr || !can('fin:ledger') ? ' disabled' : ''}> Post to the case ledger — the payment, the PIP fee-schedule reduction, and the 20% / deductible moved to the patient balance${c?.ehr ? ` <span class="muted">(this case's money comes from ${esc(c.ehr)} ledger uploads, so the EOB is saved for review only)</span>` : ''}</label>
+      ${t.interest ? `<p class="small muted">${money(t.interest)} of the check is interest: it's kept with the EOB and in the EOB Genie report, not posted against the visits.</p>` : ''}
+      <label class="check mt-sm"><input type="checkbox" data-e="post"${e.post ? ' checked' : ''}${c?.ehr || !can('fin:ledger') ? ' disabled' : ''}> Post to the case ledger — ${cov.find((v) => v.id === e.coverageId)?.type === 'medpay' ? 'the MedPay payment (the patient balance it pays moves back to MedPay)' : 'the payment, the PIP fee-schedule reduction, and the deductible and 20% moved to the patient balance'}${c?.ehr ? ` <span class="muted">(this case's money comes from ${esc(c.ehr)} ledger uploads, so the EOB is saved for review only)</span>` : ''}</label>
     </section>`;
+  }
+  // A check with no EOB: a PIP demand or suit payment, usually forwarded by the attorney.
+  function paySectionHtml(p, i) {
+    const c = p.case;
+    if (p.include === undefined) p.include = !!c || !!caseId;
+    if (p.post === undefined) p.post = !!c && !c.ehr;
+    const cov = c ? c.coverages : [];
+    p.coverageId = p.coverageId ?? c?.coverageId ?? null;
+    const open = c ? Number((c.openByCoverage || {})[p.coverageId || 0] || 0) + (p.coverageId ? Number((c.openByCoverage || {})[0] || 0) : 0) : null;
+    const benefits = Math.max(0, (p.amount || 0) - (p.interest || 0));
+    const f = (k, l, v, type = 'text') => `<div><label for="pay-${i}-${k}">${esc(l)}</label><input id="pay-${i}-${k}" type="${type}" data-p="${k}" value="${esc(v ?? '')}"${type === 'number' ? ' step="0.01" min="0"' : ''}></div>`;
+    const opts = caseOptions({ case: c, matches: p.matches }).replace('<option value="new">+ New patient from this EOB</option>', '');
+    return `<section class="eob-rev eob-pay${p.include ? '' : ' off'}" data-pi="${i}">
+      <div class="eob-rev-head"><label class="check"><input type="checkbox" data-e="include"${p.include ? ' checked' : ''}> <strong>${esc(p.payer || 'Auto insurer')} check</strong></label>
+        ${p.recovery ? '<span class="chip legal">Demand / PIP suit</span>' : '<span class="chip">No EOB</span>'}${p.checkMissing ? ' <span class="chip ochre">Check not in this scan</span>' : ''}
+        <span class="spacer"></span><span class="small muted">Page${p.pages.length === 1 ? '' : 's'} ${esc(p.pages.join(', '))}${p.letterPages?.length ? ' · with the attorney\'s cover letter' : ''}</span></div>
+      ${p.via ? `<p class="small">Came through <strong>${esc(p.via)}</strong>${p.viaRef ? ` — their file ${esc(p.viaRef)}` : ''}${p.fileStatus === 'closed' ? ' · <span class="chip teal">Attorney closing the file</span>' : p.fileStatus === 'open' ? ' · <span class="chip">Attorney still pursuing</span>' : ''}</p>` : ''}
+      <div class="form-grid">
+        <div><label for="pay-${i}-case">Case${p.patient ? ` <span class="muted">— says ${esc(p.patient)}</span>` : ''}</label><select id="pay-${i}-case" data-e="case">${opts}</select></div>
+        <div><label for="pay-${i}-cov">Coverage</label><select id="pay-${i}-cov" data-e="coverage"${c ? '' : ' disabled'}>${cov.length ? cov.map((v) => opt(v.id, `${(S.lookups.coverageTypes || {})[v.type] || v.type.toUpperCase()} — ${v.carrier || 'carrier'}${v.status !== 'active' ? ' (' + v.status + ')' : ''}`, p.coverageId)).join('') : '<option value="">No insurance on the case</option>'}</select></div>
+        ${f('payer', 'Payer', p.payer)}${f('claim', 'Claim number', p.claim)}${f('checkNumber', 'Check number', p.checkNumber)}${f('date', 'Check date', p.date, 'date')}
+        ${f('amount', 'Check amount', p.amount, 'number')}${f('interest', 'Of which interest', p.interest, 'number')}${f('fees', 'Attorney fees paid separately', p.fees, 'number')}
+        ${f('via', 'Attorney / law firm', p.via)}${f('viaRef', "Attorney's file number", p.viaRef)}
+      </div>
+      <label class="check mt-sm"><input type="checkbox" data-p="recovery"${p.recovery ? ' checked' : ''}> Recovered through a demand letter or PIP suit</label>
+      ${p.interestIncluded && !p.interest ? '<p class="small muted">The check says it includes interest. If the letter or stub shows the split, enter the interest part — it\'s recorded, not applied to the visits.</p>' : ''}
+      ${c && open !== null ? `<p class="small ${benefits > open + 0.005 ? '' : 'muted'}">Open with this coverage on the case: <strong>${money(open)}</strong>. ${benefits > open + 0.005 ? `The check pays ${money(benefits - open)} more: that goes to fee-schedule reductions taken on earlier EOBs, then any rest is posted unapplied for you to sort out.` : 'The check is applied to the oldest open visits first.'}</p>` : ''}
+      <label class="check mt-sm"><input type="checkbox" data-e="post"${p.post ? ' checked' : ''}${c?.ehr || !can('fin:ledger') ? ' disabled' : ''}> Post to the case ledger — paid against the oldest open visits${p.interest ? '; the interest is recorded, not posted' : ''}${c?.ehr ? ` <span class="muted">(this case's money comes from ${esc(c.ehr)} ledger uploads, so it's saved for review only)</span>` : ''}</label>
+    </section>`;
+  }
+  function readPaySection(sec) {
+    const p = res.payments[+sec.dataset.pi];
+    sec.querySelectorAll('[data-p]').forEach((x) => { const k = x.dataset.p; p[k] = x.type === 'checkbox' ? x.checked : (['amount', 'interest', 'fees'].includes(k) ? num(x.value) : (x.value.trim() || null)); });
+    p.include = sec.querySelector('[data-e=include]').checked;
+    const po = sec.querySelector('[data-e=post]'); p.post = po.checked && !po.disabled;
+    const cv = sec.querySelector('[data-e=coverage]'); if (cv && cv.value) p.coverageId = +cv.value;
   }
   function renderReview() {
     const sk = res.skipped || [], pay = res.payments || [];
-    host.innerHTML = `${res.eobs.length ? `<p class="small">${res.eobs.length} auto / PIP EOB${res.eobs.length === 1 ? '' : 's'} found in ${res.pageCount} page${res.pageCount === 1 ? '' : 's'}. Check each against the paper — especially lines marked by a failed check — then save.</p>` : '<div class="notice">No auto / PIP EOBs were found in this scan.</div>'}
+    const found = [res.eobs.length ? `${res.eobs.length} auto / PIP EOB${res.eobs.length === 1 ? '' : 's'}` : '', pay.length ? `${pay.length} check${pay.length === 1 ? '' : 's'} without an EOB` : ''].filter(Boolean).join(' and ');
+    host.innerHTML = `${found ? `<p class="small">${found} found in ${res.pageCount} page${res.pageCount === 1 ? '' : 's'}. Check each against the paper${res.eobs.length ? ' — especially lines marked by a failed check' : ''} — then save.</p>` : '<div class="notice">No auto / PIP EOBs were found in this scan.</div>'}
       ${res.ocr ? '' : '<div class="notice">Read from the scanner\'s text layer (no OCR on this server) — check the numbers closely.</div>'}
       ${res.eobs.map(sectionHtml).join('')}
-      ${pay.length ? `<div class="card mt-sm"><h3>Checks not matched to an EOB here</h3><ul class="small">${pay.map((p) => `<li>${esc(p.payer || 'Payer')} check ${esc(p.checkNumber || '')} — ${money(p.amount)}${p.date ? ' on ' + esc(fmtDate(p.date)) : ''}${p.claim ? ' · claim ' + esc(p.claim) : ''} <span class="muted">(page ${esc(p.pages.join(', '))}) — its EOB isn't in this scan; post it as a payment on the case.</span></li>`).join('')}</ul></div>` : ''}
+      ${pay.map(paySectionHtml).join('')}
       ${sk.length ? `<details class="mt-sm small"><summary>${sk.length} page${sk.length === 1 ? '' : 's'} skipped</summary><ul>${sk.map((s) => `<li>Page ${s.page}: ${esc(s.why)}</li>`).join('')}</ul></details>` : ''}`;
   }
   // Edits on screen → the review state.
@@ -3430,8 +3473,21 @@ function eobUploadModal(caseId = null) {
     const p = sec.querySelector('[data-e=post]'); e.post = p.checked && !p.disabled;
     const cv = sec.querySelector('[data-e=coverage]'); if (cv && cv.value) e.coverageId = +cv.value;
   }
-  const readAll = () => host.querySelectorAll('section.eob-rev').forEach(readSection);
+  const readAll = () => { host.querySelectorAll('section.eob-rev:not(.eob-pay)').forEach(readSection); host.querySelectorAll('section.eob-pay').forEach(readPaySection); };
   host.addEventListener('change', async (ev) => {
+    const ps = ev.target.closest('section.eob-pay');
+    if (ps) {
+      readPaySection(ps);
+      const p = res.payments[+ps.dataset.pi];
+      if (ev.target.dataset.e === 'case') {
+        const id = +ev.target.value;
+        p.case = id ? await attempt(() => api('eob.php?action=case_info&case_id=' + id, { claim: p.claim, payer: p.payer })) : null;
+        p.coverageId = null; p.post = undefined; p.include = !!p.case;
+        ps.outerHTML = paySectionHtml(p, +ps.dataset.pi);
+      } else if (ev.target.dataset.e === 'include') ps.classList.toggle('off', !p.include);
+      else if (['coverage', 'amount', 'interest'].includes(ev.target.dataset.e || ev.target.dataset.p)) ps.outerHTML = paySectionHtml(p, +ps.dataset.pi);
+      return;
+    }
     const sec = ev.target.closest('section.eob-rev'); if (!sec) return;
     readSection(sec);
     const e = res.eobs[+sec.dataset.i];
@@ -3448,7 +3504,7 @@ function eobUploadModal(caseId = null) {
     } else if (ev.target.dataset.e === 'include') sec.classList.toggle('off', !e.include);
   });
   host.addEventListener('click', (ev) => {
-    const sec = ev.target.closest('section.eob-rev'); if (!sec) return;
+    const sec = ev.target.closest('section.eob-rev'); if (!sec || sec.classList.contains('eob-pay')) return;
     const add = ev.target.closest('[data-eob-add]'), del = ev.target.closest('[data-eob-del]');
     if (!add && !del) return;
     readSection(sec);
@@ -3472,6 +3528,8 @@ async function loadCaseEobs() {
     ${!genie && !r.eobs.length ? `<p class="small muted">Upload insurer EOBs and they're read, posted and explained — with EOB Genie, included in Gold and Platinum. ${can('users.manage') ? '<a href="#/billing">See plans</a>' : ''}</p>` : ''}
     ${r.eobs.length ? `<div class="table-wrap"><table><thead><tr><th>EOB date</th><th>Payer</th><th>Dates of service</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid</th><th>Status</th><th>Notes</th></tr></thead><tbody>
       ${r.eobs.map((e) => { const flags = (e.checks || []).filter((c) => !c.ok).length + (e.lines || []).reduce((n, l) => n + (l.notes || []).filter((x) => x.kind !== 'exhausted').length, 0);
+        if (e.kind === 'payment') return `<tr class="clickable" data-act="eob-open" data-id="${e.id}"><td class="nowrap">${esc(fmtDate(e.checkDate || e.createdAt))}</td><td>${esc(e.payer)}</td><td class="small">Check${e.via ? ' via ' + esc(e.via) : ''}</td>
+          <td class="num">—</td><td class="num">—</td><td class="num">${money(e.paid)}</td><td>${e.recovery ? '<span class="chip legal">Demand / PIP suit</span>' : '<span class="chip">No EOB</span>'}${e.posted ? '' : ' <span class="chip">Not posted</span>'}</td><td class="small">${e.interest ? money(e.interest) + ' interest' : ''}</td></tr>`;
         return `<tr class="clickable" data-act="eob-open" data-id="${e.id}"><td class="nowrap">${esc(fmtDate(e.eobDate || e.createdAt))}</td><td>${esc(e.payer)}</td><td class="nowrap small">${esc(fmtDate(e.dosFrom))}${e.dosTo && e.dosTo !== e.dosFrom ? ' – ' + esc(fmtDate(e.dosTo)) : ''}</td>
           <td class="num">${money(e.charged)}</td><td class="num">${money(e.allowed)}</td><td class="num">${money(e.paid)}</td><td>${eobChip(e.status)}${e.posted ? '' : ' <span class="chip">Not posted</span>'}</td>
           <td class="small">${flags ? `<span class="chip ochre">${flags} to review</span>` : (e.daysToPay !== null ? `Paid in ${e.daysToPay} days` : '')}</td></tr>`; }).join('')}
@@ -3481,6 +3539,22 @@ async function loadCaseEobs() {
 function eobDetailModal(id) {
   const e = (loadCaseEobs.rows || []).find((x) => x.id === id);
   if (!e) return;
+  if (e.kind === 'payment') {
+    const m = openModal({ title: `${e.payer} check`, cancelText: 'Close', body: `
+      <div class="filters">${e.recovery ? '<span class="chip legal">Demand / PIP suit</span>' : '<span class="chip">No EOB</span>'}${e.posted ? '<span class="chip teal">Posted to the ledger</span>' : '<span class="chip">Not posted</span>'}</div>
+      <div class="money-row"><span>Check</span><strong>${esc(e.checkNumber || '—')}${e.checkDate ? ' · ' + esc(fmtDate(e.checkDate)) : ''}</strong></div>
+      ${e.claim ? `<div class="money-row"><span>Claim</span><strong>${esc(e.claim)}</strong></div>` : ''}
+      ${e.via ? `<div class="money-row"><span>Came through</span><strong>${esc(e.via)}${e.viaRef ? ' · file ' + esc(e.viaRef) : ''}</strong></div>` : ''}
+      <div class="money-row"><span>Amount</span><strong>${money(e.paid)}</strong></div>
+      ${e.interest ? `<div class="money-row"><span>Of which interest (recorded, not posted)</span><strong>${money(e.interest)}</strong></div>` : ''}
+      ${e.fees ? `<div class="money-row"><span>Attorney fees paid separately</span><strong>${money(e.fees)}</strong></div>` : ''}`,
+      extraButtons: can('finance.write') ? '<button class="btn ghost danger" data-eob-remove>Remove</button>' : '' });
+    m.el.querySelector('[data-eob-remove]')?.addEventListener('click', async () => {
+      if (!(await confirmBox('Remove this check?', e.posted ? 'The check and the ledger entries it posted are removed.' : 'The check is removed.', 'Remove'))) return;
+      if (await attempt(() => api('eob.php?action=archive', { id: e.id }))) { m.close(); toast('Check removed'); reloadCase(); }
+    });
+    return;
+  }
   const m = openModal({ title: `${e.payer} EOB`, wide: true, cancelText: 'Close', body: `
     <div class="filters">${eobChip(e.status)}${e.posted ? '<span class="chip teal">Posted to the ledger</span>' : '<span class="chip">Not posted</span>'}</div>
     <div class="money-row"><span>Dates of service</span><strong>${esc(fmtDate(e.dosFrom))}${e.dosTo && e.dosTo !== e.dosFrom ? ' – ' + esc(fmtDate(e.dosTo)) : ''}</strong></div>
@@ -3490,6 +3564,7 @@ function eobDetailModal(id) {
     ${e.timing?.paidLate ? `<div class="money-row"><span>Paid late (over 30 days)</span><strong>${e.timing.payDays} days${e.timing.interestDue !== null ? ' · ' + money(e.timing.interestDue) + ' interest due' : ''}</strong></div>` : ''}
     <div class="money-row"><span>Charged → allowed → paid</span><strong>${money(e.charged)} → ${money(e.allowed)}${e.charged ? ` (${Math.round(e.allowed / e.charged * 1000) / 10}%)` : ''} → ${money(e.paid)}</strong></div>
     ${e.deductible || e.coinsurance ? `<div class="money-row"><span>Deductible · PIP 20% / copay</span><strong>${money(e.deductible)} · ${money(e.coinsurance)}</strong></div>` : ''}
+    ${e.interest ? `<div class="money-row"><span>Interest paid (recorded, not posted against the visits)</span><strong>${money(e.interest)}</strong></div>` : ''}
     <div class="table-wrap mt-sm"><table><thead><tr><th>Date</th><th>Code</th><th>Mod.</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid</th><th>Reason</th></tr></thead><tbody>
       ${(e.lines || []).map((l) => `<tr><td class="nowrap">${esc(fmtDate(l.dos))}</td><td class="mono">${esc(l.code)}</td><td class="small">${esc(l.modifiers || '')}</td><td class="num">${money(l.charged)}</td><td class="num">${money(l.allowed)}</td><td class="num">${money(l.paid)}</td><td class="small">${esc(l.reasons || '')}</td></tr>`).join('')}
     </tbody></table></div>
@@ -3521,7 +3596,7 @@ async function pageEobs(main) {
   const d = await attempt(() => api('eob.php?action=insights'));
   if (!d) return;
   const t = d.totals, g = d.genie;
-  if (!t.eobs) { box.innerHTML = `<div class="card genie-empty"><img src="assets/genie/icon.png" alt="" class="genie-upsell-icon"><div><h2>Upload your first EOBs</h2><p class="small">Scan the auto insurers' EOBs — a whole day's mail in one PDF is fine — and upload the scan. Each EOB is read, matched to its patient and checked; you confirm it and it's posted. The scan itself is never kept.</p></div></div>`; return; }
+  if (!t.eobs && !g.recovered.items.length) { box.innerHTML = `<div class="card genie-empty"><img src="assets/genie/icon.png" alt="" class="genie-upsell-icon"><div><h2>Upload your first EOBs</h2><p class="small">Scan the auto insurers' EOBs — a whole day's mail in one PDF is fine — and upload the scan. Each EOB is read, matched to its patient and checked; you confirm it and it's posted. The scan itself is never kept.</p></div></div>`; return; }
   const who = (x) => `<a href="#/case/${x.caseId}/financials">${esc(x.patient)}</a> <span class="mono small muted">${esc(x.caseNumber)}</span>`;
   const sect = (id, title, sub, body, n) => `<div class="card mt genie-card" id="${id}"><div class="card-head"><h2>${title}</h2>${n ? `<span class="badge-count">${n}</span>` : ''}</div><p class="small muted">${sub}</p>${body}</div>`;
   const table = (heads, rows) => rows.length ? `<div class="table-wrap"><table><thead><tr>${heads.map((h) => `<th${h.startsWith('#') ? ' class="num"' : ''}>${esc(h.replace(/^#/, ''))}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>` : '<div class="empty">Nothing here — good news.</div>';
@@ -3531,7 +3606,8 @@ async function pageEobs(main) {
       <button type="button" class="tile" data-act="genie-jump" data-to="fee-check"><div class="k">Fees below the schedule</div><div class="v">${g.fees.liftYear ? money(g.fees.liftYear) : g.fees.codes.length}</div><div class="small muted">${g.fees.liftYear ? 'more a year at current volume' : 'codes allowed at your full charge'}</div></button>
       <button type="button" class="tile" data-act="genie-jump" data-to="paid-late"><div class="k">Paid late</div><div class="v">${g.paidLate.items.length}</div><div class="small muted">${g.paidLate.interestDue ? money(g.paidLate.interestDue) + ' interest due' : 'over 30 days from receipt'}</div></button>
       <button type="button" class="tile" data-act="genie-jump" data-to="no-eob"><div class="k">Bills with no EOB</div><div class="v">${g.noEob.items.length}</div><div class="small muted">${money(g.noEob.total)} waiting</div></button>
-      <button type="button" class="tile warn" data-act="genie-jump" data-to="pip-out"><div class="k">PIP running out</div><div class="v">${g.pip.items.length}</div><div class="small muted">within 8 visits</div></button></div>
+      <button type="button" class="tile warn" data-act="genie-jump" data-to="pip-out"><div class="k">PIP running out</div><div class="v">${g.pip.items.length}</div><div class="small muted">within 8 visits</div></button>
+      ${g.recovered.items.length ? `<button type="button" class="tile" data-act="genie-jump" data-to="recovered"><div class="k">Recovered by demands &amp; suits</div><div class="v">${money(g.recovered.total)}</div><div class="small muted">${g.recovered.items.length} check${g.recovered.items.length === 1 ? '' : 's'}${g.recovered.interest ? ' · ' + money(g.recovered.interest) + ' interest' : ''}</div></button>` : ''}</div>
     ${sect('money-left', 'Money left on the table', 'Lines the insurer didn’t pay, allowed less than it usually does, or paid short of the PIP math (80% of the allowed amount). Amounts marked “about” are estimates at 80% of what the code is usually allowed. Dispute with the Florida pre-suit demand letter (§627.736(10)).',
       table(['Patient', 'Payer', 'EOB', 'What', '#Amount', ''], ml.map((x) => `<tr><td>${who(x)}</td><td>${esc(x.payer)}</td><td class="nowrap small">${esc(fmtDate(x.eobDate))}</td><td class="small"><span class="chip ${x.kind === 'denied' ? 'red' : 'ochre'}">${esc(kindLabel[x.kind])}</span> ${esc(x.text)}</td>
         <td class="num">${x.estimated ? '<span class="small muted">about</span> ' : ''}${money(x.amount)}</td><td>${x.demandLetter ? `<a class="btn ghost sm" href="api/cases.php?action=letter&type=pip_demand&id=${x.caseId}" target="_blank" rel="noopener">Demand letter</a>` : ''}</td></tr>`)), ml.length)}
@@ -3546,6 +3622,9 @@ async function pageEobs(main) {
     ${sect('pip-out', 'PIP running out', 'Open auto cases with 8 or fewer visits of PIP left: what\'s left (the adjuster\'s figure when you\'ve recorded one — PIP is shared with every provider), what PIP pays you per visit on your EOBs, and the visit pace over the last four weeks. Get the letter of protection signed before it runs out.',
       table(['Patient', '#Left', '#Per visit', '#Visits left', 'Runs out', 'LOP'], g.pip.items.map((x) => `<tr><td>${who(x)}</td><td class="num">${money(x.left)}<div class="small muted">${x.source === 'adjuster' ? 'adjuster' : 'of ' + money(x.limit)}</div></td><td class="num">${money(x.perVisit)}<div class="small muted">${x.perVisitFrom === 'case' ? 'this case' : 'practice avg'}</div></td>
         <td class="num"><strong>${x.visitsLeft}</strong></td><td class="nowrap">${x.runsOutOn ? '~' + esc(fmtDate(x.runsOutOn)) : '<span class="small muted">no recent visits</span>'}</td><td>${x.lopSigned ? '<span class="chip teal">Signed</span>' : '<span class="chip red">Not signed</span>'}</td></tr>`)), g.pip.items.length)}
+    ${g.recovered.items.length ? sect('recovered', 'Recovered by demands &amp; suits', 'Checks with no EOB — PIP demand and suit payments, most of them mailed to your attorney and forwarded with a cover letter. Interest is recorded with each check, not posted against the visits.',
+      `${g.recovered.byFirm.length > 1 || g.recovered.byFirm[0]?.via !== 'Paid to the clinic directly' ? `<div class="table-wrap"><table><thead><tr><th>Came through</th><th class="num">Checks</th><th class="num">Recovered</th><th class="num">Interest</th></tr></thead><tbody>${g.recovered.byFirm.map((f) => `<tr><td>${esc(f.via)}</td><td class="num">${f.n}</td><td class="num">${money(f.amount)}</td><td class="num">${f.interest ? money(f.interest) : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      ${table(['Patient', 'Payer', 'Check', 'Came through', '#Amount', '#Interest'], g.recovered.items.map((x) => `<tr><td>${who(x)}</td><td>${esc(x.payer)}</td><td class="nowrap small">${esc(fmtDate(x.checkDate))}${x.checkNumber ? ' · ' + esc(x.checkNumber) : ''}</td><td class="small">${esc(x.via || '—')}${x.viaRef ? ' <span class="muted">file ' + esc(x.viaRef) + '</span>' : ''}</td><td class="num">${money(x.amount)}</td><td class="num">${x.interest ? money(x.interest) : ''}</td></tr>`))}`, 0) : ''}
     ${can('users.manage') ? `<div class="card mt"><h2>Settings</h2><div class="form-grid"><div><label for="eg-rate">Interest on overdue PIP payments (% a year)</label><input id="eg-rate" type="number" step="0.01" min="0" max="25" value="${d.settings.interest_rate ?? ''}" placeholder="e.g. the current §55.03 rate"></div></div>
       <p class="small muted">Florida sets the §55.03 rate each quarter (Chief Financial Officer). Leave blank to show days late only.</p><button class="btn mt" data-act="eob-settings-save">Save</button></div>` : ''}
     <div class="card mt"><h2>By payer</h2><div class="table-wrap"><table><thead><tr><th>Payer</th><th class="num">EOBs</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid of charges</th><th class="num">Avg days to pay</th><th class="num">Over 30 days</th><th class="num">Lines not paid</th><th class="num">Exhausted</th><th class="num">Payment ≠ PIP math</th></tr></thead><tbody>
@@ -3572,7 +3651,7 @@ function eobEditModal(e) {
       ${f('eobDate', 'EOB date', e.eobDate, 'date')}${f('checkNumber', 'Check number', e.checkNumber)}${f('checkDate', 'Check date', e.checkDate, 'date')}</div>
     <div class="table-wrap mt-sm"><table class="eob-lines"><thead><tr><th>Date of service</th><th>Code</th><th>Mod.</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid</th><th>Reason codes</th><th></th></tr></thead><tbody id="ee-lines">${linesHtml()}</tbody></table></div>
     <button type="button" class="btn ghost sm mt-sm" data-eob-add>+ Add line</button>
-    <div class="form-grid mt-sm eob-totals">${[['charged', 'Total charged'], ['allowed', 'Total allowed'], ['deductible', 'Deductible'], ['coinsurance', 'PIP 20% / copay'], ['paid', 'Paid (check)']].map(([k, l]) => `<div><label for="ee-t-${k}">${l}</label><input id="ee-t-${k}" type="number" step="0.01" data-t="${k}" value="${e[k] ?? ''}"></div>`).join('')}</div>
+    <div class="form-grid mt-sm eob-totals">${[['charged', 'Total charged'], ['allowed', 'Total allowed'], ['deductible', 'Deductible'], ['coinsurance', 'PIP 20% / copay'], ['interest', 'Interest paid'], ['paid', 'Paid (check)']].map(([k, l]) => `<div><label for="ee-t-${k}">${l}</label><input id="ee-t-${k}" type="number" step="0.01" data-t="${k}" value="${e[k] ?? ''}"></div>`).join('')}</div>
     <label class="check mt-sm"><input type="checkbox" id="ee-post"${e.posted ? ' checked' : ''}${ehr || !can('fin:ledger') ? ' disabled' : ''}> ${e.posted ? 'Re-post to the ledger — the entries this EOB posted are replaced to match' : 'Post to the case ledger'}</label>`,
     onOk: async (el) => {
       readLines(el);

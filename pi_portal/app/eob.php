@@ -255,7 +255,13 @@ function eob_payer(string $text): ?string {
     return $best;
 }
 
-// 'eob' | 'payment' (check, draft or payment advice) | 'other'; and whether
+const EOB_LETTER_RX = '/ENCLOSED\s+(?:PLEASE\s+FIND|IS|ARE|YOU\s+WILL\s+FIND)\s+(?:A\s+|THE\s+|OUR\s+)?(?:CHECK|DRAFT|SETTLEMENT\s+CHECK)|CHECK\(?S?\)?\s+(?:OUR\s+OFFICE\s+)?RECEIVED\s+FROM|ENCLOSURE\S*\s*[-\x{2013}\x{2014}:]+\s*CHECK/u';
+// Money that comes through an attorney: a pre-suit demand (§627.736(10)), a
+// PIP suit or a settlement, often "to include interest".
+const EOB_RECOVERY_RX = '/627\.736\s*\(\s*10\s*\)|\bDEMAND\b|PRE-?SUIT|\bSUIT\b|LAWSUIT|LITIGATION|SETTLEMENT|COUNTY\s+COURT|CASE\s+(?:NO|NUMBER)|ATTORNEY\S?\s+FEES?|MORGAN\s*&\s*MORGAN|\bLAW\s+(?:GROUP|FIRM|OFFICES?)|\bP\.\s?A\.(?=\s|$)|\bPLLC\b|\bESQ/';
+
+// 'eob' | 'payment' (check, draft or payment advice) | 'letter' (an
+// attorney's cover letter for a check) | 'other'; and whether
 // it is auto/PIP paperwork at all.
 function eob_classify(string $text): array {
     $u = strtoupper($text);
@@ -276,7 +282,11 @@ function eob_classify(string $text): array {
     $hasRows = eob_table_lines($text) || eob_travelers_lines($text);
     if ($isEob && $isPay && !$hasRows) $isEob = false;
     if (!$isEob && $hasRows && !$isPay) $isEob = true;
-    $kind = $isEob ? 'eob' : ($isPay ? 'payment' : 'other');
+    // A law firm's cover letter for an insurer's check it forwards (PIP
+    // demand and suit payments are mailed to the attorney).
+    $isLetter = !$isEob && !$isPay && (bool)preg_match(EOB_LETTER_RX, $u);
+    if ($isLetter) $auto = $auto || (bool)preg_match('/INSURANCE|CASUALTY|INDEMNITY|DATE\s+OF\s+LOSS/', $u);
+    $kind = $isEob ? 'eob' : ($isPay ? 'payment' : ($isLetter ? 'letter' : 'other'));
     return ['kind' => $kind, 'auto' => $auto, 'payer' => $payer, 'skipReason' => $auto ? null : ($notAuto ? ucwords(strtolower($notAuto)) . ' (not auto / PIP)' : 'Not an auto / PIP insurance document')];
 }
 
@@ -305,14 +315,15 @@ function eob_split(array $pages): array {
         $first = (bool)preg_match('/Page\s*1\s*(?:of|0f|ot)\s*\d/i', $p['text']);
         $titled = (bool)preg_match('/EXPLANATION\s+OF\s+(?:BENEFITS|REVIEW|REIMBURSEMENT)|REMITTANCE\s+ADVICE/i', $p['text']);
         $later = (bool)preg_match('/Page\s*[2-9]\d*\s*(?:of|0f|ot)\s*\d/i', $p['text']);
-        $continues = $cur !== null && !$first && $c['kind'] !== 'payment' && (!$c['payer'] || $c['payer'] === $docs[$cur]['payer'])
+        $continues = $cur !== null && !$first && $c['kind'] !== 'payment' && $c['kind'] !== 'letter' && (!$c['payer'] || $c['payer'] === $docs[$cur]['payer'])
             && (($claim && $docs[$cur]['claim'] && eob_same_claim($claim, $docs[$cur]['claim'])) || (!$claim && ($later || !$titled)));
         if (!$c['auto'] && !$continues) {
             $skipped[] = ['page' => $i + 1, 'why' => $c['skipReason']];
             $cur = null; continue;
         }
-        if ($c['kind'] === 'payment') {
-            $docs[] = ['kind' => 'payment', 'pages' => [$i + 1], 'text' => $p['text'], 'payer' => $c['payer'], 'claim' => $claim, 'sources' => [$p['source']]];
+        if ($c['kind'] === 'payment' || $c['kind'] === 'letter') {
+            $docs[] = ['kind' => $c['kind'], 'pages' => [$i + 1], 'text' => $p['text'], 'payer' => $c['payer'], 'claim' => $c['kind'] === 'letter' ? null : $claim, 'sources' => [$p['source']]];
+            $cur = null;
             continue;
         }
         $same = $cur !== null && !$first && (!$claim || !$docs[$cur]['claim'] || eob_same_claim($claim, $docs[$cur]['claim'])) && (!$c['payer'] || !$docs[$cur]['payer'] || $c['payer'] === $docs[$cur]['payer']);
@@ -429,7 +440,7 @@ function eob_layout(string $text): string {
     return 'generic';
 }
 
-const EOB_LAYOUT_NAMES = ['review' => 'Explanation of Review (bill-review format)', 'benefits' => 'Explanation of Benefits (charged / allowed format)', 'travelers' => 'Travelers explanation of benefits', 'generic' => 'Read from its column headings', 'manual' => 'Entered by hand'];
+const EOB_LAYOUT_NAMES = ['review' => 'Explanation of Review (bill-review format)', 'benefits' => 'Explanation of Benefits (charged / allowed format)', 'travelers' => 'Travelers explanation of benefits', 'generic' => 'Read from its column headings', 'manual' => 'Entered by hand', 'payment' => 'Check without an EOB'];
 
 // Code → explanation pairs printed in the EOB's glossary.
 function eob_reason_glossary(string $text): array {
@@ -464,7 +475,7 @@ function eob_parse_doc(array $doc): array {
         'allowed' => eob_label_money($text, 'Reimbursement\s*Amount(?!\s*$)') ?? eob_label_money($text, 'AMOUNT\s*ALLOWED|Total\s*Allowed'),
         'deductible' => eob_label_money($text, 'Less\s*Deductible|Deductible\s*\/\s*Co-?Pay(?!ment)') ,
         'coinsurance' => eob_label_money($text, 'Limited\s*Benefits\s*\/\s*Copay|Co-?insurance|Co-?Payment'),
-        'interest' => eob_label_money($text, 'Interest\s*(?:&|and)\s*Penalty'),
+        'interest' => eob_label_money($text, 'Interest\s*(?:&|and)\s*Penalty|Statutory\s*Interest|Late\s*Payment\s*Interest|Interest\s*(?:Amount|Paid)'),
         'paid' => eob_first_money($text, ['EOR\s*Check\s*Amount', 'TOTAL\s*PAID(?:\s*AMT)?', 'Total\s*Payment\s*Amount', 'Total\s*Amount\s*Paid', 'Check\s*Amount', 'Amount\s*Paid', '(?<![A-Z])PAY\s*EXACTLY']),
     ];
     // "Totals" row in the table (charged … allowed).
@@ -523,8 +534,14 @@ function eob_finish(array $r, string $upper = ''): array {
     // PIP pays 80% of the allowed amount, less any deductible.
     $exhausted = (bool)preg_match('/BENEFITS?\s+(?:ARE\s+|HAVE\s+BEEN\s+)?EXHAUSTED|EXHAUSTED\s+BENEFITS|POLICY\s+LIMITS?\s+(?:HAVE\s+BEEN\s+|HAS\s+BEEN\s+)?(?:MET|REACHED|EXHAUSTED)/', $upper . ' ' . strtoupper(implode(' ', $r['reasons'] ?? [])));
     if ($exhausted && $t['paid'] === null) $t['paid'] = 0.0;       // nothing paid once benefits are exhausted
+    // "Deductible/Co-Pay" that is exactly 20% of the allowed amount is the PIP copay, not a deductible.
+    if ($t['coinsurance'] === null && $t['deductible'] !== null && $t['allowed'] && abs($t['deductible'] - $t['allowed'] * (1 - EOB_PIP_RATE)) <= 0.05) { $t['coinsurance'] = $t['deductible']; $t['deductible'] = null; }
     $math = null;
-    if ($t['allowed'] !== null && $t['paid'] !== null && $t['allowed'] > 0) {
+    // MedPay pays the reasonable charge (in Florida, usually the 20% PIP leaves) — no 80% rule.
+    $r['medpay'] = (bool)preg_match('/MEDICAL\s+PAYMENTS?\s+COVERAGE|\bMED\s?PAY\b/', $upper) && !preg_match('/PERSONAL\s+INJURY\s+PROTECTION|\bPIP\b/', $upper);
+    if ($r['medpay'] && $t['allowed'] !== null && $t['paid'] !== null) {
+        $checks[] = ['label' => 'MedPay payment', 'ok' => $t['paid'] <= $t['allowed'] + 0.05, 'detail' => '$' . number_format($t['paid'], 2) . ' paid on $' . number_format($t['allowed'], 2) . ' allowed (MedPay has no 80% rule)'];
+    } elseif ($t['allowed'] !== null && $t['paid'] !== null && $t['allowed'] > 0) {
         $expect = round($t['allowed'] * EOB_PIP_RATE - (float)$t['deductible'] * ($t['coinsurance'] !== null ? 1 : 0), 2);
         if ($t['coinsurance'] !== null) $expect = round($t['allowed'] - $t['coinsurance'] - (float)($t['deductible'] ?? 0), 2);
         $full = round($t['allowed'] - (float)($t['deductible'] ?? 0), 2);
@@ -552,13 +569,80 @@ function eob_finish(array $r, string $upper = ''): array {
 // Payment pages (checks, drafts, payment advices): number, amount, date.
 function eob_parse_payment(array $doc): array {
     $t = eob_norm($doc['text']);
+    // OCR reads the decimal point on a check's protected amount as "!" or ":" ("$****192!15").
+    $t = preg_replace('/(?<=\d)[!:;](?=\d{2}(?!\d))/', '.', $t);
     $amount = eob_label_money($t, 'Total\s*Payment\s*Amount|Check\s*Amount|AMOUNT\s*:?|PAY\s*EXACTLY|PAY\s*:?|TOTAL\s*PAID');
     if ($amount === null && preg_match('/\$\s*\*{2,}\s*([\d,]+[.,]\d{2})/', $t, $m)) $amount = eob_money($m[1]);
+    // The amount in words is the legal amount of a check: it settles a misread figure.
+    $words = eob_words_amount($t);
+    if ($words !== null && ($amount === null || abs($amount - $words) >= 0.01)) $amount = $words;
+    $u = strtoupper($t);
+    $patient = eob_patient_name($t);
+    if ($patient === null && preg_match('/(?<![A-Z])NAME\s*[:;]\s*([A-Z][A-Za-z\'\-]+\s*,\s*[A-Z][A-Za-z\'\-]+)/', $t, $m)) $patient = preg_replace('/\s*,\s*/', ', ', $m[1]);
     return ['payer' => $doc['payer'], 'claim' => $doc['claim'], 'pages' => $doc['pages'],
-        'checkNumber' => eob_label($t, 'Check\s*(?:Number|No\.?|#)|DRAFT\s*NUMBER|ADVICE\s*FOR\s*PAYMENT', '\d{5,14}'),
+        'checkNumber' => eob_label($t, 'Check\s*(?:Number|No\.?|#)|DRAFT\s*N\w{1,3}BER|ADVICE\s*FOR\s*PAYMENT', '\d{6,14}') ?? eob_label_below($t, 'DRAFT\s*N\w{1,3}BER|CHECK\s*(?:NUMBER|NO)', '\d{8,14}')
+            ?? (preg_match('/DRAFT\s*N\w{1,3}BER\s*:?[ \t]*\R[^\n]*?(?<![\d\-])(\d{8,14})(?![\d\-])/', $t, $m) ? $m[1] : null),
         'amount' => $amount,
-        'date' => eob_label_date($t, 'Check\s*Date|Payment\s*Date|ISSUE\s*DATE') ?? eob_label_date($t, '(?<![\w ])DATE'),
-        'patient' => eob_patient_name($t)];
+        'date' => eob_label_date($t, 'Check\s*Date|Payment\s*Date|ISSUE\s*DATE') ?? eob_label_date($t, '(?<![\w ])DATE') ?? eob_first_date($t),
+        'patient' => $patient, 'dateOfLoss' => eob_label_date($t, 'Date\s*of\s*Loss|Loss\s*Date|Date\s*of\s*Accident'),
+        'recovery' => (bool)preg_match(EOB_RECOVERY_RX, $u), 'interestIncluded' => (bool)preg_match('/\bINT(?:EREST)?\s*(?:\/|&|AND)\s*BEN|INCLUD\w*\s+INT(?:EREST)?\b|\bINTEREST\b/', $u),
+        'interest' => eob_label_money($t, 'Statutory\s*Interest|Interest\s*(?:Amount|Paid|Due)?|INT\s*AMT'),
+        'fees' => eob_label_money($t, 'Attorney\'?s?\s*Fees?(?:\s*(?:&|and)\s*Costs)?'),
+        'via' => eob_firm_line($t), 'viaRef' => null, 'letterPages' => [], 'fileStatus' => null, 'upper' => $u];
+}
+
+// The law firm a check was mailed to, from its address block ("MORGAN & MORGAN").
+function eob_firm_line(string $t): ?string {
+    if (preg_match('/^[ \t]*((?:[A-Z][A-Z.\']*[ \t]+)*(?:&|AND)[ \t]+[A-Z][A-Z.\']+(?:,?[ \t]+(?:P\.?A\.?|PLLC|LLP|LLC))?|[A-Z][A-Z.,&\' ]{2,50}(?:LAW\s+(?:GROUP|FIRM|OFFICES?)|P\.\s?A\.|PLLC|LLP))[ \t]*$/m', $t, $m)
+        && !preg_match('/INSURANCE|CASUALTY|SPINE|CHIRO|CLINIC|MEDICAL|HEALTH|REHAB|CENTER|JOINT/', $m[1])) return trim($m[1]);
+    return null;
+}
+
+// A law firm's cover letter for a check it forwards: the patient, the
+// firm's file number, the insurer, the amount and whether the firm is still
+// pursuing benefits or closing its file.
+function eob_parse_letter(array $doc): array {
+    $t = eob_norm($doc['text']); $u = strtoupper($t);
+    $one = preg_replace('/\s+/', ' ', $t);
+    $insurer = preg_match('/(?:RECEIVED|CHECK\(?S?\)?)\s+FROM\s+(.{3,80}?)\s+(?:IN\s+THE\s+AMOUNT|FOR\s+THE\s+AMOUNT|TOTALING|\(|,|$)/i', $one, $m) ? trim($m[1]) : null;
+    $amount = preg_match('/AMOUNT\s+OF\s+\$\s?([\d,]+[.,]\d{2})/i', $one, $m) ? eob_money($m[1]) : null;
+    $firm = null;
+    if (preg_match('/^\s*([A-Z][A-Za-z.,&\' ]{2,60}?(?:,?\s+P\.\s?A\.|,?\s+PLLC|,?\s+LLP|,?\s+LLC|\s+LAW\s+(?:GROUP|FIRM|OFFICES?)|\s+&\s+[A-Z][A-Za-z]+))\s*$/m', $t, $m)) $firm = trim($m[1]);
+    elseif (preg_match_all('/\b(?:WWW\.)?([A-Z0-9\-]{3,40})[.,]COM\b/', $u, $mm)) { usort($mm[1], fn($a, $b) => strlen($b) <=> strlen($a)); $firm = strtolower($mm[1][0]) . '.com'; }
+    $patient = preg_match('/(?:Re:?\s*)?(?:Patient|Client|Our\s+Client|Claimant)\s*:?\s*([A-Z][A-Za-z\'\-]+(?:\s+[A-Z]\.?)?\s+[A-Z][A-Za-z\'\-]+)/', $t, $m) ? trim($m[1]) : null;
+    return ['payer' => eob_payer((string)$insurer) ?? $doc['payer'], 'insurer' => $insurer, 'amount' => $amount, 'pages' => $doc['pages'], 'patient' => $patient,
+        'fileNumber' => eob_label($t, '(?:Our\s+)?File\s*(?:Number|No\.?|#)', '[A-Z0-9][A-Z0-9\-]{2,20}'),
+        'dateOfLoss' => eob_label_date($t, 'Date\s*of\s*(?:Loss|Accident)|D\.?O\.?L\.?'), 'firm' => $firm,
+        'date' => eob_first_date($t),
+        'fileStatus' => preg_match('/CLOSING\s+OUR\s+FILE|CLOSE\s+OUR\s+FILE|FILE\s+(?:IS|WILL\s+BE)\s+CLOSED|BALANCE\s+OWED/', $u) ? 'closed' : (preg_match('/CONTINU\w*\s+TO\s+PURSUE|ADDITIONAL\s+BENEFITS|REMAINING\s+BALANCE/', $u) ? 'open' : null),
+        'interestIncluded' => (bool)preg_match('/\bINTEREST\b/', $u), 'upper' => $u];
+}
+
+function eob_first_date(string $t): ?string {
+    if (preg_match('/(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s*\d{4}|(?<![\d\/])\d{1,2}\/\d{1,2}\/\d{4}(?![\d\/])/', $t, $m)) return eob_date(preg_replace('/,(?=\d)/', ', ', $m[0]));
+    return null;
+}
+
+// "ONE HUNDRED NINETY-TWO AND 15/100", "SEVENTY-ONE DOLLARS AND SEVENTY-FIVE CENTS" → 192.15, 71.75.
+function eob_words_amount(string $t): ?float {
+    static $n = ['ZERO' => 0, 'ONE' => 1, 'TWO' => 2, 'THREE' => 3, 'FOUR' => 4, 'FIVE' => 5, 'SIX' => 6, 'SEVEN' => 7, 'EIGHT' => 8, 'NINE' => 9, 'TEN' => 10, 'ELEVEN' => 11, 'TWELVE' => 12,
+        'THIRTEEN' => 13, 'FOURTEEN' => 14, 'FIFTEEN' => 15, 'SIXTEEN' => 16, 'SEVENTEEN' => 17, 'EIGHTEEN' => 18, 'NINETEEN' => 19, 'TWENTY' => 20, 'THIRTY' => 30, 'FORTY' => 40,
+        'FIFTY' => 50, 'SIXTY' => 60, 'SEVENTY' => 70, 'EIGHTY' => 80, 'NINETY' => 90];
+    $u = strtoupper($t);
+    // OCR reads I for 1 and l for I in words ("NINETY-IWO").
+    $u = preg_replace(['/\bIWO\b/', '/-IWO\b/'], ['TWO', '-TWO'], $u);
+    $w = implode('|', array_keys($n));
+    if (!preg_match('/((?:(?:' . $w . '|HUNDRED|THOUSAND)[\s\-]+)*(?:' . $w . '|HUNDRED|THOUSAND))\s+(?:DOLLARS?\s+)?AND\s+(?:(\d{1,2})\s*\/\s*1\s?0\s?0|((?:' . $w . ')(?:[\s\-]+(?:' . $w . '))?|NO)\s+CENTS?)/', $u, $m)) return null;
+    $total = 0; $cur = 0;
+    foreach (preg_split('/[\s\-]+/', trim($m[1])) as $tok) {
+        if (isset($n[$tok])) $cur += $n[$tok];
+        elseif ($tok === 'HUNDRED') $cur = max(1, $cur) * 100;
+        elseif ($tok === 'THOUSAND') { $total += max(1, $cur) * 1000; $cur = 0; }
+    }
+    $dollars = $total + $cur;
+    if (isset($m[2]) && $m[2] !== '') $cents = (int)$m[2];
+    else { $cents = 0; if (($m[3] ?? 'NO') !== 'NO') foreach (preg_split('/[\s\-]+/', $m[3]) as $tok) $cents += $n[$tok] ?? 0; }
+    return $dollars > 0 || $cents > 0 ? round($dollars + $cents / 100, 2) : null;
 }
 
 // The whole upload: documents, the payments matched to them, skipped pages.
@@ -582,11 +666,47 @@ function eob_check_fits(array $p, array $e): bool {
     return false;
 }
 
+// An attorney's cover letter goes with the check it forwards: same insurer
+// and amount, or the check on the page next to it. A letter whose check
+// isn't in the scan still describes the payment.
+function eob_pair_letters(array $payments, array $letters): array {
+    foreach ($letters as $l) {
+        $best = null; $bestScore = 0;
+        foreach ($payments as $i => $p) {
+            if ($p['letterPages']) continue;
+            $score = 0;
+            if ($l['amount'] !== null && $p['amount'] !== null && abs($l['amount'] - $p['amount']) < 0.01) $score += 3;
+            if ($l['payer'] && $p['payer'] && $l['payer'] === $p['payer']) $score += 2;
+            if ($l['payer'] && $p['payer'] && $l['payer'] !== $p['payer']) $score -= 5;
+            if (abs(min($p['pages']) - max($l['pages'])) === 1 || abs(max($p['pages']) - min($l['pages'])) === 1) $score += 1;
+            if ($score > $bestScore) { $bestScore = $score; $best = $i; }
+        }
+        if ($best !== null && $bestScore >= 2) {
+            $p = &$payments[$best];
+            $p['letterPages'] = $l['pages']; $p['pages'] = array_values(array_unique(array_merge($p['pages'], $l['pages']))); sort($p['pages']);
+            $p['patient'] = $l['patient'] ?? $p['patient'];          // the check may name the insured, not the patient
+            $p['dateOfLoss'] = $p['dateOfLoss'] ?? $l['dateOfLoss'];
+            $p['amount'] = $p['amount'] ?? $l['amount']; $p['payer'] = $p['payer'] ?? $l['payer'];
+            $p['via'] = $p['via'] ?? $l['firm']; $p['viaRef'] = $l['fileNumber']; $p['fileStatus'] = $l['fileStatus'];
+            $p['upper'] .= "\n" . $l['upper'];
+            $p['recovery'] = true; $p['interestIncluded'] = $p['interestIncluded'] || $l['interestIncluded'];
+            unset($p);
+        } else {
+            $payments[] = ['payer' => $l['payer'], 'claim' => null, 'pages' => $l['pages'], 'checkNumber' => null, 'amount' => $l['amount'], 'date' => null, 'patient' => $l['patient'],
+                'dateOfLoss' => $l['dateOfLoss'], 'recovery' => true, 'interestIncluded' => $l['interestIncluded'], 'interest' => null, 'fees' => null,
+                'via' => $l['firm'], 'viaRef' => $l['fileNumber'], 'letterPages' => $l['pages'], 'fileStatus' => $l['fileStatus'], 'checkMissing' => true, 'upper' => $l['upper']];
+        }
+    }
+    usort($payments, fn($a, $b) => min($a['pages']) <=> min($b['pages']));
+    return $payments;
+}
+
 function eob_read_texts(array $pages): array {
     [$docs, $skipped] = eob_split($pages);
-    $eobs = []; $payments = [];
+    $eobs = []; $payments = []; $letters = [];
     foreach ($docs as $d) {
         if ($d['kind'] === 'payment') $payments[] = eob_parse_payment($d);
+        elseif ($d['kind'] === 'letter') $letters[] = eob_parse_letter($d);
         else $eobs[] = eob_parse_doc($d);
     }
     // The same check is often printed twice (check and stub, or check and
@@ -596,7 +716,8 @@ function eob_read_texts(array $pages): array {
         $k = $p['checkNumber'] ?: 'p' . $p['pages'][0];
         if (!isset($byNo[$k])) { $byNo[$k] = $p; continue; }
         $byNo[$k]['pages'] = array_merge($byNo[$k]['pages'], $p['pages']);
-        foreach (['amount', 'date', 'claim', 'payer', 'patient'] as $f) $byNo[$k][$f] = $byNo[$k][$f] ?? $p[$f];
+        foreach (['amount', 'date', 'claim', 'payer', 'patient', 'dateOfLoss', 'interest', 'fees'] as $f) $byNo[$k][$f] = $byNo[$k][$f] ?? $p[$f];
+        foreach (['recovery', 'interestIncluded'] as $f) $byNo[$k][$f] = $byNo[$k][$f] || $p[$f];
     }
     $loose = [];
     foreach ($byNo as $p) {
@@ -613,5 +734,6 @@ function eob_read_texts(array $pages): array {
     }
     foreach ($eobs as &$e) unset($e['upper']);
     unset($e);
+    $loose = eob_pair_letters($loose, $letters);
     return ['eobs' => $eobs, 'payments' => $loose, 'skipped' => $skipped, 'pageCount' => count($pages)];
 }

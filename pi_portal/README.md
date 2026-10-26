@@ -299,16 +299,33 @@ saved. Readers cover the three Florida layout families — "Explanation of
 Review" (GEICO, USAA and other bill-review vendors), "Explanation of
 Benefits — this is not a bill" (MetLife/Farmers, AAA, Progressive) and
 Travelers — and anything else is read from its column headings. Checks,
-drafts and payment advices pair with their EOB; health-insurance, Medicare and
-attorney pages in a batch are skipped. Every EOB is checked: line charges and
+drafts and payment advices pair with their EOB; health-insurance and Medicare
+pages in a batch are skipped. Every EOB is checked: line charges and
 allowed amounts against the totals, and the payment against the PIP math (80%
-of the allowed amount, less any deductible).
+of the allowed amount, less any deductible; MedPay has no 80% rule).
+
+**Checks without an EOB** — most often a PIP pre-suit demand (§627.736(10)) or
+suit payment the insurer mails to the clinic's attorney, forwarded with a
+cover letter — are read too: the check's amount (the amount in words settles
+a misread figure), draft or check number, claim and any interest split, and
+from the attorney's letter the patient (the check may name the insured), the
+firm's file number and whether it is still pursuing benefits or closing its
+file. Letter and check are paired by insurer and amount; a letter whose check
+isn't in the scan still describes the payment. The firm is matched to the
+practice's attorney contacts (name, email domain or phone). On save the check
+pays the case's oldest open balances with that coverage first; anything more
+recovers fee-schedule reductions taken on earlier EOBs (the reduction is
+reversed and paid), and any rest is posted unapplied to sort out on the
+ledger. Interest and attorney fees are recorded with the check, not posted.
 
 The scan itself is never kept: it's read in the upload request and discarded,
 and only the numbers the user confirms are saved. Unless the case's money
 comes from EHR ledger uploads, each EOB is posted per date
-of service: the payment, the fee-schedule reduction (charge − allowed), and the
-20% / deductible moved to the patient balance. Denied lines stay open with
+of service: the payment (less any interest, which is kept on the EOB, not
+posted against the visits), the fee-schedule reduction (charge − allowed), and
+the deductible and 20% moved to the patient balance as separate entries. A
+MedPay EOB instead moves the patient balance it pays back to MedPay and pays
+it — no fee-schedule reduction. Denied lines stay open with
 insurance for a demand letter. "Benefits exhausted" marks the PIP coverage
 exhausted, moves the charges to the patient balance and, when no other
 coverage is left, switches the case to a letter of protection.
@@ -322,7 +339,8 @@ underpaid and short-paid lines, with the Florida demand letter), fees below
 the PIP fee schedule (with the yearly revenue at current volume), payments
 made over 30 days after receipt (with interest at the practice's §55.03
 rate), insurance charges with no EOB after 45 days, bills sent after the
-35-day (or 75-day) window, and cases whose PIP runs out within 8 visits — and
+35-day (or 75-day) window, cases whose PIP runs out within 8 visits, and the
+money recovered by demands and suits (by attorney, with the interest) — and
 each insurer's allowed and paid
 percentages, days to pay (Florida: 30 days from receipt, §627.736(4)(b)),
 denied lines and payment mismatches, and each code's usual allowed amount —
