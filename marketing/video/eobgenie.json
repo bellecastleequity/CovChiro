@@ -1,0 +1,100 @@
+{
+ "html": "eobgenie.html",
+ "vo_dir": "vo_eobgenie",
+ "out": "EOB Genie demo.mp4",
+ "gemini": {
+  "model": "gemini-2.5-flash-preview-tts",
+  "voice": "Charon",
+  "style": "Read this as a warm, upbeat, friendly narrator for a short software product demo video, at a natural unhurried pace. Say \"PIP\" as the word \"pip\", \"EOB\" as the letters \"E O B\", and \"GEICO\" as \"GUY-co\""
+ },
+ "lead_in_seconds": 0.5,
+ "tail_seconds": 0.9,
+ "music_volume": 0.1,
+ "scenes": [
+  {
+   "id": "g01-open",
+   "min": 7,
+   "text": "Meet EOB Genie. It turns a stack of scanned auto and PIP EOBs into a checked, posted ledger, in about a minute."
+  },
+  {
+   "id": "g02-paper",
+   "min": 8,
+   "text": "Here's the usual pile: explanations of review from GEICO, Progressive and USAA, plus the checks, all in one scan. Normally, someone keys in every line by hand."
+  },
+  {
+   "id": "g03-upload",
+   "min": 8,
+   "text": "With EOB Genie, you upload the whole scan, mixed payers, checks and health-insurance pages included. The file is read, then thrown away. It's never stored."
+  },
+  {
+   "id": "g04-reading",
+   "min": 9,
+   "text": "While the genie reads, you get a little show. It reads every line, matches each EOB to its patient, and checks the PIP math."
+  },
+  {
+   "id": "g05-review",
+   "min": 8,
+   "text": "Three EOBs found in eight pages, each matched to the right patient and coverage, by claim number, or by name and date of loss."
+  },
+  {
+   "id": "g06-checks",
+   "min": 9,
+   "text": "Every number is checked against the paper: the line totals, the allowed totals, and the payment against eighty percent of the allowed amount. Anything unusual, like a code allowed at your full charge, is flagged."
+  },
+  {
+   "id": "g07-exhausted",
+   "min": 9,
+   "text": "If the EOB says benefits are exhausted, the genie flags it, moves the balance to the patient, and switches the case to a letter of protection when no other coverage is left."
+  },
+  {
+   "id": "g08-newpatient",
+   "min": 7,
+   "text": "Got an EOB for someone who isn't set up yet? Create the patient and the auto case right from the EOB."
+  },
+  {
+   "id": "g09-ledger",
+   "min": 8,
+   "text": "Save, and it's posted to the ledger: the payment, the fee-schedule adjustment, and the twenty percent moved to the patient balance."
+  },
+  {
+   "id": "g10-edit",
+   "min": 8,
+   "text": "It's still your ledger. Open any EOB to fix a line or add a late check, and the posting updates to match."
+  },
+  {
+   "id": "g11-report",
+   "min": 7,
+   "text": "Then the EOB Genie report shows what to act on, across every case."
+  },
+  {
+   "id": "g12-money",
+   "min": 9,
+   "text": "Money left on the table: lines that were underpaid or denied, with a pre-suit demand letter one click away. And fees that may sit below the PIP fee schedule."
+  },
+  {
+   "id": "g13-late",
+   "min": 9,
+   "text": "Paid late? It counts the days and figures the interest due. It also catches bills with no EOB yet, and bills sent after Florida's billing window."
+  },
+  {
+   "id": "g14-pip",
+   "min": 7,
+   "text": "And it warns you before PIP runs out, so the letter of protection is signed in time."
+  },
+  {
+   "id": "g15-privacy",
+   "min": 8,
+   "text": "Your patients' documents are never stored. EOB Genie reads the scan, keeps only the numbers you approve, and every access is logged."
+  },
+  {
+   "id": "g16-pricing",
+   "min": 8,
+   "text": "EOB Genie is included in Gold and Platinum, or get it on its own for forty-nine dollars a month."
+  },
+  {
+   "id": "g17-cta",
+   "min": 8,
+   "text": "Start your free trial at injurycase dot com, and let the genie read your EOBs."
+  }
+ ]
+}
