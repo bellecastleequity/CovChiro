@@ -84,6 +84,7 @@ define('SUPPORT_EMAIL', '$ADMIN_EMAIL');
 //   'practice' => ['monthly' => 'price_...', 'annual' => 'price_...'],
 //   'group' => ['monthly' => 'price_...', 'annual' => 'price_...'],
 //   'location' => ['monthly' => 'price_...', 'annual' => 'price_...'],   // extra location add-on
+//   'eob' => ['monthly' => 'price_...', 'annual' => 'price_...'],        // EOB Genie on its own
 // ]);
 // Scanned insurance EOBs: read with Amazon Textract (HIPAA-eligible, in the BAA)
 define('EOB_OCR', 'textract');

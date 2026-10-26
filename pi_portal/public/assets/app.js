@@ -21,6 +21,9 @@ const fin = (scope) => !!S.user && (S.user.fin || []).includes(scope);
 const can = (perm) => !!S.user && (perm.startsWith('fin:') ? (perm === 'fin:any' ? (S.user.fin || []).length > 0 : fin(perm.slice(4))) : S.user.perms.includes(perm));
 // Plan features (app/saas.php FEATURES): trials and comped accounts get them all.
 const hasFeature = (f) => !!S.practice && (S.practice.features || []).includes(f);
+// EOB Genie on its own (no case management): a slimmer app.
+const isEobProduct = () => S.practice?.product === 'eob';
+const EOB_PRODUCT_NAV = ['eobs', 'cases', 'contacts', 'admin', 'settings', 'billing', 'audit'];
 const featureInfo = (f) => S.practice?.featureCatalog?.[f] || { name: f, planName: '' };
 function upgradeCardHtml(f) {
   const fi = featureInfo(f);
@@ -187,20 +190,22 @@ async function showSignup() {
   const wanted = hq.get('plan'), promo = hq.get('promo') || '';
   // From an outreach email: remembered so the signup is credited to it.
   if (/^[a-f0-9]{32}$/.test(hq.get('ref') || '')) { try { sessionStorage.setItem('ic_ref', hq.get('ref')); } catch { /* private mode */ } }
+  const genie = wanted === 'eob';
   authCard(`<form data-form="signup">
-    <h3>Start your ${trialDays}-day free trial</h3>
-    <p>No card needed. Set up your practice, then invite your team.</p>
+    ${genie ? '<img src="assets/genie/logo.png" alt="EOB Genie — Insurance EOBs. Explained." class="genie-signup-logo">' : ''}
+    <h3>Start your ${trialDays}-day free ${genie ? 'EOB Genie ' : ''}trial</h3>
+    <p>${genie ? 'No card needed. Upload your first auto / PIP EOBs in minutes.' : 'No card needed. Set up your practice, then invite your team.'}</p>
     <div class="form-grid">
       <div class="full"><label for="su-practice">Practice name</label><input id="su-practice" required autocomplete="organization"></div>
       <div><label for="su-name">Your name</label><input id="su-name" required autocomplete="name"></div>
       <div><label for="su-email">Work email</label><input id="su-email" type="email" required autocomplete="email"></div>
       <div><label for="su-pw">Password (12+ characters)</label><input id="su-pw" type="password" required autocomplete="new-password"></div>
-      <div><label for="su-plan">Plan after trial</label><select id="su-plan">${entries(plans).map(([k, p]) => opt(k, `${p.name} — $${p.price}/mo or $${p.annual_price}/yr`, wanted || 'solo')).join('')}</select></div>
+      <div><label for="su-plan">Plan after trial</label><select id="su-plan">${entries(plans).map(([k, p]) => opt(k, `${p.name}${p.standalone ? ' (on its own)' : ''} — $${p.price}/mo or $${p.annual_price}/yr`, wanted || 'solo')).join('')}</select></div>
       <div class="full"><label for="su-promo">Promo code (optional)</label>
         <div class="promo-row"><input id="su-promo" value="${esc(promo)}" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="button" class="btn ghost" data-act="promo-check">Apply</button></div>
         <div class="small" id="su-promo-msg" aria-live="polite"></div></div>
     </div>
-    <label class="check mt"><input type="checkbox" id="su-accept"> I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> (including automatic renewal of paid plans until canceled and the restrictions on copying or building competing products), the <a href="legal.html#user-agreement" target="_blank" rel="noopener">User Agreement</a> personally, and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice, have read the <a href="legal.html#privacy" target="_blank" rel="noopener">Privacy Policy</a>, and understand that InjuryCase is an educational tool — clinical decisions remain with our treating providers.</label>
+    <label class="check mt"><input type="checkbox" id="su-accept"> <span>I agree to the <a href="legal.html#terms" target="_blank" rel="noopener">Terms of Service</a> (including automatic renewal of paid plans until canceled and the restrictions on copying or building competing products), the <a href="legal.html#user-agreement" target="_blank" rel="noopener">User Agreement</a> personally, and the <a href="legal.html#baa" target="_blank" rel="noopener">Business Associate Agreement</a> on behalf of my practice, have read the <a href="legal.html#privacy" target="_blank" rel="noopener">Privacy Policy</a>, and understand that InjuryCase is an educational tool — clinical decisions remain with our treating providers.</span></label>
     <div class="err" data-role="err"></div>
     <button class="btn" type="submit">Create practice account</button>
     <p class="auth-switch">Already have an account? <a href="#" data-act="show-login">Sign in</a></p>
@@ -396,7 +401,7 @@ async function signOut() {
 // ---------- shell & routing ----------
 const NAV = [
   ['dashboard', 'Dashboard', 'case.read'], ['huddle', 'Daily huddle', 'case.read'], ['cases', 'Cases', 'case.read'], ['tasks', 'Tasks', 'case.read'],
-  ['schedule', 'Appointment upload', 'case.write'], ['ar', 'A/R & settlements', 'fin:balances'], ['eobs', 'EOBs & payers', 'fin:balances'], ['contacts', 'Contacts', 'case.read'], ['playbook', 'PI playbook', 'case.read'],
+  ['schedule', 'Appointment upload', 'case.write'], ['ar', 'A/R & settlements', 'fin:balances'], ['eobs', 'EOB Genie', 'fin:balances'], ['contacts', 'Contacts', 'case.read'], ['playbook', 'PI playbook', 'case.read'],
   ['admin', 'Users', 'users.manage'], ['settings', 'Practice settings', 'users.manage'], ['billing', 'Plan & billing', 'users.manage'],
   ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'], ['marketing', 'Marketing', 'platform.manage'],
 ];
@@ -420,7 +425,7 @@ function setLocFilter(v) { try { localStorage.setItem('ic.loc', v); } catch { /*
 const locQS = () => { const l = locFilter(); return l ? '&location=' + encodeURIComponent(l) : ''; };
 
 // Nav items that are plan features.
-const NAV_FEATURE = { huddle: 'huddle', schedule: 'schedule_import' };
+const NAV_FEATURE = { huddle: 'huddle', schedule: 'schedule_import', eobs: 'eob_genie' };
 
 // Trial / subscription / BAA notices shown above every page.
 function bannerHtml() {
@@ -457,7 +462,7 @@ async function startShell() {
       <div class="brand">${brandLogoHtml(true)}<small>${esc(operator ? 'Operator console' : S.practice.name)}</small></div>
       ${!operator && multiLocation() ? (myLocations().length < 2 ? `<div class="loc-switch small">${esc(locationName(S.user.locationId))}</div>`
         : `<select class="loc-switch" id="loc-switch" aria-label="Location">${opt('', S.user.locationIds ? 'All my locations' : 'All locations', locFilter())}${myLocations().map((l) => opt(l.id, l.name, locFilter())).join('')}</select>`) : ''}
-      ${NAV.filter(([, , p]) => can(p)).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}${NAV_FEATURE[k] && !operator && !hasFeature(NAV_FEATURE[k]) ? ` <span class="nav-lock" title="${esc(featureInfo(NAV_FEATURE[k]).planName)} plan">${esc(featureInfo(NAV_FEATURE[k]).planName)}</span>` : ''}</a>`).join('')}
+      ${NAV.filter(([k, , p]) => can(p) && (!isEobProduct() || EOB_PRODUCT_NAV.includes(k))).map(([k, t]) => `<a href="#/${k}" data-nav="${k}">${esc(isEobProduct() && k === 'cases' ? 'Patients & claims' : t)}${k === 'tasks' ? ' <span class="nav-badge" id="task-badge" hidden></span>' : ''}${NAV_FEATURE[k] && !operator && !hasFeature(NAV_FEATURE[k]) ? ` <span class="nav-lock" title="${esc(featureInfo(NAV_FEATURE[k]).planName)} plan">${esc(featureInfo(NAV_FEATURE[k]).planName)}</span>` : ''}</a>`).join('')}
       <div class="who"><div><strong>${esc(S.user.name)}</strong><br><span class="muted-light">${esc(S.user.role)}</span></div>
         <button class="btn ghost sm" data-act="change-password">Change password</button>
         ${operator || !(hasFeature('email_digest') || hasFeature('task_emails')) ? '' : '<button class="btn ghost sm" data-act="my-notify">Email notifications</button>'}
@@ -481,8 +486,9 @@ async function loadContacts() {
 window.addEventListener('hashchange', () => { if (S.user) route(); });
 
 function route() {
-  const parts = (location.hash.replace(/^#\/?/, '').split('?')[0] || (S.user.operator ? 'platform' : 'dashboard')).split('/');
-  const page = parts[0];
+  const parts = (location.hash.replace(/^#\/?/, '').split('?')[0] || (S.user.operator ? 'platform' : isEobProduct() ? 'eobs' : 'dashboard')).split('/');
+  let page = parts[0];
+  if (isEobProduct() && !EOB_PRODUCT_NAV.includes(page) && page !== 'case') page = 'eobs';
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === page || (page === 'case' && a.dataset.nav === 'cases')));
   const main = document.getElementById('main');
   if (!main) return;
@@ -863,8 +869,8 @@ function renderCase() {
   const d = S.caseData, c = d.case, p = d.patient;
   setTimeout(() => maybeShowBasisChange(d), 0);
   // Documents only appears for files stored before uploads were turned off.
-  const tabs = CASE_TABS.filter(([k, , perm]) => (!perm || can(perm)) && (k !== 'documents' || d.documents.length));
-  if (!tabs.find(([k]) => k === S.caseTab)) S.caseTab = 'overview';
+  const tabs = CASE_TABS.filter(([k, , perm]) => (!perm || can(perm)) && (k !== 'documents' || d.documents.length) && (!isEobProduct() || ['financials', 'activity'].includes(k)));
+  if (!tabs.find(([k]) => k === S.caseTab)) S.caseTab = isEobProduct() ? 'financials' : 'overview';
   const atty = d.contacts.attorney_contact_id;
   // Same phase rule as the server's alerts: intake items matter while in
   // care, discharge items once care has ended.
@@ -886,7 +892,7 @@ function renderCase() {
       <span class="spacer"></span>
       <div><label for="case-stage">Stage</label><select id="case-stage" data-act-change="stage"${can('case.write') || can('finance.write') ? '' : ' disabled'}>${entries(S.lookups.stages).map(([k, t]) => opt(k, t, c.stage)).join('')}</select></div>
     </div>
-    ${d.alerts.length ? `<div class="alert-box"><ul class="alerts">${d.alerts.map((a) => `<li class="${esc(a.level)}"><span class="dot"></span><div class="grow">${esc(a.text)}</div><button class="btn ghost sm" data-act="task-from-alert" data-case="${c.id}" data-text="${esc(a.text)}" title="Make this a task for someone">+ Task</button></li>`).join('')}</ul></div>` : ''}
+    ${d.alerts.length && !isEobProduct() ? `<div class="alert-box"><ul class="alerts">${d.alerts.map((a) => `<li class="${esc(a.level)}"><span class="dot"></span><div class="grow">${esc(a.text)}</div><button class="btn ghost sm" data-act="task-from-alert" data-case="${c.id}" data-text="${esc(a.text)}" title="Make this a task for someone">+ Task</button></li>`).join('')}</ul></div>` : ''}
     <div class="tabs" role="tablist">${tabs.map(([k, t]) => `<button role="tab" data-act="case-tab" data-tab="${k}" class="${S.caseTab === k ? 'active' : ''}">${esc(t)}${k === 'checklist' && overdueCount ? ` <span class="badge-count">${overdueCount}</span>` : ''}</button>`).join('')}</div>
     <div id="case-tab"></div>`;
   main.querySelector('#case-stage').addEventListener('change', async (e) => {
@@ -2862,24 +2868,26 @@ async function pageBilling(main) {
     </div>
     ${!r.billingReady ? '<div class="notice">Online billing isn\'t switched on yet for this installation.</div>' : ''}
     ${p.promo && !['active', 'past_due', 'comped'].includes(p.status) ? `<div class="notice ok">Promo code <strong class="mono">${esc(p.promo.code)}</strong>: ${esc(p.promo.summary)}${p.promo.plans ? ' (' + esc(p.promo.plans.map((k) => r.plans[k]?.name || k).join(' or ') + ' plan') + ')' : ''} — applied automatically at checkout.</div>` : ''}
-    ${p.status === 'trialing' && p.access === 'full' ? `<div class="notice ok">Your free trial includes everything in ${esc(r.plans[PLAN_TOP(r)].name)} — unlimited cases and users and every feature. When you subscribe, the plan you choose applies straight away. You can change plans any time; upgrades are charged only the difference and start the moment the payment goes through.</div>` : ''}
+    ${p.status === 'trialing' && p.access === 'full' && p.product !== 'eob' ? `<div class="notice ok">Your free trial includes everything in ${esc(r.plans[PLAN_TOP(r)].name)} — unlimited cases and users and every feature. When you subscribe, the plan you choose applies straight away. You can change plans any time; upgrades are charged only the difference and start the moment the payment goes through.</div>` : ''}
     ${p.status === 'trialing' && p.access === 'full' ? `<div class="notice ok">${r.firstCharge ? `Subscribing now keeps the rest of your free trial — your card is first charged on <strong>${esc(fmtDate(r.firstCharge))}</strong>.` : 'Your trial ends within two days, so billing starts when you subscribe.'} Cancel any time before then and you won't be charged.</div>` : ''}
     <div class="interval-toggle" role="radiogroup" aria-label="Billing period">
       <button role="radio" data-act="billing-interval" data-v="monthly" class="${interval === 'monthly' ? 'on' : ''}" aria-checked="${interval === 'monthly'}">Monthly</button>
       <button role="radio" data-act="billing-interval" data-v="annual" class="${interval === 'annual' ? 'on' : ''}" aria-checked="${interval === 'annual'}"${anyAnnual || !r.billingReady ? '' : ' disabled title="Annual billing isn\'t set up yet"'}>Annual <span class="save">2 months free</span></button>
     </div>
-    <div class="plans">${entries(r.plans).map(([k, pl]) => {
+    ${p.product === 'eob' ? `<div class="notice ok">You're on <strong>EOB Genie</strong>. Gold includes EOB Genie <em>and</em> all of ${esc(S.brand.vendor || S.brand.name)} — case tracking, checklists, letters, attorney updates — for $${r.plans.practice.price - r.plans.eob.price} more a month. Your EOBs and patients carry over.</div>` : ''}
+    <div class="plans">${entries(r.plans).sort(([a, x], [b, y]) => (x.standalone ? (p.product === 'eob' ? -1 : 1) : 0) - (y.standalone ? (p.product === 'eob' ? -1 : 1) : 0)).map(([k, pl]) => {
       const current = k === p.plan && ['active', 'past_due', 'comped'].includes(p.status) && (p.status === 'comped' || p.interval === interval);
       const annual = interval === 'annual';
       const avail = annual ? pl.availableAnnual : pl.available;
       const subscribed = p.subscribed && ['active', 'past_due'].includes(p.status);
-      return `<div class="plan-card${current ? ' current' : ''}"><h3>${esc(pl.name)}</h3>
+      return `<div class="plan-card${current ? ' current' : ''}${pl.standalone ? ' genie-plan' : ''}">${pl.standalone ? '<img src="assets/genie/logo.png" alt="" class="genie-plan-logo"><span class="chip info">On its own — no case management</span>' : ''}<h3>${esc(pl.name)}</h3>
         <div class="price">$${annual ? pl.annual_price : pl.price}<span>/${annual ? 'year' : 'month'}</span></div>
         <p class="small ${annual ? '' : 'muted'}">${annual ? `$${(pl.annual_price / 12).toFixed(2)}/month · save $${pl.price * 12 - pl.annual_price} a year` : `or $${pl.annual_price}/year with annual billing`}</p>
         <p class="small muted">${esc(pl.blurb)}</p>
         ${pl.locations ? `<p class="small"><strong>${pl.locations.included} locations included</strong> · each additional location $${annual ? pl.locations.extra_price * r.annualMonthsCharged + '/year' : pl.locations.extra_price + '/month'}${p.locations.active > pl.locations.included ? ` — you have ${p.locations.active}, so +$${(p.locations.active - pl.locations.included) * (annual ? pl.locations.extra_price * r.annualMonthsCharged : pl.locations.extra_price)}/${annual ? 'year' : 'month'}` : ''}</p>` : ''}
-        <ul class="small"><li>${pl.active_cases ? pl.active_cases + ' open cases' : 'Unlimited open cases'}</li><li>${pl.users ? pl.users + ' users' : 'Unlimited users'}</li><li>Unlimited closed cases</li>
-          ${(pl.features || []).map((f) => `<li class="${f.included ? '' : 'no'}">${esc(f.name)}</li>`).join('')}</ul>
+        ${pl.standalone ? `<ul class="small"><li>Upload and read auto / PIP EOBs — one or a whole batch</li><li>Matched to each patient and posted to the ledger</li><li>Money left on the table, with demand letters</li><li>Fees below the PIP schedule</li><li>Late payments, bills with no EOB, late billing</li><li>PIP running-out forecast</li><li>Every insurer side by side</li><li>${pl.users} users</li></ul>`
+          : `<ul class="small"><li>${pl.active_cases ? pl.active_cases + ' open cases' : 'Unlimited open cases'}</li><li>${pl.users ? pl.users + ' users' : 'Unlimited users'}</li><li>Unlimited closed cases</li>
+          ${(pl.features || []).map((f) => `<li class="${f.included ? '' : 'no'}">${esc(f.name)}</li>`).join('')}</ul>`}
         ${current ? '<span class="chip teal">Current plan</span>' : p.status === 'comped' ? '' : subscribed ? changePlanButton(r, k, interval)
           : `<button class="btn${k === p.plan ? '' : ' ghost'}" data-act="checkout" data-plan="${k}" data-interval="${interval}"${avail ? '' : ' disabled'}>${p.status === 'trialing' && r.firstCharge ? 'Add card — keep free days' : 'Subscribe'}</button>`}</div>`;
     }).join('')}</div>
@@ -2888,7 +2896,7 @@ async function pageBilling(main) {
   main.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
 }
 
-const PLAN_TOP = (r) => Object.keys(r.plans).at(-1);
+const PLAN_TOP = (r) => Object.keys(r.plans).filter((k) => !r.plans[k].standalone).at(-1);
 
 // Switching a live subscription: upgrades pay the prorated difference now
 // and take effect the moment the payment is confirmed.
@@ -3221,6 +3229,34 @@ const eobNotesHtml = (lines) => {
 };
 const num = (v) => (v === '' || v === null || v === undefined || isNaN(+v)) ? null : Math.round(+v * 100) / 100;
 
+// "LANTERN, RHEA" / "RHEA F LANTERN" → ['Rhea', 'Lantern'].
+function eobPatientName(n) {
+  const cap = (w) => w.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  n = String(n || '').trim();
+  if (n.includes(',')) { const [last, rest] = n.split(',', 2); return [cap(rest.trim().split(/\s+/)[0] || ''), cap(last.trim())]; }
+  const w = n.split(/\s+/).filter(Boolean);
+  return w.length > 1 ? [cap(w[0]), cap(w.at(-1))] : [cap(w[0] || ''), ''];
+}
+
+// A new patient and auto case from an EOB that matches no case: name, date
+// of loss, the insurer and claim number as PIP coverage. Returns the case id.
+async function newCaseFromEob(e) {
+  const [first, last] = eobPatientName(e.header.patient);
+  const defs = [{ n: 'first_name', l: 'First name', req: true }, { n: 'last_name', l: 'Last name' }, { n: 'date_of_injury', l: 'Date of loss', t: 'date' }, { n: 'claim', l: 'Claim number' }, { n: 'carrier', l: 'Insurer' }];
+  return new Promise((resolve) => {
+    let done = false;
+    const m = openModal({ title: 'New patient from this EOB', okText: 'Create', body: `<p class="small">Creates the patient and an auto case with ${esc(e.header.payer || 'the insurer')} as PIP coverage.</p>` + fieldsHtml(defs, { first_name: first, last_name: last, date_of_injury: e.header.dateOfLoss || '', claim: e.header.claim || '', carrier: e.header.payer || '' }),
+      onOk: async (el) => {
+        const v = readFields(el, defs);
+        if (!v.first_name) throw new Error("Enter the patient's first name.");
+        const r = await api('cases.php?action=create', { patient: { first_name: v.first_name, last_name: v.last_name || '' }, case: { injury_type: 'auto', date_of_injury: v.date_of_injury || null, stage: 'treating' },
+          coverage: { type: 'pip', carrier_text: v.carrier || null, claim_number: v.claim || null } });
+        done = true; toast('Patient created'); resolve(r.id);
+      } });
+    m.el.parentElement.addEventListener('click', (ev) => { if (!done && (ev.target.closest('[data-close]') || ev.target === m.el.parentElement)) resolve(null); });
+  });
+}
+
 function eobUploadModal(caseId = null) {
   caseId = typeof caseId === 'number' ? caseId : null;
   let res = null;
@@ -3229,7 +3265,7 @@ function eobUploadModal(caseId = null) {
       const file = el.querySelector('#eob-file').files[0];
       if (!file) throw new Error('Choose the scanned EOB PDF first.');
       const fd = new FormData(); if (caseId) fd.append('case_id', caseId); fd.append('file', file);
-      host.innerHTML = '<div class="empty">Reading the scan — about 5 seconds a page…</div>';
+      host.innerHTML = '<div class="genie-reading"><img src="assets/genie/icon.png" alt=""><p>Reading the scan — about 5 seconds a page…</p></div>';
       try { res = await api('eob.php?action=upload', fd); } catch (err) { showFile(); throw err; }
       renderReview(); okBtn.textContent = 'Save'; return false;
     }
@@ -3248,7 +3284,7 @@ function eobUploadModal(caseId = null) {
   const host = m.el.querySelector('#eob-step');
   const okBtn = m.el.querySelector('[data-ok]');
   function showFile() {
-    host.innerHTML = `<p class="small">Scan the auto insurers' EOBs — one, or the whole day's mail in one PDF — and upload the scan. Each EOB is read, matched to its patient's case, and shown here to check before anything is saved.</p>
+    host.innerHTML = `${genieHead()}<p class="small">Scan the auto insurers' EOBs — one, or the whole day's mail in one PDF — and upload the scan. Each EOB is read, matched to its patient's case, and shown here to check before anything is saved.</p>
       <ul class="small muted mt"><li>Auto / PIP payers only: GEICO, Progressive, State Farm, USAA, Allstate, Travelers, MetLife / Farmers, AAA and others. Health-insurance, Medicare and attorney paperwork in the batch is skipped.</li>
         <li>Checks and payment advices in the scan are matched to their EOB.</li><li>Scan at 300 dpi, black and white or greyscale, for the best reading.</li>
         <li>The scan is only read — it isn't kept. Only the numbers you confirm are saved; keep the paper or scan in your EHR.</li></ul>
@@ -3261,7 +3297,7 @@ function eobUploadModal(caseId = null) {
     if (e.case) { o.push(opt(e.case.caseId, `${e.case.caseNumber}${(e.matches || []).find((x) => x.caseId === e.case.caseId) ? ' — ' + e.matches.find((x) => x.caseId === e.case.caseId).patient : ''}`, e.case.caseId)); seen.add(e.case.caseId); }
     (e.matches || []).forEach((x) => { if (!seen.has(x.caseId)) { o.push(opt(x.caseId, `${x.caseNumber} — ${x.patient} (${x.why})`, e.case?.caseId)); seen.add(x.caseId); } });
     if (caseId && !seen.has(caseId)) o.push(opt(caseId, S.caseData?.case?.case_number || 'This case', e.case?.caseId));
-    return `<option value="">Choose the case…</option>${o.join('')}`;
+    return `<option value="">Choose the case…</option>${o.join('')}${can('case.write') ? '<option value="new">+ New patient from this EOB</option>' : ''}`;
   }
   const field = (i, f, l, v, type = 'text') => `<div><label for="eob-${i}-${f}">${esc(l)}</label><input id="eob-${i}-${f}" type="${type}" data-h="${f}" value="${esc(v ?? '')}"${type === 'number' ? ' step="0.01"' : ''}></div>`;
   function sectionHtml(e, i) {
@@ -3319,7 +3355,12 @@ function eobUploadModal(caseId = null) {
     readSection(sec);
     const e = res.eobs[+sec.dataset.i];
     if (ev.target.dataset.e === 'case') {
-      const id = +ev.target.value;
+      let id = +ev.target.value;
+      if (ev.target.value === 'new') {
+        id = await newCaseFromEob(e);
+        if (!id) { ev.target.value = e.case?.caseId || ''; return; }
+        e.matches = [{ caseId: id, caseNumber: '', patient: eobPatientName(e.header.patient).join(' '), score: 100, why: 'new from this EOB' }, ...(e.matches || [])];
+      }
       e.case = id ? await attempt(() => api('eob.php?action=case_info&case_id=' + id, e.header)) : null;
       e.coverageId = null; e.post = undefined; e.include = !!e.case;
       sec.outerHTML = sectionHtml(e, +sec.dataset.i);
@@ -3345,13 +3386,15 @@ async function loadCaseEobs() {
   if (!r) return;
   loadCaseEobs.rows = r.eobs;
   const fw = can('finance.write');
-  box.innerHTML = `<div class="card mt"><div class="card-head"><h2>Insurance EOBs</h2><span class="spacer"></span>${fw ? '<button class="btn ghost sm" data-act="eob-upload-case">Upload EOB</button>' : ''}</div>
+  const genie = hasFeature('eob_genie');
+  box.innerHTML = `<div class="card mt"><div class="card-head"><img src="assets/genie/appicon.png" alt="" class="genie-mini"><h2>Insurance EOBs</h2><span class="small muted">EOB Genie</span><span class="spacer"></span>${fw && genie ? '<button class="btn ghost sm" data-act="eob-upload-case">Upload EOB</button>' : ''}</div>
+    ${!genie && !r.eobs.length ? `<p class="small muted">Upload insurer EOBs and they're read, posted and explained — with EOB Genie, included in Gold and Platinum. ${can('users.manage') ? '<a href="#/billing">See plans</a>' : ''}</p>` : ''}
     ${r.eobs.length ? `<div class="table-wrap"><table><thead><tr><th>EOB date</th><th>Payer</th><th>Dates of service</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid</th><th>Status</th><th>Notes</th></tr></thead><tbody>
       ${r.eobs.map((e) => { const flags = (e.checks || []).filter((c) => !c.ok).length + (e.lines || []).reduce((n, l) => n + (l.notes || []).filter((x) => x.kind !== 'exhausted').length, 0);
         return `<tr class="clickable" data-act="eob-open" data-id="${e.id}"><td class="nowrap">${esc(fmtDate(e.eobDate || e.createdAt))}</td><td>${esc(e.payer)}</td><td class="nowrap small">${esc(fmtDate(e.dosFrom))}${e.dosTo && e.dosTo !== e.dosFrom ? ' – ' + esc(fmtDate(e.dosTo)) : ''}</td>
           <td class="num">${money(e.charged)}</td><td class="num">${money(e.allowed)}</td><td class="num">${money(e.paid)}</td><td>${eobChip(e.status)}${e.posted ? '' : ' <span class="chip">Not posted</span>'}</td>
           <td class="small">${flags ? `<span class="chip ochre">${flags} to review</span>` : (e.daysToPay !== null ? `Paid in ${e.daysToPay} days` : '')}</td></tr>`; }).join('')}
-      </tbody></table></div>` : `<div class="empty">No EOBs yet. Upload the insurer's EOB to post the payment and see how it was paid.</div>`}</div>`;
+      </tbody></table></div>` : genie ? `<div class="empty">No EOBs yet. Upload the insurer's EOB to post the payment and see how it was paid.</div>` : ''}</div>`;
 }
 
 function eobDetailModal(id) {
@@ -3362,6 +3405,8 @@ function eobDetailModal(id) {
     <div class="money-row"><span>Dates of service</span><strong>${esc(fmtDate(e.dosFrom))}${e.dosTo && e.dosTo !== e.dosFrom ? ' – ' + esc(fmtDate(e.dosTo)) : ''}</strong></div>
     <div class="money-row"><span>Bill received by insurer · EOB date</span><strong>${esc(fmtDate(e.receivedOn))} · ${esc(fmtDate(e.eobDate))}</strong></div>
     <div class="money-row"><span>Check</span><strong>${esc(e.checkNumber || '—')}${e.checkDate ? ' · ' + esc(fmtDate(e.checkDate)) : ''}${e.daysToPay !== null ? ` · <span class="${e.daysToPay > 30 ? 'trend-up' : ''}">paid in ${e.daysToPay} days</span>` : ''}</strong></div>
+    ${e.timing?.billedDays !== null && e.timing?.billedDays !== undefined ? `<div class="money-row"><span>Billed after service</span><strong>${e.timing.billedDays} days${e.timing.billedLate ? ` <span class="chip red">late — over ${e.timing.billWindow}</span>` : ''}</strong></div>` : ''}
+    ${e.timing?.paidLate ? `<div class="money-row"><span>Paid late (over 30 days)</span><strong>${e.timing.payDays} days${e.timing.interestDue !== null ? ' · ' + money(e.timing.interestDue) + ' interest due' : ''}</strong></div>` : ''}
     <div class="money-row"><span>Charged → allowed → paid</span><strong>${money(e.charged)} → ${money(e.allowed)}${e.charged ? ` (${Math.round(e.allowed / e.charged * 1000) / 10}%)` : ''} → ${money(e.paid)}</strong></div>
     ${e.deductible || e.coinsurance ? `<div class="money-row"><span>Deductible · PIP 20% / copay</span><strong>${money(e.deductible)} · ${money(e.coinsurance)}</strong></div>` : ''}
     <div class="table-wrap mt-sm"><table><thead><tr><th>Date</th><th>Code</th><th>Mod.</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid</th><th>Reason</th></tr></thead><tbody>
@@ -3369,40 +3414,103 @@ function eobDetailModal(id) {
     </tbody></table></div>
     ${eobChecksHtml(e.checks)}${eobNotesHtml(e.lines)}
     ${Object.keys(e.reasons || {}).length ? `<details class="mt-sm small"><summary>Reason codes on this EOB</summary><ul>${Object.entries(e.reasons).map(([k, v]) => `<li><span class="mono">${esc(k)}</span> ${esc(v)}</li>`).join('')}</ul></details>` : ''}`,
-    extraButtons: can('finance.write') ? '<button class="btn ghost danger" data-eob-remove>Remove EOB</button>' : '' });
+    extraButtons: can('finance.write') ? '<button class="btn ghost danger" data-eob-remove>Remove EOB</button>' + (hasFeature('eob_genie') ? ' <button class="btn ghost" data-eob-edit>Edit</button>' : '') : '' });
+  m.el.querySelector('[data-eob-edit]')?.addEventListener('click', () => { m.close(); eobEditModal(e); });
   m.el.querySelector('[data-eob-remove]')?.addEventListener('click', async () => {
     if (!(await confirmBox('Remove this EOB?', e.posted ? 'The EOB and the ledger entries it posted are removed.' : 'The EOB is removed.', 'Remove'))) return;
     if (await attempt(() => api('eob.php?action=archive', { id: e.id }))) { m.close(); toast('EOB removed'); reloadCase(); }
   });
 }
 
-// EOBs & payers: upload a batch, and the practice's numbers.
+// The EOB Genie header (brand kit: logo, Montserrat, "Insurance EOBs. Explained.").
+const genieHead = (sub = '') => `<div class="genie-head"><img src="assets/genie/logo.png" alt="EOB Genie — Insurance EOBs. Explained." class="genie-logo">${sub ? `<p class="genie-sub">${sub}</p>` : ''}</div>`;
+
+// EOB Genie: upload a batch, what to act on, and the practice's numbers.
 async function pageEobs(main) {
-  main.innerHTML = `${phiBanner}<div class="page-head"><div><h1>EOBs &amp; payers</h1><div class="sub">Auto / PIP explanations of benefits — what each insurer allows, pays and denies</div></div>
-    <span class="spacer"></span>${can('finance.write') ? '<button class="btn" data-act="eob-upload">Upload EOBs</button>' : ''}</div><div id="eob-insights"><div class="empty">Loading…</div></div>`;
+  main.innerHTML = `${phiBanner}<div class="page-head genie-page-head">${genieHead('Auto / PIP EOBs read, posted and explained — what to act on, and how every insurer pays')}
+    <span class="spacer"></span>${can('finance.write') && hasFeature('eob_genie') ? '<button class="btn genie-btn" data-act="eob-upload">Upload EOBs</button>' : ''}</div><div id="eob-insights"><div class="empty">Loading…</div></div>`;
   const box = document.getElementById('eob-insights');
-  if (!hasFeature('eob_insights')) { box.innerHTML = `<p class="small">Upload EOBs here or on a case — every plan can. ${esc(featureInfo('eob_insights').name)} adds the payer and fee-schedule view.</p>${upgradeCardHtml('eob_insights')}`; return; }
+  if (!hasFeature('eob_genie')) {
+    const fi = featureInfo('eob_genie');
+    box.innerHTML = `<div class="card upgrade genie-upsell"><img src="assets/genie/icon.png" alt="" class="genie-upsell-icon"><div><span class="chip legal">${esc(fi.planName)} plan &amp; up</span><h2 class="mt-sm">${esc(fi.name)}</h2>
+      <p class="mt-sm">${esc(fi.blurb || '')}</p><p class="small muted mt-sm">Included in Gold and Platinum, or on its own as EOB Genie. Your practice is on ${esc(S.practice?.planName || '')}.</p>
+      ${can('users.manage') ? '<a class="btn genie-btn mt" href="#/billing">See plans</a>' : '<p class="small mt">Ask your practice admin about upgrading.</p>'}</div></div>`;
+    return;
+  }
   const d = await attempt(() => api('eob.php?action=insights'));
   if (!d) return;
-  const t = d.totals;
-  if (!t.eobs) { box.innerHTML = '<div class="empty">No EOBs in the last 12 months yet. Upload the insurers\' EOBs — a whole day\'s mail at once is fine — and this page fills in.</div>'; return; }
-  box.innerHTML = `<div class="tiles">
-      <div class="tile accent"><div class="k">EOBs (12 months)</div><div class="v">${t.eobs}</div></div>
-      <div class="tile"><div class="k">Charged</div><div class="v">${money(t.charged)}</div></div>
-      <div class="tile"><div class="k">Allowed</div><div class="v">${t.allowedPct !== null ? t.allowedPct + '%' : '—'}</div></div>
-      <div class="tile"><div class="k">Paid</div><div class="v">${money(t.paid)}</div></div>
-      <div class="tile"><div class="k">Avg days to pay</div><div class="v">${t.avgDays ?? '—'}</div></div></div>
-    ${d.issues.length ? `<div class="card"><div class="card-head"><h2>Needs a look</h2><span class="badge-count">${d.issues.length}</span></div>
-      <ul class="eob-issues">${d.issues.map((x) => `<li><a href="#/case/${x.caseId}/financials">${esc(x.patient)}</a> <span class="mono small">${esc(x.caseNumber)}</span> · ${esc(x.payer)} · ${esc(fmtDate(x.eobDate))}<ul class="small">${x.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></li>`).join('')}</ul></div>` : ''}
+  const t = d.totals, g = d.genie;
+  if (!t.eobs) { box.innerHTML = `<div class="card genie-empty"><img src="assets/genie/icon.png" alt="" class="genie-upsell-icon"><div><h2>Upload your first EOBs</h2><p class="small">Scan the auto insurers' EOBs — a whole day's mail in one PDF is fine — and upload the scan. Each EOB is read, matched to its patient and checked; you confirm it and it's posted. The scan itself is never kept.</p></div></div>`; return; }
+  const who = (x) => `<a href="#/case/${x.caseId}/financials">${esc(x.patient)}</a> <span class="mono small muted">${esc(x.caseNumber)}</span>`;
+  const sect = (id, title, sub, body, n) => `<div class="card mt genie-card" id="${id}"><div class="card-head"><h2>${title}</h2>${n ? `<span class="badge-count">${n}</span>` : ''}</div><p class="small muted">${sub}</p>${body}</div>`;
+  const table = (heads, rows) => rows.length ? `<div class="table-wrap"><table><thead><tr>${heads.map((h) => `<th${h.startsWith('#') ? ' class="num"' : ''}>${esc(h.replace(/^#/, ''))}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>` : '<div class="empty">Nothing here — good news.</div>';
+  const ml = g.moneyLeft.items, kindLabel = { denied: 'Not paid', underpaid: 'Underpaid', short_paid: 'Paid short' };
+  box.innerHTML = `<div class="tiles genie-tiles">
+      <button type="button" class="tile accent" data-act="genie-jump" data-to="money-left"><div class="k">Money left on the table</div><div class="v">${money(g.moneyLeft.total)}</div><div class="small muted">${ml.length} item${ml.length === 1 ? '' : 's'} to dispute</div></button>
+      <button type="button" class="tile" data-act="genie-jump" data-to="fee-check"><div class="k">Fees below the schedule</div><div class="v">${g.fees.liftYear ? money(g.fees.liftYear) : g.fees.codes.length}</div><div class="small muted">${g.fees.liftYear ? 'more a year at current volume' : 'codes allowed at your full charge'}</div></button>
+      <button type="button" class="tile" data-act="genie-jump" data-to="paid-late"><div class="k">Paid late</div><div class="v">${g.paidLate.items.length}</div><div class="small muted">${g.paidLate.interestDue ? money(g.paidLate.interestDue) + ' interest due' : 'over 30 days from receipt'}</div></button>
+      <button type="button" class="tile" data-act="genie-jump" data-to="no-eob"><div class="k">Bills with no EOB</div><div class="v">${g.noEob.items.length}</div><div class="small muted">${money(g.noEob.total)} waiting</div></button>
+      <button type="button" class="tile warn" data-act="genie-jump" data-to="pip-out"><div class="k">PIP running out</div><div class="v">${g.pip.items.length}</div><div class="small muted">within 8 visits</div></button></div>
+    ${sect('money-left', 'Money left on the table', 'Lines the insurer didn’t pay, allowed less than it usually does, or paid short of the PIP math (80% of the allowed amount). Amounts marked “about” are estimates at 80% of what the code is usually allowed. Dispute with the Florida pre-suit demand letter (§627.736(10)).',
+      table(['Patient', 'Payer', 'EOB', 'What', '#Amount', ''], ml.map((x) => `<tr><td>${who(x)}</td><td>${esc(x.payer)}</td><td class="nowrap small">${esc(fmtDate(x.eobDate))}</td><td class="small"><span class="chip ${x.kind === 'denied' ? 'red' : 'ochre'}">${esc(kindLabel[x.kind])}</span> ${esc(x.text)}</td>
+        <td class="num">${x.estimated ? '<span class="small muted">about</span> ' : ''}${money(x.amount)}</td><td>${x.demandLetter ? `<a class="btn ghost sm" href="api/cases.php?action=letter&type=pip_demand&id=${x.caseId}" target="_blank" rel="noopener">Demand letter</a>` : ''}</td></tr>`)), ml.length)}
+    ${sect('fee-check', 'Fees below the PIP fee schedule', 'PIP pays the lesser of your charge and the schedule. When an insurer allows your whole charge — or more — your fee is likely below what the schedule pays. The yearly figure is 80% of the gap to the highest amount allowed, at your current volume.',
+      table(['Code', '#Your charge', '#Highest allowed', '#Allowed in full', '#Per year', '#More a year'], g.fees.codes.map((f) => `<tr><td class="mono">${esc(f.code)}</td><td class="num">${money(f.charge)}</td><td class="num">${money(f.highestAllowed)}</td><td class="num">${f.allowedFull} of ${f.lines}</td><td class="num">${f.perYear}</td><td class="num">${f.liftYear ? '<strong>' + money(f.liftYear) + '</strong>' : '<span class="small muted">check the schedule</span>'}</td></tr>`)), g.fees.codes.length)}
+    ${sect('paid-late', 'Paid late', `Florida PIP is overdue 30 days after the insurer receives the bill, and overdue payments bear simple interest (§627.736(4)). ${d.settings.interest_rate !== null ? `Interest is figured at ${esc(d.settings.interest_rate)}% a year, less any interest the insurer paid.` : 'Set the interest rate below to see what\'s owed.'}`,
+      table(['Patient', 'Payer', 'EOB', '#Days to pay', '#Paid', '#Interest due'], g.paidLate.items.map((x) => `<tr><td>${who(x)}</td><td>${esc(x.payer)}</td><td class="nowrap small">${esc(fmtDate(x.eobDate))}</td><td class="num">${x.days}</td><td class="num">${money(x.paid)}</td><td class="num">${x.interestDue !== null ? money(x.interestDue) : '—'}</td></tr>`)), g.paidLate.items.length)}
+    ${sect('no-eob', 'Bills with no EOB yet', 'Insurance charges still open 45+ days after the date of service with no EOB for that date. The bill may never have reached the insurer — call the adjuster.',
+      table(['Patient', 'Date of service', '#Days', '#Open'], g.noEob.items.map((x) => `<tr><td>${who(x)}</td><td class="nowrap">${esc(fmtDate(x.dos))}</td><td class="num">${x.days}</td><td class="num">${money(x.amount)}</td></tr>`)), g.noEob.items.length)}
+    ${sect('billed-late', 'Billed late', 'Florida requires PIP bills within 35 days of service — 75 if the notice of initiation of treatment went to the insurer within 21 days of the first visit (§627.736(5)(c)). Late bills can be refused, and the patient can\'t be billed for them.',
+      table(['Patient', 'Payer', 'Service', '#Days to bill', '#Window', '#Charged'], g.billedLate.items.map((x) => `<tr><td>${who(x)}</td><td>${esc(x.payer)}</td><td class="nowrap small">${esc(fmtDate(x.dosFrom))}</td><td class="num"><strong>${x.days}</strong></td><td class="num">${x.window}</td><td class="num">${money(x.charged)}</td></tr>`)), g.billedLate.items.length)}
+    ${sect('pip-out', 'PIP running out', 'Open auto cases with 8 or fewer visits of PIP left: what\'s left (the adjuster\'s figure when you\'ve recorded one — PIP is shared with every provider), what PIP pays you per visit on your EOBs, and the visit pace over the last four weeks. Get the letter of protection signed before it runs out.',
+      table(['Patient', '#Left', '#Per visit', '#Visits left', 'Runs out', 'LOP'], g.pip.items.map((x) => `<tr><td>${who(x)}</td><td class="num">${money(x.left)}<div class="small muted">${x.source === 'adjuster' ? 'adjuster' : 'of ' + money(x.limit)}</div></td><td class="num">${money(x.perVisit)}<div class="small muted">${x.perVisitFrom === 'case' ? 'this case' : 'practice avg'}</div></td>
+        <td class="num"><strong>${x.visitsLeft}</strong></td><td class="nowrap">${x.runsOutOn ? '~' + esc(fmtDate(x.runsOutOn)) : '<span class="small muted">no recent visits</span>'}</td><td>${x.lopSigned ? '<span class="chip teal">Signed</span>' : '<span class="chip red">Not signed</span>'}</td></tr>`)), g.pip.items.length)}
+    ${can('users.manage') ? `<div class="card mt"><h2>Settings</h2><div class="form-grid"><div><label for="eg-rate">Interest on overdue PIP payments (% a year)</label><input id="eg-rate" type="number" step="0.01" min="0" max="25" value="${d.settings.interest_rate ?? ''}" placeholder="e.g. the current §55.03 rate"></div></div>
+      <p class="small muted">Florida sets the §55.03 rate each quarter (Chief Financial Officer). Leave blank to show days late only.</p><button class="btn mt" data-act="eob-settings-save">Save</button></div>` : ''}
     <div class="card mt"><h2>By payer</h2><div class="table-wrap"><table><thead><tr><th>Payer</th><th class="num">EOBs</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid of charges</th><th class="num">Avg days to pay</th><th class="num">Over 30 days</th><th class="num">Lines not paid</th><th class="num">Exhausted</th><th class="num">Payment ≠ PIP math</th></tr></thead><tbody>
       ${d.payers.map((p) => `<tr><td>${esc(p.payer)}</td><td class="num">${p.eobs}</td><td class="num">${money(p.charged)}</td><td class="num">${p.allowedPct !== null ? p.allowedPct + '%' : '—'}</td><td class="num">${p.paidPct !== null ? p.paidPct + '%' : '—'}</td>
         <td class="num">${p.avgDays ?? '—'}</td><td class="num">${p.late || ''}</td><td class="num">${p.deniedLines ? p.deniedLines + ' of ' + p.lines : ''}</td><td class="num">${p.exhausted || ''}</td><td class="num">${p.mismatch || ''}</td></tr>`).join('')}
-    </tbody></table></div><p class="small muted mt-sm">Florida PIP allows 200% of Medicare Part B (80% of workers' comp for codes Medicare doesn't price) and pays 80% of that; payment is due within 30 days of the insurer receiving the bill (§627.736(4)(b)).</p></div>
+    </tbody></table></div><p class="small muted mt-sm">Florida PIP allows 200% of Medicare Part B (80% of workers' comp for codes Medicare doesn't price) and pays 80% of that.</p></div>
     <div class="card mt"><h2>By procedure code</h2><div class="table-wrap"><table><thead><tr><th>Code</th><th class="num">Lines</th><th class="num">Your charge</th><th class="num">Usually allowed</th><th class="num">Range</th><th>By payer</th><th>Notes</th></tr></thead><tbody>
       ${d.codes.map((c) => `<tr><td class="mono">${esc(c.code)}</td><td class="num">${c.lines}</td><td class="num">${money(c.charge)}</td><td class="num">${money(c.usualAllowed)}</td><td class="num small">${c.min !== null && c.max !== c.min ? money(c.min) + ' – ' + money(c.max) : ''}</td>
         <td class="small">${c.byPayer.map((b) => `${esc(b.payer)} ${money(b.allowed)}`).join(' · ')}</td>
         <td class="small">${c.chargeBelow ? `<span class="chip ochre">Fee may be below the schedule</span> allowed in full ${c.fullCharge}×` : ''}${c.denied ? ` ${c.denied} not paid` : ''}</td></tr>`).join('')}
-    </tbody></table></div><p class="small muted mt-sm">"Usually allowed" is the middle allowed amount on your own EOBs over the last 18 months. When payers allow your full charge, your fee is likely below what the PIP fee schedule would pay.</p></div>`;
+    </tbody></table></div><p class="small muted mt-sm">"Usually allowed" is the middle allowed amount on your own EOBs over the last 18 months.</p></div>`;
+}
+
+// Edit a saved EOB: a corrected line, or the check that came later.
+function eobEditModal(e) {
+  const st = { lines: (e.lines || []).map((l) => ({ ...l })) };
+  const linesHtml = () => st.lines.map((l, j) => `<tr data-j="${j}"><td><input type="date" data-l="dos" value="${esc(l.dos || '')}" aria-label="Date of service"></td><td><input data-l="code" value="${esc(l.code)}" class="w-code" aria-label="Code"></td>
+    <td><input data-l="modifiers" value="${esc(l.modifiers || '')}" class="w-mod" aria-label="Modifiers"></td><td><input type="number" step="0.01" data-l="charged" value="${l.charged ?? ''}" class="w-amt" aria-label="Charged"></td>
+    <td><input type="number" step="0.01" data-l="allowed" value="${l.allowed ?? ''}" class="w-amt" aria-label="Allowed"></td><td><input type="number" step="0.01" data-l="paid" value="${l.paid ?? ''}" class="w-amt" aria-label="Paid" placeholder="—"></td>
+    <td><input data-l="reasons" value="${esc(l.reasons || '')}" class="w-codes" aria-label="Reason codes"></td><td><button type="button" class="linklike" data-eob-del="${j}" aria-label="Remove line">✕</button></td></tr>`).join('');
+  const f = (k, l, v, type = 'text') => `<div><label for="ee-${k}">${l}</label><input id="ee-${k}" data-h="${k}" type="${type}" value="${esc(v ?? '')}"${type === 'number' ? ' step="0.01"' : ''}></div>`;
+  const ehr = S.caseData?.case?.ehr_synced_at;
+  const m = openModal({ title: `Edit ${e.payer} EOB`, wide: true, okText: 'Save changes', body: `<div class="form-grid">${f('payer', 'Payer', e.payer)}${f('claim', 'Claim number', e.claim)}${f('receivedOn', 'Bill received by insurer', e.receivedOn, 'date')}
+      ${f('eobDate', 'EOB date', e.eobDate, 'date')}${f('checkNumber', 'Check number', e.checkNumber)}${f('checkDate', 'Check date', e.checkDate, 'date')}</div>
+    <div class="table-wrap mt-sm"><table class="eob-lines"><thead><tr><th>Date of service</th><th>Code</th><th>Mod.</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid</th><th>Reason codes</th><th></th></tr></thead><tbody id="ee-lines">${linesHtml()}</tbody></table></div>
+    <button type="button" class="btn ghost sm mt-sm" data-eob-add>+ Add line</button>
+    <div class="form-grid mt-sm eob-totals">${[['charged', 'Total charged'], ['allowed', 'Total allowed'], ['deductible', 'Deductible'], ['coinsurance', 'PIP 20% / copay'], ['paid', 'Paid (check)']].map(([k, l]) => `<div><label for="ee-t-${k}">${l}</label><input id="ee-t-${k}" type="number" step="0.01" data-t="${k}" value="${e[k] ?? ''}"></div>`).join('')}</div>
+    <label class="check mt-sm"><input type="checkbox" id="ee-post"${e.posted ? ' checked' : ''}${ehr || !can('fin:ledger') ? ' disabled' : ''}> ${e.posted ? 'Re-post to the ledger — the entries this EOB posted are replaced to match' : 'Post to the case ledger'}</label>`,
+    onOk: async (el) => {
+      readLines(el);
+      const header = {}; el.querySelectorAll('[data-h]').forEach((x) => { header[x.dataset.h] = x.value.trim() || null; });
+      const totals = {}; el.querySelectorAll('[data-t]').forEach((x) => { totals[x.dataset.t] = num(x.value); });
+      const r = await api('eob.php?action=update', { id: e.id, header, lines: st.lines, totals, coverageId: e.coverageId, layout: e.layout, reasons: e.reasons, exhausted: e.status === 'exhausted', post: el.querySelector('#ee-post').checked });
+      toast(r.ledgerReplaced ? `EOB updated — ${r.ledgerReplaced} ledger entries replaced` : (r.posted ? 'EOB updated and posted' : 'EOB updated'));
+      if (r.switchedToLop) toast('PIP benefits exhausted — the case moved to a letter of protection');
+      await reloadCase();
+    } });
+  function readLines(el) { el.querySelectorAll('#ee-lines tr[data-j]').forEach((tr) => { const l = st.lines[+tr.dataset.j]; tr.querySelectorAll('[data-l]').forEach((x) => { l[x.dataset.l] = ['charged', 'allowed', 'paid'].includes(x.dataset.l) ? num(x.value) : (x.value.trim() || null); }); }); }
+  m.el.addEventListener('click', (ev) => {
+    const add = ev.target.closest('[data-eob-add]'), del = ev.target.closest('[data-eob-del]');
+    if (!add && !del) return;
+    readLines(m.el);
+    if (add) st.lines.push({ dos: st.lines.at(-1)?.dos || null, code: '', modifiers: null, charged: null, allowed: null, paid: null, reasons: null });
+    if (del) st.lines.splice(+del.dataset.eobDel, 1);
+    m.el.querySelector('#ee-lines').innerHTML = linesHtml();
+  });
 }
 
 // ----- Push off: when a step or task can't be done now -----
@@ -3813,7 +3921,12 @@ const ACTIONS = {
   'move-balance': (el) => moveModal({ fromValue: el.dataset.from || null, chargeId: el.dataset.charge ? +el.dataset.charge : null }),
   'edit-ledger': (el) => ledgerEditModal(S.caseData.ledger.find((l) => l.id == el.dataset.id)),
   'edit-lop': lopModal, 'edit-limits': limitsModal, 'forward-balance': forwardModal, 'ehr-upload': ehrUploadModal,
-  'eob-upload': () => eobUploadModal(), 'eob-upload-case': () => eobUploadModal(S.caseData.case.id), 'eob-open': (el) => eobDetailModal(+el.dataset.id),
+  'eob-upload': () => eobUploadModal(),
+  'genie-jump': (el) => document.getElementById(el.dataset.to)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+  'eob-settings-save': async () => {
+    const v = document.getElementById('eg-rate').value.trim();
+    if (await attempt(() => api('eob.php?action=settings', { interest_rate: v === '' ? null : +v }))) { toast('Saved'); pageEobs(document.getElementById('main')); }
+  }, 'eob-upload-case': () => eobUploadModal(S.caseData.case.id), 'eob-open': (el) => eobDetailModal(+el.dataset.id),
   'archive-child': (el) => archiveChild(el.dataset.table, +el.dataset.id),
   'archive-doc': async (el) => {
     if (!await confirmBox('Remove document', 'Remove this document from the case? It is archived, not destroyed.', 'Remove')) return;

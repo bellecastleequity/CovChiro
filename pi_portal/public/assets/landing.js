@@ -8,8 +8,10 @@
   let data = null, interval = 'monthly';
   const render = () => {
     const d = data;
-    const keys = Object.keys(d.plans);
+    const keys = Object.keys(d.plans).filter((k) => !d.plans[k].standalone);
     const annual = interval === 'annual';
+    const genie = d.plans.eob;
+    if (genie) { document.getElementById('genie-price').textContent = annual ? genie.annual_price : genie.price; document.querySelector('.genie-offer-price small').textContent = annual ? '/year on its own' : '/month on its own'; document.getElementById('genie-offer').hidden = false; }
     document.getElementById('pricing-cards').innerHTML = keys.map((k, i) => {
       const p = d.plans[k];
       const featured = i === 1;

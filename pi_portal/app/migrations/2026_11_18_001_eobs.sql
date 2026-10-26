@@ -53,4 +53,6 @@ CREATE TABLE eob_lines (
   INDEX idx_eob_lines_code (code),
   CONSTRAINT fk_eobl_eob FOREIGN KEY (eob_id) REFERENCES eobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-ALTER TABLE ledger ADD COLUMN eob_id INT NULL AFTER ehr_import_id, ADD INDEX idx_ledger_eob (eob_id)
+ALTER TABLE ledger ADD COLUMN eob_id INT NULL AFTER ehr_import_id, ADD INDEX idx_ledger_eob (eob_id);
+-- EOB Genie settings (the interest rate on overdue PIP payments, etc.).
+ALTER TABLE practices ADD COLUMN eob_settings TEXT NULL AFTER case_updates

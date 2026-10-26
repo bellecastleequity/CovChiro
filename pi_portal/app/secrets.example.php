@@ -34,6 +34,8 @@ define('STRIPE_PRICES', [
     'group' => ['monthly' => 'price_...', 'annual' => 'price_...'],
     // Extra location add-on for Platinum: $29/month, $290/year (per location).
     'location' => ['monthly' => 'price_...', 'annual' => 'price_...'],
+    // EOB Genie on its own (no case management): $49/month, $490/year.
+    'eob' => ['monthly' => 'price_...', 'annual' => 'price_...'],
 ]);
 
 // ========== EMAIL (trial reminders) ==========

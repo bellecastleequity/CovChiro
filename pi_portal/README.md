@@ -250,7 +250,8 @@ pi_portal/
    Price simply don't offer annual billing. Also create an **Extra location**
    Product with a $29/month and a $290/year Price for `'location'`: Platinum
    includes 2 active locations (`LOCATIONS_INCLUDED`), and each one beyond
-   is a quantity on that second subscription item.
+   is a quantity on that second subscription item. And an **EOB Genie**
+   Product ($49/month, $490/year) for `'eob'` — EOB Genie sold on its own.
 2. Add a webhook to `https://<app>/api/billing.php?action=webhook` for
    `checkout.session.completed` and `customer.subscription.created/updated/deleted`.
    Put its signing secret in `STRIPE_WEBHOOK_SECRET`.
@@ -283,7 +284,13 @@ php app/cli/import_sheets.php --practice=ID --ar=ar.csv --tracking=tracking.csv
   is labeled "imported — verify".
 - The two sheets aren't linked by patient, so the same person can appear twice. Merge them by hand.
 
-### Insurance EOB uploads (auto / PIP)
+### EOB Genie — insurance EOB uploads (auto / PIP)
+EOB Genie is included in **Gold and Platinum**, and sold **on its own**
+($49/month, plan key `eob`) for clinics that don't need case management: they
+get a slimmer app (EOB Genie, patients & claims, contacts, users, settings,
+billing, audit log), and upgrading to Gold keeps all their data. Brand assets
+(logo, icon, Montserrat) are in `public/assets/genie/`.
+
 Staff scan the auto insurers' EOBs — one, or the day's whole mail in one PDF —
 and upload them on a case (Financials → Upload EOB) or on **EOBs & payers**.
 Each page is read by OCR, split into EOBs, matched to its case (claim number,
@@ -306,7 +313,17 @@ insurance for a demand letter. "Benefits exhausted" marks the PIP coverage
 exhausted, moves the charges to the patient balance and, when no other
 coverage is left, switches the case to a letter of protection.
 
-**EOBs & payers** (Gold and up) shows each insurer's allowed and paid
+Saved EOBs can be edited (a corrected line, or the check that arrived after
+the EOB); a posted EOB's ledger entries are replaced to match. Staff can also
+create the patient and auto case straight from an EOB that matches no case.
+
+The **EOB Genie** page shows what to act on — money left on the table (denied,
+underpaid and short-paid lines, with the Florida demand letter), fees below
+the PIP fee schedule (with the yearly revenue at current volume), payments
+made over 30 days after receipt (with interest at the practice's §55.03
+rate), insurance charges with no EOB after 45 days, bills sent after the
+35-day (or 75-day) window, and cases whose PIP runs out within 8 visits — and
+each insurer's allowed and paid
 percentages, days to pay (Florida: 30 days from receipt, §627.736(4)(b)),
 denied lines and payment mismatches, and each code's usual allowed amount —
 flagging likely underpayments and codes whose fee may be below the schedule

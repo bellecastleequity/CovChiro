@@ -44,13 +44,16 @@ function trial_email(array $p, string $kind): array {
     $plan = plan_for($p);
     $url = APP_URL . '/app.html#/billing';
     $end = date('F j', strtotime($p['trial_ends_at']));
-    $prices = implode("\n", array_map(fn($k, $v) => sprintf('  %-9s $%d/month, or $%d/year (2 months free)', $v['name'], $v['price'], $v['price'] * ANNUAL_MONTHS_CHARGED), array_keys(PLANS), PLANS));
+    // EOB Genie trials see EOB Genie and the tiers that include it; others see the tiers.
+    $alone = plan_standalone((string)$p['plan']);
+    $shown = array_filter(PLANS, fn($v, $k) => $alone ? ($k === $p['plan'] || plan_has_feature($k, 'eob_genie')) : !plan_standalone($k), ARRAY_FILTER_USE_BOTH);
+    $prices = implode("\n", array_map(fn($k, $v) => sprintf('  %-9s $%d/month, or $%d/year (2 months free)', $v['name'], $v['price'], $v['price'] * ANNUAL_MONTHS_CHARGED), array_keys($shown), $shown));
     $keep = "If you add your card now, you keep the rest of your free trial — the first charge is on $end.";
     $after = "If the trial ends without a plan, your account becomes read-only. Nothing is deleted, and choosing a plan restores full access.";
     $lead = [
         'trial_3d' => ["Your " . BRAND_NAME . " trial ends in 3 days", "Your free trial for {$p['name']} ends on $end. To keep your team working without interruption, choose a plan:\n\n$url\n\n$keep"],
         'trial_1d' => ["Your " . BRAND_NAME . " trial ends tomorrow", "Your free trial for {$p['name']} ends tomorrow ($end). Choose a plan to keep full access:\n\n$url\n\n$keep"],
-        'trial_ended' => ["Your " . BRAND_NAME . " trial has ended", "Your free trial for {$p['name']} ended on $end, so your account is read-only for now. Your cases and documents are safe. Choose a plan to pick up where you left off:\n\n$url"],
+        'trial_ended' => ["Your " . BRAND_NAME . " trial has ended", "Your free trial for {$p['name']} ended on $end, so your account is read-only for now. Your records are safe. Choose a plan to pick up where you left off:\n\n$url"],
     ][$kind];
     return [$lead[0], $lead[1] . "\n\nPlans (your selection: {$plan['name']}):\n$prices\n\n" . ($kind === 'trial_ended' ? '' : "$after\n\n")
         . "Questions? Just reply, or write to " . SUPPORT_EMAIL . ".\n\n— The " . BRAND_NAME . " team\n"];

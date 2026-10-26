@@ -41,6 +41,7 @@ CREATE TABLE practices (
   reduction_terms TEXT NULL,
   -- Monthly case updates to attorneys / case managers (on unless turned off).
   case_updates TINYINT(1) NOT NULL DEFAULT 1,
+  eob_settings TEXT NULL,
   state CHAR(2) NOT NULL DEFAULT 'FL',
   -- Which financial categories the staff role may see (comma list of
   -- balances, ledger, settlement). Empty = none.

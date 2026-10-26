@@ -485,7 +485,11 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 
 /* Promo code on signup */
 .promo-row{display:flex;gap:8px;}
-.promo-row input{flex:1;text-transform:uppercase;}
+.promo-row input{flex:1;min-width:0;text-transform:uppercase;}
+.auth-card .promo-row .btn{width:auto;flex:none;margin-top:0;padding:8px 16px;}
+label.check > span{flex:1;}
+label.check{align-items:flex-start;}
+label.check > input{margin-top:3px;}
 .promo-ok{color:var(--indigo-dark);font-weight:600;margin-top:4px;}
 .promo-bad{color:var(--red);margin-top:4px;}
 
@@ -578,3 +582,32 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .ok-ink{color:var(--mint-ink,#0F766E);}
 .eob-issues{margin:0;padding-left:18px;}.eob-issues>li{margin:8px 0;}
 tr.clickable{cursor:pointer;}tr.clickable:hover td{background:var(--bg-2);}
+
+/* EOB Genie (its own brand kit: Frost Blue, Arctic Blue, Ocean Blue, Midnight Navy, Silver; Montserrat) */
+@font-face{font-family:'Montserrat';src:url('genie/montserrat-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap;}
+@font-face{font-family:'Montserrat';src:url('genie/montserrat-latin-700-normal.woff2') format('woff2');font-weight:700;font-display:swap;}
+:root{--g-frost:#CFF4FF;--g-arctic:#69C8EB;--g-ocean:#176A96;--g-navy:#152E46;--g-silver:#E6EEF5;}
+.genie-head{display:flex;flex-direction:column;gap:4px;}
+.genie-logo{height:72px;width:auto;max-width:100%;object-fit:contain;display:block;align-self:flex-start;}
+.genie-sub{margin:0;font-size:0.86rem;color:var(--muted);}
+.genie-page-head{align-items:center;}
+.modal .genie-head{margin-bottom:10px;}.modal .genie-logo{height:56px;}
+.genie-btn{background:var(--g-ocean);border-color:var(--g-ocean);color:#fff;}
+.genie-btn:hover{background:var(--g-navy);border-color:var(--g-navy);}
+.genie-card h2,.genie-upsell h2,.genie-empty h2{font-family:'Montserrat','Inter',system-ui,sans-serif;font-weight:700;color:var(--g-navy);letter-spacing:-0.01em;}
+.genie-card{border-top:3px solid var(--g-arctic);}
+.genie-tiles .tile{text-align:left;font:inherit;color:inherit;cursor:pointer;}
+.genie-tiles .tile.accent{border-left-color:var(--g-ocean);background:linear-gradient(180deg,var(--g-frost),var(--surface) 70%);}
+.genie-tiles .tile:hover{border-color:var(--g-arctic);}
+.genie-upsell,.genie-empty{display:flex;gap:18px;align-items:center;}
+.genie-upsell-icon{width:96px;height:auto;flex:none;}
+.genie-reading{display:flex;flex-direction:column;align-items:center;padding:28px 0;color:var(--g-navy);font-weight:600;}
+.genie-reading img{width:84px;height:auto;animation:genie-float 1.8s ease-in-out infinite;}
+@keyframes genie-float{0%,100%{transform:translateY(0);}50%{transform:translateY(-8px);}}
+@media (prefers-reduced-motion:reduce){.genie-reading img{animation:none;}}
+.genie-mini{width:26px;height:26px;border-radius:6px;margin-right:2px;}
+.card-head .genie-mini + h2{margin-right:8px;}
+@media (max-width:640px){.genie-logo{height:52px;}.genie-upsell,.genie-empty{flex-direction:column;align-items:flex-start;}}
+.genie-plan{border-color:var(--g-arctic);}
+.genie-plan-logo{height:44px;width:auto;max-width:100%;object-fit:contain;display:block;margin-bottom:6px;align-self:flex-start;}
+.genie-signup-logo{height:64px;width:auto;max-width:100%;object-fit:contain;display:block;margin:0 auto 8px;}

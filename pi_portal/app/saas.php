@@ -26,6 +26,10 @@ const PLANS = [
     'solo'     => ['name' => 'Silver',   'price' => 39,  'active_cases' => 75,   'users' => 3,    'blurb' => 'One doctor and front desk'],
     'practice' => ['name' => 'Gold',     'price' => 59, 'active_cases' => 300,  'users' => 10,   'blurb' => 'A busy PI clinic'],
     'group'    => ['name' => 'Platinum', 'price' => 79, 'active_cases' => null, 'users' => null, 'blurb' => 'Multiple doctors or locations — under your own brand'],
+    // A product of its own, not a tier: EOB Genie without case management.
+    // Gold and Platinum include it; upgrading keeps everything.
+    'eob'      => ['name' => 'EOB Genie', 'price' => 49, 'active_cases' => null, 'users' => 5, 'blurb' => 'Insurance EOBs, explained — upload, post and analyse auto / PIP EOBs',
+                   'standalone' => true, 'features' => ['eob_genie']],
 ];
 
 // ---------- features by plan ----------
@@ -35,6 +39,7 @@ const PLANS = [
 // where it's used — the pricing pages, plan cards, upgrade prompts and
 // enforcement all read this list. Features not listed are in every plan.
 const PLAN_ORDER = ['solo', 'practice', 'group'];
+function plan_standalone(string $plan): bool { return !empty(PLANS[$plan]['standalone']); }
 const FEATURES = [
     'huddle' => ['name' => 'Daily huddle sheet', 'plan' => 'practice',
         'blurb' => "A printable morning team-meeting sheet of everything outstanding: tasks, gaps in care, patients behind plan, referrals due, insurance and attorney items."],
@@ -46,8 +51,8 @@ const FEATURES = [
         'blurb' => "Email the attorney or case manager every 30 days (or your interval) for a case and payment status update, with a secure one-minute reply form that updates the case for you."],
     'schedule_import' => ['name' => 'Daily appointment list upload', 'plan' => 'practice',
         'blurb' => "Upload yesterday's appointment list from any EHR (spreadsheet or PDF) and visits and no-shows are logged on every injury case automatically — so gaps in care and missed visits are flagged without double entry."],
-    'eob_insights' => ['name' => 'Payer & fee-schedule insights from EOBs', 'plan' => 'practice',
-        'blurb' => "See every auto insurer side by side from the EOBs you upload — what each allows and pays, how fast, denials and underpayments — and what each procedure code is usually allowed, so you can spot short payments and fees set below the PIP fee schedule."],
+    'eob_genie' => ['name' => 'EOB Genie — insurance EOBs, explained', 'plan' => 'practice',
+        'blurb' => "Scan the day's auto / PIP EOBs and they're read, matched to each patient and posted for you — then see the money left on the table, fees set below the PIP fee schedule, overdue and late bills, when PIP will run out, and every insurer side by side."],
     'email_digest' => ['name' => 'Daily email digest', 'plan' => 'group',
         'blurb' => "A morning email to each team member with counts of what needs attention under the criteria they choose — no patient details in the email."],
     'locations' => ['name' => 'Multiple locations (2 included, then $29/month each)', 'plan' => 'group',
@@ -58,7 +63,7 @@ const FEATURES = [
         'blurb' => "Run it under your clinic's own name, logo and color: your team signs in at your own branded link, and attorneys see your brand on the status reply page and emails."],
 ];
 // Shown on every plan card (in all plans).
-const CORE_FEATURES = ['Case tracking & referral guide', 'Case suggestions & policy-limit warnings', 'EHR ledger uploads (any EHR)', 'Auto / PIP EOB uploads', 'Tasks, activity & audit log'];
+const CORE_FEATURES = ['Case tracking & referral guide', 'Case suggestions & policy-limit warnings', 'EHR ledger uploads (any EHR)', 'Tasks, activity & audit log'];
 
 function plan_rank(string $plan): int {
     $i = array_search($plan, PLAN_ORDER, true);
@@ -71,6 +76,7 @@ function feature_plan(string $feature): string {
 }
 
 function plan_has_feature(string $plan, string $feature): bool {
+    if (plan_standalone($plan)) return in_array($feature, PLANS[$plan]['features'], true);
     return plan_rank($plan) >= plan_rank(feature_plan($feature));
 }
 
@@ -78,6 +84,8 @@ function plan_has_feature(string $plan, string $feature): bool {
 // complimentary accounts also get everything. Otherwise it's the plan.
 function has_feature(?array $practice, string $feature): bool {
     if (!$practice) return false;
+    // A standalone product's trial is that product.
+    if (plan_standalone((string)$practice['plan']) && $practice['subscription_status'] !== 'comped') return plan_has_feature((string)$practice['plan'], $feature);
     if (in_array($practice['subscription_status'], ['trialing', 'comped'], true)) return true;
     return plan_has_feature((string)$practice['plan'], $feature);
 }
@@ -91,7 +99,9 @@ function practice_features(array $practice): array {
 function require_feature(string $feature): void {
     if (has_feature(current_practice(), $feature)) return;
     $plan = PLANS[feature_plan($feature)]['name'];
-    json_response(['error' => FEATURES[$feature]['name'] . ' is included in the ' . $plan . ' plan' . (feature_plan($feature) !== PLAN_ORDER[count(PLAN_ORDER) - 1] ? ' and up' : '') . '. Upgrade under Plan & billing.',
+    $alone = array_keys(array_filter(PLANS, fn($p) => in_array($feature, $p['features'] ?? [], true)));
+    json_response(['error' => FEATURES[$feature]['name'] . ' is included in the ' . $plan . ' plan' . (feature_plan($feature) !== PLAN_ORDER[count(PLAN_ORDER) - 1] ? ' and up' : '')
+        . ($alone ? ' (or on its own as ' . PLANS[$alone[0]]['name'] . ', $' . PLANS[$alone[0]]['price'] . '/month)' : '') . '. Upgrade under Plan & billing.',
         'code' => 'upgrade', 'feature' => $feature, 'plan' => feature_plan($feature)], 403);
 }
 
@@ -99,7 +109,7 @@ function require_feature(string $feature): void {
 // features each includes.
 function plans_public(): array {
     $out = [];
-    foreach (PLANS as $k => $p) $out[$k] = $p + ['annual_price' => $p['price'] * ANNUAL_MONTHS_CHARGED,
+    foreach (PLANS as $k => $p) $out[$k] = $p + ['standalone' => false, 'annual_price' => $p['price'] * ANNUAL_MONTHS_CHARGED,
         'locations' => plan_has_feature($k, 'locations') ? ['included' => LOCATIONS_INCLUDED, 'extra_price' => EXTRA_LOCATION_PRICE] : null,
         'features' => array_map(fn($f, $d) => ['key' => $f, 'name' => $d['name'], 'included' => plan_has_feature($k, $f)], array_keys(FEATURES), FEATURES)];
     return $out;
@@ -157,6 +167,7 @@ function plan_for(array $practice): array {
 function effective_plan_key(array $practice): string {
     $top = PLAN_ORDER[count(PLAN_ORDER) - 1];
     if ($practice['subscription_status'] === 'comped') return $top;
+    if (plan_standalone((string)$practice['plan'])) return $practice['plan'];
     if ($practice['subscription_status'] === 'trialing' && practice_access($practice) === 'full') return $top;
     return isset(PLANS[$practice['plan']]) ? $practice['plan'] : PLAN_ORDER[0];
 }
@@ -193,7 +204,9 @@ function practice_summary(array $p): array {
             'price' => EXTRA_LOCATION_PRICE, 'annualPrice' => EXTRA_LOCATION_PRICE * ANNUAL_MONTHS_CHARGED],
         'promo' => ($d = practice_discount($p)) ? ['code' => $d['code'], 'summary' => promo_summary($d), 'plans' => $d['plans'] ? explode(',', $d['plans']) : null] : null,
         // Features the trial includes that the chosen plan won't keep.
-        'trialExtras' => $p['subscription_status'] === 'trialing' ? array_values(array_filter(array_keys(FEATURES), fn($f) => !plan_has_feature((string)$p['plan'], $f))) : [],
+        'trialExtras' => $p['subscription_status'] === 'trialing' && !plan_standalone((string)$p['plan']) ? array_values(array_filter(array_keys(FEATURES), fn($f) => !plan_has_feature((string)$p['plan'], $f))) : [],
+        // Which product the practice uses: the full app, or EOB Genie alone.
+        'product' => plan_standalone((string)$p['plan']) && $p['subscription_status'] !== 'comped' ? $p['plan'] : 'injurycase',
     ];
 }
 

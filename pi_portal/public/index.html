@@ -8,7 +8,7 @@
 <link rel="icon" href="favicon.ico" sizes="48x48">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<link rel="stylesheet" href="assets/landing.css?v=2">
+<link rel="stylesheet" href="assets/landing.css?v=3">
 </head>
 <body>
 
@@ -120,7 +120,7 @@
         <tr><td><b>Access control</b><small>§164.312(a)</small></td><td>Unique login for every person, role-based permissions, optional limits to one location, automatic sign-out after 15 minutes idle.</td></tr>
         <tr><td><b>Person authentication</b><small>§164.312(d)</small></td><td>Two-factor sign-in required for every user; accounts lock after repeated failed attempts.</td></tr>
         <tr><td><b>Audit controls</b><small>§164.312(b)</small></td><td>Every view, edit, export and download is logged with who, when and from where — reviewable and exportable by your admins.</td></tr>
-        <tr><td><b>Encryption &amp; integrity</b><small>§164.312(a)(2)(iv), (c)</small></td><td>256-bit encryption at rest for sensitive fields and every document; changes recorded field by field.</td></tr>
+        <tr><td><b>Encryption &amp; integrity</b><small>§164.312(a)(2)(iv), (c)</small></td><td>256-bit encryption at rest for sensitive fields; uploaded files are read, never kept; changes recorded field by field.</td></tr>
         <tr><td><b>Transmission security</b><small>§164.312(e)</small></td><td>TLS on every connection. Emails we send never contain patient names or case details.</td></tr>
         <tr><td><b>Contingency &amp; backups</b><small>§164.308(a)(7)</small></td><td>Daily encrypted backups kept for 35 days, with monitored uptime and automatic recovery.</td></tr>
       </tbody></table></div>
@@ -143,6 +143,15 @@
       <button type="button" role="radio" data-interval="annual" aria-checked="false">Annual <span class="save">2 months free</span></button>
     </div></div>
     <div class="pricing" id="pricing-cards"></div>
+    <div class="genie-offer" id="genie-offer" hidden>
+      <img src="assets/genie/logo.png" alt="EOB Genie — Insurance EOBs. Explained." class="genie-offer-logo">
+      <div class="genie-offer-body">
+        <h3>EOB Genie — included in Gold and Platinum, or on its own</h3>
+        <p>Scan the day's auto / PIP EOBs — one or a whole batch. EOB Genie reads them, matches each to its patient, checks the PIP math and posts the payment. Then it shows the money left on the table (with demand letters), fees set below the PIP fee schedule, payments made late and bills that never got an EOB, bills sent late, and which patients' PIP is about to run out. Scans are read, never kept.</p>
+        <div class="genie-offer-cta"><span class="genie-offer-price">$<span id="genie-price">49</span><small>/month on its own</small></span>
+          <a class="btn" href="app.html#signup?plan=eob">Try EOB Genie free</a><a class="btn ghost" href="app.html#signup?plan=practice">Get Gold — EOB Genie included</a></div>
+      </div>
+    </div>
     <p class="fine center">Free <span id="trial-days">14</span>-day trial. No credit card required. The trial includes everything in Platinum; add a card any time and you still get every free day. Change plans any time — upgrades cost only the difference and start the moment payment goes through. Cancel any time.</p>
   </div>
 </section>
@@ -181,6 +190,6 @@
     <small>© <span id="year">2026</span> InjuryCase</small>
   </div>
 </footer>
-<script src="assets/landing.js?v=1"></script>
+<script src="assets/landing.js?v=2"></script>
 </body>
 </html>
