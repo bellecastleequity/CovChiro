@@ -3257,6 +3257,86 @@ async function newCaseFromEob(e) {
   });
 }
 
+// The genie at work while a scan is read: it rises from its lamp, EOB pages
+// swirl in and come out checked, a sparkle rides the progress bar, and the
+// status line has a little fun. The server reads the whole scan in one
+// request, so progress is an estimate from the file size (scans run about
+// 250 KB and 1.5 seconds a page); it eases toward 92% and finishes when the
+// answer arrives, with a "ta-da".
+const GENIE_STEPS = [
+  [0, 'Rubbing the lamp…'], [6, 'Poof! The genie is up and stretching.'], [14, 'Unrolling your EOBs…'],
+  [26, 'Reading every line — no squinting required.'], [42, 'Matching each EOB to its patient…'],
+  [56, 'Checking the PIP math (80%, every time)…'], [70, 'Hunting for money left on the table…'],
+  [82, 'Polishing the numbers until they sparkle…'], [92, 'Almost there — one last wiggle of the fingers…'],
+];
+const GENIE_LAMP = `<svg class="gp-lamp" viewBox="0 0 160 70" aria-hidden="true"><defs><linearGradient id="gp-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE7A3"/><stop offset=".55" stop-color="#F2B640"/><stop offset="1" stop-color="#C98516"/></linearGradient></defs>
+  <path d="M8 34c14 2 24 6 34 12" stroke="#C98516" stroke-width="7" stroke-linecap="round" fill="none"/>
+  <path d="M30 40c0-12 22-20 50-20s48 8 48 18c0 12-20 20-48 20S30 52 30 40Z" fill="url(#gp-gold)"/>
+  <path d="M126 32c14-8 28 2 22 14-4 8-14 8-22 4" stroke="#C98516" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <ellipse cx="80" cy="21" rx="18" ry="5" fill="#FFE7A3"/><circle cx="80" cy="14" r="5" fill="#F2B640"/>
+  <path d="M58 66h44l-6-8H64Z" fill="#C98516"/><path d="M48 38c10 4 54 4 64 0" stroke="#FFF6D6" stroke-width="3" fill="none" opacity=".7" stroke-linecap="round"/></svg>`;
+// Extra lines for a big batch that's taking its time.
+const GENIE_WAIT = ['Big batch! The genie is reading as fast as genie-ly possible…', 'Still reading — every number gets checked twice.',
+  'Sorting the checks from the EOBs…', 'Skipping the health-insurance pages (auto / PIP only)…', 'Nearly there — the genie never rushes the math.'];
+
+// Pages in a PDF, counted from its page objects (scanner PDFs list them
+// plainly); falls back to the file size (about 250 KB a scanned page).
+async function pdfPageCount(file) {
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let txt = ''; for (let i = 0; i < bytes.length; i += 65536) txt += String.fromCharCode.apply(null, bytes.subarray(i, i + 65536));
+    const n = (txt.match(/\/Type\s*\/Page(?![a-zA-Z])/g) || []).length;
+    if (n > 0) return n;
+  } catch { /* fall through to the size estimate */ }
+  return Math.max(1, Math.round((file?.size || 250000) / 250000));
+}
+
+function genieProgress(host, file) {
+  let pages = Math.max(1, Math.min(60, Math.round((file?.size || 250000) / 250000)));
+  let eta = Math.max(4, pages * 1.5);
+  host.innerHTML = `<div class="gp" role="status" aria-live="polite">
+    <div class="gp-stage" aria-hidden="true">
+      <div class="gp-docs"><i class="gp-doc"></i><i class="gp-doc"></i><i class="gp-doc"></i></div>
+      <div class="gp-smoke"><i></i><i></i><i></i><i></i></div>
+      <img class="gp-genie" src="assets/genie/icon.png" alt="">
+      ${GENIE_LAMP}
+      <span class="gp-spark"></span><span class="gp-spark"></span><span class="gp-spark"></span><span class="gp-spark"></span><span class="gp-spark"></span>
+      <div class="gp-burst">${'<i></i>'.repeat(10)}</div>
+    </div>
+    <p class="gp-msg">${GENIE_STEPS[0][1]}</p>
+    <div class="gp-bar"><i><b class="gp-bar-spark"></b></i></div>
+    <p class="gp-sub">Reading about ${pages} page${pages === 1 ? '' : 's'}…</p></div>`;
+  const root = host.querySelector('.gp'), bar = root.querySelector('.gp-bar > i'), msg = root.querySelector('.gp-msg');
+  const t0 = performance.now(); let pct = 0, stopped = false, step = 0;
+  const subText = () => `Reading ${pages} page${pages === 1 ? '' : 's'} · usually under ${Math.ceil(eta / 5) * 5} seconds`;
+  if (file) pdfPageCount(file).then((n) => { pages = Math.min(60, n); eta = Math.max(4, pages * 1.5); if (!stopped) root.querySelector('.gp-sub').textContent = subText(); });
+  const setMsg = (t) => { if (msg.textContent === t) return; msg.classList.remove('gp-in'); void msg.offsetWidth; msg.textContent = t; msg.classList.add('gp-in'); };
+  const tick = () => {
+    if (stopped) return;
+    const t = (performance.now() - t0) / 1000;
+    // Fast at first, slowing near the end; past the estimate it keeps creeping toward 97%.
+    pct = t <= eta ? 92 * (1 - Math.exp(-2.2 * t / eta)) / (1 - Math.exp(-2.2)) * 0.98 : Math.min(97, 90.2 + 6.8 * (1 - Math.exp(-(t - eta) / (eta * 1.5))));
+    pct = Math.min(97, pct);
+    bar.style.width = pct.toFixed(1) + '%';
+    while (step + 1 < GENIE_STEPS.length && pct >= GENIE_STEPS[step + 1][0]) step++;
+    setMsg(t > eta * 1.15 ? GENIE_WAIT[Math.floor((t - eta * 1.15) / 3.2) % GENIE_WAIT.length] : GENIE_STEPS[step][1]);
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  return {
+    stop() { stopped = true; },
+    async done(n) {
+      stopped = true;
+      bar.style.width = '100%';
+      root.classList.add('gp-done');
+      setMsg(n ? `Ta-da! ${n} EOB${n === 1 ? '' : 's'} ready for you to check.` : 'All done — no auto / PIP EOBs in this one.');
+      root.querySelector('.gp-sub').textContent = '';
+      const quiet = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      await new Promise((r) => setTimeout(r, quiet ? 400 : 1400));
+    },
+  };
+}
+
 function eobUploadModal(caseId = null) {
   caseId = typeof caseId === 'number' ? caseId : null;
   let res = null;
@@ -3265,8 +3345,9 @@ function eobUploadModal(caseId = null) {
       const file = el.querySelector('#eob-file').files[0];
       if (!file) throw new Error('Choose the scanned EOB PDF first.');
       const fd = new FormData(); if (caseId) fd.append('case_id', caseId); fd.append('file', file);
-      host.innerHTML = '<div class="genie-reading"><img src="assets/genie/icon.png" alt=""><p>Reading the scan — about 5 seconds a page…</p></div>';
-      try { res = await api('eob.php?action=upload', fd); } catch (err) { showFile(); throw err; }
+      const show = genieProgress(host, file);
+      try { res = await api('eob.php?action=upload', fd); } catch (err) { show.stop(); showFile(); throw err; }
+      await show.done(res.eobs.length);
       renderReview(); okBtn.textContent = 'Save'; return false;
     }
     readAll();
