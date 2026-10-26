@@ -586,9 +586,9 @@ tr.clickable{cursor:pointer;}tr.clickable:hover td{background:var(--bg-2);}
 /* EOB Genie (its own brand kit: Frost Blue, Arctic Blue, Ocean Blue, Midnight Navy, Silver; Montserrat) */
 @font-face{font-family:'Montserrat';src:url('genie/montserrat-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap;}
 @font-face{font-family:'Montserrat';src:url('genie/montserrat-latin-700-normal.woff2') format('woff2');font-weight:700;font-display:swap;}
-:root{--g-frost:#CFF4FF;--g-arctic:#69C8EB;--g-ocean:#176A96;--g-navy:#152E46;--g-silver:#E6EEF5;}
+:root{--g-frost:#CFF4FF;--g-arctic:#69C8E8;--g-ocean:#176A96;--g-navy:#152E46;--g-silver:#E6EEF5;}
 .genie-head{display:flex;flex-direction:column;gap:4px;}
-.genie-logo{height:72px;width:auto;max-width:100%;object-fit:contain;display:block;align-self:flex-start;}
+.genie-logo{height:84px;width:auto;max-width:100%;object-fit:contain;display:block;align-self:flex-start;}
 .genie-sub{margin:0;font-size:0.86rem;color:var(--muted);}
 .genie-page-head{align-items:center;}
 .modal .genie-head{margin-bottom:10px;}.modal .genie-logo{height:56px;}

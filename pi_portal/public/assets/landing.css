@@ -275,7 +275,7 @@ h1,h2,h3{letter-spacing:-0.025em;line-height:1.15;}
 .brand-text{font-size:1.25rem;letter-spacing:-0.02em;color:var(--navy);}
 
 /* EOB Genie offer (its own brand: Arctic / Ocean Blue, Midnight Navy) */
-.genie-offer{display:flex;gap:28px;align-items:center;margin:34px auto 0;max-width:1000px;padding:24px 28px;border:1px solid #69C8EB;border-radius:16px;background:linear-gradient(135deg,#CFF4FF 0%,#fff 55%);}
+.genie-offer{display:flex;gap:28px;align-items:center;margin:34px auto 0;max-width:1000px;padding:24px 28px;border:1px solid #69C8E8;border-radius:16px;background:linear-gradient(135deg,#CFF4FF 0%,#fff 55%);}
 .genie-offer[hidden]{display:none;}
 .genie-offer-logo{width:260px;max-width:40%;height:auto;flex:none;}
 .genie-offer-body h3{margin:0 0 8px;color:#152E46;}
