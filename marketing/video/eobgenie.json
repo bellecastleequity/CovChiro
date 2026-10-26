@@ -82,6 +82,21 @@
    "text": "And it warns you before PIP runs out, so the letter of protection is signed in time."
   },
   {
+   "id": "g14b-suit",
+   "min": 9,
+   "text": "Some payments don't come with an EOB at all. When your PIP attorney forwards an insurer's check from a demand or a suit, scan it with the cover letter. The genie reads the law firm, its file number, the patient and any interest, and applies the check to the oldest open visits."
+  },
+  {
+   "id": "g14c-recovered",
+   "min": 7,
+   "text": "Every recovery is tracked by attorney, with the interest, so you can see what your demands and suits are bringing in."
+  },
+  {
+   "id": "g14d-posting",
+   "min": 8,
+   "text": "And the posting gets the details right: interest is kept off the visits, the deductible gets its own line, and MedPay pays the twenty percent that PIP left on the patient."
+  },
+  {
    "id": "g15-privacy",
    "min": 8,
    "text": "Your patients' documents are never stored. EOB Genie reads the scan, keeps only the numbers you approve, and every access is logged."
