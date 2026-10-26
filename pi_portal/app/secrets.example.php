@@ -60,3 +60,10 @@ define('SUPPORT_EMAIL', 'support@injurycase.com');
 // define('MKT_WEBHOOK_SECRET', '...');
 // Optional: verify SendGrid's signed event webhook (the public key from SendGrid).
 // define('SENDGRID_WEBHOOK_PUBLIC_KEY', 'MFkwEwYH...');
+
+// Scanned insurance EOBs are read by OCR: 'textract' (Amazon Textract —
+// HIPAA-eligible under the AWS BAA, about $1.50 per 1,000 pages; the server's
+// IAM role needs textract:DetectDocumentText), or tesseract when it's
+// installed on the server (used automatically). 'off' reads only the
+// scanner's own text layer.
+// define('EOB_OCR', 'textract');

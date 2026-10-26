@@ -560,3 +560,21 @@ table.huddle .box{display:inline-block;width:14px;height:14px;border:1.5px solid
 .chip.snoozed{background:var(--bg-2);color:var(--muted);}
 .check-row .lbl small.row-actions{display:flex;gap:14px;}
 .basis-notice ul{padding-left:18px;margin:4px 0;}
+
+/* Insurance EOB review */
+.eob-rev{border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-top:12px;background:var(--surface);}
+.eob-rev.off{opacity:0.55;}
+.eob-rev-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.eob-lines input{width:100%;min-width:0;padding:4px 6px;font-size:0.84rem;}
+.eob-lines td{padding:3px 4px;}
+.eob-lines .w-code{width:72px;}.eob-lines .w-mod{width:58px;}.eob-lines .w-amt{width:88px;text-align:right;}.eob-lines .w-codes{width:110px;}
+.eob-totals{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));}
+.eob-checks,.eob-notes{list-style:none;padding:0;margin:10px 0 0;font-size:0.84rem;}
+.eob-checks li,.eob-notes li{padding:3px 0;}
+.eob-checks b,.eob-notes b{display:inline-block;width:18px;text-align:center;border-radius:50%;margin-right:4px;font-size:0.75rem;}
+.eob-checks li.ok b{background:var(--accent-tint);color:var(--mint-ink,#0F766E);}
+.eob-checks li.bad b,.eob-note.denied b,.eob-note.below_usual b{background:var(--navy);color:#fff;}
+.eob-note.full_charge b{background:var(--warn-tint);color:var(--navy);}
+.ok-ink{color:var(--mint-ink,#0F766E);}
+.eob-issues{margin:0;padding-left:18px;}.eob-issues>li{margin:8px 0;}
+tr.clickable{cursor:pointer;}tr.clickable:hover td{background:var(--bg-2);}

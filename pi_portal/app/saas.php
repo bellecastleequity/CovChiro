@@ -46,6 +46,8 @@ const FEATURES = [
         'blurb' => "Email the attorney or case manager every 30 days (or your interval) for a case and payment status update, with a secure one-minute reply form that updates the case for you."],
     'schedule_import' => ['name' => 'Daily appointment list upload', 'plan' => 'practice',
         'blurb' => "Upload yesterday's appointment list from any EHR (spreadsheet or PDF) and visits and no-shows are logged on every injury case automatically — so gaps in care and missed visits are flagged without double entry."],
+    'eob_insights' => ['name' => 'Payer & fee-schedule insights from EOBs', 'plan' => 'practice',
+        'blurb' => "See every auto insurer side by side from the EOBs you upload — what each allows and pays, how fast, denials and underpayments — and what each procedure code is usually allowed, so you can spot short payments and fees set below the PIP fee schedule."],
     'email_digest' => ['name' => 'Daily email digest', 'plan' => 'group',
         'blurb' => "A morning email to each team member with counts of what needs attention under the criteria they choose — no patient details in the email."],
     'locations' => ['name' => 'Multiple locations (2 included, then $29/month each)', 'plan' => 'group',
@@ -56,7 +58,7 @@ const FEATURES = [
         'blurb' => "Run it under your clinic's own name, logo and color: your team signs in at your own branded link, and attorneys see your brand on the status reply page and emails."],
 ];
 // Shown on every plan card (in all plans).
-const CORE_FEATURES = ['Case tracking & referral guide', 'Case suggestions & policy-limit warnings', 'EHR ledger uploads (any EHR)', 'Tasks, activity & audit log'];
+const CORE_FEATURES = ['Case tracking & referral guide', 'Case suggestions & policy-limit warnings', 'EHR ledger uploads (any EHR)', 'Auto / PIP EOB uploads', 'Tasks, activity & audit log'];
 
 function plan_rank(string $plan): int {
     $i = array_search($plan, PLAN_ORDER, true);

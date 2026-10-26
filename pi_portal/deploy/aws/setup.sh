@@ -85,6 +85,8 @@ define('SUPPORT_EMAIL', '$ADMIN_EMAIL');
 //   'group' => ['monthly' => 'price_...', 'annual' => 'price_...'],
 //   'location' => ['monthly' => 'price_...', 'annual' => 'price_...'],   // extra location add-on
 // ]);
+// Scanned insurance EOBs: read with Amazon Textract (HIPAA-eligible, in the BAA)
+define('EOB_OCR', 'textract');
 // Email (trial reminders) — Amazon SES SMTP credentials (see README)
 // define('SMTP_HOST', 'email-smtp.us-east-1.amazonaws.com');
 // define('SMTP_PORT', 587);
@@ -139,6 +141,8 @@ ServerSignature Off
 TraceEnable Off
 <VirtualHost *:80>
   ServerName $DOMAIN
+  # Reading a scanned batch of EOBs takes a few seconds a page.
+  ProxyTimeout 300
   ServerAlias www.$DOMAIN
   DocumentRoot $APP/public
   # Nothing outside public/ is ever served.

@@ -282,6 +282,41 @@ php app/cli/import_sheets.php --practice=ID --ar=ar.csv --tracking=tracking.csv
   is labeled "imported — verify".
 - The two sheets aren't linked by patient, so the same person can appear twice. Merge them by hand.
 
+### Insurance EOB uploads (auto / PIP)
+Staff scan the auto insurers' EOBs — one, or the day's whole mail in one PDF —
+and upload them on a case (Financials → Upload EOB) or on **EOBs & payers**.
+Each page is read by OCR, split into EOBs, matched to its case (claim number,
+then patient name + date of loss) and shown for review before anything is
+saved. Readers cover the three Florida layout families — "Explanation of
+Review" (GEICO, USAA and other bill-review vendors), "Explanation of
+Benefits — this is not a bill" (MetLife/Farmers, AAA, Progressive) and
+Travelers — and anything else is read from its column headings. Checks,
+drafts and payment advices pair with their EOB; health-insurance, Medicare and
+attorney pages in a batch are skipped. Every EOB is checked: line charges and
+allowed amounts against the totals, and the payment against the PIP math (80%
+of the allowed amount, less any deductible).
+
+On save, each EOB's own pages are stored on its case (never the whole batch),
+and — unless the case's money comes from EHR ledger uploads — posted per date
+of service: the payment, the fee-schedule reduction (charge − allowed), and the
+20% / deductible moved to the patient balance. Denied lines stay open with
+insurance for a demand letter. "Benefits exhausted" marks the PIP coverage
+exhausted, moves the charges to the patient balance and, when no other
+coverage is left, switches the case to a letter of protection.
+
+**EOBs & payers** (Gold and up) shows each insurer's allowed and paid
+percentages, days to pay (Florida: 30 days from receipt, §627.736(4)(b)),
+denied lines and payment mismatches, and each code's usual allowed amount —
+flagging likely underpayments and codes whose fee may be below the schedule
+(payers allowing the full charge).
+
+OCR: on AWS set `define('EOB_OCR', 'textract');` (new installs have it) —
+Amazon Textract is HIPAA-eligible under the AWS BAA and costs about $1.50 per
+1,000 pages; the instance role needs `textract:DetectDocumentText`
+(`injurycase.yaml` grants it — update the stack on existing installs). Where
+`tesseract` is installed it's used automatically. Without OCR, the scanner's
+own text layer is read, which is less reliable (the review screen says so).
+
 ### Local development
 ```
 php -S 127.0.0.1:8080 -t pi_portal/public pi_portal/app/dev_router.php

@@ -180,6 +180,12 @@ Resources:
             Statement:
               - { Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: [!Ref DbSecret, !Ref AppKeySecret] }
               - { Effect: Allow, Action: secretsmanager:PutSecretValue, Resource: !Ref AppKeySecret }
+        # Reads scanned insurance EOBs (HIPAA-eligible; nothing is stored by Textract).
+        - PolicyName: injurycase-eob-ocr
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - { Effect: Allow, Action: textract:DetectDocumentText, Resource: '*' }
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties: { Roles: [!Ref InstanceRole] }

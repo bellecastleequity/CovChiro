@@ -396,7 +396,7 @@ async function signOut() {
 // ---------- shell & routing ----------
 const NAV = [
   ['dashboard', 'Dashboard', 'case.read'], ['huddle', 'Daily huddle', 'case.read'], ['cases', 'Cases', 'case.read'], ['tasks', 'Tasks', 'case.read'],
-  ['schedule', 'Appointment upload', 'case.write'], ['ar', 'A/R & settlements', 'fin:balances'], ['contacts', 'Contacts', 'case.read'], ['playbook', 'PI playbook', 'case.read'],
+  ['schedule', 'Appointment upload', 'case.write'], ['ar', 'A/R & settlements', 'fin:balances'], ['eobs', 'EOBs & payers', 'fin:balances'], ['contacts', 'Contacts', 'case.read'], ['playbook', 'PI playbook', 'case.read'],
   ['admin', 'Users', 'users.manage'], ['settings', 'Practice settings', 'users.manage'], ['billing', 'Plan & billing', 'users.manage'],
   ['audit', 'Audit log', 'audit.read'], ['platform', 'Practices', 'platform.manage'], ['marketing', 'Marketing', 'platform.manage'],
 ];
@@ -489,7 +489,7 @@ function route() {
   main.innerHTML = '<div class="empty">Loading…</div>';
   window.scrollTo(0, 0);
   const pages = { dashboard: pageDashboard, cases: pageCases, case: pageCase, tasks: pageTasks, ar: pageAR, contacts: pageContacts, admin: pageAdmin, audit: pageAudit,
-    settings: pageSettings, billing: pageBilling, platform: pagePlatform, playbook: pagePlaybook, huddle: pageHuddle, schedule: pageSchedule, marketing: pageMarketing };
+    settings: pageSettings, billing: pageBilling, platform: pagePlatform, playbook: pagePlaybook, huddle: pageHuddle, schedule: pageSchedule, marketing: pageMarketing, eobs: pageEobs };
   (pages[page] || (S.user.operator ? pagePlatform : pageDashboard))(main, parts.slice(1));
   if (!S.user.operator) refreshTaskBadge();
 }
@@ -1558,7 +1558,7 @@ function tabFinancials(el, d) {
 
   el.innerHTML = `
     ${fwAny ? `<div class="filters">${fw ? `<button class="btn sm" data-act="add-charge">+ Charge</button><button class="btn sm" data-act="add-payment">+ Payment</button>
-      <button class="btn ghost sm" data-act="move-balance">Move balance…</button>` : ''}<button class="btn ghost sm" data-act="ehr-upload">Upload EHR ledger</button><span class="spacer"></span>
+      <button class="btn ghost sm" data-act="move-balance">Move balance…</button>` : ''}<button class="btn ghost sm" data-act="ehr-upload">Upload EHR ledger</button>${can('finance.write') ? '<button class="btn ghost sm" data-act="eob-upload-case">Upload EOB</button>' : ''}<span class="spacer"></span>
       ${showLed ? '<button class="btn ghost sm" data-act="letter" data-type="statement">Print statement</button>' : ''}</div>` : ''}
     ${synced ? `<div class="banner-inline"><strong>Financials mirror the ${esc(c.ehr_system)} ledger</strong> uploaded ${esc(fmtDate(d.ehr?.uploaded_at || c.ehr_synced_at))}${d.ehr?.uploaded_by_name ? ' by ' + esc(d.ehr.uploaded_by_name) : ''}.
       To change charges, payments or transfers, update ${esc(c.ehr_system)} and upload the new ledger.${d.ehr?.document_id ? ` <a href="api/documents.php?action=download&id=${d.ehr.document_id}&inline=1" target="_blank" rel="noopener">View ledger PDF</a>` : ''}</div>` : ''}
@@ -1615,7 +1615,9 @@ function tabFinancials(el, d) {
           <td class="small muted">${esc(l.updated_by_name || '')}${l.updated_at ? ' · edited ' + esc(fmtDate(l.updated_at)) : ''}</td>
           <td class="nowrap">${fw ? `<button class="btn link small" data-act="edit-ledger" data-id="${l.id}">Edit</button> <button class="btn link small" data-act="archive-child" data-table="ledger" data-id="${l.id}">Remove</button>` : ''}</td></tr>`;
       }).join('')}</tbody></table></div>` : '<div class="empty">No ledger entries.</div>'}
-    </div>` : ''}`;
+    </div>` : ''}
+    ${showBal ? '<div id="eob-card"></div>' : ''}`;
+  if (showBal) loadCaseEobs();
   el.querySelectorAll('.bar > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
   el.querySelectorAll('.limit-meter > i[data-w]').forEach((i) => { i.style.width = i.dataset.w + '%'; });
   el.querySelectorAll('.limit-meter > b[data-w]').forEach((b) => { b.style.left = b.dataset.w + '%'; });
@@ -3216,6 +3218,204 @@ function reductionTermsModal(then) {
     } });
 }
 
+// ---------- auto / PIP insurance EOBs ----------
+// Scans of insurer EOBs (one or a whole day's batch) are read on the
+// server; here each EOB is reviewed and corrected, matched to its case and
+// saved — posting the payment, the fee-schedule reduction and the PIP 20% to
+// the patient — and the practice's payers and fee schedule are analysed.
+const EOB_STATUS = { paid: ['Paid', 'teal'], reduced: ['Paid · reduced', 'info'], denied: ['Not paid', 'red'], exhausted: ['Benefits exhausted', 'red'], pending: ['Payment not shown', 'ochre'] };
+const eobChip = (s) => { const [t, c] = EOB_STATUS[s] || [s, '']; return `<span class="chip ${c}">${esc(t)}</span>`; };
+const EOB_NOTE_ICON = { denied: '✕', full_charge: '$', below_usual: '↓', exhausted: '!' };
+const eobChecksHtml = (checks) => (checks || []).length ? `<ul class="eob-checks">${checks.map((c) => `<li class="${c.ok ? 'ok' : 'bad'}"><b>${c.ok ? '✓' : '!'}</b> ${esc(c.label)} <span class="muted">— ${esc(c.detail)}</span></li>`).join('')}</ul>` : '';
+const eobNotesHtml = (lines) => {
+  const n = []; (lines || []).forEach((l) => (l.notes || []).forEach((x) => n.push(`<li class="eob-note ${esc(x.kind)}"><b>${EOB_NOTE_ICON[x.kind] || 'i'}</b> <span class="mono">${esc(l.code)}</span> ${esc(x.text)}</li>`)));
+  return n.length ? `<ul class="eob-notes">${[...new Set(n)].join('')}</ul>` : '';
+};
+const num = (v) => (v === '' || v === null || v === undefined || isNaN(+v)) ? null : Math.round(+v * 100) / 100;
+
+function eobUploadModal(caseId = null) {
+  caseId = typeof caseId === 'number' ? caseId : null;
+  let res = null;
+  const m = openModal({ title: 'Upload insurance EOBs', wide: true, okText: 'Read EOBs', body: '<div id="eob-step"></div>', onOk: async (el) => {
+    if (!res) {
+      const file = el.querySelector('#eob-file').files[0];
+      if (!file) throw new Error('Choose the scanned EOB PDF first.');
+      const fd = new FormData(); if (caseId) fd.append('case_id', caseId); fd.append('file', file);
+      host.innerHTML = '<div class="empty">Reading the scan — about 5 seconds a page…</div>';
+      try { res = await api('eob.php?action=upload', fd); } catch (err) { showFile(); throw err; }
+      renderReview(); okBtn.textContent = 'Save'; return false;
+    }
+    readAll();
+    const items = res.eobs.map((e) => ({ include: e.include, caseId: e.case?.caseId || null, coverageId: e.coverageId || null, header: e.header, lines: e.lines, totals: e.totals,
+      pages: e.pages, layout: e.layout, reasons: e.reasons, exhausted: e.status === 'exhausted', post: e.post }));
+    const missing = items.find((x) => x.include && !x.caseId);
+    if (missing) throw new Error('Choose the case for every EOB you are saving (or untick it).');
+    const r = await api('eob.php?action=apply', { token: res.token, eobs: items });
+    const posted = r.saved.filter((s) => s.posted).length;
+    toast(`${r.saved.length} EOB${r.saved.length === 1 ? '' : 's'} saved${posted ? ' — ' + posted + ' posted to the ledger' : ''}`);
+    r.saved.filter((s) => s.notPostedWhy).forEach((s) => toast(s.caseNumber + ': ' + s.notPostedWhy));
+    if (r.switchedToLop.length) toast(`PIP benefits exhausted — ${r.switchedToLop.length === 1 ? 'the case moved' : r.switchedToLop.length + ' cases moved'} to a letter of protection`);
+    if (S.caseData && caseId) await reloadCase(); else route();
+  } });
+  const host = m.el.querySelector('#eob-step');
+  const okBtn = m.el.querySelector('[data-ok]');
+  function showFile() {
+    host.innerHTML = `<p class="small">Scan the auto insurers' EOBs — one, or the whole day's mail in one PDF — and upload the scan. Each EOB is read, matched to its patient's case, and shown here to check before anything is saved.</p>
+      <ul class="small muted mt"><li>Auto / PIP payers only: GEICO, Progressive, State Farm, USAA, Allstate, Travelers, MetLife / Farmers, AAA and others. Health-insurance, Medicare and attorney paperwork in the batch is skipped.</li>
+        <li>Checks and payment advices in the scan are matched to their EOB.</li><li>Scan at 300 dpi, black and white or greyscale, for the best reading.</li></ul>
+      <label class="mt" for="eob-file">Scanned EOB (PDF)</label><input type="file" id="eob-file" accept="application/pdf,.pdf">`;
+  }
+  showFile();
+
+  function caseOptions(e) {
+    const seen = new Set(); const o = [];
+    if (e.case) { o.push(opt(e.case.caseId, `${e.case.caseNumber}${(e.matches || []).find((x) => x.caseId === e.case.caseId) ? ' — ' + e.matches.find((x) => x.caseId === e.case.caseId).patient : ''}`, e.case.caseId)); seen.add(e.case.caseId); }
+    (e.matches || []).forEach((x) => { if (!seen.has(x.caseId)) { o.push(opt(x.caseId, `${x.caseNumber} — ${x.patient} (${x.why})`, e.case?.caseId)); seen.add(x.caseId); } });
+    if (caseId && !seen.has(caseId)) o.push(opt(caseId, S.caseData?.case?.case_number || 'This case', e.case?.caseId));
+    return `<option value="">Choose the case…</option>${o.join('')}`;
+  }
+  const field = (i, f, l, v, type = 'text') => `<div><label for="eob-${i}-${f}">${esc(l)}</label><input id="eob-${i}-${f}" type="${type}" data-h="${f}" value="${esc(v ?? '')}"${type === 'number' ? ' step="0.01"' : ''}></div>`;
+  function sectionHtml(e, i) {
+    const h = e.header, t = e.totals, c = e.case;
+    if (e.include === undefined) e.include = !!c || !!(e.matches || []).length || !!caseId;
+    if (e.post === undefined) e.post = !!c && !c.ehr && !c.duplicateOf;
+    const cov = c ? c.coverages : [];
+    e.coverageId = e.coverageId ?? c?.coverageId ?? null;
+    return `<section class="eob-rev${e.include ? '' : ' off'}" data-i="${i}">
+      <div class="eob-rev-head"><label class="check"><input type="checkbox" data-e="include"${e.include ? ' checked' : ''}> <strong>${esc(h.payer || 'Auto insurer')}</strong></label> ${eobChip(e.status)}
+        <span class="spacer"></span><span class="small muted">Page${e.pages.length === 1 ? '' : 's'} ${esc(e.pages.join(', '))} · ${esc(res.layouts[e.layout] || e.layout)}${e.confident ? ' · <b class="ok-ink">all checks pass</b>' : ''}</span></div>
+      ${e.wrongCase ? `<div class="notice">This EOB names <strong>${esc(e.wrongCase.patient)}</strong> (${esc(e.wrongCase.why)}) — not the case you uploaded it on. Check the case below.</div>` : ''}
+      <div class="form-grid">
+        <div><label for="eob-${i}-case">Case${h.patient ? ` <span class="muted">— EOB says ${esc(h.patient)}</span>` : ''}</label><select id="eob-${i}-case" data-e="case">${caseOptions(e)}</select></div>
+        <div><label for="eob-${i}-cov">Coverage</label><select id="eob-${i}-cov" data-e="coverage"${c ? '' : ' disabled'}>${cov.length ? cov.map((v) => opt(v.id, `${(S.lookups.coverageTypes || {})[v.type] || v.type.toUpperCase()} — ${v.carrier || 'carrier'}${v.status !== 'active' ? ' (' + v.status + ')' : ''}`, e.coverageId)).join('') : '<option value="">No insurance on the case</option>'}</select></div>
+        ${field(i, 'payer', 'Payer', h.payer)}${field(i, 'claim', 'Claim number', h.claim)}${field(i, 'receivedOn', 'Bill received by insurer', h.receivedOn, 'date')}
+        ${field(i, 'eobDate', 'EOB date', h.eobDate, 'date')}${field(i, 'checkNumber', 'Check number', h.checkNumber)}${field(i, 'checkDate', 'Check date', h.checkDate, 'date')}
+      </div>
+      <div class="table-wrap mt-sm"><table class="eob-lines"><thead><tr><th>Date of service</th><th>Code</th><th>Mod.</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid</th><th>Reason codes</th><th></th></tr></thead><tbody>
+        ${e.lines.map((l, j) => `<tr data-j="${j}"><td><input type="date" data-l="dos" value="${esc(l.dos || '')}" aria-label="Date of service"></td><td><input data-l="code" value="${esc(l.code)}" class="w-code" aria-label="Code"></td>
+          <td><input data-l="modifiers" value="${esc(l.modifiers || '')}" class="w-mod" aria-label="Modifiers"></td><td><input type="number" step="0.01" data-l="charged" value="${l.charged ?? ''}" class="w-amt" aria-label="Charged"></td>
+          <td><input type="number" step="0.01" data-l="allowed" value="${l.allowed ?? ''}" class="w-amt" aria-label="Allowed"></td><td><input type="number" step="0.01" data-l="paid" value="${l.paid ?? ''}" class="w-amt" aria-label="Paid" placeholder="—"></td>
+          <td><input data-l="reasons" value="${esc(l.reasons || '')}" class="w-codes" aria-label="Reason codes"></td><td><button type="button" class="linklike" data-eob-del="${j}" aria-label="Remove line">✕</button></td></tr>`).join('')}
+        </tbody></table></div>
+      <button type="button" class="btn ghost sm mt-sm" data-eob-add>+ Add line</button>
+      <div class="form-grid mt-sm eob-totals">${[['charged', 'Total charged'], ['allowed', 'Total allowed'], ['deductible', 'Deductible'], ['coinsurance', 'PIP 20% / copay'], ['paid', 'Paid (check)']].map(([k, l]) => `<div><label for="eob-${i}-t-${k}">${l}</label><input id="eob-${i}-t-${k}" type="number" step="0.01" data-t="${k}" value="${t[k] ?? ''}"${k === 'paid' && t.paid === null && e.estimatedPaid !== null ? ` placeholder="about ${e.estimatedPaid}"` : ''}></div>`).join('')}</div>
+      ${t.paid === null && e.estimatedPaid !== null ? `<p class="small muted">This EOB doesn't print the payment (it's mailed separately). PIP pays 80% of the allowed amount — about ${money(e.estimatedPaid)}. Enter the check amount here if you have it; otherwise save now and post the payment on the case when the check comes.</p>` : ''}
+      ${eobChecksHtml(e.checks)}${eobNotesHtml(e.lines)}
+      ${e.status === 'exhausted' ? '<div class="notice">PIP benefits exhausted. Saving marks the PIP coverage exhausted and moves the case to a letter of protection; posting moves these charges to the patient balance.</div>' : ''}
+      ${c?.duplicateOf ? `<div class="notice">An EOB from this payer for the same dates was already saved on ${esc(fmtDate(c.duplicateOf.on))}. Posting again would count the payment twice.</div>` : ''}
+      <label class="check mt-sm"><input type="checkbox" data-e="post"${e.post ? ' checked' : ''}${c?.ehr || !can('fin:ledger') ? ' disabled' : ''}> Post to the case ledger — the payment, the PIP fee-schedule reduction, and the 20% / deductible moved to the patient balance${c?.ehr ? ` <span class="muted">(this case's money comes from ${esc(c.ehr)} ledger uploads, so the EOB is saved for review only)</span>` : ''}</label>
+    </section>`;
+  }
+  function renderReview() {
+    const sk = res.skipped || [], pay = res.payments || [];
+    host.innerHTML = `${res.eobs.length ? `<p class="small">${res.eobs.length} auto / PIP EOB${res.eobs.length === 1 ? '' : 's'} found in ${res.pageCount} page${res.pageCount === 1 ? '' : 's'}. Check each against the paper — especially lines marked by a failed check — then save.</p>` : '<div class="notice">No auto / PIP EOBs were found in this scan.</div>'}
+      ${res.ocr ? '' : '<div class="notice">Read from the scanner\'s text layer (no OCR on this server) — check the numbers closely.</div>'}
+      ${res.eobs.map(sectionHtml).join('')}
+      ${pay.length ? `<div class="card mt-sm"><h3>Checks not matched to an EOB here</h3><ul class="small">${pay.map((p) => `<li>${esc(p.payer || 'Payer')} check ${esc(p.checkNumber || '')} — ${money(p.amount)}${p.date ? ' on ' + esc(fmtDate(p.date)) : ''}${p.claim ? ' · claim ' + esc(p.claim) : ''} <span class="muted">(page ${esc(p.pages.join(', '))}) — its EOB isn't in this scan; post it as a payment on the case.</span></li>`).join('')}</ul></div>` : ''}
+      ${sk.length ? `<details class="mt-sm small"><summary>${sk.length} page${sk.length === 1 ? '' : 's'} skipped</summary><ul>${sk.map((s) => `<li>Page ${s.page}: ${esc(s.why)}</li>`).join('')}</ul></details>` : ''}`;
+  }
+  // Edits on screen → the review state.
+  function readSection(sec) {
+    const e = res.eobs[+sec.dataset.i];
+    sec.querySelectorAll('[data-h]').forEach((x) => { e.header[x.dataset.h] = x.value.trim() || null; });
+    sec.querySelectorAll('[data-t]').forEach((x) => { e.totals[x.dataset.t] = num(x.value); });
+    sec.querySelectorAll('tr[data-j]').forEach((tr) => { const l = e.lines[+tr.dataset.j]; tr.querySelectorAll('[data-l]').forEach((x) => { l[x.dataset.l] = ['charged', 'allowed', 'paid'].includes(x.dataset.l) ? num(x.value) : (x.value.trim() || null); }); });
+    e.include = sec.querySelector('[data-e=include]').checked;
+    const p = sec.querySelector('[data-e=post]'); e.post = p.checked && !p.disabled;
+    const cv = sec.querySelector('[data-e=coverage]'); if (cv && cv.value) e.coverageId = +cv.value;
+  }
+  const readAll = () => host.querySelectorAll('section.eob-rev').forEach(readSection);
+  host.addEventListener('change', async (ev) => {
+    const sec = ev.target.closest('section.eob-rev'); if (!sec) return;
+    readSection(sec);
+    const e = res.eobs[+sec.dataset.i];
+    if (ev.target.dataset.e === 'case') {
+      const id = +ev.target.value;
+      e.case = id ? await attempt(() => api('eob.php?action=case_info&case_id=' + id, e.header)) : null;
+      e.coverageId = null; e.post = undefined; e.include = !!e.case;
+      sec.outerHTML = sectionHtml(e, +sec.dataset.i);
+    } else if (ev.target.dataset.e === 'include') sec.classList.toggle('off', !e.include);
+  });
+  host.addEventListener('click', (ev) => {
+    const sec = ev.target.closest('section.eob-rev'); if (!sec) return;
+    const add = ev.target.closest('[data-eob-add]'), del = ev.target.closest('[data-eob-del]');
+    if (!add && !del) return;
+    readSection(sec);
+    const e = res.eobs[+sec.dataset.i];
+    if (add) e.lines.push({ dos: e.lines.at(-1)?.dos || null, code: '', modifiers: null, charged: null, allowed: null, paid: null, reasons: null, notes: [] });
+    if (del) e.lines.splice(+del.dataset.eobDel, 1);
+    sec.outerHTML = sectionHtml(e, +sec.dataset.i);
+  });
+}
+
+// The case's saved EOBs (Financials tab).
+async function loadCaseEobs() {
+  const box = document.getElementById('eob-card');
+  if (!box || !S.caseData) return;
+  const r = await attempt(() => api('eob.php?action=list&case_id=' + S.caseData.case.id));
+  if (!r) return;
+  loadCaseEobs.rows = r.eobs;
+  const fw = can('finance.write');
+  box.innerHTML = `<div class="card mt"><div class="card-head"><h2>Insurance EOBs</h2><span class="spacer"></span>${fw ? '<button class="btn ghost sm" data-act="eob-upload-case">Upload EOB</button>' : ''}</div>
+    ${r.eobs.length ? `<div class="table-wrap"><table><thead><tr><th>EOB date</th><th>Payer</th><th>Dates of service</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid</th><th>Status</th><th>Notes</th></tr></thead><tbody>
+      ${r.eobs.map((e) => { const flags = (e.checks || []).filter((c) => !c.ok).length + (e.lines || []).reduce((n, l) => n + (l.notes || []).filter((x) => x.kind !== 'exhausted').length, 0);
+        return `<tr class="clickable" data-act="eob-open" data-id="${e.id}"><td class="nowrap">${esc(fmtDate(e.eobDate || e.createdAt))}</td><td>${esc(e.payer)}</td><td class="nowrap small">${esc(fmtDate(e.dosFrom))}${e.dosTo && e.dosTo !== e.dosFrom ? ' – ' + esc(fmtDate(e.dosTo)) : ''}</td>
+          <td class="num">${money(e.charged)}</td><td class="num">${money(e.allowed)}</td><td class="num">${money(e.paid)}</td><td>${eobChip(e.status)}${e.posted ? '' : ' <span class="chip">Not posted</span>'}</td>
+          <td class="small">${flags ? `<span class="chip ochre">${flags} to review</span>` : (e.daysToPay !== null ? `Paid in ${e.daysToPay} days` : '')}</td></tr>`; }).join('')}
+      </tbody></table></div>` : `<div class="empty">No EOBs yet. Upload the insurer's EOB to post the payment and see how it was paid.</div>`}</div>`;
+}
+
+function eobDetailModal(id) {
+  const e = (loadCaseEobs.rows || []).find((x) => x.id === id);
+  if (!e) return;
+  const m = openModal({ title: `${e.payer} EOB`, wide: true, cancelText: 'Close', body: `
+    <div class="filters">${eobChip(e.status)}${e.posted ? '<span class="chip teal">Posted to the ledger</span>' : '<span class="chip">Not posted</span>'}<span class="spacer"></span>${e.documentId ? `<a class="btn ghost sm" href="api/documents.php?action=download&id=${e.documentId}&inline=1" target="_blank" rel="noopener">View scan</a>` : ''}</div>
+    <div class="money-row"><span>Dates of service</span><strong>${esc(fmtDate(e.dosFrom))}${e.dosTo && e.dosTo !== e.dosFrom ? ' – ' + esc(fmtDate(e.dosTo)) : ''}</strong></div>
+    <div class="money-row"><span>Bill received by insurer · EOB date</span><strong>${esc(fmtDate(e.receivedOn))} · ${esc(fmtDate(e.eobDate))}</strong></div>
+    <div class="money-row"><span>Check</span><strong>${esc(e.checkNumber || '—')}${e.checkDate ? ' · ' + esc(fmtDate(e.checkDate)) : ''}${e.daysToPay !== null ? ` · <span class="${e.daysToPay > 30 ? 'trend-up' : ''}">paid in ${e.daysToPay} days</span>` : ''}</strong></div>
+    <div class="money-row"><span>Charged → allowed → paid</span><strong>${money(e.charged)} → ${money(e.allowed)}${e.charged ? ` (${Math.round(e.allowed / e.charged * 1000) / 10}%)` : ''} → ${money(e.paid)}</strong></div>
+    ${e.deductible || e.coinsurance ? `<div class="money-row"><span>Deductible · PIP 20% / copay</span><strong>${money(e.deductible)} · ${money(e.coinsurance)}</strong></div>` : ''}
+    <div class="table-wrap mt-sm"><table><thead><tr><th>Date</th><th>Code</th><th>Mod.</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid</th><th>Reason</th></tr></thead><tbody>
+      ${(e.lines || []).map((l) => `<tr><td class="nowrap">${esc(fmtDate(l.dos))}</td><td class="mono">${esc(l.code)}</td><td class="small">${esc(l.modifiers || '')}</td><td class="num">${money(l.charged)}</td><td class="num">${money(l.allowed)}</td><td class="num">${money(l.paid)}</td><td class="small">${esc(l.reasons || '')}</td></tr>`).join('')}
+    </tbody></table></div>
+    ${eobChecksHtml(e.checks)}${eobNotesHtml(e.lines)}
+    ${Object.keys(e.reasons || {}).length ? `<details class="mt-sm small"><summary>Reason codes on this EOB</summary><ul>${Object.entries(e.reasons).map(([k, v]) => `<li><span class="mono">${esc(k)}</span> ${esc(v)}</li>`).join('')}</ul></details>` : ''}`,
+    extraButtons: can('finance.write') ? '<button class="btn ghost danger" data-eob-remove>Remove EOB</button>' : '' });
+  m.el.querySelector('[data-eob-remove]')?.addEventListener('click', async () => {
+    if (!(await confirmBox('Remove this EOB?', e.posted ? 'The EOB and the ledger entries it posted are removed. The scan stays in Documents.' : 'The EOB is removed. The scan stays in Documents.', 'Remove'))) return;
+    if (await attempt(() => api('eob.php?action=archive', { id: e.id }))) { m.close(); toast('EOB removed'); reloadCase(); }
+  });
+}
+
+// EOBs & payers: upload a batch, and the practice's numbers.
+async function pageEobs(main) {
+  main.innerHTML = `${phiBanner}<div class="page-head"><div><h1>EOBs &amp; payers</h1><div class="sub">Auto / PIP explanations of benefits — what each insurer allows, pays and denies</div></div>
+    <span class="spacer"></span>${can('finance.write') ? '<button class="btn" data-act="eob-upload">Upload EOBs</button>' : ''}</div><div id="eob-insights"><div class="empty">Loading…</div></div>`;
+  const box = document.getElementById('eob-insights');
+  if (!hasFeature('eob_insights')) { box.innerHTML = `<p class="small">Upload EOBs here or on a case — every plan can. ${esc(featureInfo('eob_insights').name)} adds the payer and fee-schedule view.</p>${upgradeCardHtml('eob_insights')}`; return; }
+  const d = await attempt(() => api('eob.php?action=insights'));
+  if (!d) return;
+  const t = d.totals;
+  if (!t.eobs) { box.innerHTML = '<div class="empty">No EOBs in the last 12 months yet. Upload the insurers\' EOBs — a whole day\'s mail at once is fine — and this page fills in.</div>'; return; }
+  box.innerHTML = `<div class="tiles">
+      <div class="tile accent"><div class="k">EOBs (12 months)</div><div class="v">${t.eobs}</div></div>
+      <div class="tile"><div class="k">Charged</div><div class="v">${money(t.charged)}</div></div>
+      <div class="tile"><div class="k">Allowed</div><div class="v">${t.allowedPct !== null ? t.allowedPct + '%' : '—'}</div></div>
+      <div class="tile"><div class="k">Paid</div><div class="v">${money(t.paid)}</div></div>
+      <div class="tile"><div class="k">Avg days to pay</div><div class="v">${t.avgDays ?? '—'}</div></div></div>
+    ${d.issues.length ? `<div class="card"><div class="card-head"><h2>Needs a look</h2><span class="badge-count">${d.issues.length}</span></div>
+      <ul class="eob-issues">${d.issues.map((x) => `<li><a href="#/case/${x.caseId}/financials">${esc(x.patient)}</a> <span class="mono small">${esc(x.caseNumber)}</span> · ${esc(x.payer)} · ${esc(fmtDate(x.eobDate))}<ul class="small">${x.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></li>`).join('')}</ul></div>` : ''}
+    <div class="card mt"><h2>By payer</h2><div class="table-wrap"><table><thead><tr><th>Payer</th><th class="num">EOBs</th><th class="num">Charged</th><th class="num">Allowed</th><th class="num">Paid of charges</th><th class="num">Avg days to pay</th><th class="num">Over 30 days</th><th class="num">Lines not paid</th><th class="num">Exhausted</th><th class="num">Payment ≠ PIP math</th></tr></thead><tbody>
+      ${d.payers.map((p) => `<tr><td>${esc(p.payer)}</td><td class="num">${p.eobs}</td><td class="num">${money(p.charged)}</td><td class="num">${p.allowedPct !== null ? p.allowedPct + '%' : '—'}</td><td class="num">${p.paidPct !== null ? p.paidPct + '%' : '—'}</td>
+        <td class="num">${p.avgDays ?? '—'}</td><td class="num">${p.late || ''}</td><td class="num">${p.deniedLines ? p.deniedLines + ' of ' + p.lines : ''}</td><td class="num">${p.exhausted || ''}</td><td class="num">${p.mismatch || ''}</td></tr>`).join('')}
+    </tbody></table></div><p class="small muted mt-sm">Florida PIP allows 200% of Medicare Part B (80% of workers' comp for codes Medicare doesn't price) and pays 80% of that; payment is due within 30 days of the insurer receiving the bill (§627.736(4)(b)).</p></div>
+    <div class="card mt"><h2>By procedure code</h2><div class="table-wrap"><table><thead><tr><th>Code</th><th class="num">Lines</th><th class="num">Your charge</th><th class="num">Usually allowed</th><th class="num">Range</th><th>By payer</th><th>Notes</th></tr></thead><tbody>
+      ${d.codes.map((c) => `<tr><td class="mono">${esc(c.code)}</td><td class="num">${c.lines}</td><td class="num">${money(c.charge)}</td><td class="num">${money(c.usualAllowed)}</td><td class="num small">${c.min !== null && c.max !== c.min ? money(c.min) + ' – ' + money(c.max) : ''}</td>
+        <td class="small">${c.byPayer.map((b) => `${esc(b.payer)} ${money(b.allowed)}`).join(' · ')}</td>
+        <td class="small">${c.chargeBelow ? `<span class="chip ochre">Fee may be below the schedule</span> allowed in full ${c.fullCharge}×` : ''}${c.denied ? ` ${c.denied} not paid` : ''}</td></tr>`).join('')}
+    </tbody></table></div><p class="small muted mt-sm">"Usually allowed" is the middle allowed amount on your own EOBs over the last 18 months. When payers allow your full charge, your fee is likely below what the PIP fee schedule would pay.</p></div>`;
+}
+
 // ----- Push off: when a step or task can't be done now -----
 // Logged with who pushed it and listed on the next daily huddle.
 function pushOffModal({ kind, key, caseId, label }) {
@@ -3624,6 +3824,7 @@ const ACTIONS = {
   'move-balance': (el) => moveModal({ fromValue: el.dataset.from || null, chargeId: el.dataset.charge ? +el.dataset.charge : null }),
   'edit-ledger': (el) => ledgerEditModal(S.caseData.ledger.find((l) => l.id == el.dataset.id)),
   'edit-lop': lopModal, 'edit-limits': limitsModal, 'forward-balance': forwardModal, 'ehr-upload': ehrUploadModal,
+  'eob-upload': () => eobUploadModal(), 'eob-upload-case': () => eobUploadModal(S.caseData.case.id), 'eob-open': (el) => eobDetailModal(+el.dataset.id),
   'archive-child': (el) => archiveChild(el.dataset.table, +el.dataset.id),
   'upload-doc': uploadDoc,
   'archive-doc': async (el) => {

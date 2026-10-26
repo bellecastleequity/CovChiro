@@ -682,6 +682,7 @@ CREATE TABLE ledger (
   -- next upload; the EHR is the source of truth for them.
   source ENUM('manual','ehr') NOT NULL DEFAULT 'manual',
   ehr_import_id INT NULL,
+  eob_id INT NULL,
   archived_at DATETIME NULL,
   created_by INT NULL,
   created_at DATETIME NOT NULL,
@@ -691,7 +692,8 @@ CREATE TABLE ledger (
   FOREIGN KEY (coverage_id) REFERENCES coverages(id),
   FOREIGN KEY (to_coverage_id) REFERENCES coverages(id),
   INDEX idx_ledger_case (case_id),
-  INDEX idx_ledger_applies (applies_to_id)
+  INDEX idx_ledger_applies (applies_to_id),
+  INDEX idx_ledger_eob (eob_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Each EHR ledger upload applied to a case (the history of syncs).
@@ -944,4 +946,62 @@ CREATE TABLE mkt_ai_usage (
   calls INT NOT NULL DEFAULT 0,
   tokens INT NOT NULL DEFAULT 0,
   PRIMARY KEY (day, provider)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Insurance EOBs and remittances read from uploaded scans: one row per
+-- explanation of benefits with its service lines, for posting to the case
+-- ledger and for the payer / fee-schedule analysis.
+CREATE TABLE eobs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  practice_id INT NOT NULL,
+  case_id INT NOT NULL,
+  coverage_id INT NULL,
+  document_id INT NULL,
+  payer VARCHAR(120) NOT NULL,
+  layout VARCHAR(30) NOT NULL,
+  kind ENUM('eob','payment') NOT NULL DEFAULT 'eob',
+  claim_number_enc TEXT NULL,
+  bill_ref VARCHAR(60) NULL,
+  received_on DATE NULL,
+  eob_date DATE NULL,
+  dos_from DATE NULL,
+  dos_to DATE NULL,
+  check_number VARCHAR(40) NULL,
+  check_date DATE NULL,
+  charged DECIMAL(10,2) NOT NULL DEFAULT 0,
+  allowed DECIMAL(10,2) NULL,
+  deductible DECIMAL(10,2) NULL,
+  coinsurance DECIMAL(10,2) NULL,
+  paid DECIMAL(10,2) NULL,
+  interest DECIMAL(10,2) NULL,
+  status ENUM('paid','reduced','denied','exhausted','pending') NOT NULL DEFAULT 'paid',
+  reasons TEXT NULL,
+  checks TEXT NULL,
+  posted TINYINT(1) NOT NULL DEFAULT 0,
+  created_by INT NULL,
+  created_at DATETIME NOT NULL,
+  archived_at DATETIME NULL,
+  INDEX idx_eobs_practice (practice_id, eob_date),
+  INDEX idx_eobs_case (case_id),
+  CONSTRAINT fk_eob_practice FOREIGN KEY (practice_id) REFERENCES practices(id),
+  CONSTRAINT fk_eob_case FOREIGN KEY (case_id) REFERENCES cases(id),
+  CONSTRAINT fk_eob_coverage FOREIGN KEY (coverage_id) REFERENCES coverages(id),
+  CONSTRAINT fk_eob_document FOREIGN KEY (document_id) REFERENCES documents(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE eob_lines (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  eob_id INT NOT NULL,
+  line_no SMALLINT NOT NULL,
+  dos DATE NULL,
+  code VARCHAR(10) NOT NULL,
+  modifiers VARCHAR(20) NULL,
+  units DECIMAL(6,2) NULL,
+  charged DECIMAL(10,2) NOT NULL,
+  allowed DECIMAL(10,2) NULL,
+  allowed_full DECIMAL(10,2) NULL,
+  paid DECIMAL(10,2) NULL,
+  reasons VARCHAR(120) NULL,
+  INDEX idx_eob_lines_eob (eob_id),
+  INDEX idx_eob_lines_code (code),
+  CONSTRAINT fk_eobl_eob FOREIGN KEY (eob_id) REFERENCES eobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
