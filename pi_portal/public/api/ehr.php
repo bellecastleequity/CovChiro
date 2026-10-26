@@ -335,19 +335,10 @@ function handle_apply() {
     }
     $covId = $target ? (int)$target['id'] : null;
 
-    // Optionally keep the uploaded file on the case (an EHR export often
-    // includes demographics such as SSN, so it's off by default).
+    // The uploaded file is only read, never kept: it's deleted below once
+    // the ledger is applied.
     $docId = null;
     $pendingFile = pending_dir() . '/' . $pending['token'];
-    if ((!empty($b['save_file']) || !empty($b['save_pdf'])) && is_file($pendingFile)) {
-        $plain = dec_file(file_get_contents($pendingFile));
-        $mime = ['pdf' => 'application/pdf', 'csv' => 'text/csv', 'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'][$pending['kind']] ?? 'application/octet-stream';
-        $storage = bin2hex(random_bytes(32));
-        file_put_contents(PI_STORAGE_DIR . '/' . $storage, enc_file($plain), LOCK_EX);
-        $pdo->prepare("INSERT INTO documents (case_id, category, original_name, mime_type, size_bytes, storage_name, sha256, uploaded_by, uploaded_at) VALUES (?, 'billing', ?, ?, ?, ?, ?, ?, ?)")
-            ->execute([$caseId, mb_substr($pending['name'] ?: 'EHR ledger', 0, 255), $mime, strlen($plain), $storage, hash('sha256', $plain), $user['id'], $now]);
-        $docId = (int)$pdo->lastInsertId();
-    }
     $t = $data['totals'];
     $pdo->prepare('INSERT INTO ehr_imports (case_id, ehr_system, method, file_sha256, summary_enc, document_id, uploaded_by, uploaded_at) VALUES (?,?,?,?,?,?,?,?)')
         ->execute([$caseId, mb_substr($data['system'], 0, 80), $data['method'], $pending['sha'], enc(json_encode(['totals' => $t, 'counts' => $data['counts']])), $docId, $user['id'], $now]);

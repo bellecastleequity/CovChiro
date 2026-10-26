@@ -862,7 +862,8 @@ function renderCase() {
   const main = document.getElementById('main');
   const d = S.caseData, c = d.case, p = d.patient;
   setTimeout(() => maybeShowBasisChange(d), 0);
-  const tabs = CASE_TABS.filter(([, , perm]) => !perm || can(perm));
+  // Documents only appears for files stored before uploads were turned off.
+  const tabs = CASE_TABS.filter(([k, , perm]) => (!perm || can(perm)) && (k !== 'documents' || d.documents.length));
   if (!tabs.find(([k]) => k === S.caseTab)) S.caseTab = 'overview';
   const atty = d.contacts.attorney_contact_id;
   // Same phase rule as the server's alerts: intake items matter while in
@@ -1817,7 +1818,7 @@ function ehrUploadModal() {
     if (confirmM && !confirmM.checked) throw new Error("Confirm it's the right patient, or cancel.");
     if (confirmT && !confirmT.checked) throw new Error(`Compare the totals with ${preview.system} and tick the box to confirm.`);
     const r = await api('ehr.php?action=apply', { token: preview.token, create_visits: !!el.querySelector('#ehr-visits')?.checked,
-      replace_manual: !!el.querySelector('#ehr-manual')?.checked, save_file: !!el.querySelector('#ehr-save')?.checked,
+      replace_manual: !!el.querySelector('#ehr-manual')?.checked,
       confirm_mismatch: !!confirmM?.checked, confirm_totals: !!confirmT?.checked });
     toast(`Ledger applied${r.visitsCreated ? ' — ' + r.visitsCreated + ' visits added' : ''}`);
     await reloadCase();
@@ -1943,7 +1944,7 @@ function ehrUploadModal() {
       ${pv.method !== 'totals' ? `<p class="small muted">${pv.counts.lines} charge line${pv.counts.lines === 1 ? '' : 's'} across ${pv.counts.visits} date${pv.counts.visits === 1 ? '' : 's'} of service (${esc(fmtDate(pv.firstDos))} – ${esc(fmtDate(pv.lastDos))}).</p>
       ${pv.counts.newVisits ? `<label class="check mt"><input type="checkbox" id="ehr-visits" checked> Add the ${pv.counts.newVisits} visit${pv.counts.newVisits === 1 ? '' : 's'} not yet on this case (with CPT and ICD-10 codes)</label>` : ''}` : ''}
       ${pv.counts.manualRows ? `<label class="check"><input type="checkbox" id="ehr-manual" checked> Retire the ${pv.counts.manualRows} manually entered ledger line${pv.counts.manualRows === 1 ? '' : 's'} (e.g. opening balances) — the EHR replaces them</label>` : ''}
-      ${pv.hasFile ? `<label class="check"><input type="checkbox" id="ehr-save"> Also save the ${fileWord} to this case's documents <span class="small muted">(EHR exports often include demographics such as SSN)</span></label>` : ''}
+      <p class="small muted">The ${fileWord} is only read — it isn't kept.</p>
       ${!pv.verified && !pv.blocked ? `<div class="notice mt"><label class="check"><input type="checkbox" id="ehr-totals-ok"> I've compared these totals with ${esc(pv.system)} and they match, and this is ${esc(pv.patientName)}'s ledger.</label></div>` : ''}
       ${pv.needsOverride ? `<div class="notice mt"><label class="check"><input type="checkbox" id="ehr-confirm"> The name and date of birth don't match this case. I've confirmed this is the right patient.</label></div>` : ''}`;
     host.querySelector('#ehr-remap')?.addEventListener('click', async () => {
@@ -2100,32 +2101,19 @@ function forwardModal() {
 // --- documents ---
 const DOC_CATS = [['lor', 'Letter of representation'], ['intake', 'Intake paperwork'], ['prior_records', 'Prior records'], ['imaging_report', 'Imaging report'], ['emc_report', 'EMC report'],
   ['consult_report', 'Consult report'], ['narrative', 'Narrative'], ['letter', 'Letter'], ['billing', 'Billing / EOB'], ['correspondence', 'Correspondence'], ['other', 'Other']];
+// Patient documents aren't stored — keep them in the EHR. Files stored
+// before that can still be opened and removed.
 function tabDocuments(el, d) {
-  const canUpload = can('case.write') || can('finance.write');
   el.innerHTML = `<div class="card"><div class="card-head"><h2>Documents</h2></div>
-    ${canUpload ? `<div class="filters"><select id="doc-cat" aria-label="Category">${DOC_CATS.map(([k, t]) => opt(k, t)).join('')}</select>
-      <input type="file" id="doc-file" accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.heic,.doc,.docx,.txt" aria-label="File">
-      <button class="btn sm" data-act="upload-doc">Upload</button></div>
-      <p class="small muted">Files are encrypted on the server. PDF, image, Word or text; 25 MB max.</p>` : ''}
+    <div class="notice">Patient documents aren't stored here any more — keep them in your EHR. These files were uploaded earlier; open or remove them below.</div>
     ${d.documents.length ? `<div class="table-wrap"><table><thead><tr><th>File</th><th>Category</th><th>Uploaded</th><th class="num">Size</th><th></th></tr></thead><tbody>
     ${d.documents.map((x) => `<tr><td>${esc(x.original_name)}</td><td>${esc(Object.fromEntries(DOC_CATS)[x.category])}</td>
       <td class="small">${esc(fmtDate(x.uploaded_at))} · ${esc(x.uploaded_by_name || '')}</td><td class="num small">${Math.max(1, Math.round(x.size_bytes / 1024))} KB</td>
       <td class="nowrap"><a class="btn ghost sm" href="api/documents.php?action=download&id=${x.id}&inline=1" target="_blank" rel="noopener">View</a>
         <a class="btn ghost sm" href="api/documents.php?action=download&id=${x.id}">Download</a>
         ${can('case.write') ? `<button class="btn link small" data-act="archive-doc" data-id="${x.id}">Remove</button>` : ''}</td></tr>`).join('')}
-    </tbody></table></div>` : '<div class="empty">No documents uploaded.</div>'}
+    </tbody></table></div>` : '<div class="empty">No documents.</div>'}
   </div>`;
-}
-
-async function uploadDoc() {
-  const file = document.getElementById('doc-file').files[0];
-  if (!file) { toast('Choose a file first.', true); return; }
-  const fd = new FormData();
-  fd.append('case_id', S.caseData.case.id);
-  fd.append('category', document.getElementById('doc-cat').value);
-  fd.append('file', file);
-  const r = await attempt(() => api('documents.php?action=upload', fd));
-  if (r) { toast('Uploaded'); await reloadCase(); }
 }
 
 async function reloadCase() {
@@ -3262,7 +3250,8 @@ function eobUploadModal(caseId = null) {
   function showFile() {
     host.innerHTML = `<p class="small">Scan the auto insurers' EOBs — one, or the whole day's mail in one PDF — and upload the scan. Each EOB is read, matched to its patient's case, and shown here to check before anything is saved.</p>
       <ul class="small muted mt"><li>Auto / PIP payers only: GEICO, Progressive, State Farm, USAA, Allstate, Travelers, MetLife / Farmers, AAA and others. Health-insurance, Medicare and attorney paperwork in the batch is skipped.</li>
-        <li>Checks and payment advices in the scan are matched to their EOB.</li><li>Scan at 300 dpi, black and white or greyscale, for the best reading.</li></ul>
+        <li>Checks and payment advices in the scan are matched to their EOB.</li><li>Scan at 300 dpi, black and white or greyscale, for the best reading.</li>
+        <li>The scan is only read — it isn't kept. Only the numbers you confirm are saved; keep the paper or scan in your EHR.</li></ul>
       <label class="mt" for="eob-file">Scanned EOB (PDF)</label><input type="file" id="eob-file" accept="application/pdf,.pdf">`;
   }
   showFile();
@@ -3369,7 +3358,7 @@ function eobDetailModal(id) {
   const e = (loadCaseEobs.rows || []).find((x) => x.id === id);
   if (!e) return;
   const m = openModal({ title: `${e.payer} EOB`, wide: true, cancelText: 'Close', body: `
-    <div class="filters">${eobChip(e.status)}${e.posted ? '<span class="chip teal">Posted to the ledger</span>' : '<span class="chip">Not posted</span>'}<span class="spacer"></span>${e.documentId ? `<a class="btn ghost sm" href="api/documents.php?action=download&id=${e.documentId}&inline=1" target="_blank" rel="noopener">View scan</a>` : ''}</div>
+    <div class="filters">${eobChip(e.status)}${e.posted ? '<span class="chip teal">Posted to the ledger</span>' : '<span class="chip">Not posted</span>'}</div>
     <div class="money-row"><span>Dates of service</span><strong>${esc(fmtDate(e.dosFrom))}${e.dosTo && e.dosTo !== e.dosFrom ? ' – ' + esc(fmtDate(e.dosTo)) : ''}</strong></div>
     <div class="money-row"><span>Bill received by insurer · EOB date</span><strong>${esc(fmtDate(e.receivedOn))} · ${esc(fmtDate(e.eobDate))}</strong></div>
     <div class="money-row"><span>Check</span><strong>${esc(e.checkNumber || '—')}${e.checkDate ? ' · ' + esc(fmtDate(e.checkDate)) : ''}${e.daysToPay !== null ? ` · <span class="${e.daysToPay > 30 ? 'trend-up' : ''}">paid in ${e.daysToPay} days</span>` : ''}</strong></div>
@@ -3382,7 +3371,7 @@ function eobDetailModal(id) {
     ${Object.keys(e.reasons || {}).length ? `<details class="mt-sm small"><summary>Reason codes on this EOB</summary><ul>${Object.entries(e.reasons).map(([k, v]) => `<li><span class="mono">${esc(k)}</span> ${esc(v)}</li>`).join('')}</ul></details>` : ''}`,
     extraButtons: can('finance.write') ? '<button class="btn ghost danger" data-eob-remove>Remove EOB</button>' : '' });
   m.el.querySelector('[data-eob-remove]')?.addEventListener('click', async () => {
-    if (!(await confirmBox('Remove this EOB?', e.posted ? 'The EOB and the ledger entries it posted are removed. The scan stays in Documents.' : 'The EOB is removed. The scan stays in Documents.', 'Remove'))) return;
+    if (!(await confirmBox('Remove this EOB?', e.posted ? 'The EOB and the ledger entries it posted are removed.' : 'The EOB is removed.', 'Remove'))) return;
     if (await attempt(() => api('eob.php?action=archive', { id: e.id }))) { m.close(); toast('EOB removed'); reloadCase(); }
   });
 }
@@ -3826,7 +3815,6 @@ const ACTIONS = {
   'edit-lop': lopModal, 'edit-limits': limitsModal, 'forward-balance': forwardModal, 'ehr-upload': ehrUploadModal,
   'eob-upload': () => eobUploadModal(), 'eob-upload-case': () => eobUploadModal(S.caseData.case.id), 'eob-open': (el) => eobDetailModal(+el.dataset.id),
   'archive-child': (el) => archiveChild(el.dataset.table, +el.dataset.id),
-  'upload-doc': uploadDoc,
   'archive-doc': async (el) => {
     if (!await confirmBox('Remove document', 'Remove this document from the case? It is archived, not destroyed.', 'Remove')) return;
     if (await attempt(() => api('documents.php?action=archive', { id: +el.dataset.id }))) reloadCase();

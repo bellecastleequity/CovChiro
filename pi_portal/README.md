@@ -86,7 +86,7 @@ Check trademark and domain availability before launch.
 | **Financial visibility** | Balances, ledger detail and settlement figures are three separate permissions. Admin, provider and billing see all three. Staff see only what the admin opens to staff under Practice settings, or everything if granted per person. Hidden values are stripped on the server. |
 | **LOP & settlement** | LOP signed by the patient (and whether the law firm acknowledged it). At settlement, "Forward balance to attorney" records the date and amount and prints an itemized statement by date of service. Reductions apply to the patient balance only, against the 80% floor. |
 | **A/R & settlements** | The A/R sheet as a live report with totals and CSV export. |
-| **Documents** | LORs, records, imaging/EMC/consult reports and narratives, encrypted on disk. |
+| **No document storage** | Patient documents stay in the practice's EHR. Uploaded files (EHR ledgers, appointment lists, insurance EOBs) are read to extract what the user confirms and then discarded. |
 | **Contacts** | Attorneys, insurers, imaging centers, co-managing providers. |
 | **Care guide & PI playbook** | Written for clinics new to PI. Each case's Overview opens with **Next steps**: MRI script at visit #1; EMC determination in week 1 (auto cases; in house or referred out); orthopedic referral once the MRI is completed; pain management considered at 12–16 weeks of conservative care without full resolution; neurology any time after the first visit when there was a head injury (asked on every case; ICD-10 head-injury codes from EHR uploads prompt it too); a re-exam every 30 days (outcome assessments repeated with it); at MMI, discharge or a maintenance plan at the frequency the doctor sets (e.g. monthly), with maintenance visits prompted until a final discharge. X-rays are left to clinical judgment and narrative reports are prepared only on request. Each step says when and why and tracks its referrals from ordered to report received. Actions: add the referral, add another (second MRI, another ortho opinion), "remind me later", or "not needed" with a reason. Steps that are due appear as alerts on the dashboard. The **PI playbook** page explains every timeline the app follows. Timings live in `CARE_GUIDE` in `app/pi_rules.php`. **The flow follows the clinic:** done steps are listed in the order they actually happened (each re-exam as its own entry — e.g. re-exam #1 before the ortho referral), then what's next; *Reorder* moves the remaining steps with ↑/↓, saved for one case or (admins) as the practice's order for every case (`guide_flow()`). **End of care:** MMI (discharge or maintenance), or *Patient stopped coming* (self-released / unable to reach / referred out — care ends on the last visit; *resume care* if they return). The *End of treatment / narrative request* letter covers both, with the claim details, the provider-chosen outcome wording, and the attorney's choice of final narrative (without / with AMA whole-person impairment ratings / not needed), returned by the practice's fax or office email. The answer is recorded on the case (or given on the online status-reply page) and a "yes" makes the narrative due in 30 days on the checklist. **Narrative fees:** the practice says once whether it charges for a final narrative and its fees without / with ratings (asked the first time the letter is opened; *Settings → Final narrative reports*). The letter and the online reply page show the fee beside each "yes", and the attorney must acknowledge it — online (a required checkbox, recorded with their name and time) or on the returned form (recorded from *Record answer*). The case Overview shows "Fee $X — acknowledged by NAME on DATE", the dashboard lists *Final narratives to prepare* with due dates and acknowledgment status, and the reply's task and correspondence entry note it. Practices that don't charge get "There is no charge" instead. |
 | **Policy limits & case value** | Record the at-fault driver's bodily-injury limit, the patient's UM limit, an estimate of other providers' bills, and where the figures came from. Usually learned on the attorney call; the checklist reminds staff to ask. Front desk and billing can both record them. The PIP coverage takes the carrier's "remaining" figure, net of payments received since. The Financials tab shows PIP remaining, medical bills (ours + other providers) as a share of the limits with ⅓ / ½ / ¾ markers, and when the next marker is reached at the recent pace of charges. Soft warnings at a third (reductions become likely once fees and the patient's share come out), half, three quarters and over the limits, plus a PIP-nearly-exhausted warning. Suggestions prompt asking for limits and, when limits are low, checking for UM, health insurance or MedPay. Money-based warnings follow the financial-visibility rules. Thresholds are in `app/pi_rules.php`. |
@@ -160,7 +160,7 @@ safeguards and signed agreements that no code can provide.
 | Unique user IDs | Individual accounts. Roles: admin, provider, staff, billing. |
 | Authentication | Argon2id passwords (12+ characters), **mandatory TOTP two-factor** for every user, account lockout after 5 failures, per-IP throttle, and forced password change on first login. |
 | Automatic logoff | 15-minute idle timeout enforced server-side, with a 12-hour absolute limit. The screen is wiped on timeout. |
-| Audit controls | `audit_log` records every case view, edit (with before → after values for structured fields), export, letter, document upload/download, EHR upload, task change, login, failed login and denied access, with user, time and IP. Free text and encrypted fields are recorded by name only. Admins review and filter it in the UI and can download it as CSV. That export is itself logged. |
+| Audit controls | `audit_log` records every case view, edit (with before → after values for structured fields), export, letter, EHR upload, EOB upload, task change, login, failed login and denied access, with user, time and IP. Free text and encrypted fields are recorded by name only. Admins review and filter it in the UI and can download it as CSV. That export is itself logged. |
 | Integrity | Encryption is authenticated (tampering is detected). Documents carry a SHA-256 checksum. Records are archived, never hard-deleted. |
 | Encryption at rest | DOB, phone, email, address, claim/policy numbers and all clinical and correspondence notes are encrypted per field with libsodium. Uploaded files are encrypted and stored outside the web root. |
 | Transmission security | HTTPS forced, HSTS, `SameSite=Strict` `__Host-` session cookies, CSRF tokens. |
@@ -201,6 +201,7 @@ safeguards and signed agreements that no code can provide.
   `php app/cli/purge_practice.php --list` — practices to send the notice to, and those eligible for deletion;
   `php app/cli/purge_practice.php --practice=ID` — dry run with counts;
   `php app/cli/purge_practice.php --practice=ID --confirm` — permanent deletion of every row and encrypted document file for that practice (add `--early` for a practice's own written request inside the 12 months). A record with counts only (no patient data) stays in the audit log. Encrypted backups expire within 35 days.
+  `php app/cli/purge_documents.php [--practice=ID] [--confirm]` — deletes patient documents stored before document uploads were turned off (dry run without `--confirm`).
 
 ## Marketing: automatic outreach to clinics (operator console → Marketing)
 
@@ -226,7 +227,7 @@ Requirements: PHP 8.1+ with `pdo_mysql`, `sodium`, `fileinfo` and `curl`; MySQL 
 ```
 pi_portal/
 ├── app/          ← NOT web-reachable (secrets, code, CLI tools)
-├── storage/      ← NOT web-reachable (encrypted documents, logs)
+├── storage/      ← NOT web-reachable (logs; uploads awaiting review, deleted on apply or after 2 hours)
 └── public/       ← the ONLY folder the web server serves (document root)
 ```
 
@@ -296,8 +297,9 @@ attorney pages in a batch are skipped. Every EOB is checked: line charges and
 allowed amounts against the totals, and the payment against the PIP math (80%
 of the allowed amount, less any deductible).
 
-On save, each EOB's own pages are stored on its case (never the whole batch),
-and — unless the case's money comes from EHR ledger uploads — posted per date
+The scan itself is never kept: it's read in the upload request and discarded,
+and only the numbers the user confirms are saved. Unless the case's money
+comes from EHR ledger uploads, each EOB is posted per date
 of service: the payment, the fee-schedule reduction (charge − allowed), and the
 20% / deductible moved to the patient balance. Denied lines stay open with
 insurance for a demand letter. "Benefits exhausted" marks the PIP coverage

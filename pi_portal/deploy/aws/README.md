@@ -5,7 +5,7 @@ configures the server, and `update.sh` ships later code updates.
 
 ```
 Internet ──443──▶ EC2 (Amazon Linux 2023, Apache + PHP 8.3, Let's Encrypt)
-                   │  encrypted disk (uploaded documents, already encrypted by the app)
+                   │  encrypted disk (logs; uploads are read and discarded, never stored)
                    │  no SSH port: admin access via AWS Systems Manager Session Manager
                    └──TLS──▶ RDS MySQL 8.4 (private subnets, encrypted, TLS required,
                                             35-day automated backups, deletion protection)
@@ -66,7 +66,7 @@ time (owner in brackets).
 |---|---|---|
 | Hosting on BAA-covered infrastructure | EC2 (one server; ECS/Fargate not required at this size) | ✅ in stack |
 | Encrypted database, private network only | RDS MySQL, private subnets, storage encryption, TLS required | ✅ in stack |
-| Encrypted document storage | Encrypted EBS disk + app-level file encryption (S3 not required; move to S3 with Block Public Access + SSE-KMS when scaling out) | ✅ in stack / app |
+| No document storage | Patient documents stay in the practice's EHR; uploaded files are read and discarded (uploads awaiting review are app-encrypted on the encrypted EBS disk and deleted on apply or within 2 hours) | ✅ in stack / app |
 | Encryption keys | AWS KMS (RDS, EBS, Backup, Secrets Manager) + app key held in Secrets Manager | ✅ |
 | TLS certificates | Let's Encrypt on the server (ACM is used only once there's a load balancer) | ✅ setup.sh |
 | Network isolation | VPC; database reachable only from the app server; **no SSH port** (Session Manager) | ✅ in stack |
@@ -179,7 +179,7 @@ sudo -i
 cd /opt/injurycase-src && git pull
 bash pi_portal/deploy/aws/update.sh
 ```
-This keeps `secrets.php` and uploaded documents, and applies any new database
+This keeps `secrets.php` and storage, and applies any new database
 migrations (`app/migrations/`).
 
 ## 6. Restore drills (do one before launch)

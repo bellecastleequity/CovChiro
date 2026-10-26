@@ -1,8 +1,9 @@
 <?php
 // Auto / PIP insurance EOB uploads. A scan — one EOB or the day's batch —
 // is read (app/eob.php), each EOB is matched to its case, a person reviews
-// and corrects it, and on save each EOB is kept with its pages as a case
-// document and, unless the case's money comes from an EHR ledger, posted:
+// and corrects it, and on save its numbers are kept (never the scan: it is
+// read in this request and discarded) and, unless the case's money comes
+// from an EHR ledger, posted:
 // the insurer's payment, the fee-schedule reduction, and the PIP 20% /
 // deductible moved to the patient's balance. "Benefits exhausted" marks the
 // PIP coverage exhausted and, when no other coverage is left, moves the case
@@ -12,13 +13,6 @@ require_once __DIR__ . '/../../app/case_basis.php';
 require_once __DIR__ . '/../../app/eob.php';
 require_once __DIR__ . '/../../app/eob_analysis.php';
 pi_start_session();
-
-function eob_pending_dir(): string {
-    $d = dirname(PI_STORAGE_DIR) . '/pending';
-    if (!is_dir($d)) mkdir($d, 0700, true);
-    foreach (glob($d . '/eob_*') ?: [] as $f) if (filemtime($f) < time() - 7200) @unlink($f);
-    return $d;
-}
 
 function eob_norm_name(?string $s): string { return strtolower(preg_replace('/[^a-z]/i', '', (string)$s)); }
 
@@ -93,15 +87,15 @@ function handle_upload() {
     if (!$f || $f['error'] !== UPLOAD_ERR_OK) json_response(['error' => 'Upload failed — the file may be too large.'], 400);
     if ($f['size'] > PI_MAX_UPLOAD_BYTES) json_response(['error' => 'Files must be 25 MB or smaller.'], 400);
     if ((new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']) !== 'application/pdf') json_response(['error' => 'Upload the EOB as a PDF (scan it, or save it from the payer portal).'], 400);
+    // The scan is read straight from PHP's temporary upload (deleted when
+    // this request ends) and never kept. Reading a batch takes a few seconds
+    // a page: don't hold the session meanwhile.
     $token = bin2hex(random_bytes(16));
-    file_put_contents(eob_pending_dir() . '/eob_' . $token, enc_file(file_get_contents($f['tmp_name'])), LOCK_EX);
-    // Reading a batch takes a few seconds a page: don't hold the session.
     session_write_close();
     set_time_limit(600);
     try {
         $r = eob_read($f['tmp_name']);
     } catch (RuntimeException $e) {
-        @unlink(eob_pending_dir() . '/eob_' . $token);
         json_response(['error' => $e->getMessage()], 422);
     }
     foreach ($r['eobs'] as $i => &$e) {
@@ -117,7 +111,7 @@ function handle_upload() {
     }
     unset($e);
     session_start();
-    $_SESSION['eob_pending'] = ['token' => $token, 'name' => mb_substr(basename((string)$f['name']), 0, 200), 'pages' => $r['pageCount']];
+    $_SESSION['eob_pending'] = ['token' => $token, 'pages' => $r['pageCount']];
     audit('eob_read', 'case', $caseId ?: null, $caseId ?: null, $user, count($r['eobs']) . ' EOB(s), ' . $r['pageCount'] . ' page(s)');
     json_response($r + ['token' => $token, 'layouts' => EOB_LAYOUT_NAMES]);
 }
@@ -125,36 +119,6 @@ function handle_upload() {
 function handle_case_info() {
     require_user('finance.write');
     json_response(eob_case_info((int)($_GET['case_id'] ?? 0), json_body() ?: []));
-}
-
-// The pages of the scan that belong to one EOB, as their own PDF, so a
-// batch never puts one patient's EOB on another patient's case.
-function eob_pages_pdf(string $pdf, array $pages): ?string {
-    $dir = sys_get_temp_dir() . '/eobsplit_' . bin2hex(random_bytes(6));
-    mkdir($dir, 0700);
-    $parts = [];
-    foreach ($pages as $pg) {
-        $out = "$dir/p$pg.pdf";
-        exec(sprintf('pdfseparate -f %d -l %d %s %s 2>/dev/null', $pg, $pg, escapeshellarg($pdf), escapeshellarg($out)));
-        if (is_file($out)) $parts[] = $out;
-    }
-    if (!$parts) { @rmdir($dir); return null; }
-    $joined = "$dir/eob.pdf";
-    exec('pdfunite ' . implode(' ', array_map('escapeshellarg', $parts)) . ' ' . escapeshellarg($joined) . ' 2>/dev/null');
-    $data = is_file($joined) ? file_get_contents($joined) : (count($parts) === 1 ? file_get_contents($parts[0]) : null);
-    foreach (glob("$dir/*") as $x) @unlink($x);
-    @rmdir($dir);
-    return $data;
-}
-
-function eob_store_document(int $caseId, string $pdfBytes, string $name, array $user): int {
-    $storage = bin2hex(random_bytes(32));
-    if (!is_dir(PI_STORAGE_DIR)) mkdir(PI_STORAGE_DIR, 0700, true);
-    file_put_contents(PI_STORAGE_DIR . '/' . $storage, enc_file($pdfBytes), LOCK_EX);
-    chmod(PI_STORAGE_DIR . '/' . $storage, 0600);
-    pi_db()->prepare('INSERT INTO documents (case_id, category, original_name, mime_type, size_bytes, storage_name, sha256, uploaded_by, uploaded_at) VALUES (?,?,?,?,?,?,?,?,?)')
-        ->execute([$caseId, 'billing', mb_substr($name, 0, 255), 'application/pdf', strlen($pdfBytes), $storage, hash('sha256', $pdfBytes), $user['id'], now_str()]);
-    return (int)pi_db()->lastInsertId();
 }
 
 function eob_num($v): ?float { return $v === null || $v === '' ? null : round((float)$v, 2); }
@@ -223,11 +187,6 @@ function handle_apply() {
     $b = json_body();
     $pend = $_SESSION['eob_pending'] ?? null;
     if (!$pend || !hash_equals($pend['token'], (string)($b['token'] ?? ''))) json_response(['error' => 'This upload has expired — choose the file again.'], 409);
-    $file = eob_pending_dir() . '/eob_' . $pend['token'];
-    if (!is_file($file)) json_response(['error' => 'This upload has expired — choose the file again.'], 409);
-    $tmp = tempnam(sys_get_temp_dir(), 'eob');
-    file_put_contents($tmp, dec_file((string)file_get_contents($file)));
-    register_shutdown_function(fn() => @unlink($tmp));
     $items = array_values(array_filter($b['eobs'] ?? [], fn($x) => !empty($x['include'])));
     if (!$items) json_response(['error' => 'Choose at least one EOB to save.'], 400);
     $pdo = pi_db();
@@ -256,11 +215,9 @@ function handle_apply() {
             'bill_ref' => mb_substr((string)($h['billRef'] ?? ''), 0, 60) ?: null, 'received_on' => eob_day($h['receivedOn'] ?? null), 'eob_date' => eob_day($h['eobDate'] ?? null),
             'dos_from' => $dos ? min($dos) : null, 'dos_to' => $dos ? max($dos) : null, 'check_number' => mb_substr((string)($h['checkNumber'] ?? ''), 0, 40) ?: null, 'check_date' => eob_day($h['checkDate'] ?? null),
             'status' => $r['status']];
-        $pdf = eob_pages_pdf($tmp, array_map('intval', $it['pages'] ?? [])) ?? file_get_contents($tmp);
-        $docId = eob_store_document($caseId, $pdf, 'EOB ' . $row['payer'] . ($row['dos_from'] ? ' ' . $row['dos_from'] : '') . '.pdf', $user);
         $pdo->beginTransaction();
-        $pdo->prepare('INSERT INTO eobs (practice_id, case_id, coverage_id, document_id, payer, layout, claim_number_enc, bill_ref, received_on, eob_date, dos_from, dos_to, check_number, check_date, charged, allowed, deductible, coinsurance, paid, interest, status, reasons, checks, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-            ->execute([pid(), $caseId, $coverageId, $docId, $row['payer'], $row['layout'], enc(trim((string)($h['claim'] ?? '')) ?: null), $row['bill_ref'], $row['received_on'], $row['eob_date'], $row['dos_from'], $row['dos_to'], $row['check_number'], $row['check_date'],
+        $pdo->prepare('INSERT INTO eobs (practice_id, case_id, coverage_id, payer, layout, claim_number_enc, bill_ref, received_on, eob_date, dos_from, dos_to, check_number, check_date, charged, allowed, deductible, coinsurance, paid, interest, status, reasons, checks, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            ->execute([pid(), $caseId, $coverageId, $row['payer'], $row['layout'], enc(trim((string)($h['claim'] ?? '')) ?: null), $row['bill_ref'], $row['received_on'], $row['eob_date'], $row['dos_from'], $row['dos_to'], $row['check_number'], $row['check_date'],
                 $tot['charged'], $tot['allowed'], $tot['deductible'], $tot['coinsurance'], $tot['paid'], $tot['interest'], $row['status'], json_encode($r['reasons'] ?: null), json_encode($r['checks']), $user['id'], now_str()]);
         $eobId = (int)$pdo->lastInsertId();
         $li = $pdo->prepare('INSERT INTO eob_lines (eob_id, line_no, dos, code, modifiers, units, charged, allowed, allowed_full, paid, reasons) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
@@ -288,14 +245,13 @@ function handle_apply() {
         audit('eob_save', 'case', $caseId, $caseId, $user, $row['payer'] . ' ' . ($row['dos_from'] ?? '') . ($posted ? ' — posted' : ''));
         $saved[] = ['id' => $eobId, 'caseId' => $caseId, 'caseNumber' => $case['case_number'], 'payer' => $row['payer'], 'status' => $row['status'], 'posted' => $posted, 'notPostedWhy' => !empty($it['post']) && !$postIt ? ($case['ehr_synced_at'] ? "This case's money comes from " . ($case['ehr_system'] ?: 'the EHR') . ' ledger uploads — the EOB is saved for review, not posted.' : 'Your role cannot post to the ledger.') : null];
     }
-    @unlink($file);
     unset($_SESSION['eob_pending']);
     json_response(['saved' => $saved, 'switchedToLop' => $switched]);
 }
 
 function eob_row_out(array $e, array $lines, array $usual, bool $money): array {
     $out = ['id' => (int)$e['id'], 'caseId' => (int)$e['case_id'], 'payer' => $e['payer'], 'layout' => $e['layout'], 'billRef' => $e['bill_ref'], 'receivedOn' => $e['received_on'], 'eobDate' => $e['eob_date'],
-        'dosFrom' => $e['dos_from'], 'dosTo' => $e['dos_to'], 'checkNumber' => $e['check_number'], 'checkDate' => $e['check_date'], 'status' => $e['status'], 'posted' => (bool)$e['posted'], 'documentId' => $e['document_id'] ? (int)$e['document_id'] : null,
+        'dosFrom' => $e['dos_from'], 'dosTo' => $e['dos_to'], 'checkNumber' => $e['check_number'], 'checkDate' => $e['check_date'], 'status' => $e['status'], 'posted' => (bool)$e['posted'],
         'daysToPay' => eob_days_to_pay($e), 'checks' => json_decode((string)$e['checks'], true) ?: [], 'reasons' => json_decode((string)$e['reasons'], true) ?: [], 'createdAt' => $e['created_at']];
     if ($money) {
         $out += ['charged' => (float)$e['charged'], 'allowed' => $e['allowed'] !== null ? (float)$e['allowed'] : null, 'deductible' => $e['deductible'] !== null ? (float)$e['deductible'] : null,

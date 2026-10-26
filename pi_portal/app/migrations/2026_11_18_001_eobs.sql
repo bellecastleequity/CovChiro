@@ -6,7 +6,6 @@ CREATE TABLE eobs (
   practice_id INT NOT NULL,
   case_id INT NOT NULL,
   coverage_id INT NULL,
-  document_id INT NULL,
   payer VARCHAR(120) NOT NULL,
   layout VARCHAR(30) NOT NULL,
   kind ENUM('eob','payment') NOT NULL DEFAULT 'eob',
@@ -35,8 +34,7 @@ CREATE TABLE eobs (
   INDEX idx_eobs_case (case_id),
   CONSTRAINT fk_eob_practice FOREIGN KEY (practice_id) REFERENCES practices(id),
   CONSTRAINT fk_eob_case FOREIGN KEY (case_id) REFERENCES cases(id),
-  CONSTRAINT fk_eob_coverage FOREIGN KEY (coverage_id) REFERENCES coverages(id),
-  CONSTRAINT fk_eob_document FOREIGN KEY (document_id) REFERENCES documents(id)
+  CONSTRAINT fk_eob_coverage FOREIGN KEY (coverage_id) REFERENCES coverages(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE eob_lines (
   id INT AUTO_INCREMENT PRIMARY KEY,
