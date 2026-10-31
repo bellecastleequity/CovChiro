@@ -327,8 +327,9 @@ the deductible and 20% moved to the patient balance as separate entries. A
 MedPay EOB instead moves the patient balance it pays back to MedPay and pays
 it — no fee-schedule reduction. Denied lines stay open with
 insurance for a demand letter. "Benefits exhausted" marks the PIP coverage
-exhausted, moves the charges to the patient balance and, when no other
-coverage is left, switches the case to a letter of protection.
+exhausted and moves the charges to the patient balance; when no other
+coverage is left, the clinic is asked whether to switch the case to a letter
+of protection — it never switches without someone confirming.
 
 Saved EOBs can be edited (a corrected line, or the check that arrived after
 the EOB); a posted EOB's ledger entries are replaced to match. Staff can also

@@ -3364,7 +3364,7 @@ function eobUploadModal(caseId = null) {
     toast(`${[nEob ? nEob + ' EOB' + (nEob === 1 ? '' : 's') : '', nPay ? nPay + ' check' + (nPay === 1 ? '' : 's') : ''].filter(Boolean).join(' and ')} saved${posted ? ' — ' + posted + ' posted to the ledger' : ''}`);
     r.saved.filter((s) => s.posted?.unapplied).forEach((s) => toast(`${s.caseNumber}: ${money(s.posted.unapplied)} was more than the open balance — it's on the ledger unapplied; check it.`));
     r.saved.filter((s) => s.notPostedWhy).forEach((s) => toast(s.caseNumber + ': ' + s.notPostedWhy));
-    if (r.switchedToLop.length) toast(`PIP benefits exhausted — ${r.switchedToLop.length === 1 ? 'the case moved' : r.switchedToLop.length + ' cases moved'} to a letter of protection`);
+    await offerLop(r.lopSuggested);
     if (S.caseData && caseId) await reloadCase(); else route();
   } });
   const host = m.el.querySelector('#eob-step');
@@ -3412,7 +3412,7 @@ function eobUploadModal(caseId = null) {
       <div class="form-grid mt-sm eob-totals">${[['charged', 'Total charged'], ['allowed', 'Total allowed'], ['deductible', 'Deductible'], ['coinsurance', 'PIP 20% / copay'], ['interest', 'Interest paid'], ['paid', 'Paid (check)']].map(([k, l]) => `<div><label for="eob-${i}-t-${k}">${l}</label><input id="eob-${i}-t-${k}" type="number" step="0.01" data-t="${k}" value="${t[k] ?? ''}"${k === 'paid' && t.paid === null && e.estimatedPaid !== null ? ` placeholder="about ${e.estimatedPaid}"` : ''}></div>`).join('')}</div>
       ${t.paid === null && e.estimatedPaid !== null ? `<p class="small muted">This EOB doesn't print the payment (it's mailed separately). PIP pays 80% of the allowed amount — about ${money(e.estimatedPaid)}. Enter the check amount here if you have it; otherwise save now and post the payment on the case when the check comes.</p>` : ''}
       ${eobChecksHtml(e.checks)}${eobNotesHtml(e.lines)}
-      ${e.status === 'exhausted' ? '<div class="notice">PIP benefits exhausted. Saving marks the PIP coverage exhausted and moves the case to a letter of protection; posting moves these charges to the patient balance.</div>' : ''}
+      ${e.status === 'exhausted' ? '<div class="notice">PIP benefits exhausted. Saving marks the PIP coverage exhausted, and posting moves these charges to the patient balance. If the case has no other coverage, you\'ll be asked whether to switch it to a letter of protection.</div>' : ''}
       ${c?.duplicateOf ? `<div class="notice">An EOB from this payer for the same dates was already saved on ${esc(fmtDate(c.duplicateOf.on))}. Posting again would count the payment twice.</div>` : ''}
       ${t.interest ? `<p class="small muted">${money(t.interest)} of the check is interest: it's kept with the EOB and in the EOB Genie report, not posted against the visits.</p>` : ''}
       <label class="check mt-sm"><input type="checkbox" data-e="post"${e.post ? ' checked' : ''}${c?.ehr || !can('fin:ledger') ? ' disabled' : ''}> Post to the case ledger — ${cov.find((v) => v.id === e.coverageId)?.type === 'medpay' ? 'the MedPay payment (the patient balance it pays moves back to MedPay)' : 'the payment, the PIP fee-schedule reduction, and the deductible and 20% moved to the patient balance'}${c?.ehr ? ` <span class="muted">(this case's money comes from ${esc(c.ehr)} ledger uploads, so the EOB is saved for review only)</span>` : ''}</label>
@@ -3513,6 +3513,16 @@ function eobUploadModal(caseId = null) {
     if (del) e.lines.splice(+del.dataset.eobDel, 1);
     sec.outerHTML = sectionHtml(e, +sec.dataset.i);
   });
+}
+
+// An EOB said PIP is exhausted and nothing else is left to bill: ask before
+// the case moves to a letter of protection — never switch it silently.
+async function offerLop(list) {
+  for (const c of list || []) {
+    const yes = await confirmBox(`Switch ${c.caseNumber} to a letter of protection?`, `${c.payer}'s EOB says PIP benefits are exhausted, and the case has no other active coverage. Switching moves the case to a letter of protection: insurance paperwork and mailings are no longer needed and the balance is held until the case settles. Your administrators get a summary email. You can also switch later from the case.`, 'Switch to LOP');
+    if (!yes) { toast(`${c.caseNumber} stays on insurance billing — switch it from the case when you're ready`); continue; }
+    if (await attempt(() => api('eob.php?action=switch_lop', { case_id: c.caseId }))) toast(`${c.caseNumber} switched to a letter of protection`);
+  }
 }
 
 // The case's saved EOBs (Financials tab).
@@ -3617,7 +3627,7 @@ async function pageEobs(main) {
       table(['Patient', 'Payer', 'EOB', '#Days to pay', '#Paid', '#Interest due'], g.paidLate.items.map((x) => `<tr><td>${who(x)}</td><td>${esc(x.payer)}</td><td class="nowrap small">${esc(fmtDate(x.eobDate))}</td><td class="num">${x.days}</td><td class="num">${money(x.paid)}</td><td class="num">${x.interestDue !== null ? money(x.interestDue) : '—'}</td></tr>`)), g.paidLate.items.length)}
     ${sect('no-eob', 'Bills with no EOB yet', 'Insurance charges still open 45+ days after the date of service with no EOB for that date. The bill may never have reached the insurer — call the adjuster.',
       table(['Patient', 'Date of service', '#Days', '#Open'], g.noEob.items.map((x) => `<tr><td>${who(x)}</td><td class="nowrap">${esc(fmtDate(x.dos))}</td><td class="num">${x.days}</td><td class="num">${money(x.amount)}</td></tr>`)), g.noEob.items.length)}
-    ${sect('billed-late', 'Billed late', 'Florida requires PIP bills within 35 days of service — 75 if the notice of initiation of treatment went to the insurer within 21 days of the first visit (§627.736(5)(c)). Late bills can be refused, and the patient can\'t be billed for them.',
+    ${sect('billed-late', 'Billed late', 'Bills sent after the state\'s PIP billing window — in Florida, 35 days from the date of service, or 75 if the notice of initiation of treatment went to the insurer within 21 days of the first visit (§627.736(5)(c)). Late bills can be refused, and the patient can\'t be billed for them.',
       table(['Patient', 'Payer', 'Service', '#Days to bill', '#Window', '#Charged'], g.billedLate.items.map((x) => `<tr><td>${who(x)}</td><td>${esc(x.payer)}</td><td class="nowrap small">${esc(fmtDate(x.dosFrom))}</td><td class="num"><strong>${x.days}</strong></td><td class="num">${x.window}</td><td class="num">${money(x.charged)}</td></tr>`)), g.billedLate.items.length)}
     ${sect('pip-out', 'PIP running out', 'Open auto cases with 8 or fewer visits of PIP left: what\'s left (the adjuster\'s figure when you\'ve recorded one — PIP is shared with every provider), what PIP pays you per visit on your EOBs, and the visit pace over the last four weeks. Get the letter of protection signed before it runs out.',
       table(['Patient', '#Left', '#Per visit', '#Visits left', 'Runs out', 'LOP'], g.pip.items.map((x) => `<tr><td>${who(x)}</td><td class="num">${money(x.left)}<div class="small muted">${x.source === 'adjuster' ? 'adjuster' : 'of ' + money(x.limit)}</div></td><td class="num">${money(x.perVisit)}<div class="small muted">${x.perVisitFrom === 'case' ? 'this case' : 'practice avg'}</div></td>
@@ -3659,7 +3669,7 @@ function eobEditModal(e) {
       const totals = {}; el.querySelectorAll('[data-t]').forEach((x) => { totals[x.dataset.t] = num(x.value); });
       const r = await api('eob.php?action=update', { id: e.id, header, lines: st.lines, totals, coverageId: e.coverageId, layout: e.layout, reasons: e.reasons, exhausted: e.status === 'exhausted', post: el.querySelector('#ee-post').checked });
       toast(r.ledgerReplaced ? `EOB updated — ${r.ledgerReplaced} ledger entries replaced` : (r.posted ? 'EOB updated and posted' : 'EOB updated'));
-      if (r.switchedToLop) toast('PIP benefits exhausted — the case moved to a letter of protection');
+      await offerLop(r.lopSuggested);
       await reloadCase();
     } });
   function readLines(el) { el.querySelectorAll('#ee-lines tr[data-j]').forEach((tr) => { const l = st.lines[+tr.dataset.j]; tr.querySelectorAll('[data-l]').forEach((x) => { l[x.dataset.l] = ['charged', 'allowed', 'paid'].includes(x.dataset.l) ? num(x.value) : (x.value.trim() || null); }); }); }

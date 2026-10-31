@@ -44,7 +44,7 @@
   {
    "id": "g07-exhausted",
    "min": 9,
-   "text": "If the EOB says benefits are exhausted, the genie flags it, moves the balance to the patient, and switches the case to a letter of protection when no other coverage is left."
+   "text": "If the EOB says benefits are exhausted, the genie flags it and moves the balance to the patient. When no other coverage is left, it asks before switching the case to a letter of protection. Nothing changes without your OK."
   },
   {
    "id": "g08-newpatient",
@@ -74,7 +74,7 @@
   {
    "id": "g13-late",
    "min": 9,
-   "text": "Paid late? It counts the days and figures the interest due. It also catches bills with no EOB yet, and bills sent after Florida's billing window."
+   "text": "Paid late? It counts the days and figures the interest due. It also catches bills with no EOB yet, and bills sent after the state's billing window."
   },
   {
    "id": "g14-pip",

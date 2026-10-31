@@ -6,8 +6,8 @@
 // from an EHR ledger, posted:
 // the insurer's payment, the fee-schedule reduction, and the PIP 20% /
 // deductible moved to the patient's balance. "Benefits exhausted" marks the
-// PIP coverage exhausted and, when no other coverage is left, moves the case
-// to a letter of protection.
+// PIP coverage exhausted and, when no other coverage is left, offers to move
+// the case to a letter of protection (only on the clinic's say-so).
 require_once __DIR__ . '/../../app/bootstrap.php';
 require_once __DIR__ . '/../../app/case_basis.php';
 require_once __DIR__ . '/../../app/eob.php';
@@ -345,17 +345,35 @@ function eob_post_lines(array $lines, array $row, array $tot): array {
     return $lines ?: [['dos' => $row['dos_from'], 'code' => 'EOB', 'charged' => $tot['charged'], 'allowed_full' => $tot['allowed'], 'paid' => null]];
 }
 
-// Benefits exhausted: the PIP coverage is exhausted and, when nothing else
-// is left to bill (no MedPay or health coverage), the case moves to a letter
-// of protection (with the usual switch notice and email). True if it moved.
+// Benefits exhausted: the PIP coverage is marked exhausted (the insurer's
+// EOB says so). Moving the case to a letter of protection is the clinic's
+// call: when nothing else is left to bill (no MedPay or health coverage) the
+// switch is offered, and only made when someone confirms it (switch_lop).
+// True if the switch should be offered.
 function eob_exhaust(int $caseId, ?int $coverageId, array $row, array $user): bool {
     if (!$coverageId) return false;
     $w = basis_watch($caseId);
     pi_db()->prepare("UPDATE coverages SET status = 'exhausted', status_on = ?, status_reason = ?, updated_at = ? WHERE id = ? AND status <> 'exhausted'")
         ->execute([$row['eob_date'] ?: date('Y-m-d'), mb_substr('EOB from ' . $row['payer'] . ': benefits exhausted', 0, 255), now_str(), $coverageId]);
     sync_benefits($caseId);
-    if (!array_filter(eob_coverages($caseId), fn($c) => $c['status'] === 'active')) pi_db()->prepare("UPDATE cases SET billing_basis = 'lop' WHERE id = ?")->execute([$caseId]);
-    return (bool)$w($user, 'PIP benefits exhausted (EOB)');
+    $w($user, 'PIP benefits exhausted (EOB)');
+    $case = case_or_404($caseId);
+    return $case['injury_type'] === 'auto' && case_billing_basis($case) !== 'lop' && !array_filter(eob_coverages($caseId), fn($c) => $c['status'] === 'active');
+}
+
+// The clinic confirmed it: move the case to a letter of protection (with
+// the usual switch notice on the case and the email to administrators).
+function handle_switch_lop() {
+    require_method('POST');
+    $user = require_user('finance.write');
+    $caseId = (int)(json_body()['case_id'] ?? 0);
+    $case = case_or_404($caseId);
+    if ($case['injury_type'] !== 'auto') json_response(['error' => 'Only auto cases switch between insurance and a letter of protection.'], 400);
+    $w = basis_watch($caseId);
+    pi_db()->prepare("UPDATE cases SET billing_basis = 'lop' WHERE id = ?")->execute([$caseId]);
+    $change = $w($user, 'PIP benefits exhausted (EOB) — switch confirmed');
+    touch_case($caseId);
+    json_response(['ok' => true, 'change' => $change]);
 }
 
 function eob_not_posted_why(array $case, array $user): string {
@@ -373,7 +391,7 @@ function handle_apply() {
     $pays = array_values(array_filter($b['payments'] ?? [], fn($x) => !empty($x['include'])));
     if (!$items && !$pays) json_response(['error' => 'Choose at least one EOB or payment to save.'], 400);
     $pdo = pi_db();
-    $saved = []; $switched = [];
+    $saved = []; $lop = [];
     foreach ($items as $it) {
         $caseId = (int)($it['caseId'] ?? 0);
         $case = case_or_404($caseId);
@@ -387,7 +405,7 @@ function handle_apply() {
             $pdo->prepare('UPDATE eobs SET posted = 1 WHERE id = ?')->execute([$eobId]);
         }
         $pdo->commit();
-        if ($r['status'] === 'exhausted' && eob_exhaust($caseId, $coverageId, $row, $user)) $switched[] = $caseId;
+        if ($r['status'] === 'exhausted' && eob_exhaust($caseId, $coverageId, $row, $user) && !in_array($caseId, array_column($lop, 'caseId'), true)) $lop[] = ['caseId' => $caseId, 'caseNumber' => $case['case_number'], 'payer' => $row['payer']];
         touch_case($caseId);
         audit('eob_save', 'case', $caseId, $caseId, $user, $row['payer'] . ' ' . ($row['dos_from'] ?? '') . ($posted ? ' — posted' : ''));
         $saved[] = ['id' => $eobId, 'caseId' => $caseId, 'caseNumber' => $case['case_number'], 'payer' => $row['payer'], 'status' => $row['status'], 'posted' => $posted, 'notPostedWhy' => !empty($it['post']) && !$postIt ? eob_not_posted_why($case, $user) : null];
@@ -410,7 +428,7 @@ function handle_apply() {
         $saved[] = ['id' => $eobId, 'caseId' => $caseId, 'caseNumber' => $case['case_number'], 'payer' => $row['payer'], 'kind' => 'payment', 'status' => 'paid', 'posted' => $posted, 'notPostedWhy' => !empty($it['post']) && !$postIt ? eob_not_posted_why($case, $user) : null];
     }
     unset($_SESSION['eob_pending']);
-    json_response(['saved' => $saved, 'switchedToLop' => $switched]);
+    json_response(['saved' => $saved, 'lopSuggested' => $lop]);
 }
 
 // Edits a saved EOB — a corrected line, or the check that came after the
@@ -445,7 +463,7 @@ function handle_update() {
     if ($wantPost) $posted = eob_post((int)$old['id'], $caseId, $coverageId, $row + ['paid' => $r['totals']['paid'], 'interest' => $r['totals']['interest'], 'deductible' => $r['totals']['deductible']], eob_post_lines($lines, $row, $r['totals']), $user);
     $pdo->prepare('UPDATE eobs SET posted = ? WHERE id = ?')->execute([$wantPost ? 1 : 0, $old['id']]);
     $pdo->commit();
-    $switched = $r['status'] === 'exhausted' && $old['status'] !== 'exhausted' && eob_exhaust($caseId, $coverageId, $row, $user);
+    $offer = $r['status'] === 'exhausted' && $old['status'] !== 'exhausted' && eob_exhaust($caseId, $coverageId, $row, $user);
     touch_case($caseId);
     $changes = [];
     foreach (['paid', 'allowed', 'charged', 'check_number', 'check_date', 'status'] as $f) {
@@ -453,7 +471,7 @@ function handle_update() {
         if ((string)$old[$f] !== (string)$nv && !(is_numeric($old[$f]) && is_numeric($nv) && abs($old[$f] - $nv) < 0.005)) $changes[] = ['f' => $f, 't' => in_array($f, ['paid', 'allowed', 'charged'], true) ? 'money' : 'str', 'from' => $old[$f], 'to' => $nv];
     }
     audit('eob_edit', 'case', $caseId, $caseId, $user, $row['payer'] . ' ' . ($row['dos_from'] ?? '') . ($removed ? " — $removed ledger entries replaced" : ''), $changes ?: null);
-    json_response(['ok' => true, 'posted' => $posted, 'ledgerReplaced' => $removed, 'switchedToLop' => $switched]);
+    json_response(['ok' => true, 'posted' => $posted, 'ledgerReplaced' => $removed, 'lopSuggested' => $offer ? [['caseId' => $caseId, 'caseNumber' => $case['case_number'], 'payer' => $row['payer']]] : []]);
 }
 
 function eob_row_out(array $e, array $lines, array $usual, bool $money, array $case = [], ?string $noticeOn = null): array {
@@ -537,6 +555,7 @@ switch ($action) {
     case 'upload': handle_upload(); break;
     case 'case_info': handle_case_info(); break;
     case 'apply': handle_apply(); break;
+    case 'switch_lop': handle_switch_lop(); break;
     case 'update': handle_update(); break;
     case 'list': handle_list(); break;
     case 'archive': handle_archive(); break;
