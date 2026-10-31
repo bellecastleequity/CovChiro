@@ -963,6 +963,7 @@ CREATE TABLE eobs (
   via VARCHAR(120) NULL,
   via_ref VARCHAR(60) NULL,
   recovery TINYINT(1) NOT NULL DEFAULT 0,
+  history TINYINT(1) NOT NULL DEFAULT 0,
   claim_number_enc TEXT NULL,
   bill_ref VARCHAR(60) NULL,
   received_on DATE NULL,

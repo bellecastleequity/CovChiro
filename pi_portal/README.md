@@ -331,6 +331,26 @@ exhausted and moves the charges to the patient balance; when no other
 coverage is left, the clinic is asked whether to switch the case to a letter
 of protection — it never switches without someone confirming.
 
+**Bringing in past EOBs.** A practice's old EOBs are usually already in its
+books (EHR ledger uploads or the imported spreadsheets), so posting them
+again would count every payment twice. *Bring in past EOBs* (EOB Genie page,
+or the "These are past EOBs" box on any upload) reads several PDFs at once
+and saves them as past EOBs for the report: not posted (unless "Post" is
+ticked on one), no coverage or case changed, no LOP prompt. Patients named on
+them who aren't set up yet can be created in one step ("Create N patients",
+one patient and auto case per name + date of loss, at the chosen stage).
+Import patients and cases first (spreadsheets or EHR), then past EOBs, so
+they match. For a practice that sends its scans instead, the same thing runs
+on the server:
+```
+php app/cli/import_eobs.php --practice=ID --dry-run scans/          # preview: what matches, what's new, what's already saved
+php app/cli/import_eobs.php --practice=ID --create-cases scans/     # save; missing patients get a closed case (or =treating, =tx_complete, =settled)
+```
+Folders are read recursively; EOBs and checks already saved are skipped, so
+it can be run again as scans are added. `--post` posts them too, only for a
+practice whose ledger doesn't have those payments. Output shows case numbers
+and initials, never patient names.
+
 Saved EOBs can be edited (a corrected line, or the check that arrived after
 the EOB); a posted EOB's ledger entries are replaced to match. Staff can also
 create the patient and auto case straight from an EOB that matches no case.
